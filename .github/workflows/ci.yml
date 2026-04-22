@@ -47,6 +47,15 @@ jobs:
       - name: Install Node dependencies
         run: npm ci
 
+      - name: Copy .env
+        run: cp .env.example .env
+
+      - name: Generate application key
+        run: php artisan key:generate
+
+      - name: Generate Wayfinder types (routes/actions/wayfinder)
+        run: php artisan wayfinder:generate
+
       - name: Pint (PHP code style)
         run: vendor/bin/pint --test
 
