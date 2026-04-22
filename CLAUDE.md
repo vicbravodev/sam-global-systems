@@ -1,0 +1,187 @@
+# CLAUDE.md — SAM Global Systems
+
+Guía operativa para Claude Code. El documento autoritativo de reglas Laravel sigue siendo [`AGENTS.md`](AGENTS.md) (Laravel Boost); este archivo NO lo reemplaza, lo complementa con el contexto específico del producto SAM y el estado actual de implementación.
+
+**Lee primero, en este orden, antes de cualquier cambio no trivial:**
+
+1. [`AGENTS.md`](AGENTS.md) — convenciones Laravel/Inertia/React de este repo.
+2. [`specs/00-MASTER-GUIDE.md`](specs/00-MASTER-GUIDE.md) — arquitectura domain-modular, stack, convenciones de migrations/tests, topología de colas.
+3. El spec concreto del dominio donde vas a trabajar (`specs/NN-*.md`).
+4. El módulo ya implementado como plantilla de estilo (ver tabla de estado abajo).
+
+---
+
+## 1. Qué es SAM
+
+Plataforma multi-tenant de flotas: ingesta webhooks/eventos de proveedores externos (Samsara, etc.), los normaliza, los enriquece con contexto operacional, los evalúa con IA, y genera incidentes + automatizaciones. Billing metered por Stripe con eventos de uso por tenant.
+
+**Stack:** Laravel 13 · PHP 8.5 · Inertia v3 · React 19 · Tailwind v4 · PostgreSQL 18 · Valkey (no Redis) · RustFS (S3-compatible) · Soketi (Pusher-compatible) · Horizon · Cashier Stripe · Mailpit (dev).
+
+**Tenant = Team.** `app/Models/Team.php` ES el tenant. No existe un modelo `Tenant` separado — no lo inventes.
+
+---
+
+## 2. Arquitectura domain-modular (NO saltarse)
+
+Todo código de negocio nuevo vive bajo `app/Domains/{Dominio}/` con subdirs: `Actions/ Data/ Enums/ Events/ Jobs/ Listeners/ Models/ Policies/ Queries/ Services/ Support/`. Cada dominio registra un `ServiceProvider` en [`bootstrap/providers.php`](bootstrap/providers.php).
+
+**Reglas duras:**
+
+- Modelos tenant-scoped DEBEN usar el trait `App\Concerns\BelongsToTenant` (scope global + auto-set `team_id` en create). Ver [`app/Concerns/BelongsToTenant.php`](app/Concerns/BelongsToTenant.php).
+- Cada tabla tenant-scoped incluye `foreignId('team_id')->constrained()->cascadeOnDelete()` + `index('team_id')`.
+- Helper global `currentTeam()` (ya autoloaded vía [`app/Support/helpers.php`](app/Support/helpers.php)) — úsalo; no llames `auth()->user()->currentTeam` ad-hoc.
+- Contratos cross-domain en `app/Contracts/` con implementaciones en `app/Infrastructure/` o en el dominio dueño. Mira cómo `Integrations` bindea `NullRawEventIngestion` / `NullAssetSyncHandler` / `NullDriverSyncHandler` con `singletonIf` para romper dependencias circulares.
+- Jobs van a colas con nombre por dominio (`ingestion`, `normalization`, `ai-evaluation`, `billing`, `sync`, etc.). Ver [`config/horizon.php`](config/horizon.php).
+- Uso metered: todo punto facturable llama `App\Domains\Tenancy\Actions\RecordUsageEvent` con `event_key` idempotente.
+- Rutas API tenant-scoped viven bajo `/{current_team}/...` con middleware `EnsureTeamMembership` (ver [`routes/api.php`](routes/api.php)).
+
+**Convenciones de nombres (del Master Guide §8):** Modelos singular PascalCase, tablas plural snake_case, columnas JSON sufijadas `_json`, actions `Verbo+Sustantivo`, jobs `...Job`, eventos en pasado, broadcasting events con sufijo `Broadcast` solo si hay que desambiguar.
+
+---
+
+## 3. Estado de implementación (auditoría al 2026-04-22)
+
+**255 tests passing · 690 assertions · corrida local ~3s.** Specs 01–07 implementados; 08–16 pendientes. Huecos críticos de I1/I2/I3/05 cerrados (ver §3.1).
+
+| Spec | Dominio | Estado | Tests | Notas de auditoría |
+|------|---------|--------|-------|--------------------|
+| I1 | Storage (RustFS) | ✅ Cerrado | `tests/Feature/Infrastructure/Storage/RustFsObjectStorageTest.php`, `tests/Feature/Domains/Tenancy/FileObjectTest.php` | Contract `ObjectStorage` alineado al spec I1 §3 (incluye `temporaryUrl()`, `mimeType()`, firmas void). Modelo `FileObject` + migración `file_objects` + factory listos en `app/Domains/Tenancy/Models/FileObject.php`. Pendiente: validación manual de `temporaryUrl` contra RustFS real (fuera de CI). |
+| I2 | Broadcasting (Soketi) | ✅ Parcialmente cerrado | `tests/Feature/Broadcasting/ChannelAuthorizationTest.php` | Canales `accounts.{teamId}`, `jobs.{jobId}`, `users.{userId}` registrados en [`routes/channels.php`](routes/channels.php). **Pendiente (no crítico):** `presence-incidents.{incidentId}` depende de spec 11 Incidents (no implementado). Tests corren contra PusherBroadcaster con fake creds. |
+| I3 | Valkey/KV | ✅ Parcialmente cerrado | `tests/Feature/Http/Webhooks/WebhookRateLimitTest.php`, `tests/Feature/Http/Api/ApiRateLimitTest.php` | Rate limiters `webhooks` (300/min por IP) y `api` (60/min por tenant) definidos en `FortifyServiceProvider::configureRateLimiting()`. Aplicados en [`routes/api.php`](routes/api.php) vía `throttle:webhooks` y `throttle:api`. **Diferido (YAGNI):** contrato `KeyValueStore` — `Cache::` ya abstrae Valkey. |
+| 01 | Tenancy | ✅ COMPLETADO | `tests/Feature/Domains/Tenancy/*` (8 archivos) | Modelos: Plan, Subscription, TenantFeature, TenantBranding, UsageMeter, UsageEvent, UsageDailyAggregate, TenantUsageCounter, BillingRate, InvoiceSnapshot, **FileObject (nuevo, cross-domain)**. Jobs: Aggregate/ReportUsage/GenerateInvoice. Scheduler `AggregateUsageJob` diario 02:00 en [`routes/console.php`](routes/console.php). Policies diferidas (no hay controllers para Subscription/TenantBranding todavía). |
+| 02 | Access | ✅ COMPLETADO | `tests/Feature/Domains/Access/*` (5 archivos) | Role/Permission/UserPreference + pivot. Actions: AssignRole, AuthorizeAction, SyncRolePermissions. `InertiaPermissionsTest` cubre share con frontend. |
+| 03 | Integrations | ✅ COMPLETADO | `tests/Feature/Domains/Integrations/*` (7 archivos) | 6 modelos, adapter pattern (`ProviderAdapter` + `NullProviderAdapter`), webhook handler público **con throttle `300/min`** en `/webhooks/{endpoint_url}`, policy registrada en provider. |
+| 04 | Assets | ✅ COMPLETADO | `tests/Feature/Domains/Assets/*` (8 archivos) | AssetType/Asset/Device/ExternalRef/Location+Telemetry snapshots. Command `assets:record-usage-meters` scheduled daily vía `AssetsServiceProvider::boot()`. Broadcasting events `AssetLocationUpdatedBroadcast` y `AssetStatusChangedBroadcast` emitidos. API CRUD bajo `/{current_team}/assets`. |
+| 05 | Drivers | ✅ COMPLETADO | `tests/Feature/Domains/Drivers/*` (10 archivos) | Driver + Assignments + Contacts + Documents + RiskProfile + StatusLog. **`DriverPolicy` añadida** (`viewAny`, `view`, `updateContacts`, `updateDocuments`) registrada en `DriversServiceProvider::boot()`. `DriverController` invoca `$this->authorize(...)` en los 6 endpoints. |
+| 06 | Ingestion | ✅ COMPLETADO | `tests/Feature/Domains/Ingestion/*` (7 archivos) | RawEvent + EventSource + Dedup + Attachments. Servicio `RawEventIngestionService` bindea contract. Job `PollExternalProviderJob` en cola `ingestion`. |
+| 07 | Normalization | ✅ COMPLETADO | `tests/Feature/Domains/Normalization/*` (5 archivos) | EventCategory/Severity/Type/MappingRule + NormalizedEvent. Seeder `NormalizationSeeder` carga catálogo base. |
+| 08–16 | Context / AI / Decisions / Incidents / Automation / Notifications / Audit / Analytics / TenantConfig | ❌ Pendiente | — | Directorios `app/Domains/{Context,AI,Decisions,Incidents,Automation,Notifications,Audit,Analytics,TenantConfig}` aún no creados. |
+
+### 3.1 Huecos críticos cerrados (2026-04-22)
+
+| Hueco | Cómo se cerró | Archivos clave |
+|-------|----------------|----------------|
+| `ObjectStorage` contract incompleto (I1 §3) | Añadidos `temporaryUrl()` y `mimeType()`; firmas alineadas al spec (`put/delete` → void, `size` → `?int`, `put` recibe `array $options`) | [`app/Contracts/ObjectStorage.php`](app/Contracts/ObjectStorage.php), [`app/Infrastructure/Storage/RustFsObjectStorage.php`](app/Infrastructure/Storage/RustFsObjectStorage.php), [`app/Contracts/NullImplementations/NullObjectStorage.php`](app/Contracts/NullImplementations/NullObjectStorage.php) |
+| Falta tabla `file_objects` + modelo `FileObject` (I1 §6) | Migración + modelo `Tenancy\Models\FileObject` con `BelongsToTenant` + morphTo `fileable` + factory | `database/migrations/2026_04_22_220256_create_file_objects_table.php`, [`app/Domains/Tenancy/Models/FileObject.php`](app/Domains/Tenancy/Models/FileObject.php), `database/factories/Domains/Tenancy/FileObjectFactory.php` |
+| Webhook público sin throttle | `RateLimiter::for('webhooks', 300/min por IP)` + middleware `throttle:webhooks` en la ruta | [`app/Providers/FortifyServiceProvider.php`](app/Providers/FortifyServiceProvider.php), [`routes/api.php`](routes/api.php) |
+| Rutas API tenant sin throttle | `RateLimiter::for('api', 60/min por current_team o IP)` + `throttle:api` en el grupo `{current_team}` | ídem anterior |
+| Canal `private-users.{userId}` faltante (I2 §3) | Registrado callback `$user->id === $userId` | [`routes/channels.php`](routes/channels.php) |
+| `DriverController` sin authorize (spec 05 §10) | `DriverPolicy` + `Gate::policy` + `$this->authorize(...)` en los 6 endpoints. Controller base ahora usa trait `AuthorizesRequests`. Tests existentes de Drivers siembran `AccessSeeder` en setUp. | [`app/Domains/Drivers/Policies/DriverPolicy.php`](app/Domains/Drivers/Policies/DriverPolicy.php), [`app/Domains/Drivers/DriversServiceProvider.php`](app/Domains/Drivers/DriversServiceProvider.php), [`app/Http/Controllers/Controller.php`](app/Http/Controllers/Controller.php), [`app/Http/Controllers/Drivers/DriverController.php`](app/Http/Controllers/Drivers/DriverController.php) |
+
+**Diferidos explícitamente** (no-críticos, no bloquean spec 08):
+
+- Policies Tenancy (Subscription/TenantBranding/TenantFeature) — no hay controllers para esos endpoints aún.
+- Contrato `KeyValueStore` — YAGNI: Laravel `Cache::` ya abstrae Valkey sin añadir indirection extra.
+- Canal `presence-incidents.{incidentId}` — depende del modelo `Incident` (spec 11, no implementado).
+- Echo frontend wiring (`resources/js/echo.ts`) — fuera de scope backend-crítico.
+- Authz real del canal `jobs.{jobId}` (hoy es `$user !== null`) — requiere el modelo Job que aún no se definió.
+
+---
+
+## 4. Flujo de trabajo en este repo
+
+### Crear un dominio nuevo (specs 08+)
+
+Seguir literalmente `specs/00-MASTER-GUIDE.md` §9 (22 pasos). Resumen operativo:
+
+```bash
+mkdir -p app/Domains/{Nombre}/{Actions,Data,Enums,Events,Jobs,Listeners,Models,Policies,Queries,Services,Support}
+php artisan make:migration create_xxx_table --no-interaction
+php artisan make:model --no-interaction     # luego mover a app/Domains/{Nombre}/Models
+php artisan make:factory --no-interaction
+php artisan make:job --no-interaction       # luego mover a app/Domains/{Nombre}/Jobs
+php artisan make:event --no-interaction
+php artisan make:test --phpunit --no-interaction {Nombre}Test
+```
+
+Después: crear `{Nombre}ServiceProvider`, registrarlo en [`bootstrap/providers.php`](bootstrap/providers.php), cablear `RecordUsageEvent` en todos los puntos facturables listados en la §12 del spec, y escribir tests que cubran aislamiento de tenant e idempotencia.
+
+### Comandos que Claude Code debe correr
+
+```bash
+# Formato (obligatorio tras cambios PHP)
+vendor/bin/pint --dirty --format agent
+
+# Tests: filtrar siempre
+php artisan test --compact --filter=NombreDelTest
+php artisan test --compact tests/Feature/Domains/{Dominio}
+
+# Suite completa (antes de dar por cerrado un módulo)
+php artisan test --compact
+
+# Dev stack (Sail)
+composer run dev   # arranca serve + queue + pail + vite
+./vendor/bin/sail up -d pgsql valkey rustfs soketi mailpit
+
+# Migraciones
+php artisan migrate
+php artisan migrate:fresh --seed    # resetea + ejecuta DatabaseSeeder/AccessSeeder/AssetTypeSeeder/NormalizationSeeder
+
+# Frontend
+npm run dev        # vite watch
+npm run build      # producción
+npm run types:check && npm run lint:check && npm run format:check
+
+# Wayfinder (tipados frontend)
+php artisan wayfinder:generate    # regenerar tras cambiar rutas/controladores
+```
+
+### Tests — qué exigir siempre
+
+- Un test por cada Action y cada Job crítico.
+- Un `TenantIsolationTest` por dominio que verifique que `BelongsToTenant` scope aísla queries entre teams distintos.
+- Tests de idempotencia en cualquier cosa que reciba `event_key` / signature / webhook (duplicates no deben crear side-effects).
+- Usar factories; nunca `Model::create()` manual en tests.
+- Para Storage: `Storage::fake('rustfs')`. Para eventos: `Event::fake([...Broadcast::class])`.
+
+---
+
+## 5. Puntos de integración críticos
+
+- **Webhook público:** `POST /webhooks/{endpoint_url}` en [`routes/api.php:47`](routes/api.php:47) — sin middleware de tenant (el tenant se resuelve desde `WebhookEndpoint` en DB). Valida firma vía `ValidateWebhookSignature`. **Aún sin throttle nombrado.**
+- **Broadcasting:** canales privados en [`routes/channels.php`](routes/channels.php). Todo event broadcast debe declarar `broadcastOn()` con el canal `private-accounts.{teamId}` cuando sea tenant-scoped. Ya existen `AssetLocationUpdatedBroadcast`, `AssetStatusChangedBroadcast`, `UsageUpdatedBroadcast`.
+- **Horizon supervisors** ([`config/horizon.php`](config/horizon.php)): `supervisor-high` = ingestion/normalization/decisions/incidents · `-medium` = context/ai-evaluation/automation/notifications/billing/sync · `-low` = default/audit/analytics. Respeta esta topología al despachar jobs.
+- **Bindings condicionales:** `IngestionServiceProvider` decide `RustFsObjectStorage` vs `NullObjectStorage` según `config('filesystems.disks.rustfs')`. Los `NullImplementations/` existen para permitir tests sin dependencias externas — úsalos.
+- **Scheduler:** solo hay dos tareas programadas hoy — `AggregateUsageJob` diario 02:00 ([`routes/console.php`](routes/console.php)) y `assets:record-usage-meters` diario (vía `AssetsServiceProvider`). Las siguientes specs añadirán más.
+
+---
+
+## 6. Qué NO hacer
+
+- No crear directorios nuevos a nivel `app/` sin aprobación (regla AGENTS.md).
+- No cambiar dependencias de `composer.json` / `package.json` sin aprobación.
+- No reemplazar modelos existentes (`User`, `Team`, `Membership`, `TeamInvitation`) — extender.
+- No usar Redis Cluster — Horizon no lo soporta y Valkey corre standalone.
+- No inventar un modelo `Tenant`: `Team` = tenant.
+- No añadir `axios` de forma manual al frontend (Inertia v3 lo removió); usar `useHttp` / `useForm`.
+- No mockear la base de datos en tests de feature — usar `RefreshDatabase` + factories reales.
+- No crear docs en `docs/` ni `README` nuevos sin que el usuario lo pida explícitamente.
+- No correr `vendor/bin/pint --test` — correr `vendor/bin/pint --dirty --format agent`.
+
+### 6.1 Git, GitHub y commits (reglas duras)
+
+- **Claude NUNCA hace `git push`, `git push --force`, `gh pr create`, `gh pr merge`, `gh release`, ni cualquier comando que publique código o acciones al remoto.** La publicación es exclusiva del usuario (`vicbravodev`). Si al terminar un cambio hace falta subirlo, Claude se detiene y se lo indica al usuario.
+- **Todos los commits se firman SOLO con la identidad del usuario** (`user.name = "Victor Jesus Bravo de la Peña"`, `user.email = "vicbravodev@gmail.com"`). **Nunca** añadir `Co-Authored-By: Claude ...` ni ningún otro coautor automático. No usar `--author`, `--trailer`, ni banners tipo "Generated with Claude Code" en el mensaje del commit.
+- **Claude PUEDE** crear commits locales, ramas locales, abrir archivos staged con `git add`, y ejecutar `git status` / `git diff` / `git log`. Todo eso se queda en la máquina.
+- **Claude NO usa** `--no-verify`, `--no-gpg-sign`, `git reset --hard`, `git checkout .`, `git clean -fd`, `git branch -D`, `git rebase -i`, ni amends a commits ya publicados, salvo petición explícita del usuario en ese turno.
+- Si un hook de pre-commit falla, Claude arregla la causa raíz y crea un commit NUEVO; no repite el commit con `--amend` ni salta el hook.
+- Para abrir un PR: Claude deja la rama lista y los commits hechos, y **le pide al usuario** que corra `git push` y `gh pr create`. Si el usuario pide explícitamente que Claude redacte el cuerpo del PR, lo genera como texto en el chat para que el usuario lo pegue.
+
+---
+
+## 7. Archivos de referencia rápida
+
+| Propósito | Archivo |
+|-----------|---------|
+| Reglas Laravel Boost (autoritativo) | [`AGENTS.md`](AGENTS.md) |
+| Arquitectura, convenciones, orden de specs | [`specs/00-MASTER-GUIDE.md`](specs/00-MASTER-GUIDE.md) |
+| Specs por módulo (negocio) | [`specs/01-tenancy.md`](specs/01-tenancy.md) … [`specs/16-tenant-config.md`](specs/16-tenant-config.md) |
+| Specs de infraestructura | [`specs/I1-storage-infrastructure.md`](specs/I1-storage-infrastructure.md), [`I2`](specs/I2-realtime-broadcasting.md), [`I3`](specs/I3-keyvalue-caching.md) |
+| Docs de producto en español | [`docs/SAM/`](docs/SAM/) |
+| Trait tenant-scope | [`app/Concerns/BelongsToTenant.php`](app/Concerns/BelongsToTenant.php) |
+| Helper `currentTeam()` | [`app/Support/helpers.php`](app/Support/helpers.php) |
+| Providers de dominios registrados | [`bootstrap/providers.php`](bootstrap/providers.php) |
+| Configuración de colas | [`config/horizon.php`](config/horizon.php) |
+| Rutas API tenant-scoped | [`routes/api.php`](routes/api.php) |
+| Canales broadcasting | [`routes/channels.php`](routes/channels.php) |
+| Docker services | [`compose.yaml`](compose.yaml) |
