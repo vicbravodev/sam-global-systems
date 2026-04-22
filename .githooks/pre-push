@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${SKIP_COVERAGE:-0}" == "1" ]]; then
+    echo "→ SKIP_COVERAGE=1 — skipping pre-push coverage check."
+    exit 0
+fi
+
+if ! php -r "exit(extension_loaded('pcov') || extension_loaded('xdebug') ? 0 : 1);"; then
+    echo "⚠  No coverage driver (pcov/xdebug) detected — skipping local check."
+    echo "   CI will still enforce coverage. To run locally: pecl install pcov"
+    exit 0
+fi
+
+echo "→ Running coverage (pre-push, thresholds: 75/80/95)…"
+php artisan test --coverage-clover=coverage.xml --compact
+php scripts/check-coverage.php coverage.xml --mode=local
