@@ -225,7 +225,7 @@ if (count($prPhpFiles) === 0) {
             $data['statements']
         );
     }
-    echo "\n_Legend:_ **Tier 1** = critical per-file ≥ ".$thresholds['tier1']."% · **Tier 2** = domain logic aggregate ≥ ".$thresholds['tier2']."% · **—** = counts toward global aggregate only.\n";
+    echo "\n_Legend:_ **Tier 1** = critical per-file ≥ ".$thresholds['tier1'].'% · **Tier 2** = domain logic aggregate ≥ '.$thresholds['tier2']."% · **—** = counts toward global aggregate only.\n";
 }
 
 if (! empty($tier1Failures)) {
