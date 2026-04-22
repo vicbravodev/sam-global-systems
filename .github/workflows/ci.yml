@@ -53,8 +53,8 @@ jobs:
       - name: Generate application key
         run: php artisan key:generate
 
-      - name: Generate Wayfinder types (routes/actions/wayfinder)
-        run: php artisan wayfinder:generate
+      - name: Build frontend (generates Wayfinder types via Vite plugin)
+        run: npm run build
 
       - name: Pint (PHP code style)
         run: vendor/bin/pint --test
