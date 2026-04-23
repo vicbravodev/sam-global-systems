@@ -4,9 +4,11 @@ namespace Tests\Feature\Domains\AI;
 
 use App\Domains\AI\Actions\EvaluateEventWithAI;
 use App\Domains\AI\Jobs\EvaluateEventJob;
-use App\Domains\AI\Listeners\EvaluateEventOnEventNormalized;
+use App\Domains\AI\Listeners\EvaluateOnEventContextBuilt;
 use App\Domains\AI\Models\AIEventEvaluation;
-use App\Domains\Normalization\Events\EventNormalized;
+use App\Domains\Context\Events\EventContextBuilt;
+use App\Domains\Context\Models\EventContextSnapshot;
+use App\Domains\Context\Models\OperationalContextProfile;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\Tenancy\Events\UsageRecorded;
 use App\Models\User;
@@ -26,14 +28,19 @@ class EvaluateEventJobTest extends TestCase
         $this->seed(AIMeterSeeder::class);
     }
 
-    public function test_listener_dispatches_evaluate_event_job_on_event_normalized(): void
+    public function test_listener_dispatches_evaluate_event_job_on_event_context_built(): void
     {
         Bus::fake();
 
         $user = User::factory()->create();
         $event = NormalizedEvent::factory()->create(['team_id' => $user->currentTeam->id]);
+        $snapshot = EventContextSnapshot::factory()->create([
+            'team_id' => $user->currentTeam->id,
+            'normalized_event_id' => $event->id,
+        ]);
+        $profile = OperationalContextProfile::factory()->create(['team_id' => $user->currentTeam->id]);
 
-        (new EvaluateEventOnEventNormalized)->handle(new EventNormalized($event));
+        (new EvaluateOnEventContextBuilt)->handle(new EventContextBuilt($snapshot, $profile));
 
         Bus::assertDispatched(EvaluateEventJob::class, fn (EvaluateEventJob $job) => $job->normalizedEventId === $event->id);
     }
