@@ -2,6 +2,7 @@
 
 use App\Domains\Access\AccessServiceProvider;
 use App\Domains\Assets\AssetsServiceProvider;
+use App\Domains\Context\ContextServiceProvider;
 use App\Domains\Drivers\DriversServiceProvider;
 use App\Domains\Ingestion\IngestionServiceProvider;
 use App\Domains\Integrations\IntegrationsServiceProvider;
@@ -14,6 +15,7 @@ use App\Providers\HorizonServiceProvider;
 return [
     AccessServiceProvider::class,
     AssetsServiceProvider::class,
+    ContextServiceProvider::class,
     DriversServiceProvider::class,
     IngestionServiceProvider::class,
     IntegrationsServiceProvider::class,

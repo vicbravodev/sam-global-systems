@@ -1,0 +1,235 @@
+<?php
+
+namespace App\Domains\Context\Actions;
+
+use App\Domains\Context\Enums\GeofenceMatchType;
+use App\Domains\Context\Events\EventContextBuilt;
+use App\Domains\Context\Models\EventContextSnapshot;
+use App\Domains\Context\Models\EventRecentHistorySnapshot;
+use App\Domains\Context\Models\GeofenceMatch;
+use App\Domains\Context\Support\SignalsBuilder;
+use App\Domains\Normalization\Models\NormalizedEvent;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
+
+class BuildEventContext
+{
+    public function __construct(
+        private ResolveGeofenceContext $resolveGeofenceContext,
+        private LoadRecentAssetHistory $loadRecentAssetHistory,
+        private GetRelatedOpenIncidents $getRelatedOpenIncidents,
+        private ResolveDriverOperationalContext $resolveDriverOperationalContext,
+        private BuildOperationalContextProfile $buildOperationalContextProfile,
+    ) {}
+
+    public function execute(NormalizedEvent $normalizedEvent): EventContextSnapshot
+    {
+        return DB::transaction(function () use ($normalizedEvent) {
+            $normalizedEvent->loadMissing(['asset.latestLocation', 'driver', 'eventSeverity', 'eventType']);
+
+            $location = $this->extractLocation($normalizedEvent);
+            $lat = $location['latitude'] ?? null;
+            $lng = $location['longitude'] ?? null;
+
+            $assetSnapshot = $this->assetSnapshot($normalizedEvent);
+            $telemetrySnapshot = $this->telemetrySnapshot($normalizedEvent);
+            $driverSnapshot = $this->resolveDriverOperationalContext->execute(
+                $normalizedEvent->driver_id,
+                $normalizedEvent->occurred_at ?? now(),
+            );
+            $geofenceMatches = $this->resolveGeofenceContext->execute(
+                is_numeric($lat) ? (float) $lat : null,
+                is_numeric($lng) ? (float) $lng : null,
+                $normalizedEvent->team_id,
+            );
+            $incidents = $this->getRelatedOpenIncidents->execute($normalizedEvent)->all();
+            $recentHistory = $this->loadRecentAssetHistory->execute(
+                $normalizedEvent->asset_id,
+                $normalizedEvent->event_type_id,
+                $normalizedEvent->occurred_at ?? now(),
+            );
+
+            $signals = SignalsBuilder::build([
+                'geofence_matches' => $geofenceMatches,
+                'incidents' => $incidents,
+                'recent_history' => $recentHistory,
+                'driver' => $driverSnapshot ?? [],
+                'asset' => $assetSnapshot ?? [],
+                'telemetry' => $telemetrySnapshot ?? [],
+                'media' => [],
+            ]);
+
+            $existing = EventContextSnapshot::withoutGlobalScopes()
+                ->where('normalized_event_id', $normalizedEvent->id)
+                ->first();
+            $nextVersion = $existing ? ((int) $existing->context_version + 1) : 1;
+
+            $snapshot = EventContextSnapshot::withoutGlobalScopes()->updateOrCreate(
+                ['normalized_event_id' => $normalizedEvent->id],
+                [
+                    'team_id' => $normalizedEvent->team_id,
+                    'asset_id' => $normalizedEvent->asset_id,
+                    'driver_id' => $normalizedEvent->driver_id,
+                    'event_occurred_at' => $normalizedEvent->occurred_at ?? now(),
+                    'context_version' => $nextVersion,
+                    'location_snapshot_json' => $location,
+                    'asset_snapshot_json' => $assetSnapshot,
+                    'driver_snapshot_json' => $driverSnapshot,
+                    'telemetry_snapshot_json' => $telemetrySnapshot,
+                    'geofence_snapshot_json' => $this->normalizeGeofenceMatchesForStorage($geofenceMatches),
+                    'incidents_snapshot_json' => $incidents,
+                    'recent_history_snapshot_json' => $this->serializeRecentHistory($recentHistory),
+                    'media_snapshot_json' => [],
+                    'signals_json' => $signals,
+                ],
+            );
+
+            GeofenceMatch::query()->where('normalized_event_id', $normalizedEvent->id)->delete();
+            foreach ($geofenceMatches as $match) {
+                GeofenceMatch::query()->create([
+                    'normalized_event_id' => $normalizedEvent->id,
+                    'geofence_id' => $match['geofence_id'],
+                    'match_type' => $match['match_type'] instanceof GeofenceMatchType
+                        ? $match['match_type']->value
+                        : $match['match_type'],
+                    'matched_at' => $normalizedEvent->occurred_at ?? now(),
+                    'distance_meters' => $match['distance_meters'] ?? null,
+                ]);
+            }
+
+            EventRecentHistorySnapshot::query()->updateOrCreate(
+                ['normalized_event_id' => $normalizedEvent->id],
+                [
+                    'window_start' => $recentHistory['window_start'],
+                    'window_end' => $recentHistory['window_end'],
+                    'recent_events_count' => $recentHistory['recent_events_count'],
+                    'recent_incidents_count' => $recentHistory['recent_incidents_count'],
+                    'recent_same_type_count' => $recentHistory['recent_same_type_count'],
+                    'recent_high_severity_count' => $recentHistory['recent_high_severity_count'],
+                    'recent_locations_json' => $recentHistory['recent_locations_json'],
+                    'recent_flags_json' => $recentHistory['recent_flags_json'],
+                ],
+            );
+
+            $profile = $this->buildOperationalContextProfile->execute($snapshot->fresh());
+
+            EventContextBuilt::dispatch($snapshot->fresh(), $profile);
+
+            return $snapshot->fresh();
+        });
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function extractLocation(NormalizedEvent $event): array
+    {
+        $payloadLocation = Arr::get($event->payload_normalized_json ?? [], 'location');
+
+        if (is_array($payloadLocation) && isset($payloadLocation['latitude'], $payloadLocation['longitude'])) {
+            return [
+                'latitude' => (float) $payloadLocation['latitude'],
+                'longitude' => (float) $payloadLocation['longitude'],
+                'source' => 'event_payload',
+            ];
+        }
+
+        $latest = $event->asset?->latestLocation;
+
+        if ($latest && $latest->latitude !== null && $latest->longitude !== null) {
+            return [
+                'latitude' => (float) $latest->latitude,
+                'longitude' => (float) $latest->longitude,
+                'source' => 'asset_latest_location',
+                'recorded_at' => $latest->recorded_at?->toIso8601String(),
+            ];
+        }
+
+        return [
+            'latitude' => null,
+            'longitude' => null,
+            'source' => 'unknown',
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function assetSnapshot(NormalizedEvent $event): ?array
+    {
+        $asset = $event->asset;
+
+        if ($asset === null) {
+            return null;
+        }
+
+        $metadata = $asset->metadata_json ?? [];
+
+        return [
+            'asset_id' => $asset->id,
+            'name' => $asset->name,
+            'code' => $asset->code,
+            'status' => $asset->status?->value,
+            'has_camera' => (bool) ($metadata['has_camera'] ?? false),
+            'camera_status' => $metadata['camera_status'] ?? null,
+            'last_seen_at' => $asset->last_seen_at?->toIso8601String(),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function telemetrySnapshot(NormalizedEvent $event): ?array
+    {
+        $payload = $event->payload_normalized_json ?? [];
+        $speedMeta = Arr::get($payload, 'speed_metadata');
+        $latest = $event->asset?->latestLocation;
+
+        if ($latest === null && $speedMeta === null) {
+            return null;
+        }
+
+        return [
+            'speed_kph' => is_array($speedMeta) ? Arr::get($speedMeta, 'currentSpeedKph') : ($latest?->speed !== null ? (float) $latest->speed : null),
+            'recent_speeds' => [],
+            'gps_accuracy_meters' => null,
+            'position_stale' => false,
+            'recorded_at' => $latest?->recorded_at?->toIso8601String(),
+        ];
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $matches
+     * @return array<int, array<string, mixed>>
+     */
+    private function normalizeGeofenceMatchesForStorage(array $matches): array
+    {
+        return array_map(function (array $match) {
+            return [
+                'geofence_id' => $match['geofence_id'],
+                'name' => $match['name'] ?? null,
+                'code' => $match['code'] ?? null,
+                'category' => $match['category'] instanceof \BackedEnum ? $match['category']->value : $match['category'],
+                'match_type' => $match['match_type'] instanceof \BackedEnum ? $match['match_type']->value : $match['match_type'],
+                'distance_meters' => $match['distance_meters'] ?? null,
+            ];
+        }, $matches);
+    }
+
+    /**
+     * @param  array<string, mixed>  $recentHistory
+     * @return array<string, mixed>
+     */
+    private function serializeRecentHistory(array $recentHistory): array
+    {
+        return [
+            'window_start' => $recentHistory['window_start']?->toIso8601String(),
+            'window_end' => $recentHistory['window_end']?->toIso8601String(),
+            'recent_events_count' => $recentHistory['recent_events_count'],
+            'recent_incidents_count' => $recentHistory['recent_incidents_count'],
+            'recent_same_type_count' => $recentHistory['recent_same_type_count'],
+            'recent_high_severity_count' => $recentHistory['recent_high_severity_count'],
+            'recent_locations' => $recentHistory['recent_locations_json'],
+        ];
+    }
+}

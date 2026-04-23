@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\Assets\AssetController;
+use App\Http\Controllers\Context\EventContextController;
+use App\Http\Controllers\Context\GeofenceController;
 use App\Http\Controllers\Drivers\DriverController;
 use App\Http\Controllers\Ingestion\RawEventController;
 use App\Http\Controllers\Integrations\IntegrationController;
@@ -33,6 +35,13 @@ Route::prefix('{current_team}')
         Route::put('drivers/{driver}/documents', [DriverController::class, 'updateDocuments'])->name('api.drivers.update-documents');
 
         Route::get('events/raw', [RawEventController::class, 'index'])->name('api.events.raw.index');
+
+        Route::get('events/{normalizedEvent}/context', [EventContextController::class, 'show'])->name('api.events.context.show');
+
+        Route::get('geofences', [GeofenceController::class, 'index'])->name('api.geofences.index');
+        Route::post('geofences', [GeofenceController::class, 'store'])->name('api.geofences.store');
+        Route::put('geofences/{geofence}', [GeofenceController::class, 'update'])->name('api.geofences.update');
+        Route::delete('geofences/{geofence}', [GeofenceController::class, 'destroy'])->name('api.geofences.destroy');
 
         Route::get('events/normalized', [NormalizedEventController::class, 'index'])->name('api.events.normalized.index');
         Route::get('events/normalized/{normalizedEvent}', [NormalizedEventController::class, 'show'])->name('api.events.normalized.show');
