@@ -1,6 +1,7 @@
 <?php
 
 use App\Domains\Access\AccessServiceProvider;
+use App\Domains\AI\AIServiceProvider;
 use App\Domains\Assets\AssetsServiceProvider;
 use App\Domains\Context\ContextServiceProvider;
 use App\Domains\Drivers\DriversServiceProvider;
@@ -14,6 +15,7 @@ use App\Providers\HorizonServiceProvider;
 
 return [
     AccessServiceProvider::class,
+    AIServiceProvider::class,
     AssetsServiceProvider::class,
     ContextServiceProvider::class,
     DriversServiceProvider::class,

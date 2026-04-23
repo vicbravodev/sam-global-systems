@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AI\AIEvaluationController;
 use App\Http\Controllers\Assets\AssetController;
 use App\Http\Controllers\Context\EventContextController;
 use App\Http\Controllers\Context\GeofenceController;
@@ -33,6 +34,10 @@ Route::prefix('{current_team}')
         Route::get('drivers/{driver}/risk-profile', [DriverController::class, 'riskProfile'])->name('api.drivers.risk-profile');
         Route::put('drivers/{driver}/contacts', [DriverController::class, 'updateContacts'])->name('api.drivers.update-contacts');
         Route::put('drivers/{driver}/documents', [DriverController::class, 'updateDocuments'])->name('api.drivers.update-documents');
+
+        Route::get('ai/evaluations', [AIEvaluationController::class, 'index'])->name('api.ai.evaluations.index');
+        Route::get('ai/evaluations/{evaluation}', [AIEvaluationController::class, 'show'])->name('api.ai.evaluations.show');
+        Route::post('ai/evaluations/{evaluation}/reevaluate', [AIEvaluationController::class, 'reevaluate'])->name('api.ai.evaluations.reevaluate');
 
         Route::get('events/raw', [RawEventController::class, 'index'])->name('api.events.raw.index');
 
