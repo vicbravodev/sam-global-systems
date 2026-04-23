@@ -15,6 +15,7 @@ class DatabaseSeeder extends Seeder
     {
         $this->call(AccessSeeder::class);
         $this->call(AssetTypeSeeder::class);
+        $this->call(AIMeterSeeder::class);
 
         User::factory()->create([
             'name' => 'Test User',
