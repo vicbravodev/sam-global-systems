@@ -39,9 +39,9 @@ Todo código de negocio nuevo vive bajo `app/Domains/{Dominio}/` con subdirs: `A
 
 ---
 
-## 3. Estado de implementación (auditoría al 2026-04-22)
+## 3. Estado de implementación (auditoría al 2026-04-23)
 
-**255 tests passing · 690 assertions · corrida local ~3s.** Specs 01–07 implementados; 08–16 pendientes. Huecos críticos de I1/I2/I3/05 cerrados (ver §3.1).
+**408 tests passing · 980 assertions · corrida local ~8.5s.** Specs 01–08 (core) + 09 (PR #1 rules-based) implementados; 10–16 pendientes. Huecos críticos de I1/I2/I3/05 cerrados (ver §3.1).
 
 | Spec | Dominio | Estado | Tests | Notas de auditoría |
 |------|---------|--------|-------|--------------------|
@@ -56,7 +56,8 @@ Todo código de negocio nuevo vive bajo `app/Domains/{Dominio}/` con subdirs: `A
 | 06 | Ingestion | ✅ COMPLETADO | `tests/Feature/Domains/Ingestion/*` (7 archivos) | RawEvent + EventSource + Dedup + Attachments. Servicio `RawEventIngestionService` bindea contract. Job `PollExternalProviderJob` en cola `ingestion`. |
 | 07 | Normalization | ✅ COMPLETADO | `tests/Feature/Domains/Normalization/*` (5 archivos) | EventCategory/Severity/Type/MappingRule + NormalizedEvent. Seeder `NormalizationSeeder` carga catálogo base. |
 | 08 | Context (core) | ✅ PARCIAL (PR #1) | `tests/Feature/Domains/Context/*` (7 archivos) + `tests/Unit/Domains/Context/Support/*` (3 archivos) | Snapshots, geofences, perfil operacional, `EnrichContextJob` en cola `context`. Escucha `EventNormalized` y construye `EventContextSnapshot` + `GeofenceMatch[]` + `EventRecentHistorySnapshot` + `OperationalContextProfile`. Idempotente vía `context_version`. `GetRelatedOpenIncidents` es stub (`SPEC-11-DEFERRED`). **Pipeline de media y `EventRelatedIncidentLink` diferidos** (PR #2 y spec 11). |
-| 09–16 | AI / Decisions / Incidents / Automation / Notifications / Audit / Analytics / TenantConfig | ❌ Pendiente | — | Directorios `app/Domains/{AI,Decisions,Incidents,Automation,Notifications,Audit,Analytics,TenantConfig}` aún no creados. |
+| 09 | AI (core rules-based) | ✅ PARCIAL (PR #1) | `tests/Feature/Domains/AI/*` (10 archivos) + `tests/Feature/Broadcasting/AIEvaluationCompletedBroadcastTest.php` | 7 tablas (`ai_event_evaluations`, `ai_model_versions`, `ai_inference_logs`, `ai_decision_signals`, `ai_recommended_actions`, `ai_explanations`, `ai_reevaluation_requests`). Pipeline determinístico `EvaluateEventWithAI` con `NullAiProviderAdapter` (rules-only-v1). Listener `EvaluateOnEventContextBuilt` dispara `EvaluateEventJob` en cola `ai-evaluation`. Broadcasting `AIEvaluationCompletedBroadcast` en canal `private-accounts.{teamId}`. Usage metering `ai_calls` via `AiUsageMeterSeeder`. **Stubs `SPEC-09-PR2-DEFERRED`:** `EvaluateEventMultimodally`, `EvaluateEventMediaJob`. |
+| 10–16 | Decisions / Incidents / Automation / Notifications / Audit / Analytics / TenantConfig | ❌ Pendiente | — | Directorios `app/Domains/{Decisions,Incidents,Automation,Notifications,Audit,Analytics,TenantConfig}` aún no creados. |
 
 ### 3.1 Huecos críticos cerrados (2026-04-22)
 
@@ -78,6 +79,13 @@ Todo código de negocio nuevo vive bajo `app/Domains/{Dominio}/` con subdirs: `A
 - Authz real del canal `jobs.{jobId}` (hoy es `$user !== null`) — requiere el modelo Job que aún no se definió.
 - **`SPEC-11-DEFERRED`** (spec 08 → spec 11): `GetRelatedOpenIncidents` retorna `collect()` vacía y `EventRelatedIncidentLink` no se creó. Cuando aterrice el dominio Incidents, buscar el marcador `SPEC-11-DEFERRED` en [`app/Domains/Context/Actions/GetRelatedOpenIncidents.php`](app/Domains/Context/Actions/GetRelatedOpenIncidents.php).
 - **Spec 08 PR #2 (pipeline de media)**: `EventMediaAsset`, `ExtractEventMediaJob`, media enrichment. Dependerá de FileObject (I1) + integración Samsara media endpoints.
+- **`SPEC-09-PR2-DEFERRED`** (spec 09 → PR #2):
+  - Tablas `ai_conversation_links` (FK → `agent_conversations` del Laravel AI SDK) y `ai_media_assessments` (FK → `event_media_contexts` del spec 08 PR #2).
+  - Acción `EvaluateEventMultimodally` y job `EvaluateEventMediaJob` (stubs actuales registran log y retornan `null`).
+  - `AIUsageListener` para eventos SDK `AgentPrompted`/`AgentStreamed` que emite `ai_tokens_in`/`ai_tokens_out` (meters ya sembrados en `AiUsageMeterSeeder`).
+  - `AIEvaluationProgressBroadcast` (streaming).
+  - Integración real con LLM (hoy `NullAiProviderAdapter` aplica heurísticas deterministas rules-only).
+  - Marcadores en código: `SPEC-09-PR2-DEFERRED` en `app/Domains/AI/Actions/EvaluateEventMultimodally.php` y `app/Domains/AI/Jobs/EvaluateEventMediaJob.php`.
 
 ---
 
@@ -118,7 +126,7 @@ composer run dev   # arranca serve + queue + pail + vite
 
 # Migraciones
 php artisan migrate
-php artisan migrate:fresh --seed    # resetea + ejecuta DatabaseSeeder/AccessSeeder/AssetTypeSeeder/NormalizationSeeder
+php artisan migrate:fresh --seed    # resetea + ejecuta DatabaseSeeder/AccessSeeder/AssetTypeSeeder/NormalizationSeeder/AiUsageMeterSeeder
 
 # Frontend
 npm run dev        # vite watch
