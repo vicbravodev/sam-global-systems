@@ -16,7 +16,50 @@
         <include>
             <directory>app</directory>
         </include>
+        <exclude>
+            <file>app/Domains/Access/AccessServiceProvider.php</file>
+            <file>app/Domains/Assets/AssetsServiceProvider.php</file>
+            <file>app/Domains/Drivers/DriversServiceProvider.php</file>
+            <file>app/Domains/Ingestion/IngestionServiceProvider.php</file>
+            <file>app/Domains/Integrations/IntegrationsServiceProvider.php</file>
+            <file>app/Domains/Normalization/NormalizationServiceProvider.php</file>
+            <file>app/Domains/Tenancy/TenancyServiceProvider.php</file>
+
+            <directory suffix=".php">app/Domains/Access/Enums</directory>
+            <directory suffix=".php">app/Domains/Access/Events</directory>
+            <directory suffix=".php">app/Domains/Assets/Enums</directory>
+            <directory suffix=".php">app/Domains/Assets/Events</directory>
+            <directory suffix=".php">app/Domains/Drivers/Enums</directory>
+            <directory suffix=".php">app/Domains/Drivers/Events</directory>
+            <directory suffix=".php">app/Domains/Ingestion/Enums</directory>
+            <directory suffix=".php">app/Domains/Ingestion/Events</directory>
+            <directory suffix=".php">app/Domains/Integrations/Enums</directory>
+            <directory suffix=".php">app/Domains/Integrations/Events</directory>
+            <directory suffix=".php">app/Domains/Normalization/Enums</directory>
+            <directory suffix=".php">app/Domains/Normalization/Events</directory>
+            <directory suffix=".php">app/Domains/Tenancy/Enums</directory>
+            <directory suffix=".php">app/Domains/Tenancy/Events</directory>
+
+            <directory suffix=".php">app/Contracts</directory>
+            <directory suffix=".php">app/Domains/Integrations/Contracts</directory>
+
+            <file>app/Http/Controllers/Controller.php</file>
+            <file>app/Http/Middleware/HandleAppearance.php</file>
+            <file>app/Http/Middleware/HandleInertiaRequests.php</file>
+            <directory suffix=".php">app/Http/Responses</directory>
+
+            <file>app/Concerns/HasTeams.php</file>
+            <file>app/Concerns/GeneratesUniqueTeamSlugs.php</file>
+            <file>app/Concerns/PasswordValidationRules.php</file>
+            <file>app/Concerns/ProfileValidationRules.php</file>
+        </exclude>
     </source>
+    <coverage>
+        <report>
+            <clover outputFile="coverage.xml"/>
+            <text outputFile="coverage.txt" showUncoveredFiles="false"/>
+        </report>
+    </coverage>
     <php>
         <env name="APP_ENV" value="testing"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>

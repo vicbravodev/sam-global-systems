@@ -10,6 +10,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
 jobs:
   lint:
     name: Lint & Format
@@ -73,13 +78,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Setup PHP 8.5
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.5'
           tools: composer:v2
-          coverage: none
+          coverage: pcov
           extensions: pdo, pdo_sqlite, sqlite3, mbstring, intl, bcmath, gd, redis
 
       - name: Setup Node 22
@@ -114,5 +121,66 @@ jobs:
       - name: Build frontend (generates Wayfinder types + Vite manifest)
         run: npm run build
 
-      - name: Run PHPUnit
-        run: php artisan test --compact
+      - name: Run PHPUnit with coverage
+        run: php artisan test --coverage-clover=coverage.xml --compact
+
+      - name: Inline coverage annotations on changed files (PR only)
+        if: github.event_name == 'pull_request'
+        run: |
+          CHANGED=$(git diff --name-only --diff-filter=d "${{ github.event.pull_request.base.sha }}" HEAD | grep -E '^app/.*\.php$' | paste -sd, - || true)
+          if [ -n "$CHANGED" ]; then
+            php scripts/annotate-coverage.php coverage.xml --changed-files="$CHANGED"
+          else
+            echo "No changed PHP files under app/ — skipping inline annotations."
+          fi
+
+      - name: Generate sticky PR comment (markdown)
+        if: ${{ always() && github.event_name == 'pull_request' && hashFiles('coverage.xml') != '' }}
+        run: |
+          CHANGED=$(git diff --name-only --diff-filter=d "${{ github.event.pull_request.base.sha }}" HEAD | grep -E '^app/.*\.php$' | paste -sd, - || true)
+          php scripts/pr-comment.php coverage.xml --mode=ci --changed-files="$CHANGED" --output=coverage-comment.md
+
+      - name: Post sticky PR comment
+        if: ${{ always() && github.event_name == 'pull_request' && hashFiles('coverage-comment.md') != '' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('coverage-comment.md', 'utf8');
+            const marker = '<!-- sam-coverage-report -->';
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+              core.info(`Updated sticky coverage comment #${existing.id}`);
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+              core.info('Created new sticky coverage comment');
+            }
+
+      - name: Enforce coverage thresholds (80 global / 85 tier 2 / 95 tier 1)
+        run: |
+          php scripts/check-coverage.php coverage.xml --mode=ci --format=markdown >> "$GITHUB_STEP_SUMMARY" || true
+          php scripts/check-coverage.php coverage.xml --mode=ci
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-clover
+          path: coverage.xml
+          retention-days: 14

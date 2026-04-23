@@ -76,6 +76,19 @@
             "@lint:check",
             "@php artisan test"
         ],
+        "test:coverage": [
+            "@php artisan test --coverage-clover=coverage.xml --compact",
+            "@php scripts/check-coverage.php coverage.xml --mode=local"
+        ],
+        "test:coverage:ci": [
+            "@php artisan test --coverage-clover=coverage.xml --compact",
+            "@php scripts/check-coverage.php coverage.xml --mode=ci"
+        ],
+        "hooks:install": [
+            "git config core.hooksPath .githooks",
+            "@php -r \"chmod('.githooks/pre-push', 0755);\"",
+            "@php -r \"echo \\\"Git hooks installed (.githooks/). Pre-push enforces local coverage (75/80/95). Bypass with SKIP_COVERAGE=1 git push.\\n\\\";\""
+        ],
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
             "@php artisan package:discover --ansi"

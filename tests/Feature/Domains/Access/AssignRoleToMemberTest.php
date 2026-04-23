@@ -74,6 +74,62 @@ class AssignRoleToMemberTest extends TestCase
         app(AssignRoleToMember::class)->execute($membership, 'super_admin');
     }
 
+    public function test_tenant_admin_role_maps_to_legacy_admin(): void
+    {
+        Event::fake([RoleAssigned::class]);
+
+        $user = User::factory()->create();
+        $team = Team::factory()->create();
+        $team->members()->attach($user, ['role' => TeamRole::Member->value]);
+
+        Role::factory()->create([
+            'code' => 'tenant_admin',
+            'scope' => RoleScope::Tenant,
+        ]);
+
+        $membership = Membership::where('user_id', $user->id)
+            ->where('team_id', $team->id)
+            ->first();
+
+        app(AssignRoleToMember::class)->execute($membership, 'tenant_admin');
+
+        $membership->refresh();
+
+        $this->assertEquals(
+            'admin',
+            $membership->getRawOriginal('role'),
+            'tenant_admin role should map to legacy team role "admin"',
+        );
+    }
+
+    public function test_unknown_role_code_maps_to_legacy_member(): void
+    {
+        Event::fake([RoleAssigned::class]);
+
+        $user = User::factory()->create();
+        $team = Team::factory()->create();
+        $team->members()->attach($user, ['role' => TeamRole::Admin->value]);
+
+        Role::factory()->create([
+            'code' => 'viewer',
+            'scope' => RoleScope::Tenant,
+        ]);
+
+        $membership = Membership::where('user_id', $user->id)
+            ->where('team_id', $team->id)
+            ->first();
+
+        app(AssignRoleToMember::class)->execute($membership, 'viewer');
+
+        $membership->refresh();
+
+        $this->assertEquals(
+            'member',
+            $membership->getRawOriginal('role'),
+            'Any non-admin role code should map to the legacy "member" team role',
+        );
+    }
+
     public function test_assign_role_dispatches_role_assigned_event(): void
     {
         Event::fake([RoleAssigned::class]);

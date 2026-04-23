@@ -160,12 +160,17 @@ php artisan wayfinder:generate    # regenerar tras cambiar rutas/controladores
 
 ### 6.1 Git, GitHub y commits (reglas duras)
 
-- **Claude NUNCA hace `git push`, `git push --force`, `gh pr create`, `gh pr merge`, `gh release`, ni cualquier comando que publique código o acciones al remoto.** La publicación es exclusiva del usuario (`vicbravodev`). Si al terminar un cambio hace falta subirlo, Claude se detiene y se lo indica al usuario.
-- **Todos los commits se firman SOLO con la identidad del usuario** (`user.name = "Victor Jesus Bravo de la Peña"`, `user.email = "vicbravodev@gmail.com"`). **Nunca** añadir `Co-Authored-By: Claude ...` ni ningún otro coautor automático. No usar `--author`, `--trailer`, ni banners tipo "Generated with Claude Code" en el mensaje del commit.
-- **Claude PUEDE** crear commits locales, ramas locales, abrir archivos staged con `git add`, y ejecutar `git status` / `git diff` / `git log`. Todo eso se queda en la máquina.
+- **Todos los commits se firman SOLO con la identidad del usuario** (`user.name = "Victor Jesus Bravo de la Peña"`, `user.email = "vicbravodev@gmail.com"`). **Nunca** añadir `Co-Authored-By: Claude ...` ni ningún otro coautor automático. No usar `--author`, `--trailer`, ni banners tipo "Generated with Claude Code" en el mensaje del commit. Todo lo que llegue al remoto debe salir a nombre del usuario.
+- **Claude PUEDE**: crear commits locales, ramas locales, `git add`, `git status` / `git diff` / `git log`, `git push` a la rama de la PR (no a `main`), `gh pr create` (cuerpo del PR redactado por Claude pero autoría de los commits = usuario), `gh pr comment`, `gh pr checks`, `gh run view`, y en general cualquier acción de publicación sobre ramas de trabajo.
+- **Claude NUNCA hace**:
+  - `git push` a `main` / `master` (directo o por `push --force`). El merge a `main` lo hace el usuario desde la UI de GitHub al aprobar el PR.
+  - `gh pr merge` de ningún PR. El merge es exclusivo del usuario.
+  - `gh release create` / `gh release publish`.
+  - `git push --force` o `--force-with-lease` sobre cualquier rama sin petición explícita del usuario en ese turno.
+- **Ver CI es obligatorio antes de dar por cerrada una tarea con PR**: después de `git push` Claude espera al workflow (`gh run watch` / `gh pr checks --watch`) y reporta el resultado. Si CI falla por un cambio de Claude, Claude lo arregla y empuja un commit nuevo; no se da por terminada la tarea con CI rojo salvo que el usuario pida explícitamente ignorarlo.
+- **Excepción para tareas demostrativas**: si el usuario pide explícitamente en el turno actual publicar código que no pasa thresholds o checks (p.ej. para ver cómo se ve el reporte en GitHub), Claude puede hacer `git push` y `gh pr create` aunque el CI vaya a fallar, pero debe avisarlo en el mismo mensaje.
 - **Claude NO usa** `--no-verify`, `--no-gpg-sign`, `git reset --hard`, `git checkout .`, `git clean -fd`, `git branch -D`, `git rebase -i`, ni amends a commits ya publicados, salvo petición explícita del usuario en ese turno.
-- Si un hook de pre-commit falla, Claude arregla la causa raíz y crea un commit NUEVO; no repite el commit con `--amend` ni salta el hook.
-- Para abrir un PR: Claude deja la rama lista y los commits hechos, y **le pide al usuario** que corra `git push` y `gh pr create`. Si el usuario pide explícitamente que Claude redacte el cuerpo del PR, lo genera como texto en el chat para que el usuario lo pegue.
+- Si un hook de pre-commit o pre-push falla, Claude arregla la causa raíz y crea un commit NUEVO; no repite el commit con `--amend` ni salta el hook (salvo `SKIP_COVERAGE=1` en pushes demostrativos si el usuario lo autoriza).
 
 ---
 
