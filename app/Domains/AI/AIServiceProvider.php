@@ -6,10 +6,10 @@ use App\Contracts\AI\EventEvaluationAgent;
 use App\Contracts\NullImplementations\NullEventEvaluationAgent;
 use App\Domains\AI\Events\AIEvaluationCompleted;
 use App\Domains\AI\Listeners\BroadcastAIEvaluationCompleted;
-use App\Domains\AI\Listeners\EvaluateEventOnEventNormalized;
+use App\Domains\AI\Listeners\EvaluateOnEventContextBuilt;
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\AI\Policies\AIEvaluationPolicy;
-use App\Domains\Normalization\Events\EventNormalized;
+use App\Domains\Context\Events\EventContextBuilt;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
@@ -27,7 +27,7 @@ class AIServiceProvider extends ServiceProvider
     {
         Gate::policy(AIEventEvaluation::class, AIEvaluationPolicy::class);
 
-        Event::listen(EventNormalized::class, EvaluateEventOnEventNormalized::class);
+        Event::listen(EventContextBuilt::class, EvaluateOnEventContextBuilt::class);
         Event::listen(AIEvaluationCompleted::class, BroadcastAIEvaluationCompleted::class);
     }
 }
