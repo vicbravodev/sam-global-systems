@@ -1,6 +1,12 @@
 <?php
 
 use App\Http\Controllers\AI\AIEvaluationController;
+use App\Http\Controllers\Analytics\AiPerformanceController;
+use App\Http\Controllers\Analytics\AnalyticsDashboardController;
+use App\Http\Controllers\Analytics\AnalyticsSnapshotController;
+use App\Http\Controllers\Analytics\KpiController;
+use App\Http\Controllers\Analytics\ReportController;
+use App\Http\Controllers\Analytics\ReportExecutionController;
 use App\Http\Controllers\Assets\AssetController;
 use App\Http\Controllers\Audit\AuditLogController;
 use App\Http\Controllers\Audit\ChangeHistoryController;
@@ -171,6 +177,16 @@ Route::prefix('{current_team}')
         Route::get('audit/events', [DomainEventLogController::class, 'index'])->name('api.audit.events.index');
         Route::get('audit/changes', [ChangeHistoryController::class, 'index'])->name('api.audit.changes.index');
         Route::get('audit/traces/{traceId}', [SystemTraceController::class, 'show'])->name('api.audit.traces.show');
+
+        Route::get('analytics/dashboard', [AnalyticsDashboardController::class, 'index'])->name('api.analytics.dashboard');
+        Route::get('analytics/kpis', [KpiController::class, 'index'])->name('api.analytics.kpis.index');
+        Route::get('analytics/snapshots/{type}', [AnalyticsSnapshotController::class, 'show'])->name('api.analytics.snapshots.show');
+        Route::get('analytics/ai-performance', [AiPerformanceController::class, 'index'])->name('api.analytics.ai-performance');
+        Route::get('analytics/reports', [ReportController::class, 'index'])->name('api.analytics.reports.index');
+        Route::post('analytics/reports/{report}/generate', [ReportController::class, 'generate'])->name('api.analytics.reports.generate');
+        Route::get('analytics/reports/executions', [ReportExecutionController::class, 'index'])->name('api.analytics.reports.executions.index');
+        Route::get('analytics/reports/executions/{execution}', [ReportExecutionController::class, 'show'])->name('api.analytics.reports.executions.show');
+        Route::get('analytics/reports/executions/{execution}/download', [ReportExecutionController::class, 'download'])->name('api.analytics.reports.executions.download');
     });
 
 Route::post('webhooks/{endpoint_url}', [WebhookController::class, 'handle'])

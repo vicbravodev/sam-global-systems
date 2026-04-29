@@ -2,6 +2,7 @@
 
 use App\Domains\Access\AccessServiceProvider;
 use App\Domains\AI\AIServiceProvider;
+use App\Domains\Analytics\AnalyticsServiceProvider;
 use App\Domains\Assets\AssetsServiceProvider;
 use App\Domains\Audit\AuditServiceProvider;
 use App\Domains\Automation\AutomationServiceProvider;
@@ -22,6 +23,7 @@ use App\Providers\HorizonServiceProvider;
 return [
     AccessServiceProvider::class,
     AIServiceProvider::class,
+    AnalyticsServiceProvider::class,
     AssetsServiceProvider::class,
     AuditServiceProvider::class,
     AutomationServiceProvider::class,
