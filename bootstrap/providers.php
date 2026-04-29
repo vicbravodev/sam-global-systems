@@ -6,6 +6,7 @@ use App\Domains\Assets\AssetsServiceProvider;
 use App\Domains\Context\ContextServiceProvider;
 use App\Domains\Decisions\DecisionsServiceProvider;
 use App\Domains\Drivers\DriversServiceProvider;
+use App\Domains\Incidents\IncidentsServiceProvider;
 use App\Domains\Ingestion\IngestionServiceProvider;
 use App\Domains\Integrations\IntegrationsServiceProvider;
 use App\Domains\Normalization\NormalizationServiceProvider;
@@ -22,6 +23,7 @@ return [
     ContextServiceProvider::class,
     DecisionsServiceProvider::class,
     DriversServiceProvider::class,
+    IncidentsServiceProvider::class,
     IngestionServiceProvider::class,
     IntegrationsServiceProvider::class,
     NormalizationServiceProvider::class,

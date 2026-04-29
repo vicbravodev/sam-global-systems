@@ -17,7 +17,7 @@ class SignalsBuilder
      * @param  array<string, mixed>  $context  {
      *
      * @var array<int, array<string, mixed>> $geofence_matches  Geofence match rows with `category` and `match_type`.
-     * @var array<int, array<string, mixed>> $incidents  Related open incidents (empty in SPEC-11-DEFERRED).
+     * @var array<int, array<string, mixed>> $incidents  Related open incidents (rows produced by `GetRelatedOpenIncidents`).
      * @var array<string, mixed> $recent_history  Recent history snapshot counts.
      * @var array<string, mixed> $driver  Driver operational context.
      * @var array<string, mixed> $asset  Asset snapshot (for camera/operating hours signals).
