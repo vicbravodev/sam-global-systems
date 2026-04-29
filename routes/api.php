@@ -8,6 +8,12 @@ use App\Http\Controllers\Decisions\DecisionController;
 use App\Http\Controllers\Decisions\DecisionRuleController;
 use App\Http\Controllers\Decisions\EscalationPolicyController;
 use App\Http\Controllers\Drivers\DriverController;
+use App\Http\Controllers\Incidents\IncidentAssignmentController;
+use App\Http\Controllers\Incidents\IncidentCommentController;
+use App\Http\Controllers\Incidents\IncidentController;
+use App\Http\Controllers\Incidents\IncidentEventLinkController;
+use App\Http\Controllers\Incidents\IncidentEvidenceController;
+use App\Http\Controllers\Incidents\IncidentResolutionController;
 use App\Http\Controllers\Ingestion\RawEventController;
 use App\Http\Controllers\Integrations\IntegrationController;
 use App\Http\Controllers\Integrations\WebhookController;
@@ -101,6 +107,19 @@ Route::prefix('{current_team}')
         Route::get('decisions', [DecisionController::class, 'index'])->name('api.decisions.index');
         Route::get('decisions/{decision}', [DecisionController::class, 'show'])->name('api.decisions.show');
         Route::post('decisions/{decision}/override', [DecisionController::class, 'override'])->name('api.decisions.override');
+
+        Route::get('incidents', [IncidentController::class, 'index'])->name('api.incidents.index');
+        Route::post('incidents', [IncidentController::class, 'store'])->name('api.incidents.store');
+        Route::get('incidents/{incident}', [IncidentController::class, 'show'])->name('api.incidents.show');
+        Route::put('incidents/{incident}', [IncidentController::class, 'update'])->name('api.incidents.update');
+        Route::post('incidents/{incident}/assign', [IncidentAssignmentController::class, 'store'])->name('api.incidents.assign');
+        Route::post('incidents/{incident}/evidence', [IncidentEvidenceController::class, 'store'])->name('api.incidents.evidence.store');
+        Route::post('incidents/{incident}/comments', [IncidentCommentController::class, 'store'])->name('api.incidents.comments.store');
+        Route::post('incidents/{incident}/resolve', [IncidentResolutionController::class, 'resolve'])->name('api.incidents.resolve');
+        Route::post('incidents/{incident}/close', [IncidentResolutionController::class, 'close'])->name('api.incidents.close');
+        Route::post('incidents/{incident}/reclassify', [IncidentController::class, 'reclassify'])->name('api.incidents.reclassify');
+        Route::post('incidents/{incident}/reopen', [IncidentController::class, 'reopen'])->name('api.incidents.reopen');
+        Route::post('incidents/{incident}/link-event', [IncidentEventLinkController::class, 'store'])->name('api.incidents.link-event');
     });
 
 Route::post('webhooks/{endpoint_url}', [WebhookController::class, 'handle'])
