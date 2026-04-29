@@ -2,6 +2,9 @@
 
 use App\Http\Controllers\AI\AIEvaluationController;
 use App\Http\Controllers\Assets\AssetController;
+use App\Http\Controllers\Automation\ActionExecutionController;
+use App\Http\Controllers\Automation\ActionTemplateController;
+use App\Http\Controllers\Automation\AutomationWorkflowController;
 use App\Http\Controllers\Context\EventContextController;
 use App\Http\Controllers\Context\GeofenceController;
 use App\Http\Controllers\Decisions\DecisionController;
@@ -141,6 +144,22 @@ Route::prefix('{current_team}')
         Route::get('notifications/{notification}', [NotificationController::class, 'show'])
             ->whereNumber('notification')
             ->name('api.notifications.show');
+
+        Route::get('automation/workflows', [AutomationWorkflowController::class, 'index'])->name('api.automation.workflows.index');
+        Route::post('automation/workflows', [AutomationWorkflowController::class, 'store'])->name('api.automation.workflows.store');
+        Route::get('automation/workflows/{workflow}', [AutomationWorkflowController::class, 'show'])->name('api.automation.workflows.show');
+        Route::put('automation/workflows/{workflow}', [AutomationWorkflowController::class, 'update'])->name('api.automation.workflows.update');
+        Route::delete('automation/workflows/{workflow}', [AutomationWorkflowController::class, 'destroy'])->name('api.automation.workflows.destroy');
+        Route::post('automation/workflows/{workflow}/trigger', [AutomationWorkflowController::class, 'trigger'])->name('api.automation.workflows.trigger');
+
+        Route::get('automation/executions', [ActionExecutionController::class, 'index'])->name('api.automation.executions.index');
+        Route::get('automation/executions/{execution}', [ActionExecutionController::class, 'show'])->name('api.automation.executions.show');
+        Route::post('automation/executions/{execution}/retry', [ActionExecutionController::class, 'retry'])->name('api.automation.executions.retry');
+        Route::post('automation/executions/{execution}/confirm', [ActionExecutionController::class, 'confirm'])->name('api.automation.executions.confirm');
+        Route::post('automation/executions/{execution}/cancel', [ActionExecutionController::class, 'cancel'])->name('api.automation.executions.cancel');
+
+        Route::get('automation/templates', [ActionTemplateController::class, 'index'])->name('api.automation.templates.index');
+        Route::post('automation/templates', [ActionTemplateController::class, 'store'])->name('api.automation.templates.store');
     });
 
 Route::post('webhooks/{endpoint_url}', [WebhookController::class, 'handle'])

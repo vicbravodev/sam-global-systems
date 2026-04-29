@@ -3,6 +3,7 @@
 use App\Domains\Access\AccessServiceProvider;
 use App\Domains\AI\AIServiceProvider;
 use App\Domains\Assets\AssetsServiceProvider;
+use App\Domains\Automation\AutomationServiceProvider;
 use App\Domains\Context\ContextServiceProvider;
 use App\Domains\Decisions\DecisionsServiceProvider;
 use App\Domains\Drivers\DriversServiceProvider;
@@ -21,6 +22,7 @@ return [
     AccessServiceProvider::class,
     AIServiceProvider::class,
     AssetsServiceProvider::class,
+    AutomationServiceProvider::class,
     ContextServiceProvider::class,
     DecisionsServiceProvider::class,
     DriversServiceProvider::class,

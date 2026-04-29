@@ -56,6 +56,9 @@ class AccessSeeder extends Seeder
         ['code' => 'notifications.view', 'name' => 'View Notifications', 'module' => 'notifications', 'description' => 'View notifications, templates and channels'],
         ['code' => 'notifications.send', 'name' => 'Send Notifications', 'module' => 'notifications', 'description' => 'Send manual notifications'],
         ['code' => 'notifications.manage', 'name' => 'Manage Notifications', 'module' => 'notifications', 'description' => 'Manage notification templates and channels'],
+        ['code' => 'automation.view', 'name' => 'View Automation', 'module' => 'automation', 'description' => 'View automation workflows and executions'],
+        ['code' => 'automation.manage', 'name' => 'Manage Automation', 'module' => 'automation', 'description' => 'Create, update, and delete automation workflows and templates'],
+        ['code' => 'automation.execute', 'name' => 'Execute Automation', 'module' => 'automation', 'description' => 'Trigger workflows manually and manage individual action executions'],
     ];
 
     /**
@@ -79,6 +82,7 @@ class AccessSeeder extends Seeder
             'audit.view',
             'decisions.view', 'decisions.override', 'decisions.rules.manage', 'decisions.escalation.manage',
             'notifications.view', 'notifications.send', 'notifications.manage',
+            'automation.view', 'automation.manage', 'automation.execute',
         ],
         'supervisor' => [
             'incidents.view', 'incidents.manage', 'incidents.resolve', 'incidents.close',
@@ -93,6 +97,7 @@ class AccessSeeder extends Seeder
             'audit.view',
             'decisions.view', 'decisions.override', 'decisions.rules.manage', 'decisions.escalation.manage',
             'notifications.view', 'notifications.send',
+            'automation.view', 'automation.execute',
         ],
         'monitorista' => [
             'incidents.view', 'incidents.manage', 'incidents.resolve',
@@ -130,6 +135,7 @@ class AccessSeeder extends Seeder
             'audit.view',
             'decisions.view',
             'notifications.view',
+            'automation.view',
         ],
     ];
 
