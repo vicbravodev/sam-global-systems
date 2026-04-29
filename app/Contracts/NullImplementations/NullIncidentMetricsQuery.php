@@ -6,9 +6,8 @@ use App\Contracts\Incidents\IncidentMetricsQuery;
 use Carbon\CarbonInterface;
 
 /**
- * SPEC-11-DEFERRED stand-in: returns zero counts so Analytics can build
- * snapshots and KPIs without the Incidents domain present. The real
- * implementation lands with spec 11.
+ * Returns zero incident counts so Analytics snapshots and KPIs degrade
+ * gracefully when no DB-backed query implementation is wired in.
  */
 class NullIncidentMetricsQuery implements IncidentMetricsQuery
 {

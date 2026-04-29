@@ -6,9 +6,8 @@ use App\Contracts\Decisions\DecisionMetricsQuery;
 use Carbon\CarbonInterface;
 
 /**
- * SPEC-10-DEFERRED stand-in: returns zero decision counts so AI effectiveness
- * KPIs degrade gracefully (override rate = 0/0 → 0). The real implementation
- * lands with spec 10.
+ * Returns zero decision counts so AI-effectiveness KPIs degrade gracefully
+ * (override rate = 0/0 → 0). Replaced by a DB-backed query when one ships.
  */
 class NullDecisionMetricsQuery implements DecisionMetricsQuery
 {

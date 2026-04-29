@@ -20,6 +20,7 @@ use App\Domains\Decisions\Models\RuleSet;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Models\User;
 use Database\Seeders\DecisionOutcomeSeeder;
+use Database\Seeders\IncidentsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
@@ -32,6 +33,7 @@ class EvaluateDecisionRulesTest extends TestCase
     {
         parent::setUp();
         $this->seed(DecisionOutcomeSeeder::class);
+        $this->seed(IncidentsSeeder::class);
     }
 
     public function test_panic_event_high_risk_creates_incident_decision_via_safety_rule(): void

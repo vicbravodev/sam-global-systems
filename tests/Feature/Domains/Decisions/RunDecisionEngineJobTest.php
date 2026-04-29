@@ -13,6 +13,7 @@ use App\Domains\Decisions\Models\RuleSet;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Models\User;
 use Database\Seeders\DecisionOutcomeSeeder;
+use Database\Seeders\IncidentsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Tests\TestCase;
@@ -25,6 +26,7 @@ class RunDecisionEngineJobTest extends TestCase
     {
         parent::setUp();
         $this->seed(DecisionOutcomeSeeder::class);
+        $this->seed(IncidentsSeeder::class);
     }
 
     public function test_listener_dispatches_run_decision_engine_job(): void

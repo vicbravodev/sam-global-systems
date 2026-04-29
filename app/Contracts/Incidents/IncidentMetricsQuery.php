@@ -5,10 +5,9 @@ namespace App\Contracts\Incidents;
 use Carbon\CarbonInterface;
 
 /**
- * SPEC-11-DEFERRED: Reads aggregate incident metrics for a tenant in a window.
- *
- * Implemented by the Incidents domain (spec 11) once it lands. Until then a
- * Null implementation returns zeros so Analytics can ship in isolation.
+ * Reads aggregate incident metrics for a tenant in a window. Until the
+ * Incidents domain ships a DB-backed query implementation, this contract is
+ * fulfilled by `NullIncidentMetricsQuery` returning zeros.
  */
 interface IncidentMetricsQuery
 {

@@ -10,16 +10,25 @@ use App\Domains\Automation\Listeners\TriggerAutomationOnDecisionMade;
 use App\Domains\Automation\Listeners\TriggerAutomationOnIncidentCreated;
 use App\Domains\Automation\Models\AutomationWorkflow;
 use App\Domains\Automation\Services\TriggerEscalationWorkflow;
+use App\Domains\Decisions\Events\DecisionMade;
+use App\Domains\Decisions\Models\Decision;
+use App\Domains\Incidents\Events\IncidentCreated;
+use App\Domains\Incidents\Models\Incident;
 use App\Models\User;
+use Database\Seeders\IncidentsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
-use Tests\Fakes\FakeDecisionMadeEvent;
-use Tests\Fakes\FakeIncidentCreatedEvent;
 use Tests\TestCase;
 
 class TriggerEscalationWorkflowTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seed(IncidentsSeeder::class);
+    }
 
     public function test_dispatches_workflow_jobs_for_matching_active_workflows(): void
     {
@@ -101,13 +110,9 @@ class TriggerEscalationWorkflowTest extends TestCase
             ->trigger(WorkflowTriggerType::DecisionOutcome)
             ->create(['team_id' => $teamId]);
 
-        app(TriggerAutomationOnDecisionMade::class)->handle(
-            new FakeDecisionMadeEvent(
-                teamId: $teamId,
-                decisionId: 7,
-                payload: ['outcome' => 'escalate'],
-            ),
-        );
+        $decision = Decision::factory()->create(['team_id' => $teamId]);
+
+        app(TriggerAutomationOnDecisionMade::class)->handle(new DecisionMade($decision));
 
         Bus::assertDispatched(RunAutomationWorkflowJob::class);
     }
@@ -126,13 +131,9 @@ class TriggerEscalationWorkflowTest extends TestCase
                 'trigger_conditions_json' => [],
             ]);
 
-        app(TriggerAutomationOnIncidentCreated::class)->handle(
-            new FakeIncidentCreatedEvent(
-                teamId: $teamId,
-                incidentId: 23,
-                payload: [],
-            ),
-        );
+        $incident = Incident::factory()->create(['team_id' => $teamId]);
+
+        app(TriggerAutomationOnIncidentCreated::class)->handle(new IncidentCreated($incident));
 
         Bus::assertDispatched(RunAutomationWorkflowJob::class);
     }

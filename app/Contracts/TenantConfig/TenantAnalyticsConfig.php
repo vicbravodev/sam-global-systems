@@ -3,11 +3,8 @@
 namespace App\Contracts\TenantConfig;
 
 /**
- * SPEC-16-DEFERRED: Tenant-level analytics configuration.
- *
- * Implemented by the TenantConfig domain (spec 16) once it lands. Until then a
- * Null implementation returns repo-wide defaults (90-day retention, all default
- * snapshot types enabled).
+ * Tenant-level analytics configuration: report retention window and enabled
+ * snapshot types. Implemented by the TenantConfig domain.
  */
 interface TenantAnalyticsConfig
 {

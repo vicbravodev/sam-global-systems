@@ -3,9 +3,14 @@
 namespace App\Domains\Notifications;
 
 use App\Contracts\Notifications\ChannelDriverRegistry as ChannelDriverRegistryContract;
-use App\Contracts\NullImplementations\NullTenantNotificationPoliciesResolver;
-use App\Contracts\TenantConfig\TenantNotificationPoliciesResolver;
+use App\Domains\Automation\Events\ActionExecuted;
+use App\Domains\Incidents\Events\IncidentClosed;
+use App\Domains\Incidents\Events\IncidentCreated;
+use App\Domains\Incidents\Events\IncidentStatusChanged;
 use App\Domains\Notifications\Channels\ChannelDriverRegistry;
+use App\Domains\Notifications\Listeners\NotifyOnActionExecuted;
+use App\Domains\Notifications\Listeners\NotifyOnIncidentCreated;
+use App\Domains\Notifications\Listeners\NotifyOnIncidentStatusChanged;
 use App\Domains\Notifications\Models\Notification;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Models\NotificationPreference;
@@ -20,41 +25,11 @@ use Illuminate\Support\ServiceProvider;
 
 class NotificationsServiceProvider extends ServiceProvider
 {
-    /**
-     * String-based listeners for cross-domain events that ship in parallel PRs.
-     * Listening by FQCN string lets this domain compile before specs 10/11/12 land.
-     *
-     * @var array<string, array<int, class-string>>
-     */
-    private const CROSS_DOMAIN_LISTENERS = [
-        // SPEC-11-DEFERRED
-        'App\\Domains\\Incidents\\Events\\IncidentCreated' => [
-            Listeners\NotifyOnIncidentCreated::class,
-        ],
-        'App\\Domains\\Incidents\\Events\\IncidentStatusChanged' => [
-            Listeners\NotifyOnIncidentStatusChanged::class,
-        ],
-        'App\\Domains\\Incidents\\Events\\IncidentClosed' => [
-            Listeners\NotifyOnIncidentStatusChanged::class,
-        ],
-        // SPEC-12-DEFERRED
-        'App\\Domains\\Automation\\Events\\ActionExecutionCompleted' => [
-            Listeners\NotifyOnActionExecutionCompleted::class,
-        ],
-    ];
-
     public function register(): void
     {
         $this->app->singletonIf(
             ChannelDriverRegistryContract::class,
             ChannelDriverRegistry::class,
-        );
-
-        // SPEC-16-DEFERRED: bound to a Null resolver until TenantConfig domain ships
-        // its `notification_policies` table.
-        $this->app->singletonIf(
-            TenantNotificationPoliciesResolver::class,
-            NullTenantNotificationPoliciesResolver::class,
         );
     }
 
@@ -65,10 +40,9 @@ class NotificationsServiceProvider extends ServiceProvider
         Gate::policy(NotificationChannel::class, NotificationChannelPolicy::class);
         Gate::policy(NotificationPreference::class, NotificationPreferencePolicy::class);
 
-        foreach (self::CROSS_DOMAIN_LISTENERS as $eventClass => $listeners) {
-            foreach ($listeners as $listener) {
-                Event::listen($eventClass, $listener);
-            }
-        }
+        Event::listen(IncidentCreated::class, NotifyOnIncidentCreated::class);
+        Event::listen(IncidentStatusChanged::class, NotifyOnIncidentStatusChanged::class);
+        Event::listen(IncidentClosed::class, NotifyOnIncidentStatusChanged::class);
+        Event::listen(ActionExecuted::class, NotifyOnActionExecuted::class);
     }
 }
