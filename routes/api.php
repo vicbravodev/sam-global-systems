@@ -16,6 +16,7 @@ use App\Http\Controllers\Automation\ActionExecutionController;
 use App\Http\Controllers\Automation\ActionTemplateController;
 use App\Http\Controllers\Automation\AutomationWorkflowController;
 use App\Http\Controllers\Context\EventContextController;
+use App\Http\Controllers\Context\EventMediaController;
 use App\Http\Controllers\Context\GeofenceController;
 use App\Http\Controllers\Decisions\DecisionController;
 use App\Http\Controllers\Decisions\DecisionRuleController;
@@ -75,6 +76,8 @@ Route::prefix('{current_team}')
         Route::get('events/raw', [RawEventController::class, 'index'])->name('api.events.raw.index');
 
         Route::get('events/{normalizedEvent}/context', [EventContextController::class, 'show'])->name('api.events.context.show');
+        Route::get('events/{normalizedEvent}/media', [EventMediaController::class, 'index'])->name('api.events.media.index');
+        Route::post('events/{normalizedEvent}/media/request', [EventMediaController::class, 'requestMedia'])->name('api.events.media.request');
 
         Route::get('geofences', [GeofenceController::class, 'index'])->name('api.geofences.index');
         Route::post('geofences', [GeofenceController::class, 'store'])->name('api.geofences.store');

@@ -3,9 +3,11 @@
 namespace App\Domains\Context\Actions;
 
 use App\Domains\Context\Enums\GeofenceMatchType;
+use App\Domains\Context\Enums\IncidentRelationType;
 use App\Domains\Context\Events\EventContextBuilt;
 use App\Domains\Context\Models\EventContextSnapshot;
 use App\Domains\Context\Models\EventRecentHistorySnapshot;
+use App\Domains\Context\Models\EventRelatedIncidentLink;
 use App\Domains\Context\Models\GeofenceMatch;
 use App\Domains\Context\Support\SignalsBuilder;
 use App\Domains\Normalization\Models\NormalizedEvent;
@@ -111,6 +113,8 @@ class BuildEventContext
                 ],
             );
 
+            $this->persistRelatedIncidentLinks($normalizedEvent, $incidents);
+
             $profile = $this->buildOperationalContextProfile->execute($snapshot->fresh());
 
             EventContextBuilt::dispatch($snapshot->fresh(), $profile);
@@ -196,6 +200,63 @@ class BuildEventContext
             'position_stale' => false,
             'recorded_at' => $latest?->recorded_at?->toIso8601String(),
         ];
+    }
+
+    /**
+     * Persist `EventRelatedIncidentLink` rows for each related open/recent
+     * incident discovered by `GetRelatedOpenIncidents`. Uses `updateOrCreate`
+     * keyed on (normalized_event_id, incident_id, relation_type) so re-running
+     * the pipeline is idempotent and does not duplicate links.
+     *
+     * @param  array<int, array<string, mixed>>  $incidents
+     */
+    private function persistRelatedIncidentLinks(NormalizedEvent $normalizedEvent, array $incidents): void
+    {
+        if ($incidents === []) {
+            EventRelatedIncidentLink::withoutGlobalScopes()
+                ->where('normalized_event_id', $normalizedEvent->id)
+                ->delete();
+
+            return;
+        }
+
+        foreach ($incidents as $incident) {
+            $incidentId = $incident['incident_id'] ?? null;
+
+            if ($incidentId === null) {
+                continue;
+            }
+
+            $relation = $this->resolveRelationType($normalizedEvent, $incident);
+
+            EventRelatedIncidentLink::withoutGlobalScopes()->updateOrCreate(
+                [
+                    'normalized_event_id' => $normalizedEvent->id,
+                    'incident_id' => $incidentId,
+                    'relation_type' => $relation,
+                ],
+                [
+                    'team_id' => $normalizedEvent->team_id,
+                    'confidence_score' => 0.80,
+                ],
+            );
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $incident
+     */
+    private function resolveRelationType(NormalizedEvent $normalizedEvent, array $incident): IncidentRelationType
+    {
+        if ($normalizedEvent->asset_id !== null && ($incident['asset_id'] ?? null) === $normalizedEvent->asset_id) {
+            return IncidentRelationType::SameAssetOpenIncident;
+        }
+
+        if ($normalizedEvent->driver_id !== null && ($incident['driver_id'] ?? null) === $normalizedEvent->driver_id) {
+            return IncidentRelationType::SameDriverRecentIncident;
+        }
+
+        return IncidentRelationType::ProbableFollowup;
     }
 
     /**
