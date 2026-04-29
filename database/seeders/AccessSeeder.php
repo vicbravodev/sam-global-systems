@@ -53,6 +53,9 @@ class AccessSeeder extends Seeder
         ['code' => 'decisions.override', 'name' => 'Override Decisions', 'module' => 'decisions', 'description' => 'Manually override automated decisions'],
         ['code' => 'decisions.rules.manage', 'name' => 'Manage Decision Rules', 'module' => 'decisions', 'description' => 'Create, update or deactivate decision rules'],
         ['code' => 'decisions.escalation.manage', 'name' => 'Manage Escalation Policies', 'module' => 'decisions', 'description' => 'Create or update escalation policies'],
+        ['code' => 'notifications.view', 'name' => 'View Notifications', 'module' => 'notifications', 'description' => 'View notifications, templates and channels'],
+        ['code' => 'notifications.send', 'name' => 'Send Notifications', 'module' => 'notifications', 'description' => 'Send manual notifications'],
+        ['code' => 'notifications.manage', 'name' => 'Manage Notifications', 'module' => 'notifications', 'description' => 'Manage notification templates and channels'],
     ];
 
     /**
@@ -75,6 +78,7 @@ class AccessSeeder extends Seeder
             'users.view', 'users.manage', 'users.invite',
             'audit.view',
             'decisions.view', 'decisions.override', 'decisions.rules.manage', 'decisions.escalation.manage',
+            'notifications.view', 'notifications.send', 'notifications.manage',
         ],
         'supervisor' => [
             'incidents.view', 'incidents.manage', 'incidents.resolve', 'incidents.close',
@@ -88,6 +92,7 @@ class AccessSeeder extends Seeder
             'users.view',
             'audit.view',
             'decisions.view', 'decisions.override', 'decisions.rules.manage', 'decisions.escalation.manage',
+            'notifications.view', 'notifications.send',
         ],
         'monitorista' => [
             'incidents.view', 'incidents.manage', 'incidents.resolve',
@@ -96,6 +101,7 @@ class AccessSeeder extends Seeder
             'context.view',
             'geofences.view',
             'decisions.view',
+            'notifications.view',
         ],
         'analyst' => [
             'reports.view', 'reports.export',
@@ -123,6 +129,7 @@ class AccessSeeder extends Seeder
             'users.view',
             'audit.view',
             'decisions.view',
+            'notifications.view',
         ],
     ];
 

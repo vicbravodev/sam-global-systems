@@ -20,6 +20,10 @@ use App\Http\Controllers\Integrations\WebhookController;
 use App\Http\Controllers\Normalization\EventTypeController;
 use App\Http\Controllers\Normalization\MappingRuleController;
 use App\Http\Controllers\Normalization\NormalizedEventController;
+use App\Http\Controllers\Notifications\NotificationChannelController;
+use App\Http\Controllers\Notifications\NotificationController;
+use App\Http\Controllers\Notifications\NotificationPreferenceController;
+use App\Http\Controllers\Notifications\NotificationTemplateController;
 use App\Http\Controllers\TenantConfig\TenantAIProfileController;
 use App\Http\Controllers\TenantConfig\TenantConfigController;
 use App\Http\Controllers\TenantConfig\TenantConfigVersionController;
@@ -120,6 +124,23 @@ Route::prefix('{current_team}')
         Route::post('incidents/{incident}/reclassify', [IncidentController::class, 'reclassify'])->name('api.incidents.reclassify');
         Route::post('incidents/{incident}/reopen', [IncidentController::class, 'reopen'])->name('api.incidents.reopen');
         Route::post('incidents/{incident}/link-event', [IncidentEventLinkController::class, 'store'])->name('api.incidents.link-event');
+
+        Route::get('notifications', [NotificationController::class, 'index'])->name('api.notifications.index');
+        Route::post('notifications/send', [NotificationController::class, 'send'])->name('api.notifications.send');
+
+        Route::get('notifications/templates', [NotificationTemplateController::class, 'index'])->name('api.notifications.templates.index');
+        Route::post('notifications/templates', [NotificationTemplateController::class, 'store'])->name('api.notifications.templates.store');
+        Route::put('notifications/templates/{template}', [NotificationTemplateController::class, 'update'])->name('api.notifications.templates.update');
+
+        Route::get('notifications/channels', [NotificationChannelController::class, 'index'])->name('api.notifications.channels.index');
+        Route::put('notifications/channels/{channel}', [NotificationChannelController::class, 'update'])->name('api.notifications.channels.update');
+
+        Route::get('notifications/preferences', [NotificationPreferenceController::class, 'index'])->name('api.notifications.preferences.index');
+        Route::put('notifications/preferences', [NotificationPreferenceController::class, 'update'])->name('api.notifications.preferences.update');
+
+        Route::get('notifications/{notification}', [NotificationController::class, 'show'])
+            ->whereNumber('notification')
+            ->name('api.notifications.show');
     });
 
 Route::post('webhooks/{endpoint_url}', [WebhookController::class, 'handle'])
