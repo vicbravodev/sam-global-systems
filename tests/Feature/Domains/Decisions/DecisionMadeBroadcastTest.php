@@ -10,6 +10,7 @@ use App\Domains\Decisions\Support\DecisionMadeBroadcast;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Models\User;
 use Database\Seeders\DecisionOutcomeSeeder;
+use Database\Seeders\IncidentsSeeder;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
@@ -23,6 +24,7 @@ class DecisionMadeBroadcastTest extends TestCase
     {
         parent::setUp();
         $this->seed(DecisionOutcomeSeeder::class);
+        $this->seed(IncidentsSeeder::class);
     }
 
     public function test_broadcast_dispatched_on_private_accounts_channel(): void

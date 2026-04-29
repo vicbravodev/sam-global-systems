@@ -72,12 +72,13 @@ class ExecuteAction
     {
         return match ($execution->action_type) {
             ActionType::CallWebhook => $this->callWebhook($execution),
-            // SPEC-13-DEFERRED: real notification dispatch lands with the Notifications domain.
             ActionType::SendEmail,
             ActionType::SendWhatsapp,
             ActionType::SendSms,
             ActionType::SendPush => $this->sendNotification($execution),
-            // SPEC-11-DEFERRED: Incidents domain will provide the real handlers.
+            // CreateTicket / AssignIncident / Escalate / UpdateAssetState / RequestHumanReview
+            // are still stubs: the Incidents and Assets domains expose models, but no domain
+            // service yet bridges automation actions to those write paths.
             ActionType::CreateTicket,
             ActionType::AssignIncident,
             ActionType::Escalate,

@@ -39,4 +39,24 @@ final class CacheKeys
     {
         return "tenant_config:{$teamId}:rule_override:{$ruleCode}";
     }
+
+    public static function decisionRules(int $teamId): string
+    {
+        return "tenant_config:{$teamId}:decision_rules";
+    }
+
+    public static function automationPolicies(int $teamId): string
+    {
+        return "tenant_config:{$teamId}:automation_policies";
+    }
+
+    public static function notificationPoliciesGlobal(int $teamId): string
+    {
+        return "tenant_config:{$teamId}:notification_policies:global";
+    }
+
+    public static function analyticsConfig(int $teamId): string
+    {
+        return "tenant_config:{$teamId}:analytics_config";
+    }
 }

@@ -5,11 +5,10 @@ namespace App\Contracts\Decisions;
 use Carbon\CarbonInterface;
 
 /**
- * SPEC-10-DEFERRED: Reads aggregate decision outcomes for a tenant in a window.
- *
- * Implemented by the Decisions domain (spec 10) once it lands. Until then a
- * Null implementation returns zeros so Analytics can compute AI effectiveness
- * metrics with safe defaults (e.g. zero overrides → no human review pressure).
+ * Reads aggregate decision outcomes for a tenant in a window. Until the
+ * Decisions domain ships a DB-backed query implementation, this contract is
+ * fulfilled by `NullDecisionMetricsQuery` returning zeros so Analytics can
+ * compute AI-effectiveness metrics with safe defaults.
  */
 interface DecisionMetricsQuery
 {

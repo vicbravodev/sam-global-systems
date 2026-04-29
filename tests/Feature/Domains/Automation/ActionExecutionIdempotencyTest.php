@@ -9,10 +9,12 @@ use App\Domains\Automation\Listeners\TriggerAutomationOnIncidentCreated;
 use App\Domains\Automation\Models\ActionExecution;
 use App\Domains\Automation\Models\AutomationWorkflow;
 use App\Domains\Automation\Models\WorkflowExecution;
+use App\Domains\Incidents\Events\IncidentCreated;
+use App\Domains\Incidents\Models\Incident;
 use App\Models\User;
 use Database\Seeders\AutomationMeterSeeder;
+use Database\Seeders\IncidentsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Tests\Fakes\FakeIncidentCreatedEvent;
 use Tests\TestCase;
 
 class ActionExecutionIdempotencyTest extends TestCase
@@ -23,6 +25,7 @@ class ActionExecutionIdempotencyTest extends TestCase
     {
         parent::setUp();
         $this->seed(AutomationMeterSeeder::class);
+        $this->seed(IncidentsSeeder::class);
     }
 
     public function test_same_event_does_not_create_duplicate_workflow_execution(): void
@@ -43,9 +46,10 @@ class ActionExecutionIdempotencyTest extends TestCase
             ])
             ->create(['team_id' => $teamId, 'trigger_conditions_json' => []]);
 
-        // Synchronous queue + listeners are real; just call the listener twice with the same event.
+        $incident = Incident::factory()->create(['team_id' => $teamId]);
+
         $listener = app(TriggerAutomationOnIncidentCreated::class);
-        $event = new FakeIncidentCreatedEvent(teamId: $teamId, incidentId: 99, payload: []);
+        $event = new IncidentCreated($incident);
 
         $listener->handle($event);
         $listener->handle($event);

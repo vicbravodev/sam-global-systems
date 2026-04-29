@@ -7,9 +7,8 @@ use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 
 /**
- * SPEC-14-DEFERRED stand-in: returns an empty collection so analytics that
- * read audit trails can run before the Audit domain ships. The real
- * implementation lands with spec 14.
+ * Returns an empty collection so analytics that read audit trails degrade
+ * gracefully when no DB-backed query implementation is wired in.
  */
 class NullAuditLogQuery implements AuditLogQuery
 {

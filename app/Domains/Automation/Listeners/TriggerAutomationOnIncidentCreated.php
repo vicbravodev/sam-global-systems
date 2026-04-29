@@ -5,34 +5,32 @@ namespace App\Domains\Automation\Listeners;
 use App\Domains\Automation\Enums\ActionExecutionSourceType;
 use App\Domains\Automation\Enums\WorkflowTriggerType;
 use App\Domains\Automation\Services\TriggerEscalationWorkflow;
+use App\Domains\Incidents\Events\IncidentCreated;
 
-/**
- * SPEC-11-DEFERRED: bound to `App\Domains\Incidents\Events\IncidentCreated` by
- * string in `AutomationServiceProvider::boot()`.
- */
 class TriggerAutomationOnIncidentCreated
 {
     public function __construct(
         private TriggerEscalationWorkflow $triggerEscalationWorkflow,
     ) {}
 
-    public function handle(object $event): void
+    public function handle(IncidentCreated $event): void
     {
-        $teamId = (int) ($event->teamId ?? 0);
+        $incident = $event->incident;
 
-        if ($teamId === 0) {
+        if ($incident->team_id === null) {
             return;
         }
 
-        $incidentId = $event->incidentId ?? null;
-        $payload = (array) ($event->payload ?? []);
-
         $this->triggerEscalationWorkflow->execute(
-            teamId: $teamId,
+            teamId: (int) $incident->team_id,
             triggerType: WorkflowTriggerType::IncidentCreated,
             sourceType: ActionExecutionSourceType::Incident,
-            sourceReferenceId: $incidentId !== null ? (string) $incidentId : null,
-            payload: $payload,
+            sourceReferenceId: (string) $incident->id,
+            payload: [
+                'incident_id' => $incident->id,
+                'incident_type' => $incident->type?->code,
+                'severity' => $incident->priority?->code,
+            ],
         );
     }
 }

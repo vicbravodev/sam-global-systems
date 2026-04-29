@@ -2,26 +2,25 @@
 
 namespace Tests\Feature\Domains\Notifications;
 
+use App\Domains\Automation\Enums\ActionType;
+use App\Domains\Automation\Events\ActionExecuted;
+use App\Domains\Automation\Models\ActionExecution;
+use App\Domains\Incidents\Events\IncidentCreated;
+use App\Domains\Incidents\Models\Incident;
+use App\Domains\Incidents\Models\IncidentPriority;
 use App\Domains\Notifications\Enums\NotificationPriority;
 use App\Domains\Notifications\Enums\NotificationSourceType;
 use App\Domains\Notifications\Enums\NotificationTriggeredByType;
-use App\Domains\Notifications\Listeners\NotifyOnActionExecutionCompleted;
-use App\Domains\Notifications\Listeners\NotifyOnIncidentCreated;
 use App\Domains\Notifications\Models\Notification;
 use App\Models\User;
+use Database\Seeders\IncidentsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
-use Illuminate\Support\Facades\Event;
-use Tests\Fakes\FakeActionExecutionCompletedEvent;
-use Tests\Fakes\FakeIncidentCreatedEvent;
 use Tests\TestCase;
 
 /**
- * Validates that the string-based listeners registered by NotificationsServiceProvider
- * react to fake spec-11/spec-12 events without depending on those specs being merged.
- *
- * The listeners are registered against the fake-event FQCN string in setUp via the
- * Event facade so we don't have to fork the production binding.
+ * Validates that the cross-domain listeners registered by NotificationsServiceProvider
+ * react to typed Incidents and Automation events.
  */
 class CrossDomainListenersTest extends TestCase
 {
@@ -30,16 +29,7 @@ class CrossDomainListenersTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-
-        Event::listen(
-            FakeIncidentCreatedEvent::class,
-            NotifyOnIncidentCreated::class,
-        );
-
-        Event::listen(
-            FakeActionExecutionCompletedEvent::class,
-            NotifyOnActionExecutionCompleted::class,
-        );
+        $this->seed(IncidentsSeeder::class);
     }
 
     public function test_incident_created_listener_creates_notification(): void
@@ -50,20 +40,22 @@ class CrossDomainListenersTest extends TestCase
         $team = $user->currentTeam;
         $this->actingAs($user);
 
-        FakeIncidentCreatedEvent::dispatch($team->id, 42, 'speeding', 'high');
+        $incident = $this->incidentWithSeverity($team->id, 'high');
+
+        IncidentCreated::dispatch($incident);
 
         $notification = Notification::withoutGlobalScopes()
             ->where('team_id', $team->id)
-            ->where('event_key', 'incident_created:42')
+            ->where('event_key', "incident_created:{$incident->id}")
             ->first();
 
         $this->assertNotNull($notification);
         $this->assertSame(NotificationPriority::High, $notification->priority);
         $this->assertSame(NotificationSourceType::Incident, $notification->source_type);
-        $this->assertSame('42', $notification->source_reference_id);
+        $this->assertSame((string) $incident->id, $notification->source_reference_id);
     }
 
-    public function test_action_execution_listener_only_acts_on_send_actions(): void
+    public function test_action_executed_listener_only_acts_on_send_actions(): void
     {
         Bus::fake();
 
@@ -71,18 +63,28 @@ class CrossDomainListenersTest extends TestCase
         $team = $user->currentTeam;
         $this->actingAs($user);
 
-        FakeActionExecutionCompletedEvent::dispatch($team->id, 88, 'rollback_change', []);
+        $rollback = ActionExecution::factory()->create([
+            'team_id' => $team->id,
+            'action_type' => ActionType::CallWebhook,
+            'payload_json' => [],
+        ]);
+        ActionExecuted::dispatch($rollback);
 
         $this->assertSame(0, Notification::withoutGlobalScopes()->where('team_id', $team->id)->count());
 
-        FakeActionExecutionCompletedEvent::dispatch($team->id, 89, 'send_email', [
-            'subject' => 'Hello from automation',
-            'body_preview' => 'A scheduled send',
+        $send = ActionExecution::factory()->create([
+            'team_id' => $team->id,
+            'action_type' => ActionType::SendEmail,
+            'payload_json' => [
+                'subject' => 'Hello from automation',
+                'body_preview' => 'A scheduled send',
+            ],
         ]);
+        ActionExecuted::dispatch($send);
 
         $notification = Notification::withoutGlobalScopes()
             ->where('team_id', $team->id)
-            ->where('event_key', 'action_execution:89')
+            ->where('event_key', "action_execution:{$send->id}")
             ->first();
 
         $this->assertNotNull($notification);
@@ -98,14 +100,27 @@ class CrossDomainListenersTest extends TestCase
         $team = $user->currentTeam;
         $this->actingAs($user);
 
-        FakeIncidentCreatedEvent::dispatch($team->id, 7, 'crash', 'critical');
-        FakeIncidentCreatedEvent::dispatch($team->id, 7, 'crash', 'critical');
+        $incident = $this->incidentWithSeverity($team->id, 'critical');
+
+        IncidentCreated::dispatch($incident);
+        IncidentCreated::dispatch($incident);
 
         $count = Notification::withoutGlobalScopes()
             ->where('team_id', $team->id)
-            ->where('event_key', 'incident_created:7')
+            ->where('event_key', "incident_created:{$incident->id}")
             ->count();
 
         $this->assertSame(1, $count);
+    }
+
+    private function incidentWithSeverity(int $teamId, string $severityCode): Incident
+    {
+        $priority = IncidentPriority::query()->where('code', $severityCode)->first()
+            ?? IncidentPriority::factory()->create(['code' => $severityCode]);
+
+        return Incident::factory()->create([
+            'team_id' => $teamId,
+            'incident_priority_id' => $priority->id,
+        ]);
     }
 }

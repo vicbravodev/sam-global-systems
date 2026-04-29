@@ -4,6 +4,10 @@ namespace Tests\Feature\Domains\Incidents;
 
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Assets\Models\AssetType;
+use App\Domains\Decisions\Enums\DecisionOutcomeCode;
+use App\Domains\Decisions\Events\DecisionMade;
+use App\Domains\Decisions\Models\Decision;
+use App\Domains\Decisions\Models\DecisionOutcome;
 use App\Domains\Incidents\Actions\CreateIncidentFromEvent;
 use App\Domains\Incidents\Jobs\CreateIncidentJob;
 use App\Domains\Incidents\Listeners\CreateIncidentOnDecisionMade;
@@ -14,7 +18,6 @@ use App\Models\User;
 use Database\Seeders\IncidentsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
-use Tests\Fakes\FakeDecisionMadeEvent;
 use Tests\TestCase;
 
 class CreateIncidentOnDecisionMadeTest extends TestCase
@@ -34,18 +37,13 @@ class CreateIncidentOnDecisionMadeTest extends TestCase
         $user = User::factory()->create();
         $event = NormalizedEvent::factory()->create(['team_id' => $user->currentTeam->id]);
 
-        app(CreateIncidentOnDecisionMade::class)->handle(new FakeDecisionMadeEvent(
-            outcome: 'INCIDENT',
-            normalized_event_id: $event->id,
-            decision_id: 99,
-            priority_code: 'critical',
-            incident_type_code: 'panic_emergency',
-        ));
+        $decision = $this->makeDecision($user->currentTeam->id, $event->id, DecisionOutcomeCode::Incident);
 
-        Bus::assertDispatched(CreateIncidentJob::class, function (CreateIncidentJob $job) use ($event) {
+        app(CreateIncidentOnDecisionMade::class)->handle(new DecisionMade($decision));
+
+        Bus::assertDispatched(CreateIncidentJob::class, function (CreateIncidentJob $job) use ($event, $decision) {
             return $job->normalizedEventId === $event->id
-                && ($job->context['decision_id'] ?? null) === 99
-                && ($job->context['priority_code'] ?? null) === 'critical';
+                && ($job->context['decision_id'] ?? null) === $decision->id;
         });
     }
 
@@ -56,10 +54,9 @@ class CreateIncidentOnDecisionMadeTest extends TestCase
         $user = User::factory()->create();
         $event = NormalizedEvent::factory()->create(['team_id' => $user->currentTeam->id]);
 
-        app(CreateIncidentOnDecisionMade::class)->handle(new FakeDecisionMadeEvent(
-            outcome: 'IGNORE',
-            normalized_event_id: $event->id,
-        ));
+        $decision = $this->makeDecision($user->currentTeam->id, $event->id, DecisionOutcomeCode::Ignore);
+
+        app(CreateIncidentOnDecisionMade::class)->handle(new DecisionMade($decision));
 
         Bus::assertNotDispatched(CreateIncidentJob::class);
     }
@@ -86,6 +83,20 @@ class CreateIncidentOnDecisionMadeTest extends TestCase
             ->count(),
             'Same normalized event must not create more than one incident — the dedup guard in CreateIncidentFromEvent must reuse the existing one.',
         );
+    }
+
+    private function makeDecision(int $teamId, int $normalizedEventId, DecisionOutcomeCode $outcomeCode): Decision
+    {
+        $outcome = DecisionOutcome::firstOrCreate(
+            ['code' => $outcomeCode->value],
+            ['name' => $outcomeCode->name, 'is_terminal' => $outcomeCode->isTerminal()],
+        );
+
+        return Decision::factory()->create([
+            'team_id' => $teamId,
+            'normalized_event_id' => $normalizedEventId,
+            'outcome_id' => $outcome->id,
+        ]);
     }
 
     private function makeAsset(Team $team): Asset

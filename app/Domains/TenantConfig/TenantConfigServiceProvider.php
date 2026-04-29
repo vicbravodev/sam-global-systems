@@ -3,12 +3,20 @@
 namespace App\Domains\TenantConfig;
 
 use App\Contracts\TenantConfig\TenantAIProfileResolver;
+use App\Contracts\TenantConfig\TenantAnalyticsConfig;
+use App\Contracts\TenantConfig\TenantAutomationPoliciesResolver;
 use App\Contracts\TenantConfig\TenantConfigResolver;
+use App\Contracts\TenantConfig\TenantDecisionRulesResolver;
+use App\Contracts\TenantConfig\TenantNotificationPoliciesResolver;
 use App\Contracts\TenantConfig\TenantNotificationPolicyResolver;
 use App\Contracts\TenantConfig\TenantRuleOverrideApplier;
 use App\Contracts\TenantConfig\TenantScheduleResolver;
 use App\Domains\TenantConfig\Actions\ApplyTenantRuleOverrides;
 use App\Domains\TenantConfig\Actions\ResolveTenantAIProfile;
+use App\Domains\TenantConfig\Actions\ResolveTenantAnalyticsConfig;
+use App\Domains\TenantConfig\Actions\ResolveTenantAutomationPolicies;
+use App\Domains\TenantConfig\Actions\ResolveTenantDecisionRules;
+use App\Domains\TenantConfig\Actions\ResolveTenantNotificationPolicies;
 use App\Domains\TenantConfig\Actions\ResolveTenantNotificationPolicy;
 use App\Domains\TenantConfig\Actions\ResolveTenantSchedule;
 use App\Domains\TenantConfig\Actions\ResolveTenantSetting;
@@ -36,8 +44,12 @@ class TenantConfigServiceProvider extends ServiceProvider
         $this->app->singletonIf(TenantConfigResolver::class, ResolveTenantSetting::class);
         $this->app->singletonIf(TenantAIProfileResolver::class, ResolveTenantAIProfile::class);
         $this->app->singletonIf(TenantNotificationPolicyResolver::class, ResolveTenantNotificationPolicy::class);
+        $this->app->singletonIf(TenantNotificationPoliciesResolver::class, ResolveTenantNotificationPolicies::class);
         $this->app->singletonIf(TenantScheduleResolver::class, ResolveTenantSchedule::class);
         $this->app->singletonIf(TenantRuleOverrideApplier::class, ApplyTenantRuleOverrides::class);
+        $this->app->singletonIf(TenantDecisionRulesResolver::class, ResolveTenantDecisionRules::class);
+        $this->app->singletonIf(TenantAutomationPoliciesResolver::class, ResolveTenantAutomationPolicies::class);
+        $this->app->singletonIf(TenantAnalyticsConfig::class, ResolveTenantAnalyticsConfig::class);
     }
 
     public function boot(): void
