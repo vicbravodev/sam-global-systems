@@ -19,6 +19,7 @@
         <exclude>
             <file>app/Domains/Access/AccessServiceProvider.php</file>
             <file>app/Domains/Assets/AssetsServiceProvider.php</file>
+            <file>app/Domains/Audit/AuditServiceProvider.php</file>
             <file>app/Domains/Automation/AutomationServiceProvider.php</file>
             <file>app/Domains/Drivers/DriversServiceProvider.php</file>
             <file>app/Domains/Ingestion/IngestionServiceProvider.php</file>
@@ -31,6 +32,7 @@
             <directory suffix=".php">app/Domains/Access/Events</directory>
             <directory suffix=".php">app/Domains/Assets/Enums</directory>
             <directory suffix=".php">app/Domains/Assets/Events</directory>
+            <directory suffix=".php">app/Domains/Audit/Enums</directory>
             <directory suffix=".php">app/Domains/Automation/Enums</directory>
             <directory suffix=".php">app/Domains/Automation/Events</directory>
             <directory suffix=".php">app/Domains/Drivers/Enums</directory>

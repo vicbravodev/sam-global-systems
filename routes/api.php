@@ -2,6 +2,10 @@
 
 use App\Http\Controllers\AI\AIEvaluationController;
 use App\Http\Controllers\Assets\AssetController;
+use App\Http\Controllers\Audit\AuditLogController;
+use App\Http\Controllers\Audit\ChangeHistoryController;
+use App\Http\Controllers\Audit\DomainEventLogController;
+use App\Http\Controllers\Audit\SystemTraceController;
 use App\Http\Controllers\Automation\ActionExecutionController;
 use App\Http\Controllers\Automation\ActionTemplateController;
 use App\Http\Controllers\Automation\AutomationWorkflowController;
@@ -160,6 +164,13 @@ Route::prefix('{current_team}')
 
         Route::get('automation/templates', [ActionTemplateController::class, 'index'])->name('api.automation.templates.index');
         Route::post('automation/templates', [ActionTemplateController::class, 'store'])->name('api.automation.templates.store');
+
+        // Audit (read-only).
+        Route::get('audit/logs', [AuditLogController::class, 'index'])->name('api.audit.logs.index');
+        Route::get('audit/logs/{auditLog}', [AuditLogController::class, 'show'])->name('api.audit.logs.show');
+        Route::get('audit/events', [DomainEventLogController::class, 'index'])->name('api.audit.events.index');
+        Route::get('audit/changes', [ChangeHistoryController::class, 'index'])->name('api.audit.changes.index');
+        Route::get('audit/traces/{traceId}', [SystemTraceController::class, 'show'])->name('api.audit.traces.show');
     });
 
 Route::post('webhooks/{endpoint_url}', [WebhookController::class, 'handle'])
