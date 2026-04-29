@@ -49,6 +49,10 @@ class AccessSeeder extends Seeder
         ['code' => 'users.manage', 'name' => 'Manage Users', 'module' => 'users', 'description' => 'Update member roles and details'],
         ['code' => 'users.invite', 'name' => 'Invite Users', 'module' => 'users', 'description' => 'Invite new members to the team'],
         ['code' => 'audit.view', 'name' => 'View Audit', 'module' => 'audit', 'description' => 'View audit logs'],
+        ['code' => 'decisions.view', 'name' => 'View Decisions', 'module' => 'decisions', 'description' => 'View decisions and traces'],
+        ['code' => 'decisions.override', 'name' => 'Override Decisions', 'module' => 'decisions', 'description' => 'Manually override automated decisions'],
+        ['code' => 'decisions.rules.manage', 'name' => 'Manage Decision Rules', 'module' => 'decisions', 'description' => 'Create, update or deactivate decision rules'],
+        ['code' => 'decisions.escalation.manage', 'name' => 'Manage Escalation Policies', 'module' => 'decisions', 'description' => 'Create or update escalation policies'],
     ];
 
     /**
@@ -70,6 +74,7 @@ class AccessSeeder extends Seeder
             'config.view', 'config.manage',
             'users.view', 'users.manage', 'users.invite',
             'audit.view',
+            'decisions.view', 'decisions.override', 'decisions.rules.manage', 'decisions.escalation.manage',
         ],
         'supervisor' => [
             'incidents.view', 'incidents.manage', 'incidents.resolve', 'incidents.close',
@@ -82,6 +87,7 @@ class AccessSeeder extends Seeder
             'config.view',
             'users.view',
             'audit.view',
+            'decisions.view', 'decisions.override', 'decisions.rules.manage', 'decisions.escalation.manage',
         ],
         'monitorista' => [
             'incidents.view', 'incidents.manage', 'incidents.resolve',
@@ -89,6 +95,7 @@ class AccessSeeder extends Seeder
             'drivers.view',
             'context.view',
             'geofences.view',
+            'decisions.view',
         ],
         'analyst' => [
             'reports.view', 'reports.export',
@@ -97,6 +104,7 @@ class AccessSeeder extends Seeder
             'assets.view',
             'incidents.view',
             'context.view',
+            'decisions.view',
         ],
         'billing_manager' => [
             'tenancy.billing.view', 'tenancy.billing.manage',
@@ -114,6 +122,7 @@ class AccessSeeder extends Seeder
             'config.view',
             'users.view',
             'audit.view',
+            'decisions.view',
         ],
     ];
 

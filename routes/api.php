@@ -4,6 +4,9 @@ use App\Http\Controllers\AI\AIEvaluationController;
 use App\Http\Controllers\Assets\AssetController;
 use App\Http\Controllers\Context\EventContextController;
 use App\Http\Controllers\Context\GeofenceController;
+use App\Http\Controllers\Decisions\DecisionController;
+use App\Http\Controllers\Decisions\DecisionRuleController;
+use App\Http\Controllers\Decisions\EscalationPolicyController;
 use App\Http\Controllers\Drivers\DriverController;
 use App\Http\Controllers\Ingestion\RawEventController;
 use App\Http\Controllers\Integrations\IntegrationController;
@@ -87,6 +90,17 @@ Route::prefix('{current_team}')
 
         Route::get('settings/versions', [TenantConfigVersionController::class, 'index'])->name('api.tenant-config.versions.index');
         Route::get('settings/versions/{configVersion}', [TenantConfigVersionController::class, 'show'])->name('api.tenant-config.versions.show');
+
+        Route::get('decisions/rules', [DecisionRuleController::class, 'index'])->name('api.decisions.rules.index');
+        Route::post('decisions/rules', [DecisionRuleController::class, 'store'])->name('api.decisions.rules.store');
+        Route::put('decisions/rules/{rule}', [DecisionRuleController::class, 'update'])->name('api.decisions.rules.update');
+        Route::delete('decisions/rules/{rule}', [DecisionRuleController::class, 'destroy'])->name('api.decisions.rules.destroy');
+        Route::get('decisions/escalation-policies', [EscalationPolicyController::class, 'index'])->name('api.decisions.escalation-policies.index');
+        Route::post('decisions/escalation-policies', [EscalationPolicyController::class, 'store'])->name('api.decisions.escalation-policies.store');
+        Route::put('decisions/escalation-policies/{policy}', [EscalationPolicyController::class, 'update'])->name('api.decisions.escalation-policies.update');
+        Route::get('decisions', [DecisionController::class, 'index'])->name('api.decisions.index');
+        Route::get('decisions/{decision}', [DecisionController::class, 'show'])->name('api.decisions.show');
+        Route::post('decisions/{decision}/override', [DecisionController::class, 'override'])->name('api.decisions.override');
     });
 
 Route::post('webhooks/{endpoint_url}', [WebhookController::class, 'handle'])
