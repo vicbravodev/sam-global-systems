@@ -11,6 +11,13 @@ use App\Http\Controllers\Integrations\WebhookController;
 use App\Http\Controllers\Normalization\EventTypeController;
 use App\Http\Controllers\Normalization\MappingRuleController;
 use App\Http\Controllers\Normalization\NormalizedEventController;
+use App\Http\Controllers\TenantConfig\TenantAIProfileController;
+use App\Http\Controllers\TenantConfig\TenantConfigController;
+use App\Http\Controllers\TenantConfig\TenantConfigVersionController;
+use App\Http\Controllers\TenantConfig\TenantEscalationConfigController;
+use App\Http\Controllers\TenantConfig\TenantNotificationPolicyController;
+use App\Http\Controllers\TenantConfig\TenantRuleOverrideController;
+use App\Http\Controllers\TenantConfig\TenantScheduleProfileController;
 use App\Http\Middleware\EnsureTeamMembership;
 use Illuminate\Support\Facades\Route;
 
@@ -56,6 +63,30 @@ Route::prefix('{current_team}')
         Route::put('normalization/mapping-rules/{mappingRule}', [MappingRuleController::class, 'update'])->name('api.normalization.mapping-rules.update');
         Route::delete('normalization/mapping-rules/{mappingRule}', [MappingRuleController::class, 'destroy'])->name('api.normalization.mapping-rules.destroy');
         Route::get('normalization/event-types', [EventTypeController::class, 'index'])->name('api.normalization.event-types.index');
+
+        Route::get('settings/config', [TenantConfigController::class, 'index'])->name('api.tenant-config.settings.index');
+        Route::put('settings/config', [TenantConfigController::class, 'update'])->name('api.tenant-config.settings.update');
+
+        Route::get('settings/rules', [TenantRuleOverrideController::class, 'index'])->name('api.tenant-config.rules.index');
+        Route::post('settings/rules', [TenantRuleOverrideController::class, 'store'])->name('api.tenant-config.rules.store');
+        Route::put('settings/rules/{override}', [TenantRuleOverrideController::class, 'update'])->name('api.tenant-config.rules.update');
+        Route::delete('settings/rules/{override}', [TenantRuleOverrideController::class, 'destroy'])->name('api.tenant-config.rules.destroy');
+
+        Route::get('settings/notifications', [TenantNotificationPolicyController::class, 'index'])->name('api.tenant-config.notifications.index');
+        Route::put('settings/notifications', [TenantNotificationPolicyController::class, 'update'])->name('api.tenant-config.notifications.update');
+
+        Route::get('settings/ai-profile', [TenantAIProfileController::class, 'show'])->name('api.tenant-config.ai-profile.show');
+        Route::put('settings/ai-profile', [TenantAIProfileController::class, 'update'])->name('api.tenant-config.ai-profile.update');
+
+        Route::get('settings/escalation', [TenantEscalationConfigController::class, 'index'])->name('api.tenant-config.escalation.index');
+        Route::post('settings/escalation', [TenantEscalationConfigController::class, 'store'])->name('api.tenant-config.escalation.store');
+        Route::put('settings/escalation/{escalationConfig}', [TenantEscalationConfigController::class, 'update'])->name('api.tenant-config.escalation.update');
+
+        Route::get('settings/schedule', [TenantScheduleProfileController::class, 'index'])->name('api.tenant-config.schedule.index');
+        Route::put('settings/schedule/{scheduleProfile}', [TenantScheduleProfileController::class, 'update'])->name('api.tenant-config.schedule.update');
+
+        Route::get('settings/versions', [TenantConfigVersionController::class, 'index'])->name('api.tenant-config.versions.index');
+        Route::get('settings/versions/{configVersion}', [TenantConfigVersionController::class, 'show'])->name('api.tenant-config.versions.show');
     });
 
 Route::post('webhooks/{endpoint_url}', [WebhookController::class, 'handle'])
