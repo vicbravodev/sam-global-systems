@@ -3,8 +3,11 @@
 namespace App\Domains\AI\Data;
 
 /**
- * SPEC-16-DEFERRED: shape of the per-tenant AI configuration until spec 16
- * (TenantConfig) provides a persisted `tenant_ai_profiles` table.
+ * Shape of the per-tenant AI configuration consumed by the AI evaluation
+ * pipeline. The `automation_level` field is sourced from spec 16's
+ * `tenant_ai_profiles` table when a row exists for the team. Token and
+ * call quota fields are still in-memory defaults pending a future quota
+ * configuration in spec 16 (`SPEC-16-QUOTA-DEFERRED`).
  */
 final readonly class TenantAIProfileData
 {
