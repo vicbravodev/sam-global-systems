@@ -3,6 +3,7 @@
 use App\Domains\Access\AccessServiceProvider;
 use App\Domains\AI\AIServiceProvider;
 use App\Domains\Assets\AssetsServiceProvider;
+use App\Domains\Audit\AuditServiceProvider;
 use App\Domains\Automation\AutomationServiceProvider;
 use App\Domains\Context\ContextServiceProvider;
 use App\Domains\Decisions\DecisionsServiceProvider;
@@ -22,6 +23,7 @@ return [
     AccessServiceProvider::class,
     AIServiceProvider::class,
     AssetsServiceProvider::class,
+    AuditServiceProvider::class,
     AutomationServiceProvider::class,
     ContextServiceProvider::class,
     DecisionsServiceProvider::class,
