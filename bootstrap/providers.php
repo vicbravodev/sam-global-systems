@@ -10,6 +10,7 @@ use App\Domains\Incidents\IncidentsServiceProvider;
 use App\Domains\Ingestion\IngestionServiceProvider;
 use App\Domains\Integrations\IntegrationsServiceProvider;
 use App\Domains\Normalization\NormalizationServiceProvider;
+use App\Domains\Notifications\NotificationsServiceProvider;
 use App\Domains\Tenancy\TenancyServiceProvider;
 use App\Domains\TenantConfig\TenantConfigServiceProvider;
 use App\Providers\AppServiceProvider;
@@ -27,6 +28,7 @@ return [
     IngestionServiceProvider::class,
     IntegrationsServiceProvider::class,
     NormalizationServiceProvider::class,
+    NotificationsServiceProvider::class,
     TenancyServiceProvider::class,
     TenantConfigServiceProvider::class,
     AppServiceProvider::class,

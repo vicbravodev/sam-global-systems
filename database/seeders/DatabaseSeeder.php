@@ -18,6 +18,7 @@ class DatabaseSeeder extends Seeder
         $this->call(AIMeterSeeder::class);
         $this->call(DecisionOutcomeSeeder::class);
         $this->call(IncidentsSeeder::class);
+        $this->call(NotificationMeterSeeder::class);
 
         User::factory()->create([
             'name' => 'Test User',

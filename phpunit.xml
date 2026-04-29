@@ -23,6 +23,7 @@
             <file>app/Domains/Ingestion/IngestionServiceProvider.php</file>
             <file>app/Domains/Integrations/IntegrationsServiceProvider.php</file>
             <file>app/Domains/Normalization/NormalizationServiceProvider.php</file>
+            <file>app/Domains/Notifications/NotificationsServiceProvider.php</file>
             <file>app/Domains/Tenancy/TenancyServiceProvider.php</file>
 
             <directory suffix=".php">app/Domains/Access/Enums</directory>
@@ -37,6 +38,8 @@
             <directory suffix=".php">app/Domains/Integrations/Events</directory>
             <directory suffix=".php">app/Domains/Normalization/Enums</directory>
             <directory suffix=".php">app/Domains/Normalization/Events</directory>
+            <directory suffix=".php">app/Domains/Notifications/Enums</directory>
+            <directory suffix=".php">app/Domains/Notifications/Events</directory>
             <directory suffix=".php">app/Domains/Tenancy/Enums</directory>
             <directory suffix=".php">app/Domains/Tenancy/Events</directory>
 
@@ -61,6 +64,7 @@
         </report>
     </coverage>
     <php>
+        <ini name="memory_limit" value="1G"/>
         <env name="APP_ENV" value="testing"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
