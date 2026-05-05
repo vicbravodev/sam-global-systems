@@ -1,7 +1,16 @@
 import { Link, usePage } from '@inertiajs/react';
-import { BookOpen, FolderGit2, LayoutGrid } from 'lucide-react';
+import {
+    BarChart3,
+    FileClock,
+    Inbox,
+    LayoutGrid,
+    Plug,
+    Settings,
+    Truck,
+    Users,
+    Workflow,
+} from 'lucide-react';
 import AppLogo from '@/components/app-logo';
-import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
 import { NavUser } from '@/components/nav-user';
 import { TeamSwitcher } from '@/components/team-switcher';
@@ -23,25 +32,21 @@ export function AppSidebar() {
         ? dashboard(page.props.currentTeam.slug)
         : '/';
 
+    // TODO: each non-dashboard module currently points at dashboardUrl until
+    // its controllers ship (Bandeja → Incidents API, Activos → Assets API, …).
     const mainNavItems: NavItem[] = [
-        {
-            title: 'Dashboard',
-            href: dashboardUrl,
-            icon: LayoutGrid,
-        },
+        { title: 'Dashboard', href: dashboardUrl, icon: LayoutGrid },
+        { title: 'Bandeja', href: dashboardUrl, icon: Inbox },
+        { title: 'Activos', href: dashboardUrl, icon: Truck },
+        { title: 'Conductores', href: dashboardUrl, icon: Users },
+        { title: 'Reglas', href: dashboardUrl, icon: Workflow },
+        { title: 'Integraciones', href: dashboardUrl, icon: Plug },
+        { title: 'Analítica', href: dashboardUrl, icon: BarChart3 },
+        { title: 'Auditoría', href: dashboardUrl, icon: FileClock },
     ];
 
     const footerNavItems: NavItem[] = [
-        {
-            title: 'Repository',
-            href: 'https://github.com/laravel/react-starter-kit',
-            icon: FolderGit2,
-        },
-        {
-            title: 'Documentation',
-            href: 'https://laravel.com/docs/starter-kits#react',
-            icon: BookOpen,
-        },
+        { title: 'Configuración', href: dashboardUrl, icon: Settings },
     ];
 
     return (
@@ -68,7 +73,7 @@ export function AppSidebar() {
             </SidebarContent>
 
             <SidebarFooter>
-                <NavFooter items={footerNavItems} className="mt-auto" />
+                <NavMain items={footerNavItems} className="mt-auto" />
                 <NavUser />
             </SidebarFooter>
         </Sidebar>

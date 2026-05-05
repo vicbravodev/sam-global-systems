@@ -7,16 +7,28 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ==========================================================================
+   SAM Operations DS — tokens exposed as Tailwind utilities.
+   Ported from sam-operations-ds/colors_and_type.css. Dark mode is the real
+   default; values for both modes live below in :root and .dark.
+   ========================================================================== */
 @theme {
+    /* Fonts */
     --font-sans:
-        'Instrument Sans', ui-sans-serif, system-ui, sans-serif,
-        'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
-        'Noto Color Emoji';
+        'Geist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI',
+        'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', sans-serif;
+    --font-mono:
+        'Geist Mono', ui-monospace, 'JetBrains Mono', SFMono-Regular, Menlo,
+        Consolas, monospace;
+    --font-display: var(--font-sans);
 
-    --radius-lg: var(--radius);
-    --radius-md: calc(var(--radius) - 2px);
-    --radius-sm: calc(var(--radius) - 4px);
+    /* Radii — tighter than shadcn defaults; design wants restrained corners. */
+    --radius-sm: 4px;
+    --radius-md: 6px;
+    --radius-lg: 10px;
+    --radius-xl: 14px;
 
+    /* shadcn surface mappings */
     --color-background: var(--background);
     --color-foreground: var(--foreground);
 
@@ -59,77 +71,365 @@
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-ring: var(--sidebar-ring);
+
+    /* SAM-specific surfaces */
+    --color-surface-1: var(--surface-1);
+    --color-surface-2: var(--surface-2);
+    --color-surface-3: var(--surface-3);
+    --color-border-strong: var(--border-strong);
+    --color-fg-1: var(--fg-1);
+    --color-fg-2: var(--fg-2);
+    --color-fg-3: var(--fg-3);
+    --color-fg-disabled: var(--fg-disabled);
+
+    /* Severity (5 levels) */
+    --color-severity-critical: var(--severity-critical);
+    --color-severity-critical-bg: var(--severity-critical-bg);
+    --color-severity-high: var(--severity-high);
+    --color-severity-high-bg: var(--severity-high-bg);
+    --color-severity-medium: var(--severity-medium);
+    --color-severity-medium-bg: var(--severity-medium-bg);
+    --color-severity-low: var(--severity-low);
+    --color-severity-low-bg: var(--severity-low-bg);
+    --color-severity-info: var(--severity-info);
+    --color-severity-info-bg: var(--severity-info-bg);
+
+    /* Incident lifecycle (7 states) */
+    --color-status-new: var(--status-new);
+    --color-status-triaging: var(--status-triaging);
+    --color-status-assigned: var(--status-assigned);
+    --color-status-in-progress: var(--status-in-progress);
+    --color-status-resolved: var(--status-resolved);
+    --color-status-closed: var(--status-closed);
+    --color-status-discarded: var(--status-discarded);
+
+    /* Health (integrations) */
+    --color-health-ok: var(--health-ok);
+    --color-health-warn: var(--health-warn);
+    --color-health-down: var(--health-down);
+    --color-health-unknown: var(--health-unknown);
+
+    /* AI confidence */
+    --color-confidence-low: var(--confidence-low);
+    --color-confidence-mid: var(--confidence-mid);
+    --color-confidence-high: var(--confidence-high);
+    --color-ai-accent: var(--ai-accent);
+    --color-ai-accent-bg: var(--ai-accent-bg);
 }
 
+/* -------------------- Root tokens (LIGHT) -------------------- */
 :root {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
-    --destructive: oklch(0.577 0.245 27.325);
-    --destructive-foreground: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    --ring: oklch(0.87 0 0);
-    --chart-1: oklch(0.646 0.222 41.116);
-    --chart-2: oklch(0.6 0.118 184.704);
-    --chart-3: oklch(0.398 0.07 227.392);
-    --chart-4: oklch(0.828 0.189 84.429);
-    --chart-5: oklch(0.769 0.188 70.08);
-    --radius: 0.625rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.87 0 0);
+    /* Base surfaces (OKLCH, neutral grays — warm-leaning by 2°) */
+    --background: oklch(0.985 0.002 260);
+    --foreground: oklch(0.145 0.005 260);
+    --surface-1: oklch(1 0 0);
+    --surface-2: oklch(0.97 0.003 260);
+    --surface-3: oklch(0.945 0.004 260);
+    --muted: oklch(0.97 0.003 260);
+    --muted-foreground: oklch(0.48 0.008 260);
+    --border: oklch(0.905 0.005 260);
+    --border-strong: oklch(0.82 0.006 260);
+    --ring: oklch(0.72 0.12 250);
+
+    /* shadcn surfaces preserved */
+    --card: var(--surface-1);
+    --card-foreground: var(--foreground);
+    --popover: var(--surface-1);
+    --popover-foreground: var(--foreground);
+    --secondary: var(--surface-2);
+    --secondary-foreground: var(--foreground);
+    --input: var(--border);
+
+    /* Foreground role tokens */
+    --fg-1: var(--foreground);
+    --fg-2: oklch(0.32 0.006 260);
+    --fg-3: oklch(0.48 0.008 260);
+    --fg-disabled: oklch(0.68 0.005 260);
+
+    /* Brand primary — slate indigo */
+    --primary: oklch(0.45 0.09 250);
+    --primary-foreground: oklch(0.99 0.002 260);
+    --primary-hover: oklch(0.4 0.1 250);
+    --primary-active: oklch(0.36 0.1 250);
+
+    /* Accent — warm amber */
+    --accent: oklch(0.72 0.16 52);
+    --accent-foreground: oklch(0.145 0.01 50);
+
+    /* Severity */
+    --severity-critical: oklch(0.6 0.22 25);
+    --severity-critical-bg: oklch(0.95 0.03 25);
+    --severity-high: oklch(0.7 0.17 48);
+    --severity-high-bg: oklch(0.96 0.04 65);
+    --severity-medium: oklch(0.78 0.14 90);
+    --severity-medium-bg: oklch(0.97 0.04 95);
+    --severity-low: oklch(0.68 0.12 160);
+    --severity-low-bg: oklch(0.96 0.03 170);
+    --severity-info: oklch(0.65 0.1 245);
+    --severity-info-bg: oklch(0.96 0.02 245);
+
+    /* Incident lifecycle */
+    --status-new: oklch(0.62 0.14 255);
+    --status-triaging: oklch(0.72 0.14 80);
+    --status-assigned: oklch(0.55 0.1 285);
+    --status-in-progress: oklch(0.7 0.15 52);
+    --status-resolved: oklch(0.6 0.12 160);
+    --status-closed: oklch(0.52 0.01 260);
+    --status-discarded: oklch(0.48 0.02 260);
+
+    /* Health */
+    --health-ok: oklch(0.62 0.14 155);
+    --health-warn: oklch(0.75 0.15 72);
+    --health-down: oklch(0.58 0.22 25);
+    --health-unknown: oklch(0.6 0.01 260);
+
+    /* AI confidence */
+    --confidence-low: oklch(0.62 0.18 25);
+    --confidence-mid: oklch(0.75 0.15 72);
+    --confidence-high: oklch(0.62 0.14 155);
+    --ai-accent: oklch(0.58 0.15 285);
+    --ai-accent-bg: oklch(0.96 0.02 285);
+
+    /* Charts (5) */
+    --chart-1: oklch(0.58 0.15 250);
+    --chart-2: oklch(0.68 0.14 160);
+    --chart-3: oklch(0.72 0.16 52);
+    --chart-4: oklch(0.6 0.18 320);
+    --chart-5: oklch(0.78 0.14 90);
+
+    /* Destructive aliases critical */
+    --destructive: var(--severity-critical);
+    --destructive-foreground: oklch(0.99 0.002 260);
+
+    /* Sidebar */
+    --sidebar: oklch(0.97 0.003 260);
+    --sidebar-foreground: var(--foreground);
+    --sidebar-border: var(--border);
+    --sidebar-accent: oklch(0.93 0.005 260);
+    --sidebar-accent-foreground: var(--foreground);
+    --sidebar-primary: var(--primary);
+    --sidebar-primary-foreground: var(--primary-foreground);
+    --sidebar-ring: var(--ring);
+
+    /* Radius — design uses literal pixel scale; --radius retained for shadcn
+       components that reference it directly. */
+    --radius: 6px;
+
+    /* Motion */
+    --motion-instant: 50ms;
+    --motion-fast: 120ms;
+    --motion-normal: 200ms;
+    --motion-slow: 320ms;
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+    /* Density — row height */
+    --row-compact: 32px;
+    --row-comfortable: 40px;
+    --row-relaxed: 56px;
+
+    /* Type scale (px) */
+    --text-2xs: 10px;
+    --text-xs: 12px;
+    --text-sm: 13px;
+    --text-base: 14px;
+    --text-md: 15px;
+    --text-lg: 18px;
+    --text-xl: 22px;
+    --text-2xl: 28px;
+    --text-3xl: 36px;
+
+    --line-tight: 1.15;
+    --line-snug: 1.35;
+    --line-normal: 1.5;
+
+    --tracking-tight: -0.01em;
+    --tracking-normal: 0;
+    --tracking-label: 0.02em;
+    --tracking-caps: 0.08em;
 }
 
+/* -------------------- Root tokens (DARK — the real default) -------------------- */
 .dark {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.145 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.145 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.985 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.396 0.141 25.723);
-    --destructive-foreground: oklch(0.637 0.237 25.331);
-    --border: oklch(0.269 0 0);
-    --input: oklch(0.269 0 0);
-    --ring: oklch(0.439 0 0);
-    --chart-1: oklch(0.488 0.243 264.376);
-    --chart-2: oklch(0.696 0.17 162.48);
-    --chart-3: oklch(0.769 0.188 70.08);
-    --chart-4: oklch(0.627 0.265 303.9);
-    --chart-5: oklch(0.645 0.246 16.439);
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.985 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(0.269 0 0);
-    --sidebar-ring: oklch(0.439 0 0);
+    --background: oklch(0.155 0.006 260);
+    --foreground: oklch(0.96 0.005 260);
+    --surface-1: oklch(0.185 0.006 260);
+    --surface-2: oklch(0.215 0.006 260);
+    --surface-3: oklch(0.138 0.006 260);
+    --muted: oklch(0.23 0.006 260);
+    --muted-foreground: oklch(0.68 0.008 260);
+    --border: oklch(0.27 0.006 260);
+    --border-strong: oklch(0.38 0.008 260);
+    --ring: oklch(0.62 0.14 250);
+
+    --card: var(--surface-1);
+    --card-foreground: var(--foreground);
+    --popover: var(--surface-1);
+    --popover-foreground: var(--foreground);
+    --secondary: var(--surface-2);
+    --secondary-foreground: var(--foreground);
+    --input: var(--border);
+
+    --fg-1: var(--foreground);
+    --fg-2: oklch(0.8 0.006 260);
+    --fg-3: oklch(0.64 0.008 260);
+    --fg-disabled: oklch(0.42 0.006 260);
+
+    --primary: oklch(0.72 0.12 250);
+    --primary-foreground: oklch(0.13 0.01 260);
+    --primary-hover: oklch(0.77 0.13 250);
+    --primary-active: oklch(0.82 0.13 250);
+
+    --accent: oklch(0.78 0.15 52);
+    --accent-foreground: oklch(0.15 0.02 50);
+
+    --severity-critical: oklch(0.7 0.2 25);
+    --severity-critical-bg: oklch(0.27 0.11 25);
+    --severity-high: oklch(0.78 0.16 48);
+    --severity-high-bg: oklch(0.28 0.08 55);
+    --severity-medium: oklch(0.82 0.13 90);
+    --severity-medium-bg: oklch(0.27 0.07 90);
+    --severity-low: oklch(0.72 0.11 160);
+    --severity-low-bg: oklch(0.25 0.05 165);
+    --severity-info: oklch(0.72 0.1 245);
+    --severity-info-bg: oklch(0.25 0.04 245);
+
+    --status-new: oklch(0.72 0.13 255);
+    --status-triaging: oklch(0.8 0.14 80);
+    --status-assigned: oklch(0.68 0.12 285);
+    --status-in-progress: oklch(0.78 0.14 52);
+    --status-resolved: oklch(0.72 0.12 160);
+    --status-closed: oklch(0.62 0.01 260);
+    --status-discarded: oklch(0.48 0.01 260);
+
+    --health-ok: oklch(0.72 0.14 155);
+    --health-warn: oklch(0.8 0.14 72);
+    --health-down: oklch(0.7 0.21 25);
+    --health-unknown: oklch(0.58 0.01 260);
+
+    --confidence-low: oklch(0.7 0.18 25);
+    --confidence-mid: oklch(0.8 0.14 72);
+    --confidence-high: oklch(0.72 0.14 155);
+    --ai-accent: oklch(0.72 0.14 285);
+    --ai-accent-bg: oklch(0.26 0.06 285);
+
+    --chart-1: oklch(0.7 0.15 250);
+    --chart-2: oklch(0.76 0.13 160);
+    --chart-3: oklch(0.8 0.15 52);
+    --chart-4: oklch(0.7 0.17 320);
+    --chart-5: oklch(0.82 0.13 90);
+
+    --destructive: var(--severity-critical);
+    --destructive-foreground: oklch(0.99 0.002 260);
+
+    --sidebar: oklch(0.165 0.006 260);
+    --sidebar-foreground: var(--foreground);
+    --sidebar-border: oklch(0.24 0.006 260);
+    --sidebar-accent: oklch(0.23 0.006 260);
+    --sidebar-accent-foreground: var(--foreground);
+    --sidebar-primary: var(--primary);
+    --sidebar-primary-foreground: var(--primary-foreground);
+    --sidebar-ring: var(--ring);
+}
+
+/* -------------------- Semantic typography classes -------------------- */
+.sam-display {
+    font: 600 var(--text-3xl) / var(--line-tight) var(--font-display);
+    letter-spacing: var(--tracking-tight);
+    color: var(--fg-1);
+}
+.sam-h1 {
+    font: 600 var(--text-2xl) / var(--line-tight) var(--font-sans);
+    letter-spacing: var(--tracking-tight);
+    color: var(--fg-1);
+}
+.sam-h2 {
+    font: 600 var(--text-xl) / var(--line-snug) var(--font-sans);
+    color: var(--fg-1);
+}
+.sam-h3 {
+    font: 600 var(--text-lg) / var(--line-snug) var(--font-sans);
+    color: var(--fg-1);
+}
+.sam-h4 {
+    font: 600 var(--text-md) / var(--line-snug) var(--font-sans);
+    color: var(--fg-1);
+}
+.sam-body {
+    font: 400 var(--text-base) / var(--line-normal) var(--font-sans);
+    color: var(--fg-1);
+}
+.sam-body-sm {
+    font: 400 var(--text-sm) / var(--line-normal) var(--font-sans);
+    color: var(--fg-1);
+}
+.sam-meta {
+    font: 400 var(--text-xs) / var(--line-snug) var(--font-sans);
+    color: var(--fg-3);
+}
+.sam-label {
+    font: 500 var(--text-xs) / var(--line-snug) var(--font-sans);
+    letter-spacing: var(--tracking-label);
+    color: var(--fg-2);
+}
+.sam-caps {
+    font: 600 var(--text-2xs) / var(--line-snug) var(--font-sans);
+    letter-spacing: var(--tracking-caps);
+    color: var(--fg-3);
+    text-transform: uppercase;
+}
+.sam-code {
+    font: 400 var(--text-sm) / var(--line-snug) var(--font-mono);
+    color: var(--fg-1);
+}
+.sam-num {
+    font: 500 var(--text-base) / var(--line-tight) var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--fg-1);
+}
+.sam-kbd {
+    font: 500 var(--text-2xs) / 1 var(--font-mono);
+    padding: 2px 5px;
+    border: 1px solid var(--border);
+    border-bottom-width: 2px;
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+    color: var(--fg-2);
+}
+
+/* -------------------- Realtime arrival flash -------------------- */
+@keyframes sam-flash {
+    0% {
+        background-color: color-mix(in oklch, var(--accent) 28%, transparent);
+    }
+    100% {
+        background-color: transparent;
+    }
+}
+.sam-flash {
+    animation: sam-flash 1.4s var(--ease-out) 1;
+}
+@keyframes sam-pulse {
+    0% {
+        transform: scale(0.6);
+        opacity: 0.5;
+    }
+    100% {
+        transform: scale(1.8);
+        opacity: 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sam-flash {
+        animation: none;
+    }
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+    }
 }
 
 @layer base {
