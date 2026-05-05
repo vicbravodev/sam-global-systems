@@ -49,7 +49,7 @@ class SignalsBuilder
             'asset_recently_stopped' => self::assetRecentlyStopped($telemetry),
             'asset_in_motion' => self::assetInMotion($telemetry),
             'driver_unresolved_previous_alert' => (bool) ($driver['has_unresolved_alerts'] ?? false),
-            'has_visual_evidence' => self::hasMediaOfType($media, ['image', 'video'], 'available'),
+            'has_visual_evidence' => self::hasMediaOfType($media, ['image', 'video', 'snapshot', 'clip'], 'available'),
             'has_audio_evidence' => self::hasMediaOfType($media, ['audio'], 'available'),
             'video_pending' => self::hasMediaWithStatus($media, ['requested', 'processing']),
             'media_delayed' => self::hasMediaWithStatus($media, ['delayed']),
@@ -210,6 +210,6 @@ class SignalsBuilder
             return false;
         }
 
-        return ! self::hasMediaOfType($media, ['image', 'video'], 'available');
+        return ! self::hasMediaOfType($media, ['image', 'video', 'snapshot', 'clip'], 'available');
     }
 }
