@@ -11,10 +11,12 @@ const VARIANTS: Record<RealtimeState, { label: string; dotClass: string }> = {
 interface Props {
     state?: RealtimeState;
     className?: string;
+    label?: string;
 }
 
-export function RealtimeStatus({ state = 'ok', className }: Props) {
+export function RealtimeStatus({ state = 'ok', className, label }: Props) {
     const v = VARIANTS[state];
+    const text = label ?? v.label;
 
     return (
         <span
@@ -40,7 +42,7 @@ export function RealtimeStatus({ state = 'ok', className }: Props) {
                     />
                 )}
             </span>
-            <span className="text-fg-1">{v.label}</span>
+            <span className="text-fg-1">{text}</span>
         </span>
     );
 }
