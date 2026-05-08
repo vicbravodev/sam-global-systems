@@ -60,9 +60,13 @@ class ReportExecutionController extends Controller
             throw new NotFoundHttpException('Report file is no longer available');
         }
 
+        $execution->loadMissing('outputFileObject');
+        $fileObject = $execution->outputFileObject;
+
         $contents = $disk->get($execution->file_path);
-        $filename = basename($execution->file_path);
-        $mime = $disk->mimeType($execution->file_path) ?: 'application/octet-stream';
+        $filename = $fileObject?->original_filename ?: basename($execution->file_path);
+        $mime = $fileObject?->content_type
+            ?: ($disk->mimeType($execution->file_path) ?: 'application/octet-stream');
 
         return response((string) $contents, 200, [
             'Content-Type' => $mime,

@@ -6,6 +6,7 @@ use App\Concerns\BelongsToTenant;
 use App\Domains\Analytics\Enums\ReportExecutionStatus;
 use App\Domains\Analytics\Enums\ReportOutputFormat;
 use App\Domains\Analytics\Enums\ReportRequestedByType;
+use App\Domains\Tenancy\Models\FileObject;
 use Database\Factories\Domains\Analytics\ReportExecutionFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -25,6 +26,7 @@ class ReportExecution extends Model
         'status',
         'output_format',
         'file_path',
+        'output_file_object_id',
         'result_snapshot_json',
         'error_message',
         'started_at',
@@ -37,6 +39,14 @@ class ReportExecution extends Model
     public function definition(): BelongsTo
     {
         return $this->belongsTo(ReportDefinition::class, 'report_definition_id');
+    }
+
+    /**
+     * @return BelongsTo<FileObject, $this>
+     */
+    public function outputFileObject(): BelongsTo
+    {
+        return $this->belongsTo(FileObject::class, 'output_file_object_id');
     }
 
     /**
