@@ -81,6 +81,22 @@ class AIEventEvaluation extends Model
     }
 
     /**
+     * @return HasMany<AIMediaAssessment, $this>
+     */
+    public function mediaAssessments(): HasMany
+    {
+        return $this->hasMany(AIMediaAssessment::class, 'evaluation_id');
+    }
+
+    /**
+     * @return HasMany<AIConversationLink, $this>
+     */
+    public function conversationLinks(): HasMany
+    {
+        return $this->hasMany(AIConversationLink::class, 'evaluation_id');
+    }
+
+    /**
      * @return array<string, string>
      */
     protected function casts(): array

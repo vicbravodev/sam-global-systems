@@ -12,6 +12,7 @@
         "php": "^8.3",
         "inertiajs/inertia-laravel": "^3.0",
         "kreait/firebase-php": "^8.2",
+        "laravel/ai": "^0.6.7",
         "laravel/cashier": "^16.5",
         "laravel/fortify": "^1.34",
         "laravel/framework": "^13.0",
