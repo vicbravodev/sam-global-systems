@@ -90,7 +90,7 @@ class DispatchNotification
                     ],
                 ]);
 
-                $result = $driver->send($rendered);
+                $result = $driver->send($rendered, $channel);
 
                 $this->recordAttempt->execute($delivery, $result);
 

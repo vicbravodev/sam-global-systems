@@ -4,7 +4,6 @@ namespace App\Domains\Notifications\Channels;
 
 use App\Contracts\Notifications\ChannelDriverRegistry as ChannelDriverRegistryContract;
 use App\Contracts\Notifications\NotificationDriver;
-use App\Contracts\NullImplementations\NullNotificationDriver;
 use App\Domains\Notifications\Enums\ChannelType;
 use Illuminate\Contracts\Container\Container;
 
@@ -19,9 +18,11 @@ class ChannelDriverRegistry implements ChannelDriverRegistryContract
         return match ($channelType) {
             ChannelType::Email => $this->container->make(MailNotificationDriver::class),
             ChannelType::Web => $this->container->make(WebNotificationDriver::class),
-            // SPEC-13-CHANNEL-DEFERRED: SMS/Push/Whatsapp/Slack/Webhook drivers are
-            // backed by NullNotificationDriver until provider integrations land in PR #2.
-            default => $this->container->make(NullNotificationDriver::class),
+            ChannelType::Webhook => $this->container->make(WebhookNotificationDriver::class),
+            ChannelType::Slack => $this->container->make(SlackNotificationDriver::class),
+            ChannelType::Whatsapp => $this->container->make(WhatsappNotificationDriver::class),
+            ChannelType::Sms => $this->container->make(SmsNotificationDriver::class),
+            ChannelType::Push => $this->container->make(PushNotificationDriver::class),
         };
     }
 }

@@ -5,6 +5,7 @@ namespace App\Models;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use App\Concerns\HasTeams;
 use App\Domains\Access\Models\UserPreference;
+use App\Domains\Notifications\Models\UserPushToken;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -32,6 +33,14 @@ class User extends Authenticatable
     public function preferences(): HasMany
     {
         return $this->hasMany(UserPreference::class);
+    }
+
+    /**
+     * @return HasMany<UserPushToken, $this>
+     */
+    public function pushTokens(): HasMany
+    {
+        return $this->hasMany(UserPushToken::class);
     }
 
     /**

@@ -5,6 +5,7 @@ namespace App\Domains\Notifications\Jobs;
 use App\Contracts\Notifications\ChannelDriverRegistry;
 use App\Domains\Notifications\Actions\RecordDeliveryAttempt;
 use App\Domains\Notifications\Actions\RenderNotificationContent;
+use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Enums\DeliveryStatus;
 use App\Domains\Notifications\Events\NotificationDelivered;
 use App\Domains\Notifications\Events\NotificationFailed;
@@ -20,17 +21,45 @@ class RetryNotificationDeliveryJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 5;
-
     public int $timeout = 120;
-
-    /** @var array<int, int> */
-    public array $backoff = [30, 60, 120, 300, 600];
 
     public function __construct(
         public readonly int $deliveryId,
     ) {
         $this->onQueue('notifications');
+    }
+
+    /**
+     * Per-channel attempt count. Webhook caps at 3 retries (PR #2a policy);
+     * everyone else keeps the spec-13 default of 5.
+     */
+    public function tries(): int
+    {
+        return $this->isWebhook() ? 3 : 5;
+    }
+
+    /**
+     * Per-channel exponential backoff. Webhook follows the spec-13 PR #2 policy
+     * (30s / 2min / 10min, 3 attempts); other channels keep the default ramp.
+     *
+     * @return array<int, int>
+     */
+    public function backoff(): array
+    {
+        if ($this->isWebhook()) {
+            return [30, 120, 600];
+        }
+
+        return [30, 60, 120, 300, 600];
+    }
+
+    private function isWebhook(): bool
+    {
+        $delivery = NotificationDelivery::withoutGlobalScopes()
+            ->with('channel')
+            ->find($this->deliveryId);
+
+        return $delivery?->channel?->channel_type === ChannelType::Webhook;
     }
 
     public function handle(
@@ -58,7 +87,7 @@ class RetryNotificationDeliveryJob implements ShouldQueue
             $delivery->channel->channel_type,
         );
 
-        $result = $drivers->driverFor($delivery->channel->channel_type)->send($rendered);
+        $result = $drivers->driverFor($delivery->channel->channel_type)->send($rendered, $delivery->channel);
 
         $recordAttempt->execute($delivery, $result);
         $delivery->refresh();

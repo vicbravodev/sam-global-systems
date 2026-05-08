@@ -66,12 +66,42 @@ class RetryAndFallbackTest extends TestCase
         $this->assertSame(2, $delivery->attempt_number);
     }
 
-    public function test_retry_backoff_is_exponential(): void
+    public function test_retry_backoff_is_exponential_for_default_channels(): void
     {
-        $job = new RetryNotificationDeliveryJob(1);
+        $job = new RetryNotificationDeliveryJob(0);
 
-        $this->assertSame([30, 60, 120, 300, 600], $job->backoff);
-        $this->assertSame(5, $job->tries);
+        $this->assertSame([30, 60, 120, 300, 600], $job->backoff());
+        $this->assertSame(5, $job->tries());
+    }
+
+    public function test_retry_backoff_is_capped_for_webhook_channel(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+        $this->actingAs($user);
+
+        $channel = NotificationChannel::factory()->create([
+            'team_id' => $team->id,
+            'channel_type' => ChannelType::Webhook,
+            'provider' => 'webhook',
+        ]);
+
+        $notification = Notification::factory()->create(['team_id' => $team->id]);
+        $recipient = NotificationRecipient::factory()->create([
+            'notification_id' => $notification->id,
+            'team_id' => $team->id,
+        ]);
+        $delivery = NotificationDelivery::factory()->create([
+            'notification_id' => $notification->id,
+            'recipient_id' => $recipient->id,
+            'channel_id' => $channel->id,
+            'team_id' => $team->id,
+        ]);
+
+        $job = new RetryNotificationDeliveryJob($delivery->id);
+
+        $this->assertSame([30, 120, 600], $job->backoff());
+        $this->assertSame(3, $job->tries());
     }
 
     public function test_fallback_creates_delivery_on_alternate_channel(): void

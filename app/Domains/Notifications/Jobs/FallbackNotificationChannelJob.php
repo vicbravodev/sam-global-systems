@@ -94,7 +94,7 @@ class FallbackNotificationChannelJob implements ShouldQueue
             $fallbackChannel->channel_type,
         );
 
-        $result = $drivers->driverFor($fallbackChannel->channel_type)->send($rendered);
+        $result = $drivers->driverFor($fallbackChannel->channel_type)->send($rendered, $fallbackChannel);
 
         $recordAttempt->execute($delivery, $result);
         $delivery->refresh();

@@ -6,12 +6,13 @@ use App\Contracts\Notifications\NotificationDriver;
 use App\Domains\Notifications\Data\DeliveryResult;
 use App\Domains\Notifications\Data\RenderedNotification;
 use App\Domains\Notifications\Mail\GenericNotificationMail;
+use App\Domains\Notifications\Models\NotificationChannel;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 
 class MailNotificationDriver implements NotificationDriver
 {
-    public function send(RenderedNotification $notification): DeliveryResult
+    public function send(RenderedNotification $notification, NotificationChannel $channel): DeliveryResult
     {
         try {
             Mail::to($notification->address, $notification->recipientName)

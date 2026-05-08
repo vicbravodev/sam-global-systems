@@ -3,6 +3,7 @@
 namespace App\Domains\Notifications\Models;
 
 use App\Domains\Notifications\Enums\ChannelType;
+use App\Domains\Notifications\Support\EncryptedChannelConfigCast;
 use Database\Factories\Domains\Notifications\NotificationChannelFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -33,7 +34,7 @@ class NotificationChannel extends Model
     {
         return [
             'channel_type' => ChannelType::class,
-            'config_json' => 'array',
+            'config_json' => EncryptedChannelConfigCast::class,
             'is_active' => 'boolean',
             'supports_priority' => 'boolean',
             'supports_template' => 'boolean',
