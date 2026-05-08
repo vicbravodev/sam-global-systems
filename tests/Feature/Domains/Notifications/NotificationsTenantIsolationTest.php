@@ -2,7 +2,9 @@
 
 namespace Tests\Feature\Domains\Notifications;
 
+use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Models\Notification;
+use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Models\NotificationRecipient;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -56,5 +58,45 @@ class NotificationsTenantIsolationTest extends TestCase
             ->where('team_id', $teamBId)
             ->count();
         $this->assertSame(1, $teamBVisible);
+    }
+
+    public function test_webhook_channel_secrets_do_not_leak_across_tenants(): void
+    {
+        $userA = User::factory()->create();
+        $userB = User::factory()->create();
+
+        NotificationChannel::factory()->create([
+            'team_id' => $userA->currentTeam->id,
+            'channel_type' => ChannelType::Webhook,
+            'provider' => 'webhook',
+            'config_json' => [
+                'endpoint_url' => 'https://example.com/team-a',
+                'secret' => 'team-a-secret',
+            ],
+        ]);
+
+        NotificationChannel::factory()->create([
+            'team_id' => $userB->currentTeam->id,
+            'channel_type' => ChannelType::Webhook,
+            'provider' => 'webhook',
+            'config_json' => [
+                'endpoint_url' => 'https://example.com/team-b',
+                'secret' => 'team-b-secret',
+            ],
+        ]);
+
+        $this->actingAs($userA->fresh());
+
+        $visible = NotificationChannel::query()
+            ->where('team_id', $userA->currentTeam->id)
+            ->get();
+        $this->assertCount(1, $visible);
+        $this->assertSame('team-a-secret', $visible->first()->config_json['secret']);
+        $this->assertSame('https://example.com/team-a', $visible->first()->config_json['endpoint_url']);
+
+        $other = NotificationChannel::withoutGlobalScopes()
+            ->where('team_id', $userB->currentTeam->id)
+            ->first();
+        $this->assertSame('team-b-secret', $other->config_json['secret']);
     }
 }

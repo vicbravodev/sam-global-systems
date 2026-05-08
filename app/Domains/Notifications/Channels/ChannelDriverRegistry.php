@@ -19,8 +19,9 @@ class ChannelDriverRegistry implements ChannelDriverRegistryContract
         return match ($channelType) {
             ChannelType::Email => $this->container->make(MailNotificationDriver::class),
             ChannelType::Web => $this->container->make(WebNotificationDriver::class),
-            // SPEC-13-CHANNEL-DEFERRED: SMS/Push/Whatsapp/Slack/Webhook drivers are
-            // backed by NullNotificationDriver until provider integrations land in PR #2.
+            ChannelType::Webhook => $this->container->make(WebhookNotificationDriver::class),
+            // SPEC-13-CHANNEL-DEFERRED: SMS/Push/Whatsapp/Slack drivers ship in
+            // PR #2b/#2c. Fall back to NullNotificationDriver until then.
             default => $this->container->make(NullNotificationDriver::class),
         };
     }
