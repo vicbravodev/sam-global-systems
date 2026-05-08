@@ -443,6 +443,18 @@
     }
 }
 
+@keyframes sam-sla-pulse {
+    0%,
+    100% {
+        box-shadow: 0 0 0 0
+            color-mix(in oklch, var(--severity-critical) 30%, transparent);
+    }
+    50% {
+        box-shadow: 0 0 0 6px
+            color-mix(in oklch, var(--severity-critical) 0%, transparent);
+    }
+}
+
 @media (prefers-reduced-motion: reduce) {
     .sam-flash {
         animation: none;
