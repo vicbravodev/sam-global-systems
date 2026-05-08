@@ -5,9 +5,8 @@ namespace App\Contracts\Incidents;
 use Carbon\CarbonInterface;
 
 /**
- * Reads aggregate incident metrics for a tenant in a window. Until the
- * Incidents domain ships a DB-backed query implementation, this contract is
- * fulfilled by `NullIncidentMetricsQuery` returning zeros.
+ * Reads aggregate incident metrics for a tenant in a window. Backed by
+ * `App\Domains\Incidents\Queries\DbIncidentMetricsQuery`.
  */
 interface IncidentMetricsQuery
 {

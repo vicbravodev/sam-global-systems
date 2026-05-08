@@ -5,10 +5,9 @@ namespace App\Contracts\Decisions;
 use Carbon\CarbonInterface;
 
 /**
- * Reads aggregate decision outcomes for a tenant in a window. Until the
- * Decisions domain ships a DB-backed query implementation, this contract is
- * fulfilled by `NullDecisionMetricsQuery` returning zeros so Analytics can
- * compute AI-effectiveness metrics with safe defaults.
+ * Reads aggregate decision outcomes for a tenant in a window. Backed by
+ * `App\Domains\Decisions\Queries\DbDecisionMetricsQuery` so Analytics can
+ * compute AI-effectiveness metrics from the live data.
  */
 interface DecisionMetricsQuery
 {
