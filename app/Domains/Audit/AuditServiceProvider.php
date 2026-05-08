@@ -2,10 +2,12 @@
 
 namespace App\Domains\Audit;
 
+use App\Contracts\Audit\AuditLogQuery;
 use App\Domains\Audit\Contracts\AuditableEventClassifier;
 use App\Domains\Audit\Listeners\AuditAnyDomainEvent;
 use App\Domains\Audit\Models\AuditLog;
 use App\Domains\Audit\Policies\AuditLogPolicy;
+use App\Domains\Audit\Queries\DbAuditLogQuery;
 use App\Domains\Audit\Services\ConfigAuditableEventClassifier;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
@@ -21,6 +23,8 @@ class AuditServiceProvider extends ServiceProvider
 
             return new ConfigAuditableEventClassifier($events);
         });
+
+        $this->app->singletonIf(AuditLogQuery::class, DbAuditLogQuery::class);
     }
 
     public function boot(): void

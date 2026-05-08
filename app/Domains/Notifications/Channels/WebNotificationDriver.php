@@ -7,6 +7,7 @@ use App\Domains\Notifications\Actions\DispatchNotification;
 use App\Domains\Notifications\Data\DeliveryResult;
 use App\Domains\Notifications\Data\RenderedNotification;
 use App\Domains\Notifications\Events\NotificationPushedBroadcast;
+use App\Domains\Notifications\Models\NotificationChannel;
 use Illuminate\Support\Str;
 
 /**
@@ -17,7 +18,7 @@ use Illuminate\Support\Str;
  */
 class WebNotificationDriver implements NotificationDriver
 {
-    public function send(RenderedNotification $notification): DeliveryResult
+    public function send(RenderedNotification $notification, NotificationChannel $channel): DeliveryResult
     {
         return DeliveryResult::success(
             providerMessageId: 'web-'.(string) Str::uuid(),
