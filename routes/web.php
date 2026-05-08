@@ -15,6 +15,7 @@ Route::prefix('{current_team}')
     ->middleware(['auth', 'verified', EnsureTeamMembership::class])
     ->group(function () {
         Route::inertia('dashboard', 'dashboard')->name('dashboard');
+        Route::inertia('incidents', 'incidents/index')->name('incidents.index');
 
         Route::get('settings/roles', [RoleController::class, 'index'])->name('access.roles.index');
         Route::post('settings/roles', [RoleController::class, 'store'])->name('access.roles.store');
