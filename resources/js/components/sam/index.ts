@@ -5,3 +5,6 @@ export { ConfidenceBar } from './confidence-bar';
 export { SlaCountdown } from './sla-countdown';
 export { RelativeTime } from './relative-time';
 export { RealtimeStatus, type RealtimeState } from './realtime-status';
+export { OpsSidebar } from './ops-sidebar';
+export { OpsTopbar } from './ops-topbar';
+export { CommandPalette } from './command-palette';
