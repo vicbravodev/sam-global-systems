@@ -11,13 +11,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * Bridges Laravel AI SDK `agent_conversations` rows to a tenant + user so usage
- * metering and multimodal flows can resolve `team_id` from a conversation id.
+ * Bridges Laravel AI SDK `agent_conversations` rows to a tenant + user so the
+ * `AIUsageListener` can resolve `team_id` from a conversation id when it
+ * receives `Laravel\Ai\Events\AgentPrompted` / `AgentStreamed` events.
  *
- * SPEC-09-SDK-DEFERRED: until `laravel/ai` is installed (PR #2b), the
- * `agent_conversation_id` column is unconstrained. The FK to
- * `agent_conversations.id` is added in a follow-up migration once the SDK
- * publishes its own tables.
+ * `agent_conversation_id` is a CHAR(36) UUID matching the SDK's primary key.
  */
 class AIConversationLink extends Model
 {
@@ -66,7 +64,7 @@ class AIConversationLink extends Model
     protected function casts(): array
     {
         return [
-            'agent_conversation_id' => 'integer',
+            'agent_conversation_id' => 'string',
             'metadata_json' => 'array',
         ];
     }

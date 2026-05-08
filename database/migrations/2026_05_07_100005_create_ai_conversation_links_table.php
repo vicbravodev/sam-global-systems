@@ -11,12 +11,14 @@ return new class extends Migration
         Schema::create('ai_conversation_links', function (Blueprint $table) {
             $table->id();
             $table->foreignId('team_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
-            // SPEC-09-SDK-DEFERRED: FK to `agent_conversations.id` is added in
-            // PR #2b once `laravel/ai` SDK ships its own migrations. Until then
-            // the column stays unconstrained so `EvaluateEventWithAI` and
-            // multimodal flows can persist a stable correlation id.
-            $table->unsignedBigInteger('agent_conversation_id');
+            // Nullable because evaluations triggered by background jobs do not
+            // run in a user request context. When a user does drive an
+            // evaluation (e.g. operator console), we capture the link here.
+            $table->foreignId('user_id')->nullable()->constrained()->nullOnDelete();
+            // Mirrors `agent_conversations.id` (UUID/CHAR(36)) from the
+            // Laravel AI SDK. The FK constraint is added in the follow-up
+            // migration after the SDK's own table is created.
+            $table->string('agent_conversation_id', 36);
             $table->foreignId('normalized_event_id')->nullable()->constrained('normalized_events')->nullOnDelete();
             $table->foreignId('evaluation_id')->nullable()->constrained('ai_event_evaluations')->nullOnDelete();
             $table->string('purpose')->nullable();
