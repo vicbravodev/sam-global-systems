@@ -58,7 +58,13 @@ export interface DashboardMockData {
 
 export type InboxLayout = 'table' | 'grouped' | 'stream';
 export type InboxDensity = 'compact' | 'comfortable' | 'relaxed';
-export type InboxTab = 'open' | 'mine' | 'unassigned' | 'sla' | 'all' | 'discarded';
+export type InboxTab =
+    | 'open'
+    | 'mine'
+    | 'unassigned'
+    | 'sla'
+    | 'all'
+    | 'discarded';
 
 // ---- Nav badges (sidebar) ----
 
