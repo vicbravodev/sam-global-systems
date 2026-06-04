@@ -141,6 +141,7 @@ Route::prefix('{current_team}')
         Route::post('incidents/{incident}/close', [IncidentResolutionController::class, 'close'])->name('api.incidents.close');
         Route::post('incidents/{incident}/reclassify', [IncidentController::class, 'reclassify'])->name('api.incidents.reclassify');
         Route::post('incidents/{incident}/reopen', [IncidentController::class, 'reopen'])->name('api.incidents.reopen');
+        Route::post('incidents/{incident}/escalate', [IncidentController::class, 'escalate'])->name('api.incidents.escalate');
         Route::post('incidents/{incident}/link-event', [IncidentEventLinkController::class, 'store'])->name('api.incidents.link-event');
 
         Route::get('notifications', [NotificationController::class, 'index'])->name('api.notifications.index');
