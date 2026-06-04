@@ -61,6 +61,8 @@ class NormalizeRawEvent
             ],
         );
 
+        $rawEvent->markAsProcessed();
+
         EventUnmapped::dispatch($rawEvent, $externalEventType, $providerId ?? 0);
 
         return $normalizedEvent;

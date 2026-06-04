@@ -8,7 +8,7 @@ use App\Contracts\NullImplementations\NullAssetSyncHandler;
 use App\Contracts\NullImplementations\NullDriverSyncHandler;
 use App\Contracts\NullImplementations\NullRawEventIngestion;
 use App\Contracts\RawEventIngestion;
-use App\Domains\Integrations\Contracts\NullProviderAdapter;
+use App\Domains\Integrations\Adapters\ProviderAdapterManager;
 use App\Domains\Integrations\Contracts\ProviderAdapter;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Domains\Integrations\Policies\TenantIntegrationPolicy;
@@ -22,7 +22,7 @@ class IntegrationsServiceProvider extends ServiceProvider
         $this->app->singletonIf(RawEventIngestion::class, NullRawEventIngestion::class);
         $this->app->singletonIf(AssetSyncHandler::class, NullAssetSyncHandler::class);
         $this->app->singletonIf(DriverSyncHandler::class, NullDriverSyncHandler::class);
-        $this->app->singletonIf(ProviderAdapter::class, NullProviderAdapter::class);
+        $this->app->singletonIf(ProviderAdapter::class, ProviderAdapterManager::class);
     }
 
     public function boot(): void
