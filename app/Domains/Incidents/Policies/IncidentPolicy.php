@@ -95,6 +95,26 @@ class IncidentPolicy
             && $this->authorizeAction->execute($user, 'incidents.close', $team);
     }
 
+    public function reopen(User $user, Incident $incident): bool
+    {
+        $team = currentTeam();
+
+        return $team !== null
+            && $incident->team_id === $team->id
+            && $incident->isTerminal()
+            && $this->authorizeAction->execute($user, 'incidents.manage', $team);
+    }
+
+    public function escalate(User $user, Incident $incident): bool
+    {
+        $team = currentTeam();
+
+        return $team !== null
+            && $incident->team_id === $team->id
+            && ! $incident->isTerminal()
+            && $this->authorizeAction->execute($user, 'incidents.manage', $team);
+    }
+
     public function reclassify(User $user, Incident $incident): bool
     {
         $team = currentTeam();

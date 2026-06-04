@@ -9,18 +9,30 @@ import {
     Search,
     X,
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
 import { InboxGrouped } from '@/components/sam/inbox/inbox-grouped';
 import { InboxStream } from '@/components/sam/inbox/inbox-stream';
 import { InboxTable } from '@/components/sam/inbox/inbox-table';
 import { IncidentDetailPanel } from '@/components/sam/incident-detail';
 import { Button } from '@/components/ui/button';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuRadioGroup,
+    DropdownMenuRadioItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { useInitials } from '@/hooks/use-initials';
 import { TEAM_BROADCAST_EVENT_NAME } from '@/hooks/use-team-broadcasts';
 import type { TeamBroadcastDetail } from '@/hooks/use-team-broadcasts';
+import { postJson, readErrorMessage } from '@/lib/sam-fetch';
 import { cn } from '@/lib/utils';
 import type {
     InboxDensity,
+    InboxFilterOptions,
+    InboxFilters,
     InboxLayout,
     InboxTab,
     IncidentDetail,
@@ -29,19 +41,61 @@ import type {
 
 // ---- BulkBar ----
 
-function BulkBar({ count, onClear }: { count: number; onClear: () => void }) {
+interface BulkBarProps {
+    count: number;
+    pending: string | null;
+    onAssign: () => void;
+    onEscalate: () => void;
+    onDiscard: () => void;
+    onClear: () => void;
+}
+
+function BulkBar({
+    count,
+    pending,
+    onAssign,
+    onEscalate,
+    onDiscard,
+    onClear,
+}: BulkBarProps) {
+    const busy = pending !== null;
+
     return (
         <div className="flex shrink-0 items-center gap-2.5 border-b border-border bg-primary/18 px-5 py-2">
             <span className="text-[12px] font-semibold text-primary">
                 {count} seleccionados
             </span>
-            <Button size="sm" variant="outline">
+            <Button
+                size="sm"
+                variant="outline"
+                onClick={onAssign}
+                disabled={busy}
+            >
+                {pending === 'assign' ? (
+                    <Loader2 size={12} className="animate-spin" />
+                ) : null}
                 Asignarme
             </Button>
-            <Button size="sm" variant="outline">
+            <Button
+                size="sm"
+                variant="outline"
+                onClick={onEscalate}
+                disabled={busy}
+            >
+                {pending === 'escalate' ? (
+                    <Loader2 size={12} className="animate-spin" />
+                ) : null}
                 Escalar
             </Button>
-            <Button size="sm" variant="outline">
+            <Button
+                size="sm"
+                variant="outline"
+                onClick={onDiscard}
+                disabled={busy}
+            >
+                {pending === 'discard' ? (
+                    <Loader2 size={12} className="animate-spin" />
+                ) : null}
                 Descartar
             </Button>
             <Button
@@ -49,6 +103,7 @@ function BulkBar({ count, onClear }: { count: number; onClear: () => void }) {
                 variant="ghost"
                 onClick={onClear}
                 className="ml-auto"
+                disabled={busy}
             >
                 Deseleccionar
             </Button>
@@ -65,6 +120,8 @@ interface PageHeadProps {
     setLayout: (l: InboxLayout) => void;
     onRefresh: () => void;
     refreshing: boolean;
+    onAssignOldestCritical: () => void;
+    assigningOldest: boolean;
 }
 
 function PageHead({
@@ -74,6 +131,8 @@ function PageHead({
     setLayout,
     onRefresh,
     refreshing,
+    onAssignOldestCritical,
+    assigningOldest,
 }: PageHeadProps) {
     const layouts: {
         value: InboxLayout;
@@ -158,7 +217,15 @@ function PageHead({
                     Refrescar
                 </Button>
 
-                <Button variant="outline" size="sm">
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={onAssignOldestCritical}
+                    disabled={assigningOldest}
+                >
+                    {assigningOldest ? (
+                        <Loader2 size={13} className="animate-spin" />
+                    ) : null}
                     Asignarme crítico más viejo
                 </Button>
             </div>
@@ -248,35 +315,160 @@ function TabBar({
 
 // ---- FilterBar ----
 
-function FilterBar() {
+interface FilterDropdownProps {
+    label: string;
+    value: string | null;
+    options: { value: string; label: string }[];
+    onChange: (value: string | null) => void;
+}
+
+function FilterDropdown({
+    label,
+    value,
+    options,
+    onChange,
+}: FilterDropdownProps) {
+    const active = value !== null;
+    const activeLabel = options.find((o) => o.value === value)?.label;
+
+    return (
+        <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+                <button
+                    type="button"
+                    className={cn(
+                        'flex items-center gap-1 rounded-sm border px-2.5 py-1.5 text-[11px] transition-colors',
+                        active
+                            ? 'border-primary/40 bg-primary/10 text-primary'
+                            : 'border-border bg-surface-1 text-fg-2 hover:border-border-strong',
+                    )}
+                >
+                    <Filter size={11} />
+                    {active && activeLabel ? `${label}: ${activeLabel}` : label}
+                </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+                align="start"
+                className="max-h-72 overflow-y-auto"
+            >
+                <DropdownMenuRadioGroup
+                    value={value ?? ''}
+                    onValueChange={(v) => onChange(v === '' ? null : v)}
+                >
+                    <DropdownMenuRadioItem value="">
+                        Todos
+                    </DropdownMenuRadioItem>
+                    {options.length > 0 && <DropdownMenuSeparator />}
+                    {options.map((o) => (
+                        <DropdownMenuRadioItem key={o.value} value={o.value}>
+                            {o.label}
+                        </DropdownMenuRadioItem>
+                    ))}
+                </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+        </DropdownMenu>
+    );
+}
+
+interface FilterBarProps {
+    filters: InboxFilters;
+    options: InboxFilterOptions;
+    onApply: (next: InboxFilters) => void;
+}
+
+function FilterBar({ filters, options, onApply }: FilterBarProps) {
+    const [search, setSearch] = useState(filters.q ?? '');
+
+    // Keep the input in sync when filters are reset/changed externally.
+    useEffect(() => {
+        setSearch(filters.q ?? '');
+    }, [filters.q]);
+
+    // Debounce the free-text search before firing a reload.
+    useEffect(() => {
+        const current = filters.q ?? '';
+        const next = search.trim();
+
+        if (next === current) {
+            return;
+        }
+
+        const timer = setTimeout(() => {
+            onApply({ ...filters, q: next === '' ? null : next });
+        }, 350);
+
+        return () => clearTimeout(timer);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [search]);
+
+    const providerOptions = options.providers.map((p) => ({
+        value: p,
+        label: p,
+    }));
+
+    const hasActive =
+        filters.q !== null ||
+        filters.severity !== null ||
+        filters.status !== null ||
+        filters.provider !== null ||
+        filters.shift !== null;
+
     return (
         <div className="flex shrink-0 items-center gap-2 border-b border-border bg-background px-5 py-2">
             <div className="mr-1 flex items-center gap-1.5 rounded-md border border-border bg-surface-1 px-2.5 py-1.5 text-[12px] text-fg-3">
                 <Search size={12} />
                 <input
                     type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
                     placeholder="Buscar incidente…"
                     className="w-40 border-none bg-transparent text-[12px] text-fg-1 outline-none placeholder:text-fg-3"
                 />
             </div>
 
-            {['Severidad', 'Estado', 'Proveedor', 'Turno'].map((f) => (
-                <button
-                    key={f}
-                    type="button"
-                    className="flex items-center gap-1 rounded-sm border border-border bg-surface-1 px-2.5 py-1.5 text-[11px] text-fg-2 transition-colors hover:border-border-strong"
-                >
-                    <Filter size={11} />
-                    {f}
-                </button>
-            ))}
+            <FilterDropdown
+                label="Severidad"
+                value={filters.severity}
+                options={options.severities}
+                onChange={(v) => onApply({ ...filters, severity: v })}
+            />
+            <FilterDropdown
+                label="Estado"
+                value={filters.status}
+                options={options.statuses}
+                onChange={(v) => onApply({ ...filters, status: v })}
+            />
+            <FilterDropdown
+                label="Proveedor"
+                value={filters.provider}
+                options={providerOptions}
+                onChange={(v) => onApply({ ...filters, provider: v })}
+            />
+            <FilterDropdown
+                label="Turno"
+                value={filters.shift}
+                options={options.shifts}
+                onChange={(v) => onApply({ ...filters, shift: v })}
+            />
 
-            <button
-                type="button"
-                className="flex items-center gap-1 rounded-sm border border-dashed border-border px-2.5 py-1.5 text-[11px] text-fg-3 transition-colors hover:border-border-strong"
-            >
-                + Agregar filtro
-            </button>
+            {hasActive && (
+                <button
+                    type="button"
+                    onClick={() =>
+                        onApply({
+                            q: null,
+                            severity: null,
+                            status: null,
+                            provider: null,
+                            shift: null,
+                        })
+                    }
+                    className="flex items-center gap-1 rounded-sm border border-dashed border-border px-2.5 py-1.5 text-[11px] text-fg-3 transition-colors hover:border-border-strong"
+                >
+                    <X size={11} />
+                    Limpiar
+                </button>
+            )}
         </div>
     );
 }
@@ -362,16 +554,39 @@ function DetailPlaceholder({
 
 interface IncidentsIndexProps {
     incidents: MockIncident[];
+    filters: InboxFilters;
+    filterOptions: InboxFilterOptions;
 }
+
+const EMPTY_FILTERS: InboxFilters = {
+    q: null,
+    severity: null,
+    status: null,
+    provider: null,
+    shift: null,
+};
+
+const EMPTY_OPTIONS: InboxFilterOptions = {
+    severities: [],
+    statuses: [],
+    providers: [],
+    shifts: [],
+};
 
 export default function IncidentsIndex() {
     const page = usePage();
-    const pageIncidents = (page.props as unknown as IncidentsIndexProps)
-        .incidents;
-    const incidents = useMemo(() => pageIncidents ?? [], [pageIncidents]);
+    const pageProps = page.props as unknown as IncidentsIndexProps;
+    const incidents = useMemo(
+        () => pageProps.incidents ?? [],
+        [pageProps.incidents],
+    );
+    const serverFilters = pageProps.filters ?? EMPTY_FILTERS;
+    const filterOptions = pageProps.filterOptions ?? EMPTY_OPTIONS;
     const teamSlug = page.props.currentTeam?.slug ?? null;
     const getInitials = useInitials();
     const currentUserName = page.props.auth?.user?.name ?? null;
+    const currentUserId =
+        (page.props.auth?.user?.id as number | undefined) ?? null;
     const myInitials = currentUserName ? getInitials(currentUserName) : null;
 
     const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -384,6 +599,22 @@ export default function IncidentsIndex() {
     >({});
     const [failedIds, setFailedIds] = useState<Set<string>>(new Set());
     const [refreshing, setRefreshing] = useState(false);
+    const [filters, setFilters] = useState<InboxFilters>(serverFilters);
+    const [bulkPending, setBulkPending] = useState<string | null>(null);
+    const [assigningOldest, setAssigningOldest] = useState(false);
+
+    // Re-sync local filter state if the server echoes a different set
+    // (e.g. after a browser back/forward navigation).
+    useEffect(() => {
+        setFilters(serverFilters);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [
+        serverFilters.q,
+        serverFilters.severity,
+        serverFilters.status,
+        serverFilters.provider,
+        serverFilters.shift,
+    ]);
 
     const openIncidents = useMemo(
         () =>
@@ -496,6 +727,41 @@ export default function IncidentsIndex() {
         });
     };
 
+    const applyFilters = useCallback((next: InboxFilters) => {
+        setFilters(next);
+        router.reload({
+            only: ['incidents', 'filters'],
+            data: {
+                q: next.q ?? undefined,
+                severity: next.severity ?? undefined,
+                status: next.status ?? undefined,
+                provider: next.provider ?? undefined,
+                shift: next.shift ?? undefined,
+            },
+        });
+    }, []);
+
+    // Invalidate the cached detail for the open incident and refresh the list
+    // after a panel action mutates server state.
+    const handlePanelMutated = useCallback(() => {
+        router.reload({ only: ['incidents'] });
+
+        if (selectedId !== null) {
+            setDetailCache((prev) => {
+                const next = { ...prev };
+                delete next[selectedId];
+
+                return next;
+            });
+            setFailedIds((prev) => {
+                const next = new Set(prev);
+                next.delete(selectedId);
+
+                return next;
+            });
+        }
+    }, [selectedId]);
+
     // Live updates: a freshly created incident refreshes the inbox list.
     useEffect(() => {
         const handler = (event: Event) => {
@@ -538,6 +804,138 @@ export default function IncidentsIndex() {
         setSelectedId((prev) => (prev === id ? null : id));
     };
 
+    // Run a bulk action over the current selection, then refresh + clear.
+    const runBulk = useCallback(
+        async (
+            key: string,
+            buildBody: (incident: MockIncident) => Record<string, unknown>,
+            path: string,
+            verb: string,
+        ) => {
+            if (teamSlug === null) {
+                toast.error('No hay equipo activo.');
+
+                return;
+            }
+
+            const targets = incidents.filter((i) => selectedSet.has(i.id));
+
+            if (targets.length === 0) {
+                return;
+            }
+
+            setBulkPending(key);
+
+            const results = await Promise.allSettled(
+                targets.map((incident) =>
+                    postJson(
+                        `/${teamSlug}/incidents/${incident.incidentId}/${path}`,
+                        buildBody(incident),
+                    ),
+                ),
+            );
+
+            const ok = results.filter(
+                (r) => r.status === 'fulfilled' && r.value.ok,
+            ).length;
+            const failed = targets.length - ok;
+
+            setBulkPending(null);
+            setSelectedSet(new Set());
+
+            if (ok > 0) {
+                toast.success(`${ok} ${verb}.`);
+            }
+
+            if (failed > 0) {
+                toast.error(`${failed} no se pudieron procesar.`);
+            }
+
+            router.reload({ only: ['incidents'] });
+        },
+        [incidents, selectedSet, teamSlug],
+    );
+
+    const bulkAssign = () => {
+        if (currentUserId === null) {
+            toast.error('No se pudo identificar tu usuario.');
+
+            return;
+        }
+
+        void runBulk(
+            'assign',
+            () => ({ assigned_to_type: 'user', assigned_to_id: currentUserId }),
+            'assign',
+            'asignados',
+        );
+    };
+
+    const bulkEscalate = () =>
+        void runBulk('escalate', () => ({}), 'escalate', 'escalados');
+
+    const bulkDiscard = () =>
+        void runBulk(
+            'discard',
+            () => ({
+                resolution_code: 'false_positive',
+                summary: 'Descartado por el operador.',
+            }),
+            'resolve',
+            'descartados',
+        );
+
+    const assignOldestCritical = async () => {
+        if (teamSlug === null) {
+            toast.error('No hay equipo activo.');
+
+            return;
+        }
+
+        if (currentUserId === null) {
+            toast.error('No se pudo identificar tu usuario.');
+
+            return;
+        }
+
+        const candidates = openIncidents.filter(
+            (i) => i.severity === 'critical',
+        );
+
+        if (candidates.length === 0) {
+            toast('No hay incidentes críticos abiertos.');
+
+            return;
+        }
+
+        const oldest = candidates.reduce((a, b) =>
+            a.ageMin >= b.ageMin ? a : b,
+        );
+
+        setAssigningOldest(true);
+
+        try {
+            const response = await postJson(
+                `/${teamSlug}/incidents/${oldest.incidentId}/assign`,
+                { assigned_to_type: 'user', assigned_to_id: currentUserId },
+            );
+
+            if (response.ok) {
+                toast.success(`Te asignaste ${oldest.id}.`);
+                router.reload({ only: ['incidents'] });
+            } else if (response.status === 403) {
+                toast.error('No tienes permisos para asignar.');
+            } else {
+                const message = await readErrorMessage(response);
+                toast.error(message ?? 'No se pudo asignar el incidente.');
+            }
+        } catch {
+            toast.error('Error de red. Vuelve a intentarlo.');
+        } finally {
+            setAssigningOldest(false);
+        }
+    };
+
     const hasIncidents = incidents.length > 0;
 
     return (
@@ -556,6 +954,10 @@ export default function IncidentsIndex() {
                     {selectedSet.size > 0 && (
                         <BulkBar
                             count={selectedSet.size}
+                            pending={bulkPending}
+                            onAssign={bulkAssign}
+                            onEscalate={bulkEscalate}
+                            onDiscard={bulkDiscard}
                             onClear={() => setSelectedSet(new Set())}
                         />
                     )}
@@ -567,6 +969,10 @@ export default function IncidentsIndex() {
                         setLayout={setLayout}
                         onRefresh={refresh}
                         refreshing={refreshing}
+                        onAssignOldestCritical={() =>
+                            void assignOldestCritical()
+                        }
+                        assigningOldest={assigningOldest}
                     />
 
                     <TabBar
@@ -577,7 +983,11 @@ export default function IncidentsIndex() {
                         openIncidents={openIncidents}
                     />
 
-                    <FilterBar />
+                    <FilterBar
+                        filters={filters}
+                        options={filterOptions}
+                        onApply={applyFilters}
+                    />
 
                     {!hasIncidents ? (
                         <InboxEmptyState />
@@ -627,6 +1037,7 @@ export default function IncidentsIndex() {
                         <IncidentDetailPanel
                             incident={selectedDetail}
                             onClose={() => setSelectedId(null)}
+                            onMutated={handlePanelMutated}
                         />
                     ) : (
                         <DetailPlaceholder

@@ -1,7 +1,25 @@
-import { RefreshCw, TriangleAlert, X } from 'lucide-react';
+import { Loader2, RefreshCw, TriangleAlert, X } from 'lucide-react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import {
+    Dialog,
+    DialogContent,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { useInitials } from '@/hooks/use-initials';
 import { cn } from '@/lib/utils';
 import type { IncidentDetail } from '@/types/sam';
+import { useIncidentActions } from './incident-actions-context';
 
 // ---- UserAvatar ----
 
@@ -34,6 +52,73 @@ function UserAvatar({
         >
             {isEmpty ? '?' : initials}
         </span>
+    );
+}
+
+// ---- AssigneeMenu (member picker) ----
+
+function AssigneeMenu({
+    label,
+    variant,
+}: {
+    label: string;
+    variant: 'link' | 'button';
+}) {
+    const { members, currentUserId, assignTo, assignToMe, pending } =
+        useIncidentActions();
+    const getInitials = useInitials();
+    const busy = pending === 'assign';
+
+    const trigger =
+        variant === 'button' ? (
+            <Button size="sm" variant="default" disabled={busy}>
+                {busy ? <Loader2 size={12} className="animate-spin" /> : null}
+                {label}
+            </Button>
+        ) : (
+            <button
+                type="button"
+                disabled={busy}
+                className="inline-flex cursor-pointer items-center gap-1 border-none bg-transparent text-[12px] font-medium whitespace-nowrap text-fg-2 hover:text-fg-1 disabled:opacity-50"
+            >
+                {busy ? <Loader2 size={11} className="animate-spin" /> : null}
+                {label}
+            </button>
+        );
+
+    return (
+        <DropdownMenu>
+            <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
+            <DropdownMenuContent
+                align="end"
+                className="max-h-72 overflow-y-auto"
+            >
+                <DropdownMenuItem onSelect={() => void assignToMe()}>
+                    Asignarme a mí
+                </DropdownMenuItem>
+                {members.length > 0 && <DropdownMenuSeparator />}
+                {members.length > 0 && (
+                    <DropdownMenuLabel>Asignar a…</DropdownMenuLabel>
+                )}
+                {members.map((member) => (
+                    <DropdownMenuItem
+                        key={member.id}
+                        onSelect={() => void assignTo(member.id)}
+                    >
+                        <UserAvatar
+                            initials={getInitials(member.name)}
+                            size={20}
+                        />
+                        <span className="truncate">{member.name}</span>
+                        {member.id === currentUserId && (
+                            <span className="ml-auto text-[10px] text-fg-3">
+                                tú
+                            </span>
+                        )}
+                    </DropdownMenuItem>
+                ))}
+            </DropdownMenuContent>
+        </DropdownMenu>
     );
 }
 
@@ -78,6 +163,101 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
     );
 }
 
+// ---- ResolveDialog ----
+
+const RESOLUTION_OPTIONS: { value: string; label: string }[] = [
+    { value: 'handled_successfully', label: 'Resuelto correctamente' },
+    { value: 'operator_confirmed_safe', label: 'Operador confirmó seguro' },
+    { value: 'escalated_externally', label: 'Escalado externamente' },
+    { value: 'duplicate_incident', label: 'Incidente duplicado' },
+    { value: 'unresolved_closed', label: 'Cerrado sin resolver' },
+];
+
+function ResolveDialog({
+    open,
+    onOpenChange,
+}: {
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+}) {
+    const { resolve, pending } = useIncidentActions();
+    const [code, setCode] = useState('handled_successfully');
+    const [summary, setSummary] = useState('');
+    const busy = pending === 'resolve';
+
+    const submit = async () => {
+        if (summary.trim() === '') {
+            return;
+        }
+
+        const ok = await resolve({
+            resolutionCode: code,
+            summary: summary.trim(),
+        });
+
+        if (ok) {
+            onOpenChange(false);
+            setSummary('');
+            setCode('handled_successfully');
+        }
+    };
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Resolver incidente</DialogTitle>
+                </DialogHeader>
+                <div className="flex flex-col gap-3">
+                    <label className="flex flex-col gap-1 text-[12px] text-fg-2">
+                        Código de resolución
+                        <select
+                            value={code}
+                            onChange={(e) => setCode(e.target.value)}
+                            className="rounded-md border border-border bg-surface-1 px-2.5 py-1.5 text-[13px] text-fg-1 outline-none"
+                        >
+                            {RESOLUTION_OPTIONS.map((o) => (
+                                <option key={o.value} value={o.value}>
+                                    {o.label}
+                                </option>
+                            ))}
+                        </select>
+                    </label>
+                    <label className="flex flex-col gap-1 text-[12px] text-fg-2">
+                        Resumen
+                        <textarea
+                            value={summary}
+                            onChange={(e) => setSummary(e.target.value)}
+                            rows={3}
+                            placeholder="Describe cómo se resolvió…"
+                            className="resize-none rounded-md border border-border bg-surface-1 px-2.5 py-1.5 text-[13px] text-fg-1 outline-none placeholder:text-fg-3"
+                        />
+                    </label>
+                </div>
+                <DialogFooter>
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onOpenChange(false)}
+                    >
+                        Cancelar
+                    </Button>
+                    <Button
+                        size="sm"
+                        onClick={() => void submit()}
+                        disabled={busy || summary.trim() === ''}
+                    >
+                        {busy ? (
+                            <Loader2 size={13} className="animate-spin" />
+                        ) : null}
+                        Resolver
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 // ---- DetailSide ----
 
 interface DetailSideProps {
@@ -86,6 +266,12 @@ interface DetailSideProps {
 
 export function DetailSide({ incident }: DetailSideProps) {
     const ctx = incident.operationalContext;
+    const { reopen, escalate, discard, pending } = useIncidentActions();
+    const [resolveOpen, setResolveOpen] = useState(false);
+
+    const isTerminal = ['resolved', 'closed', 'discarded'].includes(
+        incident.status,
+    );
 
     return (
         <div className="flex flex-col gap-5">
@@ -110,15 +296,10 @@ export function DetailSide({ incident }: DetailSideProps) {
                                     {incident.assignee.name}
                                 </div>
                                 <div className="text-[11px] text-fg-3">
-                                    Supervisor · asignado por regla
+                                    Responsable actual
                                 </div>
                             </div>
-                            <button
-                                type="button"
-                                className="cursor-pointer border-none bg-transparent text-[12px] font-medium whitespace-nowrap text-fg-2 hover:text-fg-1"
-                            >
-                                Reasignar
-                            </button>
+                            <AssigneeMenu label="Reasignar" variant="link" />
                         </>
                     ) : (
                         <>
@@ -128,9 +309,7 @@ export function DetailSide({ incident }: DetailSideProps) {
                                     Sin asignar
                                 </div>
                             </div>
-                            <Button size="sm" variant="default">
-                                Asignarme
-                            </Button>
+                            <AssigneeMenu label="Asignarme" variant="button" />
                         </>
                     )}
                 </div>
@@ -139,30 +318,65 @@ export function DetailSide({ incident }: DetailSideProps) {
             {/* Actions */}
             <section>
                 <SectionTitle>Acciones</SectionTitle>
-                <Button
-                    variant="default"
-                    className="mb-2 w-full justify-center"
-                >
-                    Resolver incidente
-                </Button>
+                {isTerminal ? (
+                    <Button
+                        variant="default"
+                        className="mb-2 w-full justify-center"
+                        onClick={() => void reopen()}
+                        disabled={pending === 'reopen'}
+                    >
+                        {pending === 'reopen' ? (
+                            <Loader2 size={13} className="animate-spin" />
+                        ) : (
+                            <RefreshCw size={13} />
+                        )}
+                        Reabrir incidente
+                    </Button>
+                ) : (
+                    <Button
+                        variant="default"
+                        className="mb-2 w-full justify-center"
+                        onClick={() => setResolveOpen(true)}
+                        disabled={pending === 'resolve'}
+                    >
+                        {pending === 'resolve' ? (
+                            <Loader2 size={13} className="animate-spin" />
+                        ) : null}
+                        Resolver incidente
+                    </Button>
+                )}
                 <div className="mt-1 flex flex-wrap gap-x-3.5 gap-y-1">
                     <button
                         type="button"
-                        className="inline-flex cursor-pointer items-center gap-1.5 border-none bg-transparent py-1 text-[12px] font-medium text-fg-2 hover:text-fg-1"
+                        onClick={() => void escalate()}
+                        disabled={isTerminal || pending === 'escalate'}
+                        className="inline-flex cursor-pointer items-center gap-1.5 border-none bg-transparent py-1 text-[12px] font-medium text-fg-2 hover:text-fg-1 disabled:cursor-not-allowed disabled:opacity-40"
                     >
-                        <TriangleAlert size={12} />
+                        {pending === 'escalate' ? (
+                            <Loader2 size={12} className="animate-spin" />
+                        ) : (
+                            <TriangleAlert size={12} />
+                        )}
                         Escalar
                     </button>
                     <button
                         type="button"
-                        className="inline-flex cursor-pointer items-center gap-1.5 border-none bg-transparent py-1 text-[12px] font-medium text-fg-2 hover:text-fg-1"
+                        onClick={() => void discard()}
+                        disabled={isTerminal || pending === 'discard'}
+                        className="inline-flex cursor-pointer items-center gap-1.5 border-none bg-transparent py-1 text-[12px] font-medium text-fg-2 hover:text-fg-1 disabled:cursor-not-allowed disabled:opacity-40"
                     >
-                        <X size={12} />
+                        {pending === 'discard' ? (
+                            <Loader2 size={12} className="animate-spin" />
+                        ) : (
+                            <X size={12} />
+                        )}
                         Descartar
                     </button>
                     <button
                         type="button"
-                        className="inline-flex cursor-pointer items-center gap-1.5 border-none bg-transparent py-1 text-[12px] font-medium text-fg-2 hover:text-fg-1"
+                        onClick={() => void reopen()}
+                        disabled={!isTerminal || pending === 'reopen'}
+                        className="inline-flex cursor-pointer items-center gap-1.5 border-none bg-transparent py-1 text-[12px] font-medium text-fg-2 hover:text-fg-1 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                         <RefreshCw size={12} />
                         Reabrir
@@ -201,6 +415,8 @@ export function DetailSide({ incident }: DetailSideProps) {
                     ))}
                 </div>
             </section>
+
+            <ResolveDialog open={resolveOpen} onOpenChange={setResolveOpen} />
         </div>
     );
 }

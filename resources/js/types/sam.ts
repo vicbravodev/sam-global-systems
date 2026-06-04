@@ -67,6 +67,44 @@ export type InboxTab =
     | 'all'
     | 'discarded';
 
+// ---- Inbox filters & action option lists (server-provided) ----
+
+export interface InboxFilters {
+    q: string | null;
+    severity: string | null;
+    status: string | null;
+    provider: string | null;
+    shift: string | null;
+}
+
+export interface InboxFilterOption {
+    value: string;
+    label: string;
+}
+
+export interface InboxFilterOptions {
+    severities: InboxFilterOption[];
+    statuses: InboxFilterOption[];
+    providers: string[];
+    shifts: InboxFilterOption[];
+}
+
+export interface InboxMember {
+    id: number;
+    name: string;
+}
+
+export interface ReclassifyOption {
+    id: number;
+    code: string;
+    name: string;
+}
+
+export interface ReclassifyOptions {
+    types: ReclassifyOption[];
+    priorities: ReclassifyOption[];
+}
+
 // ---- Nav badges (sidebar) ----
 
 export interface NavBadges {
@@ -125,6 +163,7 @@ export interface IncidentEvidenceItem {
 // ---- Full incident detail (extends MockIncident) ----
 
 export interface IncidentDetail extends MockIncident {
+    aiEvaluationId: number | null;
     model: string;
     latencyMs: number;
     timeline: IncidentTimelineEntry[];

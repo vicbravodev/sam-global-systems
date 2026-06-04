@@ -78,6 +78,7 @@ class IncidentInboxPresenter
 
         return [
             ...$this->toRow($incident, $users, $now),
+            'aiEvaluationId' => $evaluation?->id !== null ? (int) $evaluation->id : null,
             'model' => $this->model($evaluation),
             'latencyMs' => $this->latencyMs($evaluation),
             'timeline' => $incident->timeline

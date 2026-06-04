@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Incidents;
 
 use App\Domains\Incidents\Actions\CreateManualIncident;
+use App\Domains\Incidents\Actions\EscalateIncident;
 use App\Domains\Incidents\Actions\ReclassifyIncident;
 use App\Domains\Incidents\Enums\IncidentCreatorType;
 use App\Domains\Incidents\Enums\IncidentStatusCode;
@@ -139,9 +140,29 @@ class IncidentController extends Controller
         return response()->json(['data' => $updated]);
     }
 
+    public function escalate(Request $request, Team $current_team, Incident $incident, EscalateIncident $escalate): JsonResponse
+    {
+        $this->authorize('escalate', $incident);
+
+        if ($incident->status?->code === IncidentStatusCode::Escalated->value) {
+            return response()->json(['message' => 'Incident is already escalated.'], 422);
+        }
+
+        $reason = $request->string('reason')->toString() ?: null;
+
+        $updated = $escalate->execute(
+            incident: $incident,
+            reason: $reason,
+            escalatedByType: IncidentCreatorType::User,
+            escalatedById: $request->user()->id,
+        );
+
+        return response()->json(['data' => $updated]);
+    }
+
     public function reopen(Team $current_team, Incident $incident): JsonResponse
     {
-        $this->authorize('update', $incident);
+        $this->authorize('reopen', $incident);
 
         if (! $incident->isTerminal()) {
             return response()->json(['message' => 'Incident is not in a terminal state.'], 422);
