@@ -4,6 +4,7 @@ namespace App\Domains\Ingestion\Jobs;
 
 use App\Domains\Ingestion\Actions\DetectDuplicateEvent;
 use App\Domains\Ingestion\Events\RawEventFailed;
+use App\Domains\Ingestion\Events\RawEventProcessed;
 use App\Domains\Ingestion\Models\RawEvent;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -39,6 +40,8 @@ class ProcessRawEventJob implements ShouldQueue
         $rawEvent->markAsProcessing();
 
         $rawEvent->markAsProcessed();
+
+        RawEventProcessed::dispatch($rawEvent);
     }
 
     public function failed(\Throwable $exception): void

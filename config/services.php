@@ -35,4 +35,9 @@ return [
         ],
     ],
 
+    'samsara' => [
+        'base_url' => env('SAMSARA_BASE_URL', 'https://api.samsara.com'),
+        'timeout' => (int) env('SAMSARA_TIMEOUT', 15),
+    ],
+
 ];

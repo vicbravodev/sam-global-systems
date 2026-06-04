@@ -7,6 +7,7 @@ use App\Domains\Ingestion\Enums\EventSourceStatus;
 use App\Domains\Ingestion\Enums\EventSourceType;
 use App\Domains\Ingestion\Enums\RawEventStatus;
 use App\Domains\Ingestion\Events\RawEventFailed;
+use App\Domains\Ingestion\Events\RawEventProcessed;
 use App\Domains\Ingestion\Jobs\ProcessRawEventJob;
 use App\Domains\Ingestion\Models\EventSource;
 use App\Domains\Ingestion\Models\RawEvent;
@@ -47,6 +48,8 @@ class ProcessRawEventJobTest extends TestCase
 
     public function test_raw_event_dispatches_to_normalization_queue(): void
     {
+        Event::fake([RawEventProcessed::class]);
+
         [, , , $rawEvent] = $this->createRawEvent();
 
         $job = new ProcessRawEventJob($rawEvent->id);
@@ -58,6 +61,10 @@ class ProcessRawEventJobTest extends TestCase
         );
 
         $job->handle(app(DetectDuplicateEvent::class));
+
+        Event::assertDispatched(RawEventProcessed::class, function ($event) use ($rawEvent) {
+            return $event->rawEvent->id === $rawEvent->id;
+        });
 
         $rawEvent->refresh();
 
@@ -81,6 +88,8 @@ class ProcessRawEventJobTest extends TestCase
 
     public function test_processing_attempts_increment_on_retry(): void
     {
+        Event::fake([RawEventProcessed::class]);
+
         [, , , $rawEvent] = $this->createRawEvent();
 
         $rawEvent->update([

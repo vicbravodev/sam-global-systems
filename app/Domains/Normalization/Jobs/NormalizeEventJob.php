@@ -38,6 +38,7 @@ class NormalizeEventJob implements ShouldQueue
         $allowedStatuses = [
             RawEventStatus::PendingProcessing,
             RawEventStatus::Processing,
+            RawEventStatus::Processed,
         ];
 
         if (! in_array($rawEvent->status, $allowedStatuses, true)) {

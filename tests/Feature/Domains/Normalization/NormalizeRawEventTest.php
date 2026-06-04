@@ -123,6 +123,12 @@ class NormalizeRawEventTest extends TestCase
             $normalized->status,
             'NormalizedEvent status should be normalized after successful mapping',
         );
+
+        $this->assertEquals(
+            'critical',
+            $normalized->payload_normalized_json['severity_code'] ?? null,
+            'Normalized payload must carry the resolved severity_code so downstream risk scoring can read it',
+        );
     }
 
     public function test_safety_event_stream_normalizes_with_behavior_label(): void
