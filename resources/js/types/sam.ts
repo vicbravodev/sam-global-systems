@@ -13,6 +13,7 @@ export interface MockAssignee {
 
 export interface MockIncident {
     id: string;
+    incidentId: number;
     title: string;
     severity: Severity;
     status: IncidentStatus;

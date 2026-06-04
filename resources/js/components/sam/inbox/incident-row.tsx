@@ -1,6 +1,6 @@
 import { SeverityBadge, StatusPill } from '@/components/sam';
 import { cn } from '@/lib/utils';
-import type { InboxDensity, IncidentDetail } from '@/types/sam';
+import type { InboxDensity, MockIncident } from '@/types/sam';
 import { useLiveSla } from './use-live-sla';
 
 // ---- UserAvatar ----
@@ -100,7 +100,7 @@ function LiveDot() {
 // ---- IncidentRow ----
 
 interface IncidentRowProps {
-    incident: IncidentDetail;
+    incident: MockIncident;
     selected: boolean;
     checked: boolean;
     density: InboxDensity;

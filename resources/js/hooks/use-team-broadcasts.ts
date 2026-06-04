@@ -13,6 +13,7 @@ const TEAM_EVENTS: TeamBroadcastEvent[] = [
     'ai.evaluation_completed',
     'decisions.decision_made',
     'action.executed',
+    'incidents.created',
 ];
 
 export type TeamBroadcastDetail<

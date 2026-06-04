@@ -1,8 +1,8 @@
-import type { InboxDensity, IncidentDetail } from '@/types/sam';
+import type { InboxDensity, MockIncident } from '@/types/sam';
 import { IncidentRow } from './incident-row';
 
 interface InboxTableProps {
-    rows: IncidentDetail[];
+    rows: MockIncident[];
     selectedId: string | null;
     selectedSet: Set<string>;
     density: InboxDensity;
