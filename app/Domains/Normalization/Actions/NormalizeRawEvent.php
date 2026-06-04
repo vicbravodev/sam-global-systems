@@ -94,7 +94,7 @@ class NormalizeRawEvent
                 'event_severity_id' => $severity->id,
                 'occurred_at' => $rawEvent->occurred_at ?? $rawEvent->received_at,
                 'processed_at' => now(),
-                'payload_normalized_json' => $this->buildNormalizedPayload($rawEvent, $eventType, $payload),
+                'payload_normalized_json' => $this->buildNormalizedPayload($rawEvent, $eventType, $severity, $payload),
                 'status' => NormalizedEventStatus::Normalized,
             ],
         );
@@ -170,10 +170,11 @@ class NormalizeRawEvent
      * @param  array<string, mixed>  $payload
      * @return array<string, mixed>
      */
-    private function buildNormalizedPayload(RawEvent $rawEvent, $eventType, array $payload): array
+    private function buildNormalizedPayload(RawEvent $rawEvent, $eventType, EventSeverity $severity, array $payload): array
     {
         return [
             'event_type_code' => $eventType->code,
+            'severity_code' => $severity->code,
             'external_event_type' => $rawEvent->event_type_raw,
             'description' => Arr::get($payload, 'data.conditions.0.description')
                 ?? Arr::get($payload, 'behaviorLabels.0.label')

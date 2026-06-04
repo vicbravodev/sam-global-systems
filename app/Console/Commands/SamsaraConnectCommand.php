@@ -55,6 +55,7 @@ class SamsaraConnectCommand extends Command
                 'name' => (string) $this->option('name'),
                 'status' => TenantIntegrationStatus::Pending,
                 'auth_type' => AuthType::ApiKey,
+                'credentials_encrypted' => (string) $this->argument('token'),
             ],
         );
 
