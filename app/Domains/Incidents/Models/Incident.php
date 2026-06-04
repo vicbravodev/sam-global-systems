@@ -3,6 +3,7 @@
 namespace App\Domains\Incidents\Models;
 
 use App\Concerns\BelongsToTenant;
+use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Drivers\Models\Driver;
 use App\Domains\Incidents\Enums\IncidentCreatorType;
@@ -76,6 +77,20 @@ class Incident extends Model
     public function relatedEvent(): BelongsTo
     {
         return $this->belongsTo(NormalizedEvent::class, 'related_event_id');
+    }
+
+    /**
+     * The AI evaluation that scored the event this incident originated from.
+     *
+     * Matches the incident's related normalized event to the evaluation that
+     * scored it, so the inbox can surface AI confidence/decision/reasoning.
+     *
+     * @return HasOne<AIEventEvaluation, $this>
+     */
+    public function aiEvaluation(): HasOne
+    {
+        return $this->hasOne(AIEventEvaluation::class, 'normalized_event_id', 'related_event_id')
+            ->latestOfMany();
     }
 
     /**

@@ -1,7 +1,7 @@
 import { SeverityBadge } from '@/components/sam';
 import type { Severity } from '@/components/sam';
 import { cn } from '@/lib/utils';
-import type { InboxDensity, IncidentDetail } from '@/types/sam';
+import type { InboxDensity, MockIncident } from '@/types/sam';
 import { IncidentRow } from './incident-row';
 import { useLiveSla } from './use-live-sla';
 
@@ -51,7 +51,7 @@ const SEVERITY_BORDER: Record<Severity, string> = {
 };
 
 interface InboxGroupedProps {
-    rows: IncidentDetail[];
+    rows: MockIncident[];
     selectedId: string | null;
     selectedSet: Set<string>;
     density: InboxDensity;

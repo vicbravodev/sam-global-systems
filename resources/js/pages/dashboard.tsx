@@ -355,6 +355,7 @@ const MOCK_DASHBOARD: DashboardMockData = {
     incidents: [
         {
             id: 'INC-2026-04822',
+            incidentId: 4822,
             title: 'Colisión frontal detectada',
             severity: 'critical',
             status: 'in-progress',
@@ -374,6 +375,7 @@ const MOCK_DASHBOARD: DashboardMockData = {
         },
         {
             id: 'INC-2026-04821',
+            incidentId: 4821,
             title: 'Frenado brusco > 0.6 g',
             severity: 'high',
             status: 'new',
@@ -393,6 +395,7 @@ const MOCK_DASHBOARD: DashboardMockData = {
         },
         {
             id: 'INC-2026-04820',
+            incidentId: 4820,
             title: 'Exceso de velocidad 92 / 70 km/h',
             severity: 'medium',
             status: 'assigned',
@@ -411,6 +414,7 @@ const MOCK_DASHBOARD: DashboardMockData = {
         },
         {
             id: 'INC-2026-04819',
+            incidentId: 4819,
             title: 'Sin cinturón detectado',
             severity: 'low',
             status: 'triaging',
@@ -429,6 +433,7 @@ const MOCK_DASHBOARD: DashboardMockData = {
         },
         {
             id: 'INC-2026-04818',
+            incidentId: 4818,
             title: 'Posible fatiga del conductor',
             severity: 'high',
             status: 'assigned',
@@ -447,6 +452,7 @@ const MOCK_DASHBOARD: DashboardMockData = {
         },
         {
             id: 'INC-2026-04817',
+            incidentId: 4817,
             title: 'Ralentí prolongado',
             severity: 'low',
             status: 'resolved',

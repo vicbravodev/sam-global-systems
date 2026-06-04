@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Access\MemberRoleController;
 use App\Http\Controllers\Access\RoleController;
+use App\Http\Controllers\Incidents\IncidentInboxController;
 use App\Http\Controllers\Teams\TeamInvitationController;
 use App\Http\Middleware\EnsureTeamMembership;
 use Illuminate\Support\Facades\Route;
@@ -15,7 +16,8 @@ Route::prefix('{current_team}')
     ->middleware(['auth', 'verified', EnsureTeamMembership::class])
     ->group(function () {
         Route::inertia('dashboard', 'dashboard')->name('dashboard');
-        Route::inertia('incidents', 'incidents/index')->name('incidents.index');
+        Route::get('incidents', [IncidentInboxController::class, 'index'])->name('incidents.index');
+        Route::get('incidents/{incident}', [IncidentInboxController::class, 'show'])->name('incidents.show');
 
         Route::get('settings/roles', [RoleController::class, 'index'])->name('access.roles.index');
         Route::post('settings/roles', [RoleController::class, 'store'])->name('access.roles.store');

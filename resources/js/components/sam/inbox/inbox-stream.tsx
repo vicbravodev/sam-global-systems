@@ -2,7 +2,7 @@ import { MapPin, Truck, User } from 'lucide-react';
 import { SeverityBadge, StatusPill, ProviderTag } from '@/components/sam';
 import type { Severity } from '@/components/sam';
 import { cn } from '@/lib/utils';
-import type { IncidentDetail } from '@/types/sam';
+import type { MockIncident } from '@/types/sam';
 import { useLiveSla } from './use-live-sla';
 
 const SEVERITY_STRIPE: Record<Severity, string> = {
@@ -68,7 +68,7 @@ function LiveSlaCell({ seconds, total }: { seconds: number; total: number }) {
 // ---- StreamCard ----
 
 interface StreamCardProps {
-    incident: IncidentDetail;
+    incident: MockIncident;
     selected: boolean;
     onClick: () => void;
 }
@@ -163,7 +163,7 @@ function StreamCard({ incident, selected, onClick }: StreamCardProps) {
 // ---- InboxStream ----
 
 interface InboxStreamProps {
-    rows: IncidentDetail[];
+    rows: MockIncident[];
     selectedId: string | null;
     onSelect: (id: string) => void;
 }

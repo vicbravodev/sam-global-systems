@@ -54,6 +54,16 @@ export type ActionExecutedPayload = {
     incident_id: number | null;
 };
 
+export type IncidentCreatedPayload = {
+    incident_id: number;
+    title: string;
+    priority: string;
+    status: string;
+    asset_id: number | null;
+    driver_id: number | null;
+    opened_at: string;
+};
+
 export type TeamBroadcastEventMap = {
     'asset.location_updated': AssetLocationUpdatedPayload;
     'asset.status_changed': AssetStatusChangedPayload;
@@ -61,6 +71,7 @@ export type TeamBroadcastEventMap = {
     'ai.evaluation_completed': AIEvaluationCompletedPayload;
     'decisions.decision_made': DecisionMadePayload;
     'action.executed': ActionExecutedPayload;
+    'incidents.created': IncidentCreatedPayload;
 };
 
 export type TeamBroadcastEvent = keyof TeamBroadcastEventMap;
