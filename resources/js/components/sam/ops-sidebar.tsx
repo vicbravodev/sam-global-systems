@@ -205,7 +205,7 @@ export function OpsSidebar({ navBadges }: OpsSidebarProps) {
                 {
                     label: 'Integraciones',
                     icon: Plug,
-                    href: '#',
+                    href: `/${teamSlug}/integrations`,
                     badge: 'integrations',
                 },
                 {

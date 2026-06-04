@@ -8,6 +8,8 @@ use App\Http\Controllers\Incidents\IncidentCommentController;
 use App\Http\Controllers\Incidents\IncidentController;
 use App\Http\Controllers\Incidents\IncidentInboxController;
 use App\Http\Controllers\Incidents\IncidentResolutionController;
+use App\Http\Controllers\Integrations\IntegrationController;
+use App\Http\Controllers\Integrations\IntegrationPageController;
 use App\Http\Controllers\Teams\TeamInvitationController;
 use App\Http\Middleware\EnsureTeamMembership;
 use Illuminate\Support\Facades\Route;
@@ -35,6 +37,16 @@ Route::prefix('{current_team}')
         Route::post('incidents/{incident}/reopen', [IncidentController::class, 'reopen'])->name('incidents.reopen');
         Route::post('incidents/{incident}/escalate', [IncidentController::class, 'escalate'])->name('incidents.escalate');
         Route::post('ai/evaluations/{evaluation}/reevaluate', [AIEvaluationController::class, 'reevaluate'])->name('ai.evaluations.reevaluate');
+
+        // Integrations management page + actions. The GET renders the Inertia
+        // page; the mutating actions reuse the same IntegrationController as the
+        // routes/api.php endpoints but live in the web group so the React UI can
+        // call them with the session cookie (the `api` group has no session).
+        Route::get('integrations', [IntegrationPageController::class, 'index'])->name('integrations.index');
+        Route::post('integrations', [IntegrationController::class, 'store'])->name('integrations.store');
+        Route::put('integrations/{integration}', [IntegrationController::class, 'update'])->name('integrations.update');
+        Route::delete('integrations/{integration}', [IntegrationController::class, 'destroy'])->name('integrations.destroy');
+        Route::post('integrations/{integration}/test', [IntegrationController::class, 'test'])->name('integrations.test');
 
         Route::get('settings/roles', [RoleController::class, 'index'])->name('access.roles.index');
         Route::post('settings/roles', [RoleController::class, 'store'])->name('access.roles.store');

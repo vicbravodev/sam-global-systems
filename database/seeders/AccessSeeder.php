@@ -28,6 +28,8 @@ class AccessSeeder extends Seeder
         ['code' => 'tenancy.manage', 'name' => 'Manage Tenancy', 'module' => 'tenancy', 'description' => 'Manage tenant settings, branding, features'],
         ['code' => 'tenancy.billing.view', 'name' => 'View Billing', 'module' => 'tenancy', 'description' => 'View billing dashboard, invoices, usage'],
         ['code' => 'tenancy.billing.manage', 'name' => 'Manage Billing', 'module' => 'tenancy', 'description' => 'Manage subscriptions, payment methods'],
+        ['code' => 'integrations.view', 'name' => 'View Integrations', 'module' => 'integrations', 'description' => 'View tenant integrations and their providers'],
+        ['code' => 'integrations.manage', 'name' => 'Manage Integrations', 'module' => 'integrations', 'description' => 'Connect, configure, test and disconnect integrations'],
         ['code' => 'incidents.view', 'name' => 'View Incidents', 'module' => 'incidents', 'description' => 'View incidents and their details'],
         ['code' => 'incidents.manage', 'name' => 'Manage Incidents', 'module' => 'incidents', 'description' => 'Create and update incidents'],
         ['code' => 'incidents.resolve', 'name' => 'Resolve Incidents', 'module' => 'incidents', 'description' => 'Resolve open incidents'],
@@ -70,6 +72,7 @@ class AccessSeeder extends Seeder
     private const ROLE_PERMISSIONS = [
         'tenant_admin' => [
             'tenancy.manage', 'tenancy.billing.view', 'tenancy.billing.manage',
+            'integrations.view', 'integrations.manage',
             'incidents.view', 'incidents.manage', 'incidents.resolve', 'incidents.close',
             'assets.view', 'assets.manage',
             'drivers.view', 'drivers.manage',
@@ -85,6 +88,7 @@ class AccessSeeder extends Seeder
             'automation.view', 'automation.manage', 'automation.execute',
         ],
         'supervisor' => [
+            'integrations.view', 'integrations.manage',
             'incidents.view', 'incidents.manage', 'incidents.resolve', 'incidents.close',
             'assets.view', 'assets.manage',
             'drivers.view', 'drivers.manage',
@@ -123,6 +127,7 @@ class AccessSeeder extends Seeder
         ],
         'viewer' => [
             'tenancy.billing.view',
+            'integrations.view',
             'incidents.view',
             'assets.view',
             'drivers.view',

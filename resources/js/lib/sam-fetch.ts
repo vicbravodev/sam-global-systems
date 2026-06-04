@@ -16,10 +16,12 @@ function readCookie(name: string): string | null {
 }
 
 /**
- * POST a JSON body to a session-authenticated route and return the raw
- * Response so callers can branch on the status code.
+ * Send a JSON body to a session-authenticated route and return the raw
+ * Response so callers can branch on the status code. Attaches the CSRF token
+ * read from the `XSRF-TOKEN` cookie, exactly like axios/Inertia would.
  */
-export function postJson(
+function sendJson(
+    method: 'POST' | 'PUT' | 'PATCH' | 'DELETE',
     url: string,
     body?: Record<string, unknown>,
     signal?: AbortSignal,
@@ -27,7 +29,7 @@ export function postJson(
     const token = readCookie('XSRF-TOKEN');
 
     return fetch(url, {
-        method: 'POST',
+        method,
         credentials: 'same-origin',
         signal,
         headers: {
@@ -38,6 +40,39 @@ export function postJson(
         },
         body: JSON.stringify(body ?? {}),
     });
+}
+
+/**
+ * POST a JSON body to a session-authenticated route.
+ */
+export function postJson(
+    url: string,
+    body?: Record<string, unknown>,
+    signal?: AbortSignal,
+): Promise<Response> {
+    return sendJson('POST', url, body, signal);
+}
+
+/**
+ * PUT a JSON body to a session-authenticated route.
+ */
+export function putJson(
+    url: string,
+    body?: Record<string, unknown>,
+    signal?: AbortSignal,
+): Promise<Response> {
+    return sendJson('PUT', url, body, signal);
+}
+
+/**
+ * DELETE a session-authenticated route, optionally with a JSON body.
+ */
+export function deleteJson(
+    url: string,
+    body?: Record<string, unknown>,
+    signal?: AbortSignal,
+): Promise<Response> {
+    return sendJson('DELETE', url, body, signal);
 }
 
 /**
