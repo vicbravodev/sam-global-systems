@@ -10,6 +10,7 @@ use App\Domains\Integrations\Models\IntegrationProvider;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Models\Team;
 use App\Models\User;
+use Database\Seeders\AccessSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
@@ -17,6 +18,12 @@ use Tests\TestCase;
 class IntegrationCrudTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seed(AccessSeeder::class);
+    }
 
     public function test_it_creates_tenant_integration_with_encrypted_credentials(): void
     {

@@ -40,6 +40,48 @@ export interface MockIntegration {
     lastSync: string;
 }
 
+// ---- Integrations management page ----
+
+export type TenantIntegrationStatus =
+    | 'active'
+    | 'inactive'
+    | 'error'
+    | 'pending';
+
+export interface IntegrationWebhook {
+    url: string;
+    status: string;
+    lastReceivedAt: string | null;
+}
+
+export interface IntegrationRow {
+    id: number;
+    name: string;
+    provider: string;
+    providerCode: string;
+    status: TenantIntegrationStatus;
+    health: IntegrationHealth;
+    authType: string;
+    config: Record<string, unknown> | null;
+    lastSyncAt: string | null;
+    lastErrorAt: string | null;
+    lastErrorMessage: string | null;
+    webhook: IntegrationWebhook | null;
+}
+
+export interface IntegrationProviderOption {
+    id: number;
+    code: string;
+    name: string;
+    type: string;
+    capabilities: string[];
+}
+
+export interface AuthTypeOption {
+    value: string;
+    label: string;
+}
+
 export interface MockStreamEvent {
     ts: string;
     provider: string;
