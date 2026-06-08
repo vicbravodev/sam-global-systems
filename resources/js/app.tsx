@@ -23,6 +23,7 @@ createInertiaApp({
                 return [AppLayout, SettingsLayout];
             case name === 'dashboard':
             case name.startsWith('incidents/'):
+            case name.startsWith('integrations/'):
                 return OpsLayout;
             default:
                 return AppLayout;

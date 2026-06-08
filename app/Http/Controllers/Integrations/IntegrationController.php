@@ -20,6 +20,8 @@ class IntegrationController extends Controller
 {
     public function index(Team $current_team): JsonResponse
     {
+        $this->authorize('viewAny', TenantIntegration::class);
+
         $integrations = TenantIntegration::with('provider')
             ->where('team_id', $current_team->id)
             ->orderByDesc('id')
@@ -30,6 +32,8 @@ class IntegrationController extends Controller
 
     public function store(StoreIntegrationRequest $request, Team $current_team): JsonResponse
     {
+        $this->authorize('create', TenantIntegration::class);
+
         $provider = IntegrationProvider::findOrFail($request->validated('provider_id'));
 
         abort_if(
@@ -72,6 +76,8 @@ class IntegrationController extends Controller
 
     public function update(UpdateIntegrationRequest $request, Team $current_team, TenantIntegration $integration): JsonResponse
     {
+        $this->authorize('update', $integration);
+
         $data = array_filter([
             'name' => $request->validated('name'),
             'config_json' => $request->validated('config'),
@@ -88,6 +94,8 @@ class IntegrationController extends Controller
 
     public function destroy(Team $current_team, TenantIntegration $integration): JsonResponse
     {
+        $this->authorize('delete', $integration);
+
         $providerCode = $integration->provider->code;
 
         $integration->update(['status' => TenantIntegrationStatus::Inactive]);
@@ -112,6 +120,8 @@ class IntegrationController extends Controller
 
     public function test(Team $current_team, TenantIntegration $integration, TestIntegrationConnection $testConnection): JsonResponse
     {
+        $this->authorize('update', $integration);
+
         $result = $testConnection->execute($integration);
 
         return response()->json(['data' => $result]);
