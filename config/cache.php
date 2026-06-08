@@ -120,11 +120,16 @@ return [
     |--------------------------------------------------------------------------
     |
     | This value determines the classes that can be unserialized from cache
-    | storage. By default, no PHP classes will be unserialized from your
-    | cache to prevent gadget chain attacks if your APP_KEY is leaked.
+    | storage. Laravel's hardened default (false) forbids unserializing ANY
+    | object, which silently breaks every Cache::remember() that stores a model
+    | or DTO (it returns __PHP_Incomplete_Class). This app caches Eloquent models
+    | (e.g. UsageMeter) and readonly DTOs (all TenantConfig resolvers), so we
+    | allow class unserialization. The cache is an internal, trusted Valkey
+    | instance with no user-controlled writes, so the gadget-chain risk (which
+    | also requires a leaked APP_KEY + cache write access) does not apply.
     |
     */
 
-    'serializable_classes' => false,
+    'serializable_classes' => env('CACHE_SERIALIZABLE_CLASSES', true),
 
 ];
