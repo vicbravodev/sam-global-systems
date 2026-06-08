@@ -950,7 +950,7 @@ export default function IncidentsIndex() {
                 )}
             >
                 {/* INBOX PANEL */}
-                <div className="flex min-h-0 min-w-0 flex-col overflow-hidden">
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
                     {selectedSet.size > 0 && (
                         <BulkBar
                             count={selectedSet.size}
