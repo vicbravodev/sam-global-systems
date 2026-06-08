@@ -8,6 +8,7 @@ use App\Domains\Integrations\Jobs\ProcessWebhookEventJob;
 use App\Domains\Integrations\Models\IntegrationProvider;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Domains\Integrations\Models\WebhookEndpoint;
+use App\Domains\Integrations\Models\WebhookEvent;
 use App\Models\Team;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
@@ -62,6 +63,36 @@ class WebhookControllerTest extends TestCase
 
         Queue::assertPushed(ProcessWebhookEventJob::class);
         Event::assertDispatched(WebhookReceived::class);
+    }
+
+    public function test_it_captures_signature_headers_and_raw_body(): void
+    {
+        Queue::fake();
+        Event::fake([WebhookReceived::class]);
+
+        $endpoint = $this->createActiveEndpoint('ctrl-'.bin2hex(random_bytes(6)));
+
+        $body = ['event_type' => 'AlertIncident', 'data' => ['id' => 42]];
+        $rawPayload = json_encode($body);
+        $timestamp = (string) now()->getTimestampMs();
+        $signature = 'v1='.hash_hmac('sha256', 'v1:'.$timestamp.':'.$rawPayload, $endpoint->secret);
+
+        $response = $this->postJson("/api/webhooks/{$endpoint->url}", $body, [
+            'X-Samsara-Signature' => $signature,
+            'X-Samsara-Timestamp' => $timestamp,
+        ]);
+
+        $response->assertStatus(202);
+
+        $event = WebhookEvent::withoutGlobalScopes()->latest('id')->firstOrFail();
+
+        $this->assertSame($signature, $event->signature);
+        $this->assertSame($timestamp, $event->signature_timestamp);
+        $this->assertSame(
+            $rawPayload,
+            $event->raw_payload,
+            'The controller must persist the exact raw request body for byte-for-byte HMAC verification',
+        );
     }
 
     public function test_it_defaults_event_type_to_unknown_when_missing(): void

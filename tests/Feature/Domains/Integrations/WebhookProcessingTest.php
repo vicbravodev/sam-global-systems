@@ -140,6 +140,87 @@ class WebhookProcessingTest extends TestCase
         );
     }
 
+    public function test_it_processes_webhook_with_valid_samsara_header_signature(): void
+    {
+        [, , , , $endpoint] = $this->createEndpointWithIntegration();
+
+        $body = ['eventType' => 'AlertIncident', 'data' => ['id' => 42]];
+        $rawPayload = json_encode($body);
+        $timestamp = (string) now()->getTimestampMs();
+        $signature = 'v1='.hash_hmac('sha256', 'v1:'.$timestamp.':'.$rawPayload, $endpoint->secret);
+
+        // Persist the event exactly as the controller would: parsed body plus the
+        // raw bytes and the X-Samsara-Signature / X-Samsara-Timestamp headers.
+        $webhookEvent = WebhookEvent::withoutGlobalScopes()->create([
+            'team_id' => $endpoint->tenantIntegration->team_id,
+            'provider_id' => $endpoint->tenantIntegration->provider_id,
+            'event_type' => 'AlertIncident',
+            'payload_json' => $body,
+            'signature' => $signature,
+            'signature_timestamp' => $timestamp,
+            'raw_payload' => $rawPayload,
+            'received_at' => now(),
+            'status' => WebhookEventStatus::Received,
+        ]);
+
+        $mockIngestion = Mockery::mock(RawEventIngestion::class);
+        $mockIngestion->shouldReceive('ingest')->once();
+        $this->app->instance(RawEventIngestion::class, $mockIngestion);
+
+        $job = new ProcessWebhookEventJob($webhookEvent, $endpoint);
+        $job->handle(
+            app(ValidateWebhookSignature::class),
+            app(RawEventIngestion::class),
+        );
+
+        $webhookEvent->refresh();
+
+        $this->assertEquals(
+            WebhookEventStatus::Processed,
+            $webhookEvent->status,
+            'A webhook with a valid X-Samsara-Signature header should be processed',
+        );
+    }
+
+    public function test_it_rejects_webhook_with_tampered_header_signature(): void
+    {
+        [, , , , $endpoint] = $this->createEndpointWithIntegration();
+
+        $body = ['eventType' => 'AlertIncident', 'data' => ['id' => 42]];
+        $rawPayload = json_encode($body);
+        $timestamp = (string) now()->getTimestampMs();
+
+        // Signature computed with the wrong secret → must not validate.
+        $signature = 'v1='.hash_hmac('sha256', 'v1:'.$timestamp.':'.$rawPayload, 'wrong-secret');
+
+        $webhookEvent = WebhookEvent::withoutGlobalScopes()->create([
+            'team_id' => $endpoint->tenantIntegration->team_id,
+            'provider_id' => $endpoint->tenantIntegration->provider_id,
+            'event_type' => 'AlertIncident',
+            'payload_json' => $body,
+            'signature' => $signature,
+            'signature_timestamp' => $timestamp,
+            'raw_payload' => $rawPayload,
+            'received_at' => now(),
+            'status' => WebhookEventStatus::Received,
+        ]);
+
+        $job = new ProcessWebhookEventJob($webhookEvent, $endpoint);
+        $job->handle(
+            app(ValidateWebhookSignature::class),
+            app(RawEventIngestion::class),
+        );
+
+        $webhookEvent->refresh();
+
+        $this->assertEquals(
+            WebhookEventStatus::InvalidSignature,
+            $webhookEvent->status,
+            'A webhook whose HMAC does not match the endpoint secret must be rejected',
+        );
+        $this->assertNull($webhookEvent->processed_at);
+    }
+
     public function test_it_dispatches_process_webhook_event_job_on_receipt(): void
     {
         Queue::fake();

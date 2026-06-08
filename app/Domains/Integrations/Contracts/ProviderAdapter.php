@@ -22,6 +22,11 @@ interface ProviderAdapter
 
     /**
      * Validate a webhook signature against the provider's algorithm.
+     *
+     * @param  string  $payload  Exact raw request body bytes.
+     * @param  string  $signature  Signature header value (may be prefixed, e.g. "v1=").
+     * @param  string  $secret  The endpoint's shared secret.
+     * @param  string|null  $timestamp  Optional signature timestamp header used in the signed message.
      */
-    public function validateWebhookSignature(string $payload, string $signature, string $secret): bool;
+    public function validateWebhookSignature(string $payload, string $signature, string $secret, ?string $timestamp = null): bool;
 }

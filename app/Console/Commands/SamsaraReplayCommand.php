@@ -80,15 +80,20 @@ class SamsaraReplayCommand extends Command
                 continue;
             }
 
-            // Sign exactly how ProcessWebhookEventJob recomputes it: HMAC-SHA256
-            // over json_encode(payload without the signature field).
-            $signature = hash_hmac('sha256', json_encode($body), $endpoint->secret);
-            $payload = $body + ['signature' => $signature];
+            // Sign exactly how Samsara does: HMAC-SHA256 over the signed message
+            // "v1:{timestamp}:{rawBody}", delivered via the X-Samsara-Signature
+            // ("v1=<hmac>") and X-Samsara-Timestamp headers.
+            $rawPayload = (string) json_encode($body);
+            $timestamp = (string) now()->getTimestampMs();
+            $signature = 'v1='.hash_hmac('sha256', 'v1:'.$timestamp.':'.$rawPayload, $endpoint->secret);
 
             $handleWebhook->execute(
                 $endpoint,
                 $body['eventType'] ?? 'unknown',
-                $payload,
+                $body,
+                $rawPayload,
+                $signature,
+                $timestamp,
             );
 
             $vehicle = $body['data']['conditions'][0]['details']['panicButton']['vehicle']['name'] ?? '?';

@@ -11,12 +11,17 @@ class ValidateWebhookSignature
         private ProviderAdapter $providerAdapter,
     ) {}
 
-    public function execute(WebhookEndpoint $endpoint, string $payload, string $signature): bool
-    {
+    public function execute(
+        WebhookEndpoint $endpoint,
+        string $payload,
+        string $signature,
+        ?string $timestamp = null,
+    ): bool {
         return $this->providerAdapter->validateWebhookSignature(
             $payload,
             $signature,
             $endpoint->secret,
+            $timestamp,
         );
     }
 }

@@ -68,15 +68,65 @@ class SamsaraAdapter implements ProviderAdapter
         ];
     }
 
-    public function validateWebhookSignature(string $payload, string $signature, string $secret): bool
+    /**
+     * Verify Samsara's webhook signature.
+     *
+     * Samsara sends `X-Samsara-Signature: v1=<hex>` plus an `X-Samsara-Timestamp`
+     * (Unix ms). The HMAC-SHA256 is computed over the signed message
+     * `v1:{timestamp}:{rawBody}` using the endpoint secret. See
+     * https://developers.samsara.com/docs/webhooks#validating-events.
+     *
+     * When no timestamp is supplied (generic providers / legacy callers) we fall
+     * back to a plain HMAC over the raw body, still accepting either the "v1="
+     * prefixed or raw-hex signature form.
+     */
+    public function validateWebhookSignature(string $payload, string $signature, string $secret, ?string $timestamp = null): bool
     {
-        $expected = hash_hmac('sha256', $payload, $secret);
-
-        // Samsara formats the signature header as "v1=<hex>"; accept the raw
-        // hex too so callers can pass either form.
         $provided = str_starts_with($signature, 'v1=') ? substr($signature, 3) : $signature;
 
+        if ($provided === '') {
+            return false;
+        }
+
+        if ($timestamp !== null && $timestamp !== '') {
+            if (! $this->timestampWithinTolerance($timestamp)) {
+                return false;
+            }
+
+            $expected = hash_hmac('sha256', 'v1:'.$timestamp.':'.$payload, $secret);
+
+            return hash_equals($expected, $provided);
+        }
+
+        $expected = hash_hmac('sha256', $payload, $secret);
+
         return hash_equals($expected, $provided);
+    }
+
+    /**
+     * Reject stale timestamps to protect against replay attacks. A tolerance of
+     * 0 (config `services.samsara.webhook_tolerance_seconds`) disables the check.
+     *
+     * Samsara sends the timestamp in milliseconds; we defensively also accept a
+     * seconds-precision value.
+     */
+    private function timestampWithinTolerance(string $timestamp): bool
+    {
+        $tolerance = (int) config('services.samsara.webhook_tolerance_seconds', 300);
+
+        if ($tolerance <= 0) {
+            return true;
+        }
+
+        if (! is_numeric($timestamp)) {
+            return false;
+        }
+
+        $value = (int) $timestamp;
+        // Treat <= 10-digit values as seconds, otherwise milliseconds.
+        $seconds = $value > 9_999_999_999 ? intdiv($value, 1000) : $value;
+
+        return abs(now()->getTimestamp() - $seconds) <= $tolerance;
     }
 
     /**
