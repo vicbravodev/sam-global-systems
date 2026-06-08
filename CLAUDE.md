@@ -175,10 +175,11 @@ php artisan wayfinder:generate    # regenerar tras cambiar rutas/controladores
 ### 6.1 Git, GitHub y commits (reglas duras)
 
 - **Todos los commits se firman SOLO con la identidad del usuario** (`user.name = "Victor Jesus Bravo de la Peña"`, `user.email = "vicbravodev@gmail.com"`). **Nunca** añadir `Co-Authored-By: Claude ...` ni ningún otro coautor automático. No usar `--author`, `--trailer`, ni banners tipo "Generated with Claude Code" en el mensaje del commit. Todo lo que llegue al remoto debe salir a nombre del usuario.
-- **Claude PUEDE**: crear commits locales, ramas locales, `git add`, `git status` / `git diff` / `git log`, `git push` a la rama de la PR (no a `main`), `gh pr create` (cuerpo del PR redactado por Claude pero autoría de los commits = usuario), `gh pr comment`, `gh pr checks`, `gh run view`, y en general cualquier acción de publicación sobre ramas de trabajo.
+- **Claude PUEDE**: crear commits locales, ramas locales, `git add`, `git status` / `git diff` / `git log`, `git push` a la rama de la PR (no directo a `main`), `gh pr create` (cuerpo del PR redactado por Claude pero autoría de los commits = usuario), `gh pr comment`, `gh pr checks`, `gh run view`, y en general cualquier acción de publicación sobre ramas de trabajo.
+- **Claude PUEDE mergear PRs a `main` (`gh pr merge`), pero SIEMPRE pidiendo autorización explícita primero**: antes de mergear, Claude lo anuncia y espera el OK del usuario en ese turno. Con la autorización dada, Claude ejecuta el merge (prefiere `--merge`; usa `--admin` sólo si el usuario lo pide). Si la rama no está al día con `main`, Claude la actualiza con un merge de `main` dentro de la rama (sin `--force`), reespera CI verde, y entonces mergea. El usuario puede otorgar una autorización amplia ("mergea tú los PRs cuando CI esté verde") que aplica hasta que la revoque; sin esa autorización amplia, se pide caso por caso.
 - **Claude NUNCA hace**:
-  - `git push` a `main` / `master` (directo o por `push --force`). El merge a `main` lo hace el usuario desde la UI de GitHub al aprobar el PR.
-  - `gh pr merge` de ningún PR. El merge es exclusivo del usuario.
+  - `git push` directo a `main` / `master` (directo o por `push --force`). Los cambios entran a `main` vía PR mergeado, no por push directo.
+  - `gh pr merge` SIN autorización del usuario (ver punto anterior). El merge requiere OK explícito; sin él, no se mergea.
   - `gh release create` / `gh release publish`.
   - `git push --force` o `--force-with-lease` sobre cualquier rama sin petición explícita del usuario en ese turno.
 - **Ver CI es obligatorio antes de dar por cerrada una tarea con PR**: después de `git push` Claude espera al workflow (`gh run watch` / `gh pr checks --watch`) y reporta el resultado. Si CI falla por un cambio de Claude, Claude lo arregla y empuja un commit nuevo; no se da por terminada la tarea con CI rojo salvo que el usuario pida explícitamente ignorarlo.
