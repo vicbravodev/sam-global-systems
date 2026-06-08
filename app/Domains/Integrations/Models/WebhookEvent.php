@@ -19,10 +19,18 @@ class WebhookEvent extends Model
         'provider_id',
         'event_type',
         'payload_json',
+        'signature',
+        'signature_timestamp',
+        'raw_payload',
         'received_at',
         'processed_at',
         'status',
         'error_message',
+    ];
+
+    protected $hidden = [
+        'signature',
+        'raw_payload',
     ];
 
     /**

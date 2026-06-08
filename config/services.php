@@ -38,6 +38,8 @@ return [
     'samsara' => [
         'base_url' => env('SAMSARA_BASE_URL', 'https://api.samsara.com'),
         'timeout' => (int) env('SAMSARA_TIMEOUT', 15),
+        // Max age (seconds) accepted for the X-Samsara-Timestamp signature; 0 disables the replay check.
+        'webhook_tolerance_seconds' => (int) env('SAMSARA_WEBHOOK_TOLERANCE_SECONDS', 300),
     ],
 
 ];

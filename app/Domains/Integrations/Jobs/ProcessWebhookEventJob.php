@@ -35,14 +35,26 @@ class ProcessWebhookEventJob implements ShouldQueue
         $this->webhookEvent->markAsProcessing();
 
         $payload = $this->webhookEvent->payload_json;
-        $signature = $payload['signature'] ?? '';
-        $payloadWithoutSignature = collect($payload)->except('signature')->all();
-        $rawPayload = json_encode($payloadWithoutSignature);
+
+        // Preferred path: validate against the exact raw body bytes and the
+        // signature/timestamp headers captured at receipt (real Samsara scheme).
+        $signature = $this->webhookEvent->signature;
+        $timestamp = $this->webhookEvent->signature_timestamp;
+        $rawPayload = $this->webhookEvent->raw_payload;
+
+        // Legacy fallback for events persisted without the raw body (e.g. crafted
+        // programmatically): the signature travelled inside the body and the HMAC
+        // was computed over the re-encoded payload minus that signature field.
+        if ($rawPayload === null) {
+            $signature = (string) ($payload['signature'] ?? '');
+            $rawPayload = (string) json_encode(collect($payload)->except('signature')->all());
+        }
 
         $isValid = $validateSignature->execute(
             $this->endpoint,
             $rawPayload,
-            $signature,
+            (string) $signature,
+            $timestamp,
         );
 
         if (! $isValid) {

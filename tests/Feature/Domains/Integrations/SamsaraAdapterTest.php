@@ -110,6 +110,43 @@ class SamsaraAdapterTest extends TestCase
         $this->assertTrue($adapter->validateWebhookSignature($payload, $hmac, $secret));
         $this->assertTrue($adapter->validateWebhookSignature($payload, 'v1='.$hmac, $secret));
         $this->assertFalse($adapter->validateWebhookSignature($payload, 'deadbeef', $secret));
+        $this->assertFalse($adapter->validateWebhookSignature($payload, '', $secret));
+    }
+
+    public function test_validate_webhook_signature_verifies_real_samsara_scheme(): void
+    {
+        $adapter = app(SamsaraAdapter::class);
+        $payload = '{"eventId":"abc","eventType":"AlertIncident"}';
+        $secret = 'whsec';
+        $timestamp = (string) now()->getTimestampMs();
+
+        // Samsara signs "v1:{timestamp}:{rawBody}" and ships it as "v1=<hmac>".
+        $hmac = hash_hmac('sha256', 'v1:'.$timestamp.':'.$payload, $secret);
+
+        $this->assertTrue($adapter->validateWebhookSignature($payload, 'v1='.$hmac, $secret, $timestamp));
+        $this->assertTrue($adapter->validateWebhookSignature($payload, $hmac, $secret, $timestamp));
+
+        // A signature computed without the timestamp must not validate the timestamped message.
+        $plain = hash_hmac('sha256', $payload, $secret);
+        $this->assertFalse($adapter->validateWebhookSignature($payload, 'v1='.$plain, $secret, $timestamp));
+    }
+
+    public function test_validate_webhook_signature_rejects_stale_timestamp(): void
+    {
+        config()->set('services.samsara.webhook_tolerance_seconds', 300);
+
+        $adapter = app(SamsaraAdapter::class);
+        $payload = '{"eventId":"abc"}';
+        $secret = 'whsec';
+        // 10 minutes old (in ms) — outside the 5-minute tolerance.
+        $timestamp = (string) (now()->getTimestampMs() - 600_000);
+        $hmac = hash_hmac('sha256', 'v1:'.$timestamp.':'.$payload, $secret);
+
+        $this->assertFalse($adapter->validateWebhookSignature($payload, 'v1='.$hmac, $secret, $timestamp));
+
+        // With the replay check disabled the same (otherwise valid) signature passes.
+        config()->set('services.samsara.webhook_tolerance_seconds', 0);
+        $this->assertTrue($adapter->validateWebhookSignature($payload, 'v1='.$hmac, $secret, $timestamp));
     }
 
     public function test_manager_routes_samsara_provider_to_samsara_adapter(): void

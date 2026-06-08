@@ -88,6 +88,8 @@ class SamsaraConnectCommand extends Command
             $this->line("  URL:    {$url}");
             $this->line("  Secret: {$endpoint->secret}");
             $this->line('  Register this URL in Samsara → Settings → Webhooks.');
+            $this->line('  Set the secret above as the webhook Signing Secret; SAM verifies the');
+            $this->line('  X-Samsara-Signature (v1=<hmac>) + X-Samsara-Timestamp headers on every event.');
         }
 
         return $result['success'] ? self::SUCCESS : self::FAILURE;

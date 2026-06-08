@@ -21,11 +21,17 @@ class NullProviderAdapter implements ProviderAdapter
         ];
     }
 
-    public function validateWebhookSignature(string $payload, string $signature, string $secret): bool
+    public function validateWebhookSignature(string $payload, string $signature, string $secret, ?string $timestamp = null): bool
     {
+        $provided = str_starts_with($signature, 'v1=') ? substr($signature, 3) : $signature;
+
+        $message = $timestamp !== null && $timestamp !== ''
+            ? 'v1:'.$timestamp.':'.$payload
+            : $payload;
+
         return hash_equals(
-            hash_hmac('sha256', $payload, $secret),
-            $signature,
+            hash_hmac('sha256', $message, $secret),
+            $provided,
         );
     }
 }

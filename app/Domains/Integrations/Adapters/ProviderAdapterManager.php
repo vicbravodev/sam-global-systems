@@ -28,12 +28,12 @@ class ProviderAdapterManager implements ProviderAdapter
         return $this->forIntegration($integration)->sync($integration, $type);
     }
 
-    public function validateWebhookSignature(string $payload, string $signature, string $secret): bool
+    public function validateWebhookSignature(string $payload, string $signature, string $secret, ?string $timestamp = null): bool
     {
         // No integration context is available at signature-validation time.
         // Both Samsara and the null fallback use HMAC-SHA256, so delegating to
         // the Samsara adapter (which also accepts the raw-hex form) is safe.
-        return $this->samsara->validateWebhookSignature($payload, $signature, $secret);
+        return $this->samsara->validateWebhookSignature($payload, $signature, $secret, $timestamp);
     }
 
     private function forIntegration(TenantIntegration $integration): ProviderAdapter
