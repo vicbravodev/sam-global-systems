@@ -41,3 +41,11 @@ export type RoleOption = {
     value: TeamRole;
     label: string;
 };
+
+export type Impersonation = {
+    active: boolean;
+    team: {
+        name: string;
+        slug: string;
+    };
+};

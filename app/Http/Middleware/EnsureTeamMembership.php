@@ -20,6 +20,18 @@ class EnsureTeamMembership
     {
         [$user, $team] = [$request->user(), $this->team($request)];
 
+        // Super-admins (SaaS operators) may open any tenant's pages to provide
+        // support. We force-switch their current team to the one in the URL so
+        // the BelongsToTenant global scope transparently scopes every query to
+        // the impersonated tenant — no membership or role check applies.
+        if ($user?->isSuperAdmin() && $team) {
+            if ($request->route('current_team') && ! $user->isCurrentTeam($team)) {
+                $user->forceSwitchTeam($team);
+            }
+
+            return $next($request);
+        }
+
         abort_if(! $user || ! $team || ! $user->belongsToTeam($team), 403);
 
         $this->ensureTeamMemberHasRequiredRole($user, $team, $minimumRole);

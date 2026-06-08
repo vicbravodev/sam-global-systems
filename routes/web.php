@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\Access\MemberRoleController;
 use App\Http\Controllers\Access\RoleController;
+use App\Http\Controllers\Admin\ImpersonationController;
+use App\Http\Controllers\Admin\TenantController;
 use App\Http\Controllers\AI\AIEvaluationController;
 use App\Http\Controllers\Incidents\IncidentAssignmentController;
 use App\Http\Controllers\Incidents\IncidentCommentController;
@@ -53,6 +55,20 @@ Route::prefix('{current_team}')
         Route::put('settings/roles/{role}', [RoleController::class, 'update'])->name('access.roles.update');
         Route::delete('settings/roles/{role}', [RoleController::class, 'destroy'])->name('access.roles.destroy');
         Route::put('settings/members/{membership}/role', [MemberRoleController::class, 'update'])->name('access.members.role.update');
+    });
+
+// SaaS operator (super-admin) control panel. Lives OUTSIDE the {current_team}
+// group because it is cross-tenant: it lists/creates tenants and starts
+// impersonation. Guarded by the global-role check in EnsureSuperAdmin.
+Route::prefix('admin')
+    ->middleware(['auth', 'verified', 'ensure.super_admin'])
+    ->name('admin.')
+    ->group(function () {
+        Route::get('tenants', [TenantController::class, 'index'])->name('tenants.index');
+        Route::post('tenants', [TenantController::class, 'store'])->name('tenants.store');
+        Route::get('tenants/{team}', [TenantController::class, 'show'])->name('tenants.show');
+        Route::post('impersonate/{team}', [ImpersonationController::class, 'store'])->name('impersonate.store');
+        Route::delete('impersonate', [ImpersonationController::class, 'destroy'])->name('impersonate.destroy');
     });
 
 Route::middleware(['auth'])->group(function () {

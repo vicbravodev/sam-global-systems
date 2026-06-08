@@ -6,6 +6,7 @@ import {
     LayoutGrid,
     Plug,
     Settings,
+    Shield,
     Truck,
     Users,
     Workflow,
@@ -24,6 +25,7 @@ import {
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes';
+import { index as adminTenantsIndex } from '@/routes/admin/tenants';
 import type { NavItem } from '@/types';
 
 export function AppSidebar() {
@@ -31,6 +33,8 @@ export function AppSidebar() {
     const dashboardUrl = page.props.currentTeam
         ? dashboard(page.props.currentTeam.slug)
         : '/';
+    const isSuperAdmin =
+        page.props.auth?.user?.global_role === 'super_admin';
 
     // TODO: each non-dashboard module currently points at dashboardUrl until
     // its controllers ship (Bandeja → Incidents API, Activos → Assets API, …).
@@ -46,6 +50,15 @@ export function AppSidebar() {
     ];
 
     const footerNavItems: NavItem[] = [
+        ...(isSuperAdmin
+            ? [
+                  {
+                      title: 'Super Admin',
+                      href: adminTenantsIndex().url,
+                      icon: Shield,
+                  },
+              ]
+            : []),
         { title: 'Configuración', href: dashboardUrl, icon: Settings },
     ];
 

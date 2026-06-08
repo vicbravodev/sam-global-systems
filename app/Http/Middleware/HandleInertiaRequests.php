@@ -50,6 +50,17 @@ class HandleInertiaRequests extends Middleware
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
             'currentTeam' => fn () => $user?->currentTeam ? $user->toUserTeam($user->currentTeam) : null,
             'teams' => fn () => $user?->toUserTeams(includeCurrent: true) ?? [],
+            // Surfaces the impersonation banner: a super-admin whose current team
+            // is one they do NOT belong to is, by definition, impersonating it.
+            'impersonation' => fn () => $user
+                && $user->isSuperAdmin()
+                && $user->currentTeam
+                && ! $user->belongsToTeam($user->currentTeam)
+                    ? ['active' => true, 'team' => [
+                        'name' => $user->currentTeam->name,
+                        'slug' => $user->currentTeam->slug,
+                    ]]
+                    : null,
         ];
     }
 }
