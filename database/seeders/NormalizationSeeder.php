@@ -159,14 +159,19 @@ class NormalizationSeeder extends Seeder
                 continue;
             }
 
+            // Match on scalar columns only — never put the jsonb
+            // external_conditions_json in the WHERE clause (Postgres can't bind
+            // an array against jsonb and throws). Each AlertIncident rule maps
+            // to a distinct event type, so (provider, external_event_type,
+            // mapped_event_type_id) is a stable unique key.
             EventMappingRule::firstOrCreate(
                 [
                     'provider_id' => $samsara->id,
                     'external_event_type' => 'AlertIncident',
-                    'external_conditions_json' => $rule['conditions'],
+                    'mapped_event_type_id' => $eventTypes[$rule['type']]->id,
                 ],
                 [
-                    'mapped_event_type_id' => $eventTypes[$rule['type']]->id,
+                    'external_conditions_json' => $rule['conditions'],
                     'priority' => $rule['priority'],
                     'is_active' => true,
                 ],
