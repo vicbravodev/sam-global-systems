@@ -12,6 +12,7 @@ import {
     Plug,
     Radar,
     Settings,
+    Shield,
     Truck,
     Users,
     Workflow,
@@ -125,6 +126,7 @@ export function OpsSidebar({ navBadges }: OpsSidebarProps) {
     const currentTeam = page.props.currentTeam;
     const teamName = currentTeam?.name ?? 'SAM';
     const teamSlug = currentTeam?.slug ?? '';
+    const isSuperAdmin = page.props.auth?.user?.global_role === 'super_admin';
 
     const logoInitials = teamName
         .split(' ')
@@ -231,6 +233,16 @@ export function OpsSidebar({ navBadges }: OpsSidebarProps) {
             ],
         },
     ];
+
+    // Cross-tenant control panel: only the SaaS operator (super-admin) sees it.
+    if (isSuperAdmin) {
+        navGroups.push({
+            title: 'Administración',
+            items: [
+                { label: 'Super Admin', icon: Shield, href: '/admin/tenants' },
+            ],
+        });
+    }
 
     const isActive = (href: string) => {
         if (href === '#') {
