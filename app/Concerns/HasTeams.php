@@ -94,6 +94,21 @@ trait HasTeams
     }
 
     /**
+     * Switch to the given team without checking membership.
+     *
+     * Reserved for super-admin impersonation: a SaaS operator is not a member
+     * of the tenant they impersonate, so {@see switchTeam()} would refuse. The
+     * caller is responsible for gating this behind an `isSuperAdmin()` check.
+     */
+    public function forceSwitchTeam(Team $team): void
+    {
+        $this->update(['current_team_id' => $team->id]);
+        $this->setRelation('currentTeam', $team);
+
+        URL::defaults(['current_team' => $team->slug, 'team' => $team->slug]);
+    }
+
+    /**
      * Determine if the user belongs to the given team.
      */
     public function belongsToTeam(Team $team): bool

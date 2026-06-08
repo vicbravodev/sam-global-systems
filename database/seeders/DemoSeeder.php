@@ -40,6 +40,10 @@ use App\Domains\Notifications\Enums\NotificationSourceType;
 use App\Domains\Notifications\Enums\NotificationStatus;
 use App\Domains\Notifications\Enums\NotificationTriggeredByType;
 use App\Domains\Notifications\Models\Notification;
+use App\Domains\Tenancy\Enums\BillingCycle;
+use App\Domains\Tenancy\Enums\SubscriptionStatus;
+use App\Domains\Tenancy\Models\Plan;
+use App\Domains\Tenancy\Models\Subscription;
 use App\Enums\TeamRole;
 use App\Models\Membership;
 use App\Models\Team;
@@ -95,10 +99,17 @@ class DemoSeeder extends Seeder
             $events = $this->createEvents($team, $provider, $eventSource, $assets, $drivers);
             $this->createIncidents($team, $owner, $assets, $drivers, $events);
             $this->createNotifications($team, $owner);
+
+            // Super-admin control-panel fixtures: plans, a global super-admin,
+            // and a handful of extra tenants with varied subscription states.
+            $this->createPlans();
+            $this->createSuperAdmin();
+            $this->createExtraTenants();
         });
 
         $this->command?->info("\nDemo data seeded for team [".self::TEAM_SLUG.'].');
         $this->command?->info('Login as admin@sam.test / password (other roles available, see DemoSeeder).');
+        $this->command?->info('Super-admin: superadmin@sam.test / password → panel SaaS en /admin/tenants.');
     }
 
     private function callPrerequisiteSeeders(): void
@@ -555,6 +566,113 @@ class DemoSeeder extends Seeder
                 'payload_json' => ['demo' => true],
                 'sent_at' => $sample['status'] === NotificationStatus::Sent ? now()->subMinutes(rand(5, 240)) : null,
             ]);
+        }
+    }
+
+    /**
+     * Seed the catalog of plans surfaced in the super-admin "create tenant" form.
+     */
+    private function createPlans(): void
+    {
+        $defs = [
+            ['code' => 'starter', 'name' => 'Starter', 'base_price' => 49.00],
+            ['code' => 'pro', 'name' => 'Pro', 'base_price' => 199.00],
+            ['code' => 'enterprise', 'name' => 'Enterprise', 'base_price' => 999.00],
+        ];
+
+        foreach ($defs as $def) {
+            Plan::query()->updateOrCreate(
+                ['code' => $def['code']],
+                [
+                    'name' => $def['name'],
+                    'description' => $def['name'].' plan (demo).',
+                    'base_price' => $def['base_price'],
+                    'currency' => 'usd',
+                    'billing_cycle' => BillingCycle::Monthly,
+                    'is_active' => true,
+                ],
+            );
+        }
+    }
+
+    /**
+     * Seed a global super-admin (SaaS operator) with a personal team so that
+     * exiting impersonation has somewhere to return to.
+     */
+    private function createSuperAdmin(): void
+    {
+        $user = User::query()->updateOrCreate(
+            ['email' => 'superadmin@sam.test'],
+            [
+                'name' => 'Sam Super Admin',
+                'password' => Hash::make('password'),
+                'email_verified_at' => now(),
+                'global_role' => 'super_admin',
+            ],
+        );
+
+        if (! $user->personalTeam()) {
+            $personal = Team::query()->create([
+                'name' => "Sam Super Admin's Team",
+                'is_personal' => true,
+            ]);
+            $personal->members()->attach($user, ['role' => TeamRole::Owner->value]);
+        }
+
+        $user->forceFill(['current_team_id' => $user->personalTeam()->id])->save();
+    }
+
+    /**
+     * A few non-personal tenants with varied subscription states so the panel
+     * listing and the active/trial/past-due stats are meaningful.
+     */
+    private function createExtraTenants(): void
+    {
+        $plans = Plan::query()
+            ->whereIn('code', ['starter', 'pro', 'enterprise'])
+            ->get()
+            ->keyBy('code');
+
+        $specs = [
+            ['slug' => 'acme-logistics', 'name' => 'Acme Logistics', 'owner' => 'owner.acme@sam.test', 'plan' => 'pro', 'status' => SubscriptionStatus::Active],
+            ['slug' => 'globex-transport', 'name' => 'Globex Transport', 'owner' => 'owner.globex@sam.test', 'plan' => 'starter', 'status' => SubscriptionStatus::Trialing],
+            ['slug' => 'initech-freight', 'name' => 'Initech Freight', 'owner' => 'owner.initech@sam.test', 'plan' => 'enterprise', 'status' => SubscriptionStatus::PastDue],
+        ];
+
+        foreach ($specs as $spec) {
+            $team = Team::query()->withTrashed()->updateOrCreate(
+                ['slug' => $spec['slug']],
+                ['name' => $spec['name'], 'is_personal' => false, 'deleted_at' => null],
+            );
+
+            $owner = User::query()->updateOrCreate(
+                ['email' => $spec['owner']],
+                [
+                    'name' => $spec['name'].' Owner',
+                    'password' => Hash::make('password'),
+                    'email_verified_at' => now(),
+                ],
+            );
+
+            if (! $owner->teams()->where('teams.id', $team->id)->exists()) {
+                $team->members()->attach($owner, ['role' => TeamRole::Owner->value]);
+            }
+
+            if (! $owner->current_team_id) {
+                $owner->forceFill(['current_team_id' => $team->id])->save();
+            }
+
+            Subscription::query()->updateOrCreate(
+                ['team_id' => $team->id],
+                [
+                    'plan_id' => $plans[$spec['plan']]?->id,
+                    'status' => $spec['status'],
+                    'billing_cycle' => BillingCycle::Monthly,
+                    'starts_at' => now()->subMonths(2),
+                    'trial_ends_at' => $spec['status'] === SubscriptionStatus::Trialing ? now()->addDays(7) : null,
+                    'renews_at' => now()->addMonth(),
+                ],
+            );
         }
     }
 }
