@@ -139,7 +139,9 @@ export default function AdminTenantShow({
                                 <dd>{formatDate(subscription.renewsAt)}</dd>
                             </dl>
                         ) : (
-                            <p className="text-sm text-fg-3">Sin suscripción.</p>
+                            <p className="text-sm text-fg-3">
+                                Sin suscripción.
+                            </p>
                         )}
                     </Panel>
 
@@ -203,7 +205,9 @@ export default function AdminTenantShow({
 
                     <Panel title="Uso (periodo actual)">
                         {usage.length === 0 ? (
-                            <p className="text-sm text-fg-3">Sin datos de uso.</p>
+                            <p className="text-sm text-fg-3">
+                                Sin datos de uso.
+                            </p>
                         ) : (
                             <table className="w-full text-sm">
                                 <thead className="text-left">
@@ -228,7 +232,9 @@ export default function AdminTenantShow({
                                             key={`${row.meter}-${i}`}
                                             className="border-t border-border"
                                         >
-                                            <td className="py-1">{row.meter}</td>
+                                            <td className="py-1">
+                                                {row.meter}
+                                            </td>
                                             <td className="py-1 tabular-nums">
                                                 {row.consumed}
                                             </td>

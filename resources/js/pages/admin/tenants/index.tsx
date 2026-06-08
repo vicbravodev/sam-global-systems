@@ -132,7 +132,9 @@ function CreateTenantDialog({
                         <Input
                             id="tenant-name"
                             value={form.data.name}
-                            onChange={(e) => form.setData('name', e.target.value)}
+                            onChange={(e) =>
+                                form.setData('name', e.target.value)
+                            }
                             placeholder="Acme Logistics"
                         />
                         {form.errors.name ? (
@@ -153,7 +155,10 @@ function CreateTenantDialog({
                             </SelectTrigger>
                             <SelectContent>
                                 {plans.map((plan) => (
-                                    <SelectItem key={plan.code} value={plan.code}>
+                                    <SelectItem
+                                        key={plan.code}
+                                        value={plan.code}
+                                    >
                                         {plan.name}
                                     </SelectItem>
                                 ))}
@@ -167,7 +172,9 @@ function CreateTenantDialog({
                     </div>
 
                     <div className="grid gap-1.5">
-                        <Label htmlFor="owner-email">Email del propietario</Label>
+                        <Label htmlFor="owner-email">
+                            Email del propietario
+                        </Label>
                         <Input
                             id="owner-email"
                             type="email"
@@ -255,11 +262,19 @@ export default function AdminTenantsIndex({
                     <table className="w-full text-sm">
                         <thead className="bg-surface-2 text-left">
                             <tr className="sam-meta">
-                                <th className="px-3 py-2 font-medium">Tenant</th>
+                                <th className="px-3 py-2 font-medium">
+                                    Tenant
+                                </th>
                                 <th className="px-3 py-2 font-medium">Plan</th>
-                                <th className="px-3 py-2 font-medium">Estado</th>
-                                <th className="px-3 py-2 font-medium">Miembros</th>
-                                <th className="px-3 py-2 font-medium">Creado</th>
+                                <th className="px-3 py-2 font-medium">
+                                    Estado
+                                </th>
+                                <th className="px-3 py-2 font-medium">
+                                    Miembros
+                                </th>
+                                <th className="px-3 py-2 font-medium">
+                                    Creado
+                                </th>
                                 <th className="px-3 py-2" />
                             </tr>
                         </thead>
@@ -271,7 +286,9 @@ export default function AdminTenantsIndex({
                                 >
                                     <td className="px-3 py-2">
                                         <Link
-                                            href={adminTenantShow(tenant.slug).url}
+                                            href={
+                                                adminTenantShow(tenant.slug).url
+                                            }
                                             className="flex items-center gap-2 font-medium hover:underline"
                                         >
                                             <Building2
@@ -308,8 +325,9 @@ export default function AdminTenantsIndex({
                                             variant="outline"
                                             onClick={() =>
                                                 router.post(
-                                                    impersonateStore(tenant.slug)
-                                                        .url,
+                                                    impersonateStore(
+                                                        tenant.slug,
+                                                    ).url,
                                                 )
                                             }
                                         >

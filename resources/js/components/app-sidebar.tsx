@@ -33,8 +33,7 @@ export function AppSidebar() {
     const dashboardUrl = page.props.currentTeam
         ? dashboard(page.props.currentTeam.slug)
         : '/';
-    const isSuperAdmin =
-        page.props.auth?.user?.global_role === 'super_admin';
+    const isSuperAdmin = page.props.auth?.user?.global_role === 'super_admin';
 
     // TODO: each non-dashboard module currently points at dashboardUrl until
     // its controllers ship (Bandeja → Incidents API, Activos → Assets API, …).
