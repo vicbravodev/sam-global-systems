@@ -27,6 +27,22 @@ services:
             - rustfs
             - mailpit
             - soketi
+    horizon:
+        image: 'sail-8.5/app'
+        extra_hosts:
+            - 'host.docker.internal:host-gateway'
+        command: ['php', 'artisan', 'horizon']
+        restart: unless-stopped
+        environment:
+            WWWUSER: '${WWWUSER}'
+            LARAVEL_SAIL: 1
+        volumes:
+            - '.:/var/www/html'
+        networks:
+            - sail
+        depends_on:
+            - pgsql
+            - valkey
     pgsql:
         image: 'postgres:18-alpine'
         ports:
