@@ -3,6 +3,8 @@
 namespace App\Http\Middleware;
 
 use App\Domains\Access\Actions\AuthorizeAction;
+use App\Domains\Tenancy\Enums\SubscriptionStatus;
+use App\Domains\Tenancy\Models\Subscription;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -61,6 +63,29 @@ class HandleInertiaRequests extends Middleware
                         'slug' => $user->currentTeam->slug,
                     ]]
                     : null,
+            // Cross-tenant counters for the super-admin console badges. Only
+            // resolved (and only queried) for the SaaS operator.
+            'adminBadges' => fn () => $user?->isSuperAdmin()
+                ? $this->adminBadges()
+                : null,
+        ];
+    }
+
+    /**
+     * @return array{tenantsPastDue: int, tenantsTrialing: int}
+     */
+    private function adminBadges(): array
+    {
+        $counts = Subscription::query()
+            ->withoutGlobalScopes()
+            ->whereIn('status', [SubscriptionStatus::PastDue, SubscriptionStatus::Trialing])
+            ->selectRaw('status, count(*) as aggregate')
+            ->groupBy('status')
+            ->pluck('aggregate', 'status');
+
+        return [
+            'tenantsPastDue' => (int) ($counts[SubscriptionStatus::PastDue->value] ?? 0),
+            'tenantsTrialing' => (int) ($counts[SubscriptionStatus::Trialing->value] ?? 0),
         ];
     }
 }

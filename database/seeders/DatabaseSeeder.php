@@ -19,6 +19,9 @@ class DatabaseSeeder extends Seeder
         $this->call(DecisionOutcomeSeeder::class);
         $this->call(IncidentsSeeder::class);
         $this->call(NotificationMeterSeeder::class);
+        $this->call(AssetMeterSeeder::class);
+        // PlanSeeder must run after every *MeterSeeder so meter codes resolve.
+        $this->call(PlanSeeder::class);
 
         User::factory()->create([
             'name' => 'Test User',

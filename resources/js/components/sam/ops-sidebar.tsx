@@ -1,4 +1,4 @@
-import { usePage } from '@inertiajs/react';
+import { router, usePage } from '@inertiajs/react';
 import {
     BarChart3,
     Bell,
@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { dashboard } from '@/routes';
+import { index as adminTenantsIndex } from '@/routes/admin/tenants';
 
 interface NavBadges {
     inbox: number;
@@ -78,7 +79,7 @@ function NavItemButton({
             )}
             onClick={() => {
                 if (item.href !== '#') {
-                    window.location.href = item.href;
+                    router.visit(item.href);
                 }
             }}
         >
@@ -239,7 +240,11 @@ export function OpsSidebar({ navBadges }: OpsSidebarProps) {
         navGroups.push({
             title: 'Administración',
             items: [
-                { label: 'Super Admin', icon: Shield, href: '/admin/tenants' },
+                {
+                    label: 'Super Admin',
+                    icon: Shield,
+                    href: adminTenantsIndex().url,
+                },
             ],
         });
     }
