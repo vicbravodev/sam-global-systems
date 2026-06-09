@@ -26,6 +26,7 @@ class TenantIntegration extends Model
         'credentials_encrypted',
         'config_json',
         'last_sync_at',
+        'last_location_poll_at',
         'last_error_at',
         'last_error_message',
     ];
@@ -82,6 +83,7 @@ class TenantIntegration extends Model
             'credentials_encrypted' => 'encrypted',
             'config_json' => 'array',
             'last_sync_at' => 'datetime',
+            'last_location_poll_at' => 'datetime',
             'last_error_at' => 'datetime',
         ];
     }

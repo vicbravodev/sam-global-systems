@@ -69,6 +69,56 @@ class SamsaraAdapter implements ProviderAdapter
     }
 
     /**
+     * Fetch the latest GPS reading for every vehicle.
+     *
+     * Uses Samsara's `/fleet/vehicles/stats?types=gps` endpoint, which returns
+     * the most recent stat per vehicle. Records without usable coordinates are
+     * skipped so the caller only ever receives plottable positions.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function fetchAssetLocations(TenantIntegration $integration): array
+    {
+        $token = $this->resolveToken($integration);
+
+        if ($token === null) {
+            return [];
+        }
+
+        $locations = [];
+        $cursor = null;
+        $pages = 0;
+
+        do {
+            $query = ['types' => 'gps', 'limit' => 100];
+
+            if ($cursor !== null) {
+                $query['after'] = $cursor;
+            }
+
+            $response = $this->client($token)->get('/fleet/vehicles/stats', $query);
+
+            if (! $response->successful()) {
+                break;
+            }
+
+            foreach ((array) $response->json('data', []) as $record) {
+                $mapped = $this->mapVehicleLocation((array) $record);
+
+                if ($mapped !== null) {
+                    $locations[] = $mapped;
+                }
+            }
+
+            $cursor = $response->json('pagination.endCursor');
+            $hasNext = (bool) $response->json('pagination.hasNextPage', false);
+            $pages++;
+        } while ($hasNext && $cursor && $pages < self::MAX_PAGES);
+
+        return $locations;
+    }
+
+    /**
      * Verify Samsara's webhook signature.
      *
      * Samsara sends `X-Samsara-Signature: v1=<hex>` plus an `X-Samsara-Timestamp`
@@ -193,6 +243,49 @@ class SamsaraAdapter implements ProviderAdapter
             'username' => Arr::get($driver, 'username'),
             'phone' => Arr::get($driver, 'phone'),
             'raw' => $driver,
+        ];
+    }
+
+    /**
+     * Map a Samsara vehicle stats record to a normalized location payload.
+     *
+     * The `gps` field may arrive as a single latest reading (stats endpoint) or
+     * as a list of readings; in the latter case the most recent entry is used.
+     * Returns null when the record carries no usable coordinates.
+     *
+     * @param  array<string, mixed>  $record
+     * @return array<string, mixed>|null
+     */
+    private function mapVehicleLocation(array $record): ?array
+    {
+        $gps = Arr::get($record, 'gps');
+
+        if (is_array($gps) && array_is_list($gps)) {
+            $gps = end($gps) ?: null;
+        }
+
+        if (! is_array($gps)) {
+            return null;
+        }
+
+        $latitude = Arr::get($gps, 'latitude');
+        $longitude = Arr::get($gps, 'longitude');
+
+        if ($latitude === null || $longitude === null) {
+            return null;
+        }
+
+        $speed = Arr::get($gps, 'speedMilesPerHour');
+        $heading = Arr::get($gps, 'headingDegrees');
+
+        return [
+            'external_id' => (string) Arr::get($record, 'id'),
+            'latitude' => (float) $latitude,
+            'longitude' => (float) $longitude,
+            'speed' => $speed !== null ? (float) $speed : null,
+            'heading' => $heading !== null ? (int) round((float) $heading) : null,
+            'formatted_location' => Arr::get($gps, 'reverseGeo.formattedLocation'),
+            'recorded_at' => Arr::get($gps, 'time'),
         ];
     }
 
