@@ -13,9 +13,9 @@ import {
     SidebarMenuButton,
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
-import type { NavItem } from '@/types';
 import { dashboard } from '@/routes';
 import { index as adminTenantsIndex } from '@/routes/admin/tenants';
+import type { NavItem } from '@/types';
 
 export function AppSidebar() {
     const page = usePage();
