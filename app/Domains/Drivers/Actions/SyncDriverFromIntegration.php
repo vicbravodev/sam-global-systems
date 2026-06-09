@@ -45,13 +45,16 @@ class SyncDriverFromIntegration
      */
     private function updateExistingDriver(Driver $driver, array $driverData, int $providerId): Driver
     {
-        $firstName = $driverData['first_name'] ?? $driver->first_name;
-        $lastName = $driverData['last_name'] ?? $driver->last_name;
+        [$incomingFirst, $incomingLast] = $this->resolveName($driverData);
+
+        $firstName = $incomingFirst ?? $driver->first_name;
+        $lastName = $incomingLast ?? $driver->last_name;
+        $fullName = trim("{$firstName} {$lastName}");
 
         $driver->update(array_filter([
-            'first_name' => $driverData['first_name'] ?? null,
-            'last_name' => $driverData['last_name'] ?? null,
-            'full_name' => "{$firstName} {$lastName}",
+            'first_name' => $incomingFirst,
+            'last_name' => $incomingLast,
+            'full_name' => $fullName !== '' ? $fullName : $driver->full_name,
             'employee_code' => $driverData['employee_code'] ?? null,
             'external_primary_id' => $driverData['external_id'],
             'metadata_json' => $driverData['metadata'] ?? null,
@@ -70,15 +73,22 @@ class SyncDriverFromIntegration
      */
     private function createNewDriver(int $teamId, int $providerId, array $driverData): Driver
     {
-        $firstName = $driverData['first_name'];
-        $lastName = $driverData['last_name'];
+        [$first, $last] = $this->resolveName($driverData);
+
+        $firstName = (string) ($first ?? '');
+        $lastName = (string) ($last ?? '');
+        $fullName = trim("{$firstName} {$lastName}");
+
+        if ($fullName === '') {
+            $fullName = (string) ($driverData['name'] ?? 'Unknown Driver');
+        }
 
         $driver = Driver::withoutGlobalScopes()->create([
             'team_id' => $teamId,
             'external_primary_id' => $driverData['external_id'],
             'first_name' => $firstName,
             'last_name' => $lastName,
-            'full_name' => "{$firstName} {$lastName}",
+            'full_name' => $fullName,
             'employee_code' => $driverData['employee_code'] ?? null,
             'metadata_json' => $driverData['metadata'] ?? null,
             'first_seen_at' => now(),
@@ -109,5 +119,33 @@ class SyncDriverFromIntegration
         );
 
         return $driver;
+    }
+
+    /**
+     * Resolve the driver's first/last name from the integration payload.
+     *
+     * Providers vary: some send structured `first_name`/`last_name`, others
+     * (e.g. Samsara) only a single `name`. Falls back to splitting `name` and
+     * returns nulls when nothing usable is present, so callers can decide
+     * between defaults (create) and keeping existing values (update).
+     *
+     * @param  array<string, mixed>  $driverData
+     * @return array{0: ?string, 1: ?string}
+     */
+    private function resolveName(array $driverData): array
+    {
+        $first = $driverData['first_name'] ?? null;
+        $last = $driverData['last_name'] ?? null;
+
+        $hasFirst = $first !== null && $first !== '';
+        $hasLast = $last !== null && $last !== '';
+
+        if (! $hasFirst && ! $hasLast && ! empty($driverData['name'])) {
+            $parts = preg_split('/\s+/', trim((string) $driverData['name']), 2);
+            $first = $parts[0] ?? null;
+            $last = $parts[1] ?? null;
+        }
+
+        return [$first, $last];
     }
 }

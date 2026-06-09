@@ -4,8 +4,11 @@ namespace App\Domains\Assets;
 
 use App\Contracts\AssetSyncHandler;
 use App\Domains\Assets\Commands\RecordAssetUsageMeters;
+use App\Domains\Assets\Listeners\PollLocationsOnIntegrationConnected;
 use App\Domains\Assets\Services\AssetSyncHandlerService;
+use App\Domains\Integrations\Events\IntegrationConnected;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
 class AssetsServiceProvider extends ServiceProvider
@@ -22,6 +25,9 @@ class AssetsServiceProvider extends ServiceProvider
                 RecordAssetUsageMeters::class,
             ]);
         }
+
+        // Pull an initial set of asset positions right after an integration connects.
+        Event::listen(IntegrationConnected::class, PollLocationsOnIntegrationConnected::class);
 
         $this->app->booted(function () {
             /** @var Schedule $schedule */
