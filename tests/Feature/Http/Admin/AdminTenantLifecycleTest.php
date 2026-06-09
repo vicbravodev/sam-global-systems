@@ -27,7 +27,8 @@ class AdminTenantLifecycleTest extends TestCase
                 'display_name' => 'New Brand',
                 'primary_color' => '#2563eb',
             ])
-            ->assertRedirect(route('admin.tenants.show', $team));
+            // Renaming regenerates the slug, so the redirect targets the fresh slug.
+            ->assertRedirect(route('admin.tenants.show', $team->fresh()));
 
         $this->assertDatabaseHas('teams', ['id' => $team->id, 'name' => 'New Name']);
         $this->assertDatabaseHas('tenant_brandings', [
