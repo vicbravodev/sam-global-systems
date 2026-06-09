@@ -3,6 +3,7 @@ import {
     Building2,
     ChevronLeft,
     ChevronRight,
+    CreditCard,
     LogOut,
     Shield,
 } from 'lucide-react';
@@ -112,6 +113,11 @@ export function AdminSidebar() {
                         (badges?.tenantsPastDue ?? 0) +
                         (badges?.tenantsTrialing ?? 0),
                     pulseWhenInactive: (badges?.tenantsPastDue ?? 0) > 0,
+                },
+                {
+                    label: 'Planes',
+                    icon: CreditCard,
+                    href: '/admin/plans',
                 },
             ],
         },

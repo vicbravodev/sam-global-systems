@@ -3,7 +3,10 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Actions\Teams\CreateTeam;
+use App\Domains\Assets\Enums\AssetStatus;
+use App\Domains\Assets\Models\Asset;
 use App\Domains\Tenancy\Actions\CreateTenant;
+use App\Domains\Tenancy\Actions\ResolveAssetLimit;
 use App\Domains\Tenancy\Models\Plan;
 use App\Domains\Tenancy\Models\Subscription;
 use App\Domains\Tenancy\Models\TenantFeature;
@@ -90,7 +93,7 @@ class TenantController extends Controller
             ->with('status', 'Tenant creado correctamente.');
     }
 
-    public function show(Team $team): Response
+    public function show(Team $team, ResolveAssetLimit $resolveAssetLimit): Response
     {
         $subscription = Subscription::withoutGlobalScopes()
             ->with('plan')
@@ -151,6 +154,14 @@ class TenantController extends Controller
             'members' => $members,
             'features' => $features,
             'usage' => $usage,
+            'plans' => $this->planOptions(),
+            'assetUsage' => [
+                'limit' => $resolveAssetLimit->execute((int) $team->id),
+                'current' => Asset::withoutGlobalScopes()
+                    ->where('team_id', $team->id)
+                    ->where('status', '!=', AssetStatus::Inactive)
+                    ->count(),
+            ],
         ]);
     }
 
