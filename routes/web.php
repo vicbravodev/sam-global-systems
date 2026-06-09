@@ -5,6 +5,8 @@ use App\Http\Controllers\Access\RoleController;
 use App\Http\Controllers\Admin\ImpersonationController;
 use App\Http\Controllers\Admin\PlanController;
 use App\Http\Controllers\Admin\TenantController;
+use App\Http\Controllers\Admin\TenantFeatureController;
+use App\Http\Controllers\Admin\TenantMemberController;
 use App\Http\Controllers\Admin\TenantSubscriptionController;
 use App\Http\Controllers\AI\AIEvaluationController;
 use App\Http\Controllers\Incidents\IncidentAssignmentController;
@@ -76,6 +78,15 @@ Route::prefix('admin')
         Route::post('tenants/{team}/subscription/reactivate', [TenantSubscriptionController::class, 'reactivate'])->name('tenants.subscription.reactivate');
         Route::post('tenants/{team}/subscription/cancel', [TenantSubscriptionController::class, 'cancel'])->name('tenants.subscription.cancel');
         Route::post('tenants/{team}/subscription/extend-trial', [TenantSubscriptionController::class, 'extendTrial'])->name('tenants.subscription.extend-trial');
+
+        // Manual feature overrides for a tenant.
+        Route::put('tenants/{team}/features/{featureKey}', [TenantFeatureController::class, 'update'])->name('tenants.features.update');
+
+        // Tenant member management.
+        Route::post('tenants/{team}/members', [TenantMemberController::class, 'store'])->name('tenants.members.store');
+        Route::put('tenants/{team}/members/{user}', [TenantMemberController::class, 'update'])->name('tenants.members.update');
+        Route::delete('tenants/{team}/members/{user}', [TenantMemberController::class, 'destroy'])->name('tenants.members.destroy');
+        Route::post('tenants/{team}/members/{user}/make-owner', [TenantMemberController::class, 'makeOwner'])->name('tenants.members.make-owner');
 
         // Plan catalog: tune per-meter allowances (incl. the asset cap).
         Route::get('plans', [PlanController::class, 'index'])->name('plans.index');

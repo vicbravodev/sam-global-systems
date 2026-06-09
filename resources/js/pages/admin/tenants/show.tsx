@@ -3,6 +3,7 @@ import { ArrowLeft, UserCog } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
     Dialog,
     DialogContent,
@@ -173,6 +174,71 @@ export default function AdminTenantShow({
                     setPlanCode('');
                 },
                 onError: () => toast.error('No se pudo cambiar el plan.'),
+            },
+        );
+    };
+
+    const [newMemberEmail, setNewMemberEmail] = useState('');
+    const [newMemberRole, setNewMemberRole] = useState('member');
+
+    const assetFeature = features.find((f) => f.key === 'monitored_assets');
+    const initialAssetLimit = assetFeature?.limits?.included_quantity;
+    const [assetLimitInput, setAssetLimitInput] = useState(
+        initialAssetLimit != null ? String(initialAssetLimit) : '',
+    );
+
+    const ok = (msg: string) => ({
+        preserveScroll: true,
+        onSuccess: () => toast.success(msg),
+        onError: () => toast.error('No se pudo completar la acción.'),
+    });
+
+    const updateFeature = (
+        key: string,
+        enabled: boolean,
+        includedQuantity?: number,
+    ) =>
+        router.put(
+            `/admin/tenants/${tenant.slug}/features/${key}`,
+            includedQuantity === undefined
+                ? { enabled }
+                : { enabled, included_quantity: includedQuantity },
+            ok('Feature actualizada.'),
+        );
+
+    const memberBase = `/admin/tenants/${tenant.slug}/members`;
+
+    const changeRole = (userId: number, role: string) =>
+        router.put(`${memberBase}/${userId}`, { role }, ok('Rol actualizado.'));
+
+    const removeMember = (userId: number) =>
+        router.delete(`${memberBase}/${userId}`, ok('Miembro removido.'));
+
+    const makeOwner = (userId: number) =>
+        router.post(
+            `${memberBase}/${userId}/make-owner`,
+            {},
+            ok('Propietario reasignado.'),
+        );
+
+    const addMember = () => {
+        if (!newMemberEmail) {
+            return;
+        }
+
+        router.post(
+            memberBase,
+            { email: newMemberEmail, role: newMemberRole },
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    toast.success('Miembro añadido.');
+                    setNewMemberEmail('');
+                },
+                onError: () =>
+                    toast.error(
+                        'No se pudo añadir (¿email válido y existente?).',
+                    ),
             },
         );
     };
@@ -392,23 +458,123 @@ export default function AdminTenantShow({
                             <p className="text-sm text-fg-3">Sin miembros.</p>
                         ) : (
                             <ul className="flex flex-col gap-2 text-sm">
-                                {members.map((member) => (
-                                    <li
-                                        key={member.id}
-                                        className="flex items-center justify-between"
-                                    >
-                                        <span>
-                                            {member.name}{' '}
-                                            <span className="sam-meta">
-                                                {member.email}
+                                {members.map((member) => {
+                                    const isOwner = member.role === 'owner';
+
+                                    return (
+                                        <li
+                                            key={member.id}
+                                            className="flex items-center justify-between gap-2"
+                                        >
+                                            <span className="min-w-0 truncate">
+                                                {member.name}{' '}
+                                                <span className="sam-meta">
+                                                    {member.email}
+                                                </span>
                                             </span>
-                                        </span>
-                                        <span className="sam-meta rounded bg-surface-2 px-1.5 py-0.5">
-                                            {member.role}
-                                        </span>
-                                    </li>
-                                ))}
+                                            {tenant.isPersonal || isOwner ? (
+                                                <span className="sam-meta rounded bg-surface-2 px-1.5 py-0.5">
+                                                    {member.role}
+                                                </span>
+                                            ) : (
+                                                <span className="flex shrink-0 items-center gap-1.5">
+                                                    <Select
+                                                        value={member.role}
+                                                        onValueChange={(v) =>
+                                                            changeRole(
+                                                                member.id,
+                                                                v,
+                                                            )
+                                                        }
+                                                    >
+                                                        <SelectTrigger className="h-7 w-24">
+                                                            <SelectValue />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="admin">
+                                                                admin
+                                                            </SelectItem>
+                                                            <SelectItem value="member">
+                                                                member
+                                                            </SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        onClick={() =>
+                                                            makeOwner(member.id)
+                                                        }
+                                                    >
+                                                        Owner
+                                                    </Button>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        onClick={() =>
+                                                            setConfirm({
+                                                                title: 'Quitar miembro',
+                                                                description: `¿Quitar a ${member.email} de ${tenant.name}?`,
+                                                                run: () =>
+                                                                    removeMember(
+                                                                        member.id,
+                                                                    ),
+                                                            })
+                                                        }
+                                                    >
+                                                        Quitar
+                                                    </Button>
+                                                </span>
+                                            )}
+                                        </li>
+                                    );
+                                })}
                             </ul>
+                        )}
+
+                        {tenant.isPersonal ? null : (
+                            <div className="mt-4 flex items-end gap-2 border-t border-border pt-4">
+                                <div className="flex-1">
+                                    <Label
+                                        htmlFor="member-email"
+                                        className="sam-meta"
+                                    >
+                                        Añadir miembro (email existente)
+                                    </Label>
+                                    <Input
+                                        id="member-email"
+                                        type="email"
+                                        value={newMemberEmail}
+                                        onChange={(e) =>
+                                            setNewMemberEmail(e.target.value)
+                                        }
+                                        placeholder="user@empresa.com"
+                                    />
+                                </div>
+                                <Select
+                                    value={newMemberRole}
+                                    onValueChange={setNewMemberRole}
+                                >
+                                    <SelectTrigger className="w-24">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="admin">
+                                            admin
+                                        </SelectItem>
+                                        <SelectItem value="member">
+                                            member
+                                        </SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <Button
+                                    size="sm"
+                                    onClick={addMember}
+                                    disabled={!newMemberEmail}
+                                >
+                                    Añadir
+                                </Button>
+                            </div>
                         )}
                     </Panel>
 
@@ -416,33 +582,73 @@ export default function AdminTenantShow({
                         {features.length === 0 ? (
                             <p className="text-sm text-fg-3">Sin features.</p>
                         ) : (
-                            <ul className="flex flex-col gap-1.5 text-sm">
+                            <ul className="flex flex-col gap-2 text-sm">
                                 {features.map((feature) => (
                                     <li
                                         key={feature.key}
-                                        className="flex items-center justify-between"
+                                        className="flex items-center justify-between gap-2"
                                     >
-                                        <span className="font-mono text-xs">
-                                            {feature.key}
-                                        </span>
                                         <span className="flex items-center gap-2">
-                                            <span className="sam-meta">
-                                                {feature.source}
-                                            </span>
-                                            <span
-                                                className={
-                                                    feature.enabled
-                                                        ? 'text-health-ok'
-                                                        : 'text-fg-3'
+                                            <Checkbox
+                                                checked={feature.enabled}
+                                                disabled={tenant.isPersonal}
+                                                onCheckedChange={(c) =>
+                                                    updateFeature(
+                                                        feature.key,
+                                                        c === true,
+                                                    )
                                                 }
-                                            >
-                                                {feature.enabled ? 'on' : 'off'}
+                                                aria-label={`Activar ${feature.key}`}
+                                            />
+                                            <span className="font-mono text-xs">
+                                                {feature.key}
                                             </span>
+                                        </span>
+                                        <span className="sam-meta">
+                                            {feature.source}
                                         </span>
                                     </li>
                                 ))}
                             </ul>
                         )}
+
+                        {!tenant.isPersonal && assetFeature ? (
+                            <div className="mt-4 flex items-end gap-2 border-t border-border pt-4">
+                                <div className="flex-1">
+                                    <Label
+                                        htmlFor="asset-limit"
+                                        className="sam-meta"
+                                    >
+                                        Tope de activos (override)
+                                    </Label>
+                                    <Input
+                                        id="asset-limit"
+                                        type="number"
+                                        min={0}
+                                        value={assetLimitInput}
+                                        onChange={(e) =>
+                                            setAssetLimitInput(e.target.value)
+                                        }
+                                        placeholder="sin tope"
+                                    />
+                                </div>
+                                <Button
+                                    size="sm"
+                                    onClick={() =>
+                                        updateFeature(
+                                            'monitored_assets',
+                                            assetFeature.enabled,
+                                            Math.max(
+                                                0,
+                                                Number(assetLimitInput) || 0,
+                                            ),
+                                        )
+                                    }
+                                >
+                                    Guardar tope
+                                </Button>
+                            </div>
+                        ) : null}
                     </Panel>
 
                     <Panel title="Uso (periodo actual)">
