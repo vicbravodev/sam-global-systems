@@ -2,16 +2,21 @@
 
 namespace App\Domains\Assets\Actions;
 
+use App\Domains\Assets\Enums\AssetStatus;
 use App\Domains\Assets\Events\AssetDiscovered;
+use App\Domains\Assets\Exceptions\AssetLimitReachedException;
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Assets\Models\AssetExternalReference;
 use App\Domains\Assets\Models\AssetType;
 use App\Domains\Integrations\Models\TenantIntegration;
+use App\Domains\Tenancy\Actions\ResolveAssetLimit;
+use App\Domains\Tenancy\Events\UsageLimitExceeded;
 
 class SyncAssetFromIntegration
 {
     public function __construct(
         private ResolveAssetFromExternalId $resolveAsset,
+        private ResolveAssetLimit $resolveAssetLimit,
     ) {}
 
     /**
@@ -57,6 +62,8 @@ class SyncAssetFromIntegration
      */
     private function createNewAsset(int $teamId, int $integrationId, int $providerId, array $assetData): Asset
     {
+        $this->assertWithinAssetLimit($teamId);
+
         $assetType = $this->resolveAssetType($assetData['asset_type_code'] ?? 'vehicle');
 
         $asset = Asset::withoutGlobalScopes()->create([
@@ -95,5 +102,30 @@ class SyncAssetFromIntegration
     private function resolveAssetType(string $code): AssetType
     {
         return AssetType::where('code', $code)->firstOrFail();
+    }
+
+    /**
+     * Enforce the tenant's monitored-asset cap before creating a new asset.
+     * Updating already-known assets is always allowed; only net-new assets
+     * beyond the cap are rejected.
+     */
+    private function assertWithinAssetLimit(int $teamId): void
+    {
+        $limit = $this->resolveAssetLimit->execute($teamId);
+
+        if ($limit === null) {
+            return;
+        }
+
+        $current = Asset::withoutGlobalScopes()
+            ->where('team_id', $teamId)
+            ->where('status', '!=', AssetStatus::Inactive)
+            ->count();
+
+        if ($current >= $limit) {
+            UsageLimitExceeded::dispatch($teamId, ResolveAssetLimit::METER_CODE, $current + 1, $limit);
+
+            throw new AssetLimitReachedException($teamId, $limit, $current);
+        }
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Domains\Assets\Jobs;
 
 use App\Domains\Assets\Actions\SyncAssetFromIntegration;
+use App\Domains\Assets\Exceptions\AssetLimitReachedException;
 use App\Domains\Integrations\Contracts\ProviderAdapter;
 use App\Domains\Integrations\Models\TenantIntegration;
 use Illuminate\Bus\Queueable;
@@ -35,11 +36,17 @@ class SyncAssetsFromProviderJob implements ShouldQueue
         $result = $providerAdapter->sync($this->integration, 'assets');
 
         foreach ($result['assets'] ?? [] as $assetData) {
-            $syncAsset->execute(
-                $this->integration->team_id,
-                $this->integration->id,
-                $assetData,
-            );
+            try {
+                $syncAsset->execute(
+                    $this->integration->team_id,
+                    $this->integration->id,
+                    $assetData,
+                );
+            } catch (AssetLimitReachedException) {
+                // Tenant is at its asset cap: skip net-new assets and keep
+                // processing the rest of the batch instead of failing the job.
+                continue;
+            }
         }
     }
 

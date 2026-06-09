@@ -49,3 +49,8 @@ export type Impersonation = {
         slug: string;
     };
 };
+
+export type AdminBadges = {
+    tenantsPastDue: number;
+    tenantsTrialing: number;
+};
