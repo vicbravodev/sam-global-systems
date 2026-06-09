@@ -1,16 +1,5 @@
 import { Link, usePage } from '@inertiajs/react';
-import {
-    BarChart3,
-    FileClock,
-    Inbox,
-    LayoutGrid,
-    Plug,
-    Settings,
-    Shield,
-    Truck,
-    Users,
-    Workflow,
-} from 'lucide-react';
+import { Inbox, LayoutGrid, Plug, Settings, Shield } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavMain } from '@/components/nav-main';
 import { NavUser } from '@/components/nav-user';
@@ -24,28 +13,36 @@ import {
     SidebarMenuButton,
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
+import type { NavItem } from '@/types';
 import { dashboard } from '@/routes';
 import { index as adminTenantsIndex } from '@/routes/admin/tenants';
-import type { NavItem } from '@/types';
 
 export function AppSidebar() {
     const page = usePage();
-    const dashboardUrl = page.props.currentTeam
-        ? dashboard(page.props.currentTeam.slug)
-        : '/';
+    const currentTeam = page.props.currentTeam;
+    const dashboardUrl = currentTeam ? dashboard(currentTeam.slug) : '/';
+    const teamSlug = currentTeam?.slug ?? '';
     const isSuperAdmin = page.props.auth?.user?.global_role === 'super_admin';
 
-    // TODO: each non-dashboard module currently points at dashboardUrl until
-    // its controllers ship (Bandeja → Incidents API, Activos → Assets API, …).
+    // Only functional destinations live here. The richer operational nav lives
+    // in OpsSidebar (the tenant workspace shell); modules without a page yet are
+    // intentionally omitted instead of pointing at a dead dashboard link.
     const mainNavItems: NavItem[] = [
         { title: 'Dashboard', href: dashboardUrl, icon: LayoutGrid },
-        { title: 'Bandeja', href: dashboardUrl, icon: Inbox },
-        { title: 'Activos', href: dashboardUrl, icon: Truck },
-        { title: 'Conductores', href: dashboardUrl, icon: Users },
-        { title: 'Reglas', href: dashboardUrl, icon: Workflow },
-        { title: 'Integraciones', href: dashboardUrl, icon: Plug },
-        { title: 'Analítica', href: dashboardUrl, icon: BarChart3 },
-        { title: 'Auditoría', href: dashboardUrl, icon: FileClock },
+        ...(teamSlug
+            ? [
+                  {
+                      title: 'Bandeja',
+                      href: `/${teamSlug}/incidents`,
+                      icon: Inbox,
+                  },
+                  {
+                      title: 'Integraciones',
+                      href: `/${teamSlug}/integrations`,
+                      icon: Plug,
+                  },
+              ]
+            : []),
     ];
 
     const footerNavItems: NavItem[] = [
