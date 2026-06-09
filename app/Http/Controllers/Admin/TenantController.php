@@ -5,10 +5,16 @@ namespace App\Http\Controllers\Admin;
 use App\Actions\Teams\CreateTeam;
 use App\Domains\Assets\Enums\AssetStatus;
 use App\Domains\Assets\Models\Asset;
+use App\Domains\Audit\Actions\RecordAuditEntry;
+use App\Domains\Audit\Enums\AuditActorType;
+use App\Domains\Audit\Enums\AuditCategory;
 use App\Domains\Tenancy\Actions\CreateTenant;
+use App\Domains\Tenancy\Actions\DeleteTenant;
 use App\Domains\Tenancy\Actions\ResolveAssetLimit;
+use App\Domains\Tenancy\Actions\UpdateTenant;
 use App\Domains\Tenancy\Models\Plan;
 use App\Domains\Tenancy\Models\Subscription;
+use App\Domains\Tenancy\Models\TenantBranding;
 use App\Domains\Tenancy\Models\TenantFeature;
 use App\Domains\Tenancy\Models\TenantUsageCounter;
 use App\Enums\TeamRole;
@@ -135,6 +141,10 @@ class TenantController extends Controller
                 'overage' => (int) $counter->overage_value,
             ])->values()->all();
 
+        $branding = TenantBranding::withoutGlobalScopes()
+            ->where('team_id', $team->id)
+            ->first();
+
         return Inertia::render('admin/tenants/show', [
             'tenant' => [
                 'id' => (int) $team->id,
@@ -142,6 +152,12 @@ class TenantController extends Controller
                 'slug' => (string) $team->slug,
                 'isPersonal' => (bool) $team->is_personal,
                 'createdAt' => $team->created_at?->toIso8601String(),
+                'branding' => [
+                    'displayName' => $branding?->display_name,
+                    'primaryColor' => $branding?->primary_color,
+                    'secondaryColor' => $branding?->secondary_color,
+                    'logoUrl' => $branding?->logo_url,
+                ],
             ],
             'subscription' => $subscription ? [
                 'status' => $subscription->status->value,
@@ -163,6 +179,69 @@ class TenantController extends Controller
                     ->count(),
             ],
         ]);
+    }
+
+    public function update(Request $request, Team $team, UpdateTenant $updateTenant, RecordAuditEntry $audit): RedirectResponse
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'display_name' => ['nullable', 'string', 'max:255'],
+            'primary_color' => ['nullable', 'string', 'max:32'],
+            'secondary_color' => ['nullable', 'string', 'max:32'],
+            'logo_url' => ['nullable', 'string', 'max:2048'],
+        ]);
+
+        $updateTenant->execute($team, $data);
+
+        $user = $request->user();
+        $audit->execute(
+            actorType: AuditActorType::User,
+            actorId: (int) $user->id,
+            action: 'tenant.updated',
+            category: AuditCategory::Security,
+            entityType: Team::class,
+            entityId: (int) $team->id,
+            summary: "Tenant {$team->name} actualizado.",
+            teamId: (int) $team->id,
+            metadata: ['actor_email' => $user->email],
+            signature: 'tenant.updated:'.$team->id.':'.Str::uuid()->toString(),
+            ipAddress: $request->ip(),
+            userAgent: $request->userAgent(),
+        );
+
+        return redirect()->route('admin.tenants.show', $team)->with('status', 'Tenant actualizado.');
+    }
+
+    public function destroy(Request $request, Team $team, DeleteTenant $deleteTenant, RecordAuditEntry $audit): RedirectResponse
+    {
+        if ($team->is_personal) {
+            throw ValidationException::withMessages([
+                'tenant' => 'No se puede eliminar un equipo personal.',
+            ]);
+        }
+
+        $user = $request->user();
+        $name = $team->name;
+        $teamId = (int) $team->id;
+
+        $deleteTenant->execute($team);
+
+        $audit->execute(
+            actorType: AuditActorType::User,
+            actorId: (int) $user->id,
+            action: 'tenant.deleted',
+            category: AuditCategory::Security,
+            entityType: Team::class,
+            entityId: $teamId,
+            summary: "Tenant {$name} eliminado (soft-delete).",
+            teamId: $teamId,
+            metadata: ['actor_email' => $user->email, 'team_name' => $name],
+            signature: 'tenant.deleted:'.$teamId.':'.Str::uuid()->toString(),
+            ipAddress: $request->ip(),
+            userAgent: $request->userAgent(),
+        );
+
+        return redirect()->route('admin.tenants.index')->with('status', 'Tenant eliminado.');
     }
 
     /**

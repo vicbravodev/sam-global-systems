@@ -3,12 +3,16 @@
 namespace App\Domains\Tenancy;
 
 use App\Domains\Tenancy\Actions\ChangeTenantPlan;
+use App\Domains\Tenancy\Actions\DeleteTenant;
 use App\Domains\Tenancy\Actions\ExtendTrial;
 use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Domains\Tenancy\Actions\RegisterUsageEvent;
 use App\Domains\Tenancy\Actions\ResolveAssetLimit;
+use App\Domains\Tenancy\Actions\SetGlobalRole;
+use App\Domains\Tenancy\Actions\SetTenantFeature;
 use App\Domains\Tenancy\Actions\UpdatePlanLimits;
 use App\Domains\Tenancy\Actions\UpdateSubscriptionStatus;
+use App\Domains\Tenancy\Actions\UpdateTenant;
 use Illuminate\Support\ServiceProvider;
 
 class TenancyServiceProvider extends ServiceProvider
@@ -22,6 +26,10 @@ class TenancyServiceProvider extends ServiceProvider
         $this->app->singleton(ExtendTrial::class);
         $this->app->singleton(ResolveAssetLimit::class);
         $this->app->singleton(UpdatePlanLimits::class);
+        $this->app->singleton(SetTenantFeature::class);
+        $this->app->singleton(SetGlobalRole::class);
+        $this->app->singleton(UpdateTenant::class);
+        $this->app->singleton(DeleteTenant::class);
     }
 
     public function boot(): void

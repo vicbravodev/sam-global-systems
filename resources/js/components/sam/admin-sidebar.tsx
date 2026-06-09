@@ -4,8 +4,10 @@ import {
     ChevronLeft,
     ChevronRight,
     CreditCard,
+    FileClock,
     LogOut,
     Shield,
+    UsersRound,
 } from 'lucide-react';
 import { useState } from 'react';
 import {
@@ -118,6 +120,16 @@ export function AdminSidebar() {
                     label: 'Planes',
                     icon: CreditCard,
                     href: '/admin/plans',
+                },
+                {
+                    label: 'Operadores',
+                    icon: UsersRound,
+                    href: '/admin/operators',
+                },
+                {
+                    label: 'Auditoría',
+                    icon: FileClock,
+                    href: '/admin/audit',
                 },
             ],
         },
