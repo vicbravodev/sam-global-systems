@@ -5,7 +5,6 @@ namespace App\Domains\Tenancy\Actions;
 use App\Domains\Tenancy\Enums\SubscriptionStatus;
 use App\Domains\Tenancy\Events\TenantSubscriptionChanged;
 use App\Domains\Tenancy\Models\Subscription;
-use Illuminate\Support\Carbon;
 
 /**
  * Extends (or starts) a subscription trial by N days from the later of now and
@@ -15,10 +14,11 @@ class ExtendTrial
 {
     public function execute(Subscription $subscription, int $days): Subscription
     {
-        $base = $subscription->trial_ends_at instanceof Carbon
-            && $subscription->trial_ends_at->isFuture()
-                ? $subscription->trial_ends_at
-                : now();
+        $current = $subscription->trial_ends_at;
+
+        $base = $current !== null && $current->isFuture()
+            ? $current
+            : now();
 
         $subscription->trial_ends_at = $base->copy()->addDays($days);
 

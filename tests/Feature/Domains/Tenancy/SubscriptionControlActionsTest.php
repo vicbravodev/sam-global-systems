@@ -119,10 +119,14 @@ class SubscriptionControlActionsTest extends TestCase
             'trial_ends_at' => now()->addDays(2),
         ]);
 
+        $expected = $subscription->trial_ends_at->copy()->addDays(10)->toDateString();
+
         app(ExtendTrial::class)->execute($subscription, 10);
 
-        $this->assertTrue(
-            $subscription->fresh()->trial_ends_at->greaterThan(now()->addDays(11)),
+        // Extends from the existing trial end (now+2 → now+12), not from "now".
+        $this->assertSame(
+            $expected,
+            $subscription->fresh()->trial_ends_at->toDateString(),
         );
     }
 
