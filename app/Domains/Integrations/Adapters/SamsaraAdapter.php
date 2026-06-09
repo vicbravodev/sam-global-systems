@@ -90,7 +90,9 @@ class SamsaraAdapter implements ProviderAdapter
         $pages = 0;
 
         do {
-            $query = ['types' => 'gps', 'limit' => 100];
+            // /fleet/vehicles/stats has no `limit` param; it returns one row per
+            // vehicle and paginates via the `after` cursor.
+            $query = ['types' => 'gps'];
 
             if ($cursor !== null) {
                 $query['after'] = $cursor;
@@ -122,9 +124,14 @@ class SamsaraAdapter implements ProviderAdapter
      * Verify Samsara's webhook signature.
      *
      * Samsara sends `X-Samsara-Signature: v1=<hex>` plus an `X-Samsara-Timestamp`
-     * (Unix ms). The HMAC-SHA256 is computed over the signed message
-     * `v1:{timestamp}:{rawBody}` using the endpoint secret. See
-     * https://developers.samsara.com/docs/webhooks#validating-events.
+     * (Unix seconds). The HMAC-SHA256 is computed over the signed message
+     * `v1:{timestamp}:{rawBody}` using the webhook's Secret Key. See
+     * https://developers.samsara.com/docs/webhooks#webhook-signatures.
+     *
+     * Samsara's dashboard Secret Key is Base64-encoded and must be decoded
+     * before being used as the HMAC key, so we verify against the decoded key
+     * first and fall back to the raw secret (for generic providers / secrets
+     * already stored in decoded form).
      *
      * When no timestamp is supplied (generic providers / legacy callers) we fall
      * back to a plain HMAC over the raw body, still accepting either the "v1="
@@ -143,22 +150,48 @@ class SamsaraAdapter implements ProviderAdapter
                 return false;
             }
 
-            $expected = hash_hmac('sha256', 'v1:'.$timestamp.':'.$payload, $secret);
-
-            return hash_equals($expected, $provided);
+            $message = 'v1:'.$timestamp.':'.$payload;
+        } else {
+            $message = $payload;
         }
 
-        $expected = hash_hmac('sha256', $payload, $secret);
+        foreach ($this->candidateSecrets($secret) as $key) {
+            if (hash_equals(hash_hmac('sha256', $message, $key), $provided)) {
+                return true;
+            }
+        }
 
-        return hash_equals($expected, $provided);
+        return false;
+    }
+
+    /**
+     * Candidate HMAC keys to try, in priority order.
+     *
+     * Samsara's Secret Key is Base64-encoded and must be decoded before use, so
+     * the decoded bytes are tried first. The raw secret is also tried so callers
+     * that store an already-decoded or non-Base64 secret keep working.
+     *
+     * @return array<int, string>
+     */
+    private function candidateSecrets(string $secret): array
+    {
+        $candidates = [$secret];
+
+        $decoded = base64_decode($secret, true);
+
+        if ($decoded !== false && $decoded !== '' && $decoded !== $secret) {
+            array_unshift($candidates, $decoded);
+        }
+
+        return array_values(array_unique($candidates));
     }
 
     /**
      * Reject stale timestamps to protect against replay attacks. A tolerance of
      * 0 (config `services.samsara.webhook_tolerance_seconds`) disables the check.
      *
-     * Samsara sends the timestamp in milliseconds; we defensively also accept a
-     * seconds-precision value.
+     * Samsara sends `X-Samsara-Timestamp` in seconds; we defensively also accept
+     * a millisecond-precision value.
      */
     private function timestampWithinTolerance(string $timestamp): bool
     {

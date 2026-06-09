@@ -25,7 +25,8 @@ class SamsaraConnectCommand extends Command
         {token : Samsara API token}
         {--team= : Team id (defaults to the first team)}
         {--name=Samsara : Display name for the integration}
-        {--webhook : Also create a webhook endpoint and print its URL}';
+        {--webhook : Also create a webhook endpoint and print its URL}
+        {--secret= : Samsara-generated webhook Signing Secret to store for HMAC verification}';
 
     protected $description = 'Connect a team to Samsara with a real API token and test the connection';
 
@@ -81,15 +82,29 @@ class SamsaraConnectCommand extends Command
                 ['status' => 'active'],
             );
 
+            // Samsara generates the webhook Secret Key itself (it cannot be set
+            // via the API/dashboard), so the real signing secret must be copied
+            // back into SAM. Use --secret=... once the webhook exists in Samsara.
+            if ($secret = $this->option('secret')) {
+                $endpoint->update(['secret' => (string) $secret]);
+            }
+
             $url = route('webhooks.handle', ['endpoint_url' => $endpoint->url]);
 
             $this->newLine();
             $this->info('Webhook endpoint:');
-            $this->line("  URL:    {$url}");
-            $this->line("  Secret: {$endpoint->secret}");
-            $this->line('  Register this URL in Samsara → Settings → Webhooks.');
-            $this->line('  Set the secret above as the webhook Signing Secret; SAM verifies the');
-            $this->line('  X-Samsara-Signature (v1=<hmac>) + X-Samsara-Timestamp headers on every event.');
+            $this->line("  URL: {$url}");
+            $this->line('  1. Register this URL in Samsara → Settings → Webhooks (HTTPS required).');
+            $this->line('  2. Copy the Secret Key that Samsara generates for the webhook and store');
+            $this->line('     it in SAM: re-run with --webhook --secret="<samsara-secret-key>".');
+
+            if (! $this->option('secret')) {
+                $this->warn('  No --secret provided yet: HMAC verification will fail until the real');
+                $this->warn('  Samsara Secret Key is stored. SAM verifies X-Samsara-Signature');
+                $this->warn('  (v1=<hmac>) + X-Samsara-Timestamp on every event.');
+            } else {
+                $this->info('  ✓ Stored Samsara Secret Key for HMAC verification.');
+            }
         }
 
         return $result['success'] ? self::SUCCESS : self::FAILURE;
