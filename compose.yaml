@@ -1,7 +1,7 @@
 services:
     laravel.test:
         build:
-            context: './vendor/laravel/sail/runtimes/8.5'
+            context: './docker/8.5'
             dockerfile: Dockerfile
             args:
                 WWWGROUP: '${WWWGROUP}'
@@ -43,6 +43,27 @@ services:
         depends_on:
             - pgsql
             - valkey
+    scheduler:
+        image: 'sail-8.5/app'
+        extra_hosts:
+            - 'host.docker.internal:host-gateway'
+        # Long-running scheduler (container-native alternative to a system cron):
+        # invokes schedule:run every minute and only DISPATCHES the queued jobs
+        # (sync, asset polling, daily aggregates). The actual work runs on Horizon.
+        # Must run as a single instance — do not scale replicas. Jobs additionally
+        # self-guard with ->onOneServer() via the Valkey cache lock.
+        command: ['php', 'artisan', 'schedule:work']
+        restart: unless-stopped
+        environment:
+            WWWUSER: '${WWWUSER}'
+            LARAVEL_SAIL: 1
+        volumes:
+            - '.:/var/www/html'
+        networks:
+            - sail
+        depends_on:
+            - pgsql
+            - valkey
     pgsql:
         image: 'postgres:18-alpine'
         ports:
@@ -54,7 +75,7 @@ services:
             POSTGRES_PASSWORD: '${DB_PASSWORD:-secret}'
         volumes:
             - 'sail-pgsql:/var/lib/postgresql'
-            - './vendor/laravel/sail/database/pgsql/create-testing-database.sql:/docker-entrypoint-initdb.d/10-create-testing-database.sql'
+            - './docker/pgsql/create-testing-database.sql:/docker-entrypoint-initdb.d/10-create-testing-database.sql'
         networks:
             - sail
         healthcheck:
