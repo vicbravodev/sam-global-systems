@@ -24,12 +24,20 @@ import {
 import { store as impersonateStore } from '@/routes/admin/impersonate';
 import { index as adminTenantsIndex } from '@/routes/admin/tenants';
 
+interface TenantBranding {
+    displayName: string | null;
+    primaryColor: string | null;
+    secondaryColor: string | null;
+    logoUrl: string | null;
+}
+
 interface Tenant {
     id: number;
     name: string;
     slug: string;
     isPersonal: boolean;
     createdAt: string | null;
+    branding: TenantBranding;
 }
 
 interface Subscription {
@@ -187,6 +195,16 @@ export default function AdminTenantShow({
         initialAssetLimit != null ? String(initialAssetLimit) : '',
     );
 
+    const [tenantName, setTenantName] = useState(tenant.name);
+    const [displayName, setDisplayName] = useState(
+        tenant.branding.displayName ?? '',
+    );
+    const [primaryColor, setPrimaryColor] = useState(
+        tenant.branding.primaryColor ?? '',
+    );
+    const [logoUrl, setLogoUrl] = useState(tenant.branding.logoUrl ?? '');
+    const [deleteText, setDeleteText] = useState('');
+
     const ok = (msg: string) => ({
         preserveScroll: true,
         onSuccess: () => toast.success(msg),
@@ -242,6 +260,23 @@ export default function AdminTenantShow({
             },
         );
     };
+
+    const saveTenant = () =>
+        router.put(
+            `/admin/tenants/${tenant.slug}`,
+            {
+                name: tenantName,
+                display_name: displayName || null,
+                primary_color: primaryColor || null,
+                logo_url: logoUrl || null,
+            },
+            ok('Tenant actualizado.'),
+        );
+
+    const deleteTenant = () =>
+        router.delete(`/admin/tenants/${tenant.slug}`, {
+            onError: () => toast.error('No se pudo eliminar el tenant.'),
+        });
 
     const assetLimitLabel =
         assetUsage.limit === null ? 'sin tope' : `${assetUsage.limit}`;
@@ -452,6 +487,81 @@ export default function AdminTenantShow({
                                 : 'Tope efectivo del plan (o ajuste manual del tenant).'}
                         </p>
                     </Panel>
+
+                    {tenant.isPersonal ? null : (
+                        <Panel title="Identidad y marca">
+                            <div className="flex flex-col gap-3">
+                                <div className="grid gap-1.5">
+                                    <Label
+                                        htmlFor="tenant-name"
+                                        className="sam-meta"
+                                    >
+                                        Nombre
+                                    </Label>
+                                    <Input
+                                        id="tenant-name"
+                                        value={tenantName}
+                                        onChange={(e) =>
+                                            setTenantName(e.target.value)
+                                        }
+                                    />
+                                </div>
+                                <div className="grid gap-1.5">
+                                    <Label
+                                        htmlFor="display-name"
+                                        className="sam-meta"
+                                    >
+                                        Nombre visible (marca)
+                                    </Label>
+                                    <Input
+                                        id="display-name"
+                                        value={displayName}
+                                        onChange={(e) =>
+                                            setDisplayName(e.target.value)
+                                        }
+                                    />
+                                </div>
+                                <div className="flex gap-2">
+                                    <div className="grid flex-1 gap-1.5">
+                                        <Label
+                                            htmlFor="primary-color"
+                                            className="sam-meta"
+                                        >
+                                            Color primario
+                                        </Label>
+                                        <Input
+                                            id="primary-color"
+                                            value={primaryColor}
+                                            onChange={(e) =>
+                                                setPrimaryColor(e.target.value)
+                                            }
+                                            placeholder="#2563eb"
+                                        />
+                                    </div>
+                                    <div className="grid flex-[2] gap-1.5">
+                                        <Label
+                                            htmlFor="logo-url"
+                                            className="sam-meta"
+                                        >
+                                            Logo URL
+                                        </Label>
+                                        <Input
+                                            id="logo-url"
+                                            value={logoUrl}
+                                            onChange={(e) =>
+                                                setLogoUrl(e.target.value)
+                                            }
+                                        />
+                                    </div>
+                                </div>
+                                <div className="flex justify-end">
+                                    <Button size="sm" onClick={saveTenant}>
+                                        Guardar
+                                    </Button>
+                                </div>
+                            </div>
+                        </Panel>
+                    )}
 
                     <Panel title={`Miembros (${members.length})`}>
                         {members.length === 0 ? (
@@ -699,6 +809,49 @@ export default function AdminTenantShow({
                         )}
                     </Panel>
                 </div>
+
+                {tenant.isPersonal ? null : (
+                    <div className="mt-4 rounded-md border border-health-down/40 bg-surface-1">
+                        <h2 className="sam-h3 m-0 border-b border-health-down/30 px-4 py-2.5 text-health-down">
+                            Zona de peligro
+                        </h2>
+                        <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-end">
+                            <div className="flex-1">
+                                <Label
+                                    htmlFor="delete-confirm"
+                                    className="sam-meta"
+                                >
+                                    Eliminar tenant (soft-delete). Escribe{' '}
+                                    <span className="font-mono">
+                                        {tenant.slug}
+                                    </span>{' '}
+                                    para confirmar.
+                                </Label>
+                                <Input
+                                    id="delete-confirm"
+                                    value={deleteText}
+                                    onChange={(e) =>
+                                        setDeleteText(e.target.value)
+                                    }
+                                    placeholder={tenant.slug}
+                                />
+                            </div>
+                            <Button
+                                variant="destructive"
+                                onClick={() =>
+                                    setConfirm({
+                                        title: 'Eliminar tenant',
+                                        description: `El tenant ${tenant.name} quedará eliminado (soft-delete).`,
+                                        run: deleteTenant,
+                                    })
+                                }
+                                disabled={deleteText !== tenant.slug}
+                            >
+                                Eliminar tenant
+                            </Button>
+                        </div>
+                    </div>
+                )}
             </div>
 
             <Dialog

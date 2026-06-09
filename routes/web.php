@@ -2,7 +2,9 @@
 
 use App\Http\Controllers\Access\MemberRoleController;
 use App\Http\Controllers\Access\RoleController;
+use App\Http\Controllers\Admin\AuditController;
 use App\Http\Controllers\Admin\ImpersonationController;
+use App\Http\Controllers\Admin\OperatorController;
 use App\Http\Controllers\Admin\PlanController;
 use App\Http\Controllers\Admin\TenantController;
 use App\Http\Controllers\Admin\TenantFeatureController;
@@ -71,6 +73,8 @@ Route::prefix('admin')
         Route::get('tenants', [TenantController::class, 'index'])->name('tenants.index');
         Route::post('tenants', [TenantController::class, 'store'])->name('tenants.store');
         Route::get('tenants/{team}', [TenantController::class, 'show'])->name('tenants.show');
+        Route::put('tenants/{team}', [TenantController::class, 'update'])->name('tenants.update');
+        Route::delete('tenants/{team}', [TenantController::class, 'destroy'])->name('tenants.destroy');
 
         // Subscription / plan controls for a single tenant (internal billing state).
         Route::put('tenants/{team}/subscription', [TenantSubscriptionController::class, 'update'])->name('tenants.subscription.update');
@@ -91,6 +95,14 @@ Route::prefix('admin')
         // Plan catalog: tune per-meter allowances (incl. the asset cap).
         Route::get('plans', [PlanController::class, 'index'])->name('plans.index');
         Route::put('plans/{plan}', [PlanController::class, 'update'])->name('plans.update');
+
+        // SaaS operators (global super-admins).
+        Route::get('operators', [OperatorController::class, 'index'])->name('operators.index');
+        Route::post('operators', [OperatorController::class, 'store'])->name('operators.store');
+        Route::delete('operators/{user}', [OperatorController::class, 'destroy'])->name('operators.destroy');
+
+        // Cross-tenant audit viewer.
+        Route::get('audit', [AuditController::class, 'index'])->name('audit.index');
 
         Route::post('impersonate/{team}', [ImpersonationController::class, 'store'])->name('impersonate.store');
         Route::delete('impersonate', [ImpersonationController::class, 'destroy'])->name('impersonate.destroy');
