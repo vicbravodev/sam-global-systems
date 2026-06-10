@@ -73,7 +73,7 @@ class SamsaraAdapterTest extends TestCase
         $result = app(SamsaraAdapter::class)->testConnection($this->makeIntegration(token: null));
 
         $this->assertFalse($result['success']);
-        $this->assertStringContainsString('No API token', $result['message']);
+        $this->assertStringContainsString('No hay token de API', $result['message']);
     }
 
     public function test_sync_maps_vehicles_and_drivers(): void

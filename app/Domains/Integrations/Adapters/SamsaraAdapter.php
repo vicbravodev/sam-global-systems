@@ -29,7 +29,7 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
         $token = $this->resolveToken($integration);
 
         if ($token === null) {
-            return ['success' => false, 'message' => 'No API token configured for this Samsara integration.'];
+            return ['success' => false, 'message' => 'No hay token de API configurado para esta integración de Samsara.'];
         }
 
         try {

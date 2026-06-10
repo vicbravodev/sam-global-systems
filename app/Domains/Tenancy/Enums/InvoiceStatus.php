@@ -14,12 +14,12 @@ enum InvoiceStatus: string
     public function label(): string
     {
         return match ($this) {
-            self::Draft => 'Draft',
-            self::Finalized => 'Finalized',
-            self::Invoiced => 'Invoiced',
-            self::Paid => 'Paid',
-            self::Disputed => 'Disputed',
-            self::Void => 'Void',
+            self::Draft => 'Borrador',
+            self::Finalized => 'Finalizada',
+            self::Invoiced => 'Facturada',
+            self::Paid => 'Pagada',
+            self::Disputed => 'En disputa',
+            self::Void => 'Anulada',
         };
     }
 }

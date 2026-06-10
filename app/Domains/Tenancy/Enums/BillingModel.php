@@ -12,10 +12,10 @@ enum BillingModel: string
     public function label(): string
     {
         return match ($this) {
-            self::IncludedOnly => 'Included Only',
-            self::Metered => 'Metered',
-            self::Tiered => 'Tiered',
-            self::FlatPlusOverage => 'Flat + Overage',
+            self::IncludedOnly => 'Solo incluido',
+            self::Metered => 'Por consumo',
+            self::Tiered => 'Por niveles',
+            self::FlatPlusOverage => 'Fijo + excedente',
         };
     }
 }

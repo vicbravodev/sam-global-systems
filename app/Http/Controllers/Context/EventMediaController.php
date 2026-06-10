@@ -49,7 +49,7 @@ class EventMediaController extends Controller
 
         if ($type === null) {
             return response()->json([
-                'message' => 'Unsupported request_type.',
+                'message' => 'Tipo de solicitud no soportado.',
                 'supported' => array_map(fn (MediaRequestType $t) => $t->value, MediaRequestType::cases()),
             ], 422);
         }

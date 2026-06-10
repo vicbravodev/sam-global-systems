@@ -14,12 +14,12 @@ enum SubscriptionStatus: string
     public function label(): string
     {
         return match ($this) {
-            self::Trialing => 'Trialing',
-            self::Active => 'Active',
-            self::PastDue => 'Past Due',
-            self::Suspended => 'Suspended',
-            self::Canceled => 'Canceled',
-            self::Expired => 'Expired',
+            self::Trialing => 'En prueba',
+            self::Active => 'Activa',
+            self::PastDue => 'Vencida',
+            self::Suspended => 'Suspendida',
+            self::Canceled => 'Cancelada',
+            self::Expired => 'Expirada',
         };
     }
 
