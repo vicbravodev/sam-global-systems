@@ -1,6 +1,7 @@
 import { Head, router, usePage } from '@inertiajs/react';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { formatCurrency } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -63,7 +64,7 @@ const SUBSCRIPTION_STATUS_COLOR: Record<string, string> = {
 };
 
 function money(value: number, currency: string | null): string {
-    return `${value.toLocaleString('es', { minimumFractionDigits: 2 })} ${currency ?? ''}`.trim();
+    return formatCurrency(value, currency);
 }
 
 function UsageBar({ row }: { row: UsageRow }) {
