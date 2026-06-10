@@ -224,7 +224,7 @@ export function OpsSidebar({ navBadges }: OpsSidebarProps) {
                 {
                     label: 'Equipo y roles',
                     icon: Users,
-                    href: '#',
+                    href: `/${teamSlug}/settings/roles`,
                 },
                 {
                     label: 'Configuración',

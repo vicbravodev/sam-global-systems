@@ -3,9 +3,9 @@
 namespace Tests\Feature\Domains\Access;
 
 use App\Domains\Access\Enums\RoleScope;
-use App\Domains\Access\Models\Permission;
 use App\Domains\Access\Models\Role;
 use App\Models\User;
+use Database\Seeders\AccessSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -13,15 +13,20 @@ class RoleTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // Roles + permissions baseline. Team owners fall back to the
+        // tenant_admin role (users.manage) via AuthorizeAction's legacy map.
+        $this->seed(AccessSeeder::class);
+    }
+
     public function test_system_roles_cannot_be_deleted(): void
     {
         $user = User::factory()->create();
         $team = $user->currentTeam;
 
-        $role = Role::factory()->system()->create([
-            'code' => 'tenant_admin',
-            'scope' => RoleScope::Tenant,
-        ]);
+        $role = Role::where('code', 'tenant_admin')->firstOrFail();
 
         $response = $this->actingAs($user)->delete(
             route('access.roles.destroy', ['current_team' => $team->slug, 'role' => $role->id]),
@@ -40,11 +45,6 @@ class RoleTest extends TestCase
     {
         $user = User::factory()->create();
         $team = $user->currentTeam;
-
-        Permission::factory()->create([
-            'code' => 'incidents.view',
-            'module' => 'incidents',
-        ]);
 
         $response = $this->actingAs($user)->post(
             route('access.roles.store', ['current_team' => $team->slug]),

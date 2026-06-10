@@ -231,3 +231,29 @@ export interface InboxMockData {
     integrations: MockIntegration[];
     stream: MockStreamEvent[];
 }
+
+// ---- Roles & team members (settings/roles page) ----
+
+export interface RolePermissionOption {
+    code: string;
+    name: string;
+    description: string | null;
+}
+
+export interface RoleRow {
+    id: number;
+    name: string;
+    code: string;
+    description: string | null;
+    isSystem: boolean;
+    permissions: string[];
+}
+
+export interface TeamMemberRow {
+    id: number;
+    userName: string;
+    userEmail: string;
+    roleCode: string | null;
+    roleName: string | null;
+    legacyRole: string | null;
+}
