@@ -6,6 +6,7 @@ use App\Contracts\AI\EventEvaluationAgent;
 use App\Domains\AI\Data\AIEvaluationResult;
 use App\Domains\AI\Data\AIInputContext;
 use App\Domains\AI\Enums\EventClassification;
+use App\Domains\AI\Support\ModelPricing;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Laravel\Ai\Responses\AgentResponse;
@@ -22,11 +23,14 @@ class SdkEventEvaluationAgent implements EventEvaluationAgent
 {
     public function __construct(
         private readonly EventClassifierAgent $classifier,
+        private readonly ModelPricing $pricing,
     ) {}
 
     public function evaluate(AIInputContext $context): AIEvaluationResult
     {
         $payload = json_encode($context->toArray(), JSON_THROW_ON_ERROR);
+
+        $startedAt = hrtime(true);
 
         try {
             $response = $this->classifier->prompt($payload);
@@ -34,10 +38,14 @@ class SdkEventEvaluationAgent implements EventEvaluationAgent
             throw new RuntimeException('Laravel AI SDK invocation failed: '.$exception->getMessage(), previous: $exception);
         }
 
+        $latencyMs = (int) intdiv(hrtime(true) - $startedAt, 1_000_000);
+
         $structured = $this->parseStructuredResponse($response->text);
 
         $this->persistConversationLink($context, $response);
 
+        // Pricing keys on the raw provider model id; when `meta` is absent
+        // the cost resolves to 0.0 rather than failing the evaluation.
         return new AIEvaluationResult(
             classification: EventClassification::from($structured['classification']),
             confidenceScore: (float) $structured['confidence_score'],
@@ -48,8 +56,12 @@ class SdkEventEvaluationAgent implements EventEvaluationAgent
             modelUsed: 'laravel-ai-sdk:'.($response->meta?->model ?? 'event-classifier'),
             inputTokens: (int) $response->usage->promptTokens,
             outputTokens: (int) $response->usage->completionTokens,
-            latencyMs: 0,
-            costEstimate: 0.0,
+            latencyMs: $latencyMs,
+            costEstimate: $this->pricing->estimateCost(
+                $response->meta?->model,
+                (int) $response->usage->promptTokens,
+                (int) $response->usage->completionTokens,
+            ),
         );
     }
 

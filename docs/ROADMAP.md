@@ -1,6 +1,6 @@
 # ROADMAP — SAM Global Systems
 
-> Documento vivo de next steps para frontend y backend. Actualizado al **2026-06-09** (post-merge PR #46), verificado contra el código (no contra docs viejas).
+> Documento vivo de next steps para frontend y backend. Actualizado al **2026-06-09** (PR #50, B3 cerrado), verificado contra el código (no contra docs viejas).
 > Úsalo al inicio de cada sesión para decidir qué sigue. Cuando un ítem se complete, anótale el PR que lo cerró y muévelo a §6. Actualiza este documento en el mismo PR que cierra cada ítem.
 
 ---
@@ -39,7 +39,6 @@ El producto terminado es: un operador de flota abre SAM, ve su flota en vivo (ma
 |-----|---------|
 | Billing/Branding tenant-facing (spec 01 §9) | No existen `BillingController` ni `BrandingController` — el tenant no puede ver su consumo/facturas ni configurar branding. Único endpoint web pendiente del spec 01. |
 | Stripe end-to-end | Usage events y agregados existen, pero el ciclo completo contra Stripe (test mode) no está validado: sync de meters, webhooks Cashier, invoice snapshots. |
-| IA real en operación | El `SdkEventEvaluationAgent` existe pero falta validarlo operando con un provider real (API key, prompts afinados, costos, latencia en cola `ai-evaluation`). |
 | Policies Tenancy | Subscription/TenantBranding/TenantFeature sin policies — crearlas junto con sus controllers (ítem Billing/Branding). |
 | Segundo provider | Adapter pattern probado solo con Samsara; Geotab/Motive cuando haya demanda real. |
 
@@ -102,8 +101,8 @@ Settings del tenant (AI profile, políticas de notificación/escalación, rule o
 ### B2. Stripe end-to-end (test mode)
 Validar el ciclo completo: sync de usage meters a Stripe, webhooks de Cashier, invoice snapshots, suspensión por impago vs. la suspensión manual del super-admin. **Esfuerzo: 2–3 sesiones.**
 
-### B3. IA real en operación
-Configurar provider real para `SdkEventEvaluationAgent` (API key/modelo), correr el pipeline con eventos reales de Samsara (existe `samsara:replay`), afinar prompts/`TenantAIProfile`, medir costo y latencia en la cola `ai-evaluation`, y verificar que `RecordUsageEvent` factura cada evaluación. **Esfuerzo: 1–2 sesiones; alto valor de demo.**
+### B3. ✅ IA real en operación — CERRADO (PR #50)
+Provider OpenAI configurable por env (`AI_DEFAULT`/`OPENAI_API_KEY`/`OPENAI_TEXT_MODEL`), binding config:cache-safe, latencia real (hrtime) y costo real (`ModelPricing` + `ai.pricing`) en ambos agentes SDK, validado end-to-end con `samsara:replay` (facturación `ai_calls`/`ai_tokens_in`/`ai_tokens_out` verificada). Ver §6. Follow-up pendiente: routing de modelo por tenant (`TenantAIProfileData.preferredModel`) y afinado fino de prompts.
 
 ### B4. Endpoints de soporte para las vistas nuevas
 A demanda de F3–F6: lecturas que falten (historial de posiciones paginado, agregados para dashboard, etc.). Siempre Queries DB-backed en el dominio dueño (patrón `Db*MetricsQuery`), nunca lógica en el controller. **Esfuerzo: incremental.**
@@ -117,8 +116,8 @@ Segundo provider de integración (Geotab/Motive) para validar que el adapter pat
 
 | Fase | Ítems | Resultado |
 |------|-------|-----------|
-| **1. Quick wins** | F1 (roles rota) → F2 (dashboard real) | App sin páginas rotas ni mocks |
-| **2. IA encendida** | B3 (IA real operando) | Incidentes triageados por IA de verdad — demo del corazón del producto |
+| **1. Quick wins ✅** | F1 (roles rota) → F2 (dashboard real) | App sin páginas rotas ni mocks |
+| **2. IA encendida ✅** | B3 (IA real operando) | Incidentes triageados por IA de verdad — demo del corazón del producto |
 | **3. Flota visible** | F3 (assets + mapa) → F4 (drivers) | El operador ve su flota en vivo — demo-able a clientes |
 | **4. Cierre operativo** | F5 (notificaciones UI) → F6 (analytics) | Producto operativo completo |
 | **5. Monetización** | B1+F7 (billing/branding) → B2 (Stripe e2e) | Listo para facturar |
@@ -138,3 +137,4 @@ Segundo provider de integración (Geotab/Motive) para validar que el adapter pat
 - Consola super-admin completa (PRs #37, #39, #41, #43–#45).
 - **F1** — Página `settings/roles` (CRUD de roles + permisos por módulo + cambio de rol de miembros) con `RolePolicy` nueva cerrando el hueco de autorización del CRUD y el scoping cross-team de `MemberRoleController` (PR #48).
 - **F2** — Dashboard con datos reales: `DashboardController` (KPIs honestos incl. SLA 7d y precisión IA con la fórmula de `EvaluateAIEffectiveness`, top-5, stream con decisiones, integraciones + eventos 24h, uso del tenant) + queries nuevas en Incidents/Normalization + realtime debounced. Fase 1 (quick wins) completa: app sin páginas rotas ni mocks (PR #49).
+- **B3** — IA real en operación: `AI_DEFAULT`/`OPENAI_API_KEY`/`OPENAI_TEXT_MODEL` en env (default `gpt-5.4`), `isAiSdkConfigured()` leyendo config en vez de `env()` (config:cache-safe), `ModelPricing` + sección `ai.pricing` (USD/1M tokens, fallback por prefijo para ids versionados), latencia real con hrtime y `cost_estimate` real en `SdkEventEvaluationAgent`/`SdkMediaAssessmentAgent`, tests nuevos (pricing, media via SDK, bindings) y pipeline validado con `samsara:replay` + verificación de `ai_inference_logs` y `usage_events`. Fase 2 (IA encendida) completa (PR #50).

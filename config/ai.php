@@ -13,7 +13,7 @@ return [
     |
     */
 
-    'default' => 'openai',
+    'default' => env('AI_DEFAULT', 'openai'),
     'default_for_images' => 'gemini',
     'default_for_audio' => 'openai',
     'default_for_transcription' => 'openai',
@@ -122,6 +122,11 @@ return [
             'driver' => 'openai',
             'key' => env('OPENAI_API_KEY'),
             'url' => env('OPENAI_URL', 'https://api.openai.com/v1'),
+            'models' => [
+                'text' => [
+                    'default' => env('OPENAI_TEXT_MODEL', 'gpt-5.4'),
+                ],
+            ],
         ],
 
         'openrouter' => [
@@ -138,6 +143,25 @@ return [
             'driver' => 'xai',
             'key' => env('XAI_API_KEY'),
         ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Model Pricing
+    |--------------------------------------------------------------------------
+    |
+    | USD per 1M tokens, keyed by the model id as returned by the provider
+    | API (`meta->model`). Used by `App\Domains\AI\Support\ModelPricing` to
+    | estimate the cost persisted in `ai_inference_logs.cost_estimate`.
+    | Models without an entry resolve to a cost of 0.0.
+    |
+    */
+
+    'pricing' => [
+        'gpt-5.4' => ['input' => 2.50, 'output' => 15.00],
+        'gpt-5.4-mini' => ['input' => 0.75, 'output' => 4.50],
+        'gpt-5.4-nano' => ['input' => 0.20, 'output' => 1.25],
+        'gpt-5.4-pro' => ['input' => 30.00, 'output' => 180.00],
     ],
 
 ];

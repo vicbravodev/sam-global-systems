@@ -62,11 +62,14 @@ class AIServiceProvider extends ServiceProvider
     }
 
     /**
-     * The Laravel AI SDK is considered "configured" when at least one provider
-     * has the credentials we expect for it. Tests run without these env vars
-     * and exercise the SDK via `Agent::fake(...)`, which short-circuits
-     * provider resolution entirely — so the binding stays on the Null
-     * implementation in the suite by default.
+     * The Laravel AI SDK is considered "configured" when the default provider
+     * declares a non-empty API key in `config('ai.providers.*')`. Reading the
+     * key from config (never `env()` directly) keeps this `config:cache`-safe.
+     * Tests run without provider keys and exercise the SDK via
+     * `Agent::fake(...)`, which short-circuits provider resolution entirely —
+     * so the binding stays on the Null implementation in the suite by default.
+     * Providers authenticating without a `key` (e.g. bedrock via IAM
+     * credentials) are treated as not configured.
      */
     private function isAiSdkConfigured(): bool
     {
@@ -76,20 +79,8 @@ class AIServiceProvider extends ServiceProvider
             return false;
         }
 
-        $providerKey = match ($default) {
-            'openai' => 'OPENAI_API_KEY',
-            'anthropic' => 'ANTHROPIC_API_KEY',
-            'gemini' => 'GEMINI_API_KEY',
-            'azure' => 'AZURE_OPENAI_API_KEY',
-            'mistral' => 'MISTRAL_API_KEY',
-            'cohere' => 'COHERE_API_KEY',
-            'groq' => 'GROQ_API_KEY',
-            'xai' => 'XAI_API_KEY',
-            'deepseek' => 'DEEPSEEK_API_KEY',
-            'openrouter' => 'OPENROUTER_API_KEY',
-            default => null,
-        };
+        $provider = config("ai.providers.{$default}");
 
-        return $providerKey !== null && (string) env($providerKey) !== '';
+        return is_array($provider) && trim((string) ($provider['key'] ?? '')) !== '';
     }
 }

@@ -6,6 +6,7 @@ use App\Contracts\AI\MediaAssessmentAgent;
 use App\Domains\AI\Data\MediaAssessmentInput;
 use App\Domains\AI\Data\MediaAssessmentOutput;
 use App\Domains\AI\Enums\MediaAssessmentResult;
+use App\Domains\AI\Support\ModelPricing;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Ai\Files\Document;
 use Laravel\Ai\Files\Image;
@@ -22,6 +23,7 @@ class SdkMediaAssessmentAgent implements MediaAssessmentAgent
 {
     public function __construct(
         private readonly MediaInspectorAgent $inspector,
+        private readonly ModelPricing $pricing,
     ) {}
 
     public function assess(MediaAssessmentInput $input): MediaAssessmentOutput
@@ -29,14 +31,20 @@ class SdkMediaAssessmentAgent implements MediaAssessmentAgent
         $payload = json_encode($input->toArray(), JSON_THROW_ON_ERROR);
         $attachments = $this->buildAttachments($input);
 
+        $startedAt = hrtime(true);
+
         try {
             $response = $this->inspector->prompt($payload, attachments: $attachments);
         } catch (Throwable $exception) {
             throw new RuntimeException('Laravel AI SDK media invocation failed: '.$exception->getMessage(), previous: $exception);
         }
 
+        $latencyMs = (int) intdiv(hrtime(true) - $startedAt, 1_000_000);
+
         $structured = $this->parseStructuredResponse($response->text);
 
+        // Pricing keys on the raw provider model id; when `meta` is absent
+        // the cost resolves to 0.0 rather than failing the assessment.
         return new MediaAssessmentOutput(
             result: MediaAssessmentResult::from($structured['result']),
             confidenceScore: (float) $structured['confidence_score'],
@@ -45,8 +53,12 @@ class SdkMediaAssessmentAgent implements MediaAssessmentAgent
             modelUsed: 'laravel-ai-sdk:'.($response->meta?->model ?? 'media-inspector'),
             inputTokens: (int) $response->usage->promptTokens,
             outputTokens: (int) $response->usage->completionTokens,
-            latencyMs: 0,
-            costEstimate: 0.0,
+            latencyMs: $latencyMs,
+            costEstimate: $this->pricing->estimateCost(
+                $response->meta?->model,
+                (int) $response->usage->promptTokens,
+                (int) $response->usage->completionTokens,
+            ),
         );
     }
 
