@@ -11,6 +11,7 @@ use App\Http\Controllers\Admin\TenantFeatureController;
 use App\Http\Controllers\Admin\TenantMemberController;
 use App\Http\Controllers\Admin\TenantSubscriptionController;
 use App\Http\Controllers\AI\AIEvaluationController;
+use App\Http\Controllers\Assets\AssetPageController;
 use App\Http\Controllers\Dashboard\DashboardController;
 use App\Http\Controllers\Incidents\IncidentAssignmentController;
 use App\Http\Controllers\Incidents\IncidentCommentController;
@@ -46,6 +47,10 @@ Route::prefix('{current_team}')
         Route::post('incidents/{incident}/reopen', [IncidentController::class, 'reopen'])->name('incidents.reopen');
         Route::post('incidents/{incident}/escalate', [IncidentController::class, 'escalate'])->name('incidents.escalate');
         Route::post('ai/evaluations/{evaluation}/reevaluate', [AIEvaluationController::class, 'reevaluate'])->name('ai.evaluations.reevaluate');
+
+        // Fleet list page. Assets are read-only (spec 04 §9): managed solely
+        // by integration sync, so membership is the whole access check.
+        Route::get('assets', [AssetPageController::class, 'index'])->name('assets.index');
 
         // Integrations management page + actions. The GET renders the Inertia
         // page; the mutating actions reuse the same IntegrationController as the

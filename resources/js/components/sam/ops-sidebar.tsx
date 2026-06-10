@@ -170,9 +170,9 @@ export function OpsSidebar({ navBadges }: OpsSidebarProps) {
             title: 'Recursos',
             items: [
                 {
-                    label: 'Activos',
+                    label: 'Flota',
                     icon: Truck,
-                    href: '#',
+                    href: `/${teamSlug}/assets`,
                 },
                 {
                     label: 'Conductores',
