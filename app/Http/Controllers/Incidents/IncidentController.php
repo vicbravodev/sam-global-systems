@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Incidents;
 
+use App\Domains\Incidents\Actions\AcknowledgeIncident;
 use App\Domains\Incidents\Actions\CreateManualIncident;
 use App\Domains\Incidents\Actions\EscalateIncident;
 use App\Domains\Incidents\Actions\ReclassifyIncident;
@@ -136,6 +137,15 @@ class IncidentController extends Controller
             actorType: IncidentCreatorType::User,
             actorId: $request->user()->id,
         );
+
+        return response()->json(['data' => $updated]);
+    }
+
+    public function acknowledge(Request $request, Team $current_team, Incident $incident, AcknowledgeIncident $acknowledge): JsonResponse
+    {
+        $this->authorize('update', $incident);
+
+        $updated = $acknowledge->execute($incident, $request->user()->id);
 
         return response()->json(['data' => $updated]);
     }

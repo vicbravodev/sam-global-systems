@@ -2,6 +2,7 @@
 
 namespace App\Domains\Integrations\Adapters;
 
+use App\Contracts\Integrations\MediaRetrievalAdapter;
 use App\Domains\Integrations\Contracts\NullProviderAdapter;
 use App\Domains\Integrations\Contracts\ProviderAdapter;
 use App\Domains\Integrations\Models\TenantIntegration;
@@ -11,7 +12,7 @@ use App\Domains\Integrations\Models\TenantIntegration;
  * based on its provider code. This is the binding the consuming actions/jobs
  * receive, so a single container binding fans out to per-provider adapters.
  */
-class ProviderAdapterManager implements ProviderAdapter
+class ProviderAdapterManager implements MediaRetrievalAdapter, ProviderAdapter
 {
     public function __construct(
         private SamsaraAdapter $samsara,
@@ -31,6 +32,43 @@ class ProviderAdapterManager implements ProviderAdapter
     public function fetchAssetLocations(TenantIntegration $integration): array
     {
         return $this->forIntegration($integration)->fetchAssetLocations($integration);
+    }
+
+    public function fetchLiveLocation(TenantIntegration $integration, string $externalAssetId): ?array
+    {
+        return $this->forIntegration($integration)->fetchLiveLocation($integration, $externalAssetId);
+    }
+
+    public function fetchSafetyEvents(TenantIntegration $integration, ?string $cursor = null, ?\DateTimeInterface $startTime = null): array
+    {
+        return $this->forIntegration($integration)->fetchSafetyEvents($integration, $cursor, $startTime);
+    }
+
+    public function requestMedia(
+        TenantIntegration $integration,
+        string $externalAssetId,
+        \DateTimeInterface $startTime,
+        \DateTimeInterface $endTime,
+        array $inputs = [],
+    ): ?string {
+        $adapter = $this->forIntegration($integration);
+
+        if (! $adapter instanceof MediaRetrievalAdapter) {
+            return null;
+        }
+
+        return $adapter->requestMedia($integration, $externalAssetId, $startTime, $endTime, $inputs);
+    }
+
+    public function checkMedia(TenantIntegration $integration, string $retrievalId): array
+    {
+        $adapter = $this->forIntegration($integration);
+
+        if (! $adapter instanceof MediaRetrievalAdapter) {
+            return ['items' => []];
+        }
+
+        return $adapter->checkMedia($integration, $retrievalId);
     }
 
     public function validateWebhookSignature(string $payload, string $signature, string $secret, ?string $timestamp = null): bool

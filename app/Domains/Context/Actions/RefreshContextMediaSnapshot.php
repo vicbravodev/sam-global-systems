@@ -42,6 +42,11 @@ class RefreshContextMediaSnapshot
             'telemetry' => $snapshot->telemetry_snapshot_json ?? [],
             'media' => $mediaSnapshot,
             'outside_operating_hours' => (bool) ($snapshot->signals_json['outside_operating_hours'] ?? false),
+            'event' => [
+                // Re-read from the prior signals so an async media refresh
+                // never flips the resolution flag computed at build time.
+                'is_resolved' => ($snapshot->signals_json['external_resolved'] ?? false) === true ? true : null,
+            ],
         ]);
 
         $snapshot->forceFill([

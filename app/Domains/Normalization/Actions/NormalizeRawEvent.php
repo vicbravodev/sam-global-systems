@@ -185,11 +185,40 @@ class NormalizeRawEvent
             'incident_url' => Arr::get($payload, 'data.incidentUrl')
                 ?? Arr::get($payload, 'incidentReportUrl')
                 ?? Arr::get($payload, 'inboxEventUrl'),
-            'is_resolved' => Arr::get($payload, 'data.isResolved'),
-            'external_resolved_at' => Arr::get($payload, 'data.resolvedAtTime'),
+            'is_resolved' => Arr::get($payload, 'data.isResolved') ?? $this->resolveFeedDismissal($payload),
+            'external_resolved_at' => Arr::get($payload, 'data.resolvedAtTime') ?? $this->resolveFeedResolvedAt($payload),
+            'event_state' => Arr::get($payload, 'eventState'),
             'raw_conditions' => Arr::get($payload, 'data.conditions'),
             'raw_behavior_labels' => Arr::get($payload, 'behaviorLabels'),
         ];
+    }
+
+    /**
+     * Safety events from the polling feed carry their lifecycle in
+     * `eventState`; a dismissal at the provider is the feed's equivalent of an
+     * AlertIncident `isResolved` update, so it flows through the same external
+     * resolution mechanism. Non-dismissed states return null (not false) so
+     * webhook events without a feed state keep their payload untouched.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function resolveFeedDismissal(array $payload): ?bool
+    {
+        return Arr::get($payload, 'eventState') === 'dismissed' ? true : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function resolveFeedResolvedAt(array $payload): ?string
+    {
+        if (Arr::get($payload, 'eventState') !== 'dismissed') {
+            return null;
+        }
+
+        $updatedAt = Arr::get($payload, 'updatedAtTime');
+
+        return is_string($updatedAt) ? $updatedAt : null;
     }
 
     private function getUnmappedEventTypeId(): int

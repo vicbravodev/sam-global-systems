@@ -13,6 +13,7 @@ use App\Http\Controllers\Admin\TenantSubscriptionController;
 use App\Http\Controllers\AI\AIEvaluationController;
 use App\Http\Controllers\Assets\AssetPageController;
 use App\Http\Controllers\Dashboard\DashboardController;
+use App\Http\Controllers\Drivers\DriverPageController;
 use App\Http\Controllers\Incidents\IncidentAssignmentController;
 use App\Http\Controllers\Incidents\IncidentCommentController;
 use App\Http\Controllers\Incidents\IncidentController;
@@ -20,6 +21,7 @@ use App\Http\Controllers\Incidents\IncidentInboxController;
 use App\Http\Controllers\Incidents\IncidentResolutionController;
 use App\Http\Controllers\Integrations\IntegrationController;
 use App\Http\Controllers\Integrations\IntegrationPageController;
+use App\Http\Controllers\Notifications\NotificationPageController;
 use App\Http\Controllers\Teams\TeamInvitationController;
 use App\Http\Middleware\EnsureTeamMembership;
 use Illuminate\Support\Facades\Route;
@@ -28,6 +30,11 @@ use Laravel\Fortify\Features;
 Route::inertia('/', 'welcome', [
     'canRegister' => Features::enabled(Features::registration()),
 ])->name('home');
+
+// User-level settings routes are registered BEFORE the {current_team} group:
+// their literal `settings/...` paths must win over the team-slug wildcard
+// (otherwise `/settings/notifications` would bind current_team = "settings").
+require __DIR__.'/settings.php';
 
 Route::prefix('{current_team}')
     ->middleware(['auth', 'verified', EnsureTeamMembership::class])
@@ -45,6 +52,7 @@ Route::prefix('{current_team}')
         Route::post('incidents/{incident}/close', [IncidentResolutionController::class, 'close'])->name('incidents.close');
         Route::post('incidents/{incident}/reclassify', [IncidentController::class, 'reclassify'])->name('incidents.reclassify');
         Route::post('incidents/{incident}/reopen', [IncidentController::class, 'reopen'])->name('incidents.reopen');
+        Route::post('incidents/{incident}/acknowledge', [IncidentController::class, 'acknowledge'])->name('incidents.acknowledge');
         Route::post('incidents/{incident}/escalate', [IncidentController::class, 'escalate'])->name('incidents.escalate');
         Route::post('ai/evaluations/{evaluation}/reevaluate', [AIEvaluationController::class, 'reevaluate'])->name('ai.evaluations.reevaluate');
 
@@ -55,10 +63,19 @@ Route::prefix('{current_team}')
         Route::get('assets/map', [AssetPageController::class, 'map'])->name('assets.map');
         Route::get('assets/{asset}', [AssetPageController::class, 'show'])->name('assets.show');
 
+        // Driver pages (read-only; DriverPolicy gates access).
+        Route::get('drivers', [DriverPageController::class, 'index'])->name('drivers.index');
+        Route::get('drivers/{driver}', [DriverPageController::class, 'show'])->name('drivers.show');
+
         // Integrations management page + actions. The GET renders the Inertia
         // page; the mutating actions reuse the same IntegrationController as the
         // routes/api.php endpoints but live in the web group so the React UI can
         // call them with the session cookie (the `api` group has no session).
+        // Notification center: tenant-wide outbound notifications with
+        // per-user read markers (NotificationPolicy gates access).
+        Route::get('notifications', [NotificationPageController::class, 'index'])->name('notifications.index');
+        Route::post('notifications/{notification}/read', [NotificationPageController::class, 'read'])->name('notifications.read');
+
         Route::get('integrations', [IntegrationPageController::class, 'index'])->name('integrations.index');
         Route::post('integrations', [IntegrationController::class, 'store'])->name('integrations.store');
         Route::put('integrations/{integration}', [IntegrationController::class, 'update'])->name('integrations.update');
@@ -120,5 +137,3 @@ Route::prefix('admin')
 Route::middleware(['auth'])->group(function () {
     Route::get('invitations/{invitation}/accept', [TeamInvitationController::class, 'accept'])->name('invitations.accept');
 });
-
-require __DIR__.'/settings.php';

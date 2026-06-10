@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Settings\NotificationPreferencesController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\SecurityController;
 use App\Http\Controllers\Teams\TeamController;
@@ -25,6 +26,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('user-password.update');
 
     Route::inertia('settings/appearance', 'settings/appearance')->name('appearance.edit');
+
+    // Per-user notification preferences, scoped to the user's current team
+    // (NotificationPreference is tenant-scoped via BelongsToTenant).
+    Route::get('settings/notifications', [NotificationPreferencesController::class, 'edit'])->name('notification-preferences.edit');
+    Route::put('settings/notifications', [NotificationPreferencesController::class, 'update'])->name('notification-preferences.update');
 
     Route::get('settings/teams', [TeamController::class, 'index'])->name('teams.index');
     Route::post('settings/teams', [TeamController::class, 'store'])->name('teams.store');

@@ -4,6 +4,7 @@ namespace Tests\Unit\Domains\Context\Support;
 
 use App\Domains\Context\Enums\GeofenceCategory;
 use App\Domains\Context\Enums\GeofenceMatchType;
+use App\Domains\Context\Enums\IncidentRelationType;
 use App\Domains\Context\Support\SignalsBuilder;
 use PHPUnit\Framework\TestCase;
 
@@ -15,6 +16,7 @@ class SignalsBuilderTest extends TestCase
 
         $this->assertFalse($signals['is_in_sensitive_geofence']);
         $this->assertFalse($signals['has_open_incident']);
+        $this->assertFalse($signals['has_prior_similar_incident']);
         $this->assertFalse($signals['same_type_recent_recurrence']);
         $this->assertFalse($signals['driver_has_recent_risk_events']);
         $this->assertFalse($signals['camera_unavailable']);
@@ -29,6 +31,9 @@ class SignalsBuilderTest extends TestCase
         $this->assertFalse($signals['media_delayed']);
         $this->assertTrue($signals['no_media_available']);
         $this->assertFalse($signals['visual_confirmation_possible']);
+        $this->assertFalse($signals['external_resolved']);
+        $this->assertFalse($signals['parked_at_base']);
+        $this->assertFalse($signals['repeated_panic_24h']);
     }
 
     public function test_is_in_sensitive_geofence_flags_risk_zone_with_inside_match(): void
@@ -82,6 +87,29 @@ class SignalsBuilderTest extends TestCase
         ]);
 
         $this->assertTrue($signals['has_open_incident']);
+    }
+
+    public function test_prior_similar_incident_rows_do_not_count_as_open(): void
+    {
+        $signals = SignalsBuilder::build([
+            'incidents' => [['id' => 1, 'relation' => IncidentRelationType::PriorSimilarIncident->value]],
+        ]);
+
+        $this->assertFalse($signals['has_open_incident']);
+        $this->assertTrue($signals['has_prior_similar_incident']);
+    }
+
+    public function test_open_and_prior_incident_rows_set_both_flags(): void
+    {
+        $signals = SignalsBuilder::build([
+            'incidents' => [
+                ['id' => 1],
+                ['id' => 2, 'relation' => IncidentRelationType::PriorSimilarIncident->value],
+            ],
+        ]);
+
+        $this->assertTrue($signals['has_open_incident']);
+        $this->assertTrue($signals['has_prior_similar_incident']);
     }
 
     public function test_same_type_recent_recurrence_flag(): void
@@ -241,5 +269,63 @@ class SignalsBuilderTest extends TestCase
         ]);
 
         $this->assertFalse($signals['visual_confirmation_possible']);
+    }
+
+    public function test_external_resolved_only_for_explicit_true(): void
+    {
+        $this->assertTrue(SignalsBuilder::build(['event' => ['is_resolved' => true]])['external_resolved']);
+        $this->assertFalse(SignalsBuilder::build(['event' => ['is_resolved' => false]])['external_resolved']);
+        $this->assertFalse(SignalsBuilder::build(['event' => ['is_resolved' => null]])['external_resolved']);
+        $this->assertFalse(SignalsBuilder::build(['event' => ['is_resolved' => 'yes']])['external_resolved']);
+    }
+
+    public function test_parked_at_base_requires_base_geofence_and_zero_speed(): void
+    {
+        $insideBase = [
+            'geofence_matches' => [
+                ['category' => GeofenceCategory::Base, 'match_type' => GeofenceMatchType::Inside],
+            ],
+        ];
+
+        $this->assertTrue(SignalsBuilder::build([
+            ...$insideBase,
+            'telemetry' => ['speed_kph' => 0.0],
+        ])['parked_at_base']);
+
+        // Distribution centers count as the fleet's base too.
+        $this->assertTrue(SignalsBuilder::build([
+            'geofence_matches' => [
+                ['category' => 'distribution_center', 'match_type' => 'inside'],
+            ],
+            'telemetry' => ['speed_kph' => 0.5],
+        ])['parked_at_base']);
+
+        // Moving inside the base is not parked.
+        $this->assertFalse(SignalsBuilder::build([
+            ...$insideBase,
+            'telemetry' => ['speed_kph' => 12.0],
+        ])['parked_at_base']);
+
+        // Unknown speed never counts as parked.
+        $this->assertFalse(SignalsBuilder::build($insideBase)['parked_at_base']);
+
+        // Parked inside a non-base geofence is not "at base".
+        $this->assertFalse(SignalsBuilder::build([
+            'geofence_matches' => [
+                ['category' => GeofenceCategory::RiskZone, 'match_type' => GeofenceMatchType::Inside],
+            ],
+            'telemetry' => ['speed_kph' => 0.0],
+        ])['parked_at_base']);
+    }
+
+    public function test_repeated_panic_24h_requires_more_than_one(): void
+    {
+        $this->assertFalse(SignalsBuilder::build([
+            'recent_history' => ['repeated_panic_count_24h' => 1],
+        ])['repeated_panic_24h']);
+
+        $this->assertTrue(SignalsBuilder::build([
+            'recent_history' => ['repeated_panic_count_24h' => 2],
+        ])['repeated_panic_24h']);
     }
 }

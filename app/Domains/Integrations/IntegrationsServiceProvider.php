@@ -4,6 +4,7 @@ namespace App\Domains\Integrations;
 
 use App\Contracts\AssetSyncHandler;
 use App\Contracts\DriverSyncHandler;
+use App\Contracts\Integrations\MediaRetrievalAdapter;
 use App\Contracts\NullImplementations\NullAssetSyncHandler;
 use App\Contracts\NullImplementations\NullDriverSyncHandler;
 use App\Contracts\NullImplementations\NullRawEventIngestion;
@@ -26,6 +27,7 @@ class IntegrationsServiceProvider extends ServiceProvider
         $this->app->singletonIf(AssetSyncHandler::class, NullAssetSyncHandler::class);
         $this->app->singletonIf(DriverSyncHandler::class, NullDriverSyncHandler::class);
         $this->app->singletonIf(ProviderAdapter::class, ProviderAdapterManager::class);
+        $this->app->singletonIf(MediaRetrievalAdapter::class, ProviderAdapterManager::class);
     }
 
     public function boot(): void

@@ -4,6 +4,7 @@ namespace App\Domains\Decisions\Actions;
 
 use App\Contracts\TenantConfig\TenantDecisionRulesResolver;
 use App\Domains\AI\Models\AIEventEvaluation;
+use App\Domains\AI\Models\AIMediaAssessment;
 use App\Domains\Context\Models\EventContextSnapshot;
 use App\Domains\Decisions\Models\DecisionRule;
 use App\Domains\Decisions\Models\RuleSet;
@@ -93,7 +94,29 @@ class ApplyTenantRuleSet
             'event_type_code' => $this->resolveEventTypeCode($event?->event_type_id),
             'team_id' => $eval->team_id,
             'has_context_snapshot' => $context !== null,
+            // False-alarm validation facts (Roadmap B6-P7). Sourced from the
+            // context snapshot's signals, so tenant rules can degrade a clean
+            // false alarm to REVIEW without ever touching the hard defaults.
+            'external_resolved' => (bool) (($context?->signals_json ?? [])['external_resolved'] ?? false),
+            'parked_at_base' => (bool) (($context?->signals_json ?? [])['parked_at_base'] ?? false),
+            'repeated_panic_count_24h' => (int) (($context?->recent_history_snapshot_json ?? [])['repeated_panic_count_24h'] ?? 0),
+            'media_assessment' => $this->resolveMediaAssessment($eval),
         ];
+    }
+
+    /**
+     * Latest multimodal media assessment for this evaluation, if any — lets
+     * tenant rules react to what the footage showed (e.g. clear_cabin).
+     */
+    private function resolveMediaAssessment(AIEventEvaluation $eval): ?string
+    {
+        $result = AIMediaAssessment::query()
+            ->where('evaluation_id', $eval->id)
+            ->orderByDesc('assessed_at')
+            ->orderByDesc('id')
+            ->value('result');
+
+        return $result !== null ? (string) $result : null;
     }
 
     private function resolveEventTypeCode(?int $eventTypeId): ?string

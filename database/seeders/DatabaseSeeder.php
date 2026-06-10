@@ -19,7 +19,10 @@ class DatabaseSeeder extends Seeder
         $this->call(DecisionOutcomeSeeder::class);
         $this->call(IncidentsSeeder::class);
         $this->call(NotificationMeterSeeder::class);
+        $this->call(NotificationTemplateSeeder::class);
         $this->call(AssetMeterSeeder::class);
+        $this->call(IngestionMeterSeeder::class);
+        $this->call(ContextMeterSeeder::class);
         // PlanSeeder must run after every *MeterSeeder so meter codes resolve.
         $this->call(PlanSeeder::class);
 

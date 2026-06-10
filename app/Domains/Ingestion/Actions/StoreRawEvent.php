@@ -27,6 +27,7 @@ class StoreRawEvent
         ?array $headers = null,
         array $transportMeta = [],
         ?string $deduplicationKey = null,
+        ?string $eventTypeRaw = null,
     ): RawEvent {
         $eventSource = $this->resolveEventSource($sourceType, $teamId, $providerId);
 
@@ -39,7 +40,8 @@ class StoreRawEvent
             'event_source_id' => $eventSource->id,
             'provider_id' => $providerId,
             'external_event_id' => $externalEventId,
-            'event_type_raw' => $payload['eventType']
+            'event_type_raw' => $eventTypeRaw
+                ?? $payload['eventType']
                 ?? $payload['event_type']
                 ?? $payload['behaviorLabels'][0]['label']
                 ?? null,
@@ -90,6 +92,7 @@ class StoreRawEvent
     {
         $timestamp = $payload['eventTime']
             ?? $payload['data']['happenedAtTime']
+            ?? $payload['time']
             ?? $payload['occurred_at']
             ?? null;
 

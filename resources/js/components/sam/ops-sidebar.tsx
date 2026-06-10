@@ -177,7 +177,7 @@ export function OpsSidebar({ navBadges }: OpsSidebarProps) {
                 {
                     label: 'Conductores',
                     icon: Users,
-                    href: '#',
+                    href: `/${teamSlug}/drivers`,
                 },
             ],
         },
@@ -214,7 +214,7 @@ export function OpsSidebar({ navBadges }: OpsSidebarProps) {
                 {
                     label: 'Notificaciones',
                     icon: Bell,
-                    href: '#',
+                    href: `/${teamSlug}/notifications`,
                 },
                 {
                     label: 'Auditoría',

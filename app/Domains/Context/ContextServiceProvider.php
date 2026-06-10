@@ -6,6 +6,7 @@ use App\Domains\Context\Actions\ResolveGeofenceContext;
 use App\Domains\Context\Events\EventContextBuilt;
 use App\Domains\Context\Listeners\EnrichContextOnEventNormalized;
 use App\Domains\Context\Listeners\ExtractMediaOnContextBuilt;
+use App\Domains\Context\Listeners\RequestPanicMediaOnContextBuilt;
 use App\Domains\Context\Models\EventContextSnapshot;
 use App\Domains\Context\Models\EventMediaContext;
 use App\Domains\Context\Models\Geofence;
@@ -32,6 +33,7 @@ class ContextServiceProvider extends ServiceProvider
 
         Event::listen(EventNormalized::class, EnrichContextOnEventNormalized::class);
         Event::listen(EventContextBuilt::class, ExtractMediaOnContextBuilt::class);
+        Event::listen(EventContextBuilt::class, RequestPanicMediaOnContextBuilt::class);
 
         Geofence::saved(fn (Geofence $geofence) => ResolveGeofenceContext::invalidateCacheForTeam($geofence->team_id));
         Geofence::deleted(fn (Geofence $geofence) => ResolveGeofenceContext::invalidateCacheForTeam($geofence->team_id));

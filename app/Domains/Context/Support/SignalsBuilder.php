@@ -4,6 +4,7 @@ namespace App\Domains\Context\Support;
 
 use App\Domains\Context\Enums\GeofenceCategory;
 use App\Domains\Context\Enums\GeofenceMatchType;
+use App\Domains\Context\Enums\IncidentRelationType;
 
 class SignalsBuilder
 {
@@ -17,7 +18,7 @@ class SignalsBuilder
      * @param  array<string, mixed>  $context  {
      *
      * @var array<int, array<string, mixed>> $geofence_matches  Geofence match rows with `category` and `match_type`.
-     * @var array<int, array<string, mixed>> $incidents  Related open incidents (rows produced by `GetRelatedOpenIncidents`).
+     * @var array<int, array<string, mixed>> $incidents  Related incident rows: open ones produced by `GetRelatedOpenIncidents` plus closed prior ones (marked `relation = prior_similar_incident`) produced by `GetPriorSimilarIncidents`.
      * @var array<string, mixed> $recent_history  Recent history snapshot counts.
      * @var array<string, mixed> $driver  Driver operational context.
      * @var array<string, mixed> $asset  Asset snapshot (for camera/operating hours signals).
@@ -37,10 +38,12 @@ class SignalsBuilder
         $asset = $context['asset'] ?? [];
         $telemetry = $context['telemetry'] ?? [];
         $media = $context['media'] ?? [];
+        $event = $context['event'] ?? [];
 
         return [
             'is_in_sensitive_geofence' => self::isInSensitiveGeofence($geofenceMatches),
-            'has_open_incident' => count($incidents) > 0,
+            'has_open_incident' => self::hasOpenIncident($incidents),
+            'has_prior_similar_incident' => self::hasPriorSimilarIncident($incidents),
             'same_type_recent_recurrence' => ($recentHistory['recent_same_type_count'] ?? 0) > 0,
             'driver_has_recent_risk_events' => (bool) ($driver['has_recent_risk_events'] ?? false),
             'camera_unavailable' => self::cameraUnavailable($asset),
@@ -55,7 +58,75 @@ class SignalsBuilder
             'media_delayed' => self::hasMediaWithStatus($media, ['delayed']),
             'no_media_available' => self::noMediaAvailable($media),
             'visual_confirmation_possible' => self::visualConfirmationPossible($asset, $media),
+            'external_resolved' => ($event['is_resolved'] ?? null) === true,
+            'parked_at_base' => self::parkedAtBase($geofenceMatches, $telemetry),
+            'repeated_panic_24h' => ($recentHistory['repeated_panic_count_24h'] ?? 0) > 1,
         ];
+    }
+
+    /**
+     * The asset sits inside one of the fleet's own base geofences with no
+     * speed — a panic from a parked unit at home is a strong false-alarm
+     * signal (Roadmap B6-P7). Requires an explicit ~zero speed reading: an
+     * unknown speed never counts as parked.
+     *
+     * @param  array<int, array<string, mixed>>  $matches
+     * @param  array<string, mixed>  $telemetry
+     */
+    private static function parkedAtBase(array $matches, array $telemetry): bool
+    {
+        $speed = $telemetry['speed_kph'] ?? null;
+
+        if (! is_numeric($speed) || (float) $speed > 1.0) {
+            return false;
+        }
+
+        foreach ($matches as $match) {
+            $matchType = $match['match_type'] ?? null;
+            $matchTypeValue = $matchType instanceof GeofenceMatchType ? $matchType->value : $matchType;
+
+            if (! in_array($matchTypeValue, [GeofenceMatchType::Inside->value, GeofenceMatchType::Entry->value], true)) {
+                continue;
+            }
+
+            $category = $match['category'] ?? null;
+            $categoryValue = $category instanceof GeofenceCategory ? $category->value : $category;
+            $geofenceCategory = is_string($categoryValue) ? GeofenceCategory::tryFrom($categoryValue) : null;
+
+            if ($geofenceCategory !== null && $geofenceCategory->isBase()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $incidents
+     */
+    private static function hasOpenIncident(array $incidents): bool
+    {
+        foreach ($incidents as $incident) {
+            if (($incident['relation'] ?? null) !== IncidentRelationType::PriorSimilarIncident->value) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $incidents
+     */
+    private static function hasPriorSimilarIncident(array $incidents): bool
+    {
+        foreach ($incidents as $incident) {
+            if (($incident['relation'] ?? null) === IncidentRelationType::PriorSimilarIncident->value) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

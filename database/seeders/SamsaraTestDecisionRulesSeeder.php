@@ -48,6 +48,36 @@ class SamsaraTestDecisionRulesSeeder extends Seeder
             ],
         );
 
+        $review = DecisionOutcome::query()->where('code', 'REQUIRE_HUMAN_REVIEW')->first();
+
+        // Opt-in false-alarm degradation (Roadmap B6-P7): ships INACTIVE. When
+        // a tenant activates it, a panic that the provider already resolved
+        // AND that comes from a unit parked at its own base degrades to
+        // human review instead of an automatic urgent incident. It never
+        // degrades below REVIEW, and the hard rule below stays the default.
+        if ($review !== null) {
+            DecisionRule::query()->updateOrCreate(
+                ['ruleset_id' => $ruleSet->id, 'code' => 'panic-false-alarm-review'],
+                [
+                    'team_id' => $team->id,
+                    'name' => 'Panic resuelto + en base → revisión humana',
+                    'description' => 'Opt-in: panic externally resolved while parked at base goes to human review instead of an automatic incident. A cancelled panic on the road never degrades (possible coercion).',
+                    'scope' => RuleScope::EventType,
+                    'priority' => 110,
+                    'conditions_json' => [
+                        'all' => [
+                            ['field' => 'event_type_code', 'operator' => 'eq', 'value' => 'panic_button'],
+                            ['field' => 'external_resolved', 'operator' => 'eq', 'value' => true],
+                            ['field' => 'parked_at_base', 'operator' => 'eq', 'value' => true],
+                        ],
+                    ],
+                    'outcome_override' => $review->id,
+                    'stop_processing' => true,
+                    'is_active' => false,
+                ],
+            );
+        }
+
         DecisionRule::query()->updateOrCreate(
             ['ruleset_id' => $ruleSet->id, 'code' => 'panic-button-always-incident'],
             [
