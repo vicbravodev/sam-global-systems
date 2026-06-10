@@ -6,6 +6,7 @@ use App\Contracts\Incidents\IncidentMetricsQuery;
 use App\Domains\Incidents\Enums\TimelineActorType;
 use App\Domains\Incidents\Enums\TimelineEntryType;
 use App\Domains\Incidents\Models\Incident;
+use App\Domains\Incidents\Models\IncidentPriority;
 use App\Domains\Incidents\Models\IncidentTimeline;
 use App\Domains\Incidents\Queries\DbIncidentMetricsQuery;
 use App\Models\Team;
@@ -161,6 +162,106 @@ class DbIncidentMetricsQueryTest extends TestCase
         $totals = app(DbIncidentMetricsQuery::class)->totalsForTenant($team->id, $start, $end);
 
         $this->assertSame(1, $totals['escalations']);
+    }
+
+    public function test_open_counts_split_critical_from_total(): void
+    {
+        $team = Team::factory()->create();
+        $critical = IncidentPriority::factory()->critical()->create();
+
+        Incident::factory()->open()->count(2)->create([
+            'team_id' => $team->id,
+            'opened_at' => now()->subHour(),
+        ]);
+        Incident::factory()->open()->create([
+            'team_id' => $team->id,
+            'incident_priority_id' => $critical->id,
+            'opened_at' => now()->subHour(),
+        ]);
+        Incident::factory()->resolved()->create([
+            'team_id' => $team->id,
+            'opened_at' => now()->subHours(2),
+            'resolved_at' => now()->subHour(),
+        ]);
+
+        // Another tenant's open incident must not leak in.
+        Incident::factory()->open()->create([
+            'team_id' => Team::factory()->create()->id,
+            'opened_at' => now()->subHour(),
+        ]);
+
+        $counts = app(DbIncidentMetricsQuery::class)->openCounts($team->id);
+
+        $this->assertSame(['open' => 3, 'critical_open' => 1], $counts);
+    }
+
+    public function test_opened_per_day_fills_empty_buckets_with_zeroes(): void
+    {
+        $team = Team::factory()->create();
+        $critical = IncidentPriority::factory()->critical()->create();
+        $from = now()->subDays(2)->startOfDay();
+        $to = now()->endOfDay();
+
+        Incident::factory()->open()->count(2)->create([
+            'team_id' => $team->id,
+            'opened_at' => $from->copy()->addHours(3),
+        ]);
+        Incident::factory()->open()->create([
+            'team_id' => $team->id,
+            'incident_priority_id' => $critical->id,
+            'opened_at' => now()->startOfDay()->addHour(),
+        ]);
+
+        $buckets = app(DbIncidentMetricsQuery::class)->openedPerDay($team->id, $from, $to);
+
+        $this->assertCount(3, $buckets);
+        $this->assertSame(
+            ['date' => $from->toDateString(), 'total' => 2, 'critical' => 0],
+            $buckets[0],
+        );
+        $this->assertSame(0, $buckets[1]['total']);
+        $this->assertSame(
+            ['date' => now()->toDateString(), 'total' => 1, 'critical' => 1],
+            $buckets[2],
+        );
+    }
+
+    public function test_sla_compliance_uses_priority_budget(): void
+    {
+        $team = Team::factory()->create();
+        $from = now()->subDays(7);
+        $to = now();
+
+        // Factory default priority: sla_seconds = 3600.
+        Incident::factory()->resolved()->create([
+            'team_id' => $team->id,
+            'opened_at' => now()->subHours(6),
+            'resolved_at' => now()->subHours(6)->addMinutes(20),
+        ]);
+        Incident::factory()->resolved()->create([
+            'team_id' => $team->id,
+            'opened_at' => now()->subHours(9),
+            'resolved_at' => now()->subHours(9)->addHours(2),
+        ]);
+
+        $compliance = app(DbIncidentMetricsQuery::class)->slaCompliance($team->id, $from, $to);
+
+        $this->assertSame(50.0, $compliance);
+    }
+
+    public function test_sla_compliance_is_null_when_nothing_resolved_in_window(): void
+    {
+        $team = Team::factory()->create();
+
+        Incident::factory()->open()->create([
+            'team_id' => $team->id,
+            'opened_at' => now()->subHour(),
+        ]);
+
+        $compliance = app(DbIncidentMetricsQuery::class)
+            ->slaCompliance($team->id, now()->subDays(7), now());
+
+        $this->assertNull($compliance);
     }
 
     public function test_window_filter_uses_opened_at(): void

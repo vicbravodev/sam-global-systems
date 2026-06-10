@@ -11,6 +11,7 @@ use App\Http\Controllers\Admin\TenantFeatureController;
 use App\Http\Controllers\Admin\TenantMemberController;
 use App\Http\Controllers\Admin\TenantSubscriptionController;
 use App\Http\Controllers\AI\AIEvaluationController;
+use App\Http\Controllers\Dashboard\DashboardController;
 use App\Http\Controllers\Incidents\IncidentAssignmentController;
 use App\Http\Controllers\Incidents\IncidentCommentController;
 use App\Http\Controllers\Incidents\IncidentController;
@@ -30,7 +31,7 @@ Route::inertia('/', 'welcome', [
 Route::prefix('{current_team}')
     ->middleware(['auth', 'verified', EnsureTeamMembership::class])
     ->group(function () {
-        Route::inertia('dashboard', 'dashboard')->name('dashboard');
+        Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
         Route::get('incidents', [IncidentInboxController::class, 'index'])->name('incidents.index');
         Route::get('incidents/{incident}', [IncidentInboxController::class, 'show'])->name('incidents.show');
 

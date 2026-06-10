@@ -54,7 +54,7 @@ El producto terminado es: un operador de flota abre SAM, ve su flota en vivo (ma
 | `integrations/index` | ✅ Conectada (PR #31) — **patrón de referencia para páginas nuevas** |
 | `admin/*` (tenants, plans, operators, audit) | ✅ Completa (PRs #37, #41–#45) |
 | `teams/*`, `settings/{profile,appearance,security}` | ✅ Real (starter kit) |
-| `dashboard` | ❌ **100% mock** (`MOCK_DASHBOARD` hardcodeado; ruta `Route::inertia` sin controller) |
+| `dashboard` | ✅ Conectado (PR #49) — `DashboardController` con KPIs/stream/integraciones/uso reales + realtime |
 | `settings/roles/index` | ✅ Conectada (PR #48) — CRUD de roles + cambio de rol de miembros, con `RolePolicy` |
 
 **Vistas del producto que NO existen aún:** Assets/Flota (mapa + lista + detalle), Drivers, Analytics/Reportes, Notificaciones (centro + preferencias + canales), Automation (workflows), TenantConfig (settings del tenant), Billing/Usage + Branding.
@@ -68,8 +68,8 @@ Patrón obligatorio (el de `integrations/index`, PR #31): controller web dedicad
 ### F1. ✅ Fix: página `settings/roles/index` faltante — CERRADO (PR #48)
 Página creada (CRUD de roles, permisos por módulo, cambio de rol de miembros) + `RolePolicy` nueva: el CRUD no tenía NINGUNA autorización y `MemberRoleController` aceptaba memberships de otros teams (ambos huecos cerrados en el mismo PR). Ver §6.
 
-### F2. Dashboard real (sustituir `MOCK_DASHBOARD`)
-Crear `DashboardController` (reemplaza el `Route::inertia`) que agregue: incidentes por estado/prioridad (`DbIncidentMetricsQuery`), salud de integraciones y última sync, últimos eventos normalizados, uso del tenant (UsageMeter). Suscribir a `UsageUpdatedBroadcast` e `IncidentCreated` con los hooks de realtime existentes. Mantener el diseño actual; solo cambiar la fuente de datos. **Esfuerzo: 1–2 sesiones.**
+### F2. ✅ Dashboard real (sustituir `MOCK_DASHBOARD`) — CERRADO (PR #49)
+`DashboardController` con KPIs reales (abiertos, críticos, SLA 7d, precisión IA 7d), top-5 incidentes, stream con decisiones del motor, salud de integraciones + eventos 24h, panel nuevo de uso del tenant, y realtime con reloads parciales debounced. Ver §6.
 
 ### F3. Assets / Flota — la vista más visible del producto
 - `assets/index`: lista con estado, tipo, dispositivo, última posición (datos ya sincronizados desde Samsara, PR #42).
@@ -137,3 +137,4 @@ Segundo provider de integración (Geotab/Motive) para validar que el adapter pat
 - Pipeline Samsara real: adapter, firma webhook, replay, seeders, sync periódica, scheduler dedicado (PRs #28, #32, #34, #35, #42, #46).
 - Consola super-admin completa (PRs #37, #39, #41, #43–#45).
 - **F1** — Página `settings/roles` (CRUD de roles + permisos por módulo + cambio de rol de miembros) con `RolePolicy` nueva cerrando el hueco de autorización del CRUD y el scoping cross-team de `MemberRoleController` (PR #48).
+- **F2** — Dashboard con datos reales: `DashboardController` (KPIs honestos incl. SLA 7d y precisión IA con la fórmula de `EvaluateAIEffectiveness`, top-5, stream con decisiones, integraciones + eventos 24h, uso del tenant) + queries nuevas en Incidents/Normalization + realtime debounced. Fase 1 (quick wins) completa: app sin páginas rotas ni mocks (PR #49).

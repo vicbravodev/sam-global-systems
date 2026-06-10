@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Integrations;
 
 use App\Domains\Integrations\Enums\AuthType;
 use App\Domains\Integrations\Enums\IntegrationProviderStatus;
-use App\Domains\Integrations\Enums\TenantIntegrationStatus;
 use App\Domains\Integrations\Models\IntegrationProvider;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Domains\Integrations\Models\WebhookEndpoint;
@@ -15,17 +14,6 @@ use Inertia\Response;
 
 class IntegrationPageController extends Controller
 {
-    /**
-     * Maps the persisted integration status to the dashboard health vocabulary
-     * (drives the bg-health-* dots reused from the dashboard panel).
-     */
-    private const HEALTH_MAP = [
-        TenantIntegrationStatus::Active->value => 'ok',
-        TenantIntegrationStatus::Pending->value => 'warn',
-        TenantIntegrationStatus::Error->value => 'down',
-        TenantIntegrationStatus::Inactive->value => 'unknown',
-    ];
-
     /**
      * Render the integrations management page with the tenant's connected
      * integrations and the catalog of providers available for connection.
@@ -62,7 +50,7 @@ class IntegrationPageController extends Controller
             'provider' => (string) ($integration->provider?->name ?? '—'),
             'providerCode' => (string) ($integration->provider?->code ?? ''),
             'status' => $integration->status->value,
-            'health' => self::HEALTH_MAP[$integration->status->value] ?? 'unknown',
+            'health' => $integration->status->healthKey(),
             'authType' => $integration->auth_type->value,
             'config' => $integration->config_json ?? null,
             'lastSyncAt' => $integration->last_sync_at?->toIso8601String(),

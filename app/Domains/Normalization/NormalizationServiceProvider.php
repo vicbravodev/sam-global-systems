@@ -2,8 +2,10 @@
 
 namespace App\Domains\Normalization;
 
+use App\Contracts\Normalization\NormalizedEventStatsQuery;
 use App\Domains\Ingestion\Events\RawEventProcessed;
 use App\Domains\Normalization\Listeners\NormalizeOnRawEventProcessed;
+use App\Domains\Normalization\Queries\DbNormalizedEventStatsQuery;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
@@ -11,7 +13,7 @@ class NormalizationServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        //
+        $this->app->singletonIf(NormalizedEventStatsQuery::class, DbNormalizedEventStatsQuery::class);
     }
 
     public function boot(): void
