@@ -13,6 +13,13 @@ use App\Domains\Tenancy\Actions\SetTenantFeature;
 use App\Domains\Tenancy\Actions\UpdatePlanLimits;
 use App\Domains\Tenancy\Actions\UpdateSubscriptionStatus;
 use App\Domains\Tenancy\Actions\UpdateTenant;
+use App\Domains\Tenancy\Models\Subscription;
+use App\Domains\Tenancy\Models\TenantBranding;
+use App\Domains\Tenancy\Models\TenantFeature;
+use App\Domains\Tenancy\Policies\SubscriptionPolicy;
+use App\Domains\Tenancy\Policies\TenantBrandingPolicy;
+use App\Domains\Tenancy\Policies\TenantFeaturePolicy;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 
 class TenancyServiceProvider extends ServiceProvider
@@ -34,6 +41,8 @@ class TenancyServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        //
+        Gate::policy(Subscription::class, SubscriptionPolicy::class);
+        Gate::policy(TenantBranding::class, TenantBrandingPolicy::class);
+        Gate::policy(TenantFeature::class, TenantFeaturePolicy::class);
     }
 }

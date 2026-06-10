@@ -95,7 +95,7 @@ Settings del tenant (AI profile, políticas de notificación/escalación, rule o
 ## 4. NEXT STEPS — Backend (orden recomendado)
 
 ### B1. Billing + Branding tenant-facing (spec 01 §9) — único endpoint web pendiente
-`BillingController` (uso, meters, agregados, invoice snapshots del team actual) + `BrandingController` (logo vía FileObject, colores), con policies de Tenancy (Subscription/TenantBranding/TenantFeature) que hoy no existen. Alimenta F7. **Esfuerzo: 1–2 sesiones.**
+`BillingController` (uso, meters, agregados, invoice snapshots del team actual) + `BrandingController` (logo vía FileObject, colores). Las policies de Tenancy (`SubscriptionPolicy`/`TenantBrandingPolicy`/`TenantFeaturePolicy`) **ya existen** (B1a cerrado 2026-06-10, rutina nocturna: registradas en `TenancyServiceProvider`, permisos `tenancy.billing.view`/`tenancy.billing.manage`/`tenancy.manage`, tests con caso cross-team); queda B1b: los controllers + UI. Alimenta F7. **Esfuerzo restante: 1 sesión.**
 
 ### B2. Billing local-only (cobro por transferencia) — re-scoped 2026-06-09, Stripe CANCELADO
 El cobro será por transferencia bancaria; todo lo relacionado a Stripe queda fuera del roadmap. Modelo local: facturas/comprobantes subidos por periodo (FileObject + `temporaryUrl` listos), estado de pago por tenant, y **activar/desactivar tenants de forma sencilla** cuando no paguen o no hayan subido su factura (reutilizar la suspensión/ciclo de vida del super-admin, PRs #41–#45). Los usage meters locales (`ai_calls`, `ai_tokens_*`, assets) siguen siendo la fuente del consumo a cobrar. Al implementar: evaluar retirar Cashier/Billable del código. **Esfuerzo: 2 sesiones.**
