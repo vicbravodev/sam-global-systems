@@ -45,11 +45,7 @@ import {
     putJson,
     readErrorMessage,
 } from '@/lib/sam-fetch';
-import type {
-    RolePermissionOption,
-    RoleRow,
-    TeamMemberRow,
-} from '@/types/sam';
+import type { RolePermissionOption, RoleRow, TeamMemberRow } from '@/types/sam';
 
 type PermissionGroups = Record<string, RolePermissionOption[]>;
 
@@ -615,7 +611,12 @@ interface MembersCardProps {
     teamSlug: string | null;
 }
 
-function MembersCard({ members, roles, canManage, teamSlug }: MembersCardProps) {
+function MembersCard({
+    members,
+    roles,
+    canManage,
+    teamSlug,
+}: MembersCardProps) {
     const [updatingId, setUpdatingId] = useState<number | null>(null);
 
     const changeRole = useCallback(
