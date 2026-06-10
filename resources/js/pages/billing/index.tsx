@@ -1,9 +1,9 @@
 import { Head, router, usePage } from '@inertiajs/react';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { formatCurrency } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { formatCurrency } from '@/lib/format';
 
 interface SubscriptionProp {
     planName: string | null;
