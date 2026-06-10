@@ -2,6 +2,8 @@
 
 namespace Database\Seeders;
 
+use App\Domains\Integrations\Enums\IntegrationProviderStatus;
+use App\Domains\Integrations\Enums\IntegrationProviderType;
 use App\Domains\Integrations\Models\IntegrationProvider;
 use App\Domains\Normalization\Models\EventCategory;
 use App\Domains\Normalization\Models\EventMappingRule;
@@ -142,11 +144,18 @@ class NormalizationSeeder extends Seeder
      */
     private function seedSamsaraMappingRules(array $eventTypes): void
     {
-        $samsara = IntegrationProvider::where('code', 'samsara')->first();
-
-        if (! $samsara) {
-            return;
-        }
+        // Create the provider if no other seeder has yet — the mapping rules
+        // must exist regardless of seeder ordering (a fresh --seed used to
+        // skip them silently because SamsaraTestSeeder runs after this one).
+        $samsara = IntegrationProvider::query()->firstOrCreate(
+            ['code' => 'samsara'],
+            [
+                'name' => 'Samsara',
+                'type' => IntegrationProviderType::Telematics,
+                'status' => IntegrationProviderStatus::Active,
+                'capabilities_json' => ['gps', 'diagnostics', 'driver_behavior'],
+            ],
+        );
 
         // AlertIncident rules (webhook, with conditions)
         $alertIncidentRules = [
