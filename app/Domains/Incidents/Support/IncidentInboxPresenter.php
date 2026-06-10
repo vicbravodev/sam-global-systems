@@ -248,7 +248,31 @@ class IncidentInboxPresenter
         $context = $event?->context_json ?? [];
         $location = $context['location'] ?? ($event?->payload_normalized_json['location'] ?? null);
 
-        return (string) ($location ?? '—');
+        if (is_string($location) && trim($location) !== '') {
+            return $location;
+        }
+
+        // Ingested events carry location as an array (lat/lng plus an optional
+        // reverse-geocoded address) rather than a display string.
+        if (is_array($location)) {
+            $formatted = $location['formatted_location']
+                ?? $location['formattedLocation']
+                ?? $location['address']
+                ?? ($location['reverseGeo']['formattedLocation'] ?? null);
+
+            if (is_string($formatted) && trim($formatted) !== '') {
+                return $formatted;
+            }
+
+            $lat = $location['latitude'] ?? null;
+            $lng = $location['longitude'] ?? null;
+
+            if (is_numeric($lat) && is_numeric($lng)) {
+                return sprintf('%.5f, %.5f', (float) $lat, (float) $lng);
+            }
+        }
+
+        return '—';
     }
 
     private function aiConfidence(?AIEventEvaluation $evaluation): float
