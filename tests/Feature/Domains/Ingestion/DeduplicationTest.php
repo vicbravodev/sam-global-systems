@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Domains\Ingestion;
 
+use App\Contracts\RawEventIngestion;
 use App\Domains\Ingestion\Actions\DetectDuplicateEvent;
 use App\Domains\Ingestion\Enums\EventSourceStatus;
 use App\Domains\Ingestion\Enums\EventSourceType;
@@ -12,6 +13,7 @@ use App\Domains\Ingestion\Models\EventSource;
 use App\Domains\Ingestion\Models\RawEvent;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
 
@@ -137,5 +139,87 @@ class DeduplicationTest extends TestCase
             RawEventDuplicated::class,
             'RawEventDuplicated should NOT be dispatched when deduplication key has expired',
         );
+    }
+
+    public function test_alert_incident_resolution_state_change_passes_dedup(): void
+    {
+        Bus::fake();
+
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+
+        $payload = fn (bool $isResolved) => [
+            'eventType' => 'AlertIncident',
+            'eventId' => 'alert-evt-1',
+            'data' => ['isResolved' => $isResolved],
+        ];
+
+        $service = app(RawEventIngestion::class);
+        $service->ingest($team->id, 'samsara', 'AlertIncident', $payload(false));
+        $service->ingest($team->id, 'samsara', 'AlertIncident', $payload(true));
+
+        $events = RawEvent::withoutGlobalScopes()
+            ->where('external_event_id', 'alert-evt-1')
+            ->orderBy('id')
+            ->get();
+
+        $this->assertSame('alert-evt-1:open', $events[0]->deduplication_key);
+        $this->assertSame('alert-evt-1:resolved', $events[1]->deduplication_key);
+
+        $action = app(DetectDuplicateEvent::class);
+        $this->assertFalse($action->execute($events[0]));
+        $this->assertFalse(
+            $action->execute($events[1]),
+            'a resolution state change must pass dedup — it is an update, not a re-delivery',
+        );
+    }
+
+    public function test_alert_incident_same_resolution_state_is_still_a_duplicate(): void
+    {
+        Bus::fake();
+
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+
+        $payload = [
+            'eventType' => 'AlertIncident',
+            'eventId' => 'alert-evt-2',
+            'data' => ['isResolved' => false],
+        ];
+
+        $service = app(RawEventIngestion::class);
+        $service->ingest($team->id, 'samsara', 'AlertIncident', $payload);
+        $service->ingest($team->id, 'samsara', 'AlertIncident', $payload);
+
+        $events = RawEvent::withoutGlobalScopes()
+            ->where('external_event_id', 'alert-evt-2')
+            ->orderBy('id')
+            ->get();
+
+        $action = app(DetectDuplicateEvent::class);
+        $this->assertFalse($action->execute($events[0]));
+        $this->assertTrue(
+            $action->execute($events[1]),
+            'a re-delivery with the same resolution state must still be detected as a duplicate',
+        );
+    }
+
+    public function test_events_without_resolution_state_keep_plain_event_id_as_dedup_key(): void
+    {
+        Bus::fake();
+
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+
+        app(RawEventIngestion::class)->ingest($team->id, 'samsara', 'AlertIncident', [
+            'eventType' => 'AlertIncident',
+            'eventId' => 'alert-evt-3',
+        ]);
+
+        $event = RawEvent::withoutGlobalScopes()
+            ->where('external_event_id', 'alert-evt-3')
+            ->firstOrFail();
+
+        $this->assertSame('alert-evt-3', $event->deduplication_key);
     }
 }

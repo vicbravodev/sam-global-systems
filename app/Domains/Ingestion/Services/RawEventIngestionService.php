@@ -27,14 +27,41 @@ class RawEventIngestionService implements RawEventIngestion
             ->where('code', $source)
             ->value('id');
 
+        $externalEventId = $payload['eventId'] ?? $payload['id'] ?? null;
+
         $rawEvent = $this->storeRawEvent->execute(
             payload: $payload,
             sourceType: EventSourceType::Webhook->value,
             teamId: $teamId,
             providerId: $providerId,
-            externalEventId: $payload['eventId'] ?? $payload['id'] ?? null,
+            externalEventId: $externalEventId,
+            deduplicationKey: $this->buildDeduplicationKey($externalEventId, $payload),
         );
 
         $this->queueForProcessing->execute($rawEvent);
+    }
+
+    /**
+     * Events that carry a resolution state (Samsara AlertIncident) must let
+     * state transitions through dedup: the provider re-sends the same eventId
+     * when the alert is resolved at the source. Keying on eventId alone would
+     * silently drop the resolution update; keying on eventId + state keeps
+     * same-state re-deliveries as duplicates.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function buildDeduplicationKey(?string $externalEventId, array $payload): ?string
+    {
+        if ($externalEventId === null) {
+            return null;
+        }
+
+        $isResolved = $payload['data']['isResolved'] ?? null;
+
+        if (! is_bool($isResolved)) {
+            return $externalEventId;
+        }
+
+        return $externalEventId.':'.($isResolved ? 'resolved' : 'open');
     }
 }

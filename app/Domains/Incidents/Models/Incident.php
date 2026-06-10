@@ -42,6 +42,7 @@ class Incident extends Model
         'closed_at',
         'false_positive_at',
         'cancelled_at',
+        'external_resolved_at',
         'created_by_type',
         'created_by_id',
         'metadata_json',
@@ -197,6 +198,7 @@ class Incident extends Model
             'closed_at' => 'datetime',
             'false_positive_at' => 'datetime',
             'cancelled_at' => 'datetime',
+            'external_resolved_at' => 'datetime',
         ];
     }
 
