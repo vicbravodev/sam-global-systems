@@ -193,7 +193,7 @@ export function OpsSidebar({ navBadges }: OpsSidebarProps) {
                 {
                     label: 'Automatizaciones',
                     icon: Radar,
-                    href: '#',
+                    href: `/${teamSlug}/automation`,
                 },
                 {
                     label: 'Analítica',

@@ -12,6 +12,9 @@ use App\Http\Controllers\Admin\TenantMemberController;
 use App\Http\Controllers\Admin\TenantSubscriptionController;
 use App\Http\Controllers\AI\AIEvaluationController;
 use App\Http\Controllers\Assets\AssetPageController;
+use App\Http\Controllers\Automation\ActionExecutionController;
+use App\Http\Controllers\Automation\AutomationPageController;
+use App\Http\Controllers\Automation\AutomationWorkflowController;
 use App\Http\Controllers\Dashboard\DashboardController;
 use App\Http\Controllers\Decisions\DecisionRuleController;
 use App\Http\Controllers\Decisions\RulesPageController;
@@ -97,6 +100,15 @@ Route::prefix('{current_team}')
         Route::put('integrations/{integration}', [IntegrationController::class, 'update'])->name('integrations.update');
         Route::delete('integrations/{integration}', [IntegrationController::class, 'destroy'])->name('integrations.destroy');
         Route::post('integrations/{integration}/test', [IntegrationController::class, 'test'])->name('integrations.test');
+
+        Route::get('automation', [AutomationPageController::class, 'show'])->name('automation.show');
+        Route::post('automation/workflows', [AutomationWorkflowController::class, 'store'])->name('automation.workflows.store');
+        Route::put('automation/workflows/{workflow}', [AutomationWorkflowController::class, 'update'])->name('automation.workflows.update');
+        Route::delete('automation/workflows/{workflow}', [AutomationWorkflowController::class, 'destroy'])->name('automation.workflows.destroy');
+        Route::post('automation/workflows/{workflow}/trigger', [AutomationWorkflowController::class, 'trigger'])->name('automation.workflows.trigger');
+        Route::post('automation/executions/{execution}/retry', [ActionExecutionController::class, 'retry'])->name('automation.executions.retry');
+        Route::post('automation/executions/{execution}/confirm', [ActionExecutionController::class, 'confirm'])->name('automation.executions.confirm');
+        Route::post('automation/executions/{execution}/cancel', [ActionExecutionController::class, 'cancel'])->name('automation.executions.cancel');
 
         Route::get('rules', [RulesPageController::class, 'show'])->name('rules.show');
         Route::post('rules/decision', [DecisionRuleController::class, 'store'])->name('rules.decision.store');

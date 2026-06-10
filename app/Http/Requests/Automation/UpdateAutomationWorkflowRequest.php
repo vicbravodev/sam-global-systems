@@ -28,6 +28,11 @@ class UpdateAutomationWorkflowRequest extends FormRequest
             'version' => ['sometimes', 'integer', 'min:1'],
             'steps_json' => ['sometimes', 'array', 'min:1'],
             'steps_json.*.action_type' => ['required_with:steps_json', 'string'],
+            'steps_json.*.execution_mode' => ['nullable', 'string'],
+            'steps_json.*.delay_seconds' => ['nullable', 'integer', 'min:0'],
+            'steps_json.*.order' => ['nullable', 'integer', 'min:1'],
+            'steps_json.*.target_type' => ['nullable', 'string', 'max:100'],
+            'steps_json.*.target_reference' => ['nullable', 'string', 'max:255'],
             'is_active' => ['sometimes', 'boolean'],
         ];
     }
