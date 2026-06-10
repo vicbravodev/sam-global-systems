@@ -762,12 +762,16 @@ export default function IncidentsIndex() {
         }
     }, [selectedId]);
 
-    // Live updates: a freshly created incident refreshes the inbox list.
+    // Live updates: a freshly created or updated incident (status change,
+    // assignment, media assessed) refreshes the inbox list.
     useEffect(() => {
         const handler = (event: Event) => {
             const detail = (event as CustomEvent<TeamBroadcastDetail>).detail;
 
-            if (detail?.event === 'incidents.created') {
+            if (
+                detail?.event === 'incidents.created' ||
+                detail?.event === 'incidents.updated'
+            ) {
                 router.reload({ only: ['incidents'] });
             }
         };

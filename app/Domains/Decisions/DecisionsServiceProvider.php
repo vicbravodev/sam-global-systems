@@ -4,8 +4,10 @@ namespace App\Domains\Decisions;
 
 use App\Contracts\Decisions\DecisionMetricsQuery;
 use App\Domains\AI\Events\AIEvaluationCompleted;
+use App\Domains\AI\Events\MediaAssessmentCompleted;
 use App\Domains\Decisions\Events\DecisionMade;
 use App\Domains\Decisions\Listeners\BroadcastDecisionMade;
+use App\Domains\Decisions\Listeners\RequestReevaluationOnMediaAssessmentCompleted;
 use App\Domains\Decisions\Listeners\RunDecisionEngineOnAIEvaluationCompleted;
 use App\Domains\Decisions\Models\Decision;
 use App\Domains\Decisions\Models\DecisionRule;
@@ -32,6 +34,7 @@ class DecisionsServiceProvider extends ServiceProvider
         Gate::policy(EscalationPolicy::class, EscalationPolicyPolicy::class);
 
         Event::listen(AIEvaluationCompleted::class, RunDecisionEngineOnAIEvaluationCompleted::class);
+        Event::listen(MediaAssessmentCompleted::class, RequestReevaluationOnMediaAssessmentCompleted::class);
         Event::listen(DecisionMade::class, BroadcastDecisionMade::class);
     }
 }

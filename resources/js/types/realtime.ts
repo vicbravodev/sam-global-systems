@@ -64,6 +64,14 @@ export type IncidentCreatedPayload = {
     opened_at: string;
 };
 
+export type IncidentUpdatedPayload = {
+    incident_id: number;
+    status: string;
+    priority: string;
+    assigned_to: string | null;
+    updated_at: string;
+};
+
 export type TeamBroadcastEventMap = {
     'asset.location_updated': AssetLocationUpdatedPayload;
     'asset.status_changed': AssetStatusChangedPayload;
@@ -72,6 +80,7 @@ export type TeamBroadcastEventMap = {
     'decisions.decision_made': DecisionMadePayload;
     'action.executed': ActionExecutedPayload;
     'incidents.created': IncidentCreatedPayload;
+    'incidents.updated': IncidentUpdatedPayload;
 };
 
 export type TeamBroadcastEvent = keyof TeamBroadcastEventMap;
