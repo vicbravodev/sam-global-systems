@@ -1,5 +1,39 @@
 # MORNING REPORT — rutina nocturna `claude/night-roadmap`
 
+## Run 2026-06-10 10:25
+
+**Resumen ejecutivo.** Se completaron las **3 tareas de la Iteración v4** — F5a (centro de notificaciones), F5b (preferencias de notificación del usuario) y T2 (tests de authz de la API de incidents) — con lo que **el ROADMAP queda sin tareas pendientes** (`- [ ]` = 0). Con el cupo diario de 10 auto-generadas ya consumido en runs anteriores, este run no genera Iteración v5. Suite final: **1077 tests / 3583 assertions, todo verde**; Pint limpio; tsc/eslint/prettier/build verdes. Nota de entorno: este contenedor trae PHP 8.4 sin `ext-bcmath` ni pcov (PPA bloqueado por política de red) — composer corrió con `--ignore-platform-req=ext-bcmath` y los tests vía `vendor/bin/phpunit --no-coverage` (equivalente a la suite; `php artisan test` exige driver de cobertura inexistente aquí).
+
+### Tareas completadas (commits en orden)
+
+| Commit | Tarea |
+|--------|-------|
+| `feat(notifications): centro de notificaciones con read markers por usuario (F5a)` | `NotificationPageController` (`GET /{team}/notifications` + `POST .../read`), tabla additive `notification_reads` (lectura **por usuario**: el "leída" de un operador no pisa el de otro) + `MarkNotificationRead` idempotente, filtros estado/prioridad/no-leídas, `sourceUrl` al incidente, página `notifications/index.tsx` + sidebar activado. 10 tests. |
+| `feat(notifications): preferencias de notificación del usuario en settings (F5b)` | `Settings\NotificationPreferencesController` (`GET/PUT /settings/notifications`): upsert idempotente por (user, type) validando canales contra `ChannelType`, knownTypes = catálogo base ∪ tipos observados en el tenant; página settings con filas por tipo + item de nav. **Fix de rutas**: `require settings.php` movido antes del grupo `{current_team}` — `/settings/notifications` matcheaba el wildcard del slug y daba 404. 8 tests. |
+| `test(incidents): authz endpoint-level para update/evidence/link-event/assign (T2)` | Auditoría de las 13 rutas API de incidents: faltaba cobertura endpoint-level de `PUT update`, `POST evidence`, `POST link-event` y el 403 de `assign`. `IncidentApiAuthzTest` (11 tests): happy + 403 sin permiso + 404 cross-team, incluido 404 cuando el normalized event del link es de otro tenant. |
+
+### Tareas bloqueadas
+
+Ninguna.
+
+### Auto-generadas
+
+Ninguna en este run: el cupo diario (10) quedó completo con v2+v3+v4 en los runs de hoy, y no se crea v5 hoy. Si mañana la auditoría encuentra hallazgos materiales, el siguiente run puede generar v5 (límite final).
+
+### Verificación final
+
+- `vendor/bin/phpunit --no-coverage` → **1077 passed (3583 assertions)**.
+- `vendor/bin/pint --test` → limpio.
+- `npm run types:check && npm run lint:check && npm run format:check` → verdes.
+- `npm run build` → exitoso (incluye Wayfinder regenerado con las rutas nuevas).
+- Cobertura: **sin driver pcov/xdebug en este contenedor** (instalación bloqueada: el PPA `ondrej/php` devuelve 403 por política de red) — no se pudo medir localmente; CI la exigirá igual.
+
+### Riesgos / revisar primero
+
+1. **Cambio de orden de carga de rutas** (`routes/web.php`): `require settings.php` ahora va ANTES del grupo `{current_team}`. Necesario para que `/settings/notifications` no se interprete como team slug `settings`. La suite completa pasa, pero si existiera un tenant con slug `settings`, sus URLs `/{slug}/...` que colisionen con rutas literales de settings resolverían a settings (comportamiento más correcto, pero conviene saberlo).
+2. **Semántica de "leída"**: se decidió lectura por usuario (tabla `notification_reads`) y no un flag global en `notifications` — una notificación es tenant-wide con N destinatarios. Si producto prefiere "atendida por el equipo" (un solo flag), hay que decidirlo explícitamente.
+3. Entorno del contenedor degradado respecto a runs previos (PHP 8.4 sin bcmath/pcov): si el siguiente run ve fallar `composer install` o `php artisan test`, usar los mismos workarounds (`--ignore-platform-req=ext-bcmath`, `vendor/bin/phpunit --no-coverage`).
+
 ## Run 2026-06-10 09:15
 
 **Resumen ejecutivo.** Run muy productivo: se completaron las **4 tareas de la Iteración v2** (B6-P2 safety events feed, B6-P3 media on-demand, F4b detalle de conductor, T1 assertInertia) y, tras auto-generar la Iteración v3 desde el plan B6 del roadmap de producto, **también sus 3 tareas** (B6-P5 notificación rica + on-call, B6-P6 SLA con escalación, B6-P7 validación de falsa alarma). **Con esto el plan B6 completo (P1–P8) queda cerrado.** Suite final: **1048 tests / 3411 assertions, todo verde**; Pint limpio; front (tsc/eslint/prettier/build) verde. Se generó la Iteración v4 (F5a/F5b notificaciones UI + T2 auditoría de authz API) — con ella el cupo de 10 auto-generadas del día queda completo.
