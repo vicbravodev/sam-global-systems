@@ -1,7 +1,10 @@
 import { Head, router, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { ConditionBuilder } from '@/components/sam/condition-builder';
+import {
+    ConditionBuilder,
+    RuleTestPanel,
+} from '@/components/sam/condition-builder';
 import type { ConditionFieldDef } from '@/components/sam/condition-builder';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -202,6 +205,12 @@ function RuleConditionsEditor({
                 onChange={setConditions}
                 disabled={!canEdit}
             />
+            {base !== null && (
+                <RuleTestPanel
+                    endpoint={`${base}/test-decision`}
+                    payload={() => ({ conditions_json: conditions })}
+                />
+            )}
             {canEdit && (
                 <div>
                     <Button
@@ -417,6 +426,14 @@ function DecisionRulesTab({
                                 value={conditions}
                                 onChange={setConditions}
                             />
+                            {base !== null && (
+                                <RuleTestPanel
+                                    endpoint={`${base}/test-decision`}
+                                    payload={() => ({
+                                        conditions_json: conditions,
+                                    })}
+                                />
+                            )}
                             <div>
                                 <Button size="sm" onClick={create}>
                                     Crear regla
@@ -699,6 +716,17 @@ function MappingRulesTab({
                                 value={conditions}
                                 onChange={setConditions}
                             />
+                            {base !== null &&
+                                Object.keys(conditions).length > 0 && (
+                                    <RuleTestPanel
+                                        className="mt-2"
+                                        endpoint={`${base}/test-mapping`}
+                                        payload={() => ({
+                                            external_conditions_json:
+                                                conditions,
+                                        })}
+                                    />
+                                )}
                         </div>
                         <Button size="sm" onClick={create}>
                             Crear
