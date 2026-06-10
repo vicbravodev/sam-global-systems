@@ -30,6 +30,7 @@ class CreateIncidentFromEvent
         private readonly LinkEventToIncident $linkEventToIncident,
         private readonly AddIncidentEvidence $addIncidentEvidence,
         private readonly RecordUsageEvent $recordUsageEvent,
+        private readonly ApplyExternalResolution $applyExternalResolution,
     ) {}
 
     /**
@@ -104,6 +105,13 @@ class CreateIncidentFromEvent
             );
 
             $this->autoAttachEvidence($incident, $event);
+
+            // An event that arrives already resolved at the provider still opens
+            // its incident (a cancelled panic can be coercion) — annotate only,
+            // never auto-close on creation regardless of the tenant setting.
+            if (($event->payload_normalized_json['is_resolved'] ?? null) === true) {
+                $this->applyExternalResolution->execute($incident, $event, allowClose: false);
+            }
 
             $this->recordUsageEvent->execute(
                 teamId: $teamId,
