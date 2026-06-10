@@ -39,7 +39,7 @@ El producto terminado es: un operador de flota abre SAM, ve su flota en vivo (ma
 |-----|---------|
 | Billing/Branding tenant-facing (spec 01 §9) | No existen `BillingController` ni `BrandingController` — el tenant no puede ver su consumo/facturas ni configurar branding. Único endpoint web pendiente del spec 01. |
 | Billing local (sin Stripe) | Decisión 2026-06-09: el cobro será por transferencia bancaria — **Stripe queda fuera**. Falta el modelo local: registro de facturas/comprobantes por periodo (FileObject ya existe), estado de pago, y activar/desactivar tenants fácil por impago o factura no subida (la suspensión manual del super-admin, PRs #41–#45, es la base). Evaluar retirar Cashier/Billable al implementarlo. |
-| Policies Tenancy | Subscription/TenantBranding/TenantFeature sin policies — crearlas junto con sus controllers (ítem Billing/Branding). |
+| ~~Policies Tenancy~~ | Cerrado 2026-06-10 (rutina nocturna, B1a): `SubscriptionPolicy`/`TenantBrandingPolicy`/`TenantFeaturePolicy` registradas en `TenancyServiceProvider` con tests cross-team. Quedan solo los controllers (ítem Billing/Branding, B1b). |
 | Segundo provider | Adapter pattern probado solo con Samsara; Geotab/Motive cuando haya demanda real. |
 | Pipeline de emergencias (panic) | Auditoría 2026-06-09 del flujo panic end-to-end: el incidente crítico se crea confiablemente. ~~`isResolved` sin consumir~~ (cerrado en P1: dedup por estado + `ApplyExternalResolution` + setting `annotate`/`close`); ~~sin GPS fresco~~ (cerrado en P4: `fetchLiveLocation` + staleness por TenantSetting); sin media on-demand aunque `has_camera` está en el snapshot y `EventMediaRequest`/`FetchDeferredEventMediaJob` existen (stub sin adapter); SLA decorativo (`response_sla_seconds=300` sin timer ni escalación); notificación genérica sin ubicación ni asignación de operador; ~~panics del mismo vehículo fuera de la ventana de 30 min quedan sin vínculo~~ (cerrado en P8: lookup de cerrados 7d → `PriorSimilarIncident`). **Plan completo en §4 B6 (P1 ✅, P4 ✅, P8 ✅; P2, P3, P5–P7 pendientes).** |
 | Safety events feed (Samsara) | Solo entran eventos por webhook (`AlertIncident`). El feed `GET /safety-events/stream` (behaviorLabels tipo Crash/Drowsy/MobileUsage, GPS inline, media descargable, eventState) no se consume — son los eventos de seguridad más ricos del proveedor. Plan en B6-P2. |
@@ -58,7 +58,7 @@ El producto terminado es: un operador de flota abre SAM, ve su flota en vivo (ma
 | `dashboard` | ✅ Conectado (PR #49) — `DashboardController` con KPIs/stream/integraciones/uso reales + realtime |
 | `settings/roles/index` | ✅ Conectada (PR #48) — CRUD de roles + cambio de rol de miembros, con `RolePolicy` |
 
-**Vistas del producto que NO existen aún:** Assets/Flota (mapa + lista + detalle), Drivers, Analytics/Reportes, Notificaciones (centro + preferencias + canales), Automation (workflows), TenantConfig (settings del tenant), Billing/Usage + Branding.
+**Vistas del producto que NO existen aún:** Drivers detalle (`drivers/{id}` — la lista `drivers/index` ya existe, F4a 2026-06-10), Analytics/Reportes, Notificaciones (centro + preferencias + canales), Automation (workflows), TenantConfig (settings del tenant), Billing/Usage + Branding. (Assets/Flota cerrado en PRs #53–#55.)
 
 ---
 
