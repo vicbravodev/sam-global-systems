@@ -51,6 +51,8 @@ Route::prefix('{current_team}')
         // Fleet pages. Assets are read-only (spec 04 §9): managed solely
         // by integration sync, so membership is the whole access check.
         Route::get('assets', [AssetPageController::class, 'index'])->name('assets.index');
+        // Literal segment BEFORE the {asset} binding so "map" never hits it.
+        Route::get('assets/map', [AssetPageController::class, 'map'])->name('assets.map');
         Route::get('assets/{asset}', [AssetPageController::class, 'show'])->name('assets.show');
 
         // Integrations management page + actions. The GET renders the Inertia

@@ -162,7 +162,7 @@ export function OpsSidebar({ navBadges }: OpsSidebarProps) {
                 {
                     label: 'Mapa en vivo',
                     icon: MapPin,
-                    href: '#',
+                    href: `/${teamSlug}/assets/map`,
                 },
             ],
         },

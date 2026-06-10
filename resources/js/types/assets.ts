@@ -104,3 +104,22 @@ export interface AssetShowProps {
     locationHistory: LocationHistoryEntry[];
     incidents: LinkedIncident[];
 }
+
+export interface AssetMarker {
+    id: number;
+    name: string;
+    code: string | null;
+    status: AssetStatusValue;
+    category: string | null;
+    latitude: number;
+    longitude: number;
+    speed: number | null;
+    heading: number | null;
+    recordedAt: string;
+}
+
+export interface AssetsMapProps {
+    assets: AssetMarker[];
+    unpositionedCount: number;
+    statusLabels: Record<string, string>;
+}

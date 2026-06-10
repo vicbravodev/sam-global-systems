@@ -110,6 +110,27 @@ class AssetPageController extends Controller
         ]);
     }
 
+    public function map(Team $current_team): Response
+    {
+        $assets = Asset::query()
+            ->where('team_id', $current_team->id)
+            ->with(['assetType', 'latestLocation'])
+            ->get();
+
+        [$positioned, $unpositioned] = $assets->partition(
+            fn (Asset $asset) => $asset->latestLocation !== null,
+        );
+
+        return Inertia::render('assets/map', [
+            'assets' => $positioned
+                ->map(fn (Asset $asset) => $this->toMarker($asset))
+                ->values()
+                ->all(),
+            'unpositionedCount' => $unpositioned->count(),
+            'statusLabels' => self::STATUS_LABELS,
+        ]);
+    }
+
     public function show(Team $current_team, Asset $asset): Response
     {
         // The BelongsToTenant scope already filters the binding, but the check
@@ -244,6 +265,30 @@ class AssetPageController extends Controller
                 'recordedAt' => $location->recorded_at->toIso8601String(),
             ] : null,
             'lastSeenAt' => $asset->last_seen_at?->toIso8601String(),
+        ];
+    }
+
+    /**
+     * Minimal shape the live map needs per asset. Kept lighter than toRow()
+     * (no devices) so the map payload stays small for large fleets.
+     *
+     * @return array<string, mixed>
+     */
+    private function toMarker(Asset $asset): array
+    {
+        $location = $asset->latestLocation;
+
+        return [
+            'id' => (int) $asset->id,
+            'name' => (string) $asset->name,
+            'code' => $asset->code,
+            'status' => $asset->status->value,
+            'category' => $asset->assetType?->category->value,
+            'latitude' => (float) $location->latitude,
+            'longitude' => (float) $location->longitude,
+            'speed' => $location->speed !== null ? (float) $location->speed : null,
+            'heading' => $location->heading !== null ? (int) $location->heading : null,
+            'recordedAt' => $location->recorded_at->toIso8601String(),
         ];
     }
 
