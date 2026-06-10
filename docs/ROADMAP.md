@@ -59,7 +59,7 @@ El producto terminado es: un operador de flota abre SAM, ve su flota en vivo, re
 
 **Gaps de la UI existente (no son páginas nuevas, son deudas de lo ya shippeado):**
 
-- **Incidentes — detalle apretado y sin media (F9)**: el detalle es un panel inline dentro de `incidents/index.tsx` (1062 líneas) con textos truncados y mal aprovechamiento del espacio. NO consume `GET /events/{id}/media` ni muestra `media_snapshot` — el operador no ve el footage que el pipeline ya descarga, ni tiene botón "Solicitar media" (`POST /events/{id}/media/request` existe y no se usa). Tampoco muestra los `AIMediaAssessment` (lo que la IA "vio" en las imágenes) ni el historial relacionado de P8.
+- ~~Incidentes — detalle apretado y sin media (F9)~~ — ✅ **CERRADO (PR #63)**: detalle full-page con galería de media, assessments IA, solicitar media e historial relacionado; el panel de la bandeja conserva el JSON y gana CTA "Abrir detalle".
 - **Notificaciones — falta gestión de canales del tenant (F5c)**: configurar Slack/Twilio/FCM (`NotificationChannel`, secrets con `EncryptedChannelConfigCast`) no tiene UI.
 
 ---
@@ -78,7 +78,7 @@ Patrón obligatorio (el de `integrations/index`, PR #31): controller web dedicad
 
 ### Fase B — La bandeja a la altura del pipeline
 
-**F9 — Rediseño del detalle de incidente + media viewer.** Decisión de UX: detalle **full-page** `incidents/{incident}` (ruta web Inertia nueva; el endpoint JSON actual queda para el panel) manteniendo un panel lateral compacto en la bandeja con CTA "Abrir detalle". El full-page organiza en grid amplio: encabezado con SLA/estado, **galería de media** (`GET /events/{id}/media` + `temporaryUrl`, lightbox para imágenes/video), evaluación IA con assessments multimodales ("qué vio la IA en el footage"), botón **"Solicitar media"** (`POST /events/{id}/media/request` con estado pending→ready en realtime), contexto operativo, historial relacionado (P8), timeline y comentarios. Arreglar truncamientos/espaciado del panel actual. Tests Inertia del controller nuevo. **Esfuerzo: 2 sesiones. Depende de nada; B8 lo enriquece.**
+**F9 — Rediseño del detalle de incidente + media viewer. ✅ COMPLETADO (PR #63)** — ver §7.
 
 **F10 — Página Eventos.** Browser de eventos normalizados (el link "Eventos" del sidebar): tabla con filtros (tipo/severidad/asset/fecha/estado), detalle con payload, media, evaluación y decisión vinculadas, y vista de "unmapped" (eventos sin regla de mapeo — hoy invisibles para el operador). **Esfuerzo: 1–2 sesiones.**
 
@@ -109,7 +109,7 @@ Patrón obligatorio (el de `integrations/index`, PR #31): controller web dedicad
 | Fase | Ítems | Resultado |
 |------|-------|-----------|
 | **A. Monitoreo automatizado real** ✅ COMPLETA (PR #63) | ~~B8~~ ✅ → ~~B7~~ ✅ → ~~B9~~ ✅ | El pipeline completo opera solo: detecta, pide footage, lo evalúa, re-decide, notifica, y el operador confirma/descarta desde el teléfono |
-| **B. Bandeja a la altura 🔵 ACTUAL** | F9 (detalle full-page + media viewer) → F10 (eventos) | El operador VE todo lo que el pipeline produce (footage, visión IA, historial) en una UI espaciosa |
+| **B. Bandeja a la altura 🔵 ACTUAL** | ~~F9~~ ✅ (PR #63) → F10 (eventos) | El operador VE todo lo que el pipeline produce (footage, visión IA, historial) en una UI espaciosa |
 | **C. Inteligencia configurable** | F-TC (tenant config) → F11 (reglas) → F12 (automatizaciones, tras B7) | Cero links muertos de inteligencia; el tenant se autoconfigura sin tinker |
 | **D. Cierre operativo** | F5c (canales) → F13 (analítica) → F14 (auditoría) | Producto operativo completo, sidebar 100% vivo |
 | **E. Monetización** | B1b+F7 (billing/branding UI) → B2 (billing local) | Listo para facturar |
@@ -165,3 +165,4 @@ Patrón obligatorio (el de `integrations/index`, PR #31): controller web dedicad
 - **B8** — Loop multimodal cerrado (PR #63): `MediaAssessmentCompleted` (solo assessments nuevos, idempotente) → `ReevaluateEventJob` con trigger `media_arrived` (guards: inline sin decisión, media ya evaluada en otra versión anti-loop, incidente terminal no re-corre); fact `media_assessment` cross-versión de evaluación; guard de contradicción en `ResolveDecisionOutcome` (footage que contradice un evento con decisión accionable previa → `REQUIRE_HUMAN_REVIEW`, nunca auto-cerrar); timeline `media_assessed` por assessment + broadcast `incidents.updated` que la bandeja ahora escucha.
 - **B7** — Ejecutores reales de Automation (PR #63): `ExecuteAction` puentea `Send*` al pipeline de Notifications (destinatarios desde el target del step — email/phone directo, user id, rol del team o `recipients` explícitos —, render del `ActionTemplate`, canal fijado con `force_channels` cuyo gate real es el `NotificationChannel` activo del tenant); `AssignIncident`/`Escalate`/`RequestHumanReview` ejecutan las actions reales de Incidents (nueva `RequestIncidentReview` open→in_review); meter `automation_actions` idempotente por ejecución; `CreateTicket`/`UpdateAssetState` → V2.
 - **B9** — Twilio bidireccional (PR #63): tabla `notification_reply_tokens` (token corto TTL 24h, reusado por incidente+address); los SMS/WhatsApp de incidente crítico llevan "Responde SI-XXXX / NO-XXXX / ESC-XXXX" (SMS pre-ajustado a 160); webhook `POST /api/webhooks/twilio` valida `X-Twilio-Signature` contra el canal del tenant resuelto por el número `To` (403 si falla); `ProcessInboundReply` ejecuta ack/falsa-alarma/escalar vía actions de Incidents con timeline "via sms/whatsapp" + auditoría `incident.reply.*`; desconocidos/tenant ajeno/sender inesperado → log y silencio; doble respuesta idempotente. **Fase A completa.**
+- **F9** — Detalle full-page de incidente + media viewer (PR #63): `incidents/{incident}` negocia contenido (JSON para el panel de la bandeja, Inertia `incidents/show` para el navegador); grid 3 columnas reutilizando los subcomponentes del panel + `MediaGallery` (thumbnails, lightbox imagen/video con el assessment IA, botón "Solicitar media" → ruta web `incidents/{incident}/media/request`), historial relacionado (P8) y recarga realtime debounced en `incidents.updated`; CTA "Abrir detalle" en el panel de la bandeja. Verificado visualmente con la app corriendo.
