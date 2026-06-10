@@ -20,6 +20,7 @@ class BuildEventContext
         private ResolveGeofenceContext $resolveGeofenceContext,
         private LoadRecentAssetHistory $loadRecentAssetHistory,
         private GetRelatedOpenIncidents $getRelatedOpenIncidents,
+        private GetPriorSimilarIncidents $getPriorSimilarIncidents,
         private ResolveDriverOperationalContext $resolveDriverOperationalContext,
         private BuildOperationalContextProfile $buildOperationalContextProfile,
     ) {}
@@ -44,7 +45,10 @@ class BuildEventContext
                 is_numeric($lng) ? (float) $lng : null,
                 $normalizedEvent->team_id,
             );
-            $incidents = $this->getRelatedOpenIncidents->execute($normalizedEvent)->all();
+            $incidents = [
+                ...$this->getRelatedOpenIncidents->execute($normalizedEvent)->all(),
+                ...$this->getPriorSimilarIncidents->execute($normalizedEvent)->all(),
+            ];
             $recentHistory = $this->loadRecentAssetHistory->execute(
                 $normalizedEvent->asset_id,
                 $normalizedEvent->event_type_id,
@@ -204,7 +208,8 @@ class BuildEventContext
 
     /**
      * Persist `EventRelatedIncidentLink` rows for each related open/recent
-     * incident discovered by `GetRelatedOpenIncidents`. Uses `updateOrCreate`
+     * incident discovered by `GetRelatedOpenIncidents` and each closed prior
+     * incident discovered by `GetPriorSimilarIncidents`. Uses `updateOrCreate`
      * keyed on (normalized_event_id, incident_id, relation_type) so re-running
      * the pipeline is idempotent and does not duplicate links.
      *
@@ -248,6 +253,10 @@ class BuildEventContext
      */
     private function resolveRelationType(NormalizedEvent $normalizedEvent, array $incident): IncidentRelationType
     {
+        if (($incident['relation'] ?? null) === IncidentRelationType::PriorSimilarIncident->value) {
+            return IncidentRelationType::PriorSimilarIncident;
+        }
+
         if ($normalizedEvent->asset_id !== null && ($incident['asset_id'] ?? null) === $normalizedEvent->asset_id) {
             return IncidentRelationType::SameAssetOpenIncident;
         }

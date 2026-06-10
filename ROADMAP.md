@@ -10,8 +10,6 @@
 
 ## Iteración v1 — manual
 
-- [ ] **B6-P8 — Vínculo histórico de incidentes** (spec: `docs/ROADMAP.md` §4 B6-P8, esfuerzo S, backend-only). `App\Domains\Context\...\GetRelatedOpenIncidents` solo mira incidentes abiertos en ventana de 30 min; añadir lookup de incidentes **cerrados** del mismo asset/driver en los últimos 7 días y vincularlos como `EventRelatedIncidentLink` con tipo nuevo `PriorSimilarIncident` (enum). El vínculo entra al snapshot de contexto (la IA ve "tercer panic de este camión esta semana"). Sin merge automático — solo visibilidad. Tests: vínculo creado para incidente cerrado <7d del mismo asset; no vincula >7d ni de otro asset; aislamiento de tenant; idempotencia al re-enriquecer.
-
 - [ ] **B6-P4 — GPS fresco en eventos críticos** (spec: `docs/ROADMAP.md` §4 B6-P4, esfuerzo S, backend-only). Extender `ProviderAdapter` con `fetchLiveLocation(TenantIntegration $integration, string $externalAssetId): ?array` e implementarlo en `SamsaraAdapter` (`GET /fleet/vehicles/locations?vehicleIds={id}`, patrón de `fetchAssetLocations`). En `EnrichContextJob`, **solo severidad critical**: si `latestLocation` es más vieja que `context.live_location_staleness_seconds` (TenantSetting, default 60), fetch en vivo con timeout corto; éxito → `location_snapshot_json.source='live_fetch'` + persistir como `AssetLocation`; fallo → fallback silencioso a `latestLocation` con flag `position_stale`. Geofence matching corre sobre la posición fresca. Tests: fetch solo en critical; respeta staleness; fallback ante timeout sin romper el pipeline (Http::fake); tenant isolation.
 
 - [ ] **B1a — Policies de Tenancy faltantes** (spec 01 §9; gap listado en `CLAUDE.md` §3 y `docs/ROADMAP.md` §4 B1). Crear `SubscriptionPolicy`, `TenantBrandingPolicy` y `TenantFeaturePolicy` en `app/Domains/Tenancy/Policies/`, siguiendo el patrón de `DriverPolicy`/`RolePolicy` (permisos vía dominio Access), y registrarlas en `TenancyServiceProvider`. Solo backend: las policies + tests unit/feature de cada habilidad (view/update) incluyendo el caso cross-team (miembro de otro team ⇒ denegado). NO crear `BillingController`/`BrandingController` aún (eso es B1b, requiere diseño de UI).
@@ -20,7 +18,7 @@
 
 ## Completadas
 
-_(vacío — la rutina mueve aquí las `- [x]` con fecha y hash de commit)_
+- [x] **B6-P8 — Vínculo histórico de incidentes** — 2026-06-10, commit `feat(context): vínculo histórico de incidentes cerrados (B6-P8)`. `GetPriorSimilarIncidents` (cerrados del mismo asset/driver en 7 días, configurable `incidents.context_prior_lookback_days`, excluye incidentes ya vinculados al evento), enum `IncidentRelationType::PriorSimilarIncident`, links idempotentes vía `BuildEventContext`, filas en `incidents_snapshot_json` con `relation`/`closed_at`, signals `has_prior_similar_incident` (y `has_open_incident` sigue contando solo abiertos). Tests: `GetPriorSimilarIncidentsTest` (8 casos: asset/driver, ventana 7d, otro asset, otro tenant, no-terminal, auto-exclusión, idempotencia) + `SignalsBuilderTest` ampliado. Nota del mismo run: commit previo `fix(audit): evitar fatal de constante de trait UPDATED_AT en PHP < 8.5` reparó la base en PHP 8.3/8.4.
 
 ## Bloqueadas / requieren decisión
 

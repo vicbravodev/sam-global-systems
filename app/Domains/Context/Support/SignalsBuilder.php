@@ -4,6 +4,7 @@ namespace App\Domains\Context\Support;
 
 use App\Domains\Context\Enums\GeofenceCategory;
 use App\Domains\Context\Enums\GeofenceMatchType;
+use App\Domains\Context\Enums\IncidentRelationType;
 
 class SignalsBuilder
 {
@@ -17,7 +18,7 @@ class SignalsBuilder
      * @param  array<string, mixed>  $context  {
      *
      * @var array<int, array<string, mixed>> $geofence_matches  Geofence match rows with `category` and `match_type`.
-     * @var array<int, array<string, mixed>> $incidents  Related open incidents (rows produced by `GetRelatedOpenIncidents`).
+     * @var array<int, array<string, mixed>> $incidents  Related incident rows: open ones produced by `GetRelatedOpenIncidents` plus closed prior ones (marked `relation = prior_similar_incident`) produced by `GetPriorSimilarIncidents`.
      * @var array<string, mixed> $recent_history  Recent history snapshot counts.
      * @var array<string, mixed> $driver  Driver operational context.
      * @var array<string, mixed> $asset  Asset snapshot (for camera/operating hours signals).
@@ -40,7 +41,8 @@ class SignalsBuilder
 
         return [
             'is_in_sensitive_geofence' => self::isInSensitiveGeofence($geofenceMatches),
-            'has_open_incident' => count($incidents) > 0,
+            'has_open_incident' => self::hasOpenIncident($incidents),
+            'has_prior_similar_incident' => self::hasPriorSimilarIncident($incidents),
             'same_type_recent_recurrence' => ($recentHistory['recent_same_type_count'] ?? 0) > 0,
             'driver_has_recent_risk_events' => (bool) ($driver['has_recent_risk_events'] ?? false),
             'camera_unavailable' => self::cameraUnavailable($asset),
@@ -56,6 +58,34 @@ class SignalsBuilder
             'no_media_available' => self::noMediaAvailable($media),
             'visual_confirmation_possible' => self::visualConfirmationPossible($asset, $media),
         ];
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $incidents
+     */
+    private static function hasOpenIncident(array $incidents): bool
+    {
+        foreach ($incidents as $incident) {
+            if (($incident['relation'] ?? null) !== IncidentRelationType::PriorSimilarIncident->value) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $incidents
+     */
+    private static function hasPriorSimilarIncident(array $incidents): bool
+    {
+        foreach ($incidents as $incident) {
+            if (($incident['relation'] ?? null) === IncidentRelationType::PriorSimilarIncident->value) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

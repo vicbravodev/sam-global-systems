@@ -9,4 +9,5 @@ enum IncidentRelationType: string
     case SameLocationCluster = 'same_location_cluster';
     case ProbableFollowup = 'probable_followup';
     case DuplicateOperationalCase = 'duplicate_operational_case';
+    case PriorSimilarIncident = 'prior_similar_incident';
 }

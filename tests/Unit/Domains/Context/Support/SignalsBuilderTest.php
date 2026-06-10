@@ -4,6 +4,7 @@ namespace Tests\Unit\Domains\Context\Support;
 
 use App\Domains\Context\Enums\GeofenceCategory;
 use App\Domains\Context\Enums\GeofenceMatchType;
+use App\Domains\Context\Enums\IncidentRelationType;
 use App\Domains\Context\Support\SignalsBuilder;
 use PHPUnit\Framework\TestCase;
 
@@ -15,6 +16,7 @@ class SignalsBuilderTest extends TestCase
 
         $this->assertFalse($signals['is_in_sensitive_geofence']);
         $this->assertFalse($signals['has_open_incident']);
+        $this->assertFalse($signals['has_prior_similar_incident']);
         $this->assertFalse($signals['same_type_recent_recurrence']);
         $this->assertFalse($signals['driver_has_recent_risk_events']);
         $this->assertFalse($signals['camera_unavailable']);
@@ -82,6 +84,29 @@ class SignalsBuilderTest extends TestCase
         ]);
 
         $this->assertTrue($signals['has_open_incident']);
+    }
+
+    public function test_prior_similar_incident_rows_do_not_count_as_open(): void
+    {
+        $signals = SignalsBuilder::build([
+            'incidents' => [['id' => 1, 'relation' => IncidentRelationType::PriorSimilarIncident->value]],
+        ]);
+
+        $this->assertFalse($signals['has_open_incident']);
+        $this->assertTrue($signals['has_prior_similar_incident']);
+    }
+
+    public function test_open_and_prior_incident_rows_set_both_flags(): void
+    {
+        $signals = SignalsBuilder::build([
+            'incidents' => [
+                ['id' => 1],
+                ['id' => 2, 'relation' => IncidentRelationType::PriorSimilarIncident->value],
+            ],
+        ]);
+
+        $this->assertTrue($signals['has_open_incident']);
+        $this->assertTrue($signals['has_prior_similar_incident']);
     }
 
     public function test_same_type_recent_recurrence_flag(): void
