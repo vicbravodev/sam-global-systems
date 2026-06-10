@@ -44,10 +44,10 @@ export default function RemoveMemberModal({
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Remove team member</DialogTitle>
+                    <DialogTitle>Quitar miembro del equipo</DialogTitle>
                     <DialogDescription>
-                        Are you sure you want to remove{' '}
-                        <strong>{member?.name}</strong> from this team?
+                        ¿Seguro que quieres quitar a{' '}
+                        <strong>{member?.name}</strong> de este equipo?
                     </DialogDescription>
                 </DialogHeader>
 
