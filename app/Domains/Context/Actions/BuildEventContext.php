@@ -72,6 +72,9 @@ class BuildEventContext
                 'asset' => $assetSnapshot ?? [],
                 'telemetry' => $telemetrySnapshot ?? [],
                 'media' => [],
+                'event' => [
+                    'is_resolved' => $normalizedEvent->payload_normalized_json['is_resolved'] ?? null,
+                ],
             ]);
 
             $existing = EventContextSnapshot::withoutGlobalScopes()
@@ -317,6 +320,7 @@ class BuildEventContext
             'recent_incidents_count' => $recentHistory['recent_incidents_count'],
             'recent_same_type_count' => $recentHistory['recent_same_type_count'],
             'recent_high_severity_count' => $recentHistory['recent_high_severity_count'],
+            'repeated_panic_count_24h' => $recentHistory['repeated_panic_count_24h'] ?? 0,
             'recent_locations' => $recentHistory['recent_locations_json'],
         ];
     }

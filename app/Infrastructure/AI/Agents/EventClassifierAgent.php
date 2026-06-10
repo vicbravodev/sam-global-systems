@@ -36,6 +36,17 @@ explanation outside the JSON) with the following shape:
 
 Use the operational profile, recent history, and tenant profile to inform the
 classification. Prefer "unclear" with low confidence when signals are weak.
+
+False-alarm vs coercion (panic-style events): context_signals may include
+`external_resolved` (the provider marked the alert resolved at the source),
+`parked_at_base` (the asset sits parked inside its own base geofence),
+`repeated_panic_24h` (repeated panics from the same asset) and media
+assessment outcomes. A panic that is externally resolved AND parked at base
+with nothing alarming on media MAY be classified "false_positive". A panic
+that was "resolved" while on the road, outside a base, in a risk zone, or
+with any distress indication must NEVER be downgraded — a cancelled panic can
+be coercion; keep it "real_event" or "unclear". When these signals are
+missing or contradictory, do not downgrade.
 Never include any field outside this schema.
 INSTRUCTIONS;
     }

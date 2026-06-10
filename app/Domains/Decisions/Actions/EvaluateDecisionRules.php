@@ -5,6 +5,7 @@ namespace App\Domains\Decisions\Actions;
 use App\Domains\AI\Enums\EvaluationPriority;
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\Context\Models\EventContextSnapshot;
+use App\Domains\Decisions\Enums\DecisionOutcomeCode;
 use App\Domains\Decisions\Enums\DecisionPriority;
 use App\Domains\Decisions\Enums\DecisionSourceType;
 use App\Domains\Decisions\Events\DecisionMade;
@@ -43,6 +44,12 @@ class EvaluateDecisionRules
             $ruleSet = $applied['ruleset'];
 
             $resolved = $this->resolveDecisionOutcome->execute($eval, $matchedRules);
+
+            // An outcome that *is* the human-review queue always flags the
+            // decision for review, even when the AI confidence alone would
+            // not have (e.g. a tenant false-alarm rule degrading to REVIEW).
+            $resolved['requiresHumanReview'] = $resolved['requiresHumanReview']
+                || $resolved['outcome']->code === DecisionOutcomeCode::RequireHumanReview->value;
 
             $priority = $this->mapPriority($eval, $resolved['requiresHumanReview']);
 

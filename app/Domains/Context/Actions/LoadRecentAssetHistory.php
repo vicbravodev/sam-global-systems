@@ -2,6 +2,7 @@
 
 namespace App\Domains\Context\Actions;
 
+use App\Domains\Normalization\Models\EventType;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use DateTimeInterface;
 use Illuminate\Support\Carbon;
@@ -72,9 +73,30 @@ class LoadRecentAssetHistory
             'recent_incidents_count' => 0,
             'recent_same_type_count' => $recentSameTypeCount,
             'recent_high_severity_count' => $highSeverityCount,
+            'repeated_panic_count_24h' => $this->repeatedPanicCount24h($assetId, $windowEnd),
             'recent_locations_json' => $locations,
             'recent_flags_json' => [],
         ];
+    }
+
+    /**
+     * Panic events from the same asset over the last 24 hours (independent of
+     * the regular history window): repeated panics feed the false-alarm
+     * validation signals (Roadmap B6-P7).
+     */
+    private function repeatedPanicCount24h(int $assetId, Carbon $windowEnd): int
+    {
+        $panicTypeId = EventType::query()->where('code', 'panic_button')->value('id');
+
+        if ($panicTypeId === null) {
+            return 0;
+        }
+
+        return NormalizedEvent::withoutGlobalScopes()
+            ->where('asset_id', $assetId)
+            ->where('event_type_id', $panicTypeId)
+            ->whereBetween('occurred_at', [$windowEnd->copy()->subDay(), $windowEnd])
+            ->count();
     }
 
     /**
@@ -98,6 +120,7 @@ class LoadRecentAssetHistory
             'recent_incidents_count' => 0,
             'recent_same_type_count' => 0,
             'recent_high_severity_count' => 0,
+            'repeated_panic_count_24h' => 0,
             'recent_locations_json' => [],
             'recent_flags_json' => [],
         ];

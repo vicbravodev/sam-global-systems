@@ -38,6 +38,7 @@ class SignalsBuilder
         $asset = $context['asset'] ?? [];
         $telemetry = $context['telemetry'] ?? [];
         $media = $context['media'] ?? [];
+        $event = $context['event'] ?? [];
 
         return [
             'is_in_sensitive_geofence' => self::isInSensitiveGeofence($geofenceMatches),
@@ -57,7 +58,47 @@ class SignalsBuilder
             'media_delayed' => self::hasMediaWithStatus($media, ['delayed']),
             'no_media_available' => self::noMediaAvailable($media),
             'visual_confirmation_possible' => self::visualConfirmationPossible($asset, $media),
+            'external_resolved' => ($event['is_resolved'] ?? null) === true,
+            'parked_at_base' => self::parkedAtBase($geofenceMatches, $telemetry),
+            'repeated_panic_24h' => ($recentHistory['repeated_panic_count_24h'] ?? 0) > 1,
         ];
+    }
+
+    /**
+     * The asset sits inside one of the fleet's own base geofences with no
+     * speed — a panic from a parked unit at home is a strong false-alarm
+     * signal (Roadmap B6-P7). Requires an explicit ~zero speed reading: an
+     * unknown speed never counts as parked.
+     *
+     * @param  array<int, array<string, mixed>>  $matches
+     * @param  array<string, mixed>  $telemetry
+     */
+    private static function parkedAtBase(array $matches, array $telemetry): bool
+    {
+        $speed = $telemetry['speed_kph'] ?? null;
+
+        if (! is_numeric($speed) || (float) $speed > 1.0) {
+            return false;
+        }
+
+        foreach ($matches as $match) {
+            $matchType = $match['match_type'] ?? null;
+            $matchTypeValue = $matchType instanceof GeofenceMatchType ? $matchType->value : $matchType;
+
+            if (! in_array($matchTypeValue, [GeofenceMatchType::Inside->value, GeofenceMatchType::Entry->value], true)) {
+                continue;
+            }
+
+            $category = $match['category'] ?? null;
+            $categoryValue = $category instanceof GeofenceCategory ? $category->value : $category;
+            $geofenceCategory = is_string($categoryValue) ? GeofenceCategory::tryFrom($categoryValue) : null;
+
+            if ($geofenceCategory !== null && $geofenceCategory->isBase()) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
