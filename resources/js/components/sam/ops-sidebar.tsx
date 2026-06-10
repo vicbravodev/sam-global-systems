@@ -198,7 +198,7 @@ export function OpsSidebar({ navBadges }: OpsSidebarProps) {
                 {
                     label: 'Analítica',
                     icon: BarChart3,
-                    href: '#',
+                    href: `/${teamSlug}/analytics`,
                 },
             ],
         },

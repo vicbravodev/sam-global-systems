@@ -38,6 +38,7 @@ createInertiaApp({
             case name.startsWith('notifications/'):
             case name.startsWith('rules/'):
             case name.startsWith('automation/'):
+            case name.startsWith('analytics/'):
             case name.startsWith('events/'):
                 return OpsLayout;
             default:

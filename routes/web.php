@@ -11,6 +11,9 @@ use App\Http\Controllers\Admin\TenantFeatureController;
 use App\Http\Controllers\Admin\TenantMemberController;
 use App\Http\Controllers\Admin\TenantSubscriptionController;
 use App\Http\Controllers\AI\AIEvaluationController;
+use App\Http\Controllers\Analytics\AnalyticsPageController;
+use App\Http\Controllers\Analytics\ReportController;
+use App\Http\Controllers\Analytics\ReportExecutionController;
 use App\Http\Controllers\Assets\AssetPageController;
 use App\Http\Controllers\Automation\ActionExecutionController;
 use App\Http\Controllers\Automation\AutomationPageController;
@@ -101,6 +104,10 @@ Route::prefix('{current_team}')
         Route::put('integrations/{integration}', [IntegrationController::class, 'update'])->name('integrations.update');
         Route::delete('integrations/{integration}', [IntegrationController::class, 'destroy'])->name('integrations.destroy');
         Route::post('integrations/{integration}/test', [IntegrationController::class, 'test'])->name('integrations.test');
+
+        Route::get('analytics', [AnalyticsPageController::class, 'show'])->name('analytics.show');
+        Route::post('analytics/reports/{report}/generate', [ReportController::class, 'generate'])->name('analytics.reports.generate');
+        Route::get('analytics/executions/{execution}/download', [ReportExecutionController::class, 'download'])->name('analytics.executions.download');
 
         Route::get('automation', [AutomationPageController::class, 'show'])->name('automation.show');
         Route::post('automation/workflows', [AutomationWorkflowController::class, 'store'])->name('automation.workflows.store');
