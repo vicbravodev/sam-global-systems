@@ -56,7 +56,7 @@ El producto terminado es: un operador de flota abre SAM, ve su flota en vivo, re
 **Gaps de la UI existente (no son páginas nuevas, son deudas de lo ya shippeado):**
 
 - ~~Incidentes — detalle apretado y sin media (F9)~~ — ✅ **CERRADO (PR #63)**: detalle full-page con galería de media, assessments IA, solicitar media e historial relacionado; el panel de la bandeja conserva el JSON y gana CTA "Abrir detalle".
-- **Notificaciones — falta gestión de canales del tenant (F5c)**: configurar Slack/Twilio/FCM (`NotificationChannel`, secrets con `EncryptedChannelConfigCast`) no tiene UI.
+- ~~Notificaciones — falta gestión de canales del tenant (F5c)~~ — ✅ **CERRADO (PR #63)**: tab Canales en Configuración con CRUD, secrets enmascarados y probar canal.
 
 ---
 
@@ -88,7 +88,7 @@ Patrón obligatorio (el de `integrations/index`, PR #31): controller web dedicad
 
 ### Fase D — Cierre operativo y monetización
 
-**F5c — Gestión de canales de notificación del tenant.** CRUD de `NotificationChannel` (Slack webhook, Twilio SID/token, FCM) con secrets cifrados y botón "probar canal". Prerrequisito práctico de B9 en producción. **Esfuerzo: 1 sesión.**
+**F5c — Gestión de canales de notificación del tenant. ✅ COMPLETADO (PR #63)** — ver §7.
 
 **F13 — Analítica.** Dashboard de KPIs (`KpiRecord`/snapshots) + definición/ejecución de reportes con download PDF/XLSX (backend real). **Esfuerzo: 2–3 sesiones.**
 
@@ -107,7 +107,7 @@ Patrón obligatorio (el de `integrations/index`, PR #31): controller web dedicad
 | **A. Monitoreo automatizado real** ✅ COMPLETA (PR #63) | ~~B8~~ ✅ → ~~B7~~ ✅ → ~~B9~~ ✅ | El pipeline completo opera solo: detecta, pide footage, lo evalúa, re-decide, notifica, y el operador confirma/descarta desde el teléfono |
 | **B. Bandeja a la altura** ✅ COMPLETA (PR #63) | ~~F9~~ ✅ → ~~F10~~ ✅ | El operador VE todo lo que el pipeline produce (footage, visión IA, historial) en una UI espaciosa |
 | **C. Inteligencia configurable** ✅ COMPLETA (PR #63) | ~~F-TC~~ ✅ → ~~F11~~ ✅ → ~~F12~~ ✅ | Cero links muertos de inteligencia; el tenant se autoconfigura sin tinker |
-| **D. Cierre operativo 🔵 ACTUAL** | F5c (canales) → F13 (analítica) → F14 (auditoría) | Producto operativo completo, sidebar 100% vivo |
+| **D. Cierre operativo 🔵 ACTUAL** | ~~F5c~~ ✅ (PR #63) → F13 (analítica) → F14 (auditoría) | Producto operativo completo, sidebar 100% vivo |
 | **E. Monetización** | B1b+F7 (billing/branding UI) → B2 (billing local) | Listo para facturar |
 
 **Regla de decisión al abrir sesión:** si la fase actual tiene un ítem a medias, continuarlo; si no, tomar el siguiente de la tabla. Un PR por ítem (o sub-ítem), CI verde antes de merge, y actualizar este documento en el mismo PR.
@@ -161,6 +161,7 @@ Patrón obligatorio (el de `integrations/index`, PR #31): controller web dedicad
 - **B8** — Loop multimodal cerrado (PR #63): `MediaAssessmentCompleted` (solo assessments nuevos, idempotente) → `ReevaluateEventJob` con trigger `media_arrived` (guards: inline sin decisión, media ya evaluada en otra versión anti-loop, incidente terminal no re-corre); fact `media_assessment` cross-versión de evaluación; guard de contradicción en `ResolveDecisionOutcome` (footage que contradice un evento con decisión accionable previa → `REQUIRE_HUMAN_REVIEW`, nunca auto-cerrar); timeline `media_assessed` por assessment + broadcast `incidents.updated` que la bandeja ahora escucha.
 - **B7** — Ejecutores reales de Automation (PR #63): `ExecuteAction` puentea `Send*` al pipeline de Notifications (destinatarios desde el target del step — email/phone directo, user id, rol del team o `recipients` explícitos —, render del `ActionTemplate`, canal fijado con `force_channels` cuyo gate real es el `NotificationChannel` activo del tenant); `AssignIncident`/`Escalate`/`RequestHumanReview` ejecutan las actions reales de Incidents (nueva `RequestIncidentReview` open→in_review); meter `automation_actions` idempotente por ejecución; `CreateTicket`/`UpdateAssetState` → V2.
 - **B9** — Twilio bidireccional (PR #63): tabla `notification_reply_tokens` (token corto TTL 24h, reusado por incidente+address); los SMS/WhatsApp de incidente crítico llevan "Responde SI-XXXX / NO-XXXX / ESC-XXXX" (SMS pre-ajustado a 160); webhook `POST /api/webhooks/twilio` valida `X-Twilio-Signature` contra el canal del tenant resuelto por el número `To` (403 si falla); `ProcessInboundReply` ejecuta ack/falsa-alarma/escalar vía actions de Incidents con timeline "via sms/whatsapp" + auditoría `incident.reply.*`; desconocidos/tenant ajeno/sender inesperado → log y silencio; doble respuesta idempotente. **Fase A completa.**
+- **F5c** — Gestión de canales del tenant (PR #63): tab Canales en Configuración (CRUD por tipo con campos específicos, secrets solo enmascarados hacia el navegador, claves alineadas a los drivers para el cifrado at-rest, eliminar bloqueado en globales) + endpoint 'probar canal' que envía por el driver real. Verificado visualmente.
 - **F12** — Página Automatizaciones (PR #63): tabs Workflows (builder simple trigger+pasos con destino, toggle, disparo manual) y Ejecuciones (estado, intentos, error, retry/confirm/cancel); fix en Store/UpdateAutomationWorkflowRequest que descartaba `order`/`target_type`/`target_reference` de los steps (los executors B7 los necesitan); sidebar vivo. Verificado visualmente. **Fase C completa.**
 - **F11** — Página Reglas (PR #63): 3 tabs — decisión (seed panic/falsa-alarma visibles con estado, condiciones expandibles, crear con editor JSON validado + docs de operadores, activar/desactivar), mapeo del proveedor (41 reglas Samsara, crear/toggle) y overrides del tenant (crear/eliminar); mutaciones reusando los controllers API como rutas web; sidebar vivo. Verificado visualmente.
 - **F-TC** — Página Configuración del tenant (PR #63): 6 tabs (settings del pipeline con los toggles de media/pánico/GPS, perfil IA, políticas de notificación, escalación con editor de steps, horario on-call, versiones con snapshot); mutaciones reusando los controllers API de TenantConfig como rutas web; OpsLayout + link del sidebar vivo; `canManage` por policy. Verificado visualmente (toggle persiste en BD).
