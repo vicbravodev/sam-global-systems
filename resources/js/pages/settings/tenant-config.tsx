@@ -70,6 +70,14 @@ interface ScheduleProfileRow {
     isActive: boolean;
 }
 
+interface BrandingProp {
+    displayName: string | null;
+    primaryColor: string | null;
+    secondaryColor: string | null;
+    emailSignature: string | null;
+    logoUrl: string | null;
+}
+
 interface ChannelRow {
     id: number;
     code: string;
@@ -103,6 +111,7 @@ interface TenantConfigProps {
     scheduleProfiles: ScheduleProfileRow[];
     versions: VersionRow[];
     channels: ChannelRow[];
+    branding: BrandingProp;
     channelTypes: string[];
     canManageChannels: boolean;
     canManage: boolean;
@@ -115,6 +124,7 @@ const TABS = [
     { key: 'escalation', label: 'Escalación' },
     { key: 'schedule', label: 'Horario on-call' },
     { key: 'channels', label: 'Canales' },
+    { key: 'branding', label: 'Marca' },
     { key: 'versions', label: 'Versiones' },
 ] as const;
 
@@ -1328,6 +1338,195 @@ function ChannelsTab({
     );
 }
 
+// ---- Branding tab (F7) ----
+
+function BrandingTab({
+    branding,
+    canManage,
+}: {
+    branding: BrandingProp;
+    canManage: boolean;
+}) {
+    const base = useTeamBase();
+    const [form, setForm] = useState({
+        display_name: branding.displayName ?? '',
+        primary_color: branding.primaryColor ?? '#2563eb',
+        secondary_color: branding.secondaryColor ?? '#0f172a',
+        email_signature: branding.emailSignature ?? '',
+    });
+    const [saving, setSaving] = useState(false);
+    const [uploading, setUploading] = useState(false);
+
+    const save = async () => {
+        if (base === null) {
+            return;
+        }
+
+        setSaving(true);
+        await submit(
+            putJson(`${base}/branding`, {
+                display_name:
+                    form.display_name === '' ? null : form.display_name,
+                primary_color: form.primary_color,
+                secondary_color: form.secondary_color,
+                email_signature:
+                    form.email_signature === '' ? null : form.email_signature,
+            }),
+            'Marca guardada.',
+        );
+        setSaving(false);
+    };
+
+    const uploadLogo = async (file: File) => {
+        if (base === null) {
+            return;
+        }
+
+        setUploading(true);
+
+        try {
+            const body = new FormData();
+            body.append('logo', file);
+
+            const token =
+                document
+                    .querySelector('meta[name=csrf-token]')
+                    ?.getAttribute('content') ?? '';
+
+            const response = await fetch(`${base}/branding/logo`, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'X-CSRF-TOKEN': token, Accept: 'application/json' },
+                body,
+            });
+
+            if (response.ok || response.status === 201) {
+                toast.success('Logo subido.');
+                router.reload();
+            } else if (response.status === 403) {
+                toast.error('No tienes permisos para cambiar la marca.');
+            } else {
+                toast.error(
+                    (await readErrorMessage(response)) ??
+                        'No se pudo subir el logo.',
+                );
+            }
+        } catch {
+            toast.error('Error de red. Vuelve a intentarlo.');
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle className="text-[13px] uppercase">
+                    Marca del tenant
+                </CardTitle>
+            </CardHeader>
+            <CardContent className="flex max-w-xl flex-col gap-3 text-[13px]">
+                <div className="flex items-center gap-3">
+                    {branding.logoUrl ? (
+                        <img
+                            src={branding.logoUrl}
+                            alt="Logo del tenant"
+                            className="h-14 w-14 rounded-[6px] border border-border object-contain"
+                        />
+                    ) : (
+                        <div className="flex h-14 w-14 items-center justify-center rounded-[6px] border border-dashed border-border text-[10px] text-fg-3">
+                            sin logo
+                        </div>
+                    )}
+                    {canManage && (
+                        <label className="cursor-pointer text-[12px] text-fg-2 underline">
+                            {uploading ? 'Subiendo…' : 'Subir logo'}
+                            <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                disabled={uploading}
+                                onChange={(e) => {
+                                    const file = e.target.files?.[0];
+
+                                    if (file) {
+                                        void uploadLogo(file);
+                                    }
+                                }}
+                            />
+                        </label>
+                    )}
+                </div>
+
+                <div className="flex flex-col gap-1">
+                    <Label className="text-[12px]">Nombre para mostrar</Label>
+                    <Input
+                        value={form.display_name}
+                        disabled={!canManage}
+                        onChange={(e) =>
+                            setForm({ ...form, display_name: e.target.value })
+                        }
+                    />
+                </div>
+                <div className="flex gap-4">
+                    <div className="flex flex-col gap-1">
+                        <Label className="text-[12px]">Color primario</Label>
+                        <input
+                            type="color"
+                            value={form.primary_color}
+                            disabled={!canManage}
+                            onChange={(e) =>
+                                setForm({
+                                    ...form,
+                                    primary_color: e.target.value,
+                                })
+                            }
+                            className="h-9 w-16 rounded border border-border bg-surface-1"
+                        />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <Label className="text-[12px]">Color secundario</Label>
+                        <input
+                            type="color"
+                            value={form.secondary_color}
+                            disabled={!canManage}
+                            onChange={(e) =>
+                                setForm({
+                                    ...form,
+                                    secondary_color: e.target.value,
+                                })
+                            }
+                            className="h-9 w-16 rounded border border-border bg-surface-1"
+                        />
+                    </div>
+                </div>
+                <div className="flex flex-col gap-1">
+                    <Label className="text-[12px]">Firma de email</Label>
+                    <textarea
+                        value={form.email_signature}
+                        disabled={!canManage}
+                        onChange={(e) =>
+                            setForm({
+                                ...form,
+                                email_signature: e.target.value,
+                            })
+                        }
+                        rows={3}
+                        className="rounded-md border border-border bg-surface-2 p-2 text-[12px] text-fg-2"
+                    />
+                </div>
+                {canManage && (
+                    <div>
+                        <Button size="sm" onClick={save} disabled={saving}>
+                            Guardar marca
+                        </Button>
+                    </div>
+                )}
+            </CardContent>
+        </Card>
+    );
+}
+
 // ---- Versions tab ----
 
 function VersionsTab({ versions }: { versions: VersionRow[] }) {
@@ -1468,6 +1667,12 @@ export default function TenantConfigPage() {
                         channels={props.channels}
                         channelTypes={props.channelTypes}
                         canManage={props.canManageChannels}
+                    />
+                )}
+                {tab === 'branding' && (
+                    <BrandingTab
+                        branding={props.branding}
+                        canManage={props.canManage}
                     />
                 )}
                 {tab === 'versions' && (

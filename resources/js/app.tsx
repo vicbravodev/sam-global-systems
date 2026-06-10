@@ -40,6 +40,7 @@ createInertiaApp({
             case name.startsWith('automation/'):
             case name.startsWith('analytics/'):
             case name.startsWith('audit/'):
+            case name.startsWith('billing/'):
             case name.startsWith('events/'):
                 return OpsLayout;
             default:

@@ -16,6 +16,7 @@ import {
     Truck,
     Users,
     Workflow,
+    Receipt,
 } from 'lucide-react';
 import { useState } from 'react';
 import {
@@ -220,6 +221,11 @@ export function OpsSidebar({ navBadges }: OpsSidebarProps) {
                     label: 'Auditoría',
                     icon: FileClock,
                     href: `/${teamSlug}/audit`,
+                },
+                {
+                    label: 'Facturación',
+                    icon: Receipt,
+                    href: `/${teamSlug}/billing`,
                 },
                 {
                     label: 'Equipo y roles',

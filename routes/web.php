@@ -36,6 +36,8 @@ use App\Http\Controllers\Normalization\MappingRuleController;
 use App\Http\Controllers\Notifications\NotificationChannelController;
 use App\Http\Controllers\Notifications\NotificationPageController;
 use App\Http\Controllers\Teams\TeamInvitationController;
+use App\Http\Controllers\Tenancy\BillingPageController;
+use App\Http\Controllers\Tenancy\BrandingController;
 use App\Http\Controllers\TenantConfig\TenantAIProfileController;
 use App\Http\Controllers\TenantConfig\TenantConfigController;
 use App\Http\Controllers\TenantConfig\TenantConfigPageController;
@@ -154,6 +156,10 @@ Route::prefix('{current_team}')
         Route::post('integrations/{integration}/test', [IntegrationController::class, 'test'])->name('integrations.test');
 
         Route::get('audit', [AuditPageController::class, 'show'])->name('audit.show');
+
+        Route::get('billing', [BillingPageController::class, 'show'])->name('billing.show');
+        Route::put('settings/tenant-config/branding', [BrandingController::class, 'update'])->name('tenant-config.branding.update');
+        Route::post('settings/tenant-config/branding/logo', [BrandingController::class, 'uploadLogo'])->name('tenant-config.branding.logo');
 
         Route::get('analytics', [AnalyticsPageController::class, 'show'])->name('analytics.show');
         Route::post('analytics/reports/{report}/generate', [ReportController::class, 'generate'])->name('analytics.reports.generate');

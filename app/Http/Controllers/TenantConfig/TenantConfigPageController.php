@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers\TenantConfig;
 
+use App\Contracts\ObjectStorage;
 use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Models\NotificationChannel;
+use App\Domains\Tenancy\Models\TenantBranding;
 use App\Domains\TenantConfig\Actions\ResolveTenantAIProfile;
 use App\Domains\TenantConfig\Enums\AutomationLevel;
 use App\Domains\TenantConfig\Enums\FalsePositiveTolerance;
@@ -152,6 +154,30 @@ class TenantConfigPageController extends Controller
                 fn (ChannelType $type) => $type->value,
                 ChannelType::cases(),
             ),
+            'branding' => function () use ($current_team): array {
+                $branding = TenantBranding::withoutGlobalScopes()
+                    ->where('team_id', $current_team->id)
+                    ->first();
+
+                $logoUrl = null;
+
+                if ($branding?->logo_url) {
+                    try {
+                        $logoUrl = app(ObjectStorage::class)
+                            ->temporaryUrl($branding->logo_url, now()->addMinutes(30));
+                    } catch (\Throwable) {
+                        $logoUrl = null;
+                    }
+                }
+
+                return [
+                    'displayName' => $branding?->display_name,
+                    'primaryColor' => $branding?->primary_color,
+                    'secondaryColor' => $branding?->secondary_color,
+                    'emailSignature' => $branding?->email_signature,
+                    'logoUrl' => $logoUrl,
+                ];
+            },
             'canManageChannels' => fn () => (bool) request()->user()?->can('manage', NotificationChannel::class),
             'canManage' => fn () => (bool) request()->user()?->can('update', TenantSetting::class),
         ]);
