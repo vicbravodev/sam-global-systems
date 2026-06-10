@@ -19,11 +19,11 @@ use Illuminate\Console\Command;
  *
  * Requires Horizon (or a queue worker) running to process the async chain.
  *
- * Usage: php artisan samsara:replay --team=samsara-test
+ * Usage: php artisan samsara:replay --team=serviexpress-jc
  */
 class SamsaraReplayCommand extends Command
 {
-    protected $signature = 'samsara:replay {--team=samsara-test : Team slug that owns the Samsara integration}';
+    protected $signature = 'samsara:replay {--team=serviexpress-jc : Team slug that owns the Samsara integration}';
 
     protected $description = 'Replay real Samsara panic-button events through the webhook pipeline for testing.';
 
