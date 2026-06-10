@@ -13,7 +13,7 @@ SAM es una plataforma multi-tenant de gestión de flotas. El flujo central:
 Proveedor externo (Samsara) → Ingestion (raw events) → Normalization → Context (enriquecimiento + media)
   → AI (evaluación, SDK Laravel AI) → Decisions (motor de reglas) → Incidents (bandeja operativa)
   → Automation (workflows) + Notifications (multicanal) + Audit + Analytics
-  → Billing metered por Stripe (usage events por tenant)
+  → Billing metered local (usage events por tenant; cobro por transferencia, sin Stripe)
 ```
 
 El producto terminado es: un operador de flota abre SAM, ve su flota en vivo (mapa + telemetría), recibe incidentes generados/triageados por IA, los gestiona desde una bandeja en tiempo real, configura automatizaciones y notificaciones, y consulta analytics — todo tenant-scoped, facturado por uso.
@@ -38,7 +38,7 @@ El producto terminado es: un operador de flota abre SAM, ve su flota en vivo (ma
 | Gap | Detalle |
 |-----|---------|
 | Billing/Branding tenant-facing (spec 01 §9) | No existen `BillingController` ni `BrandingController` — el tenant no puede ver su consumo/facturas ni configurar branding. Único endpoint web pendiente del spec 01. |
-| Stripe end-to-end | Usage events y agregados existen, pero el ciclo completo contra Stripe (test mode) no está validado: sync de meters, webhooks Cashier, invoice snapshots. |
+| Billing local (sin Stripe) | Decisión 2026-06-09: el cobro será por transferencia bancaria — **Stripe queda fuera**. Falta el modelo local: registro de facturas/comprobantes por periodo (FileObject ya existe), estado de pago, y activar/desactivar tenants fácil por impago o factura no subida (la suspensión manual del super-admin, PRs #41–#45, es la base). Evaluar retirar Cashier/Billable al implementarlo. |
 | Policies Tenancy | Subscription/TenantBranding/TenantFeature sin policies — crearlas junto con sus controllers (ítem Billing/Branding). |
 | Segundo provider | Adapter pattern probado solo con Samsara; Geotab/Motive cuando haya demanda real. |
 
@@ -98,8 +98,8 @@ Settings del tenant (AI profile, políticas de notificación/escalación, rule o
 ### B1. Billing + Branding tenant-facing (spec 01 §9) — único endpoint web pendiente
 `BillingController` (uso, meters, agregados, invoice snapshots del team actual) + `BrandingController` (logo vía FileObject, colores), con policies de Tenancy (Subscription/TenantBranding/TenantFeature) que hoy no existen. Alimenta F7. **Esfuerzo: 1–2 sesiones.**
 
-### B2. Stripe end-to-end (test mode)
-Validar el ciclo completo: sync de usage meters a Stripe, webhooks de Cashier, invoice snapshots, suspensión por impago vs. la suspensión manual del super-admin. **Esfuerzo: 2–3 sesiones.**
+### B2. Billing local-only (cobro por transferencia) — re-scoped 2026-06-09, Stripe CANCELADO
+El cobro será por transferencia bancaria; todo lo relacionado a Stripe queda fuera del roadmap. Modelo local: facturas/comprobantes subidos por periodo (FileObject + `temporaryUrl` listos), estado de pago por tenant, y **activar/desactivar tenants de forma sencilla** cuando no paguen o no hayan subido su factura (reutilizar la suspensión/ciclo de vida del super-admin, PRs #41–#45). Los usage meters locales (`ai_calls`, `ai_tokens_*`, assets) siguen siendo la fuente del consumo a cobrar. Al implementar: evaluar retirar Cashier/Billable del código. **Esfuerzo: 2 sesiones.**
 
 ### B3. ✅ IA real en operación — CERRADO (PR #50)
 Provider OpenAI configurable por env (`AI_DEFAULT`/`OPENAI_API_KEY`/`OPENAI_TEXT_MODEL`), binding config:cache-safe, latencia real (hrtime) y costo real (`ModelPricing` + `ai.pricing`) en ambos agentes SDK, validado end-to-end con `samsara:replay` (facturación `ai_calls`/`ai_tokens_in`/`ai_tokens_out` verificada). Ver §6. Follow-up pendiente: routing de modelo por tenant (`TenantAIProfileData.preferredModel`) y afinado fino de prompts.
@@ -120,7 +120,7 @@ Segundo provider de integración (Geotab/Motive) para validar que el adapter pat
 | **2. IA encendida ✅** | B3 (IA real operando) | Incidentes triageados por IA de verdad — demo del corazón del producto |
 | **3. Flota visible** | F3 (assets + mapa) → F4 (drivers) | El operador ve su flota en vivo — demo-able a clientes |
 | **4. Cierre operativo** | F5 (notificaciones UI) → F6 (analytics) | Producto operativo completo |
-| **5. Monetización** | B1+F7 (billing/branding) → B2 (Stripe e2e) | Listo para facturar |
+| **5. Monetización** | B1+F7 (billing/branding) → B2 (billing local por transferencia) | Listo para facturar |
 | **6. Power-user** | F8 (tenant config / automation UI) → B5 | Configurabilidad avanzada |
 
 **Regla de decisión al abrir sesión:** si la fase actual tiene un ítem a medias, continuarlo; si no, tomar el siguiente de la tabla. Un PR por ítem (o sub-ítem), CI verde antes de merge, y actualizar este documento en el mismo PR.
