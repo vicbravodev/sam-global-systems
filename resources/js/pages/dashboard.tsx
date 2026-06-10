@@ -81,7 +81,7 @@ export default function Dashboard() {
 
     return (
         <>
-            <Head title="Dashboard operativo" />
+            <Head title="Panel operativo" />
             <div className="flex h-full min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 md:p-6">
                 <PageHead
                     criticalCount={kpis.criticalOpen.value}
@@ -135,7 +135,7 @@ function PageHead({
     return (
         <header className="flex flex-wrap items-end justify-between gap-3">
             <div>
-                <h1 className="sam-h1">Dashboard operativo</h1>
+                <h1 className="sam-h1">Panel operativo</h1>
                 <p className="sam-meta mt-1">
                     {shiftLabel(new Date())} ·{' '}
                     <span className="text-fg-2">{openCount} abiertos</span> ·{' '}
@@ -613,7 +613,7 @@ function UsagePanel({ usage }: { usage: UsageCounterRow[] }) {
 Dashboard.layout = (props: { currentTeam?: { slug: string } | null }) => ({
     breadcrumbs: [
         {
-            title: 'Dashboard',
+            title: 'Panel',
             href: props.currentTeam ? dashboard(props.currentTeam.slug) : '/',
         },
     ],

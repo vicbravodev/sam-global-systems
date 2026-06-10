@@ -57,7 +57,7 @@ const MOCK_INCIDENTS: PaletteIncident[] = [
 const MOCK_ACTIONS: PaletteAction[] = [
     {
         id: 'action-dashboard',
-        label: 'Ir al Dashboard',
+        label: 'Ir al panel',
         description: 'Vista general de operaciones',
     },
     {
