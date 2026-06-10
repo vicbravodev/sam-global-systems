@@ -63,3 +63,44 @@ export interface AssetsIndexProps {
     filters: AssetFilters;
     filterOptions: AssetFilterOptions;
 }
+
+export interface AssetDetail extends AssetRow {
+    externalPrimaryId: string | null;
+    provider: string | null;
+    sourceIntegration: string | null;
+    firstSeenAt: string | null;
+}
+
+export interface TelemetryEntry {
+    type: string;
+    label: string;
+    data: Record<string, unknown> | null;
+    recordedAt: string;
+}
+
+export interface LocationHistoryEntry {
+    id: number;
+    latitude: number;
+    longitude: number;
+    formattedLocation: string | null;
+    speed: number | null;
+    heading: number | null;
+    source: string;
+    recordedAt: string;
+}
+
+export interface LinkedIncident {
+    id: number;
+    title: string;
+    status: { code: string; name: string } | null;
+    priority: { code: string; name: string } | null;
+    type: string | null;
+    openedAt: string | null;
+}
+
+export interface AssetShowProps {
+    asset: AssetDetail;
+    telemetry: TelemetryEntry[];
+    locationHistory: LocationHistoryEntry[];
+    incidents: LinkedIncident[];
+}

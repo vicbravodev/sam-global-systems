@@ -4,9 +4,13 @@ namespace App\Http\Controllers\Assets;
 
 use App\Domains\Assets\Enums\AssetStatus;
 use App\Domains\Assets\Enums\DeviceStatus;
+use App\Domains\Assets\Enums\TelemetryType;
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Assets\Models\AssetDevice;
+use App\Domains\Assets\Models\AssetLocationSnapshot;
+use App\Domains\Assets\Models\AssetTelemetrySnapshot;
 use App\Domains\Assets\Models\AssetType;
+use App\Domains\Incidents\Models\Incident;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
 use Illuminate\Database\Eloquent\Builder;
@@ -35,6 +39,31 @@ class AssetPageController extends Controller
         'critical' => 'Crítico',
         'maintenance' => 'Mantenimiento',
     ];
+
+    /**
+     * Spanish labels for the telemetry panel on the detail page.
+     *
+     * @var array<string, string>
+     */
+    private const TELEMETRY_LABELS = [
+        'speed' => 'Velocidad',
+        'fuel' => 'Combustible',
+        'temperature' => 'Temperatura',
+        'camera_status' => 'Estado de cámara',
+        'battery' => 'Batería',
+        'ignition' => 'Ignición',
+        'odometer' => 'Odómetro',
+    ];
+
+    /**
+     * Location snapshots shown in the detail history panel.
+     */
+    private const LOCATION_HISTORY_LIMIT = 20;
+
+    /**
+     * Linked incidents shown in the detail panel.
+     */
+    private const INCIDENTS_LIMIT = 20;
 
     public function index(Request $request, Team $current_team): Response
     {
@@ -78,6 +107,31 @@ class AssetPageController extends Controller
             ],
             'filters' => $filters,
             'filterOptions' => fn () => $this->filterOptions(),
+        ]);
+    }
+
+    public function show(Team $current_team, Asset $asset): Response
+    {
+        // The BelongsToTenant scope already filters the binding, but the check
+        // stays explicit (defense in depth, same spirit as the index query).
+        abort_if($asset->team_id !== $current_team->id, 404);
+
+        $asset->load([
+            'assetType',
+            'latestLocation',
+            'provider',
+            'sourceIntegration',
+            'devices' => fn (HasMany $q) => $q
+                ->whereNull('detached_at')
+                ->where('status', '!=', DeviceStatus::Detached)
+                ->orderBy('attached_at'),
+        ]);
+
+        return Inertia::render('assets/show', [
+            'asset' => $this->toDetail($asset),
+            'telemetry' => fn () => $this->telemetry($asset),
+            'locationHistory' => fn () => $this->locationHistory($asset),
+            'incidents' => fn () => $this->incidents($asset),
         ]);
     }
 
@@ -191,5 +245,110 @@ class AssetPageController extends Controller
             ] : null,
             'lastSeenAt' => $asset->last_seen_at?->toIso8601String(),
         ];
+    }
+
+    /**
+     * Row shape plus the extra fields only the detail page shows.
+     *
+     * @return array<string, mixed>
+     */
+    private function toDetail(Asset $asset): array
+    {
+        return [
+            ...$this->toRow($asset),
+            'externalPrimaryId' => $asset->external_primary_id,
+            'provider' => $asset->provider?->name,
+            'sourceIntegration' => $asset->sourceIntegration?->name,
+            'firstSeenAt' => $asset->first_seen_at?->toIso8601String(),
+        ];
+    }
+
+    /**
+     * Latest telemetry snapshot per type, skipping types with no data. One
+     * indexed query per enum case (7 max) keeps it simple and bounded.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function telemetry(Asset $asset): array
+    {
+        return collect(TelemetryType::cases())
+            ->map(function (TelemetryType $type) use ($asset): ?array {
+                $snapshot = AssetTelemetrySnapshot::query()
+                    ->where('asset_id', $asset->id)
+                    ->where('telemetry_type', $type)
+                    ->orderByDesc('recorded_at')
+                    ->first();
+
+                if ($snapshot === null) {
+                    return null;
+                }
+
+                return [
+                    'type' => $type->value,
+                    'label' => self::TELEMETRY_LABELS[$type->value] ?? $type->value,
+                    'data' => $snapshot->data_json,
+                    'recordedAt' => $snapshot->recorded_at->toIso8601String(),
+                ];
+            })
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Most recent location snapshots for the history panel.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function locationHistory(Asset $asset): array
+    {
+        return AssetLocationSnapshot::query()
+            ->where('asset_id', $asset->id)
+            ->orderByDesc('recorded_at')
+            ->orderByDesc('id')
+            ->limit(self::LOCATION_HISTORY_LIMIT)
+            ->get()
+            ->map(fn (AssetLocationSnapshot $snapshot) => [
+                'id' => (int) $snapshot->id,
+                'latitude' => (float) $snapshot->latitude,
+                'longitude' => (float) $snapshot->longitude,
+                'formattedLocation' => $snapshot->formatted_location,
+                'speed' => $snapshot->speed !== null ? (float) $snapshot->speed : null,
+                'heading' => $snapshot->heading !== null ? (int) $snapshot->heading : null,
+                'source' => $snapshot->source->value,
+                'recordedAt' => $snapshot->recorded_at->toIso8601String(),
+            ])
+            ->all();
+    }
+
+    /**
+     * Incidents linked to this asset, newest first.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function incidents(Asset $asset): array
+    {
+        return Incident::query()
+            ->where('team_id', $asset->team_id)
+            ->where('asset_id', $asset->id)
+            ->with(['status', 'priority', 'type'])
+            ->orderByDesc('opened_at')
+            ->limit(self::INCIDENTS_LIMIT)
+            ->get()
+            ->map(fn (Incident $incident) => [
+                'id' => (int) $incident->id,
+                'title' => (string) $incident->title,
+                'status' => $incident->status ? [
+                    'code' => (string) $incident->status->code,
+                    'name' => (string) $incident->status->name,
+                ] : null,
+                'priority' => $incident->priority ? [
+                    'code' => (string) $incident->priority->code,
+                    'name' => (string) $incident->priority->name,
+                ] : null,
+                'type' => $incident->type?->name,
+                'openedAt' => $incident->opened_at?->toIso8601String(),
+            ])
+            ->all();
     }
 }
