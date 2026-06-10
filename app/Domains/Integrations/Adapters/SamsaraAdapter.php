@@ -2,6 +2,7 @@
 
 namespace App\Domains\Integrations\Adapters;
 
+use App\Contracts\Integrations\MediaRetrievalAdapter;
 use App\Domains\Integrations\Contracts\ProviderAdapter;
 use App\Domains\Integrations\Models\TenantIntegration;
 use Illuminate\Http\Client\PendingRequest;
@@ -16,7 +17,7 @@ use Illuminate\Support\Facades\Http;
  *   the tenant integration's credentials.
  * - validateWebhookSignature verifies Samsara's HMAC-SHA256 signature.
  */
-class SamsaraAdapter implements ProviderAdapter
+class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
 {
     /**
      * Hard cap on pagination pages per sync call to avoid runaway loops.
@@ -234,6 +235,91 @@ class SamsaraAdapter implements ProviderAdapter
         } while ($hasNext && $cursor && $pages < self::MAX_PAGES);
 
         return ['events' => $events, 'cursor' => $cursor];
+    }
+
+    /**
+     * Place a camera media retrieval (`POST /cameras/media/retrieval`).
+     *
+     * Returns Samsara's `retrievalId` to poll with {@see checkMedia}, or null
+     * on any failure so callers can mark the media request as failed.
+     */
+    public function requestMedia(
+        TenantIntegration $integration,
+        string $externalAssetId,
+        \DateTimeInterface $startTime,
+        \DateTimeInterface $endTime,
+        array $inputs = [],
+    ): ?string {
+        $token = $this->resolveToken($integration);
+
+        if ($token === null || $externalAssetId === '') {
+            return null;
+        }
+
+        try {
+            $response = $this->client($token)->post('/cameras/media/retrieval', [
+                'vehicleId' => $externalAssetId,
+                'inputs' => $inputs !== [] ? $inputs : ['dashcamRoadFacing', 'dashcamDriverFacing'],
+                'startTime' => Carbon::instance($startTime)->toIso8601String(),
+                'endTime' => Carbon::instance($endTime)->toIso8601String(),
+                'mediaType' => 'videoHighRes',
+            ]);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        if (! $response->successful()) {
+            return null;
+        }
+
+        $retrievalId = $response->json('data.retrievalId');
+
+        return is_string($retrievalId) && $retrievalId !== '' ? $retrievalId : null;
+    }
+
+    /**
+     * Poll a media retrieval (`GET /cameras/media/retrieval?retrievalId=...`).
+     */
+    public function checkMedia(TenantIntegration $integration, string $retrievalId): array
+    {
+        $token = $this->resolveToken($integration);
+
+        if ($token === null || $retrievalId === '') {
+            return ['items' => []];
+        }
+
+        try {
+            $response = $this->client($token)->get('/cameras/media/retrieval', ['retrievalId' => $retrievalId]);
+        } catch (\Throwable) {
+            return ['items' => []];
+        }
+
+        if (! $response->successful()) {
+            return ['items' => []];
+        }
+
+        $items = [];
+
+        foreach ((array) $response->json('data.media', []) as $media) {
+            $media = (array) $media;
+
+            $items[] = [
+                'input' => Arr::get($media, 'input'),
+                'status' => $this->normalizeMediaStatus((string) Arr::get($media, 'status', 'pending')),
+                'url' => Arr::get($media, 'urlInfo.url') ?? Arr::get($media, 'url'),
+            ];
+        }
+
+        return ['items' => $items];
+    }
+
+    private function normalizeMediaStatus(string $status): string
+    {
+        return match (strtolower($status)) {
+            'available' => 'available',
+            'failed' => 'failed',
+            default => 'pending',
+        };
     }
 
     /**
