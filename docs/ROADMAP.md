@@ -35,7 +35,7 @@ El producto terminado es: un operador de flota abre SAM, ve su flota en vivo, re
 |---|-----|---------|
 | ~~B7~~ | ~~Ejecutores de Automation son stubs~~ | ✅ **CERRADO (PR #63)** — ver §7. Solo `CreateTicket`/`UpdateAssetState` quedan en V2 (§5). |
 | ~~B8~~ | ~~El loop multimodal no se cierra~~ | ✅ **CERRADO (PR #63)** — ver §7. |
-| B9 | **Twilio bidireccional (confirmar/descartar por SMS/WhatsApp)** | No existe webhook entrante de Twilio. El operador recibe el SMS/WhatsApp pero no puede responder "CONFIRMAR"/"DESCARTAR" para actuar sobre el incidente. Falta: ruta pública `POST /webhooks/twilio` (firma `X-Twilio-Signature`), correlación mensaje↔incidente (token corto en el mensaje saliente), acciones ack/descartar/escalar, timeline + auditoría. |
+| ~~B9~~ | ~~Twilio bidireccional~~ | ✅ **CERRADO (PR #63)** — ver §7. |
 | B1b | Billing/Branding tenant-facing | `BillingController` + `BrandingController` web (policies B1a ya existen). Alimenta F7. |
 | B2 | Billing local (transferencia) | Facturas/comprobantes por periodo (FileObject listo), estado de pago, activar/desactivar tenant por impago (suspensión super-admin como base). Evaluar retirar Cashier. |
 | B3b | Afinado IA | Routing de modelo por tenant (`TenantAIProfileData.preferredModel`) + tuning de prompts. Menor. |
@@ -74,7 +74,7 @@ Patrón obligatorio (el de `integrations/index`, PR #31): controller web dedicad
 
 **B7 — Ejecutores reales de Automation. ✅ COMPLETADO (PR #63)** — ver §7. `CreateTicket`/`UpdateAssetState` movidos a V2 (§5).
 
-**B9 — Twilio bidireccional (confirmar/descartar por SMS/WhatsApp).** Webhook entrante `POST /webhooks/twilio` (público, validación `X-Twilio-Signature`, throttle): el mensaje saliente de incidente crítico (P5) incluye un token corto (`RESPONDE: SI-4F2A confirma / NO-4F2A descarta`); el inbound correlaciona token→incidente+usuario (tabla `notification_reply_tokens` con expiración), ejecuta ack/descartar/escalar vía las acciones existentes de Incidents, registra timeline (`acknowledged via whatsapp`) + auditoría, y responde TwiML de confirmación. Números no reconocidos → log y silencio. Tests: firma inválida 403, token expirado, doble respuesta idempotente, aislamiento de tenant. **Esfuerzo: M-L. Este es el cierre del monitoreo automatizado: SAM detecta → evalúa con visión → notifica → el operador resuelve desde el teléfono.**
+**B9 — Twilio bidireccional. ✅ COMPLETADO (PR #63)** — ver §7. **Fase A cerrada: el monitoreo automatizado opera de punta a punta.**
 
 ### Fase B — La bandeja a la altura del pipeline
 
@@ -108,8 +108,8 @@ Patrón obligatorio (el de `integrations/index`, PR #31): controller web dedicad
 
 | Fase | Ítems | Resultado |
 |------|-------|-----------|
-| **A. Monitoreo automatizado real 🔵 ACTUAL** | ~~B8~~ ✅ → ~~B7~~ ✅ (PR #63) → B9 (Twilio 2-vías) | El pipeline completo opera solo: detecta, pide footage, lo evalúa, re-decide, notifica, y el operador confirma/descarta desde el teléfono |
-| **B. Bandeja a la altura** | F9 (detalle full-page + media viewer) → F10 (eventos) | El operador VE todo lo que el pipeline produce (footage, visión IA, historial) en una UI espaciosa |
+| **A. Monitoreo automatizado real** ✅ COMPLETA (PR #63) | ~~B8~~ ✅ → ~~B7~~ ✅ → ~~B9~~ ✅ | El pipeline completo opera solo: detecta, pide footage, lo evalúa, re-decide, notifica, y el operador confirma/descarta desde el teléfono |
+| **B. Bandeja a la altura 🔵 ACTUAL** | F9 (detalle full-page + media viewer) → F10 (eventos) | El operador VE todo lo que el pipeline produce (footage, visión IA, historial) en una UI espaciosa |
 | **C. Inteligencia configurable** | F-TC (tenant config) → F11 (reglas) → F12 (automatizaciones, tras B7) | Cero links muertos de inteligencia; el tenant se autoconfigura sin tinker |
 | **D. Cierre operativo** | F5c (canales) → F13 (analítica) → F14 (auditoría) | Producto operativo completo, sidebar 100% vivo |
 | **E. Monetización** | B1b+F7 (billing/branding UI) → B2 (billing local) | Listo para facturar |
@@ -164,3 +164,4 @@ Patrón obligatorio (el de `integrations/index`, PR #31): controller web dedicad
 - **T1/T2** — `assertInertia` en 5 páginas sin aserción + authz endpoint-level de incidents API (PR #58).
 - **B8** — Loop multimodal cerrado (PR #63): `MediaAssessmentCompleted` (solo assessments nuevos, idempotente) → `ReevaluateEventJob` con trigger `media_arrived` (guards: inline sin decisión, media ya evaluada en otra versión anti-loop, incidente terminal no re-corre); fact `media_assessment` cross-versión de evaluación; guard de contradicción en `ResolveDecisionOutcome` (footage que contradice un evento con decisión accionable previa → `REQUIRE_HUMAN_REVIEW`, nunca auto-cerrar); timeline `media_assessed` por assessment + broadcast `incidents.updated` que la bandeja ahora escucha.
 - **B7** — Ejecutores reales de Automation (PR #63): `ExecuteAction` puentea `Send*` al pipeline de Notifications (destinatarios desde el target del step — email/phone directo, user id, rol del team o `recipients` explícitos —, render del `ActionTemplate`, canal fijado con `force_channels` cuyo gate real es el `NotificationChannel` activo del tenant); `AssignIncident`/`Escalate`/`RequestHumanReview` ejecutan las actions reales de Incidents (nueva `RequestIncidentReview` open→in_review); meter `automation_actions` idempotente por ejecución; `CreateTicket`/`UpdateAssetState` → V2.
+- **B9** — Twilio bidireccional (PR #63): tabla `notification_reply_tokens` (token corto TTL 24h, reusado por incidente+address); los SMS/WhatsApp de incidente crítico llevan "Responde SI-XXXX / NO-XXXX / ESC-XXXX" (SMS pre-ajustado a 160); webhook `POST /api/webhooks/twilio` valida `X-Twilio-Signature` contra el canal del tenant resuelto por el número `To` (403 si falla); `ProcessInboundReply` ejecuta ack/falsa-alarma/escalar vía actions de Incidents con timeline "via sms/whatsapp" + auditoría `incident.reply.*`; desconocidos/tenant ajeno/sender inesperado → log y silencio; doble respuesta idempotente. **Fase A completa.**
