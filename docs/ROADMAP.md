@@ -55,7 +55,7 @@ El producto terminado es: un operador de flota abre SAM, ve su flota en vivo (ma
 | `admin/*` (tenants, plans, operators, audit) | ✅ Completa (PRs #37, #41–#45) |
 | `teams/*`, `settings/{profile,appearance,security}` | ✅ Real (starter kit) |
 | `dashboard` | ❌ **100% mock** (`MOCK_DASHBOARD` hardcodeado; ruta `Route::inertia` sin controller) |
-| `settings/roles/index` | ❌ **ROTA**: `RoleController@index` renderiza una página que NO existe en `resources/js/pages` |
+| `settings/roles/index` | ✅ Conectada (PR #48) — CRUD de roles + cambio de rol de miembros, con `RolePolicy` |
 
 **Vistas del producto que NO existen aún:** Assets/Flota (mapa + lista + detalle), Drivers, Analytics/Reportes, Notificaciones (centro + preferencias + canales), Automation (workflows), TenantConfig (settings del tenant), Billing/Usage + Branding.
 
@@ -65,8 +65,8 @@ El producto terminado es: un operador de flota abre SAM, ve su flota en vivo (ma
 
 Patrón obligatorio (el de `integrations/index`, PR #31): controller web dedicado en `routes/web.php` (grupo web = sesión + CSRF; NUNCA `/api` para acciones del navegador), props Inertia tipadas, Wayfinder, policy aplicada, `sam-fetch` + `router.reload({ only: [...] })` para acciones, tests de feature del controller.
 
-### F1. 🔥 Fix: página `settings/roles/index` faltante
-La ruta `GET /{team}/settings/roles` existe y el controller la renderiza, pero el `.tsx` no existe → error en runtime. Crear la página: CRUD de roles, asignación de permisos, cambio de rol de miembros (endpoints POST/PUT/DELETE ya existen). **Esfuerzo: 1 sesión.**
+### F1. ✅ Fix: página `settings/roles/index` faltante — CERRADO (PR #48)
+Página creada (CRUD de roles, permisos por módulo, cambio de rol de miembros) + `RolePolicy` nueva: el CRUD no tenía NINGUNA autorización y `MemberRoleController` aceptaba memberships de otros teams (ambos huecos cerrados en el mismo PR). Ver §6.
 
 ### F2. Dashboard real (sustituir `MOCK_DASHBOARD`)
 Crear `DashboardController` (reemplaza el `Route::inertia`) que agregue: incidentes por estado/prioridad (`DbIncidentMetricsQuery`), salud de integraciones y última sync, últimos eventos normalizados, uso del tenant (UsageMeter). Suscribir a `UsageUpdatedBroadcast` e `IncidentCreated` con los hooks de realtime existentes. Mantener el diseño actual; solo cambiar la fuente de datos. **Esfuerzo: 1–2 sesiones.**
@@ -136,3 +136,4 @@ Segundo provider de integración (Geotab/Motive) para validar que el adapter pat
 - UI Incidents con realtime (PRs #27–#30, #40) · UI Integraciones (PR #31).
 - Pipeline Samsara real: adapter, firma webhook, replay, seeders, sync periódica, scheduler dedicado (PRs #28, #32, #34, #35, #42, #46).
 - Consola super-admin completa (PRs #37, #39, #41, #43–#45).
+- **F1** — Página `settings/roles` (CRUD de roles + permisos por módulo + cambio de rol de miembros) con `RolePolicy` nueva cerrando el hueco de autorización del CRUD y el scoping cross-team de `MemberRoleController` (PR #48).
