@@ -1,5 +1,43 @@
 # MORNING REPORT — rutina nocturna `claude/night-roadmap`
 
+## Run 2026-06-10 09:15
+
+**Resumen ejecutivo.** Run muy productivo: se completaron las **4 tareas de la Iteración v2** (B6-P2 safety events feed, B6-P3 media on-demand, F4b detalle de conductor, T1 assertInertia) y, tras auto-generar la Iteración v3 desde el plan B6 del roadmap de producto, **también sus 3 tareas** (B6-P5 notificación rica + on-call, B6-P6 SLA con escalación, B6-P7 validación de falsa alarma). **Con esto el plan B6 completo (P1–P8) queda cerrado.** Suite final: **1048 tests / 3411 assertions, todo verde**; Pint limpio; front (tsc/eslint/prettier/build) verde. Se generó la Iteración v4 (F5a/F5b notificaciones UI + T2 auditoría de authz API) — con ella el cupo de 10 auto-generadas del día queda completo.
+
+### Tareas completadas (commits en orden)
+
+| Commit | Tarea |
+|--------|-------|
+| `feat(ingestion): safety events feed de Samsara (B6-P2)` | Poller del feed `GET /safety-events/stream` con cursor en `sync_state_json` (migración additive), dedup `safety:{id}:{eventState}` que deja pasar transiciones de estado, media inline descargada al momento, `eventState=dismissed` → `ApplyExternalResolution`, meter `ingested_events`, seeder `severe_speeding`, scheduler cada 2 min. 15 tests. |
+| `feat(context): media on-demand para eventos críticos (B6-P3)` | Contrato `MediaRetrievalAdapter` + Samsara `POST/GET /cameras/media/retrieval`; `FetchDeferredEventMediaJob` real (place → poll → download → materializa vía `AttachImmediateEventMedia`, acotado por `expires_at` 6h); listener `RequestPanicMediaOnContextBuilt` gateado por `media.auto_request_on_critical` (default off); meter `media_requests`. 15 tests (8 del job reescrito + 7 del listener). |
+| `feat(drivers): página drivers/{id} (F4b)` | `DriverPageController@show` (404 cross-team + policy), perfil/contactos/documentos/assignments/status log, `pages/drivers/show.tsx`, navegación desde el roster. 5 tests. Nota: `DriverDocument` usa `file_url` string — no hay relación FileObject, la mención del task a `temporaryUrl` no aplicaba. |
+| `test(inertia): assertInertia para 5 páginas (T1)` | `teams/index`, `teams/edit`, `settings/profile`, `admin/operators/index` y `settings/appearance` (test nuevo) fijan componente y props. |
+| `feat(notifications): notificación rica + auto-asignación on-call (B6-P5)` | Template por `incident_type` (`incident.panic_emergency.created` seeded global email+web) con payload enriquecido (asset/driver/ubicación/link/media); `ResolveOnCallOperator` sobre `shift_rules_json` (turnos con timezone, overnight, fallback, sólo miembros) + auto-asignación con notificación dirigida Critical. Contacto directo al driver queda como `ActionTemplate` opt-in del tenant (no hardcodeado). 9 tests. |
+| `feat(incidents): SLA real con acknowledgement y escalación (B6-P6)` | `sla_due_at`/`acknowledged_at`/`acknowledged_by` (migración additive), watchdog `CheckIncidentAcknowledgementJob` con `->delay($sla)` y re-armado por nivel de `TenantEscalationConfig.steps_json` (decisión: NO se usó `EscalationPolicy` de Decisions — TenantConfig es el dueño natural), `AcknowledgeIncident` + endpoint web + botón "Atender (ACK)" en la bandeja. 9 tests. |
+| `feat(decisions): validación de falsa alarma (B6-P7)` | Señales `external_resolved`/`parked_at_base`/`repeated_panic_24h` (+`GeofenceCategory::Base`), facts con `media_assessment`, REVIEW fuerza `requires_human_review`, regla opt-in de ejemplo INACTIVA, prompt del clasificador con guía falsa-alarma-vs-coacción. 8 tests (matriz de 5 + 3 unit). |
+
+### Tareas bloqueadas
+
+Ninguna.
+
+### Auto-generadas
+
+Iteración v3 (3, completadas en este mismo run) e Iteración v4 (3: F5a centro de notificaciones, F5b preferencias, T2 auditoría authz API) — total del día: 10/10.
+
+### Verificación final
+
+- `php artisan test --compact` → **1048 passed (3411 assertions)** (con `--no-coverage`; ver riesgo abajo).
+- `vendor/bin/pint --test` → limpio.
+- `npm run types:check && npm run lint:check && npm run format:check` → verdes.
+- `npm run build` → OK (Wayfinder regenerado).
+
+### Riesgos / mirar primero
+
+- **Entorno**: la red del contenedor bloquea `ppa.launchpadcontent.net` → `composer install` falló por `ext-bcmath`; se instaló con `--ignore-platform-req=ext-bcmath` (ninguna ruta de código tocada usa bcmath). Sin driver de cobertura (pcov) por lo mismo: la suite corre con `--no-coverage` y el umbral local no se pudo verificar — CI sí la exige. El run de las 06:50 documentó cómo compilar ambas extensiones desde fuente; sigue pendiente decisión humana de meterlo a `.claude/setup.sh`.
+- **B6-P6**: el endpoint `acknowledge` usa la ability `update` (`incidents.manage`) — si se quiere un permiso más laxo para operadores de solo-lectura habrá que decidirlo.
+- **B6-P7**: la degradación sólo llega hasta REVIEW y sólo con la regla opt-in activa; el seeder de ejemplo vive en `SamsaraTestDecisionRulesSeeder` (tenant de pruebas).
+- **B6-P5**: convención nueva `shift_rules_json.on_call[]` documentada en `ResolveOnCallOperator` — si ya había otra convención prevista para spec 16, revisar.
+
 ## Run 2026-06-10 06:50 (concurrente — trabajo descartado por duplicado)
 
 **Resumen ejecutivo.** Este run arrancó en paralelo con el de las 06:43: la rama remota `claude/night-roadmap` aún no existía cuando ambos hicieron el chequeo del candado, así que el candado anti-concurrencia no pudo activarse (solo funciona cuando la rama ya existe). Ambos runs completaron de forma independiente **las mismas 4 tareas de la Iteración v1** (B6-P8, B6-P4, B1a, F4a) con implementaciones equivalentes. El run de las 06:43 empujó primero; este run **descartó sus 6 commits locales sin publicarlos** (nada de force-push ni merges de implementaciones paralelas) y se alineó al estado remoto. Sin cambios de código propios en la rama.

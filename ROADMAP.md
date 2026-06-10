@@ -14,8 +14,17 @@
 
 ## Iteración v3 — auto-generada 2026-06-10
 
-> Origen: `docs/ROADMAP.md` §4 (plan B6, orden recomendado P5 → P6 → P7). P1–P4 y P8 ya están cerrados en código, así que las dependencias declaradas de estas fases están satisfechas. Evidencia adicional: `NotifyOnIncidentCreated` hoy usa solo el template genérico (sin resolución por `incident_type`), `incidents` no tiene columnas `sla_due_at`/`acknowledged_at`, y los facts de `EvaluateDecisionRules` no exponen `external_resolved`/`parked_at_base`/`repeated_panic_count_24h`/`media_assessment`.
+> Origen: `docs/ROADMAP.md` §4 (plan B6, orden recomendado P5 → P6 → P7). P1–P4 y P8 ya están cerrados en código, así que las dependencias declaradas de estas fases están satisfechas. (Las 3 tareas se completaron en el mismo run — ver Completadas.)
 
+## Iteración v4 — auto-generada 2026-06-10
+
+> Origen: `docs/ROADMAP.md` §3 (fase 4 "Cierre operativo": F5 es el siguiente ítem frontend tras F4 cerrado) y §2 ("Vistas del producto que NO existen aún": Notificaciones y Analytics). Con B6 completo (P1–P8), el backend de notificaciones/analytics ya existe y solo falta la UI. Límite diario: hoy van 7 auto-generadas (4 de v2 + 3 de v3); estas 3 completan el cupo de 10.
+
+- [ ] **F5a — Centro de notificaciones (página `notifications/index`)** (spec: `docs/ROADMAP.md` §3 F5). Patrón `integrations/index`: controller web dedicado (`NotificationPageController@index`, grupo web `/{current_team}/notifications`), lista paginada de `Notification` del tenant (tipo, prioridad, estado, asunto, fecha, link a la fuente si es incidente), filtros por estado/prioridad, marcar como leída (endpoint web + acción). Policy: miembros del team (las notificaciones ya están tenant-scoped); si existe permiso `notifications.view` en AccessSeeder, aplicarlo. Frontend: `pages/notifications/index.tsx` (layout Ops), sidebar "Notificaciones" activado. Tests: feature con `assertInertia` (component + row shape), guest redirect, aislamiento de tenant, filtros.
+
+- [ ] **F5b — Preferencias de notificación del usuario** (spec: `docs/ROADMAP.md` §3 F5, segunda mitad). Página settings (`settings/notifications`) para que el usuario configure sus `NotificationPreference` por tipo de evento y canal (los modelos/lógica de `SelectNotificationChannels` ya existen — verificar cómo resuelve preferencias antes de diseñar el shape). Endpoints web GET (Inertia) + PUT upsert de preferencias. Tests: `assertInertia`, upsert idempotente, un usuario no puede tocar preferencias de otro.
+
+- [ ] **T2 — Tests de los endpoints API de incidents sin cobertura de authz** (auditoría: cruzar `php artisan route:list` de `/api` con `tests/Feature` — verificar primero cuáles endpoints de `routes/api.php` carecen de test de 403/aislamiento; si `IncidentApiTest` ya cubre todo, marcar como no-material y descartar documentándolo). Para cada endpoint API sin test de authz: happy path + 403 sin permiso + cross-team. No duplicar lo que `IncidentInboxActionsTest`/`IncidentApiTest` ya cubren.
 
 ## Completadas
 
