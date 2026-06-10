@@ -4,7 +4,9 @@ namespace App\Domains\Incidents;
 
 use App\Contracts\Incidents\IncidentMetricsQuery;
 use App\Domains\Decisions\Events\DecisionMade;
+use App\Domains\Incidents\Events\IncidentCreated;
 use App\Domains\Incidents\Listeners\ApplyExternalResolutionOnEventNormalized;
+use App\Domains\Incidents\Listeners\AssignOnCallOnIncidentCreated;
 use App\Domains\Incidents\Listeners\CreateIncidentOnDecisionMade;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Policies\IncidentPolicy;
@@ -27,5 +29,6 @@ class IncidentsServiceProvider extends ServiceProvider
 
         Event::listen(DecisionMade::class, CreateIncidentOnDecisionMade::class);
         Event::listen(EventNormalized::class, ApplyExternalResolutionOnEventNormalized::class);
+        Event::listen(IncidentCreated::class, AssignOnCallOnIncidentCreated::class);
     }
 }
