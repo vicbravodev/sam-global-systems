@@ -79,15 +79,17 @@ Todo código de negocio nuevo vive bajo `app/Domains/{Dominio}/` con subdirs: `A
 | `DriverController` sin authorize (spec 05 §10) | `DriverPolicy` + `$this->authorize(...)` en los 6 endpoints. | [`app/Domains/Drivers/Policies/DriverPolicy.php`](app/Domains/Drivers/Policies/DriverPolicy.php), [`app/Http/Controllers/Drivers/DriverController.php`](app/Http/Controllers/Drivers/DriverController.php) |
 | Spec 13 PR #2: drivers SMS/Push/Whatsapp/Slack/Webhook fuera (caían a `NullNotificationDriver`) | Implementados drivers reales: `Webhook` (HTTP+HMAC-SHA256), `Slack` (incoming webhook + Blocks), `Whatsapp`+`Sms` (Twilio via `TwilioMessenger` wrapper), `Push` (FCM via `FcmMessenger` + `FcmSendReport` DTO). El contrato `NotificationDriver::send()` recibe ahora el `NotificationChannel` para leer `config_json`. Cifrado at-rest de secrets vía `EncryptedChannelConfigCast`. Tabla `user_push_tokens` + modelo + relación con `User`. | [`app/Domains/Notifications/Channels/`](app/Domains/Notifications/Channels/), [`app/Domains/Notifications/Support/EncryptedChannelConfigCast.php`](app/Domains/Notifications/Support/EncryptedChannelConfigCast.php), [`app/Domains/Notifications/Models/UserPushToken.php`](app/Domains/Notifications/Models/UserPushToken.php), [`database/migrations/2026_05_07_120000_create_user_push_tokens_table.php`](database/migrations/2026_05_07_120000_create_user_push_tokens_table.php) |
 
-**Diferidos explícitamente** (PRs #2 ya planificados, no bloquean nada en main):
+**Diferidos — TODOS CERRADOS (PRs #18–#24, verificado en código el 2026-06-09):**
 
-- **`SPEC-09-SDK-DEFERRED`** (spec 09 → PR #2): integración real de `Laravel\AI\Agent`, `ai_conversation_links`, streaming SSE, `AIEvaluationProgressBroadcast`. Actualmente `EventEvaluationAgent` se bindea a `NullEventEvaluationAgent` determinístico ([`app/Domains/AI/AIServiceProvider.php`](app/Domains/AI/AIServiceProvider.php)).
-- **`SPEC-09-MULTIMODAL-DEFERRED`** (spec 09): `ai_media_assessments`, `EvaluateEventMultimodally`, `EvaluateEventMediaJob`. El pipeline de media de Context (spec 08 PR #2) ya provee los `EventMediaContext` que este consumirá.
-- **`SPEC-15-PDF-DEFERRED`** (spec 15 → PR #2): rendering real de PDF/XLSX para reportes en [`app/Domains/Analytics/Actions/GenerateReport.php`](app/Domains/Analytics/Actions/GenerateReport.php).
-- **Authz real del canal `jobs.{jobId}`** (hoy `$user !== null`) — requiere modelo Job dedicado (no shippeado todavía).
-- **Policies Tenancy** (Subscription/TenantBranding/TenantFeature) — sin controllers para esos endpoints aún.
-- **Contrato `KeyValueStore`** — YAGNI: Laravel `Cache::` ya abstrae Valkey.
-- **Echo frontend wiring** (`resources/js/echo.ts`) — fuera de scope backend.
+- ~~`SPEC-09-SDK-DEFERRED`~~ — cerrado: `laravel/ai ^0.6.7` instalado; `SdkEventEvaluationAgent` y `SdkMediaAssessmentAgent` bindeados condicionalmente en [`app/Domains/AI/AIServiceProvider.php`](app/Domains/AI/AIServiceProvider.php) (fallback a `Null*` solo si el SDK no está configurado).
+- ~~`SPEC-09-MULTIMODAL-DEFERRED`~~ — cerrado: `ai_media_assessments` + `EvaluateEventMediaJob` shippeados.
+- ~~`SPEC-15-PDF-DEFERRED`~~ — cerrado: render real PDF (DomPDF) y XLSX en [`app/Domains/Analytics/Actions/GenerateReport.php`](app/Domains/Analytics/Actions/GenerateReport.php).
+- ~~Authz `jobs.{jobId}`~~ — cerrado: modelo `Job` de Tenancy + verificación de membership en [`routes/channels.php`](routes/channels.php).
+- ~~Echo frontend wiring~~ — cerrado: `resources/js/echo.ts` + hooks `use-team-broadcasts`/`use-echo-channel`; la bandeja de incidentes ya consume realtime.
+- **Policies Tenancy** (Subscription/TenantBranding/TenantFeature) — único pendiente real; crearlas junto con `BillingController`/`BrandingController` (spec 01 §9, aún no existen).
+- **Contrato `KeyValueStore`** — YAGNI confirmado: Laravel `Cache::` ya abstrae Valkey.
+
+**Roadmap vivo de next steps (frontend + backend): [`docs/ROADMAP.md`](docs/ROADMAP.md).** Ante discrepancia entre esta tabla de estado y el código, manda el código.
 
 ---
 

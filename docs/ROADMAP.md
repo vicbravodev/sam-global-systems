@@ -1,7 +1,7 @@
 # ROADMAP — SAM Global Systems
 
-> Documento vivo de next steps para frontend y backend. Actualizado al **2026-06-09** (post-merge PR #46).
-> Úsalo al inicio de cada sesión para decidir qué sigue. Cuando un ítem se complete, márcalo con el PR que lo cerró y muévelo a la sección de completados.
+> Documento vivo de next steps para frontend y backend. Actualizado al **2026-06-09** (post-merge PR #46), verificado contra el código (no contra docs viejas).
+> Úsalo al inicio de cada sesión para decidir qué sigue. Cuando un ítem se complete, anótale el PR que lo cerró y muévelo a §6. Actualiza este documento en el mismo PR que cierra cada ítem.
 
 ---
 
@@ -11,117 +11,105 @@ SAM es una plataforma multi-tenant de gestión de flotas. El flujo central:
 
 ```
 Proveedor externo (Samsara) → Ingestion (raw events) → Normalization → Context (enriquecimiento + media)
-  → AI (evaluación) → Decisions (motor de reglas) → Incidents (bandeja operativa)
+  → AI (evaluación, SDK Laravel AI) → Decisions (motor de reglas) → Incidents (bandeja operativa)
   → Automation (workflows) + Notifications (multicanal) + Audit + Analytics
   → Billing metered por Stripe (usage events por tenant)
 ```
 
-El producto terminado es: un operador de flota abre SAM, ve su flota en vivo (mapa + telemetría), recibe incidentes generados/triageados por IA, los gestiona desde la bandeja, configura automatizaciones y notificaciones, y consulta analytics — todo tenant-scoped, facturado por uso.
+El producto terminado es: un operador de flota abre SAM, ve su flota en vivo (mapa + telemetría), recibe incidentes generados/triageados por IA, los gestiona desde una bandeja en tiempo real, configura automatizaciones y notificaciones, y consulta analytics — todo tenant-scoped, facturado por uso.
 
 ---
 
-## 2. Estado actual (auditoría 2026-06-09)
+## 2. Estado actual (auditoría 2026-06-09, verificada en código)
 
-### Backend — ✅ COMPLETO (specs 01–16 + I1/I2/I3)
+### Backend — ✅ COMPLETO (specs 01–16 + I1/I2/I3 + diferidos cerrados)
 
-- ~754 tests verdes. 16 dominios + 3 specs de infra implementados y mergeados.
-- Pipeline Samsara validado end-to-end con eventos reales (webhook con firma verificada, replay, seeders, sync periódica de assets/drivers/posiciones, scheduler dedicado en compose).
-- Consola super-admin completa (PRs #41/#43/#44/#45): tenants, suscripción/plan, topes con enforcement, features, miembros, operadores, auditoría cross-tenant, impersonación, ciclo de vida (soft-delete).
+- ~754+ tests verdes. 16 dominios + 3 specs de infra implementados y mergeados (PRs #1–#24).
+- **Los diferidos que CLAUDE.md §3 listaba como pendientes YA se cerraron** (PRs #18–#24):
+  - IA real: `laravel/ai ^0.6.7` instalado, `SdkEventEvaluationAgent` + `SdkMediaAssessmentAgent` bindeados condicionalmente en `AIServiceProvider` (caen a `Null*` solo si el SDK no está configurado).
+  - Multimodal: `ai_media_assessments` + `EvaluateEventMediaJob` shippeados.
+  - Reportes: render real PDF (DomPDF) y XLSX en `GenerateReport`.
+  - Canal `jobs.{jobId}` con authz real vía modelo `Job` (`routes/channels.php`).
+- Pipeline Samsara validado end-to-end con eventos reales: webhook con firma verificada (Base64), replay, seeders, sync periódica de assets/drivers/posiciones (PR #42), scheduler dedicado en compose (PR #46).
+- Consola super-admin completa (PRs #37, #41/#43/#44/#45): tenants, suscripción/plan, topes con enforcement, features, miembros, operadores, auditoría cross-tenant, impersonación, ciclo de vida.
 
-**Diferidos backend explícitos (los únicos gaps de backend):**
+**Gaps backend reales que quedan:**
 
-| Código | Qué falta | Dónde |
-|--------|-----------|-------|
-| `SPEC-09-SDK-DEFERRED` | IA real: `Laravel\AI\Agent`, `ai_conversation_links`, streaming SSE, `AIEvaluationProgressBroadcast`. Hoy evalúa `NullEventEvaluationAgent` (determinístico). | `app/Domains/AI/AIServiceProvider.php` |
-| `SPEC-09-MULTIMODAL-DEFERRED` | `ai_media_assessments`, `EvaluateEventMultimodally`, `EvaluateEventMediaJob`. El media pipeline de Context (spec 08 PR #2) ya provee los `EventMediaContext` de entrada. | `app/Contracts/NullImplementations/NullMediaAssessmentAgent.php` |
-| `SPEC-15-PDF-DEFERRED` | Render real PDF/XLSX de reportes. | `app/Domains/Analytics/Actions/GenerateReport.php` |
-| Authz canal `jobs.{jobId}` | Hoy `$user !== null`; requiere modelo Job dedicado. | `routes/channels.php` |
-| Policies Tenancy | Subscription/TenantBranding/TenantFeature sin policies (no hay controllers tenant-facing aún). | — |
+| Gap | Detalle |
+|-----|---------|
+| Billing/Branding tenant-facing (spec 01 §9) | No existen `BillingController` ni `BrandingController` — el tenant no puede ver su consumo/facturas ni configurar branding. Único endpoint web pendiente del spec 01. |
+| Stripe end-to-end | Usage events y agregados existen, pero el ciclo completo contra Stripe (test mode) no está validado: sync de meters, webhooks Cashier, invoice snapshots. |
+| IA real en operación | El `SdkEventEvaluationAgent` existe pero falta validarlo operando con un provider real (API key, prompts afinados, costos, latencia en cola `ai-evaluation`). |
+| Policies Tenancy | Subscription/TenantBranding/TenantFeature sin policies — crearlas junto con sus controllers (ítem Billing/Branding). |
+| Segundo provider | Adapter pattern probado solo con Samsara; Geotab/Motive cuando haya demanda real. |
 
-### Frontend — 🟡 PARCIAL (~30% de las vistas del producto)
+### Frontend — 🟡 PARCIAL (~35% de las vistas del producto)
 
-**Páginas existentes** (`resources/js/pages/`):
+**Infra frontend lista:** Echo/Soketi cableado (`resources/js/echo.ts` + hooks `use-team-broadcasts` / `use-echo-channel` / `use-realtime-connection`); la bandeja de incidentes ya consume realtime.
 
 | Página | Estado |
 |--------|--------|
 | `auth/*` (7 vistas Fortify) | ✅ Real |
-| `incidents/index` (bandeja + panel detalle, 3 layouts, SLA vivo) | ✅ Conectada al backend (PRs #27–#30, #40) |
-| `integrations/index` | ✅ Conectada al backend (PR #31) — **patrón de referencia para páginas nuevas** |
+| `incidents/index` (bandeja + detalle, 3 layouts, SLA vivo, realtime) | ✅ Conectada al backend (PRs #27–#30, #40) |
+| `integrations/index` | ✅ Conectada (PR #31) — **patrón de referencia para páginas nuevas** |
 | `admin/*` (tenants, plans, operators, audit) | ✅ Completa (PRs #37, #41–#45) |
 | `teams/*`, `settings/{profile,appearance,security}` | ✅ Real (starter kit) |
-| `dashboard` | ❌ **100% datos mock** (`MOCK_DASHBOARD` hardcodeado, ruta `Route::inertia` sin controller) |
+| `dashboard` | ❌ **100% mock** (`MOCK_DASHBOARD` hardcodeado; ruta `Route::inertia` sin controller) |
 | `settings/roles/index` | ❌ **ROTA**: `RoleController@index` renderiza una página que NO existe en `resources/js/pages` |
 
-**Vistas del producto que NO existen aún:** Assets/Flota (mapa + lista + detalle), Drivers, Analytics/Reportes, Notificaciones (centro + preferencias), Automation (workflows), TenantConfig (settings del tenant), Billing/Usage (consumo del tenant).
-
-**Infra frontend pendiente:** wiring de Echo (`resources/js/echo.ts`) — el backend ya emite 7+ eventos broadcast que nadie escucha en el cliente.
+**Vistas del producto que NO existen aún:** Assets/Flota (mapa + lista + detalle), Drivers, Analytics/Reportes, Notificaciones (centro + preferencias + canales), Automation (workflows), TenantConfig (settings del tenant), Billing/Usage + Branding.
 
 ---
 
 ## 3. NEXT STEPS — Frontend (orden recomendado)
 
-El backend ya expone casi todo; el valor ahora está en el frontend. Patrón a seguir en todas: el de `integrations/index` (PR #31) — controller web dedicado, props Inertia tipadas, Wayfinder, policy aplicada, tests de feature del controller.
+Patrón obligatorio (el de `integrations/index`, PR #31): controller web dedicado en `routes/web.php` (grupo web = sesión + CSRF; NUNCA `/api` para acciones del navegador), props Inertia tipadas, Wayfinder, policy aplicada, `sam-fetch` + `router.reload({ only: [...] })` para acciones, tests de feature del controller.
 
-### F1. 🔥 Fix inmediato: página `settings/roles/index` faltante
-La ruta `GET /{team}/settings/roles` existe y `RoleController` la renderiza, pero el `.tsx` no existe → error en runtime. Crear la página (CRUD de roles + asignación de permisos + cambio de rol de miembros; los endpoints POST/PUT/DELETE ya existen). **Esfuerzo: 1 sesión.**
+### F1. 🔥 Fix: página `settings/roles/index` faltante
+La ruta `GET /{team}/settings/roles` existe y el controller la renderiza, pero el `.tsx` no existe → error en runtime. Crear la página: CRUD de roles, asignación de permisos, cambio de rol de miembros (endpoints POST/PUT/DELETE ya existen). **Esfuerzo: 1 sesión.**
 
 ### F2. Dashboard real (sustituir `MOCK_DASHBOARD`)
-- Crear `DashboardController` (reemplaza el `Route::inertia`) que agregue: contadores de incidentes por estado/prioridad (existe `DbIncidentMetricsQuery`), salud de integraciones, últimos eventos normalizados, uso del tenant (UsageMeter).
-- Mantener el diseño actual de `dashboard.tsx`; solo cambiar la fuente de datos.
-- **Esfuerzo: 1–2 sesiones.**
+Crear `DashboardController` (reemplaza el `Route::inertia`) que agregue: incidentes por estado/prioridad (`DbIncidentMetricsQuery`), salud de integraciones y última sync, últimos eventos normalizados, uso del tenant (UsageMeter). Suscribir a `UsageUpdatedBroadcast` e `IncidentCreated` con los hooks de realtime existentes. Mantener el diseño actual; solo cambiar la fuente de datos. **Esfuerzo: 1–2 sesiones.**
 
-### F3. Wiring de Echo + tiempo real
-- Configurar `resources/js/echo.ts` (Soketi, `VITE_PUSHER_HOST=localhost` ya documentado en memoria de entorno).
-- Suscribir: bandeja de incidentes (`accounts.{teamId}` → `IncidentCreated`/`DecisionMade`), presencia en `incidents.{incidentId}`, `UsageUpdatedBroadcast` en dashboard.
-- Esto convierte la bandeja en una bandeja viva — diferenciador clave del producto.
-- **Esfuerzo: 1–2 sesiones.**
+### F3. Assets / Flota — la vista más visible del producto
+- `assets/index`: lista con estado, tipo, dispositivo, última posición (datos ya sincronizados desde Samsara, PR #42).
+- Mapa en vivo: posiciones + `AssetLocationUpdatedBroadcast` / `AssetStatusChangedBroadcast`. Decidir librería de mapa (Leaflet/MapLibre — **requiere aprobación** por regla de dependencias).
+- `assets/{id}`: detalle con telemetría, historial de ubicaciones, incidentes vinculados.
+- **Esfuerzo: 3–4 sesiones (separar lista/detalle del mapa en PRs distintos).**
 
-### F4. Assets / Flota (la vista más visible del producto)
-- `assets/index`: lista con estado, tipo, dispositivo, última posición (datos ya sincronizados desde Samsara por PR #42).
-- Mapa en vivo: posiciones desde `AssetLocation` + updates por `AssetLocationUpdatedBroadcast` (depende de F3). Decidir librería de mapa (Leaflet/MapLibre — requiere aprobación por regla de dependencias).
-- `assets/{id}`: detalle con telemetría, historial de ubicaciones, eventos/incidentes vinculados.
-- **Esfuerzo: 3–4 sesiones (separar lista/detalle del mapa).**
+### F4. Drivers
+`drivers/index` + `drivers/{id}`: perfil, assignments, documentos (FileObject + `temporaryUrl` listos), risk profile, status log. `DriverPolicy` ya cubre los 6 endpoints. **Esfuerzo: 2 sesiones.**
 
-### F5. Drivers
-- `drivers/index` + `drivers/{id}`: perfil, assignments, documentos (FileObject + temporaryUrl ya existen), risk profile, status log. `DriverPolicy` ya cubre los 6 endpoints.
-- **Esfuerzo: 2 sesiones.**
+### F5. Notificaciones en la UI
+Campanita/centro (driver Web ya persiste en DB) + preferencias por usuario (`NotificationPreference`) + gestión de canales del tenant (Slack/Twilio/FCM, secrets cifrados con `EncryptedChannelConfigCast`). **Esfuerzo: 2 sesiones.**
 
-### F6. Notificaciones en la UI
-- Campanita/centro de notificaciones (driver Web ya persiste notificaciones en DB) + preferencias por usuario (`NotificationPreference`) + gestión de canales del tenant (config de Slack/Twilio/FCM con secrets cifrados).
-- **Esfuerzo: 2 sesiones.**
+### F6. Analytics
+Dashboards de KPIs (`KpiRecord` + snapshots de `BuildAnalyticsSnapshotJob`), definición/ejecución de reportes con download PDF/XLSX (el render backend ya es real). **Esfuerzo: 2–3 sesiones.**
 
-### F7. Analytics
-- Dashboards de KPIs (`KpiRecord`, snapshots ya generados por `BuildAnalyticsSnapshotJob`), definición/ejecución de reportes. El download de PDF/XLSX queda bloqueado por `SPEC-15-PDF-DEFERRED` (B3) — la UI puede listar ejecuciones mientras tanto.
-- **Esfuerzo: 2–3 sesiones.**
+### F7. Billing + Branding del tenant (en pareja con B1)
+Página de consumo/uso (meters, agregados diarios, invoice snapshots) y settings de branding. Depende de B1 (controllers). **Esfuerzo: 2 sesiones.**
 
 ### F8. TenantConfig + Automation UI (cola de prioridad)
-- Settings del tenant: AI profile, políticas de notificación/escalación, rule overrides, schedule profiles (spec 16 — backend completo).
-- Builder/lista de workflows de automation (puede empezar read-only).
-- **Esfuerzo: 3+ sesiones; hacer al final, son vistas de power-user.**
+Settings del tenant (AI profile, políticas de notificación/escalación, rule overrides, schedules — spec 16 backend completo) y lista/builder de workflows (puede empezar read-only). **Esfuerzo: 3+ sesiones; vistas de power-user, al final.**
 
 ---
 
 ## 4. NEXT STEPS — Backend (orden recomendado)
 
-### B1. 🔥 Spec 09 PR #2 — IA real (`SPEC-09-SDK-DEFERRED`)
-El corazón del producto sigue siendo un stub determinístico. Integrar el SDK de IA de Laravel (`Laravel\AI\Agent`), tabla `ai_conversation_links`, streaming SSE y `AIEvaluationProgressBroadcast`. Mantener `NullEventEvaluationAgent` como fallback de tests/config. **Es el next step de mayor valor de todo el proyecto** junto con F2–F4. **Esfuerzo: 2–3 sesiones.**
+### B1. Billing + Branding tenant-facing (spec 01 §9) — único endpoint web pendiente
+`BillingController` (uso, meters, agregados, invoice snapshots del team actual) + `BrandingController` (logo vía FileObject, colores), con policies de Tenancy (Subscription/TenantBranding/TenantFeature) que hoy no existen. Alimenta F7. **Esfuerzo: 1–2 sesiones.**
 
-### B2. Spec 09 multimodal (`SPEC-09-MULTIMODAL-DEFERRED`)
-Después de B1: `ai_media_assessments`, `EvaluateEventMultimodally`, `EvaluateEventMediaJob` consumiendo los `EventMediaContext` que el pipeline de media de Context ya produce (dashcam clips de Samsara). **Esfuerzo: 2 sesiones.**
+### B2. Stripe end-to-end (test mode)
+Validar el ciclo completo: sync de usage meters a Stripe, webhooks de Cashier, invoice snapshots, suspensión por impago vs. la suspensión manual del super-admin. **Esfuerzo: 2–3 sesiones.**
 
-### B3. Spec 15 PR #2 — Render PDF/XLSX (`SPEC-15-PDF-DEFERRED`)
-Render real en `GenerateReport` (elegir lib: dompdf/laravel-excel — requiere aprobación de dependencias). Desbloquea el download en F7. **Esfuerzo: 1–2 sesiones.**
+### B3. IA real en operación
+Configurar provider real para `SdkEventEvaluationAgent` (API key/modelo), correr el pipeline con eventos reales de Samsara (existe `samsara:replay`), afinar prompts/`TenantAIProfile`, medir costo y latencia en la cola `ai-evaluation`, y verificar que `RecordUsageEvent` factura cada evaluación. **Esfuerzo: 1–2 sesiones; alto valor de demo.**
 
 ### B4. Endpoints de soporte para las vistas nuevas
-A medida que F4–F7 avanzan, pueden faltar endpoints web de lectura (p. ej. historial de posiciones paginado para el mapa, métricas agregadas para dashboard). Crearlos en el dominio dueño con Queries DB-backed (patrón `Db*MetricsQuery`), nunca lógica en el controller. **Esfuerzo: incremental, por demanda del frontend.**
+A demanda de F3–F6: lecturas que falten (historial de posiciones paginado, agregados para dashboard, etc.). Siempre Queries DB-backed en el dominio dueño (patrón `Db*MetricsQuery`), nunca lógica en el controller. **Esfuerzo: incremental.**
 
-### B5. Billing end-to-end con Stripe real
-Los usage events y agregados existen; falta validar el ciclo completo contra Stripe test mode: sync de meters a Stripe, invoice snapshots, webhook de Stripe (Cashier). Más página de Billing del tenant (frontend). **Esfuerzo: 2–3 sesiones.**
-
-### B6. Hardening menor (cola de prioridad)
-- Authz real del canal `jobs.{jobId}` (requiere modelo Job dedicado).
-- Policies de Tenancy (Subscription/TenantBranding/TenantFeature) cuando existan sus controllers tenant-facing.
-- Segundo provider de integración (Geotab/Motive) para validar que el adapter pattern generaliza — solo cuando haya demanda real.
+### B5. Hardening / expansión (cola de prioridad)
+Segundo provider de integración (Geotab/Motive) para validar que el adapter pattern generaliza — solo con demanda real. Revisión de retention jobs (audit/analytics) en producción.
 
 ---
 
@@ -129,16 +117,22 @@ Los usage events y agregados existen; falta validar el ciclo completo contra Str
 
 | Fase | Ítems | Resultado |
 |------|-------|-----------|
-| **1. Quick wins** | F1 (roles page rota) → F2 (dashboard real) | App sin páginas rotas ni mocks |
-| **2. Producto vivo** | F3 (Echo) → B1 (IA real) | Bandeja en tiempo real con evaluaciones de IA reales |
-| **3. Flota visible** | F4 (assets + mapa) → F5 (drivers) | El operador ve su flota — demo-able a clientes |
-| **4. Cierre operativo** | F6 (notificaciones UI) → B2 (multimodal) → B3+F7 (analytics+PDF) | Producto operativo completo |
-| **5. Power-user & monetización** | F8 (tenant config/automation UI) → B5 (Stripe e2e) → B6 (hardening) | Listo para facturar |
+| **1. Quick wins** | F1 (roles rota) → F2 (dashboard real) | App sin páginas rotas ni mocks |
+| **2. IA encendida** | B3 (IA real operando) | Incidentes triageados por IA de verdad — demo del corazón del producto |
+| **3. Flota visible** | F3 (assets + mapa) → F4 (drivers) | El operador ve su flota en vivo — demo-able a clientes |
+| **4. Cierre operativo** | F5 (notificaciones UI) → F6 (analytics) | Producto operativo completo |
+| **5. Monetización** | B1+F7 (billing/branding) → B2 (Stripe e2e) | Listo para facturar |
+| **6. Power-user** | F8 (tenant config / automation UI) → B5 | Configurabilidad avanzada |
 
-**Regla de decisión rápida al abrir sesión:** si la fase actual tiene un ítem a medias, continuarlo; si no, tomar el siguiente de la tabla. Un PR por ítem (o sub-ítem si es grande), CI verde antes de merge, actualizar este documento en el mismo PR que cierra cada ítem.
+**Regla de decisión al abrir sesión:** si la fase actual tiene un ítem a medias, continuarlo; si no, tomar el siguiente de la tabla. Un PR por ítem (o sub-ítem), CI verde antes de merge, y actualizar este documento en el mismo PR.
+
+> ⚠️ Nota de fiabilidad: la tabla de estado §3 de `CLAUDE.md` quedó congelada en la auditoría 2026-04-29 y su lista de "diferidos" estaba obsoleta (se corrigió el 2026-06-09). Ante duda, verificar contra el código, no contra docs.
 
 ---
 
 ## 6. Completados (histórico resumido)
 
-- Backend specs 01–16 + I1/I2/I3 (PRs #1–#24) · UI Incidents (PRs #27–#30, #40) · UI Integraciones (PR #31) · Pipeline Samsara real: adapter, firma, replay, seeders, sync periódica, scheduler (PRs #28, #32, #34, #35, #42, #46) · Consola super-admin completa (PRs #37, #39, #41, #43–#45).
+- Backend specs 01–16 + I1/I2/I3 y cierre de diferidos: AI SDK, multimodal, PDF/XLSX, drivers de notificación, queries DB-backed, Echo wiring, DemoSeeder (PRs #1–#24).
+- UI Incidents con realtime (PRs #27–#30, #40) · UI Integraciones (PR #31).
+- Pipeline Samsara real: adapter, firma webhook, replay, seeders, sync periódica, scheduler dedicado (PRs #28, #32, #34, #35, #42, #46).
+- Consola super-admin completa (PRs #37, #39, #41, #43–#45).
