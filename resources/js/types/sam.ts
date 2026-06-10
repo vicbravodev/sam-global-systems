@@ -91,12 +91,6 @@ export interface MockStreamEvent {
     severity: Severity | null;
 }
 
-export interface DashboardMockData {
-    incidents: MockIncident[];
-    integrations: MockIntegration[];
-    stream: MockStreamEvent[];
-}
-
 // ---- Inbox UI state types ----
 
 export type InboxLayout = 'table' | 'grouped' | 'stream';

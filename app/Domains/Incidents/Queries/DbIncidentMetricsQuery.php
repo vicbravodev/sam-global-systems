@@ -11,6 +11,12 @@ use Carbon\CarbonInterface;
 
 class DbIncidentMetricsQuery implements IncidentMetricsQuery
 {
+    /**
+     * Fallback SLA budget when neither the incident priority nor the event
+     * severity define one. Mirrors IncidentInboxPresenter::DEFAULT_SLA_SECONDS.
+     */
+    private const DEFAULT_SLA_SECONDS = 1800;
+
     public function totalsForTenant(int $teamId, CarbonInterface $from, CarbonInterface $to): array
     {
         $base = Incident::withoutGlobalScopes()
@@ -62,5 +68,106 @@ class DbIncidentMetricsQuery implements IncidentMetricsQuery
             'mean_resolution_time_minutes' => round($meanResolutionMinutes, 2),
             'escalations' => $escalations,
         ];
+    }
+
+    public function openCounts(int $teamId): array
+    {
+        $base = Incident::withoutGlobalScopes()
+            ->where('team_id', $teamId)
+            ->open();
+
+        $open = (int) (clone $base)->count();
+
+        $criticalOpen = (int) (clone $base)
+            ->whereHas('priority', fn ($query) => $query->where('code', 'critical'))
+            ->count();
+
+        return [
+            'open' => $open,
+            'critical_open' => $criticalOpen,
+        ];
+    }
+
+    public function openedPerDay(int $teamId, CarbonInterface $from, CarbonInterface $to): array
+    {
+        $date = $this->dateExpression();
+
+        $rows = Incident::withoutGlobalScopes()
+            ->where('team_id', $teamId)
+            ->whereBetween('opened_at', [$from, $to])
+            ->selectRaw("{$date} AS bucket")
+            ->selectRaw('COUNT(*) AS total')
+            ->groupBy('bucket')
+            ->pluck('total', 'bucket')
+            ->all();
+
+        $criticalRows = Incident::withoutGlobalScopes()
+            ->where('team_id', $teamId)
+            ->whereBetween('opened_at', [$from, $to])
+            ->whereHas('priority', fn ($query) => $query->where('code', 'critical'))
+            ->selectRaw("{$date} AS bucket")
+            ->selectRaw('COUNT(*) AS total')
+            ->groupBy('bucket')
+            ->pluck('total', 'bucket')
+            ->all();
+
+        $buckets = [];
+        $cursor = $from->copy()->startOfDay();
+        $end = $to->copy()->startOfDay();
+
+        while ($cursor->lessThanOrEqualTo($end)) {
+            $key = $cursor->toDateString();
+
+            $buckets[] = [
+                'date' => $key,
+                'total' => (int) ($rows[$key] ?? 0),
+                'critical' => (int) ($criticalRows[$key] ?? 0),
+            ];
+
+            $cursor = $cursor->addDay();
+        }
+
+        return $buckets;
+    }
+
+    public function slaCompliance(int $teamId, CarbonInterface $from, CarbonInterface $to): ?float
+    {
+        $resolved = Incident::withoutGlobalScopes()
+            ->where('team_id', $teamId)
+            ->whereNotNull('resolved_at')
+            ->whereBetween('resolved_at', [$from, $to])
+            ->with(['priority', 'relatedEvent.eventSeverity'])
+            ->get(['id', 'team_id', 'incident_priority_id', 'related_event_id', 'opened_at', 'resolved_at']);
+
+        if ($resolved->isEmpty()) {
+            return null;
+        }
+
+        $withinSla = $resolved->filter(function (Incident $incident): bool {
+            if ($incident->opened_at === null || $incident->resolved_at === null) {
+                return false;
+            }
+
+            // Same SLA-budget resolution chain as IncidentInboxPresenter:
+            // priority SLA, then event-severity response SLA, then default.
+            $slaSeconds = (int) ($incident->priority?->sla_seconds
+                ?? $incident->relatedEvent?->eventSeverity?->response_sla_seconds
+                ?: self::DEFAULT_SLA_SECONDS);
+
+            return $incident->opened_at->diffInSeconds($incident->resolved_at) <= $slaSeconds;
+        });
+
+        return round($withinSla->count() / $resolved->count() * 100, 1);
+    }
+
+    /**
+     * SQL expression for the calendar day of `opened_at`, portable across
+     * PostgreSQL (production) and SQLite (tests).
+     */
+    private function dateExpression(): string
+    {
+        return (new Incident)->getConnection()->getDriverName() === 'sqlite'
+            ? "strftime('%Y-%m-%d', opened_at)"
+            : 'TO_CHAR(opened_at, \'YYYY-MM-DD\')';
     }
 }

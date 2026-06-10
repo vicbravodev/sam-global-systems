@@ -104,6 +104,21 @@ class CalculateDailyKPIsJobTest extends TestCase
                         'escalations' => 0,
                     ];
                 }
+
+                public function openCounts(int $teamId): array
+                {
+                    return ['open' => 0, 'critical_open' => 0];
+                }
+
+                public function openedPerDay(int $teamId, CarbonInterface $from, CarbonInterface $to): array
+                {
+                    return [];
+                }
+
+                public function slaCompliance(int $teamId, CarbonInterface $from, CarbonInterface $to): ?float
+                {
+                    return null;
+                }
             };
         });
     }
