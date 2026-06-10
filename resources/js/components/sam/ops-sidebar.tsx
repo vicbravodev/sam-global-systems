@@ -187,7 +187,7 @@ export function OpsSidebar({ navBadges }: OpsSidebarProps) {
                 {
                     label: 'Reglas',
                     icon: Workflow,
-                    href: '#',
+                    href: `/${teamSlug}/rules`,
                     badge: 'rules',
                 },
                 {
