@@ -37,7 +37,7 @@ El producto terminado es: un operador de flota abre SAM, ve su flota en vivo, re
 | ~~B8~~ | ~~El loop multimodal no se cierra~~ | ✅ **CERRADO (PR #63)** — ver §7. |
 | ~~B9~~ | ~~Twilio bidireccional~~ | ✅ **CERRADO (PR #63)** — ver §7. |
 | ~~B1b~~ | ~~Billing/Branding tenant-facing~~ | ✅ **CERRADO (PR #63)** — ver §7. |
-| B2 | Billing local (transferencia) | Facturas/comprobantes por periodo (FileObject listo), estado de pago, activar/desactivar tenant por impago (suspensión super-admin como base). Evaluar retirar Cashier. |
+| ~~B2~~ | ~~Billing local (transferencia)~~ | ✅ **CERRADO (PR #63)** — ver §7. |
 | B3b | Afinado IA | Routing de modelo por tenant (`TenantAIProfileData.preferredModel`) + tuning de prompts. Menor. |
 
 **Nota operativa media:** el auto-request de footage en críticos está gateado por `TenantSetting media.auto_request_on_critical` con **default OFF** (consume cuota). Para verlo operar en dev/demo hay que activarlo por tenant — y la UI para hacerlo es parte de F-TenantConfig.
@@ -94,7 +94,7 @@ Patrón obligatorio (el de `integrations/index`, PR #31): controller web dedicad
 
 **B1b + F7 — Billing + Branding tenant-facing. ✅ COMPLETADO (PR #63)** — ver §7.
 
-**B2 — Billing local (transferencia).** Facturas/comprobantes por periodo, estado de pago, suspensión por impago reutilizando el ciclo de vida del super-admin. Evaluar retirar Cashier/Billable. **Esfuerzo: 2 sesiones.**
+**B2 — Billing local (transferencia). ✅ COMPLETADO (PR #63)** — ver §7. Retirar Cashier/Billable queda como **decisión del usuario** (cambio de dependencias).
 
 ---
 
@@ -106,7 +106,7 @@ Patrón obligatorio (el de `integrations/index`, PR #31): controller web dedicad
 | **B. Bandeja a la altura** ✅ COMPLETA (PR #63) | ~~F9~~ ✅ → ~~F10~~ ✅ | El operador VE todo lo que el pipeline produce (footage, visión IA, historial) en una UI espaciosa |
 | **C. Inteligencia configurable** ✅ COMPLETA (PR #63) | ~~F-TC~~ ✅ → ~~F11~~ ✅ → ~~F12~~ ✅ | Cero links muertos de inteligencia; el tenant se autoconfigura sin tinker |
 | **D. Cierre operativo** ✅ COMPLETA (PR #63) | ~~F5c~~ ✅ → ~~F13~~ ✅ → ~~F14~~ ✅ | Producto operativo completo, sidebar 100% vivo |
-| **E. Monetización 🔵 ACTUAL** | ~~B1b+F7~~ ✅ (PR #63) → B2 (billing local) | Listo para facturar |
+| **E. Monetización** ✅ COMPLETA (PR #63) | ~~B1b+F7~~ ✅ → ~~B2~~ ✅ | Listo para facturar |
 
 **Regla de decisión al abrir sesión:** si la fase actual tiene un ítem a medias, continuarlo; si no, tomar el siguiente de la tabla. Un PR por ítem (o sub-ítem), CI verde antes de merge, y actualizar este documento en el mismo PR.
 
@@ -159,6 +159,7 @@ Patrón obligatorio (el de `integrations/index`, PR #31): controller web dedicad
 - **B8** — Loop multimodal cerrado (PR #63): `MediaAssessmentCompleted` (solo assessments nuevos, idempotente) → `ReevaluateEventJob` con trigger `media_arrived` (guards: inline sin decisión, media ya evaluada en otra versión anti-loop, incidente terminal no re-corre); fact `media_assessment` cross-versión de evaluación; guard de contradicción en `ResolveDecisionOutcome` (footage que contradice un evento con decisión accionable previa → `REQUIRE_HUMAN_REVIEW`, nunca auto-cerrar); timeline `media_assessed` por assessment + broadcast `incidents.updated` que la bandeja ahora escucha.
 - **B7** — Ejecutores reales de Automation (PR #63): `ExecuteAction` puentea `Send*` al pipeline de Notifications (destinatarios desde el target del step — email/phone directo, user id, rol del team o `recipients` explícitos —, render del `ActionTemplate`, canal fijado con `force_channels` cuyo gate real es el `NotificationChannel` activo del tenant); `AssignIncident`/`Escalate`/`RequestHumanReview` ejecutan las actions reales de Incidents (nueva `RequestIncidentReview` open→in_review); meter `automation_actions` idempotente por ejecución; `CreateTicket`/`UpdateAssetState` → V2.
 - **B9** — Twilio bidireccional (PR #63): tabla `notification_reply_tokens` (token corto TTL 24h, reusado por incidente+address); los SMS/WhatsApp de incidente crítico llevan "Responde SI-XXXX / NO-XXXX / ESC-XXXX" (SMS pre-ajustado a 160); webhook `POST /api/webhooks/twilio` valida `X-Twilio-Signature` contra el canal del tenant resuelto por el número `To` (403 si falla); `ProcessInboundReply` ejecuta ack/falsa-alarma/escalar vía actions de Incidents con timeline "via sms/whatsapp" + auditoría `incident.reply.*`; desconocidos/tenant ajeno/sender inesperado → log y silencio; doble respuesta idempotente. **Fase A completa.**
+- **B2** — Billing local por transferencia (PR #63): comprobante de pago por factura (tenant sube pdf/imagen → FileObject `payment_receipt` + nota), card Facturas en la consola super-admin con Marcar pagada / Anular (+auditoría billing), `paid_at`/estado en la página del tenant; suspensión por impago = control existente. **TODAS las fases V1 (A–E) completas.** Retirar Cashier pendiente de decisión del usuario.
 - **B1b+F7** — Facturación y Marca (PR #63): página billing (plan, consumo por meter con barras, funcionalidades, facturas; item del sidebar) + tab Marca en Configuración (nombre/colores/firma + logo a rustfs con FileObject y preview vía temporaryUrl); policies B1a aplicadas. Verificado visualmente.
 - **F14** — Página Auditoría del tenant (PR #63): tabs Auditoría (AuditLog paginado con filtros por búsqueda/categoría/actor/fechas) y Eventos de dominio; fix de routing — el grupo /admin se declara antes del wildcard {current_team} para que /{team}/audit no trague /admin/audit. **Fase D completa, sidebar 100% vivo.** Verificado visualmente.
 - **F13** — Página Analítica (PR #63): tabs KPIs (snapshot TenantOverview + KpiRecords) y Reportes (generación por formato + ejecuciones con download); rutas web reusando ReportController/ReportExecutionController; sidebar vivo. Verificado visualmente (job real de PDF disparado desde la UI).
