@@ -2,6 +2,12 @@
 
 namespace App\Http\Controllers\Incidents;
 
+use App\Contracts\ObjectStorage;
+use App\Domains\AI\Models\AIEventEvaluation;
+use App\Domains\AI\Models\AIMediaAssessment;
+use App\Domains\Context\Models\EventMediaContext;
+use App\Domains\Context\Models\EventMediaRequest;
+use App\Domains\Context\Models\EventRelatedIncidentLink;
 use App\Domains\Incidents\Enums\AssigneeType;
 use App\Domains\Incidents\Enums\TimelineActorType;
 use App\Domains\Incidents\Models\Incident;
@@ -223,7 +229,12 @@ class IncidentInboxController extends Controller
         ];
     }
 
-    public function show(Team $current_team, Incident $incident): JsonResponse
+    /**
+     * Content-negotiated detail: the inbox panel fetches JSON (Accept:
+     * application/json), while a browser navigation renders the full-page
+     * Inertia view with the media gallery (Roadmap F9).
+     */
+    public function show(Request $request, Team $current_team, Incident $incident): JsonResponse|Response
     {
         $this->authorize('view', $incident);
 
@@ -257,7 +268,153 @@ class IncidentInboxController extends Controller
 
         $users = $this->resolveUsers($userIds);
 
-        return response()->json($this->presenter->toDetail($incident, $users));
+        $detail = $this->presenter->toDetail($incident, $users);
+
+        if ($request->wantsJson()) {
+            return response()->json($detail);
+        }
+
+        return Inertia::render('incidents/show', [
+            'incident' => $detail,
+            'media' => fn () => $this->mediaItems($incident),
+            'mediaAssessments' => fn () => $this->mediaAssessments($incident),
+            'mediaRequests' => fn () => $this->mediaRequests($incident),
+            'priorIncidents' => fn () => $this->priorIncidents($incident),
+            'members' => fn () => $this->members($current_team),
+            'reclassifyOptions' => fn () => $this->reclassifyOptions(),
+        ]);
+    }
+
+    /**
+     * Media inventory of the incident's source event, with viewable URLs.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function mediaItems(Incident $incident): array
+    {
+        if ($incident->related_event_id === null) {
+            return [];
+        }
+
+        $storage = app(ObjectStorage::class);
+
+        return EventMediaContext::query()
+            ->where('normalized_event_id', $incident->related_event_id)
+            ->orderByDesc('id')
+            ->get()
+            ->map(function (EventMediaContext $media) use ($storage): array {
+                $url = $media->media_url;
+
+                if ($url === null && $media->storage_path !== null) {
+                    try {
+                        $url = $storage->temporaryUrl($media->storage_path, now()->addMinutes(30));
+                    } catch (\Throwable) {
+                        $url = null;
+                    }
+                }
+
+                return [
+                    'id' => (int) $media->id,
+                    'mediaType' => $media->media_type?->value,
+                    'mimeType' => $media->mime_type,
+                    'url' => $url,
+                    'thumbnailUrl' => $media->thumbnail_url,
+                    'durationSeconds' => $media->duration_seconds !== null ? (int) $media->duration_seconds : null,
+                    'sizeBytes' => $media->size_bytes !== null ? (int) $media->size_bytes : null,
+                    'capturedAt' => $media->captured_at?->toIso8601String(),
+                    'availabilityStatus' => $media->availability_status?->value,
+                ];
+            })
+            ->all();
+    }
+
+    /**
+     * What the AI saw in each media asset, across evaluation versions.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function mediaAssessments(Incident $incident): array
+    {
+        if ($incident->related_event_id === null) {
+            return [];
+        }
+
+        $evaluationIds = AIEventEvaluation::withoutGlobalScopes()
+            ->where('normalized_event_id', $incident->related_event_id)
+            ->select('id');
+
+        return AIMediaAssessment::query()
+            ->whereIn('evaluation_id', $evaluationIds)
+            ->orderByDesc('assessed_at')
+            ->get()
+            ->map(fn (AIMediaAssessment $assessment): array => [
+                'id' => (int) $assessment->id,
+                'mediaContextId' => (int) $assessment->event_media_context_id,
+                'result' => $assessment->result?->value,
+                'confidenceScore' => $assessment->confidence_score !== null ? (float) $assessment->confidence_score : null,
+                'summary' => $assessment->summary_text,
+                'assessmentType' => $assessment->assessment_type?->value,
+                'modelUsed' => $assessment->model_used,
+                'assessedAt' => $assessment->assessed_at?->toIso8601String(),
+            ])
+            ->all();
+    }
+
+    /**
+     * In-flight / recent media retrieval requests for the source event.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function mediaRequests(Incident $incident): array
+    {
+        if ($incident->related_event_id === null) {
+            return [];
+        }
+
+        return EventMediaRequest::query()
+            ->where('normalized_event_id', $incident->related_event_id)
+            ->orderByDesc('id')
+            ->limit(5)
+            ->get()
+            ->map(fn (EventMediaRequest $request): array => [
+                'id' => (int) $request->id,
+                'status' => $request->status?->value,
+                'requestType' => $request->request_type?->value,
+                'requestedAt' => ($request->requested_at ?? $request->created_at)?->toIso8601String(),
+            ])
+            ->all();
+    }
+
+    /**
+     * Prior similar / related incidents linked to the source event (B6-P8).
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function priorIncidents(Incident $incident): array
+    {
+        if ($incident->related_event_id === null) {
+            return [];
+        }
+
+        return EventRelatedIncidentLink::query()
+            ->where('normalized_event_id', $incident->related_event_id)
+            ->where('incident_id', '!=', $incident->id)
+            ->with(['incident.status', 'incident.priority'])
+            ->orderByDesc('confidence_score')
+            ->limit(10)
+            ->get()
+            ->filter(fn (EventRelatedIncidentLink $link) => $link->incident !== null)
+            ->map(fn (EventRelatedIncidentLink $link): array => [
+                'incidentId' => (int) $link->incident_id,
+                'title' => (string) $link->incident->title,
+                'status' => $link->incident->status?->code,
+                'severity' => $link->incident->priority?->code,
+                'openedAt' => $link->incident->opened_at?->toIso8601String(),
+                'relationType' => $link->relation_type?->value,
+                'confidenceScore' => $link->confidence_score !== null ? (float) $link->confidence_score : null,
+            ])
+            ->values()
+            ->all();
     }
 
     /**

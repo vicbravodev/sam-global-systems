@@ -1042,6 +1042,11 @@ export default function IncidentsIndex() {
                             incident={selectedDetail}
                             onClose={() => setSelectedId(null)}
                             onMutated={handlePanelMutated}
+                            detailHref={
+                                teamSlug
+                                    ? `/${teamSlug}/incidents/${selectedDetail.incidentId}`
+                                    : undefined
+                            }
                         />
                     ) : (
                         <DetailPlaceholder

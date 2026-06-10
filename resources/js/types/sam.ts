@@ -251,3 +251,55 @@ export interface TeamMemberRow {
     roleName: string | null;
     legacyRole: string | null;
 }
+
+// ---- Incident full-page detail (F9) ----
+
+export interface IncidentMediaItem {
+    id: number;
+    mediaType: string | null;
+    mimeType: string | null;
+    url: string | null;
+    thumbnailUrl: string | null;
+    durationSeconds: number | null;
+    sizeBytes: number | null;
+    capturedAt: string | null;
+    availabilityStatus: string | null;
+}
+
+export interface IncidentMediaAssessment {
+    id: number;
+    mediaContextId: number;
+    result: string | null;
+    confidenceScore: number | null;
+    summary: string | null;
+    assessmentType: string | null;
+    modelUsed: string | null;
+    assessedAt: string | null;
+}
+
+export interface IncidentMediaRequestSummary {
+    id: number;
+    status: string | null;
+    requestType: string | null;
+    requestedAt: string | null;
+}
+
+export interface PriorIncidentSummary {
+    incidentId: number;
+    title: string;
+    status: string | null;
+    severity: string | null;
+    openedAt: string | null;
+    relationType: string | null;
+    confidenceScore: number | null;
+}
+
+export interface IncidentShowProps {
+    incident: IncidentDetail;
+    media: IncidentMediaItem[];
+    mediaAssessments: IncidentMediaAssessment[];
+    mediaRequests: IncidentMediaRequestSummary[];
+    priorIncidents: PriorIncidentSummary[];
+    members: InboxMember[];
+    reclassifyOptions: ReclassifyOptions;
+}

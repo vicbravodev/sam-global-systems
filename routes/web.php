@@ -18,6 +18,7 @@ use App\Http\Controllers\Incidents\IncidentAssignmentController;
 use App\Http\Controllers\Incidents\IncidentCommentController;
 use App\Http\Controllers\Incidents\IncidentController;
 use App\Http\Controllers\Incidents\IncidentInboxController;
+use App\Http\Controllers\Incidents\IncidentMediaRequestController;
 use App\Http\Controllers\Incidents\IncidentResolutionController;
 use App\Http\Controllers\Integrations\IntegrationController;
 use App\Http\Controllers\Integrations\IntegrationPageController;
@@ -53,6 +54,7 @@ Route::prefix('{current_team}')
         Route::post('incidents/{incident}/reclassify', [IncidentController::class, 'reclassify'])->name('incidents.reclassify');
         Route::post('incidents/{incident}/reopen', [IncidentController::class, 'reopen'])->name('incidents.reopen');
         Route::post('incidents/{incident}/acknowledge', [IncidentController::class, 'acknowledge'])->name('incidents.acknowledge');
+        Route::post('incidents/{incident}/media/request', [IncidentMediaRequestController::class, 'store'])->name('incidents.media.request');
         Route::post('incidents/{incident}/escalate', [IncidentController::class, 'escalate'])->name('incidents.escalate');
         Route::post('ai/evaluations/{evaluation}/reevaluate', [AIEvaluationController::class, 'reevaluate'])->name('ai.evaluations.reevaluate');
 
