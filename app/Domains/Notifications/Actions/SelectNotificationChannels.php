@@ -42,6 +42,18 @@ class SelectNotificationChannels
             return [];
         }
 
+        // Internal callers (e.g. automation Send* actions, Roadmap B7) pin the
+        // exact channel the tenant configured for the action. The real gate
+        // stays the same: an active NotificationChannel of that type must exist.
+        $forced = $notification->payload_json['force_channels'] ?? null;
+
+        if (is_array($forced) && $forced !== []) {
+            return $channels
+                ->filter(fn (NotificationChannel $channel) => in_array($channel->channel_type->value, $forced, true))
+                ->values()
+                ->all();
+        }
+
         if ($notification->priority->isCritical()) {
             $allowedTypes = collect($policy->criticalChannels)->map(fn (ChannelType $type) => $type->value);
 

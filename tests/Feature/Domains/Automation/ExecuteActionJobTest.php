@@ -7,8 +7,11 @@ use App\Domains\Automation\Enums\ActionExecutionStatus;
 use App\Domains\Automation\Enums\ActionType;
 use App\Domains\Automation\Jobs\ExecuteActionJob;
 use App\Domains\Automation\Models\ActionExecution;
+use App\Domains\Notifications\Models\NotificationChannel;
 use App\Models\User;
+use Database\Seeders\NotificationMeterSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
 class ExecuteActionJobTest extends TestCase
@@ -17,12 +20,21 @@ class ExecuteActionJobTest extends TestCase
 
     public function test_handle_completes_pending_execution(): void
     {
+        Mail::fake();
+        $this->seed(NotificationMeterSeeder::class);
+
         $user = User::factory()->create();
+
+        NotificationChannel::factory()->email()->create([
+            'team_id' => $user->currentTeam->id,
+        ]);
 
         $execution = ActionExecution::factory()->create([
             'team_id' => $user->currentTeam->id,
             'action_type' => ActionType::SendEmail,
             'status' => ActionExecutionStatus::Queued,
+            'target_type' => 'email',
+            'target_reference' => 'ops@example.test',
         ]);
 
         (new ExecuteActionJob($execution->id))->handle(app(ExecuteAction::class));

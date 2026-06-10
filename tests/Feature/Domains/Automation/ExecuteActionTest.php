@@ -10,10 +10,13 @@ use App\Domains\Automation\Events\ActionExecuted;
 use App\Domains\Automation\Events\ActionFailed;
 use App\Domains\Automation\Models\ActionExecution;
 use App\Domains\Automation\Models\ActionTemplate;
+use App\Domains\Notifications\Models\NotificationChannel;
 use App\Models\User;
+use Database\Seeders\NotificationMeterSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
 class ExecuteActionTest extends TestCase
@@ -23,12 +26,21 @@ class ExecuteActionTest extends TestCase
     public function test_send_email_action_records_completed_status_and_log(): void
     {
         Event::fake([ActionExecuted::class]);
+        Mail::fake();
+        $this->seed(NotificationMeterSeeder::class);
 
         $user = User::factory()->create();
+
+        NotificationChannel::factory()->email()->create([
+            'team_id' => $user->currentTeam->id,
+        ]);
+
         $execution = ActionExecution::factory()->create([
             'team_id' => $user->currentTeam->id,
             'action_type' => ActionType::SendEmail,
             'status' => ActionExecutionStatus::Queued,
+            'target_type' => 'email',
+            'target_reference' => 'ops@example.test',
         ]);
 
         $result = app(ExecuteAction::class)->execute($execution);
@@ -38,6 +50,7 @@ class ExecuteActionTest extends TestCase
         $this->assertSame(1, $result->attempts);
         $this->assertSame(1, $result->logs()->count());
         $this->assertSame(ActionLogType::Info, $result->logs()->first()->log_type);
+        $this->assertNotNull($result->response_json['notification_id'] ?? null);
 
         Event::assertDispatched(ActionExecuted::class);
     }
