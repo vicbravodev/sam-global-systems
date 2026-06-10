@@ -2,8 +2,6 @@
 
 namespace Database\Seeders;
 
-use App\Models\User;
-// use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
@@ -26,9 +24,11 @@ class DatabaseSeeder extends Seeder
         // PlanSeeder must run after every *MeterSeeder so meter codes resolve.
         $this->call(PlanSeeder::class);
 
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-        ]);
+        // Samsara mapping rules so replayed/live webhook events normalize.
+        $this->call(NormalizationSeeder::class);
+
+        // Single dev tenant (ServiExpress JC) + panic_button→incident ruleset.
+        $this->call(SamsaraTestSeeder::class);
+        $this->call(SamsaraTestDecisionRulesSeeder::class);
     }
 }

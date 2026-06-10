@@ -10,7 +10,7 @@ use App\Models\Team;
 use Illuminate\Database\Seeder;
 
 /**
- * Tenant decision rules for the Samsara test fleet so panic-button events
+ * Tenant decision rules for the ServiExpress JC test tenant so panic-button events
  * deterministically create an incident (instead of relying on the engine's
  * default critical path). Pairs with SamsaraTestSeeder + SamsaraReplayCommand.
  *
@@ -20,10 +20,10 @@ class SamsaraTestDecisionRulesSeeder extends Seeder
 {
     public function run(): void
     {
-        $team = Team::query()->where('slug', 'samsara-test')->first();
+        $team = Team::query()->where('slug', 'serviexpress-jc')->first();
 
         if (! $team) {
-            $this->command?->warn('Team [samsara-test] not found; seed SamsaraTestSeeder first.');
+            $this->command?->warn('Team [serviexpress-jc] not found; seed SamsaraTestSeeder first.');
 
             return;
         }
@@ -37,9 +37,9 @@ class SamsaraTestDecisionRulesSeeder extends Seeder
         }
 
         $ruleSet = RuleSet::query()->updateOrCreate(
-            ['team_id' => $team->id, 'code' => 'samsara-test-default'],
+            ['team_id' => $team->id, 'code' => 'serviexpress-jc-default'],
             [
-                'name' => 'Samsara Test — Default Ruleset',
+                'name' => 'ServiExpress JC — Default Ruleset',
                 'description' => 'Tenant default ruleset for manual Samsara pipeline testing.',
                 'version' => 1,
                 'is_default' => true,

@@ -20,7 +20,7 @@ use Illuminate\Support\Facades\Hash;
  * Crea SOLO lo imprescindible para entrar a la UI y registrar una API key
  * de Samsara tú mismo desde el formulario de integraciones:
  *
- *   - Un tenant (Team) "Samsara Test Fleet".
+ *   - Un tenant (Team) "ServiExpress JC".
  *   - Usuarios para hacer login (admin + monitorista).
  *   - El catálogo IntegrationProvider de Samsara (activo) para que aparezca
  *     en el selector de "crear provider".
@@ -35,9 +35,9 @@ use Illuminate\Support\Facades\Hash;
  */
 class SamsaraTestSeeder extends Seeder
 {
-    private const TEAM_SLUG = 'samsara-test';
+    private const TEAM_SLUG = 'serviexpress-jc';
 
-    private const TEAM_NAME = 'Samsara Test Fleet';
+    private const TEAM_NAME = 'ServiExpress JC';
 
     private const PASSWORD = 'password';
 
@@ -45,8 +45,8 @@ class SamsaraTestSeeder extends Seeder
      * @var array<int, array{email: string, name: string, rbac_role: string, team_role: TeamRole}>
      */
     private const USERS = [
-        ['email' => 'admin@samsara.test', 'name' => 'Admin Samsara', 'rbac_role' => 'tenant_admin', 'team_role' => TeamRole::Owner],
-        ['email' => 'monitor@samsara.test', 'name' => 'Monitor Samsara', 'rbac_role' => 'monitorista', 'team_role' => TeamRole::Member],
+        ['email' => 'admin@serviexpress.test', 'name' => 'Admin ServiExpress', 'rbac_role' => 'tenant_admin', 'team_role' => TeamRole::Owner],
+        ['email' => 'monitor@serviexpress.test', 'name' => 'Monitor ServiExpress', 'rbac_role' => 'monitorista', 'team_role' => TeamRole::Member],
     ];
 
     public function run(): void
@@ -61,7 +61,7 @@ class SamsaraTestSeeder extends Seeder
         });
 
         $this->command?->info("\nTenant de prueba listo [".self::TEAM_SLUG.'].');
-        $this->command?->info('Login: admin@samsara.test / '.self::PASSWORD.' (también monitor@samsara.test).');
+        $this->command?->info('Login: admin@serviexpress.test / '.self::PASSWORD.' (también monitor@serviexpress.test).');
         $this->command?->info('Ve a Integraciones → crear provider → Samsara y registra tu API key.');
     }
 
