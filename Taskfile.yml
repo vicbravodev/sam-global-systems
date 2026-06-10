@@ -1,0 +1,142 @@
+# Taskfile de desarrollo — https://taskfile.dev (instalar con: brew install go-task)
+#
+# Uso: `task --list` para ver todo. Los flujos clave:
+#   task setup    → bootstrap completo de un clon recién bajado
+#   task update   → poner el local al corriente después de mergear PRs
+#   task fresh    → resetear la DB al tenant único ServiExpress JC
+#   task replay   → reinyectar los fixtures reales de Samsara al pipeline
+#   task check    → todos los gates de calidad antes de cerrar trabajo
+#
+# Convención: lo que toca la DB de dev (Postgres en Docker) corre vía Sail;
+# tests y Pint corren en el PHP del host (la suite usa sqlite :memory:).
+
+version: '3'
+
+vars:
+  SAIL: ./vendor/bin/sail
+
+tasks:
+  default:
+    silent: true
+    cmds:
+      - task --list
+
+  # ── Setup / actualización ────────────────────────────────────────────────
+
+  setup:
+    desc: 'Bootstrap completo de dev: deps + stack Docker + DB seeded + build'
+    cmds:
+      - composer install
+      - npm install
+      - '{{.SAIL}} up -d'
+      - '{{.SAIL}} artisan migrate:fresh --seed'
+      - npm run build
+      - '{{.SAIL}} artisan optimize:clear'
+      - echo "Listo → http://localhost · login admin@serviexpress.test / password"
+
+  update:
+    desc: 'Post-merge: pull main + deps + migraciones + build + Horizon fresco'
+    cmds:
+      - git pull --ff-only origin main
+      - composer install
+      - npm install
+      - '{{.SAIL}} artisan migrate'
+      - npm run build
+      - '{{.SAIL}} artisan optimize:clear'
+      - docker compose restart horizon
+
+  # ── Stack Docker ─────────────────────────────────────────────────────────
+
+  up:
+    desc: 'Levantar el stack completo (app, pgsql, valkey, rustfs, soketi, mailpit, horizon)'
+    cmds:
+      - '{{.SAIL}} up -d'
+
+  down:
+    desc: 'Apagar el stack'
+    cmds:
+      - '{{.SAIL}} down'
+
+  horizon:
+    desc: 'Reiniciar Horizon (necesario tras cambiar código de jobs/listeners)'
+    cmds:
+      - docker compose restart horizon
+      - '{{.SAIL}} artisan horizon:status'
+
+  logs:
+    desc: 'Logs de la app en vivo (artisan pail)'
+    interactive: true
+    cmds:
+      - '{{.SAIL}} artisan pail'
+
+  tinker:
+    desc: 'REPL contra la DB de dev'
+    interactive: true
+    cmds:
+      - '{{.SAIL}} artisan tinker'
+
+  # ── Base de datos ────────────────────────────────────────────────────────
+
+  fresh:
+    desc: 'Resetear DB de dev: tenant único ServiExpress JC + catálogos + reglas'
+    prompt: 'Esto BORRA la DB de dev y la re-siembra. ¿Continuar?'
+    cmds:
+      - '{{.SAIL}} artisan migrate:fresh --seed'
+      - '{{.SAIL}} artisan optimize:clear'
+      - docker compose restart horizon
+
+  migrate:
+    desc: 'Correr migraciones pendientes (sin borrar datos)'
+    cmds:
+      - '{{.SAIL}} artisan migrate'
+
+  replay:
+    desc: 'Reinyectar fixtures reales de panic Samsara al pipeline (requiere integración conectada en la UI y Horizon arriba)'
+    cmds:
+      - '{{.SAIL}} artisan samsara:replay {{.CLI_ARGS}}'
+
+  # ── Calidad / tests ──────────────────────────────────────────────────────
+
+  test:
+    desc: 'Suite de tests (filtrar: task test -- --filter=NombreDelTest)'
+    cmds:
+      - php artisan test --compact {{.CLI_ARGS}}
+
+  coverage:
+    desc: 'Tests con cobertura + umbrales locales 75/80/95 (requiere pcov/xdebug)'
+    cmds:
+      - php artisan test --coverage-clover=coverage.xml --compact
+      - php scripts/check-coverage.php coverage.xml --mode=local
+
+  fmt:
+    desc: 'Formatear PHP cambiado (Pint)'
+    cmds:
+      - vendor/bin/pint --dirty --format agent
+
+  check:
+    desc: 'Todos los gates como CI: Pint + tests + tsc + eslint + prettier + build'
+    cmds:
+      - vendor/bin/pint --test
+      - php artisan test --compact
+      - npm run types:check
+      - npm run lint:check
+      - npm run format:check
+      - npm run build
+
+  # ── Frontend ─────────────────────────────────────────────────────────────
+
+  dev:
+    desc: 'Vite en modo watch'
+    interactive: true
+    cmds:
+      - npm run dev
+
+  build:
+    desc: 'Build de producción (regenera manifest + tipos Wayfinder)'
+    cmds:
+      - npm run build
+
+  wayfinder:
+    desc: 'Regenerar tipos Wayfinder tras cambiar rutas/controladores'
+    cmds:
+      - '{{.SAIL}} artisan wayfinder:generate'
