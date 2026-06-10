@@ -208,3 +208,60 @@ php artisan wayfinder:generate    # regenerar tras cambiar rutas/controladores
 | Rutas API tenant-scoped | [`routes/api.php`](routes/api.php) |
 | Canales broadcasting | [`routes/channels.php`](routes/channels.php) |
 | Docker services | [`compose.yaml`](compose.yaml) |
+
+---
+
+## 8. Rutina nocturna (`claude/night-roadmap`)
+
+Reglas para el agente programado (cloud) que trabaja de noche el [`ROADMAP.md`](ROADMAP.md) de la raíz (cola de tareas de la rutina — NO confundir con [`docs/ROADMAP.md`](docs/ROADMAP.md), que es el roadmap de producto y sigue mandando como fuente de prioridades). El prompt maestro vive en [`ROUTINE_PROMPT.md`](ROUTINE_PROMPT.md); el entorno se prepara con [`.claude/setup.sh`](.claude/setup.sh).
+
+### 8.1 Stack (detectado, no asumir otro)
+
+Laravel 13 · PHP 8.5 · **PHPUnit 12 (NO Pest)** · Pint (preset `laravel`) · **PHPStan NO instalado** (no instalarlo: la regla §6 prohíbe tocar `composer.json`) · Inertia v3 + **React 19** (no Vue) + TypeScript · Tailwind v4 · Vite 8 + Wayfinder · Tests con **sqlite `:memory:`** (configurado en `phpunit.xml`; no requieren Postgres ni Valkey).
+
+### 8.2 Comandos canónicos (los ÚNICOS válidos)
+
+| Acción | Comando |
+|--------|---------|
+| Formatear PHP (tras cada cambio) | `vendor/bin/pint --dirty --format agent` |
+| Verificar estilo PHP (gate final, como CI) | `vendor/bin/pint --test` *(solo verificación de cierre; para arreglar, usar el de arriba)* |
+| Tests (filtrado, durante desarrollo) | `php artisan test --compact --filter=NombreDelTest` |
+| Tests (suite completa, gate de cierre) | `php artisan test --compact` |
+| Cobertura (umbral local 75/80/95) | `php artisan test --coverage-clover=coverage.xml --compact && php scripts/check-coverage.php coverage.xml --mode=local` *(requiere pcov/xdebug; si no hay driver, reportarlo y seguir — CI la exige igual)* |
+| Front: tipos / lint / formato | `npm run types:check && npm run lint:check && npm run format:check` |
+| Front: build de producción | `npm run build` |
+| Regenerar tipos Wayfinder (tras cambiar rutas/controladores) | `php artisan wayfinder:generate` (también ocurre dentro de `npm run build` vía plugin Vite) |
+
+**No existe `phpstan analyse` en este repo.** Los gates de calidad son: Pint + PHPUnit + cobertura (`scripts/check-coverage.php`) + `tsc` + ESLint + Prettier + build de Vite.
+
+### 8.3 Branch policy (dura)
+
+- Trabajar **única y exclusivamente** en la rama `claude/night-roadmap` (crearla desde `main` si no existe; si existe, continuar sobre ella).
+- **NUNCA** push a `main`/`master` ni a ramas de producción. Nunca `--force`. Aplican todas las reglas de §6.1.
+- Al cerrar la noche: **UN solo PR** de `claude/night-roadmap` → `main`. No mergearlo (el merge siempre lo autoriza el usuario, §6.1).
+- Commits pequeños por tarea, firmados solo con la identidad del usuario (§6.1: sin `Co-Authored-By`, sin banners).
+
+### 8.4 Migraciones y datos (dura)
+
+- Migraciones **additive-only**: solo `create table` / `add column` / `add index`. Prohibido `dropColumn`, `dropTable`, `renameColumn`, cambios de tipo destructivos, y `DELETE`/`UPDATE` masivos de datos dentro de migraciones.
+- Prohibido `migrate:fresh`, `migrate:reset`, `db:wipe` fuera del sqlite local de la rutina / entorno de tests.
+- Toda tabla tenant-scoped nueva cumple §2 (`team_id` + `BelongsToTenant`).
+
+### 8.5 Regla Inertia/tests (dura)
+
+- Cada página Inertia nueva o modificada → feature test con `$response->assertInertia(fn (Inertia\Testing\AssertableInertia $page) => $page->component('...')->has(...))`.
+- Cada endpoint nuevo (web o API) → feature test (happy path + authz/policy + aislamiento de tenant cuando aplique).
+- Tests en **PHPUnit 12** (clases en `tests/Feature/...`, siguiendo el estilo de los ~750 tests existentes). **No escribir tests Pest** — Pest no está instalado.
+- Factories siempre; nunca `Model::create()` manual en tests (§4).
+
+### 8.6 EXIT CRITERIA de la noche
+
+La rutina termina (y abre el PR) solo cuando: **(1)** no quedan tareas `- [ ]` en `ROADMAP.md` (todas `- [x]` completadas o `- [!]` bloqueadas y documentadas), **(2)** `php artisan test --compact` completamente verde, **(3)** `vendor/bin/pint --test` limpio, **(4)** `npm run types:check && npm run lint:check && npm run format:check` verdes, **(5)** `npm run build` exitoso — o cuando se alcanza un límite anti-loop de §8.7.
+
+### 8.7 Límites anti-loop (duros)
+
+- Máximo **10 tareas auto-generadas por noche** (FASE B), en total, sin importar cuántas iteraciones se abran.
+- Máximo hasta la sección **"Iteración v5"** en `ROADMAP.md`. Si v5 se completa, la rutina cierra con PR y reporte; NO crear v6.
+- **Respetar "Descartadas (won't fix)"**: nunca re-generar una tarea igual o equivalente a una descartada, ni reabrir una `- [!]` bloqueada sin decisión del usuario.
+- Una tarea que falla 2 intentos se marca `- [!]`, se mueve a "Bloqueadas / requieren decisión" con explicación, y se continúa con la siguiente; nunca quedarse iterando la misma tarea.
+- Prohibido a la rutina: tocar dependencias (`composer.json`/`package.json`), crear directorios nuevos a nivel `app/`, borrar o debilitar tests existentes para "poner verde", bajar umbrales de cobertura (`scripts/coverage-tiers.php`), o editar este CLAUDE.md / `ROUTINE_PROMPT.md`.
