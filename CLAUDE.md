@@ -211,9 +211,9 @@ php artisan wayfinder:generate    # regenerar tras cambiar rutas/controladores
 
 ---
 
-## 8. Rutina nocturna (`claude/night-roadmap`)
+## 8. Rutina recurrente (`claude/night-roadmap`)
 
-Reglas para el agente programado (cloud) que trabaja de noche el [`ROADMAP.md`](ROADMAP.md) de la raíz (cola de tareas de la rutina — NO confundir con [`docs/ROADMAP.md`](docs/ROADMAP.md), que es el roadmap de producto y sigue mandando como fuente de prioridades). El prompt maestro vive en [`ROUTINE_PROMPT.md`](ROUTINE_PROMPT.md); el entorno se prepara con [`.claude/setup.sh`](.claude/setup.sh).
+Reglas para el agente programado (cloud) que corre en runs recurrentes (~cada 2 h) trabajando el [`ROADMAP.md`](ROADMAP.md) de la raíz (cola de tareas de la rutina — NO confundir con [`docs/ROADMAP.md`](docs/ROADMAP.md), que es el roadmap de producto y sigue mandando como fuente de prioridades). El prompt maestro vive en [`ROUTINE_PROMPT.md`](ROUTINE_PROMPT.md); el entorno se prepara con [`.claude/setup.sh`](.claude/setup.sh).
 
 ### 8.1 Stack (detectado, no asumir otro)
 
@@ -236,9 +236,10 @@ Laravel 13 · PHP 8.5 · **PHPUnit 12 (NO Pest)** · Pint (preset `laravel`) · 
 
 ### 8.3 Branch policy (dura)
 
-- Trabajar **única y exclusivamente** en la rama `claude/night-roadmap` (crearla desde `main` si no existe; si existe, continuar sobre ella).
+- Trabajar **única y exclusivamente** en la rama `claude/night-roadmap` (retomarla de `origin/claude/night-roadmap` si existe; si no, crearla desde `main`).
+- **Candado anti-concurrencia entre runs:** al arrancar, si el último commit remoto de `claude/night-roadmap` tiene <45 min y NO es un commit `chore(night): cierre ...`, otro run sigue activo → terminar sin tocar nada. Cada run cierra SIEMPRE con un commit `chore(night): cierre de run {YYYY-MM-DD HH:mm}`.
 - **NUNCA** push a `main`/`master` ni a ramas de producción. Nunca `--force`. Aplican todas las reglas de §6.1.
-- Al cerrar la noche: **UN solo PR** de `claude/night-roadmap` → `main`. No mergearlo (el merge siempre lo autoriza el usuario, §6.1).
+- **UN solo PR abierto a la vez** de `claude/night-roadmap` → `main`; los runs siguientes lo actualizan con pushes + comentario de resumen. No mergearlo (el merge siempre lo autoriza el usuario, §6.1).
 - Commits pequeños por tarea, firmados solo con la identidad del usuario (§6.1: sin `Co-Authored-By`, sin banners).
 
 ### 8.4 Migraciones y datos (dura)
@@ -254,13 +255,13 @@ Laravel 13 · PHP 8.5 · **PHPUnit 12 (NO Pest)** · Pint (preset `laravel`) · 
 - Tests en **PHPUnit 12** (clases en `tests/Feature/...`, siguiendo el estilo de los ~750 tests existentes). **No escribir tests Pest** — Pest no está instalado.
 - Factories siempre; nunca `Model::create()` manual en tests (§4).
 
-### 8.6 EXIT CRITERIA de la noche
+### 8.6 EXIT CRITERIA de un run
 
-La rutina termina (y abre el PR) solo cuando: **(1)** no quedan tareas `- [ ]` en `ROADMAP.md` (todas `- [x]` completadas o `- [!]` bloqueadas y documentadas), **(2)** `php artisan test --compact` completamente verde, **(3)** `vendor/bin/pint --test` limpio, **(4)** `npm run types:check && npm run lint:check && npm run format:check` verdes, **(5)** `npm run build` exitoso — o cuando se alcanza un límite anti-loop de §8.7.
+Un run termina solo cuando: **(1)** no quedan tareas `- [ ]` en `ROADMAP.md` (todas `- [x]` completadas o `- [!]` bloqueadas y documentadas), **(2)** `php artisan test --compact` completamente verde, **(3)** `vendor/bin/pint --test` limpio, **(4)** `npm run types:check && npm run lint:check && npm run format:check` verdes, **(5)** `npm run build` exitoso — o cuando se alcanza un límite anti-loop de §8.7 o el presupuesto de la sesión. Todo cierre (incluso sin avance) actualiza `MORNING-REPORT.md` y termina con el commit de cierre del §8.3; el siguiente run retoma.
 
 ### 8.7 Límites anti-loop (duros)
 
-- Máximo **10 tareas auto-generadas por noche** (FASE B), en total, sin importar cuántas iteraciones se abran.
+- Máximo **10 tareas auto-generadas por día calendario** (FASE B), sumando TODOS los runs del día — contar las tareas de las secciones `## Iteración v{N} — auto-generada {fecha}` con fecha de hoy antes de generar más.
 - Máximo hasta la sección **"Iteración v5"** en `ROADMAP.md`. Si v5 se completa, la rutina cierra con PR y reporte; NO crear v6.
 - **Respetar "Descartadas (won't fix)"**: nunca re-generar una tarea igual o equivalente a una descartada, ni reabrir una `- [!]` bloqueada sin decisión del usuario.
 - Una tarea que falla 2 intentos se marca `- [!]`, se mueve a "Bloqueadas / requieren decisión" con explicación, y se continúa con la siguiente; nunca quedarse iterando la misma tarea.
