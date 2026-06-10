@@ -29,6 +29,7 @@ use App\Http\Controllers\Integrations\IntegrationController;
 use App\Http\Controllers\Integrations\IntegrationPageController;
 use App\Http\Controllers\Normalization\EventsPageController;
 use App\Http\Controllers\Normalization\MappingRuleController;
+use App\Http\Controllers\Notifications\NotificationChannelController;
 use App\Http\Controllers\Notifications\NotificationPageController;
 use App\Http\Controllers\Teams\TeamInvitationController;
 use App\Http\Controllers\TenantConfig\TenantAIProfileController;
@@ -128,6 +129,10 @@ Route::prefix('{current_team}')
         Route::post('settings/tenant-config/escalation', [TenantEscalationConfigController::class, 'store'])->name('tenant-config.escalation.store');
         Route::put('settings/tenant-config/escalation/{escalationConfig}', [TenantEscalationConfigController::class, 'update'])->name('tenant-config.escalation.update');
         Route::put('settings/tenant-config/schedule/{scheduleProfile}', [TenantScheduleProfileController::class, 'update'])->name('tenant-config.schedule.update');
+        Route::post('settings/tenant-config/channels', [NotificationChannelController::class, 'store'])->name('tenant-config.channels.store');
+        Route::put('settings/tenant-config/channels/{channel}', [NotificationChannelController::class, 'update'])->name('tenant-config.channels.update');
+        Route::delete('settings/tenant-config/channels/{channel}', [NotificationChannelController::class, 'destroy'])->name('tenant-config.channels.destroy');
+        Route::post('settings/tenant-config/channels/{channel}/test', [NotificationChannelController::class, 'test'])->name('tenant-config.channels.test');
 
         Route::get('settings/roles', [RoleController::class, 'index'])->name('access.roles.index');
         Route::post('settings/roles', [RoleController::class, 'store'])->name('access.roles.store');

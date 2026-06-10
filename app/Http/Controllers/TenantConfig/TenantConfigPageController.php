@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\TenantConfig;
 
+use App\Domains\Notifications\Enums\ChannelType;
+use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\TenantConfig\Actions\ResolveTenantAIProfile;
 use App\Domains\TenantConfig\Enums\AutomationLevel;
 use App\Domains\TenantConfig\Enums\FalsePositiveTolerance;
@@ -126,7 +128,56 @@ class TenantConfigPageController extends Controller
                     'snapshot' => $version->snapshot_json,
                 ])
                 ->all(),
+            'channels' => fn () => NotificationChannel::query()
+                ->where(fn ($query) => $query
+                    ->where('team_id', $current_team->id)
+                    ->orWhereNull('team_id'))
+                ->orderBy('channel_type')
+                ->orderBy('name')
+                ->get()
+                ->map(fn (NotificationChannel $channel): array => [
+                    'id' => (int) $channel->id,
+                    'code' => $channel->code,
+                    'name' => $channel->name,
+                    'provider' => $channel->provider,
+                    'channelType' => $channel->channel_type?->value,
+                    'isActive' => (bool) $channel->is_active,
+                    'isGlobal' => $channel->team_id === null,
+                    // Secrets stay server-side: only key names + masked tails
+                    // reach the browser (Roadmap F5c).
+                    'configSummary' => $this->maskConfig((array) ($channel->config_json ?? [])),
+                ])
+                ->all(),
+            'channelTypes' => fn () => array_map(
+                fn (ChannelType $type) => $type->value,
+                ChannelType::cases(),
+            ),
+            'canManageChannels' => fn () => (bool) request()->user()?->can('manage', NotificationChannel::class),
             'canManage' => fn () => (bool) request()->user()?->can('update', TenantSetting::class),
         ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $config
+     * @return array<string, string>
+     */
+    private function maskConfig(array $config): array
+    {
+        $masked = [];
+
+        foreach ($config as $key => $value) {
+            if (! is_scalar($value)) {
+                $masked[(string) $key] = '•••';
+
+                continue;
+            }
+
+            $string = (string) $value;
+            $masked[(string) $key] = mb_strlen($string) > 8
+                ? '••••'.mb_substr($string, -4)
+                : '••••';
+        }
+
+        return $masked;
     }
 }

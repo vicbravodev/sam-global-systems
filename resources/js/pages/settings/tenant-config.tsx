@@ -12,7 +12,12 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { postJson, putJson, readErrorMessage } from '@/lib/sam-fetch';
+import {
+    deleteJson,
+    postJson,
+    putJson,
+    readErrorMessage,
+} from '@/lib/sam-fetch';
 
 // ---- Types ----
 
@@ -65,6 +70,17 @@ interface ScheduleProfileRow {
     isActive: boolean;
 }
 
+interface ChannelRow {
+    id: number;
+    code: string;
+    name: string;
+    provider: string | null;
+    channelType: string | null;
+    isActive: boolean;
+    isGlobal: boolean;
+    configSummary: Record<string, string>;
+}
+
 interface VersionRow {
     id: number;
     version: number;
@@ -86,6 +102,9 @@ interface TenantConfigProps {
     escalationConfigs: EscalationConfigRow[];
     scheduleProfiles: ScheduleProfileRow[];
     versions: VersionRow[];
+    channels: ChannelRow[];
+    channelTypes: string[];
+    canManageChannels: boolean;
     canManage: boolean;
 }
 
@@ -95,6 +114,7 @@ const TABS = [
     { key: 'notifications', label: 'Notificaciones' },
     { key: 'escalation', label: 'Escalación' },
     { key: 'schedule', label: 'Horario on-call' },
+    { key: 'channels', label: 'Canales' },
     { key: 'versions', label: 'Versiones' },
 ] as const;
 
@@ -970,6 +990,344 @@ function ScheduleCard({
     );
 }
 
+// ---- Channels tab (F5c) ----
+
+const CHANNEL_CONFIG_FIELDS: Record<string, { key: string; label: string }[]> =
+    {
+        slack: [{ key: 'slack_webhook_url', label: 'Webhook URL de Slack' }],
+        sms: [
+            { key: 'twilio_account_sid', label: 'Twilio Account SID' },
+            { key: 'twilio_auth_token', label: 'Twilio Auth Token' },
+            { key: 'from', label: 'Número emisor (E.164 o MG…)' },
+        ],
+        whatsapp: [
+            { key: 'twilio_account_sid', label: 'Twilio Account SID' },
+            { key: 'twilio_auth_token', label: 'Twilio Auth Token' },
+            { key: 'from', label: 'Emisor (whatsapp:+…)' },
+        ],
+        push: [
+            {
+                key: 'firebase_credentials',
+                label: 'Credenciales Firebase (JSON)',
+            },
+        ],
+        webhook: [
+            { key: 'url', label: 'URL destino' },
+            { key: 'secret', label: 'Secreto HMAC' },
+        ],
+        email: [],
+        web: [],
+    };
+
+function ChannelsTab({
+    channels,
+    channelTypes,
+    canManage,
+}: {
+    channels: ChannelRow[];
+    channelTypes: string[];
+    canManage: boolean;
+}) {
+    const base = useTeamBase();
+    const [creating, setCreating] = useState(false);
+    const [form, setForm] = useState({
+        code: '',
+        name: '',
+        channelType: 'slack',
+        config: {} as Record<string, string>,
+    });
+    const [testAddress, setTestAddress] = useState('');
+    const [testingId, setTestingId] = useState<number | null>(null);
+
+    const providerFor = (type: string): string =>
+        type === 'sms' || type === 'whatsapp'
+            ? 'twilio'
+            : type === 'push'
+              ? 'firebase'
+              : type === 'slack'
+                ? 'slack'
+                : type === 'webhook'
+                  ? 'webhook'
+                  : 'mail';
+
+    const create = async () => {
+        if (base === null) {
+            return;
+        }
+
+        if (form.code === '' || form.name === '') {
+            toast.error('Código y nombre son obligatorios.');
+
+            return;
+        }
+
+        const ok = await submit(
+            postJson(`${base}/channels`, {
+                code: form.code,
+                name: form.name,
+                provider: providerFor(form.channelType),
+                channel_type: form.channelType,
+                config_json: form.config,
+                is_active: true,
+            }),
+            'Canal creado.',
+        );
+
+        if (ok) {
+            setCreating(false);
+        }
+    };
+
+    const toggleActive = (channel: ChannelRow) => {
+        if (base === null) {
+            return;
+        }
+
+        void submit(
+            putJson(`${base}/channels/${channel.id}`, {
+                is_active: !channel.isActive,
+            }),
+            channel.isActive ? 'Canal desactivado.' : 'Canal activado.',
+        );
+    };
+
+    const remove = (channel: ChannelRow) => {
+        if (base === null) {
+            return;
+        }
+
+        void submit(
+            deleteJson(`${base}/channels/${channel.id}`),
+            'Canal eliminado.',
+        );
+    };
+
+    const testChannel = async (channel: ChannelRow) => {
+        if (base === null) {
+            return;
+        }
+
+        if (testAddress === '') {
+            toast.error(
+                'Indica el destino de prueba (email, teléfono, user id o URL).',
+            );
+
+            return;
+        }
+
+        setTestingId(channel.id);
+
+        try {
+            const response = await postJson(
+                `${base}/channels/${channel.id}/test`,
+                { address: testAddress },
+            );
+            const payload = (await response.json()) as {
+                data?: { success?: boolean; error?: string | null };
+            };
+
+            if (response.ok && payload.data?.success) {
+                toast.success('Mensaje de prueba enviado. Revisa el destino.');
+            } else {
+                toast.error(
+                    payload.data?.error ?? 'La prueba del canal falló.',
+                );
+            }
+        } catch {
+            toast.error('Error de red. Vuelve a intentarlo.');
+        } finally {
+            setTestingId(null);
+        }
+    };
+
+    const fields = CHANNEL_CONFIG_FIELDS[form.channelType] ?? [];
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle className="flex items-center justify-between text-[13px] uppercase">
+                    Canales de notificación ({channels.length})
+                    {canManage && (
+                        <Button
+                            size="sm"
+                            variant={creating ? 'ghost' : 'outline'}
+                            onClick={() => setCreating(!creating)}
+                        >
+                            {creating ? 'Cancelar' : 'Nuevo canal'}
+                        </Button>
+                    )}
+                </CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+                {creating && (
+                    <div className="flex flex-col gap-2 rounded-[6px] border border-border p-3">
+                        <div className="flex flex-wrap gap-2">
+                            <Input
+                                placeholder="code (ej. twilio_sms)"
+                                value={form.code}
+                                onChange={(e) =>
+                                    setForm({ ...form, code: e.target.value })
+                                }
+                                className="w-48 font-mono text-[12px]"
+                            />
+                            <Input
+                                placeholder="Nombre"
+                                value={form.name}
+                                onChange={(e) =>
+                                    setForm({ ...form, name: e.target.value })
+                                }
+                                className="w-56 text-[12px]"
+                            />
+                            <select
+                                value={form.channelType}
+                                onChange={(e) =>
+                                    setForm({
+                                        ...form,
+                                        channelType: e.target.value,
+                                        config: {},
+                                    })
+                                }
+                                className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-[12px]"
+                            >
+                                {channelTypes.map((type) => (
+                                    <option key={type} value={type}>
+                                        {type}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        {fields.map((field) => (
+                            <div
+                                key={field.key}
+                                className="flex flex-col gap-1"
+                            >
+                                <Label className="text-[12px]">
+                                    {field.label}
+                                </Label>
+                                <Input
+                                    type="password"
+                                    autoComplete="off"
+                                    value={form.config[field.key] ?? ''}
+                                    onChange={(e) =>
+                                        setForm({
+                                            ...form,
+                                            config: {
+                                                ...form.config,
+                                                [field.key]: e.target.value,
+                                            },
+                                        })
+                                    }
+                                    className="max-w-md font-mono text-[12px]"
+                                />
+                            </div>
+                        ))}
+                        <div>
+                            <Button size="sm" onClick={create}>
+                                Crear canal
+                            </Button>
+                        </div>
+                    </div>
+                )}
+
+                {canManage && channels.length > 0 && (
+                    <div className="flex items-center gap-2">
+                        <Label className="text-[12px] whitespace-nowrap">
+                            Destino de prueba
+                        </Label>
+                        <Input
+                            placeholder="email, +52…, user id o URL"
+                            value={testAddress}
+                            onChange={(e) => setTestAddress(e.target.value)}
+                            className="max-w-xs text-[12px]"
+                        />
+                    </div>
+                )}
+
+                {channels.length === 0 ? (
+                    <p className="text-[12px] text-fg-3">
+                        Sin canales — configura Slack, Twilio (SMS/WhatsApp) o
+                        FCM para que las notificaciones y B9 operen.
+                    </p>
+                ) : (
+                    <ul className="flex flex-col gap-2">
+                        {channels.map((channel) => (
+                            <li
+                                key={channel.id}
+                                className="flex flex-wrap items-center gap-2 rounded-[6px] border border-border p-2.5 text-[12px]"
+                            >
+                                <Badge
+                                    variant="outline"
+                                    className="font-mono text-[10px]"
+                                >
+                                    {channel.channelType}
+                                </Badge>
+                                <span className="font-medium text-fg-1">
+                                    {channel.name}
+                                </span>
+                                <span className="font-mono text-[11px] text-fg-3">
+                                    {Object.entries(channel.configSummary)
+                                        .map(
+                                            ([key, value]) => `${key}=${value}`,
+                                        )
+                                        .join(' · ') || 'sin config'}
+                                </span>
+                                {channel.isGlobal && (
+                                    <Badge
+                                        variant="outline"
+                                        className="text-[10px] text-fg-3"
+                                    >
+                                        global
+                                    </Badge>
+                                )}
+                                <Badge
+                                    variant="outline"
+                                    className={
+                                        channel.isActive
+                                            ? 'text-severity-low'
+                                            : 'text-fg-3'
+                                    }
+                                >
+                                    {channel.isActive ? 'activo' : 'inactivo'}
+                                </Badge>
+                                {canManage && !channel.isGlobal && (
+                                    <span className="ml-auto flex gap-1">
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            disabled={testingId === channel.id}
+                                            onClick={() => testChannel(channel)}
+                                        >
+                                            Probar canal
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            onClick={() =>
+                                                toggleActive(channel)
+                                            }
+                                        >
+                                            {channel.isActive
+                                                ? 'Desactivar'
+                                                : 'Activar'}
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            onClick={() => remove(channel)}
+                                        >
+                                            Eliminar
+                                        </Button>
+                                    </span>
+                                )}
+                            </li>
+                        ))}
+                    </ul>
+                )}
+            </CardContent>
+        </Card>
+    );
+}
+
 // ---- Versions tab ----
 
 function VersionsTab({ versions }: { versions: VersionRow[] }) {
@@ -1103,6 +1461,13 @@ export default function TenantConfigPage() {
                     <ScheduleTab
                         profiles={props.scheduleProfiles}
                         canManage={props.canManage}
+                    />
+                )}
+                {tab === 'channels' && (
+                    <ChannelsTab
+                        channels={props.channels}
+                        channelTypes={props.channelTypes}
+                        canManage={props.canManageChannels}
                     />
                 )}
                 {tab === 'versions' && (
