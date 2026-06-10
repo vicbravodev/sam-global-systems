@@ -7,6 +7,7 @@ use App\Domains\AI\Data\MediaAssessmentInput;
 use App\Domains\AI\Enums\EvaluationMode;
 use App\Domains\AI\Enums\MediaAssessmentResult;
 use App\Domains\AI\Enums\MediaAssessmentType;
+use App\Domains\AI\Events\MediaAssessmentCompleted;
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\AI\Models\AIInferenceLog;
 use App\Domains\AI\Models\AIMediaAssessment;
@@ -41,6 +42,9 @@ class EvaluateEventMultimodally
 
         /** @var Collection<int, AIMediaAssessment> $assessments */
         $assessments = collect();
+
+        /** @var Collection<int, AIMediaAssessment> $createdAssessments */
+        $createdAssessments = collect();
 
         foreach ($mediaContexts as $media) {
             $existing = AIMediaAssessment::query()
@@ -84,6 +88,7 @@ class EvaluateEventMultimodally
                 ]));
 
                 $assessments->push($assessment);
+                $createdAssessments->push($assessment);
 
                 continue;
             }
@@ -112,10 +117,15 @@ class EvaluateEventMultimodally
             });
 
             $assessments->push($assessment);
+            $createdAssessments->push($assessment);
         }
 
         $this->promoteEvaluationMode($evaluation);
         $this->refreshInferenceMediaCount($evaluation);
+
+        if ($createdAssessments->isNotEmpty()) {
+            MediaAssessmentCompleted::dispatch($evaluation, $createdAssessments);
+        }
 
         return $assessments;
     }

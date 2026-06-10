@@ -3,8 +3,10 @@
 namespace App\Domains\Incidents;
 
 use App\Contracts\Incidents\IncidentMetricsQuery;
+use App\Domains\AI\Events\MediaAssessmentCompleted;
 use App\Domains\Decisions\Events\DecisionMade;
 use App\Domains\Incidents\Events\IncidentCreated;
+use App\Domains\Incidents\Listeners\AnnotateIncidentOnMediaAssessmentCompleted;
 use App\Domains\Incidents\Listeners\ApplyExternalResolutionOnEventNormalized;
 use App\Domains\Incidents\Listeners\AssignOnCallOnIncidentCreated;
 use App\Domains\Incidents\Listeners\CreateIncidentOnDecisionMade;
@@ -30,5 +32,6 @@ class IncidentsServiceProvider extends ServiceProvider
         Event::listen(DecisionMade::class, CreateIncidentOnDecisionMade::class);
         Event::listen(EventNormalized::class, ApplyExternalResolutionOnEventNormalized::class);
         Event::listen(IncidentCreated::class, AssignOnCallOnIncidentCreated::class);
+        Event::listen(MediaAssessmentCompleted::class, AnnotateIncidentOnMediaAssessmentCompleted::class);
     }
 }

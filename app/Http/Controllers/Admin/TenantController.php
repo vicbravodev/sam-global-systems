@@ -12,6 +12,7 @@ use App\Domains\Tenancy\Actions\CreateTenant;
 use App\Domains\Tenancy\Actions\DeleteTenant;
 use App\Domains\Tenancy\Actions\ResolveAssetLimit;
 use App\Domains\Tenancy\Actions\UpdateTenant;
+use App\Domains\Tenancy\Models\InvoiceSnapshot;
 use App\Domains\Tenancy\Models\Plan;
 use App\Domains\Tenancy\Models\Subscription;
 use App\Domains\Tenancy\Models\TenantBranding;
@@ -170,6 +171,21 @@ class TenantController extends Controller
             'members' => $members,
             'features' => $features,
             'usage' => $usage,
+            'invoices' => InvoiceSnapshot::withoutGlobalScopes()
+                ->where('team_id', $team->id)
+                ->orderByDesc('period_start')
+                ->limit(12)
+                ->get()
+                ->map(fn ($invoice) => [
+                    'id' => (int) $invoice->id,
+                    'periodStart' => $invoice->period_start?->toDateString(),
+                    'periodEnd' => $invoice->period_end?->toDateString(),
+                    'total' => (float) $invoice->total,
+                    'currency' => (string) $invoice->currency,
+                    'status' => $invoice->status?->value ?? (string) $invoice->status,
+                    'hasReceipt' => $invoice->payment_receipt_file_object_id !== null,
+                    'paidAt' => $invoice->paid_at?->toDateString(),
+                ])->values()->all(),
             'plans' => $this->planOptions(),
             'assetUsage' => [
                 'limit' => $resolveAssetLimit->execute((int) $team->id),

@@ -19,9 +19,11 @@ createInertiaApp({
                 return null;
             case name.startsWith('auth/'):
                 return AuthLayout;
-            // Team-scoped settings (roles) live in the ops shell, not in the
-            // user-level settings layout. Must match before `settings/`.
+            // Team-scoped settings (roles, tenant config) live in the ops
+            // shell, not in the user-level settings layout. Must match
+            // before `settings/`.
             case name.startsWith('settings/roles'):
+            case name.startsWith('settings/tenant-config'):
                 return OpsLayout;
             case name.startsWith('settings/'):
             case name.startsWith('teams/'):
@@ -34,6 +36,12 @@ createInertiaApp({
             case name.startsWith('incidents/'):
             case name.startsWith('integrations/'):
             case name.startsWith('notifications/'):
+            case name.startsWith('rules/'):
+            case name.startsWith('automation/'):
+            case name.startsWith('analytics/'):
+            case name.startsWith('audit/'):
+            case name.startsWith('billing/'):
+            case name.startsWith('events/'):
                 return OpsLayout;
             default:
                 return AppLayout;

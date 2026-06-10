@@ -33,11 +33,11 @@ El producto terminado es: un operador de flota abre SAM, ve su flota en vivo, re
 
 | # | Gap | Detalle |
 |---|-----|---------|
-| B7 | **Ejecutores de Automation son stubs** | `ExecuteAction::dispatchByType`: solo `CallWebhook` ejecuta de verdad. `SendEmail`/`SendSms`/`SendWhatsapp`/`SendPush` devuelven `{'stub': true}` — NO puentean al dominio Notifications (cuyos drivers Twilio/FCM/Slack SÍ son reales). `CreateTicket`/`AssignIncident`/`Escalate`/`UpdateAssetState`/`RequestHumanReview` también stubs. Las automatizaciones "se disparan" pero casi nada pasa. |
-| B8 | **El loop multimodal no se cierra** | Media diferida llega minutos DESPUÉS de que la decisión ya corrió: `EvaluateEventMediaJob` crea el `AIMediaAssessment` pero nada re-dispara el motor de decisiones ni actualiza el incidente. El fact `media_assessment` (P7) solo sirve si la decisión corre después del media — caso inline únicamente. Falta: al completarse el assessment → re-evaluar decisión / anotar incidente / timeline / broadcast. |
-| B9 | **Twilio bidireccional (confirmar/descartar por SMS/WhatsApp)** | No existe webhook entrante de Twilio. El operador recibe el SMS/WhatsApp pero no puede responder "CONFIRMAR"/"DESCARTAR" para actuar sobre el incidente. Falta: ruta pública `POST /webhooks/twilio` (firma `X-Twilio-Signature`), correlación mensaje↔incidente (token corto en el mensaje saliente), acciones ack/descartar/escalar, timeline + auditoría. |
-| B1b | Billing/Branding tenant-facing | `BillingController` + `BrandingController` web (policies B1a ya existen). Alimenta F7. |
-| B2 | Billing local (transferencia) | Facturas/comprobantes por periodo (FileObject listo), estado de pago, activar/desactivar tenant por impago (suspensión super-admin como base). Evaluar retirar Cashier. |
+| ~~B7~~ | ~~Ejecutores de Automation son stubs~~ | ✅ **CERRADO (PR #63)** — ver §7. Solo `CreateTicket`/`UpdateAssetState` quedan en V2 (§5). |
+| ~~B8~~ | ~~El loop multimodal no se cierra~~ | ✅ **CERRADO (PR #63)** — ver §7. |
+| ~~B9~~ | ~~Twilio bidireccional~~ | ✅ **CERRADO (PR #63)** — ver §7. |
+| ~~B1b~~ | ~~Billing/Branding tenant-facing~~ | ✅ **CERRADO (PR #63)** — ver §7. |
+| ~~B2~~ | ~~Billing local (transferencia)~~ | ✅ **CERRADO (PR #63)** — ver §7. |
 | B3b | Afinado IA | Routing de modelo por tenant (`TenantAIProfileData.preferredModel`) + tuning de prompts. Menor. |
 
 **Nota operativa media:** el auto-request de footage en críticos está gateado por `TenantSetting media.auto_request_on_critical` con **default OFF** (consume cuota). Para verlo operar en dev/demo hay que activarlo por tenant — y la UI para hacerlo es parte de F-TenantConfig.
@@ -50,17 +50,11 @@ El producto terminado es: un operador de flota abre SAM, ve su flota en vivo, re
 
 | Link muerto | API que ya existe |
 |-------------|-------------------|
-| Eventos | `GET /events/normalized` (+show, +unmapped) |
-| Reglas | CRUD `decisions/rules` + `normalization/mapping-rules` + `settings/rules` (overrides) + escalation policies |
-| Automatizaciones | CRUD `automation/workflows` + ejecuciones + retry/confirm |
-| Analítica | `analytics/reports` + executions + download PDF/XLSX, KPIs |
-| Auditoría | `audit/logs` + `audit/events` |
-| Configuración (tenant) | TenantConfig completo: settings, AI profile, notificaciones, escalación, schedule, versions |
 
 **Gaps de la UI existente (no son páginas nuevas, son deudas de lo ya shippeado):**
 
-- **Incidentes — detalle apretado y sin media (F9)**: el detalle es un panel inline dentro de `incidents/index.tsx` (1062 líneas) con textos truncados y mal aprovechamiento del espacio. NO consume `GET /events/{id}/media` ni muestra `media_snapshot` — el operador no ve el footage que el pipeline ya descarga, ni tiene botón "Solicitar media" (`POST /events/{id}/media/request` existe y no se usa). Tampoco muestra los `AIMediaAssessment` (lo que la IA "vio" en las imágenes) ni el historial relacionado de P8.
-- **Notificaciones — falta gestión de canales del tenant (F5c)**: configurar Slack/Twilio/FCM (`NotificationChannel`, secrets con `EncryptedChannelConfigCast`) no tiene UI.
+- ~~Incidentes — detalle apretado y sin media (F9)~~ — ✅ **CERRADO (PR #63)**: detalle full-page con galería de media, assessments IA, solicitar media e historial relacionado; el panel de la bandeja conserva el JSON y gana CTA "Abrir detalle".
+- ~~Notificaciones — falta gestión de canales del tenant (F5c)~~ — ✅ **CERRADO (PR #63)**: tab Canales en Configuración con CRUD, secrets enmascarados y probar canal.
 
 ---
 
@@ -70,37 +64,37 @@ Patrón obligatorio (el de `integrations/index`, PR #31): controller web dedicad
 
 ### Fase A — Cerrar el corazón del monitoreo automatizado (media + automation + 2-vías)
 
-**B8 — Cerrar el loop multimodal.** Al completarse un `AIMediaAssessment` de media diferida: (1) anotar el incidente vinculado (timeline `media_assessed` con resultado/confianza/resumen), (2) re-correr el motor de decisiones sobre la evaluación enriquecida (el fact `media_assessment` de P7 por fin tiene efecto en el caso real), (3) broadcast para que la bandeja se refresque. Si el assessment contradice la severidad (p.ej. falsa alarma visualmente confirmada) → `requires_human_review`, nunca auto-cerrar. Tests: media inline (decisión ya la ve) vs diferida (re-run), idempotencia, no re-run si incidente terminal. **Esfuerzo: M.**
+**B8 — Cerrar el loop multimodal. ✅ COMPLETADO (PR #63)** — ver §7.
 
-**B7 — Ejecutores reales de Automation.** Puentear `ExecuteAction` a los dominios dueños: `Send*` → pipeline de Notifications (drivers reales ya existen; resolver canal del tenant + destinatario del `target_reference`); `AssignIncident`/`Escalate`/`RequestHumanReview` → acciones de Incidents (`AssignIncident`, `EscalateIncident` existen); `CreateTicket`/`UpdateAssetState` → definir alcance mínimo o mover a V2 si no hay caso de uso. Usage metered por acción ejecutada. Tests por tipo. **Esfuerzo: M. Sin esto, F12 (UI de automatizaciones) sería una UI de mentira.**
+**B7 — Ejecutores reales de Automation. ✅ COMPLETADO (PR #63)** — ver §7. `CreateTicket`/`UpdateAssetState` movidos a V2 (§5).
 
-**B9 — Twilio bidireccional (confirmar/descartar por SMS/WhatsApp).** Webhook entrante `POST /webhooks/twilio` (público, validación `X-Twilio-Signature`, throttle): el mensaje saliente de incidente crítico (P5) incluye un token corto (`RESPONDE: SI-4F2A confirma / NO-4F2A descarta`); el inbound correlaciona token→incidente+usuario (tabla `notification_reply_tokens` con expiración), ejecuta ack/descartar/escalar vía las acciones existentes de Incidents, registra timeline (`acknowledged via whatsapp`) + auditoría, y responde TwiML de confirmación. Números no reconocidos → log y silencio. Tests: firma inválida 403, token expirado, doble respuesta idempotente, aislamiento de tenant. **Esfuerzo: M-L. Este es el cierre del monitoreo automatizado: SAM detecta → evalúa con visión → notifica → el operador resuelve desde el teléfono.**
+**B9 — Twilio bidireccional. ✅ COMPLETADO (PR #63)** — ver §7. **Fase A cerrada: el monitoreo automatizado opera de punta a punta.**
 
 ### Fase B — La bandeja a la altura del pipeline
 
-**F9 — Rediseño del detalle de incidente + media viewer.** Decisión de UX: detalle **full-page** `incidents/{incident}` (ruta web Inertia nueva; el endpoint JSON actual queda para el panel) manteniendo un panel lateral compacto en la bandeja con CTA "Abrir detalle". El full-page organiza en grid amplio: encabezado con SLA/estado, **galería de media** (`GET /events/{id}/media` + `temporaryUrl`, lightbox para imágenes/video), evaluación IA con assessments multimodales ("qué vio la IA en el footage"), botón **"Solicitar media"** (`POST /events/{id}/media/request` con estado pending→ready en realtime), contexto operativo, historial relacionado (P8), timeline y comentarios. Arreglar truncamientos/espaciado del panel actual. Tests Inertia del controller nuevo. **Esfuerzo: 2 sesiones. Depende de nada; B8 lo enriquece.**
+**F9 — Rediseño del detalle de incidente + media viewer. ✅ COMPLETADO (PR #63)** — ver §7.
 
-**F10 — Página Eventos.** Browser de eventos normalizados (el link "Eventos" del sidebar): tabla con filtros (tipo/severidad/asset/fecha/estado), detalle con payload, media, evaluación y decisión vinculadas, y vista de "unmapped" (eventos sin regla de mapeo — hoy invisibles para el operador). **Esfuerzo: 1–2 sesiones.**
+**F10 — Página Eventos. ✅ COMPLETADO (PR #63)** — ver §7.
 
 ### Fase C — Inteligencia configurable desde la UI
 
-**F11 — Página Reglas.** Una sola página con tabs: (a) reglas de decisión (CRUD `decisions/rules` — condiciones JSON con builder simple o editor validado, prioridad, activo), (b) reglas de mapeo de normalización (`normalization/mapping-rules`), (c) overrides del tenant (`settings/rules`). Mostrar las reglas seed (panic, falsa alarma P7) con su estado. **Esfuerzo: 2–3 sesiones.**
+**F11 — Página Reglas. ✅ COMPLETADO (PR #63)** — ver §7.
 
-**F12 — Página Automatizaciones.** Lista de workflows + detalle con steps y ejecuciones (con su log y retry/confirm); builder simple (trigger + condiciones + acciones de `ActionTemplate`). Empieza read-only si el builder crece. **Depende de B7.** **Esfuerzo: 2–3 sesiones.**
+**F12 — Página Automatizaciones. ✅ COMPLETADO (PR #63)** — ver §7.
 
-**F-TC — Página Configuración del tenant.** Settings generales (incluye toggle `media.auto_request_on_critical` y `panic.auto_close_on_external_resolution`), AI profile, política de notificaciones, escalación (`TenantEscalationConfig.steps_json` — la usa P6), schedule on-call (la usa P5), historial de versiones. **Esfuerzo: 2 sesiones. Sube de prioridad respecto al roadmap anterior: P5/P6/B8 dependen de estos settings y hoy solo se editan por API/tinker.**
+**F-TC — Página Configuración del tenant. ✅ COMPLETADO (PR #63)** — ver §7.
 
 ### Fase D — Cierre operativo y monetización
 
-**F5c — Gestión de canales de notificación del tenant.** CRUD de `NotificationChannel` (Slack webhook, Twilio SID/token, FCM) con secrets cifrados y botón "probar canal". Prerrequisito práctico de B9 en producción. **Esfuerzo: 1 sesión.**
+**F5c — Gestión de canales de notificación del tenant. ✅ COMPLETADO (PR #63)** — ver §7.
 
-**F13 — Analítica.** Dashboard de KPIs (`KpiRecord`/snapshots) + definición/ejecución de reportes con download PDF/XLSX (backend real). **Esfuerzo: 2–3 sesiones.**
+**F13 — Analítica. ✅ COMPLETADO (PR #63)** — ver §7.
 
-**F14 — Auditoría del tenant.** Tabla de `audit/logs` + `audit/events` con filtros (la consola super-admin ya tiene la suya cross-tenant; esta es la vista del tenant). **Esfuerzo: 1 sesión.**
+**F14 — Auditoría del tenant. ✅ COMPLETADO (PR #63)** — ver §7. **Fase D completa: el sidebar no tiene links muertos.**
 
-**B1b + F7 — Billing + Branding tenant-facing.** Controllers web (policies listas) + página de consumo (meters, agregados, invoice snapshots) y branding (logo FileObject, colores). **Esfuerzo: 2 sesiones.**
+**B1b + F7 — Billing + Branding tenant-facing. ✅ COMPLETADO (PR #63)** — ver §7.
 
-**B2 — Billing local (transferencia).** Facturas/comprobantes por periodo, estado de pago, suspensión por impago reutilizando el ciclo de vida del super-admin. Evaluar retirar Cashier/Billable. **Esfuerzo: 2 sesiones.**
+**B2 — Billing local (transferencia). ✅ COMPLETADO (PR #63)** — ver §7. Cashier/Billable **retirado** (2026-06-10, autorizado por el usuario): paquete removido, trait `Billable` fuera de `Team`, `ReportUsageToStripeJob` eliminado.
 
 ---
 
@@ -108,11 +102,11 @@ Patrón obligatorio (el de `integrations/index`, PR #31): controller web dedicad
 
 | Fase | Ítems | Resultado |
 |------|-------|-----------|
-| **A. Monitoreo automatizado real 🔵 ACTUAL** | B8 (loop multimodal) → B7 (executors) → B9 (Twilio 2-vías) | El pipeline completo opera solo: detecta, pide footage, lo evalúa, re-decide, notifica, y el operador confirma/descarta desde el teléfono |
-| **B. Bandeja a la altura** | F9 (detalle full-page + media viewer) → F10 (eventos) | El operador VE todo lo que el pipeline produce (footage, visión IA, historial) en una UI espaciosa |
-| **C. Inteligencia configurable** | F-TC (tenant config) → F11 (reglas) → F12 (automatizaciones, tras B7) | Cero links muertos de inteligencia; el tenant se autoconfigura sin tinker |
-| **D. Cierre operativo** | F5c (canales) → F13 (analítica) → F14 (auditoría) | Producto operativo completo, sidebar 100% vivo |
-| **E. Monetización** | B1b+F7 (billing/branding UI) → B2 (billing local) | Listo para facturar |
+| **A. Monitoreo automatizado real** ✅ COMPLETA (PR #63) | ~~B8~~ ✅ → ~~B7~~ ✅ → ~~B9~~ ✅ | El pipeline completo opera solo: detecta, pide footage, lo evalúa, re-decide, notifica, y el operador confirma/descarta desde el teléfono |
+| **B. Bandeja a la altura** ✅ COMPLETA (PR #63) | ~~F9~~ ✅ → ~~F10~~ ✅ | El operador VE todo lo que el pipeline produce (footage, visión IA, historial) en una UI espaciosa |
+| **C. Inteligencia configurable** ✅ COMPLETA (PR #63) | ~~F-TC~~ ✅ → ~~F11~~ ✅ → ~~F12~~ ✅ | Cero links muertos de inteligencia; el tenant se autoconfigura sin tinker |
+| **D. Cierre operativo** ✅ COMPLETA (PR #63) | ~~F5c~~ ✅ → ~~F13~~ ✅ → ~~F14~~ ✅ | Producto operativo completo, sidebar 100% vivo |
+| **E. Monetización** ✅ COMPLETA (PR #63) | ~~B1b+F7~~ ✅ → ~~B2~~ ✅ | Listo para facturar |
 
 **Regla de decisión al abrir sesión:** si la fase actual tiene un ítem a medias, continuarlo; si no, tomar el siguiente de la tabla. Un PR por ítem (o sub-ítem), CI verde antes de merge, y actualizar este documento en el mismo PR.
 
@@ -162,3 +156,16 @@ Patrón obligatorio (el de `integrations/index`, PR #31): controller web dedicad
   - **P7** Falsa alarma: señales `external_resolved`/`parked_at_base`/`repeated_panic_24h`/`media_assessment`, outcome `REQUIRE_HUMAN_REVIEW`, regla seed opt-in, prompt anti-coacción (panic "resuelto" en carretera nunca se degrada).
   - **P8** Vínculo histórico: `GetPriorSimilarIncidents` (cerrados 7d), `PriorSimilarIncidentLink`, signal `has_prior_similar_incident`.
 - **T1/T2** — `assertInertia` en 5 páginas sin aserción + authz endpoint-level de incidents API (PR #58).
+- **B8** — Loop multimodal cerrado (PR #63): `MediaAssessmentCompleted` (solo assessments nuevos, idempotente) → `ReevaluateEventJob` con trigger `media_arrived` (guards: inline sin decisión, media ya evaluada en otra versión anti-loop, incidente terminal no re-corre); fact `media_assessment` cross-versión de evaluación; guard de contradicción en `ResolveDecisionOutcome` (footage que contradice un evento con decisión accionable previa → `REQUIRE_HUMAN_REVIEW`, nunca auto-cerrar); timeline `media_assessed` por assessment + broadcast `incidents.updated` que la bandeja ahora escucha.
+- **B7** — Ejecutores reales de Automation (PR #63): `ExecuteAction` puentea `Send*` al pipeline de Notifications (destinatarios desde el target del step — email/phone directo, user id, rol del team o `recipients` explícitos —, render del `ActionTemplate`, canal fijado con `force_channels` cuyo gate real es el `NotificationChannel` activo del tenant); `AssignIncident`/`Escalate`/`RequestHumanReview` ejecutan las actions reales de Incidents (nueva `RequestIncidentReview` open→in_review); meter `automation_actions` idempotente por ejecución; `CreateTicket`/`UpdateAssetState` → V2.
+- **B9** — Twilio bidireccional (PR #63): tabla `notification_reply_tokens` (token corto TTL 24h, reusado por incidente+address); los SMS/WhatsApp de incidente crítico llevan "Responde SI-XXXX / NO-XXXX / ESC-XXXX" (SMS pre-ajustado a 160); webhook `POST /api/webhooks/twilio` valida `X-Twilio-Signature` contra el canal del tenant resuelto por el número `To` (403 si falla); `ProcessInboundReply` ejecuta ack/falsa-alarma/escalar vía actions de Incidents con timeline "via sms/whatsapp" + auditoría `incident.reply.*`; desconocidos/tenant ajeno/sender inesperado → log y silencio; doble respuesta idempotente. **Fase A completa.**
+- **B2** — Billing local por transferencia (PR #63): comprobante de pago por factura (tenant sube pdf/imagen → FileObject `payment_receipt` + nota), card Facturas en la consola super-admin con Marcar pagada / Anular (+auditoría billing), `paid_at`/estado en la página del tenant; suspensión por impago = control existente. **TODAS las fases V1 (A–E) completas.** Cashier retirado en el mismo PR.
+- **B1b+F7** — Facturación y Marca (PR #63): página billing (plan, consumo por meter con barras, funcionalidades, facturas; item del sidebar) + tab Marca en Configuración (nombre/colores/firma + logo a rustfs con FileObject y preview vía temporaryUrl); policies B1a aplicadas. Verificado visualmente.
+- **F14** — Página Auditoría del tenant (PR #63): tabs Auditoría (AuditLog paginado con filtros por búsqueda/categoría/actor/fechas) y Eventos de dominio; fix de routing — el grupo /admin se declara antes del wildcard {current_team} para que /{team}/audit no trague /admin/audit. **Fase D completa, sidebar 100% vivo.** Verificado visualmente.
+- **F13** — Página Analítica (PR #63): tabs KPIs (snapshot TenantOverview + KpiRecords) y Reportes (generación por formato + ejecuciones con download); rutas web reusando ReportController/ReportExecutionController; sidebar vivo. Verificado visualmente (job real de PDF disparado desde la UI).
+- **F5c** — Gestión de canales del tenant (PR #63): tab Canales en Configuración (CRUD por tipo con campos específicos, secrets solo enmascarados hacia el navegador, claves alineadas a los drivers para el cifrado at-rest, eliminar bloqueado en globales) + endpoint 'probar canal' que envía por el driver real. Verificado visualmente.
+- **F12** — Página Automatizaciones (PR #63): tabs Workflows (builder simple trigger+pasos con destino, toggle, disparo manual) y Ejecuciones (estado, intentos, error, retry/confirm/cancel); fix en Store/UpdateAutomationWorkflowRequest que descartaba `order`/`target_type`/`target_reference` de los steps (los executors B7 los necesitan); sidebar vivo. Verificado visualmente. **Fase C completa.**
+- **F11** — Página Reglas (PR #63): 3 tabs — decisión (seed panic/falsa-alarma visibles con estado, condiciones expandibles, crear con editor JSON validado + docs de operadores, activar/desactivar), mapeo del proveedor (41 reglas Samsara, crear/toggle) y overrides del tenant (crear/eliminar); mutaciones reusando los controllers API como rutas web; sidebar vivo. Verificado visualmente.
+- **F-TC** — Página Configuración del tenant (PR #63): 6 tabs (settings del pipeline con los toggles de media/pánico/GPS, perfil IA, políticas de notificación, escalación con editor de steps, horario on-call, versiones con snapshot); mutaciones reusando los controllers API de TenantConfig como rutas web; OpsLayout + link del sidebar vivo; `canManage` por policy. Verificado visualmente (toggle persiste en BD).
+- **F10** — Página Eventos (PR #63): `events/index` (filtros tipo/severidad/categoría/estado/fechas + búsqueda, tab "Sin mapear" con contador, paginación 50) y `events/show` (payload normalizado/contexto/crudo, evaluación IA, decisión, incidente vinculado, media, banner unmapped); `NormalizedEventPolicy` nueva sobre `context.view`; link "Eventos" del sidebar vivo. Verificado visualmente.
+- **F9** — Detalle full-page de incidente + media viewer (PR #63): `incidents/{incident}` negocia contenido (JSON para el panel de la bandeja, Inertia `incidents/show` para el navegador); grid 3 columnas reutilizando los subcomponentes del panel + `MediaGallery` (thumbnails, lightbox imagen/video con el assessment IA, botón "Solicitar media" → ruta web `incidents/{incident}/media/request`), historial relacionado (P8) y recarga realtime debounced en `incidents.updated`; CTA "Abrir detalle" en el panel de la bandeja. Verificado visualmente con la app corriendo.

@@ -9,17 +9,24 @@ interface IncidentDetailPanelProps {
     incident: IncidentDetail;
     onClose: () => void;
     onMutated: () => void;
+    /** Full-page detail URL shown as the "Abrir detalle" CTA (F9). */
+    detailHref?: string;
 }
 
 export function IncidentDetailPanel({
     incident,
     onClose,
     onMutated,
+    detailHref,
 }: IncidentDetailPanelProps) {
     return (
         <IncidentActionsProvider incident={incident} onMutated={onMutated}>
             <div className="flex min-w-0 flex-col overflow-hidden border-l border-border bg-background">
-                <DetailHeader incident={incident} onClose={onClose} />
+                <DetailHeader
+                    incident={incident}
+                    onClose={onClose}
+                    detailHref={detailHref}
+                />
 
                 <div className="grid min-h-0 flex-1 [grid-template-columns:minmax(220px,1fr)_minmax(0,1.5fr)_minmax(260px,1fr)] overflow-x-hidden overflow-y-auto max-[1280px]:[grid-template-columns:1fr]">
                     {/* Col 1: Timeline */}

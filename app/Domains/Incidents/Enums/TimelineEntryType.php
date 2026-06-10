@@ -20,4 +20,5 @@ enum TimelineEntryType: string
     case Reopened = 'reopened';
     case Reclassified = 'reclassified';
     case EventLinked = 'event_linked';
+    case MediaAssessed = 'media_assessed';
 }

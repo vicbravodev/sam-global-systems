@@ -1,4 +1,5 @@
-import { ExternalLink, MapPin, Truck, User } from 'lucide-react';
+import { Link } from '@inertiajs/react';
+import { ExternalLink, Maximize2, MapPin, Truck, User } from 'lucide-react';
 import { SeverityBadge, StatusPill, ProviderTag } from '@/components/sam';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -69,9 +70,15 @@ function BigSlaDisplay({ incident }: BigSlaDisplayProps) {
 interface DetailHeaderProps {
     incident: IncidentDetail;
     onClose: () => void;
+    /** When set, shows the "Abrir detalle" CTA navigating to the full page. */
+    detailHref?: string;
 }
 
-export function DetailHeader({ incident, onClose }: DetailHeaderProps) {
+export function DetailHeader({
+    incident,
+    onClose,
+    detailHref,
+}: DetailHeaderProps) {
     return (
         <div
             className="grid shrink-0 items-start gap-3 border-b border-border bg-surface-1 p-[14px_18px]"
@@ -137,6 +144,14 @@ export function DetailHeader({ incident, onClose }: DetailHeaderProps) {
 
             {/* Col 3: actions */}
             <div className="flex flex-col gap-1.5">
+                {detailHref && (
+                    <Button size="sm" variant="default" asChild>
+                        <Link href={detailHref}>
+                            <Maximize2 size={12} />
+                            Abrir detalle
+                        </Link>
+                    </Button>
+                )}
                 <Button size="sm" variant="outline">
                     <ExternalLink size={12} />
                     Ver en {incident.provider}

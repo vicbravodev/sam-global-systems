@@ -81,12 +81,24 @@ interface AssetUsage {
     current: number;
 }
 
+interface InvoiceRow {
+    id: number;
+    periodStart: string | null;
+    periodEnd: string | null;
+    total: number;
+    currency: string;
+    status: string;
+    hasReceipt: boolean;
+    paidAt: string | null;
+}
+
 interface AdminTenantShowProps {
     tenant: Tenant;
     subscription: Subscription | null;
     members: Member[];
     features: Feature[];
     usage: UsageRow[];
+    invoices: InvoiceRow[];
     plans: PlanOption[];
     assetUsage: AssetUsage;
 }
@@ -141,6 +153,7 @@ export default function AdminTenantShow({
     members,
     features,
     usage,
+    invoices,
     plans,
     assetUsage,
 }: AdminTenantShowProps) {
@@ -759,6 +772,82 @@ export default function AdminTenantShow({
                                 </Button>
                             </div>
                         ) : null}
+                    </Panel>
+
+                    <Panel title="Facturas (transferencia)">
+                        {invoices.length === 0 ? (
+                            <p className="text-sm text-fg-3">Sin facturas.</p>
+                        ) : (
+                            <ul className="flex flex-col gap-2 text-sm">
+                                {invoices.map((invoice) => (
+                                    <li
+                                        key={invoice.id}
+                                        className="flex flex-wrap items-center gap-2"
+                                    >
+                                        <span className="font-mono text-xs text-fg-3">
+                                            #{invoice.id}
+                                        </span>
+                                        <span>
+                                            {invoice.periodStart} —{' '}
+                                            {invoice.periodEnd}
+                                        </span>
+                                        <span className="font-semibold">
+                                            {invoice.total.toLocaleString('es')}{' '}
+                                            {invoice.currency}
+                                        </span>
+                                        <span className="text-xs text-fg-3">
+                                            {invoice.status}
+                                            {invoice.hasReceipt &&
+                                                ' · comprobante recibido'}
+                                            {invoice.paidAt &&
+                                                ` · pagada ${invoice.paidAt}`}
+                                        </span>
+                                        {invoice.status !== 'paid' && (
+                                            <span className="ml-auto flex gap-1">
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    onClick={() =>
+                                                        router.post(
+                                                            `/admin/tenants/${tenant.slug}/invoices/${invoice.id}/mark-paid`,
+                                                            {},
+                                                            {
+                                                                preserveScroll: true,
+                                                                onSuccess: () =>
+                                                                    toast.success(
+                                                                        'Factura marcada como pagada.',
+                                                                    ),
+                                                            },
+                                                        )
+                                                    }
+                                                >
+                                                    Marcar pagada
+                                                </Button>
+                                                <Button
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    onClick={() =>
+                                                        router.post(
+                                                            `/admin/tenants/${tenant.slug}/invoices/${invoice.id}/void`,
+                                                            {},
+                                                            {
+                                                                preserveScroll: true,
+                                                                onSuccess: () =>
+                                                                    toast.success(
+                                                                        'Factura anulada.',
+                                                                    ),
+                                                            },
+                                                        )
+                                                    }
+                                                >
+                                                    Anular
+                                                </Button>
+                                            </span>
+                                        )}
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
                     </Panel>
 
                     <Panel title="Uso (periodo actual)">

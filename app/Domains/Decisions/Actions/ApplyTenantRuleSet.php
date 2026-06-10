@@ -3,6 +3,7 @@
 namespace App\Domains\Decisions\Actions;
 
 use App\Contracts\TenantConfig\TenantDecisionRulesResolver;
+use App\Domains\AI\Enums\MediaAssessmentResult;
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\AI\Models\AIMediaAssessment;
 use App\Domains\Context\Models\EventContextSnapshot;
@@ -105,18 +106,29 @@ class ApplyTenantRuleSet
     }
 
     /**
-     * Latest multimodal media assessment for this evaluation, if any — lets
-     * tenant rules react to what the footage showed (e.g. clear_cabin).
+     * Latest multimodal media assessment for the event, if any — lets tenant
+     * rules react to what the footage showed (e.g. clear_cabin). Resolved
+     * across every evaluation version of the same normalized event: deferred
+     * media is assessed under the evaluation that was current when it landed,
+     * while re-evaluations create fresh versions that must still see it.
      */
     private function resolveMediaAssessment(AIEventEvaluation $eval): ?string
     {
+        $evaluationIds = AIEventEvaluation::withoutGlobalScopes()
+            ->where('normalized_event_id', $eval->normalized_event_id)
+            ->select('id');
+
         $result = AIMediaAssessment::query()
-            ->where('evaluation_id', $eval->id)
+            ->whereIn('evaluation_id', $evaluationIds)
             ->orderByDesc('assessed_at')
             ->orderByDesc('id')
             ->value('result');
 
-        return $result !== null ? (string) $result : null;
+        if ($result instanceof MediaAssessmentResult) {
+            return $result->value;
+        }
+
+        return is_string($result) && $result !== '' ? $result : null;
     }
 
     private function resolveEventTypeCode(?int $eventTypeId): ?string

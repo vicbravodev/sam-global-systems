@@ -31,6 +31,9 @@ class StoreAutomationWorkflowRequest extends FormRequest
             'steps_json.*.action_type' => ['required', 'string'],
             'steps_json.*.execution_mode' => ['nullable', 'string'],
             'steps_json.*.delay_seconds' => ['nullable', 'integer', 'min:0'],
+            'steps_json.*.order' => ['nullable', 'integer', 'min:1'],
+            'steps_json.*.target_type' => ['nullable', 'string', 'max:100'],
+            'steps_json.*.target_reference' => ['nullable', 'string', 'max:255'],
             'is_active' => ['nullable', 'boolean'],
         ];
     }

@@ -16,6 +16,7 @@ import {
     Truck,
     Users,
     Workflow,
+    Receipt,
 } from 'lucide-react';
 import { useState } from 'react';
 import {
@@ -157,7 +158,7 @@ export function OpsSidebar({ navBadges }: OpsSidebarProps) {
                 {
                     label: 'Eventos',
                     icon: History,
-                    href: '#',
+                    href: `/${teamSlug}/events`,
                 },
                 {
                     label: 'Mapa en vivo',
@@ -187,18 +188,18 @@ export function OpsSidebar({ navBadges }: OpsSidebarProps) {
                 {
                     label: 'Reglas',
                     icon: Workflow,
-                    href: '#',
+                    href: `/${teamSlug}/rules`,
                     badge: 'rules',
                 },
                 {
                     label: 'Automatizaciones',
                     icon: Radar,
-                    href: '#',
+                    href: `/${teamSlug}/automation`,
                 },
                 {
                     label: 'Analítica',
                     icon: BarChart3,
-                    href: '#',
+                    href: `/${teamSlug}/analytics`,
                 },
             ],
         },
@@ -219,7 +220,12 @@ export function OpsSidebar({ navBadges }: OpsSidebarProps) {
                 {
                     label: 'Auditoría',
                     icon: FileClock,
-                    href: '#',
+                    href: `/${teamSlug}/audit`,
+                },
+                {
+                    label: 'Facturación',
+                    icon: Receipt,
+                    href: `/${teamSlug}/billing`,
                 },
                 {
                     label: 'Equipo y roles',
@@ -229,7 +235,7 @@ export function OpsSidebar({ navBadges }: OpsSidebarProps) {
                 {
                     label: 'Configuración',
                     icon: Settings,
-                    href: '#',
+                    href: `/${teamSlug}/settings/tenant-config`,
                 },
             ],
         },

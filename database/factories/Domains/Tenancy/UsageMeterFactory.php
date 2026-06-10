@@ -40,12 +40,4 @@ class UsageMeterFactory extends Factory
             'reset_period' => ResetPeriod::Daily,
         ]);
     }
-
-    public function withStripeProvider(string $eventName, string $meterId): static
-    {
-        return $this->state(fn () => [
-            'provider_meter_event_name' => $eventName,
-            'provider_meter_id' => $meterId,
-        ]);
-    }
 }

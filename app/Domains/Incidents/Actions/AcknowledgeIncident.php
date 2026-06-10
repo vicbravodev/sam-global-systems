@@ -17,15 +17,16 @@ class AcknowledgeIncident
     /**
      * Mark the incident as acknowledged by an operator, stopping the SLA
      * escalation chain (CheckIncidentAcknowledgementJob checks this flag).
-     * Idempotent: a second acknowledgement keeps the first one.
+     * Idempotent: a second acknowledgement keeps the first one. `$via` notes
+     * the out-of-band channel (sms/whatsapp) when the ack came from a reply.
      */
-    public function execute(Incident $incident, int $userId): Incident
+    public function execute(Incident $incident, ?int $userId, ?string $via = null): Incident
     {
         if ($incident->acknowledged_at !== null) {
             return $incident;
         }
 
-        return DB::transaction(function () use ($incident, $userId) {
+        return DB::transaction(function () use ($incident, $userId, $via) {
             $incident->update([
                 'acknowledged_at' => now(),
                 'acknowledged_by' => $userId,
@@ -34,14 +35,15 @@ class AcknowledgeIncident
             $this->appendTimelineEntry->execute(
                 incident: $incident,
                 entryType: TimelineEntryType::Acknowledged,
-                actorType: TimelineActorType::User,
+                actorType: $userId !== null ? TimelineActorType::User : TimelineActorType::System,
                 actorId: $userId,
-                title: 'Incident acknowledged',
-                payload: [
+                title: $via !== null ? "Incident acknowledged via {$via}" : 'Incident acknowledged',
+                payload: array_filter([
                     'acknowledged_by' => $userId,
+                    'via' => $via,
                     'sla_due_at' => $incident->sla_due_at?->toIso8601String(),
                     'within_sla' => $incident->sla_due_at === null || now()->lte($incident->sla_due_at),
-                ],
+                ], static fn ($value): bool => $value !== null),
             );
 
             $fresh = $incident->fresh(['status', 'priority', 'type']);

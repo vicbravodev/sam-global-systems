@@ -14,6 +14,7 @@ const TEAM_EVENTS: TeamBroadcastEvent[] = [
     'decisions.decision_made',
     'action.executed',
     'incidents.created',
+    'incidents.updated',
 ];
 
 export type TeamBroadcastDetail<
