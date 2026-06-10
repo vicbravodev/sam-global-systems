@@ -8,6 +8,7 @@ use App\Domains\AI\Enums\MediaAssessmentType;
 use App\Domains\Context\Enums\MediaType;
 use App\Infrastructure\AI\Agents\MediaInspectorAgent;
 use App\Infrastructure\AI\Agents\SdkMediaAssessmentAgent;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Ai\Responses\Data\Meta;
 use Laravel\Ai\Responses\Data\Usage;
 use Laravel\Ai\Responses\TextResponse;
@@ -15,6 +16,8 @@ use Tests\TestCase;
 
 class EvaluateMediaViaSdkTest extends TestCase
 {
+    use RefreshDatabase;
+
     public function test_wrapper_parses_structured_json_response_into_assessment_output(): void
     {
         config()->set('ai.pricing', [
