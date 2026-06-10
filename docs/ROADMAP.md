@@ -1,7 +1,7 @@
 # ROADMAP — SAM Global Systems
 
-> Documento vivo de next steps para frontend y backend. Actualizado al **2026-06-10** (F3 cerrado en PRs #53–#55; B6-P1 `isResolved` cerrado), verificado contra el código (no contra docs viejas).
-> Úsalo al inicio de cada sesión para decidir qué sigue. Cuando un ítem se complete, anótale el PR que lo cerró y muévelo a §6. Actualiza este documento en el mismo PR que cierra cada ítem.
+> Documento vivo de next steps para frontend y backend. Actualizado al **2026-06-10 (tarde)** tras auditoría completa del código: PR #58 (rutina nocturna) cerró B6 completo (P1–P8), F4 (drivers), F5a/F5b (notificaciones) y B1a (policies Tenancy).
+> Úsalo al inicio de cada sesión para decidir qué sigue. Cuando un ítem se complete, anótale el PR que lo cerró y muévelo a §7. Actualiza este documento en el mismo PR que cierra cada ítem.
 
 ---
 
@@ -10,168 +10,155 @@
 SAM es una plataforma multi-tenant de gestión de flotas. El flujo central:
 
 ```
-Proveedor externo (Samsara) → Ingestion (raw events) → Normalization → Context (enriquecimiento + media)
-  → AI (evaluación, SDK Laravel AI) → Decisions (motor de reglas) → Incidents (bandeja operativa)
-  → Automation (workflows) + Notifications (multicanal) + Audit + Analytics
+Proveedor externo (Samsara) → Ingestion (webhooks + safety events feed) → Normalization → Context (enriquecimiento + media + GPS fresco)
+  → AI (evaluación texto + multimodal) → Decisions (motor de reglas + falsa alarma) → Incidents (bandeja + SLA + escalación)
+  → Automation (workflows) + Notifications (multicanal + on-call) + Audit + Analytics
   → Billing metered local (usage events por tenant; cobro por transferencia, sin Stripe)
 ```
 
-El producto terminado es: un operador de flota abre SAM, ve su flota en vivo (mapa + telemetría), recibe incidentes generados/triageados por IA, los gestiona desde una bandeja en tiempo real, configura automatizaciones y notificaciones, y consulta analytics — todo tenant-scoped, facturado por uso.
+El producto terminado es: un operador de flota abre SAM, ve su flota en vivo, recibe incidentes triageados por IA **con evidencia visual (footage de cámara) solicitada y evaluada automáticamente**, los gestiona desde una bandeja en tiempo real con SLA y escalación reales, puede **confirmar/descartar incidentes respondiendo un SMS/WhatsApp**, configura reglas y automatizaciones desde la UI, y consulta analytics — todo tenant-scoped, facturado por uso.
 
 ---
 
-## 2. Estado actual (auditoría 2026-06-09, verificada en código)
+## 2. Estado actual (auditoría 2026-06-10, verificada en código)
 
-### Backend — ✅ COMPLETO (specs 01–16 + I1/I2/I3 + diferidos cerrados)
+### Backend — ✅ ~98% (specs 01–16 + I1/I2/I3 + B6 P1–P8 completos)
 
-- ~754+ tests verdes. 16 dominios + 3 specs de infra implementados y mergeados (PRs #1–#24).
-- **Los diferidos que CLAUDE.md §3 listaba como pendientes YA se cerraron** (PRs #18–#24):
-  - IA real: `laravel/ai ^0.6.7` instalado, `SdkEventEvaluationAgent` + `SdkMediaAssessmentAgent` bindeados condicionalmente en `AIServiceProvider` (caen a `Null*` solo si el SDK no está configurado).
-  - Multimodal: `ai_media_assessments` + `EvaluateEventMediaJob` shippeados.
-  - Reportes: render real PDF (DomPDF) y XLSX en `GenerateReport`.
-  - Canal `jobs.{jobId}` con authz real vía modelo `Job` (`routes/channels.php`).
-- Pipeline Samsara validado end-to-end con eventos reales: webhook con firma verificada (Base64), replay, seeders, sync periódica de assets/drivers/posiciones (PR #42), scheduler dedicado en compose (PR #46).
-- Consola super-admin completa (PRs #37, #41/#43/#44/#45): tenants, suscripción/plan, topes con enforcement, features, miembros, operadores, auditoría cross-tenant, impersonación, ciclo de vida.
+- ~800+ tests verdes. 16 dominios + 3 specs de infra + pipeline de emergencias completo, mergeados (PRs #1–#61).
+- **B6 (pipeline de emergencias) CERRADO COMPLETO**: `isResolved` (P1), safety events feed con cursor (P2), media on-demand con `MediaRetrievalAdapter` real de Samsara (P3), GPS fresco en críticos (P4), notificación rica + auto-asignación on-call (P5), SLA real con ack + escalación por niveles (P6), validación de falsa alarma opt-in (P7), vínculo histórico de incidentes (P8).
+- IA real operando (B3, PR #50): OpenAI por env, costo/latencia reales, multimodal vía `SdkMediaAssessmentAgent`.
+- **La superficie API tenant-scoped está COMPLETA**: CRUD de decision rules, mapping rules, escalation policies, automation workflows, tenant config (settings/AI profile/escalación/schedules/versions), audit logs, analytics reports con download PDF/XLSX, eventos normalizados, media de eventos (`GET/POST /events/{id}/media`). **El gap del producto NO es API: es UI + 4 cabos sueltos de backend (abajo).**
 
-**Gaps backend reales que quedan:**
+**Gaps backend reales que quedan (en orden de impacto):**
 
-| Gap | Detalle |
-|-----|---------|
-| Billing/Branding tenant-facing (spec 01 §9) | No existen `BillingController` ni `BrandingController` — el tenant no puede ver su consumo/facturas ni configurar branding. Único endpoint web pendiente del spec 01. |
-| Billing local (sin Stripe) | Decisión 2026-06-09: el cobro será por transferencia bancaria — **Stripe queda fuera**. Falta el modelo local: registro de facturas/comprobantes por periodo (FileObject ya existe), estado de pago, y activar/desactivar tenants fácil por impago o factura no subida (la suspensión manual del super-admin, PRs #41–#45, es la base). Evaluar retirar Cashier/Billable al implementarlo. |
-| ~~Policies Tenancy~~ | Cerrado 2026-06-10 (rutina nocturna, B1a): `SubscriptionPolicy`/`TenantBrandingPolicy`/`TenantFeaturePolicy` registradas en `TenancyServiceProvider` con tests cross-team. Quedan solo los controllers (ítem Billing/Branding, B1b). |
-| Segundo provider | Adapter pattern probado solo con Samsara; Geotab/Motive cuando haya demanda real. |
-| Pipeline de emergencias (panic) | Auditoría 2026-06-09 del flujo panic end-to-end: el incidente crítico se crea confiablemente. ~~`isResolved` sin consumir~~ (cerrado en P1: dedup por estado + `ApplyExternalResolution` + setting `annotate`/`close`); ~~sin GPS fresco~~ (cerrado en P4: `fetchLiveLocation` + staleness por TenantSetting); sin media on-demand aunque `has_camera` está en el snapshot y `EventMediaRequest`/`FetchDeferredEventMediaJob` existen (stub sin adapter); SLA decorativo (`response_sla_seconds=300` sin timer ni escalación); notificación genérica sin ubicación ni asignación de operador; ~~panics del mismo vehículo fuera de la ventana de 30 min quedan sin vínculo~~ (cerrado en P8: lookup de cerrados 7d → `PriorSimilarIncident`). **Plan completo en §4 B6 (P1 ✅, P4 ✅, P8 ✅; P2, P3, P5–P7 pendientes).** |
-| Safety events feed (Samsara) | Solo entran eventos por webhook (`AlertIncident`). El feed `GET /safety-events/stream` (behaviorLabels tipo Crash/Drowsy/MobileUsage, GPS inline, media descargable, eventState) no se consume — son los eventos de seguridad más ricos del proveedor. Plan en B6-P2. |
+| # | Gap | Detalle |
+|---|-----|---------|
+| B7 | **Ejecutores de Automation son stubs** | `ExecuteAction::dispatchByType`: solo `CallWebhook` ejecuta de verdad. `SendEmail`/`SendSms`/`SendWhatsapp`/`SendPush` devuelven `{'stub': true}` — NO puentean al dominio Notifications (cuyos drivers Twilio/FCM/Slack SÍ son reales). `CreateTicket`/`AssignIncident`/`Escalate`/`UpdateAssetState`/`RequestHumanReview` también stubs. Las automatizaciones "se disparan" pero casi nada pasa. |
+| B8 | **El loop multimodal no se cierra** | Media diferida llega minutos DESPUÉS de que la decisión ya corrió: `EvaluateEventMediaJob` crea el `AIMediaAssessment` pero nada re-dispara el motor de decisiones ni actualiza el incidente. El fact `media_assessment` (P7) solo sirve si la decisión corre después del media — caso inline únicamente. Falta: al completarse el assessment → re-evaluar decisión / anotar incidente / timeline / broadcast. |
+| B9 | **Twilio bidireccional (confirmar/descartar por SMS/WhatsApp)** | No existe webhook entrante de Twilio. El operador recibe el SMS/WhatsApp pero no puede responder "CONFIRMAR"/"DESCARTAR" para actuar sobre el incidente. Falta: ruta pública `POST /webhooks/twilio` (firma `X-Twilio-Signature`), correlación mensaje↔incidente (token corto en el mensaje saliente), acciones ack/descartar/escalar, timeline + auditoría. |
+| B1b | Billing/Branding tenant-facing | `BillingController` + `BrandingController` web (policies B1a ya existen). Alimenta F7. |
+| B2 | Billing local (transferencia) | Facturas/comprobantes por periodo (FileObject listo), estado de pago, activar/desactivar tenant por impago (suspensión super-admin como base). Evaluar retirar Cashier. |
+| B3b | Afinado IA | Routing de modelo por tenant (`TenantAIProfileData.preferredModel`) + tuning de prompts. Menor. |
 
-### Frontend — 🟡 PARCIAL (~35% de las vistas del producto)
+**Nota operativa media:** el auto-request de footage en críticos está gateado por `TenantSetting media.auto_request_on_critical` con **default OFF** (consume cuota). Para verlo operar en dev/demo hay que activarlo por tenant — y la UI para hacerlo es parte de F-TenantConfig.
 
-**Infra frontend lista:** Echo/Soketi cableado (`resources/js/echo.ts` + hooks `use-team-broadcasts` / `use-echo-channel` / `use-realtime-connection`); la bandeja de incidentes ya consume realtime.
+### Frontend — 🟡 PARCIAL (~50% de las vistas; 6 links muertos en el sidebar)
 
-| Página | Estado |
-|--------|--------|
-| `auth/*` (7 vistas Fortify) | ✅ Real |
-| `incidents/index` (bandeja + detalle, 3 layouts, SLA vivo, realtime) | ✅ Conectada al backend (PRs #27–#30, #40) |
-| `integrations/index` | ✅ Conectada (PR #31) — **patrón de referencia para páginas nuevas** |
-| `admin/*` (tenants, plans, operators, audit) | ✅ Completa (PRs #37, #41–#45) |
-| `teams/*`, `settings/{profile,appearance,security}` | ✅ Real (starter kit) |
-| `dashboard` | ✅ Conectado (PR #49) — `DashboardController` con KPIs/stream/integraciones/uso reales + realtime |
-| `settings/roles/index` | ✅ Conectada (PR #48) — CRUD de roles + cambio de rol de miembros, con `RolePolicy` |
+**Páginas reales conectadas:** `auth/*`, `dashboard` (PR #49), `incidents/index` (bandeja 3 layouts + realtime), `integrations/index` (patrón de referencia, PR #31), `assets/{index,show,map}` (PRs #53–#55), `drivers/{index,show}` (F4), `notifications/index` + `settings/notifications` (F5a/F5b), `settings/roles` (PR #48), `teams/*`, `settings/*`, y consola super-admin completa (`admin/*`, PRs #37/#41–#45).
 
-**Vistas del producto que NO existen aún:** Drivers detalle (`drivers/{id}` — la lista `drivers/index` ya existe, F4a 2026-06-10), Analytics/Reportes, Notificaciones (centro + preferencias + canales), Automation (workflows), TenantConfig (settings del tenant), Billing/Usage + Branding. (Assets/Flota cerrado en PRs #53–#55.)
+**Links del OpsSidebar que apuntan a `#` (módulo sin página, API ya lista):**
+
+| Link muerto | API que ya existe |
+|-------------|-------------------|
+| Eventos | `GET /events/normalized` (+show, +unmapped) |
+| Reglas | CRUD `decisions/rules` + `normalization/mapping-rules` + `settings/rules` (overrides) + escalation policies |
+| Automatizaciones | CRUD `automation/workflows` + ejecuciones + retry/confirm |
+| Analítica | `analytics/reports` + executions + download PDF/XLSX, KPIs |
+| Auditoría | `audit/logs` + `audit/events` |
+| Configuración (tenant) | TenantConfig completo: settings, AI profile, notificaciones, escalación, schedule, versions |
+
+**Gaps de la UI existente (no son páginas nuevas, son deudas de lo ya shippeado):**
+
+- **Incidentes — detalle apretado y sin media (F9)**: el detalle es un panel inline dentro de `incidents/index.tsx` (1062 líneas) con textos truncados y mal aprovechamiento del espacio. NO consume `GET /events/{id}/media` ni muestra `media_snapshot` — el operador no ve el footage que el pipeline ya descarga, ni tiene botón "Solicitar media" (`POST /events/{id}/media/request` existe y no se usa). Tampoco muestra los `AIMediaAssessment` (lo que la IA "vio" en las imágenes) ni el historial relacionado de P8.
+- **Notificaciones — falta gestión de canales del tenant (F5c)**: configurar Slack/Twilio/FCM (`NotificationChannel`, secrets con `EncryptedChannelConfigCast`) no tiene UI.
 
 ---
 
-## 3. NEXT STEPS — Frontend (orden recomendado)
+## 3. V1 — lo que falta para el producto operativo (orden recomendado)
 
 Patrón obligatorio (el de `integrations/index`, PR #31): controller web dedicado en `routes/web.php` (grupo web = sesión + CSRF; NUNCA `/api` para acciones del navegador), props Inertia tipadas, Wayfinder, policy aplicada, `sam-fetch` + `router.reload({ only: [...] })` para acciones, tests de feature del controller.
 
-### F1. ✅ Fix: página `settings/roles/index` faltante — CERRADO (PR #48)
-Página creada (CRUD de roles, permisos por módulo, cambio de rol de miembros) + `RolePolicy` nueva: el CRUD no tenía NINGUNA autorización y `MemberRoleController` aceptaba memberships de otros teams (ambos huecos cerrados en el mismo PR). Ver §6.
+### Fase A — Cerrar el corazón del monitoreo automatizado (media + automation + 2-vías)
 
-### F2. ✅ Dashboard real (sustituir `MOCK_DASHBOARD`) — CERRADO (PR #49)
-`DashboardController` con KPIs reales (abiertos, críticos, SLA 7d, precisión IA 7d), top-5 incidentes, stream con decisiones del motor, salud de integraciones + eventos 24h, panel nuevo de uso del tenant, y realtime con reloads parciales debounced. Ver §6.
+**B8 — Cerrar el loop multimodal.** Al completarse un `AIMediaAssessment` de media diferida: (1) anotar el incidente vinculado (timeline `media_assessed` con resultado/confianza/resumen), (2) re-correr el motor de decisiones sobre la evaluación enriquecida (el fact `media_assessment` de P7 por fin tiene efecto en el caso real), (3) broadcast para que la bandeja se refresque. Si el assessment contradice la severidad (p.ej. falsa alarma visualmente confirmada) → `requires_human_review`, nunca auto-cerrar. Tests: media inline (decisión ya la ve) vs diferida (re-run), idempotencia, no re-run si incidente terminal. **Esfuerzo: M.**
 
-### F3. ✅ Assets / Flota — CERRADO (PRs #53, #54, #55)
-Lista (`assets/index` con filtros + realtime, PR #53), detalle (`assets/{id}` con telemetría/historial/incidentes, PR #54) y mapa en vivo (MapLibre GL + tiles OpenFreeMap, markers vía broadcasts, PR #55). Ver §6. **Nota post-merge: correr `npm install` en el checkout principal (dependencia `maplibre-gl` nueva).**
+**B7 — Ejecutores reales de Automation.** Puentear `ExecuteAction` a los dominios dueños: `Send*` → pipeline de Notifications (drivers reales ya existen; resolver canal del tenant + destinatario del `target_reference`); `AssignIncident`/`Escalate`/`RequestHumanReview` → acciones de Incidents (`AssignIncident`, `EscalateIncident` existen); `CreateTicket`/`UpdateAssetState` → definir alcance mínimo o mover a V2 si no hay caso de uso. Usage metered por acción ejecutada. Tests por tipo. **Esfuerzo: M. Sin esto, F12 (UI de automatizaciones) sería una UI de mentira.**
 
-### F4. Drivers
-~~`drivers/index`~~ ✅ (F4a cerrado 2026-06-10, rutina nocturna: `DriverPageController@index` con `DriverPolicy::viewAny`, filtros q/estado, paginación, fila con asset asignado actual + risk score + teléfono primario; página React `drivers/index.tsx` con tabla/badges patrón assets, link "Conductores" del sidebar activo, layout Ops). Queda **F4b** — `drivers/{id}`: perfil, assignments, documentos (FileObject + `temporaryUrl` listos), risk profile, status log. `DriverPolicy` ya cubre los 6 endpoints. **Esfuerzo restante: 1 sesión.**
+**B9 — Twilio bidireccional (confirmar/descartar por SMS/WhatsApp).** Webhook entrante `POST /webhooks/twilio` (público, validación `X-Twilio-Signature`, throttle): el mensaje saliente de incidente crítico (P5) incluye un token corto (`RESPONDE: SI-4F2A confirma / NO-4F2A descarta`); el inbound correlaciona token→incidente+usuario (tabla `notification_reply_tokens` con expiración), ejecuta ack/descartar/escalar vía las acciones existentes de Incidents, registra timeline (`acknowledged via whatsapp`) + auditoría, y responde TwiML de confirmación. Números no reconocidos → log y silencio. Tests: firma inválida 403, token expirado, doble respuesta idempotente, aislamiento de tenant. **Esfuerzo: M-L. Este es el cierre del monitoreo automatizado: SAM detecta → evalúa con visión → notifica → el operador resuelve desde el teléfono.**
 
-### F5. Notificaciones en la UI
-Campanita/centro (driver Web ya persiste en DB) + preferencias por usuario (`NotificationPreference`) + gestión de canales del tenant (Slack/Twilio/FCM, secrets cifrados con `EncryptedChannelConfigCast`). **Esfuerzo: 2 sesiones.**
+### Fase B — La bandeja a la altura del pipeline
 
-### F6. Analytics
-Dashboards de KPIs (`KpiRecord` + snapshots de `BuildAnalyticsSnapshotJob`), definición/ejecución de reportes con download PDF/XLSX (el render backend ya es real). **Esfuerzo: 2–3 sesiones.**
+**F9 — Rediseño del detalle de incidente + media viewer.** Decisión de UX: detalle **full-page** `incidents/{incident}` (ruta web Inertia nueva; el endpoint JSON actual queda para el panel) manteniendo un panel lateral compacto en la bandeja con CTA "Abrir detalle". El full-page organiza en grid amplio: encabezado con SLA/estado, **galería de media** (`GET /events/{id}/media` + `temporaryUrl`, lightbox para imágenes/video), evaluación IA con assessments multimodales ("qué vio la IA en el footage"), botón **"Solicitar media"** (`POST /events/{id}/media/request` con estado pending→ready en realtime), contexto operativo, historial relacionado (P8), timeline y comentarios. Arreglar truncamientos/espaciado del panel actual. Tests Inertia del controller nuevo. **Esfuerzo: 2 sesiones. Depende de nada; B8 lo enriquece.**
 
-### F7. Billing + Branding del tenant (en pareja con B1)
-Página de consumo/uso (meters, agregados diarios, invoice snapshots) y settings de branding. Depende de B1 (controllers). **Esfuerzo: 2 sesiones.**
+**F10 — Página Eventos.** Browser de eventos normalizados (el link "Eventos" del sidebar): tabla con filtros (tipo/severidad/asset/fecha/estado), detalle con payload, media, evaluación y decisión vinculadas, y vista de "unmapped" (eventos sin regla de mapeo — hoy invisibles para el operador). **Esfuerzo: 1–2 sesiones.**
 
-### F8. TenantConfig + Automation UI (cola de prioridad)
-Settings del tenant (AI profile, políticas de notificación/escalación, rule overrides, schedules — spec 16 backend completo) y lista/builder de workflows (puede empezar read-only). **Esfuerzo: 3+ sesiones; vistas de power-user, al final.**
+### Fase C — Inteligencia configurable desde la UI
 
----
+**F11 — Página Reglas.** Una sola página con tabs: (a) reglas de decisión (CRUD `decisions/rules` — condiciones JSON con builder simple o editor validado, prioridad, activo), (b) reglas de mapeo de normalización (`normalization/mapping-rules`), (c) overrides del tenant (`settings/rules`). Mostrar las reglas seed (panic, falsa alarma P7) con su estado. **Esfuerzo: 2–3 sesiones.**
 
-## 4. NEXT STEPS — Backend (orden recomendado)
+**F12 — Página Automatizaciones.** Lista de workflows + detalle con steps y ejecuciones (con su log y retry/confirm); builder simple (trigger + condiciones + acciones de `ActionTemplate`). Empieza read-only si el builder crece. **Depende de B7.** **Esfuerzo: 2–3 sesiones.**
 
-### B1. Billing + Branding tenant-facing (spec 01 §9) — único endpoint web pendiente
-`BillingController` (uso, meters, agregados, invoice snapshots del team actual) + `BrandingController` (logo vía FileObject, colores). Las policies de Tenancy (`SubscriptionPolicy`/`TenantBrandingPolicy`/`TenantFeaturePolicy`) **ya existen** (B1a cerrado 2026-06-10, rutina nocturna: registradas en `TenancyServiceProvider`, permisos `tenancy.billing.view`/`tenancy.billing.manage`/`tenancy.manage`, tests con caso cross-team); queda B1b: los controllers + UI. Alimenta F7. **Esfuerzo restante: 1 sesión.**
+**F-TC — Página Configuración del tenant.** Settings generales (incluye toggle `media.auto_request_on_critical` y `panic.auto_close_on_external_resolution`), AI profile, política de notificaciones, escalación (`TenantEscalationConfig.steps_json` — la usa P6), schedule on-call (la usa P5), historial de versiones. **Esfuerzo: 2 sesiones. Sube de prioridad respecto al roadmap anterior: P5/P6/B8 dependen de estos settings y hoy solo se editan por API/tinker.**
 
-### B2. Billing local-only (cobro por transferencia) — re-scoped 2026-06-09, Stripe CANCELADO
-El cobro será por transferencia bancaria; todo lo relacionado a Stripe queda fuera del roadmap. Modelo local: facturas/comprobantes subidos por periodo (FileObject + `temporaryUrl` listos), estado de pago por tenant, y **activar/desactivar tenants de forma sencilla** cuando no paguen o no hayan subido su factura (reutilizar la suspensión/ciclo de vida del super-admin, PRs #41–#45). Los usage meters locales (`ai_calls`, `ai_tokens_*`, assets) siguen siendo la fuente del consumo a cobrar. Al implementar: evaluar retirar Cashier/Billable del código. **Esfuerzo: 2 sesiones.**
+### Fase D — Cierre operativo y monetización
 
-### B3. ✅ IA real en operación — CERRADO (PR #50)
-Provider OpenAI configurable por env (`AI_DEFAULT`/`OPENAI_API_KEY`/`OPENAI_TEXT_MODEL`), binding config:cache-safe, latencia real (hrtime) y costo real (`ModelPricing` + `ai.pricing`) en ambos agentes SDK, validado end-to-end con `samsara:replay` (facturación `ai_calls`/`ai_tokens_in`/`ai_tokens_out` verificada). Ver §6. Follow-up pendiente: routing de modelo por tenant (`TenantAIProfileData.preferredModel`) y afinado fino de prompts.
+**F5c — Gestión de canales de notificación del tenant.** CRUD de `NotificationChannel` (Slack webhook, Twilio SID/token, FCM) con secrets cifrados y botón "probar canal". Prerrequisito práctico de B9 en producción. **Esfuerzo: 1 sesión.**
 
-### B4. Endpoints de soporte para las vistas nuevas
-A demanda de F3–F6: lecturas que falten (historial de posiciones paginado, agregados para dashboard, etc.). Siempre Queries DB-backed en el dominio dueño (patrón `Db*MetricsQuery`), nunca lógica en el controller. **Esfuerzo: incremental.**
+**F13 — Analítica.** Dashboard de KPIs (`KpiRecord`/snapshots) + definición/ejecución de reportes con download PDF/XLSX (backend real). **Esfuerzo: 2–3 sesiones.**
 
-### B5. Hardening / expansión (cola de prioridad)
-Segundo provider de integración (Geotab/Motive) para validar que el adapter pattern generaliza — solo con demanda real. Revisión de retention jobs (audit/analytics) en producción.
+**F14 — Auditoría del tenant.** Tabla de `audit/logs` + `audit/events` con filtros (la consola super-admin ya tiene la suya cross-tenant; esta es la vista del tenant). **Esfuerzo: 1 sesión.**
 
-### B6. Pipeline de emergencias (panic) + safety events — plan P1–P8
+**B1b + F7 — Billing + Branding tenant-facing.** Controllers web (policies listas) + página de consumo (meters, agregados, invoice snapshots) y branding (logo FileObject, colores). **Esfuerzo: 2 sesiones.**
 
-Origen: auditoría del flujo panic end-to-end (2026-06-09, ver gaps en §2). Objetivo: que un panic llegue con GPS del momento, footage de cámara, señales de resolución/falsa alarma, SLA con escalación real y notificación accionable — y que los **safety events** de Samsara (crash, fatiga, distracción…) entren al mismo pipeline.
-
-**Infra existente que se reutiliza (no inventar):** `EventMediaRequest` + `RequestDeferredEventMedia` + `FetchDeferredEventMediaJob` (hoy stub — el comentario del job dice explícito que espera el adapter del proveedor), `AttachImmediateEventMedia` (materializa `RawEventAttachment` → `EventMediaContext` + `FileObject`), `EvaluateEventMediaJob` (multimodal), `EscalationPolicy` (Decisions) + `EscalateIncident` (Incidents), resolvers de spec 16 (`TenantSetting`, `TenantEscalationConfig`, `TenantScheduleProfile`), scheduler con `PollAllAssetLocationsJob`/`SyncDueIntegrationsJob` como patrón, `SamsaraAdapter.fetchAssetLocations`.
-
-**API Samsara verificada (spec oficial, 2026-06-09):** `GET /safety-events/stream` — feed con cursor (`startTime` por `updatedAtTime` + `after`/`endCursor`), trae GPS inline (lat/lng + dirección + geofence), `behaviorLabels`, `eventState` (needsReview/dismissed/…), `maxAccelerationGForce` y URLs de media por cámara; rate limit 5 req/s; scopes *Read Safety Events & Scores* + *Read Camera Media* · `POST`/`GET /cameras/media/retrieval` — footage on-demand por vehículo/cámara/ventana de tiempo · `GET /fleet/vehicles/locations` — posición fresca por vehículo.
-
-**Principios transversales:** degradar nunca suprime el registro del evento; auto-close default **off** (un panic cancelado puede ser coacción); media auto-request gateado por `TenantSetting` (consume cuota/costo); todo punto facturable nuevo pasa por `RecordUsageEvent` con `event_key` idempotente; colas según topología existente (`ingestion`/`context`/`notifications`).
-
-#### P1 ✅ CERRADO — Ciclo de vida de `isResolved` (quick win)
-Implementado tal como se diseñó (ver §6): dedup key de `AlertIncident` con sufijo de estado (`{eventId}:open|resolved`), `Incidents/ApplyExternalResolution` + `ApplyExternalResolutionJob` (lookup por `external_event_id` del raw event original, fallback asset/driver en ventana), columna `incidents.external_resolved_at`, timeline `externally_resolved`, `TenantSetting` `panic.auto_close_on_external_resolution` = `annotate` (default) | `close`, y anotación en creación cuando el evento ya llega resuelto (nunca auto-close en creación). El trigger de media de P3 NO se incluyó — queda íntegro en P3.
-
-#### P2 — Safety events feed (dónde y cómo se guardan)
-**Sin tablas nuevas**: los safety events entran como `RawEvent` por el mismo embudo que los webhooks. Nuevo `PollSamsaraSafetyEventsJob` (cola `ingestion`, scheduler cada 1–2 min `onOneServer()`, patrón `PollAllAssetLocationsJob`): por cada `TenantIntegration` Samsara activa lee `GET /safety-events/stream` paginando y persiste el `endCursor` en `sync_state_json` de la integración (arranque sin cursor = `now() - 24h`). Cada evento → `RawEvent` (`event_type_raw='SafetyEvent'`, `payload_json` completo, `event_source` tipo nuevo `polling_feed`, dedup key `safety:{id}:{eventState}` — el feed va por `updatedAtTime`, así que el mismo evento reaparece cuando cambia de estado y debe pasar como update, mismo mecanismo que P1). Media inline: descargar las URLs **al momento** (expiran) → `RawEventAttachment` → `AttachImmediateEventMedia` las materializa sin código nuevo. Normalización: seeders de `EventMappingRule` por behaviorLabel (`Crash`/`HarshImpact`→`collision` critical, `Drowsy`→`driver_fatigue` high, `MobileUsage`→`distracted_driving` medium, `SevereSpeeding`→`severe_speeding` high, …) + `EventType`s nuevos en `NormalizationSeeder`; el extractor de location de `NormalizeRawEvent` aprende la ruta `location.latitude/longitude` (GPS inline — aquí no hay stale). `eventState=dismissed` en Samsara → reutiliza `ApplyExternalResolution` (P1). Reglas de decisión seed: `collision` → INCIDENT urgente siempre; resto según clasificación IA. Usage: `RecordUsageEvent` por evento ingerido. Tests: cursor avanza/no repite/retoma tras fallo; throttle 5 req/s; mapeos por label; update de estado no duplica incidente; media inline → `EventMediaContext`; tenant isolation. **Esfuerzo: L. Depende de P1 (semántica de updates).**
-
-#### P3 — Media on-demand para el panic (cablear el stub)
-Nuevo contrato `App\Contracts\Integrations\MediaRetrievalAdapter` (`requestMedia`/`checkMedia`) implementado en `SamsaraAdapter`: `POST /cameras/media/retrieval` (vehículo + `dashcamRoadFacing`/`dashcamDriverFacing` + ventana `occurred_at ± 30s`) guardando `retrievalId` en `EventMediaRequest.metadata_json`; `FetchDeferredEventMediaJob` deja de ser stub — crea el retrieval, se re-encola con su backoff existente hasta `available`, descarga a `teams/{team}/events/{event}/media/` y materializa `EventMediaContext`/`FileObject` (reutilizar lógica de `AttachImmediateEventMedia`); `RefreshContextMediaSnapshot` ya bumpea `context_version` y `EventMediaAvailable` ya dispara `EvaluateEventMediaJob` (multimodal). Trigger: listener `RequestPanicMediaOnContextBuilt` — `severity=critical` + `asset_snapshot.has_camera` → `RequestDeferredEventMedia` (idempotente), gateado por `TenantSetting` `media.auto_request_on_critical`. Usage: `media_request:{id}`. Tests: Http::fake del ciclo pending→sent→processing→ready; expiración 6h → `Failed`; no pide sin cámara ni en no-críticos. **Esfuerzo: M. Incluye tanto el trigger (listener) como el adapter de retrieval (P1 cerró sin tocar media).**
-
-#### P4 ✅ CERRADO — GPS fresco en el momento del panic
-Implementado (2026-06-10, rutina nocturna): `ProviderAdapter::fetchLiveLocation()` (Samsara: `GET /fleet/vehicles/locations?vehicleIds={id}`, timeout corto `services.samsara.live_location_timeout` default 3s, null ante cualquier fallo; Null adapter y manager delegando). Acción `Context\FetchLiveLocationForEvent` corre dentro del pipeline de `BuildEventContext` (antes de la transacción): solo severidad `critical`, solo sin GPS inline en payload, y solo si `latestLocation` es más vieja que `context.live_location_staleness_seconds` (TenantSetting, default 60). Éxito → `location_snapshot_json.source='live_fetch'` + `AssetLocationSnapshot` persistido (alimenta el mapa, broadcast incluido); fallo → fallback silencioso a `latestLocation` con `position_stale=true` en telemetry (activa `gps_signal_weak`). El geofence matching corre sobre la posición fresca (habilita "estacionado en base" de P7).
-
-#### P5 — Notificación rica + asignación de operador
-`NotificationTemplate` `incident.panic.created` (asset, driver, ubicación con dirección, link al incidente, indicador de media) — `NotifyOnIncidentCreated` resuelve template por `incident_type` antes del genérico. Auto-asignación: `TenantScheduleProfile` (spec 16) define el on-call → `assigned_to_id` en el incidente + notificación dirigida Critical por todos los canales del usuario. El contacto directo al driver (SMS/WhatsApp — drivers Twilio ya implementados) va como `ActionTemplate` de Automation **opt-in**, no hardcodeado. **Esfuerzo: M. Mejor después de P2/P4 (para tener ubicación rica).**
-
-#### P6 — SLA real con escalación
-Columnas en `incidents`: `sla_due_at` (= `opened_at` + `response_sla_seconds` de la severidad), `acknowledged_at`/`acknowledged_by` + endpoint `POST /incidents/{id}/acknowledge` (botón en la bandeja). `CreateIncidentFromEvent` despacha `CheckIncidentAcknowledgementJob` con `->delay($sla)` (sin cron por-minuto): si al ejecutarse sigue abierto y sin ack → `EscalateIncident` (existe) + notificación a contactos de `TenantEscalationConfig` + timeline `SlaBreached`; el job se reprograma por nivel de la `EscalationPolicy` hasta ack o agotamiento. Broadcast de escalación → la bandeja realtime ya escucha el canal. Tests: ack a tiempo no escala; sin ack escala y reprograma; cierre cancela; idempotencia. **Esfuerzo: M.**
-
-#### P7 — Validación de falsa alarma (degradación inteligente)
-Depende de señales de P1/P3/P4. Nuevas señales en `signals_json`/`AIInputContext`: `external_resolved`, `parked_at_base` (geofence `WITHIN` tipo base + speed 0), `repeated_panic_count_24h`, `media_assessment`. `RuleConditionEvaluator` ya soporta los operadores — solo exponer los campos nuevos en los facts de `EvaluateDecisionRules`. Reglas de tenant **opt-in** (seeder de ejemplo): panic + resuelto + estacionado en base → outcome `REVIEW` con `requires_human_review` en vez de INCIDENT urgente; la regla dura `panic-button-always-incident` sigue siendo el default. Prompt del `SdkEventEvaluationAgent`: evaluar falsa alarma vs. coacción (panic "resuelto" en zona insegura NO se degrada). Tests: matriz panic limpio→urgente / resuelto+en base→review / resuelto en carretera→urgente / IA caída→nunca degrada. **Esfuerzo: M. Depende de P1, P3, P4.**
-
-#### P8 ✅ CERRADO — Vínculo histórico de incidentes
-Implementado (2026-06-10, rutina nocturna): `GetPriorSimilarIncidents` busca incidentes **cerrados** (status terminal) del mismo asset/driver en los últimos 7 días (`config('incidents.context_prior_lookback_days')`, default 7), excluyendo los ya vinculados al propio evento; `BuildEventContext` los persiste como `EventRelatedIncidentLink` tipo `PriorSimilarIncident` y los mete en `incidents_snapshot_json` (filas marcadas `relation = prior_similar_incident`, con `closed_at`). `SignalsBuilder` expone `has_prior_similar_incident` y `has_open_incident` sigue contando solo abiertos. Sin merge automático — solo visibilidad. La UI "Historial relacionado" del incidente queda para la fase de frontend de incidentes.
-
-**Orden recomendado dentro de B6:** ~~P1~~ ✅ → P2 → P3 → ~~P4~~ ✅ → P5 → P6 → P7 → ~~P8~~ ✅. Un PR por fase (P2 puede partirse en poller/normalización si crece), CI verde, y actualizar este documento en el mismo PR que cierre cada P.
+**B2 — Billing local (transferencia).** Facturas/comprobantes por periodo, estado de pago, suspensión por impago reutilizando el ciclo de vida del super-admin. Evaluar retirar Cashier/Billable. **Esfuerzo: 2 sesiones.**
 
 ---
 
-## 5. Orden global sugerido (fases por sesiones)
+## 4. Orden global sugerido (fases por sesiones)
 
 | Fase | Ítems | Resultado |
 |------|-------|-----------|
-| **1. Quick wins ✅** | F1 (roles rota) → F2 (dashboard real) | App sin páginas rotas ni mocks |
-| **2. IA encendida ✅** | B3 (IA real operando) | Incidentes triageados por IA de verdad — demo del corazón del producto |
-| **3. Flota visible + emergencias 🔵 ACTUAL** | F3 ✅ (assets + mapa, PRs #53–#55) → F4 (drivers) · backend en paralelo: B6-P1 ✅ (isResolved) → P2 (safety feed) → P3 (media panic) → P4 (GPS fresco) | El operador ve su flota en vivo y el pipeline de emergencias consume señales reales (resolución, footage, posición fresca, safety events) |
-| **4. Cierre operativo** | F5 (notificaciones UI) → F6 (analytics) · B6-P5 (notificación rica + asignación) → P6 (SLA + escalación) → P7 (falsa alarma) → P8 (histórico) | Producto operativo completo con respuesta a emergencias garantizada |
-| **5. Monetización** | B1+F7 (billing/branding) → B2 (billing local por transferencia) | Listo para facturar |
-| **6. Power-user** | F8 (tenant config / automation UI) → B5 | Configurabilidad avanzada |
+| **A. Monitoreo automatizado real 🔵 ACTUAL** | B8 (loop multimodal) → B7 (executors) → B9 (Twilio 2-vías) | El pipeline completo opera solo: detecta, pide footage, lo evalúa, re-decide, notifica, y el operador confirma/descarta desde el teléfono |
+| **B. Bandeja a la altura** | F9 (detalle full-page + media viewer) → F10 (eventos) | El operador VE todo lo que el pipeline produce (footage, visión IA, historial) en una UI espaciosa |
+| **C. Inteligencia configurable** | F-TC (tenant config) → F11 (reglas) → F12 (automatizaciones, tras B7) | Cero links muertos de inteligencia; el tenant se autoconfigura sin tinker |
+| **D. Cierre operativo** | F5c (canales) → F13 (analítica) → F14 (auditoría) | Producto operativo completo, sidebar 100% vivo |
+| **E. Monetización** | B1b+F7 (billing/branding UI) → B2 (billing local) | Listo para facturar |
 
 **Regla de decisión al abrir sesión:** si la fase actual tiene un ítem a medias, continuarlo; si no, tomar el siguiente de la tabla. Un PR por ítem (o sub-ítem), CI verde antes de merge, y actualizar este documento en el mismo PR.
 
-> ⚠️ Nota de fiabilidad: la tabla de estado §3 de `CLAUDE.md` quedó congelada en la auditoría 2026-04-29 y su lista de "diferidos" estaba obsoleta (se corrigió el 2026-06-09). Ante duda, verificar contra el código, no contra docs.
+---
+
+## 5. V2 — aplazado deliberadamente (no trabajar sin decisión del usuario)
+
+- **Segundo provider de integración (Geotab/Motive)** — solo con demanda real; valida que el adapter pattern generaliza.
+- **Acciones de automation `CreateTicket` / `UpdateAssetState`** — si B7 no encuentra caso de uso claro, quedan aquí (ticketing externo = integración nueva).
+- **Contacto directo al driver en panic (SMS/WhatsApp al conductor)** — la infra quedó como `ActionTemplate` opt-in (P5); activarlo es configuración, no código, pero el flujo conversacional con el driver (no solo el operador) es V2.
+- **Builder visual avanzado de workflows** (drag & drop) — V1 entrega lista + builder simple.
+- **B3b — routing de modelo por tenant + tuning fino de prompts** — el default actual opera bien; afinar con datos de producción.
+- **Hardening producción**: revisión de retention jobs (audit/analytics) bajo carga real, replay/backfill masivo de safety events.
+- **Reportes programados** (envío por email de PDF/XLSX en schedule) — el render ya existe; falta scheduling + entrega.
+- **App móvil / PWA del operador** — hoy el camino móvil es B9 (responder por WhatsApp).
 
 ---
 
-## 6. Completados (histórico resumido)
+## 6. Notas de fiabilidad
+
+- La tabla de estado §3 de `CLAUDE.md` quedó congelada en la auditoría 2026-04-29 y NO refleja B6 ni los PRs #48–#61. Ante duda, **manda el código**, luego este documento, y al final CLAUDE.md.
+- El `ROADMAP.md` de la raíz es la **cola de la rutina nocturna**, no este roadmap de producto. Las tareas de la rutina salen de aquí (§3); al generar tareas nuevas respetar §8.7 de CLAUDE.md.
+- Para demos del pipeline de media: activar `media.auto_request_on_critical` en el tenant (default off) y verificar que la integración Samsara tenga scope *Read Camera Media*.
+
+---
+
+## 7. Completados (histórico resumido)
 
 - Backend specs 01–16 + I1/I2/I3 y cierre de diferidos: AI SDK, multimodal, PDF/XLSX, drivers de notificación, queries DB-backed, Echo wiring, DemoSeeder (PRs #1–#24).
 - UI Incidents con realtime (PRs #27–#30, #40) · UI Integraciones (PR #31).
 - Pipeline Samsara real: adapter, firma webhook, replay, seeders, sync periódica, scheduler dedicado (PRs #28, #32, #34, #35, #42, #46).
-- Consola super-admin completa (PRs #37, #39, #41, #43–#45).
-- **F1** — Página `settings/roles` (CRUD de roles + permisos por módulo + cambio de rol de miembros) con `RolePolicy` nueva cerrando el hueco de autorización del CRUD y el scoping cross-team de `MemberRoleController` (PR #48).
-- **F2** — Dashboard con datos reales: `DashboardController` (KPIs honestos incl. SLA 7d y precisión IA con la fórmula de `EvaluateAIEffectiveness`, top-5, stream con decisiones, integraciones + eventos 24h, uso del tenant) + queries nuevas en Incidents/Normalization + realtime debounced. Fase 1 (quick wins) completa: app sin páginas rotas ni mocks (PR #49).
-- **B3** — IA real en operación: `AI_DEFAULT`/`OPENAI_API_KEY`/`OPENAI_TEXT_MODEL` en env (default `gpt-5.4`), `isAiSdkConfigured()` leyendo config en vez de `env()` (config:cache-safe), `ModelPricing` + sección `ai.pricing` (USD/1M tokens, fallback por prefijo para ids versionados), latencia real con hrtime y `cost_estimate` real en `SdkEventEvaluationAgent`/`SdkMediaAssessmentAgent`, tests nuevos (pricing, media via SDK, bindings) y pipeline validado con `samsara:replay` + verificación de `ai_inference_logs` y `usage_events`. Fase 2 (IA encendida) completa (PR #50).
-- **F3** — Assets/Flota completo: lista `assets/index` con filtros q/status/type, paginación y realtime debounced (PR #53); detalle `assets/{id}` con telemetría por tipo, historial de ubicaciones e incidentes vinculados (PR #54); mapa en vivo con MapLibre GL 5 + tiles OpenFreeMap (chunk lazy ~276KB gzip, markers actualizados en memoria vía `asset.location_updated` sin reload) (PR #55).
-- **B6-P1** — Ciclo de vida de `isResolved` (panic): dedup key de `AlertIncident` con estado (`{eventId}:open|resolved` — cambios de estado pasan, mismo estado es duplicado), columna `incidents.external_resolved_at`, acción `ApplyExternalResolution` (timeline `externally_resolved` "Resolved at source", idempotente), `ApplyExternalResolutionJob` en cola `incidents` (lookup del incidente original por `external_event_id` del raw event, fallback asset/driver en ventana de 30 min), listener sobre `EventNormalized`, `TenantSetting` `panic.auto_close_on_external_resolution` = `annotate` (default) | `close` (cierra vía `CloseIncident` con `ResolutionCode::ResolvedExternally`), y anotación en creación cuando el evento ya llega resuelto (nunca auto-close en creación — un panic cancelado puede ser coacción). `NormalizeRawEvent` expone `external_resolved_at` (`data.resolvedAtTime`).
+- Consola super-admin completa (PRs #37, #39, #41, #43–#45): tenants, suscripción/plan, topes con enforcement, features, miembros, operadores, auditoría cross-tenant, impersonación, ciclo de vida.
+- **F1** — Página `settings/roles` (CRUD + permisos + cambio de rol) con `RolePolicy` (PR #48).
+- **F2** — Dashboard real: KPIs honestos, top-5, stream con decisiones, salud de integraciones, uso del tenant, realtime debounced (PR #49).
+- **B3** — IA real en operación: OpenAI por env, pricing/latencia/costo reales en ambos agentes SDK, validado con `samsara:replay` (PR #50).
+- **F3** — Assets/Flota completo: lista con filtros + realtime (PR #53), detalle con telemetría/historial/incidentes (PR #54), mapa en vivo MapLibre GL (PR #55).
+- **F4** — Drivers completo: `drivers/index` (filtros, asset actual, risk score) y `drivers/{id}` (perfil, contactos, documentos, assignments, status log) — rutina nocturna 2026-06-10, PR #58.
+- **F5a/F5b** — Centro de notificaciones con read markers por usuario (`notification_reads`) + preferencias por usuario en settings (PR #58).
+- **B1a** — Policies de Tenancy (`SubscriptionPolicy`/`TenantBrandingPolicy`/`TenantFeaturePolicy`) registradas con tests cross-team (PR #58).
+- **B6 COMPLETO (P1–P8)** — pipeline de emergencias end-to-end (PRs #56 y #58):
+  - **P1** `isResolved`: dedup por estado, `ApplyExternalResolution`, setting `annotate`/`close`.
+  - **P2** Safety events feed: `PollSamsaraSafetyEventsJob` con cursor en `sync_state_json`, dedup `safety:{id}:{eventState}`, media inline → attachments, seeders por behaviorLabel, `dismissed` → resolución externa.
+  - **P3** Media on-demand: `MediaRetrievalAdapter` en `SamsaraAdapter` (`/cameras/media/retrieval`), `FetchDeferredEventMediaJob` real (poll→download→`FileObject`→multimodal), listener `RequestPanicMediaOnContextBuilt` gateado por TenantSetting (default off), meter `media_requests`.
+  - **P4** GPS fresco: `fetchLiveLocation` (timeout 3s), `FetchLiveLocationForEvent` en `BuildEventContext` (solo critical, staleness configurable), fallback `position_stale`.
+  - **P5** Notificación rica + on-call: template por incident_type con asset/driver/ubicación/link/media-flag, `ResolveOnCallOperator` (shift rules + timezone + fallback), auto-asignación sin pisar previas.
+  - **P6** SLA real: `sla_due_at`/`acknowledged_at`, `CheckIncidentAcknowledgementJob` con delay (sin cron), escalación por niveles de `TenantEscalationConfig`, endpoint + botón ACK en la bandeja.
+  - **P7** Falsa alarma: señales `external_resolved`/`parked_at_base`/`repeated_panic_24h`/`media_assessment`, outcome `REQUIRE_HUMAN_REVIEW`, regla seed opt-in, prompt anti-coacción (panic "resuelto" en carretera nunca se degrada).
+  - **P8** Vínculo histórico: `GetPriorSimilarIncidents` (cerrados 7d), `PriorSimilarIncidentLink`, signal `has_prior_similar_incident`.
+- **T1/T2** — `assertInertia` en 5 páginas sin aserción + authz endpoint-level de incidents API (PR #58).
