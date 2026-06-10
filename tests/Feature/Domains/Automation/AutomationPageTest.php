@@ -71,6 +71,9 @@ class AutomationPageTest extends TestCase
                 ->where('executions.0.status', 'failed')
                 ->has('options.actionTypes')
                 ->has('options.triggerTypes')
+                ->has('triggerConditionFields.decision_outcome', 3)
+                ->has('triggerConditionFields.incident_created', 2)
+                ->where('triggerConditionFields.incident_created.0.key', 'incident_type')
                 ->where('canManage', true),
         );
     }

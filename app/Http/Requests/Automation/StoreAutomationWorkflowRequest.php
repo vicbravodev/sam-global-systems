@@ -4,6 +4,7 @@ namespace App\Http\Requests\Automation;
 
 use App\Domains\Automation\Enums\WorkflowStatus;
 use App\Domains\Automation\Enums\WorkflowTriggerType;
+use App\Support\Conditions\ValidFlatConditions;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -24,7 +25,7 @@ class StoreAutomationWorkflowRequest extends FormRequest
             'name' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'trigger_type' => ['required', Rule::enum(WorkflowTriggerType::class)],
-            'trigger_conditions_json' => ['nullable', 'array'],
+            'trigger_conditions_json' => ['nullable', 'array', new ValidFlatConditions],
             'status' => ['required', Rule::enum(WorkflowStatus::class)],
             'version' => ['nullable', 'integer', 'min:1'],
             'steps_json' => ['required', 'array', 'min:1'],

@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\TenantConfig;
 
+use App\Support\Conditions\ValidFlatConditions;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreTenantEscalationConfigRequest extends FormRequest
@@ -18,7 +19,7 @@ class StoreTenantEscalationConfigRequest extends FormRequest
     {
         return [
             'escalation_type' => ['required', 'string', 'max:255'],
-            'trigger_conditions' => ['required', 'array'],
+            'trigger_conditions' => ['required', 'array', new ValidFlatConditions],
             'steps' => ['required', 'array', 'min:1'],
             'time_constraints' => ['nullable', 'array'],
             'is_active' => ['sometimes', 'boolean'],

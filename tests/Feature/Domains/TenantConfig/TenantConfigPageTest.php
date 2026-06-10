@@ -65,6 +65,8 @@ class TenantConfigPageTest extends TestCase
                 ->has('aiProfileOptions.riskTolerances')
                 ->has('notificationPolicies', 1)
                 ->has('escalationConfigs', 1)
+                ->has('escalationConditionFields', 2)
+                ->where('escalationConditionFields.0.key', 'incident_type')
                 ->has('scheduleProfiles', 1)
                 ->has('versions', 1)
                 ->where('canManage', true),

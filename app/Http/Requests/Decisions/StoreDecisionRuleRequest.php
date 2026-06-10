@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Decisions;
 
 use App\Domains\Decisions\Enums\RuleScope;
+use App\Support\Conditions\ValidConditionTree;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -20,7 +21,7 @@ class StoreDecisionRuleRequest extends FormRequest
             'description' => ['nullable', 'string'],
             'scope' => ['required', Rule::in(array_map(fn (RuleScope $s) => $s->value, RuleScope::cases()))],
             'priority' => ['nullable', 'integer', 'min:0', 'max:255'],
-            'conditions_json' => ['required', 'array'],
+            'conditions_json' => ['required', 'array', new ValidConditionTree],
             'outcome_override' => ['nullable', 'integer', 'exists:decision_outcomes,id'],
             'escalation_policy_id' => ['nullable', 'integer', 'exists:escalation_policies,id'],
             'stop_processing' => ['nullable', 'boolean'],

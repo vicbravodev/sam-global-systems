@@ -7,6 +7,7 @@ use App\Domains\Automation\Enums\WorkflowStatus;
 use App\Domains\Automation\Enums\WorkflowTriggerType;
 use App\Domains\Automation\Models\ActionExecution;
 use App\Domains\Automation\Models\AutomationWorkflow;
+use App\Domains\Automation\Support\TriggerConditionCatalog;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
 use Inertia\Inertia;
@@ -65,6 +66,7 @@ class AutomationPageController extends Controller
                 'triggerTypes' => array_map(fn (WorkflowTriggerType $type) => $type->value, WorkflowTriggerType::cases()),
                 'statuses' => array_map(fn (WorkflowStatus $status) => $status->value, WorkflowStatus::cases()),
             ],
+            'triggerConditionFields' => fn () => TriggerConditionCatalog::all(),
             'canManage' => fn () => (bool) request()->user()?->can('create', AutomationWorkflow::class),
         ]);
     }

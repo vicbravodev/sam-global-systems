@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\TenantConfig;
 
 use App\Contracts\ObjectStorage;
+use App\Domains\Automation\Support\TriggerConditionCatalog;
 use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Tenancy\Models\TenantBranding;
@@ -103,6 +104,7 @@ class TenantConfigPageController extends Controller
                     'isActive' => (bool) $config->is_active,
                 ])
                 ->all(),
+            'escalationConditionFields' => fn () => TriggerConditionCatalog::escalationFields(),
             'scheduleProfiles' => fn () => TenantScheduleProfile::withoutGlobalScopes()
                 ->where('team_id', $current_team->id)
                 ->orderBy('profile_code')
