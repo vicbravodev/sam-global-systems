@@ -34,7 +34,7 @@ El producto terminado es: un operador de flota abre SAM, ve su flota en vivo, re
 | # | Gap | Detalle |
 |---|-----|---------|
 | B7 | **Ejecutores de Automation son stubs** | `ExecuteAction::dispatchByType`: solo `CallWebhook` ejecuta de verdad. `SendEmail`/`SendSms`/`SendWhatsapp`/`SendPush` devuelven `{'stub': true}` — NO puentean al dominio Notifications (cuyos drivers Twilio/FCM/Slack SÍ son reales). `CreateTicket`/`AssignIncident`/`Escalate`/`UpdateAssetState`/`RequestHumanReview` también stubs. Las automatizaciones "se disparan" pero casi nada pasa. |
-| B8 | **El loop multimodal no se cierra** | Media diferida llega minutos DESPUÉS de que la decisión ya corrió: `EvaluateEventMediaJob` crea el `AIMediaAssessment` pero nada re-dispara el motor de decisiones ni actualiza el incidente. El fact `media_assessment` (P7) solo sirve si la decisión corre después del media — caso inline únicamente. Falta: al completarse el assessment → re-evaluar decisión / anotar incidente / timeline / broadcast. |
+| ~~B8~~ | ~~El loop multimodal no se cierra~~ | ✅ **CERRADO (PR #63)** — ver §7. |
 | B9 | **Twilio bidireccional (confirmar/descartar por SMS/WhatsApp)** | No existe webhook entrante de Twilio. El operador recibe el SMS/WhatsApp pero no puede responder "CONFIRMAR"/"DESCARTAR" para actuar sobre el incidente. Falta: ruta pública `POST /webhooks/twilio` (firma `X-Twilio-Signature`), correlación mensaje↔incidente (token corto en el mensaje saliente), acciones ack/descartar/escalar, timeline + auditoría. |
 | B1b | Billing/Branding tenant-facing | `BillingController` + `BrandingController` web (policies B1a ya existen). Alimenta F7. |
 | B2 | Billing local (transferencia) | Facturas/comprobantes por periodo (FileObject listo), estado de pago, activar/desactivar tenant por impago (suspensión super-admin como base). Evaluar retirar Cashier. |
@@ -70,7 +70,7 @@ Patrón obligatorio (el de `integrations/index`, PR #31): controller web dedicad
 
 ### Fase A — Cerrar el corazón del monitoreo automatizado (media + automation + 2-vías)
 
-**B8 — Cerrar el loop multimodal.** Al completarse un `AIMediaAssessment` de media diferida: (1) anotar el incidente vinculado (timeline `media_assessed` con resultado/confianza/resumen), (2) re-correr el motor de decisiones sobre la evaluación enriquecida (el fact `media_assessment` de P7 por fin tiene efecto en el caso real), (3) broadcast para que la bandeja se refresque. Si el assessment contradice la severidad (p.ej. falsa alarma visualmente confirmada) → `requires_human_review`, nunca auto-cerrar. Tests: media inline (decisión ya la ve) vs diferida (re-run), idempotencia, no re-run si incidente terminal. **Esfuerzo: M.**
+**B8 — Cerrar el loop multimodal. ✅ COMPLETADO (PR #63)** — ver §7.
 
 **B7 — Ejecutores reales de Automation.** Puentear `ExecuteAction` a los dominios dueños: `Send*` → pipeline de Notifications (drivers reales ya existen; resolver canal del tenant + destinatario del `target_reference`); `AssignIncident`/`Escalate`/`RequestHumanReview` → acciones de Incidents (`AssignIncident`, `EscalateIncident` existen); `CreateTicket`/`UpdateAssetState` → definir alcance mínimo o mover a V2 si no hay caso de uso. Usage metered por acción ejecutada. Tests por tipo. **Esfuerzo: M. Sin esto, F12 (UI de automatizaciones) sería una UI de mentira.**
 
@@ -108,7 +108,7 @@ Patrón obligatorio (el de `integrations/index`, PR #31): controller web dedicad
 
 | Fase | Ítems | Resultado |
 |------|-------|-----------|
-| **A. Monitoreo automatizado real 🔵 ACTUAL** | B8 (loop multimodal) → B7 (executors) → B9 (Twilio 2-vías) | El pipeline completo opera solo: detecta, pide footage, lo evalúa, re-decide, notifica, y el operador confirma/descarta desde el teléfono |
+| **A. Monitoreo automatizado real 🔵 ACTUAL** | ~~B8~~ ✅ (PR #63) → B7 (executors) → B9 (Twilio 2-vías) | El pipeline completo opera solo: detecta, pide footage, lo evalúa, re-decide, notifica, y el operador confirma/descarta desde el teléfono |
 | **B. Bandeja a la altura** | F9 (detalle full-page + media viewer) → F10 (eventos) | El operador VE todo lo que el pipeline produce (footage, visión IA, historial) en una UI espaciosa |
 | **C. Inteligencia configurable** | F-TC (tenant config) → F11 (reglas) → F12 (automatizaciones, tras B7) | Cero links muertos de inteligencia; el tenant se autoconfigura sin tinker |
 | **D. Cierre operativo** | F5c (canales) → F13 (analítica) → F14 (auditoría) | Producto operativo completo, sidebar 100% vivo |
@@ -162,3 +162,4 @@ Patrón obligatorio (el de `integrations/index`, PR #31): controller web dedicad
   - **P7** Falsa alarma: señales `external_resolved`/`parked_at_base`/`repeated_panic_24h`/`media_assessment`, outcome `REQUIRE_HUMAN_REVIEW`, regla seed opt-in, prompt anti-coacción (panic "resuelto" en carretera nunca se degrada).
   - **P8** Vínculo histórico: `GetPriorSimilarIncidents` (cerrados 7d), `PriorSimilarIncidentLink`, signal `has_prior_similar_incident`.
 - **T1/T2** — `assertInertia` en 5 páginas sin aserción + authz endpoint-level de incidents API (PR #58).
+- **B8** — Loop multimodal cerrado (PR #63): `MediaAssessmentCompleted` (solo assessments nuevos, idempotente) → `ReevaluateEventJob` con trigger `media_arrived` (guards: inline sin decisión, media ya evaluada en otra versión anti-loop, incidente terminal no re-corre); fact `media_assessment` cross-versión de evaluación; guard de contradicción en `ResolveDecisionOutcome` (footage que contradice un evento con decisión accionable previa → `REQUIRE_HUMAN_REVIEW`, nunca auto-cerrar); timeline `media_assessed` por assessment + broadcast `incidents.updated` que la bandeja ahora escucha.
