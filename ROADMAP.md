@@ -10,9 +10,9 @@
 
 ## Iteración v1 — manual
 
-- [ ] **F4a — Página `drivers/index`** (spec: `docs/ROADMAP.md` §3 F4, primera mitad). Lista de conductores siguiendo el patrón de referencia de `integrations/index` (PR #31) y de `assets/index` (PR #53): controller web dedicado en `routes/web.php` (grupo web, sesión + CSRF — nunca `/api` para el navegador), props Inertia tipadas, Wayfinder, `DriverPolicy` (ya existe y cubre los 6 endpoints) aplicada, columnas: nombre, estado, asset asignado actual, risk score, teléfono. Página React en `resources/js/pages/drivers/index.tsx` reutilizando los componentes de tabla/badges de assets. Tests: feature test del controller con `assertInertia` (component + props), authz (sin permiso ⇒ 403), aislamiento de tenant. El detalle `drivers/{id}` queda para otra tarea (F4b) — no lo incluyas aquí.
-
 ## Completadas
+
+- [x] **F4a — Página `drivers/index`** — 2026-06-10, commit `feat(drivers): página drivers/index (F4a)`. `DriverPageController@index` en grupo web (`/{current_team}/drivers`, `DriverPolicy::viewAny` con `drivers.view`), filtros q (nombre/código, case-insensitive) y estado, paginación 50, fila: nombre+código, estado, asset asignado actual (`currentAssignment.asset`), risk score, teléfono móvil primario, visto. Frontend: `pages/drivers/index.tsx` + `DriversTable`/`DriverStatusBadge` (patrón assets), tipos en `types/drivers.ts`, link del sidebar "Conductores" activado, layout Ops en `app.tsx`. Tests: `DriversPageTest` (6: guest redirect, 403 sin permiso, `assertInertia` con row shape completo, aislamiento de tenant, filtro de estado, búsqueda). `drivers/{id}` queda para F4b.
 
 - [x] **B1a — Policies de Tenancy faltantes** — 2026-06-10, commit `feat(tenancy): policies de Subscription/TenantBranding/TenantFeature (B1a)`. `SubscriptionPolicy` (viewAny/view → `tenancy.billing.view`, update → `tenancy.billing.manage`), `TenantBrandingPolicy` y `TenantFeaturePolicy` (view/update → `tenancy.manage`), patrón `DriverPolicy` con `AuthorizeAction` + chequeo de `team_id`, registradas con `Gate::policy` en `TenancyServiceProvider::boot`. Tests: `TenancyPoliciesTest` (11 casos: con/sin permiso, cross-team denegado para los 3 modelos, usuario sin current team). Sin controllers (B1b pendiente de diseño de UI).
 

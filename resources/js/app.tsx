@@ -30,6 +30,7 @@ createInertiaApp({
                 return AdminLayout;
             case name === 'dashboard':
             case name.startsWith('assets/'):
+            case name.startsWith('drivers/'):
             case name.startsWith('incidents/'):
             case name.startsWith('integrations/'):
                 return OpsLayout;

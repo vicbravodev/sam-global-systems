@@ -76,7 +76,7 @@ Página creada (CRUD de roles, permisos por módulo, cambio de rol de miembros) 
 Lista (`assets/index` con filtros + realtime, PR #53), detalle (`assets/{id}` con telemetría/historial/incidentes, PR #54) y mapa en vivo (MapLibre GL + tiles OpenFreeMap, markers vía broadcasts, PR #55). Ver §6. **Nota post-merge: correr `npm install` en el checkout principal (dependencia `maplibre-gl` nueva).**
 
 ### F4. Drivers
-`drivers/index` + `drivers/{id}`: perfil, assignments, documentos (FileObject + `temporaryUrl` listos), risk profile, status log. `DriverPolicy` ya cubre los 6 endpoints. **Esfuerzo: 2 sesiones.**
+~~`drivers/index`~~ ✅ (F4a cerrado 2026-06-10, rutina nocturna: `DriverPageController@index` con `DriverPolicy::viewAny`, filtros q/estado, paginación, fila con asset asignado actual + risk score + teléfono primario; página React `drivers/index.tsx` con tabla/badges patrón assets, link "Conductores" del sidebar activo, layout Ops). Queda **F4b** — `drivers/{id}`: perfil, assignments, documentos (FileObject + `temporaryUrl` listos), risk profile, status log. `DriverPolicy` ya cubre los 6 endpoints. **Esfuerzo restante: 1 sesión.**
 
 ### F5. Notificaciones en la UI
 Campanita/centro (driver Web ya persiste en DB) + preferencias por usuario (`NotificationPreference`) + gestión de canales del tenant (Slack/Twilio/FCM, secrets cifrados con `EncryptedChannelConfigCast`). **Esfuerzo: 2 sesiones.**

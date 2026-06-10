@@ -13,6 +13,7 @@ use App\Http\Controllers\Admin\TenantSubscriptionController;
 use App\Http\Controllers\AI\AIEvaluationController;
 use App\Http\Controllers\Assets\AssetPageController;
 use App\Http\Controllers\Dashboard\DashboardController;
+use App\Http\Controllers\Drivers\DriverPageController;
 use App\Http\Controllers\Incidents\IncidentAssignmentController;
 use App\Http\Controllers\Incidents\IncidentCommentController;
 use App\Http\Controllers\Incidents\IncidentController;
@@ -54,6 +55,10 @@ Route::prefix('{current_team}')
         // Literal segment BEFORE the {asset} binding so "map" never hits it.
         Route::get('assets/map', [AssetPageController::class, 'map'])->name('assets.map');
         Route::get('assets/{asset}', [AssetPageController::class, 'show'])->name('assets.show');
+
+        // Driver roster page (read-only list; DriverPolicy gates access).
+        // The detail page is F4b and ships separately.
+        Route::get('drivers', [DriverPageController::class, 'index'])->name('drivers.index');
 
         // Integrations management page + actions. The GET renders the Inertia
         // page; the mutating actions reuse the same IntegrationController as the

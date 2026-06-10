@@ -177,7 +177,7 @@ export function OpsSidebar({ navBadges }: OpsSidebarProps) {
                 {
                     label: 'Conductores',
                     icon: Users,
-                    href: '#',
+                    href: `/${teamSlug}/drivers`,
                 },
             ],
         },
