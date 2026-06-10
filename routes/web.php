@@ -48,9 +48,10 @@ Route::prefix('{current_team}')
         Route::post('incidents/{incident}/escalate', [IncidentController::class, 'escalate'])->name('incidents.escalate');
         Route::post('ai/evaluations/{evaluation}/reevaluate', [AIEvaluationController::class, 'reevaluate'])->name('ai.evaluations.reevaluate');
 
-        // Fleet list page. Assets are read-only (spec 04 §9): managed solely
+        // Fleet pages. Assets are read-only (spec 04 §9): managed solely
         // by integration sync, so membership is the whole access check.
         Route::get('assets', [AssetPageController::class, 'index'])->name('assets.index');
+        Route::get('assets/{asset}', [AssetPageController::class, 'show'])->name('assets.show');
 
         // Integrations management page + actions. The GET renders the Inertia
         // page; the mutating actions reuse the same IntegrationController as the

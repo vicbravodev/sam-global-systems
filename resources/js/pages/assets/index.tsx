@@ -288,6 +288,7 @@ const EMPTY_PAGINATION: AssetsPagination = {
 export default function AssetsIndex() {
     const page = usePage();
     const pageProps = page.props as unknown as AssetsIndexProps;
+    const teamSlug = page.props.currentTeam?.slug ?? null;
     const assets = pageProps.assets ?? [];
     const pagination = pageProps.pagination ?? EMPTY_PAGINATION;
     const serverFilters = pageProps.filters ?? EMPTY_FILTERS;
@@ -370,8 +371,14 @@ export default function AssetsIndex() {
         serverFilters.status !== null ||
         serverFilters.type !== null;
 
-    // No-op until the detail page ships (F3 PR 2); rows already expose it.
-    const handleSelect = useCallback(() => {}, []);
+    const handleSelect = useCallback(
+        (id: number) => {
+            if (teamSlug !== null) {
+                router.visit(`/${teamSlug}/assets/${id}`);
+            }
+        },
+        [teamSlug],
+    );
 
     return (
         <>
