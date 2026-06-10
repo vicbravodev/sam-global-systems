@@ -121,6 +121,66 @@ class SamsaraAdapter implements ProviderAdapter
     }
 
     /**
+     * Fetch the live position of a single vehicle.
+     *
+     * Uses `GET /fleet/vehicles/locations?vehicleIds={id}` with a short timeout:
+     * this runs inline in the context-enrichment pipeline for critical events,
+     * so a slow provider must degrade to the stored location, never block it.
+     * Returns null on any failure (no token, HTTP error, timeout, no GPS).
+     */
+    public function fetchLiveLocation(TenantIntegration $integration, string $externalAssetId): ?array
+    {
+        $token = $this->resolveToken($integration);
+
+        if ($token === null || $externalAssetId === '') {
+            return null;
+        }
+
+        try {
+            $response = $this->client($token)
+                ->timeout((int) config('services.samsara.live_location_timeout', 3))
+                ->get('/fleet/vehicles/locations', ['vehicleIds' => $externalAssetId]);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        if (! $response->successful()) {
+            return null;
+        }
+
+        $record = (array) ($response->json('data.0') ?? []);
+        $location = $record['location'] ?? null;
+
+        if (is_array($location) && array_is_list($location)) {
+            $location = end($location) ?: null;
+        }
+
+        if (! is_array($location)) {
+            return null;
+        }
+
+        $latitude = Arr::get($location, 'latitude');
+        $longitude = Arr::get($location, 'longitude');
+
+        if ($latitude === null || $longitude === null) {
+            return null;
+        }
+
+        $speed = Arr::get($location, 'speed', Arr::get($location, 'speedMilesPerHour'));
+        $heading = Arr::get($location, 'heading', Arr::get($location, 'headingDegrees'));
+
+        return [
+            'external_id' => (string) Arr::get($record, 'id', $externalAssetId),
+            'latitude' => (float) $latitude,
+            'longitude' => (float) $longitude,
+            'speed' => $speed !== null ? (float) $speed : null,
+            'heading' => $heading !== null ? (int) round((float) $heading) : null,
+            'formatted_location' => Arr::get($location, 'reverseGeo.formattedLocation'),
+            'recorded_at' => Arr::get($location, 'time'),
+        ];
+    }
+
+    /**
      * Verify Samsara's webhook signature.
      *
      * Samsara sends `X-Samsara-Signature: v1=<hex>` plus an `X-Samsara-Timestamp`

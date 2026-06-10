@@ -23,19 +23,28 @@ class BuildEventContext
         private GetPriorSimilarIncidents $getPriorSimilarIncidents,
         private ResolveDriverOperationalContext $resolveDriverOperationalContext,
         private BuildOperationalContextProfile $buildOperationalContextProfile,
+        private FetchLiveLocationForEvent $fetchLiveLocationForEvent,
     ) {}
 
     public function execute(NormalizedEvent $normalizedEvent): EventContextSnapshot
     {
-        return DB::transaction(function () use ($normalizedEvent) {
-            $normalizedEvent->loadMissing(['asset.latestLocation', 'driver', 'eventSeverity', 'eventType']);
+        $normalizedEvent->loadMissing(['asset.latestLocation', 'driver', 'eventSeverity', 'eventType']);
 
-            $location = $this->extractLocation($normalizedEvent);
+        // Runs before the snapshot transaction: it makes an HTTP call to the
+        // provider and persists its own AssetLocationSnapshot on success.
+        $liveFetch = $this->fetchLiveLocationForEvent->execute($normalizedEvent);
+
+        if ($liveFetch['location'] !== null) {
+            $normalizedEvent->asset?->unsetRelation('latestLocation');
+        }
+
+        return DB::transaction(function () use ($normalizedEvent, $liveFetch) {
+            $location = $this->extractLocation($normalizedEvent, $liveFetch['location']);
             $lat = $location['latitude'] ?? null;
             $lng = $location['longitude'] ?? null;
 
             $assetSnapshot = $this->assetSnapshot($normalizedEvent);
-            $telemetrySnapshot = $this->telemetrySnapshot($normalizedEvent);
+            $telemetrySnapshot = $this->telemetrySnapshot($normalizedEvent, $liveFetch['position_stale']);
             $driverSnapshot = $this->resolveDriverOperationalContext->execute(
                 $normalizedEvent->driver_id,
                 $normalizedEvent->occurred_at ?? now(),
@@ -128,9 +137,14 @@ class BuildEventContext
     }
 
     /**
+     * Location priority: inline GPS from the event payload, then a live fetch
+     * from the provider (critical events with stale positions, B6-P4), then
+     * the latest stored asset location.
+     *
+     * @param  array<string, mixed>|null  $liveLocation
      * @return array<string, mixed>
      */
-    private function extractLocation(NormalizedEvent $event): array
+    private function extractLocation(NormalizedEvent $event, ?array $liveLocation = null): array
     {
         $payloadLocation = Arr::get($event->payload_normalized_json ?? [], 'location');
 
@@ -140,6 +154,10 @@ class BuildEventContext
                 'longitude' => (float) $payloadLocation['longitude'],
                 'source' => 'event_payload',
             ];
+        }
+
+        if ($liveLocation !== null) {
+            return $liveLocation;
         }
 
         $latest = $event->asset?->latestLocation;
@@ -187,13 +205,13 @@ class BuildEventContext
     /**
      * @return array<string, mixed>|null
      */
-    private function telemetrySnapshot(NormalizedEvent $event): ?array
+    private function telemetrySnapshot(NormalizedEvent $event, bool $positionStale = false): ?array
     {
         $payload = $event->payload_normalized_json ?? [];
         $speedMeta = Arr::get($payload, 'speed_metadata');
         $latest = $event->asset?->latestLocation;
 
-        if ($latest === null && $speedMeta === null) {
+        if ($latest === null && $speedMeta === null && ! $positionStale) {
             return null;
         }
 
@@ -201,7 +219,7 @@ class BuildEventContext
             'speed_kph' => is_array($speedMeta) ? Arr::get($speedMeta, 'currentSpeedKph') : ($latest?->speed !== null ? (float) $latest->speed : null),
             'recent_speeds' => [],
             'gps_accuracy_meters' => null,
-            'position_stale' => false,
+            'position_stale' => $positionStale,
             'recorded_at' => $latest?->recorded_at?->toIso8601String(),
         ];
     }
