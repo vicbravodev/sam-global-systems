@@ -47,9 +47,10 @@ function RiskCell({ score }: { score: number | null }) {
 
 interface DriversTableProps {
     rows: DriverRow[];
+    onSelect: (id: number) => void;
 }
 
-export function DriversTable({ rows }: DriversTableProps) {
+export function DriversTable({ rows, onSelect }: DriversTableProps) {
     return (
         <div className="min-h-0 flex-1 overflow-auto">
             <table className="w-full border-collapse">
@@ -69,7 +70,8 @@ export function DriversTable({ rows }: DriversTableProps) {
                     {rows.map((driver) => (
                         <tr
                             key={driver.id}
-                            className="border-b border-border transition-colors hover:bg-surface-2"
+                            className="cursor-pointer border-b border-border transition-colors hover:bg-surface-2"
+                            onClick={() => onSelect(driver.id)}
                         >
                             <td className="px-2.5 py-2.5">
                                 <div className="flex flex-col">

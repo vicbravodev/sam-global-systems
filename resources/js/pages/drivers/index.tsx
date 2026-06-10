@@ -270,6 +270,7 @@ const EMPTY_PAGINATION: DriversPagination = {
 export default function DriversIndex() {
     const page = usePage();
     const pageProps = page.props as unknown as DriversIndexProps;
+    const teamSlug = page.props.currentTeam?.slug ?? null;
     const drivers = pageProps.drivers ?? [];
     const pagination = pageProps.pagination ?? EMPTY_PAGINATION;
     const serverFilters = pageProps.filters ?? EMPTY_FILTERS;
@@ -313,6 +314,15 @@ export default function DriversIndex() {
         });
     }, []);
 
+    const handleSelect = useCallback(
+        (id: number) => {
+            if (teamSlug !== null) {
+                router.visit(`/${teamSlug}/drivers/${id}`);
+            }
+        },
+        [teamSlug],
+    );
+
     const hasActiveFilters =
         serverFilters.q !== null || serverFilters.status !== null;
 
@@ -335,7 +345,7 @@ export default function DriversIndex() {
                 {drivers.length === 0 ? (
                     <RosterEmptyState filtered={hasActiveFilters} />
                 ) : (
-                    <DriversTable rows={drivers} />
+                    <DriversTable rows={drivers} onSelect={handleSelect} />
                 )}
 
                 <RosterFooter

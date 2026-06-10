@@ -56,9 +56,9 @@ Route::prefix('{current_team}')
         Route::get('assets/map', [AssetPageController::class, 'map'])->name('assets.map');
         Route::get('assets/{asset}', [AssetPageController::class, 'show'])->name('assets.show');
 
-        // Driver roster page (read-only list; DriverPolicy gates access).
-        // The detail page is F4b and ships separately.
+        // Driver pages (read-only; DriverPolicy gates access).
         Route::get('drivers', [DriverPageController::class, 'index'])->name('drivers.index');
+        Route::get('drivers/{driver}', [DriverPageController::class, 'show'])->name('drivers.show');
 
         // Integrations management page + actions. The GET renders the Inertia
         // page; the mutating actions reuse the same IntegrationController as the
