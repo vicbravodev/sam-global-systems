@@ -1,6 +1,8 @@
 import { Head, router, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { ConditionBuilder } from '@/components/sam/condition-builder';
+import type { ConditionFieldDef } from '@/components/sam/condition-builder';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -108,6 +110,7 @@ interface TenantConfigProps {
     };
     notificationPolicies: NotificationPolicyRow[];
     escalationConfigs: EscalationConfigRow[];
+    escalationConditionFields: ConditionFieldDef[];
     scheduleProfiles: ScheduleProfileRow[];
     versions: VersionRow[];
     channels: ChannelRow[];
@@ -736,15 +739,21 @@ function parseJson(
 
 function EscalationTab({
     configs,
+    conditionFields,
     canManage,
 }: {
     configs: EscalationConfigRow[];
+    conditionFields: ConditionFieldDef[];
     canManage: boolean;
 }) {
     const base = useTeamBase();
     const [saving, setSaving] = useState(false);
 
-    const saveExisting = async (config: EscalationConfigRow, raw: string) => {
+    const saveExisting = async (
+        config: EscalationConfigRow,
+        raw: string,
+        conditions: Record<string, unknown>,
+    ) => {
         if (base === null) {
             return;
         }
@@ -757,7 +766,10 @@ function EscalationTab({
 
         setSaving(true);
         await submit(
-            putJson(`${base}/escalation/${config.id}`, { steps }),
+            putJson(`${base}/escalation/${config.id}`, {
+                steps,
+                trigger_conditions: conditions,
+            }),
             'Escalación guardada.',
         );
         setSaving(false);
@@ -815,6 +827,7 @@ function EscalationTab({
                 <EscalationCard
                     key={config.id}
                     config={config}
+                    conditionFields={conditionFields}
                     canManage={canManage}
                     saving={saving}
                     onSave={saveExisting}
@@ -826,16 +839,25 @@ function EscalationTab({
 
 function EscalationCard({
     config,
+    conditionFields,
     canManage,
     saving,
     onSave,
 }: {
     config: EscalationConfigRow;
+    conditionFields: ConditionFieldDef[];
     canManage: boolean;
     saving: boolean;
-    onSave: (config: EscalationConfigRow, raw: string) => Promise<void>;
+    onSave: (
+        config: EscalationConfigRow,
+        raw: string,
+        conditions: Record<string, unknown>,
+    ) => Promise<void>;
 }) {
     const [raw, setRaw] = useState(JSON.stringify(config.steps, null, 2));
+    const [conditions, setConditions] = useState<Record<string, unknown>>(
+        config.triggerConditions ?? {},
+    );
 
     return (
         <Card>
@@ -852,7 +874,20 @@ function EscalationCard({
                     </Badge>
                 </CardTitle>
             </CardHeader>
-            <CardContent className="flex flex-col gap-2">
+            <CardContent className="flex flex-col gap-3">
+                <div className="flex flex-col gap-1">
+                    <Label className="text-[12px]">
+                        Condiciones del disparador
+                    </Label>
+                    <ConditionBuilder
+                        variant="flat-equality"
+                        fields={conditionFields}
+                        allowUnknownFields
+                        value={conditions}
+                        onChange={setConditions}
+                        disabled={!canManage}
+                    />
+                </div>
                 <JsonField
                     label="Steps (delay_minutes / channels / recipient)"
                     value={raw}
@@ -863,10 +898,10 @@ function EscalationCard({
                     <div>
                         <Button
                             size="sm"
-                            onClick={() => onSave(config, raw)}
+                            onClick={() => onSave(config, raw, conditions)}
                             disabled={saving}
                         >
-                            Guardar steps
+                            Guardar escalación
                         </Button>
                     </div>
                 )}
@@ -1653,6 +1688,7 @@ export default function TenantConfigPage() {
                 {tab === 'escalation' && (
                     <EscalationTab
                         configs={props.escalationConfigs}
+                        conditionFields={props.escalationConditionFields}
                         canManage={props.canManage}
                     />
                 )}
