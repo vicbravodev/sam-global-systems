@@ -51,8 +51,8 @@ export default function DeleteUser() {
                         <DialogDescription>
                             Una vez que tu cuenta sea eliminada, todos sus
                             recursos y datos también se eliminarán de forma
-                            permanente. Ingresa tu contraseña para confirmar
-                            que quieres eliminar tu cuenta de forma permanente.
+                            permanente. Ingresa tu contraseña para confirmar que
+                            quieres eliminar tu cuenta de forma permanente.
                         </DialogDescription>
 
                         <Form

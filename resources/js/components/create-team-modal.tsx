@@ -33,9 +33,7 @@ export default function CreateTeamModal({ children }: PropsWithChildren) {
                     {({ errors, processing }) => (
                         <>
                             <DialogHeader>
-                                <DialogTitle>
-                                    Crear un equipo nuevo
-                                </DialogTitle>
+                                <DialogTitle>Crear un equipo nuevo</DialogTitle>
                                 <DialogDescription>
                                     Crea un equipo nuevo para colaborar con
                                     otras personas.

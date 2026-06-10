@@ -189,11 +189,10 @@ export default function Security({
                     ) : (
                         <div className="flex flex-col items-start justify-start space-y-4">
                             <p className="text-sm text-muted-foreground">
-                                Cuando actives la autenticación de dos
-                                factores, se te pedirá un pin seguro durante el
-                                inicio de sesión. Este pin se puede obtener
-                                desde una aplicación compatible con TOTP en tu
-                                teléfono.
+                                Cuando actives la autenticación de dos factores,
+                                se te pedirá un pin seguro durante el inicio de
+                                sesión. Este pin se puede obtener desde una
+                                aplicación compatible con TOTP en tu teléfono.
                             </p>
 
                             <div>

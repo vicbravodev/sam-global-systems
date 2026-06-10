@@ -53,7 +53,7 @@ export default function RemoveMemberModal({
 
                 <DialogFooter className="gap-2">
                     <DialogClose asChild>
-                        <Button variant="secondary">Cancel</Button>
+                        <Button variant="secondary">Cancelar</Button>
                     </DialogClose>
 
                     <Button
@@ -62,7 +62,7 @@ export default function RemoveMemberModal({
                         disabled={processing}
                         onClick={removeMember}
                     >
-                        Remove member
+                        Quitar miembro
                     </Button>
                 </DialogFooter>
             </DialogContent>
