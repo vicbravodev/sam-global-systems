@@ -6,6 +6,7 @@ use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 class TeamTest extends TestCase
@@ -21,6 +22,12 @@ class TeamTest extends TestCase
             ->get(route('teams.index'));
 
         $response->assertOk();
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->component('teams/index')
+                ->has('teams', 1)
+                ->where('teams.0.id', $user->currentTeam->id),
+        );
     }
 
     public function test_teams_can_be_created()
@@ -73,6 +80,17 @@ class TeamTest extends TestCase
             ->get(route('teams.edit', $team));
 
         $response->assertOk();
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->component('teams/edit')
+                ->where('team.id', $team->id)
+                ->where('team.name', $team->name)
+                ->where('team.slug', $team->slug)
+                ->has('members', 1)
+                ->where('members.0.id', $user->id)
+                ->where('members.0.role', TeamRole::Owner->value)
+                ->has('invitations', 0),
+        );
     }
 
     public function test_teams_can_be_updated_by_owners()

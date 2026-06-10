@@ -4,6 +4,7 @@ namespace Tests\Feature\Http\Admin;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 class AdminOperatorTest extends TestCase
@@ -13,6 +14,22 @@ class AdminOperatorTest extends TestCase
     private function superAdmin(): User
     {
         return User::factory()->create(['global_role' => 'super_admin']);
+    }
+
+    public function test_operators_index_renders_with_operator_list(): void
+    {
+        $admin = $this->superAdmin();
+
+        $response = $this->actingAs($admin)->get(route('admin.operators.index'));
+
+        $response->assertOk();
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->component('admin/operators/index')
+                ->has('operators', 1)
+                ->where('operators.0.id', $admin->id)
+                ->where('operators.0.email', $admin->email),
+        );
     }
 
     public function test_super_admin_promotes_a_user(): void
