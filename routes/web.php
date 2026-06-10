@@ -25,6 +25,12 @@ use App\Http\Controllers\Integrations\IntegrationPageController;
 use App\Http\Controllers\Normalization\EventsPageController;
 use App\Http\Controllers\Notifications\NotificationPageController;
 use App\Http\Controllers\Teams\TeamInvitationController;
+use App\Http\Controllers\TenantConfig\TenantAIProfileController;
+use App\Http\Controllers\TenantConfig\TenantConfigController;
+use App\Http\Controllers\TenantConfig\TenantConfigPageController;
+use App\Http\Controllers\TenantConfig\TenantEscalationConfigController;
+use App\Http\Controllers\TenantConfig\TenantNotificationPolicyController;
+use App\Http\Controllers\TenantConfig\TenantScheduleProfileController;
 use App\Http\Middleware\EnsureTeamMembership;
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Features;
@@ -87,6 +93,14 @@ Route::prefix('{current_team}')
         Route::put('integrations/{integration}', [IntegrationController::class, 'update'])->name('integrations.update');
         Route::delete('integrations/{integration}', [IntegrationController::class, 'destroy'])->name('integrations.destroy');
         Route::post('integrations/{integration}/test', [IntegrationController::class, 'test'])->name('integrations.test');
+
+        Route::get('settings/tenant-config', [TenantConfigPageController::class, 'show'])->name('tenant-config.show');
+        Route::put('settings/tenant-config/settings', [TenantConfigController::class, 'update'])->name('tenant-config.settings.update');
+        Route::put('settings/tenant-config/ai-profile', [TenantAIProfileController::class, 'update'])->name('tenant-config.ai-profile.update');
+        Route::put('settings/tenant-config/notifications', [TenantNotificationPolicyController::class, 'update'])->name('tenant-config.notifications.update');
+        Route::post('settings/tenant-config/escalation', [TenantEscalationConfigController::class, 'store'])->name('tenant-config.escalation.store');
+        Route::put('settings/tenant-config/escalation/{escalationConfig}', [TenantEscalationConfigController::class, 'update'])->name('tenant-config.escalation.update');
+        Route::put('settings/tenant-config/schedule/{scheduleProfile}', [TenantScheduleProfileController::class, 'update'])->name('tenant-config.schedule.update');
 
         Route::get('settings/roles', [RoleController::class, 'index'])->name('access.roles.index');
         Route::post('settings/roles', [RoleController::class, 'store'])->name('access.roles.store');

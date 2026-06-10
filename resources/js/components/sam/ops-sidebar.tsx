@@ -229,7 +229,7 @@ export function OpsSidebar({ navBadges }: OpsSidebarProps) {
                 {
                     label: 'Configuración',
                     icon: Settings,
-                    href: '#',
+                    href: `/${teamSlug}/settings/tenant-config`,
                 },
             ],
         },
