@@ -157,7 +157,7 @@ export function OpsSidebar({ navBadges }: OpsSidebarProps) {
                 {
                     label: 'Eventos',
                     icon: History,
-                    href: '#',
+                    href: `/${teamSlug}/events`,
                 },
                 {
                     label: 'Mapa en vivo',

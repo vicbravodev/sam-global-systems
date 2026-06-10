@@ -22,6 +22,7 @@ use App\Http\Controllers\Incidents\IncidentMediaRequestController;
 use App\Http\Controllers\Incidents\IncidentResolutionController;
 use App\Http\Controllers\Integrations\IntegrationController;
 use App\Http\Controllers\Integrations\IntegrationPageController;
+use App\Http\Controllers\Normalization\EventsPageController;
 use App\Http\Controllers\Notifications\NotificationPageController;
 use App\Http\Controllers\Teams\TeamInvitationController;
 use App\Http\Middleware\EnsureTeamMembership;
@@ -41,6 +42,9 @@ Route::prefix('{current_team}')
     ->middleware(['auth', 'verified', EnsureTeamMembership::class])
     ->group(function () {
         Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
+        Route::get('events', [EventsPageController::class, 'index'])->name('events.index');
+        Route::get('events/{normalizedEvent}', [EventsPageController::class, 'show'])->name('events.show');
+
         Route::get('incidents', [IncidentInboxController::class, 'index'])->name('incidents.index');
         Route::get('incidents/{incident}', [IncidentInboxController::class, 'show'])->name('incidents.show');
 
