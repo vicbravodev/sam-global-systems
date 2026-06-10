@@ -46,6 +46,7 @@ use App\Http\Controllers\TenantConfig\TenantEscalationConfigController;
 use App\Http\Controllers\TenantConfig\TenantNotificationPolicyController;
 use App\Http\Controllers\TenantConfig\TenantRuleOverrideController;
 use App\Http\Controllers\TenantConfig\TenantScheduleProfileController;
+use App\Http\Controllers\Webhooks\TwilioInboundController;
 use App\Http\Middleware\EnsureTeamMembership;
 use Illuminate\Support\Facades\Route;
 
@@ -194,6 +195,12 @@ Route::prefix('{current_team}')
         Route::get('analytics/reports/executions/{execution}', [ReportExecutionController::class, 'show'])->name('api.analytics.reports.executions.show');
         Route::get('analytics/reports/executions/{execution}/download', [ReportExecutionController::class, 'download'])->name('api.analytics.reports.executions.download');
     });
+
+// Twilio inbound replies (Roadmap B9). Declared BEFORE the generic
+// `webhooks/{endpoint_url}` route so it wins the match for `webhooks/twilio`.
+Route::post('webhooks/twilio', [TwilioInboundController::class, 'handle'])
+    ->middleware('throttle:webhooks')
+    ->name('webhooks.twilio');
 
 Route::post('webhooks/{endpoint_url}', [WebhookController::class, 'handle'])
     ->middleware('throttle:webhooks')
