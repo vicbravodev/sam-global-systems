@@ -15,6 +15,7 @@ use App\Http\Controllers\Analytics\AnalyticsPageController;
 use App\Http\Controllers\Analytics\ReportController;
 use App\Http\Controllers\Analytics\ReportExecutionController;
 use App\Http\Controllers\Assets\AssetPageController;
+use App\Http\Controllers\Audit\AuditPageController;
 use App\Http\Controllers\Automation\ActionExecutionController;
 use App\Http\Controllers\Automation\AutomationPageController;
 use App\Http\Controllers\Automation\AutomationWorkflowController;
@@ -54,6 +55,53 @@ Route::inertia('/', 'welcome', [
 // their literal `settings/...` paths must win over the team-slug wildcard
 // (otherwise `/settings/notifications` would bind current_team = "settings").
 require __DIR__.'/settings.php';
+
+// The super-admin console is declared BEFORE the tenant wildcard group so
+// `/admin/...` never gets swallowed by `/{current_team}/...` routes.
+// SaaS operator (super-admin) control panel. Lives OUTSIDE the {current_team}
+// group because it is cross-tenant: it lists/creates tenants and starts
+// impersonation. Guarded by the global-role check in EnsureSuperAdmin.
+Route::prefix('admin')
+    ->middleware(['auth', 'verified', 'ensure.super_admin'])
+    ->name('admin.')
+    ->group(function () {
+        Route::get('tenants', [TenantController::class, 'index'])->name('tenants.index');
+        Route::post('tenants', [TenantController::class, 'store'])->name('tenants.store');
+        Route::get('tenants/{team}', [TenantController::class, 'show'])->name('tenants.show');
+        Route::put('tenants/{team}', [TenantController::class, 'update'])->name('tenants.update');
+        Route::delete('tenants/{team}', [TenantController::class, 'destroy'])->name('tenants.destroy');
+
+        // Subscription / plan controls for a single tenant (internal billing state).
+        Route::put('tenants/{team}/subscription', [TenantSubscriptionController::class, 'update'])->name('tenants.subscription.update');
+        Route::post('tenants/{team}/subscription/suspend', [TenantSubscriptionController::class, 'suspend'])->name('tenants.subscription.suspend');
+        Route::post('tenants/{team}/subscription/reactivate', [TenantSubscriptionController::class, 'reactivate'])->name('tenants.subscription.reactivate');
+        Route::post('tenants/{team}/subscription/cancel', [TenantSubscriptionController::class, 'cancel'])->name('tenants.subscription.cancel');
+        Route::post('tenants/{team}/subscription/extend-trial', [TenantSubscriptionController::class, 'extendTrial'])->name('tenants.subscription.extend-trial');
+
+        // Manual feature overrides for a tenant.
+        Route::put('tenants/{team}/features/{featureKey}', [TenantFeatureController::class, 'update'])->name('tenants.features.update');
+
+        // Tenant member management.
+        Route::post('tenants/{team}/members', [TenantMemberController::class, 'store'])->name('tenants.members.store');
+        Route::put('tenants/{team}/members/{user}', [TenantMemberController::class, 'update'])->name('tenants.members.update');
+        Route::delete('tenants/{team}/members/{user}', [TenantMemberController::class, 'destroy'])->name('tenants.members.destroy');
+        Route::post('tenants/{team}/members/{user}/make-owner', [TenantMemberController::class, 'makeOwner'])->name('tenants.members.make-owner');
+
+        // Plan catalog: tune per-meter allowances (incl. the asset cap).
+        Route::get('plans', [PlanController::class, 'index'])->name('plans.index');
+        Route::put('plans/{plan}', [PlanController::class, 'update'])->name('plans.update');
+
+        // SaaS operators (global super-admins).
+        Route::get('operators', [OperatorController::class, 'index'])->name('operators.index');
+        Route::post('operators', [OperatorController::class, 'store'])->name('operators.store');
+        Route::delete('operators/{user}', [OperatorController::class, 'destroy'])->name('operators.destroy');
+
+        // Cross-tenant audit viewer.
+        Route::get('audit', [AuditController::class, 'index'])->name('audit.index');
+
+        Route::post('impersonate/{team}', [ImpersonationController::class, 'store'])->name('impersonate.store');
+        Route::delete('impersonate', [ImpersonationController::class, 'destroy'])->name('impersonate.destroy');
+    });
 
 Route::prefix('{current_team}')
     ->middleware(['auth', 'verified', EnsureTeamMembership::class])
@@ -105,6 +153,8 @@ Route::prefix('{current_team}')
         Route::delete('integrations/{integration}', [IntegrationController::class, 'destroy'])->name('integrations.destroy');
         Route::post('integrations/{integration}/test', [IntegrationController::class, 'test'])->name('integrations.test');
 
+        Route::get('audit', [AuditPageController::class, 'show'])->name('audit.show');
+
         Route::get('analytics', [AnalyticsPageController::class, 'show'])->name('analytics.show');
         Route::post('analytics/reports/{report}/generate', [ReportController::class, 'generate'])->name('analytics.reports.generate');
         Route::get('analytics/executions/{execution}/download', [ReportExecutionController::class, 'download'])->name('analytics.executions.download');
@@ -146,51 +196,6 @@ Route::prefix('{current_team}')
         Route::put('settings/roles/{role}', [RoleController::class, 'update'])->name('access.roles.update');
         Route::delete('settings/roles/{role}', [RoleController::class, 'destroy'])->name('access.roles.destroy');
         Route::put('settings/members/{membership}/role', [MemberRoleController::class, 'update'])->name('access.members.role.update');
-    });
-
-// SaaS operator (super-admin) control panel. Lives OUTSIDE the {current_team}
-// group because it is cross-tenant: it lists/creates tenants and starts
-// impersonation. Guarded by the global-role check in EnsureSuperAdmin.
-Route::prefix('admin')
-    ->middleware(['auth', 'verified', 'ensure.super_admin'])
-    ->name('admin.')
-    ->group(function () {
-        Route::get('tenants', [TenantController::class, 'index'])->name('tenants.index');
-        Route::post('tenants', [TenantController::class, 'store'])->name('tenants.store');
-        Route::get('tenants/{team}', [TenantController::class, 'show'])->name('tenants.show');
-        Route::put('tenants/{team}', [TenantController::class, 'update'])->name('tenants.update');
-        Route::delete('tenants/{team}', [TenantController::class, 'destroy'])->name('tenants.destroy');
-
-        // Subscription / plan controls for a single tenant (internal billing state).
-        Route::put('tenants/{team}/subscription', [TenantSubscriptionController::class, 'update'])->name('tenants.subscription.update');
-        Route::post('tenants/{team}/subscription/suspend', [TenantSubscriptionController::class, 'suspend'])->name('tenants.subscription.suspend');
-        Route::post('tenants/{team}/subscription/reactivate', [TenantSubscriptionController::class, 'reactivate'])->name('tenants.subscription.reactivate');
-        Route::post('tenants/{team}/subscription/cancel', [TenantSubscriptionController::class, 'cancel'])->name('tenants.subscription.cancel');
-        Route::post('tenants/{team}/subscription/extend-trial', [TenantSubscriptionController::class, 'extendTrial'])->name('tenants.subscription.extend-trial');
-
-        // Manual feature overrides for a tenant.
-        Route::put('tenants/{team}/features/{featureKey}', [TenantFeatureController::class, 'update'])->name('tenants.features.update');
-
-        // Tenant member management.
-        Route::post('tenants/{team}/members', [TenantMemberController::class, 'store'])->name('tenants.members.store');
-        Route::put('tenants/{team}/members/{user}', [TenantMemberController::class, 'update'])->name('tenants.members.update');
-        Route::delete('tenants/{team}/members/{user}', [TenantMemberController::class, 'destroy'])->name('tenants.members.destroy');
-        Route::post('tenants/{team}/members/{user}/make-owner', [TenantMemberController::class, 'makeOwner'])->name('tenants.members.make-owner');
-
-        // Plan catalog: tune per-meter allowances (incl. the asset cap).
-        Route::get('plans', [PlanController::class, 'index'])->name('plans.index');
-        Route::put('plans/{plan}', [PlanController::class, 'update'])->name('plans.update');
-
-        // SaaS operators (global super-admins).
-        Route::get('operators', [OperatorController::class, 'index'])->name('operators.index');
-        Route::post('operators', [OperatorController::class, 'store'])->name('operators.store');
-        Route::delete('operators/{user}', [OperatorController::class, 'destroy'])->name('operators.destroy');
-
-        // Cross-tenant audit viewer.
-        Route::get('audit', [AuditController::class, 'index'])->name('audit.index');
-
-        Route::post('impersonate/{team}', [ImpersonationController::class, 'store'])->name('impersonate.store');
-        Route::delete('impersonate', [ImpersonationController::class, 'destroy'])->name('impersonate.destroy');
     });
 
 Route::middleware(['auth'])->group(function () {

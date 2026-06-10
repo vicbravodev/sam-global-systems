@@ -219,7 +219,7 @@ export function OpsSidebar({ navBadges }: OpsSidebarProps) {
                 {
                     label: 'Auditoría',
                     icon: FileClock,
-                    href: '#',
+                    href: `/${teamSlug}/audit`,
                 },
                 {
                     label: 'Equipo y roles',
