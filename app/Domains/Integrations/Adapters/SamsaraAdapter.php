@@ -6,6 +6,7 @@ use App\Domains\Integrations\Contracts\ProviderAdapter;
 use App\Domains\Integrations\Models\TenantIntegration;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 
 /**
@@ -178,6 +179,61 @@ class SamsaraAdapter implements ProviderAdapter
             'formatted_location' => Arr::get($location, 'reverseGeo.formattedLocation'),
             'recorded_at' => Arr::get($location, 'time'),
         ];
+    }
+
+    /**
+     * Fetch safety events from `GET /safety-events/stream`.
+     *
+     * The stream is keyed by `updatedAtTime`, so the same event reappears when
+     * its state changes (e.g. needsReview → dismissed); callers dedup on
+     * `{id}:{eventState}` to let state transitions through. Resumes from the
+     * persisted `after` cursor when given one; otherwise starts from
+     * `startTime` (the caller's backfill window). Pagination stops at the last
+     * page and returns the final `endCursor` so the caller can persist it.
+     *
+     * @return array{events: array<int, array<string, mixed>>, cursor: string|null}
+     */
+    public function fetchSafetyEvents(TenantIntegration $integration, ?string $cursor = null, ?\DateTimeInterface $startTime = null): array
+    {
+        $token = $this->resolveToken($integration);
+
+        if ($token === null) {
+            return ['events' => [], 'cursor' => $cursor];
+        }
+
+        $events = [];
+        $pages = 0;
+
+        do {
+            $query = [];
+
+            if ($cursor !== null && $cursor !== '') {
+                $query['after'] = $cursor;
+            } else {
+                $query['startTime'] = Carbon::instance($startTime ?? now()->subDay())->toIso8601String();
+            }
+
+            $response = $this->client($token)->get('/safety-events/stream', $query);
+
+            if (! $response->successful()) {
+                break;
+            }
+
+            foreach ((array) $response->json('data', []) as $record) {
+                $events[] = (array) $record;
+            }
+
+            $endCursor = $response->json('pagination.endCursor');
+
+            if (is_string($endCursor) && $endCursor !== '') {
+                $cursor = $endCursor;
+            }
+
+            $hasNext = (bool) $response->json('pagination.hasNextPage', false);
+            $pages++;
+        } while ($hasNext && $cursor && $pages < self::MAX_PAGES);
+
+        return ['events' => $events, 'cursor' => $cursor];
     }
 
     /**

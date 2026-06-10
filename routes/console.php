@@ -3,6 +3,7 @@
 use App\Domains\Analytics\Jobs\BuildAnalyticsSnapshotJob;
 use App\Domains\Analytics\Jobs\CalculateDailyKPIsJob;
 use App\Domains\Assets\Jobs\PollAllAssetLocationsJob;
+use App\Domains\Ingestion\Jobs\PollSamsaraSafetyEventsJob;
 use App\Domains\Integrations\Jobs\SyncDueIntegrationsJob;
 use App\Domains\Tenancy\Jobs\AggregateUsageJob;
 use Illuminate\Foundation\Inspiring;
@@ -22,3 +23,4 @@ Schedule::job(new BuildAnalyticsSnapshotJob)->dailyAt('04:00')->onOneServer();
 // config_json.sync), so these ticks are the floor cadence, not the exact rate.
 Schedule::job(new SyncDueIntegrationsJob)->everyFifteenMinutes()->onOneServer();
 Schedule::job(new PollAllAssetLocationsJob)->everyFiveMinutes()->onOneServer();
+Schedule::job(new PollSamsaraSafetyEventsJob)->everyTwoMinutes()->onOneServer();

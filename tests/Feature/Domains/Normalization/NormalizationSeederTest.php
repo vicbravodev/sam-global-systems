@@ -51,7 +51,7 @@ class NormalizationSeederTest extends TestCase
 
         $expectedEventTypes = [
             'panic_button', 'collision', 'rollover_protection',
-            'harsh_braking', 'speeding', 'driver_fatigue', 'driver_distraction',
+            'harsh_braking', 'speeding', 'severe_speeding', 'driver_fatigue', 'driver_distraction',
             'forward_collision_warning', 'harsh_acceleration', 'harsh_turn',
             'lane_departure', 'following_distance', 'near_collision',
             'aggressive_driving', 'rolling_stop', 'ran_red_light',

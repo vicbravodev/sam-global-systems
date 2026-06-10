@@ -38,6 +38,11 @@ class ProviderAdapterManager implements ProviderAdapter
         return $this->forIntegration($integration)->fetchLiveLocation($integration, $externalAssetId);
     }
 
+    public function fetchSafetyEvents(TenantIntegration $integration, ?string $cursor = null, ?\DateTimeInterface $startTime = null): array
+    {
+        return $this->forIntegration($integration)->fetchSafetyEvents($integration, $cursor, $startTime);
+    }
+
     public function validateWebhookSignature(string $payload, string $signature, string $secret, ?string $timestamp = null): bool
     {
         // No integration context is available at signature-validation time.

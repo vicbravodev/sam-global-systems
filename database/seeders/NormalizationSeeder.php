@@ -87,6 +87,7 @@ class NormalizationSeeder extends Seeder
             // Safety
             ['code' => 'harsh_braking', 'name' => 'Harsh Braking', 'category' => 'safety', 'severity' => 'medium'],
             ['code' => 'speeding', 'name' => 'Speeding', 'category' => 'safety', 'severity' => 'medium'],
+            ['code' => 'severe_speeding', 'name' => 'Severe Speeding', 'category' => 'safety', 'severity' => 'high'],
             ['code' => 'driver_fatigue', 'name' => 'Driver Fatigue', 'category' => 'safety', 'severity' => 'high'],
             ['code' => 'driver_distraction', 'name' => 'Driver Distraction', 'category' => 'safety', 'severity' => 'high'],
             ['code' => 'forward_collision_warning', 'name' => 'Forward Collision Warning', 'category' => 'safety', 'severity' => 'high'],
@@ -185,7 +186,7 @@ class NormalizationSeeder extends Seeder
             'HeavySpeeding' => 'speeding',
             'ModerateSpeeding' => 'speeding',
             'LightSpeeding' => 'speeding',
-            'SevereSpeeding' => 'speeding',
+            'SevereSpeeding' => 'severe_speeding',
             'Crash' => 'collision',
             'Braking' => 'harsh_braking',
             'Acceleration' => 'harsh_acceleration',
