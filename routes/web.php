@@ -21,6 +21,7 @@ use App\Http\Controllers\Incidents\IncidentInboxController;
 use App\Http\Controllers\Incidents\IncidentResolutionController;
 use App\Http\Controllers\Integrations\IntegrationController;
 use App\Http\Controllers\Integrations\IntegrationPageController;
+use App\Http\Controllers\Notifications\NotificationPageController;
 use App\Http\Controllers\Teams\TeamInvitationController;
 use App\Http\Middleware\EnsureTeamMembership;
 use Illuminate\Support\Facades\Route;
@@ -65,6 +66,11 @@ Route::prefix('{current_team}')
         // page; the mutating actions reuse the same IntegrationController as the
         // routes/api.php endpoints but live in the web group so the React UI can
         // call them with the session cookie (the `api` group has no session).
+        // Notification center: tenant-wide outbound notifications with
+        // per-user read markers (NotificationPolicy gates access).
+        Route::get('notifications', [NotificationPageController::class, 'index'])->name('notifications.index');
+        Route::post('notifications/{notification}/read', [NotificationPageController::class, 'read'])->name('notifications.read');
+
         Route::get('integrations', [IntegrationPageController::class, 'index'])->name('integrations.index');
         Route::post('integrations', [IntegrationController::class, 'store'])->name('integrations.store');
         Route::put('integrations/{integration}', [IntegrationController::class, 'update'])->name('integrations.update');

@@ -33,6 +33,7 @@ createInertiaApp({
             case name.startsWith('drivers/'):
             case name.startsWith('incidents/'):
             case name.startsWith('integrations/'):
+            case name.startsWith('notifications/'):
                 return OpsLayout;
             default:
                 return AppLayout;
