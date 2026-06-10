@@ -31,6 +31,11 @@ Route::inertia('/', 'welcome', [
     'canRegister' => Features::enabled(Features::registration()),
 ])->name('home');
 
+// User-level settings routes are registered BEFORE the {current_team} group:
+// their literal `settings/...` paths must win over the team-slug wildcard
+// (otherwise `/settings/notifications` would bind current_team = "settings").
+require __DIR__.'/settings.php';
+
 Route::prefix('{current_team}')
     ->middleware(['auth', 'verified', EnsureTeamMembership::class])
     ->group(function () {
@@ -132,5 +137,3 @@ Route::prefix('admin')
 Route::middleware(['auth'])->group(function () {
     Route::get('invitations/{invitation}/accept', [TeamInvitationController::class, 'accept'])->name('invitations.accept');
 });
-
-require __DIR__.'/settings.php';
