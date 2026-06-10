@@ -62,6 +62,79 @@ class EvaluateEventViaSdkTest extends TestCase
         $this->assertContains('severity_high', $result->reasoningSteps);
     }
 
+    public function test_wrapper_measures_latency_and_estimates_cost(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+
+        config()->set('ai.pricing', [
+            'gpt-test' => ['input' => 2.0, 'output' => 8.0],
+        ]);
+
+        EventClassifierAgent::fake([
+            new TextResponse(
+                json_encode([
+                    'classification' => 'real_event',
+                    'confidence_score' => 0.9,
+                    'risk_score_delta' => 0.1,
+                    'explanation_summary' => 'Confirmed.',
+                    'reasoning_steps' => [],
+                    'key_factors' => [],
+                ], JSON_THROW_ON_ERROR),
+                new Usage(promptTokens: 500_000, completionTokens: 250_000),
+                new Meta(provider: 'openai', model: 'gpt-test'),
+            ),
+        ]);
+
+        $event = NormalizedEvent::factory()->create(['team_id' => $team->id]);
+
+        $result = app(SdkEventEvaluationAgent::class)->evaluate(new AIInputContext(
+            teamId: $team->id,
+            normalizedEventId: $event->id,
+            normalizedEvent: [],
+            contextSignals: [],
+            operationalProfile: [],
+            recentHistory: [],
+            tenantProfile: [],
+        ));
+
+        $this->assertSame(3.0, $result->costEstimate);
+        $this->assertGreaterThanOrEqual(0, $result->latencyMs);
+    }
+
+    public function test_model_without_pricing_entry_costs_zero(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+
+        config()->set('ai.pricing', []);
+
+        EventClassifierAgent::fake([
+            new TextResponse(
+                json_encode([
+                    'classification' => 'unclear',
+                    'confidence_score' => 0.4,
+                ], JSON_THROW_ON_ERROR),
+                new Usage(promptTokens: 320, completionTokens: 95),
+                new Meta(provider: 'openai', model: 'gpt-unpriced'),
+            ),
+        ]);
+
+        $event = NormalizedEvent::factory()->create(['team_id' => $team->id]);
+
+        $result = app(SdkEventEvaluationAgent::class)->evaluate(new AIInputContext(
+            teamId: $team->id,
+            normalizedEventId: $event->id,
+            normalizedEvent: [],
+            contextSignals: [],
+            operationalProfile: [],
+            recentHistory: [],
+            tenantProfile: [],
+        ));
+
+        $this->assertSame(0.0, $result->costEstimate);
+    }
+
     public function test_wrapper_persists_conversation_link_after_call(): void
     {
         $user = User::factory()->create();
