@@ -1,4 +1,6 @@
-import { Head, usePage } from '@inertiajs/react';
+import { Head, router, usePage } from '@inertiajs/react';
+import { useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -40,6 +42,9 @@ interface InvoiceRow {
     total: number;
     currency: string | null;
     status: string;
+    paidAt: string | null;
+    hasReceipt: boolean;
+    paymentNote: string | null;
     breakdown: Record<string, unknown> | null;
 }
 
@@ -75,6 +80,109 @@ function UsageBar({ row }: { row: UsageRow }) {
                 style={{ width: `${Math.max(4, ratio * 100)}%` }}
             />
         </div>
+    );
+}
+
+function ReceiptUploader({ invoice }: { invoice: InvoiceRow }) {
+    const page = usePage();
+    const teamSlug =
+        (
+            page.props as unknown as {
+                currentTeam?: { slug?: string | null } | null;
+            }
+        ).currentTeam?.slug ?? null;
+    const inputRef = useRef<HTMLInputElement | null>(null);
+    const [uploading, setUploading] = useState(false);
+
+    if (invoice.status === 'paid') {
+        return (
+            <span className="text-[11px] text-severity-low">
+                Pagada
+                {invoice.paidAt &&
+                    ` el ${new Date(invoice.paidAt).toLocaleDateString('es')}`}
+            </span>
+        );
+    }
+
+    const upload = async (file: File) => {
+        if (teamSlug === null) {
+            return;
+        }
+
+        setUploading(true);
+
+        try {
+            const body = new FormData();
+            body.append('receipt', file);
+
+            const token =
+                document
+                    .querySelector('meta[name=csrf-token]')
+                    ?.getAttribute('content') ?? '';
+
+            const response = await fetch(
+                `/${teamSlug}/billing/invoices/${invoice.id}/receipt`,
+                {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'X-CSRF-TOKEN': token,
+                        Accept: 'application/json',
+                    },
+                    body,
+                },
+            );
+
+            if (response.ok || response.status === 201) {
+                toast.success(
+                    'Comprobante enviado — el equipo de SAM lo verificará.',
+                );
+                router.reload({ only: ['invoices'] });
+            } else if (response.status === 403) {
+                toast.error('No tienes permisos para subir comprobantes.');
+            } else {
+                toast.error('No se pudo subir el comprobante.');
+            }
+        } catch {
+            toast.error('Error de red. Vuelve a intentarlo.');
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    return (
+        <span className="flex items-center gap-2">
+            {invoice.hasReceipt && (
+                <Badge variant="outline" className="text-severity-medium">
+                    comprobante enviado
+                </Badge>
+            )}
+            <button
+                type="button"
+                disabled={uploading}
+                onClick={() => inputRef.current?.click()}
+                className="text-[11px] text-fg-2 underline hover:text-fg-1"
+            >
+                {uploading
+                    ? 'Subiendo…'
+                    : invoice.hasReceipt
+                      ? 'Reemplazar comprobante'
+                      : 'Subir comprobante'}
+            </button>
+            <input
+                ref={inputRef}
+                type="file"
+                accept=".pdf,image/*"
+                className="hidden"
+                onChange={(e) => {
+                    const file = e.target.files?.[0];
+
+                    if (file) {
+                        void upload(file);
+                    }
+                }}
+            />
+        </span>
     );
 }
 
@@ -279,6 +387,7 @@ export default function BillingIndex() {
                                         </th>
                                         <th className="py-1.5 pr-4">Total</th>
                                         <th className="py-1.5 pr-4">Estado</th>
+                                        <th className="py-1.5 pr-4">Pago</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -325,6 +434,11 @@ export default function BillingIndex() {
                                                 >
                                                     {invoice.status}
                                                 </Badge>
+                                            </td>
+                                            <td className="py-2 pr-4">
+                                                <ReceiptUploader
+                                                    invoice={invoice}
+                                                />
                                             </td>
                                         </tr>
                                     ))}

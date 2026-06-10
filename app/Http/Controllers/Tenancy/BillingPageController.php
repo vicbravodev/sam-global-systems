@@ -89,6 +89,9 @@ class BillingPageController extends Controller
                     'total' => (float) $invoice->total,
                     'currency' => $invoice->currency,
                     'status' => $invoice->status?->value ?? (string) $invoice->status,
+                    'paidAt' => $invoice->paid_at?->toIso8601String(),
+                    'hasReceipt' => $invoice->payment_receipt_file_object_id !== null,
+                    'paymentNote' => $invoice->payment_note,
                     'breakdown' => $invoice->breakdown_json,
                 ])
                 ->all(),

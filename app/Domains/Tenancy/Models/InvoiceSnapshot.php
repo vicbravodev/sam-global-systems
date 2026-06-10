@@ -26,6 +26,9 @@ class InvoiceSnapshot extends Model
         'status',
         'breakdown_json',
         'generated_at',
+        'payment_receipt_file_object_id',
+        'paid_at',
+        'payment_note',
     ];
 
     /**
@@ -47,7 +50,16 @@ class InvoiceSnapshot extends Model
             'status' => InvoiceStatus::class,
             'breakdown_json' => 'array',
             'generated_at' => 'datetime',
+            'paid_at' => 'datetime',
         ];
+    }
+
+    /**
+     * @return BelongsTo<FileObject, $this>
+     */
+    public function paymentReceipt(): BelongsTo
+    {
+        return $this->belongsTo(FileObject::class, 'payment_receipt_file_object_id');
     }
 
     protected static function newFactory(): InvoiceSnapshotFactory

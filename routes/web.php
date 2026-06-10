@@ -8,6 +8,7 @@ use App\Http\Controllers\Admin\OperatorController;
 use App\Http\Controllers\Admin\PlanController;
 use App\Http\Controllers\Admin\TenantController;
 use App\Http\Controllers\Admin\TenantFeatureController;
+use App\Http\Controllers\Admin\TenantInvoiceController;
 use App\Http\Controllers\Admin\TenantMemberController;
 use App\Http\Controllers\Admin\TenantSubscriptionController;
 use App\Http\Controllers\AI\AIEvaluationController;
@@ -38,6 +39,7 @@ use App\Http\Controllers\Notifications\NotificationPageController;
 use App\Http\Controllers\Teams\TeamInvitationController;
 use App\Http\Controllers\Tenancy\BillingPageController;
 use App\Http\Controllers\Tenancy\BrandingController;
+use App\Http\Controllers\Tenancy\InvoiceReceiptController;
 use App\Http\Controllers\TenantConfig\TenantAIProfileController;
 use App\Http\Controllers\TenantConfig\TenantConfigController;
 use App\Http\Controllers\TenantConfig\TenantConfigPageController;
@@ -79,6 +81,9 @@ Route::prefix('admin')
         Route::post('tenants/{team}/subscription/reactivate', [TenantSubscriptionController::class, 'reactivate'])->name('tenants.subscription.reactivate');
         Route::post('tenants/{team}/subscription/cancel', [TenantSubscriptionController::class, 'cancel'])->name('tenants.subscription.cancel');
         Route::post('tenants/{team}/subscription/extend-trial', [TenantSubscriptionController::class, 'extendTrial'])->name('tenants.subscription.extend-trial');
+
+        Route::post('tenants/{team}/invoices/{invoice}/mark-paid', [TenantInvoiceController::class, 'markPaid'])->name('tenants.invoices.mark-paid');
+        Route::post('tenants/{team}/invoices/{invoice}/void', [TenantInvoiceController::class, 'void'])->name('tenants.invoices.void');
 
         // Manual feature overrides for a tenant.
         Route::put('tenants/{team}/features/{featureKey}', [TenantFeatureController::class, 'update'])->name('tenants.features.update');
@@ -158,6 +163,7 @@ Route::prefix('{current_team}')
         Route::get('audit', [AuditPageController::class, 'show'])->name('audit.show');
 
         Route::get('billing', [BillingPageController::class, 'show'])->name('billing.show');
+        Route::post('billing/invoices/{invoice}/receipt', [InvoiceReceiptController::class, 'store'])->name('billing.invoices.receipt');
         Route::put('settings/tenant-config/branding', [BrandingController::class, 'update'])->name('tenant-config.branding.update');
         Route::post('settings/tenant-config/branding/logo', [BrandingController::class, 'uploadLogo'])->name('tenant-config.branding.logo');
 
