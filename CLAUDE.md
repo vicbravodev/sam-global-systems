@@ -13,7 +13,7 @@ Guía operativa para Claude Code. El documento autoritativo de reglas Laravel si
 
 ## 1. Qué es SAM
 
-Plataforma multi-tenant de flotas: ingesta webhooks/eventos de proveedores externos (Samsara, etc.), los normaliza, los enriquece con contexto operacional, los evalúa con IA, y genera incidentes + automatizaciones. Billing metered por Stripe con eventos de uso por tenant.
+Plataforma multi-tenant de flotas: ingesta webhooks/eventos de proveedores externos (Samsara, etc.), los normaliza, los enriquece con contexto operacional, los evalúa con IA, y genera incidentes + automatizaciones. Billing metered **local** con eventos de uso por tenant: el cobro es por transferencia bancaria (decisión 2026-06-09, **Stripe cancelado** — no arrancar trabajo Stripe; el admin activa/desactiva tenants según pago/factura subida).
 
 **Stack:** Laravel 13 · PHP 8.5 · Inertia v3 · React 19 · Tailwind v4 · PostgreSQL 18 · Valkey (no Redis) · RustFS (S3-compatible) · Soketi (Pusher-compatible) · Horizon · Cashier Stripe · Mailpit (dev).
 
