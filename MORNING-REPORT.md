@@ -1,5 +1,34 @@
 # MORNING REPORT — rutina nocturna `claude/night-roadmap`
 
+## Run 2026-06-10 12:10
+
+**Resumen ejecutivo.** Run de verificación sin avance de tareas: el ROADMAP sigue **sin pendientes** (`- [ ]` = 0) tras el cierre de v4 en el run de las 10:25, y el cupo diario de auto-generadas (10) quedó consumido con v2+v3+v4, así que no se genera Iteración v5 hoy. Se re-verificó la base completa sobre el último commit de la rama: **1077 tests / 3583 assertions verdes**, Pint limpio, tsc/eslint/prettier verdes y build de Vite exitoso. Mismo entorno degradado que el run anterior: PHP 8.4 sin `ext-bcmath` ni driver de cobertura (PPA `ondrej/php` bloqueado con 403 por política de red) — composer corrió con `--ignore-platform-req=ext-bcmath` y la suite vía `vendor/bin/phpunit --no-coverage`.
+
+### Tareas completadas
+
+Ninguna (no había `- [ ]` pendientes).
+
+### Tareas bloqueadas
+
+Ninguna.
+
+### Auto-generadas
+
+Ninguna: cupo diario 10/10 consumido (4 v2 + 3 v3 + 3 v4). Si el primer run de mañana encuentra hallazgos materiales en la auditoría, puede generar la Iteración v5 (límite final de la rutina).
+
+### Verificación final
+
+- `vendor/bin/phpunit --no-coverage` → **OK (1077 tests, 3583 assertions)**.
+- `vendor/bin/pint --test` → pass.
+- `npm run types:check && npm run lint:check && npm run format:check` → verdes.
+- `npm run build` → exitoso.
+- Cobertura: sin driver pcov/xdebug en este contenedor; no medible localmente (CI la exige igual).
+
+### Riesgos / para mirar primero
+
+- El PR de la rama acumula todo el trabajo de v1–v4 y está listo para revisión humana; nada nuevo desde las 10:25.
+- La limitación de cobertura local es del contenedor, no del repo: si CI tiene pcov, el gate de cobertura corre allá con normalidad.
+
 ## Run 2026-06-10 10:25
 
 **Resumen ejecutivo.** Se completaron las **3 tareas de la Iteración v4** — F5a (centro de notificaciones), F5b (preferencias de notificación del usuario) y T2 (tests de authz de la API de incidents) — con lo que **el ROADMAP queda sin tareas pendientes** (`- [ ]` = 0). Con el cupo diario de 10 auto-generadas ya consumido en runs anteriores, este run no genera Iteración v5. Suite final: **1077 tests / 3583 assertions, todo verde**; Pint limpio; tsc/eslint/prettier/build verdes. Nota de entorno: este contenedor trae PHP 8.4 sin `ext-bcmath` ni pcov (PPA bloqueado por política de red) — composer corrió con `--ignore-platform-req=ext-bcmath` y los tests vía `vendor/bin/phpunit --no-coverage` (equivalente a la suite; `php artisan test` exige driver de cobertura inexistente aquí).
