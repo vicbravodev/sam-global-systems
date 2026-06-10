@@ -26,12 +26,13 @@ class StoreRawEvent
         ?string $externalEventId = null,
         ?array $headers = null,
         array $transportMeta = [],
+        ?string $deduplicationKey = null,
     ): RawEvent {
         $eventSource = $this->resolveEventSource($sourceType, $teamId, $providerId);
 
         $payloadJson = json_encode($payload);
         $checksum = hash('sha256', $payloadJson);
-        $deduplicationKey = $externalEventId ?? $checksum;
+        $deduplicationKey ??= $externalEventId ?? $checksum;
 
         $rawEvent = RawEvent::withoutGlobalScopes()->create([
             'team_id' => $teamId,

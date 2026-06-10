@@ -186,6 +186,7 @@ class NormalizeRawEvent
                 ?? Arr::get($payload, 'incidentReportUrl')
                 ?? Arr::get($payload, 'inboxEventUrl'),
             'is_resolved' => Arr::get($payload, 'data.isResolved'),
+            'external_resolved_at' => Arr::get($payload, 'data.resolvedAtTime'),
             'raw_conditions' => Arr::get($payload, 'data.conditions'),
             'raw_behavior_labels' => Arr::get($payload, 'behaviorLabels'),
         ];

@@ -13,6 +13,7 @@ enum TimelineEntryType: string
     case EvidenceAdded = 'evidence_added';
     case ActionExecuted = 'action_executed';
     case Resolved = 'resolved';
+    case ExternallyResolved = 'externally_resolved';
     case Closed = 'closed';
     case Reopened = 'reopened';
     case Reclassified = 'reclassified';
