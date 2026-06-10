@@ -12,7 +12,6 @@ const TIER1_FILES = [
     'app/Domains/Tenancy/Actions/ResolveTenantContext.php',
     'app/Domains/Tenancy/Actions/CreateTenant.php',
     'app/Domains/Tenancy/Jobs/AggregateUsageJob.php',
-    'app/Domains/Tenancy/Jobs/ReportUsageToStripeJob.php',
     'app/Domains/Tenancy/Jobs/GenerateInvoiceSnapshotJob.php',
     'app/Domains/Access/Actions/AuthorizeAction.php',
     'app/Domains/Access/Actions/AssignRoleToMember.php',
