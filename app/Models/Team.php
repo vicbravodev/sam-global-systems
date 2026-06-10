@@ -19,13 +19,12 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\HasOneThrough;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Laravel\Cashier\Billable;
 
 #[Fillable(['name', 'slug', 'is_personal', 'timezone', 'country', 'currency', 'onboarding_state'])]
 class Team extends Model
 {
     /** @use HasFactory<TeamFactory> */
-    use Billable, GeneratesUniqueTeamSlugs, HasFactory, SoftDeletes;
+    use GeneratesUniqueTeamSlugs, HasFactory, SoftDeletes;
 
     /**
      * Bootstrap the model and its traits.
