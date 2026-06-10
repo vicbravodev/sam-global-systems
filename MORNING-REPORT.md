@@ -1,5 +1,15 @@
 # MORNING REPORT — rutina nocturna `claude/night-roadmap`
 
+## Run 2026-06-10 06:50 (concurrente — trabajo descartado por duplicado)
+
+**Resumen ejecutivo.** Este run arrancó en paralelo con el de las 06:43: la rama remota `claude/night-roadmap` aún no existía cuando ambos hicieron el chequeo del candado, así que el candado anti-concurrencia no pudo activarse (solo funciona cuando la rama ya existe). Ambos runs completaron de forma independiente **las mismas 4 tareas de la Iteración v1** (B6-P8, B6-P4, B1a, F4a) con implementaciones equivalentes. El run de las 06:43 empujó primero; este run **descartó sus 6 commits locales sin publicarlos** (nada de force-push ni merges de implementaciones paralelas) y se alineó al estado remoto. Sin cambios de código propios en la rama.
+
+Aportes informativos de este run que el de las 06:43 no pudo verificar:
+
+- **Cobertura ejecutada y en verde** sobre el mismo conjunto de tareas: Tier 1 **22/22** ≥95% · Tier 2 **88.39%** ≥80% · Global **85.33%** ≥75% (`--mode=local`, PASS). El otro run no tenía driver de cobertura.
+- **Cómo conseguir driver de cobertura y bcmath en este contenedor pese a la red bloqueada**: compilar desde código fuente de GitHub funciona — `bcmath` desde `php/php-src` (tag `php-8.4.19`, `phpize && ./configure && make`) y `pcov` desde `krakjoe/pcov` v1.0.12; instalar el `.so` en `/usr/lib/php/20240924/` + ini en `/etc/php/8.4/cli/conf.d/`. Candidato a incorporarse a `.claude/setup.sh` (decisión humana; la rutina no edita ese script sin pedirlo).
+- **Sugerencia de robustez del candado**: considerar que el run haga push de un commit de "run iniciado" inmediatamente tras crear la rama (o usar otra señal), para cubrir la ventana del primer arranque donde dos runs no se ven entre sí.
+
 ## Run 2026-06-10 06:43
 
 **Resumen ejecutivo.** Primer run de la rutina (la rama no existía; se creó desde `main`). Se reparó la base — el repo no arrancaba en PHP 8.4 por un fatal de constante de trait en Audit — y se completaron las **4 tareas de la Iteración v1**: B6-P8 (vínculo histórico de incidentes), B6-P4 (GPS fresco en eventos críticos), B1a (policies de Tenancy) y F4a (página `drivers/index`). Suite final: **988 tests / 3126 assertions, todo verde**, Pint limpio, front (tsc/eslint/prettier/build) verde. Se auto-generó la Iteración v2 (4 tareas) para el siguiente run.
