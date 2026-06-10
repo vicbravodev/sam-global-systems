@@ -115,6 +115,23 @@
     --color-confidence-high: var(--confidence-high);
     --color-ai-accent: var(--ai-accent);
     --color-ai-accent-bg: var(--ai-accent-bg);
+
+    /* Shadows — tinted to the background hue (260), strength varies per mode
+       via --shadow-color-*. Overrides the Tailwind default shadow scale so the
+       existing shadow-xs/sm/md/lg/xl utilities pick these up. */
+    --shadow-2xs: 0 1px 2px 0 var(--shadow-color-1);
+    --shadow-xs: 0 1px 2px 0 var(--shadow-color-1);
+    --shadow-sm:
+        0 1px 2px 0 var(--shadow-color-1), 0 1px 3px 0 var(--shadow-color-2);
+    --shadow-md:
+        0 2px 4px -1px var(--shadow-color-1),
+        0 4px 6px -1px var(--shadow-color-2);
+    --shadow-lg:
+        0 4px 6px -2px var(--shadow-color-1),
+        0 10px 15px -3px var(--shadow-color-2);
+    --shadow-xl:
+        0 8px 10px -4px var(--shadow-color-1),
+        0 20px 25px -5px var(--shadow-color-2);
 }
 
 /* -------------------- Root tokens (LIGHT) -------------------- */
@@ -130,6 +147,8 @@
     --border: oklch(0.905 0.005 260);
     --border-strong: oklch(0.82 0.006 260);
     --ring: oklch(0.72 0.12 250);
+    --shadow-color-1: oklch(0.145 0.005 260 / 0.05);
+    --shadow-color-2: oklch(0.145 0.005 260 / 0.08);
 
     /* shadcn surfaces preserved */
     --card: var(--surface-1);
@@ -261,6 +280,8 @@
     --border: oklch(0.27 0.006 260);
     --border-strong: oklch(0.38 0.008 260);
     --ring: oklch(0.62 0.14 250);
+    --shadow-color-1: oklch(0.05 0.005 260 / 0.3);
+    --shadow-color-2: oklch(0.05 0.005 260 / 0.4);
 
     --card: var(--surface-1);
     --card-foreground: var(--foreground);

@@ -109,9 +109,9 @@ interface IncidentRowProps {
 }
 
 const DENSITY_H: Record<InboxDensity, string> = {
-    compact: 'h-9',
-    comfortable: 'h-[46px]',
-    relaxed: 'h-16',
+    compact: 'h-(--row-compact)',
+    comfortable: 'h-(--row-comfortable)',
+    relaxed: 'h-(--row-relaxed)',
 };
 
 export function IncidentRow({
