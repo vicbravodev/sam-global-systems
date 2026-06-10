@@ -48,6 +48,7 @@ export interface IncidentActionsValue {
     closeIncident: (summary?: string) => Promise<boolean>;
     reopen: () => Promise<boolean>;
     reclassify: (typeId: number, priorityId: number | null) => Promise<boolean>;
+    acknowledge: () => Promise<boolean>;
     escalate: (reason?: string) => Promise<boolean>;
     discard: (summary?: string) => Promise<boolean>;
     confirmAi: () => Promise<boolean>;
@@ -204,6 +205,13 @@ export function IncidentActionsProvider({
                         incident_priority_id: priorityId,
                     },
                     'Incidente reclasificado.',
+                ),
+            acknowledge: () =>
+                run(
+                    'acknowledge',
+                    base ? `${base}/acknowledge` : null,
+                    {},
+                    'Incidente atendido (ACK).',
                 ),
             escalate: (reason) =>
                 run(

@@ -9,6 +9,8 @@ enum TimelineEntryType: string
     case PriorityChanged = 'priority_changed';
     case Assigned = 'assigned';
     case Escalated = 'escalated';
+    case Acknowledged = 'acknowledged';
+    case SlaBreached = 'sla_breached';
     case CommentAdded = 'comment_added';
     case EvidenceAdded = 'evidence_added';
     case ActionExecuted = 'action_executed';

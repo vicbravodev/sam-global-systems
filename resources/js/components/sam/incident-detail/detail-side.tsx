@@ -1,4 +1,4 @@
-import { Loader2, RefreshCw, TriangleAlert, X } from 'lucide-react';
+import { Check, Loader2, RefreshCw, TriangleAlert, X } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
@@ -266,7 +266,8 @@ interface DetailSideProps {
 
 export function DetailSide({ incident }: DetailSideProps) {
     const ctx = incident.operationalContext;
-    const { reopen, escalate, discard, pending } = useIncidentActions();
+    const { reopen, acknowledge, escalate, discard, pending } =
+        useIncidentActions();
     const [resolveOpen, setResolveOpen] = useState(false);
 
     const isTerminal = ['resolved', 'closed', 'discarded'].includes(
@@ -346,6 +347,19 @@ export function DetailSide({ incident }: DetailSideProps) {
                     </Button>
                 )}
                 <div className="mt-1 flex flex-wrap gap-x-3.5 gap-y-1">
+                    <button
+                        type="button"
+                        onClick={() => void acknowledge()}
+                        disabled={isTerminal || pending === 'acknowledge'}
+                        className="inline-flex cursor-pointer items-center gap-1.5 border-none bg-transparent py-1 text-[12px] font-medium text-fg-2 hover:text-fg-1 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                        {pending === 'acknowledge' ? (
+                            <Loader2 size={12} className="animate-spin" />
+                        ) : (
+                            <Check size={12} />
+                        )}
+                        Atender (ACK)
+                    </button>
                     <button
                         type="button"
                         onClick={() => void escalate()}
