@@ -7,6 +7,7 @@ import type { ConditionFieldDef } from '@/components/sam/condition-builder';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Combobox } from '@/components/ui/combobox';
 import { Input } from '@/components/ui/input';
 import { postJson, putJson, readErrorMessage } from '@/lib/sam-fetch';
 
@@ -58,6 +59,10 @@ interface AutomationPageProps {
         statuses: string[];
     };
     triggerConditionFields: Record<string, ConditionFieldDef[]>;
+    teamTargets: {
+        users: { value: string; label: string; description?: string }[];
+        roles: { value: string; label: string }[];
+    };
     canManage: boolean;
 }
 
@@ -135,10 +140,12 @@ interface StepDraft {
 function WorkflowBuilder({
     options,
     triggerConditionFields,
+    teamTargets,
     onCreated,
 }: {
     options: AutomationPageProps['options'];
     triggerConditionFields: Record<string, ConditionFieldDef[]>;
+    teamTargets: AutomationPageProps['teamTargets'];
     onCreated: () => void;
 }) {
     const base = useTeamBase();
@@ -294,14 +301,48 @@ function WorkflowBuilder({
                             ),
                         )}
                     </select>
-                    <Input
-                        placeholder="destino (rol, email, tel, url…)"
-                        value={step.target_reference}
-                        onChange={(e) =>
-                            setStep(index, 'target_reference', e.target.value)
-                        }
-                        className="w-56 text-[12px]"
-                    />
+                    {step.target_type === 'user' ? (
+                        <Combobox
+                            options={teamTargets.users}
+                            value={
+                                step.target_reference === ''
+                                    ? null
+                                    : step.target_reference
+                            }
+                            onChange={(value) =>
+                                setStep(index, 'target_reference', value ?? '')
+                            }
+                            placeholder="Usuario del equipo…"
+                            className="w-56"
+                        />
+                    ) : step.target_type === 'role' ? (
+                        <Combobox
+                            options={teamTargets.roles}
+                            value={
+                                step.target_reference === ''
+                                    ? null
+                                    : step.target_reference
+                            }
+                            onChange={(value) =>
+                                setStep(index, 'target_reference', value ?? '')
+                            }
+                            placeholder="Rol del equipo…"
+                            className="w-56"
+                        />
+                    ) : (
+                        <Input
+                            placeholder="destino (email, tel, url…)"
+                            value={step.target_reference}
+                            onChange={(e) =>
+                                setStep(
+                                    index,
+                                    'target_reference',
+                                    e.target.value,
+                                )
+                            }
+                            className="w-56 text-[12px]"
+                        />
+                    )}
                     <Input
                         type="number"
                         title="delay en segundos"
@@ -341,11 +382,13 @@ function WorkflowsTab({
     workflows,
     options,
     triggerConditionFields,
+    teamTargets,
     canManage,
 }: {
     workflows: WorkflowRow[];
     options: AutomationPageProps['options'];
     triggerConditionFields: Record<string, ConditionFieldDef[]>;
+    teamTargets: AutomationPageProps['teamTargets'];
     canManage: boolean;
 }) {
     const base = useTeamBase();
@@ -395,6 +438,7 @@ function WorkflowsTab({
                 <WorkflowBuilder
                     options={options}
                     triggerConditionFields={triggerConditionFields}
+                    teamTargets={teamTargets}
                     onCreated={() => setCreating(false)}
                 />
             )}
@@ -686,6 +730,7 @@ export default function AutomationIndex() {
                         workflows={props.workflows}
                         options={props.options}
                         triggerConditionFields={props.triggerConditionFields}
+                        teamTargets={props.teamTargets}
                         canManage={props.canManage}
                     />
                 )}

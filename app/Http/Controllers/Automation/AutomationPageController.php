@@ -8,6 +8,7 @@ use App\Domains\Automation\Enums\WorkflowTriggerType;
 use App\Domains\Automation\Models\ActionExecution;
 use App\Domains\Automation\Models\AutomationWorkflow;
 use App\Domains\Automation\Support\TriggerConditionCatalog;
+use App\Enums\TeamRole;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
 use Inertia\Inertia;
@@ -67,6 +68,21 @@ class AutomationPageController extends Controller
                 'statuses' => array_map(fn (WorkflowStatus $status) => $status->value, WorkflowStatus::cases()),
             ],
             'triggerConditionFields' => fn () => TriggerConditionCatalog::all(),
+            'teamTargets' => fn (): array => [
+                'users' => $current_team->members()
+                    ->orderBy('name')
+                    ->get(['users.id', 'users.name', 'users.email'])
+                    ->map(fn ($user): array => [
+                        'value' => (string) $user->id,
+                        'label' => (string) $user->name,
+                        'description' => (string) $user->email,
+                    ])
+                    ->all(),
+                'roles' => array_map(fn (TeamRole $role): array => [
+                    'value' => $role->value,
+                    'label' => $role->label(),
+                ], TeamRole::cases()),
+            ],
             'canManage' => fn () => (bool) request()->user()?->can('create', AutomationWorkflow::class),
         ]);
     }

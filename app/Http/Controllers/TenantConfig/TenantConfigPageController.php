@@ -18,6 +18,7 @@ use App\Domains\TenantConfig\Models\TenantEscalationConfig;
 use App\Domains\TenantConfig\Models\TenantNotificationPolicy;
 use App\Domains\TenantConfig\Models\TenantScheduleProfile;
 use App\Domains\TenantConfig\Models\TenantSetting;
+use App\Enums\TeamRole;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
 use Inertia\Inertia;
@@ -105,6 +106,21 @@ class TenantConfigPageController extends Controller
                 ])
                 ->all(),
             'escalationConditionFields' => fn () => TriggerConditionCatalog::escalationFields(),
+            'recipientOptions' => fn (): array => [
+                'roles' => array_map(fn (TeamRole $role): array => [
+                    'value' => $role->value,
+                    'label' => $role->label(),
+                ], TeamRole::cases()),
+                'users' => $current_team->members()
+                    ->orderBy('name')
+                    ->get(['users.id', 'users.name', 'users.email'])
+                    ->map(fn ($user): array => [
+                        'value' => (string) $user->id,
+                        'label' => (string) $user->name,
+                        'description' => (string) $user->email,
+                    ])
+                    ->all(),
+            ],
             'scheduleProfiles' => fn () => TenantScheduleProfile::withoutGlobalScopes()
                 ->where('team_id', $current_team->id)
                 ->orderBy('profile_code')
