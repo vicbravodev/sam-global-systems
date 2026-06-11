@@ -249,6 +249,7 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
         \DateTimeInterface $startTime,
         \DateTimeInterface $endTime,
         array $inputs = [],
+        string $mediaType = 'videoHighRes',
     ): ?string {
         $token = $this->resolveToken($integration);
 
@@ -262,7 +263,7 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
                 'inputs' => $inputs !== [] ? $inputs : ['dashcamRoadFacing', 'dashcamDriverFacing'],
                 'startTime' => Carbon::instance($startTime)->toIso8601String(),
                 'endTime' => Carbon::instance($endTime)->toIso8601String(),
-                'mediaType' => 'videoHighRes',
+                'mediaType' => $mediaType,
             ]);
         } catch (\Throwable) {
             return null;

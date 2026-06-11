@@ -4,23 +4,30 @@ namespace Tests\Feature\Domains\Context;
 
 use App\Contracts\Integrations\MediaRetrievalAdapter;
 use App\Contracts\ObjectStorage;
+use App\Contracts\TenantConfig\TenantConfigResolver;
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Assets\Models\AssetExternalReference;
 use App\Domains\Context\Actions\AttachImmediateEventMedia;
 use App\Domains\Context\Actions\RefreshContextMediaSnapshot;
 use App\Domains\Context\Enums\MediaRequestStatus;
+use App\Domains\Context\Enums\MediaRequestType;
 use App\Domains\Context\Events\EventMediaAvailable;
 use App\Domains\Context\Events\EventMediaFailed;
 use App\Domains\Context\Jobs\FetchDeferredEventMediaJob;
 use App\Domains\Context\Models\EventMediaContext;
 use App\Domains\Context\Models\EventMediaRequest;
+use App\Domains\Ingestion\Enums\AttachmentType;
 use App\Domains\Ingestion\Models\RawEventAttachment;
 use App\Domains\Integrations\Models\IntegrationCredential;
 use App\Domains\Integrations\Models\IntegrationProvider;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Domains\TenantConfig\Enums\SettingGroup;
+use App\Domains\TenantConfig\Enums\SettingValueType;
+use App\Domains\TenantConfig\Models\TenantSetting;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
@@ -93,7 +100,19 @@ class FetchDeferredEventMediaJobTest extends TestCase
             app(ObjectStorage::class),
             app(AttachImmediateEventMedia::class),
             app(RefreshContextMediaSnapshot::class),
+            app(TenantConfigResolver::class),
         );
+    }
+
+    private function setMediaSetting(string $key, int $value): void
+    {
+        TenantSetting::factory()->create([
+            'team_id' => $this->teamId,
+            'setting_key' => $key,
+            'setting_group' => SettingGroup::Operational,
+            'value_json' => ['value' => $value],
+            'value_type' => SettingValueType::Number,
+        ]);
     }
 
     public function test_full_cycle_pending_to_completed_downloads_and_materializes_media(): void
@@ -149,6 +168,160 @@ class FetchDeferredEventMediaJobTest extends TestCase
         Storage::disk('rustfs')->assertExists($media->storage_path);
 
         Event::assertDispatched(EventMediaAvailable::class);
+    }
+
+    public function test_clip_window_honors_the_tenant_setting(): void
+    {
+        $this->makeSamsaraIntegration();
+        $this->setMediaSetting(FetchDeferredEventMediaJob::SETTING_CLIP_WINDOW, 120);
+
+        $occurredAt = Carbon::parse('2026-06-11 12:00:00', 'UTC');
+
+        $event = NormalizedEvent::factory()->create([
+            'team_id' => $this->teamId,
+            'asset_id' => $this->asset->id,
+            'occurred_at' => $occurredAt,
+        ]);
+
+        Http::fake([
+            'api.samsara.com/cameras/media/retrieval*' => Http::sequence()
+                ->push(['data' => ['retrievalId' => 'ret-1']])
+                ->push(['data' => ['media' => [[
+                    'input' => 'dashcamRoadFacing',
+                    'status' => 'available',
+                    'urlInfo' => ['url' => 'https://media.samsara.com/ret-1/road.mp4'],
+                ]]]]),
+            'media.samsara.com/*' => Http::response('clip-bytes', 200, ['Content-Type' => 'video/mp4']),
+        ]);
+
+        $this->runJob($this->makeRequest($event));
+
+        Http::assertSent(function ($request) use ($occurredAt) {
+            if ($request->method() !== 'POST') {
+                return true;
+            }
+
+            return $request['mediaType'] === 'videoHighRes'
+                && $request['startTime'] === $occurredAt->copy()->subSeconds(120)->toIso8601String()
+                && $request['endTime'] === $occurredAt->copy()->addSeconds(120)->toIso8601String();
+        });
+    }
+
+    public function test_still_request_places_one_image_retrieval_per_offset_and_completes(): void
+    {
+        $this->makeSamsaraIntegration();
+        $this->setMediaSetting(FetchDeferredEventMediaJob::SETTING_STILL_COUNT, 2);
+        $this->setMediaSetting(FetchDeferredEventMediaJob::SETTING_STILL_WINDOW, 10);
+
+        $occurredAt = Carbon::parse('2026-06-11 12:00:00', 'UTC');
+
+        $event = NormalizedEvent::factory()->create([
+            'team_id' => $this->teamId,
+            'asset_id' => $this->asset->id,
+            'occurred_at' => $occurredAt,
+        ]);
+
+        Http::fake([
+            'api.samsara.com/cameras/media/retrieval*' => Http::sequence()
+                // POST × 2: one image retrieval per still offset.
+                ->push(['data' => ['retrievalId' => 'still-1']])
+                ->push(['data' => ['retrievalId' => 'still-2']])
+                // GET × 2: both stills ready on the first poll.
+                ->push(['data' => ['media' => [[
+                    'input' => 'dashcamDriverFacing',
+                    'status' => 'available',
+                    'urlInfo' => ['url' => 'https://media.samsara.com/still-1/cab.jpg'],
+                ]]]])
+                ->push(['data' => ['media' => [[
+                    'input' => 'dashcamDriverFacing',
+                    'status' => 'available',
+                    'urlInfo' => ['url' => 'https://media.samsara.com/still-2/cab.jpg'],
+                ]]]]),
+            'media.samsara.com/*' => Http::response('still-bytes', 200, ['Content-Type' => 'image/jpeg']),
+        ]);
+
+        $request = $this->makeRequest($event, ['request_type' => MediaRequestType::FetchSnapshot]);
+
+        $this->runJob($request);
+
+        $fresh = $request->fresh();
+        $this->assertSame(MediaRequestStatus::Completed, $fresh->status);
+        $this->assertCount(2, $fresh->response_metadata_json['still_retrievals']);
+        $this->assertSame(2, $fresh->response_metadata_json['stills_downloaded']);
+        $this->assertSame(
+            [-600, 600],
+            array_column($fresh->response_metadata_json['still_retrievals'], 'offset_seconds'),
+        );
+
+        // Each placement is a single instant (startTime == endTime) image request.
+        Http::assertSent(function ($request) use ($occurredAt) {
+            if ($request->method() !== 'POST') {
+                return true;
+            }
+
+            return $request['mediaType'] === 'image'
+                && $request['startTime'] === $request['endTime']
+                && in_array($request['startTime'], [
+                    $occurredAt->copy()->subSeconds(600)->toIso8601String(),
+                    $occurredAt->copy()->addSeconds(600)->toIso8601String(),
+                ], true);
+        });
+
+        $attachments = RawEventAttachment::where('raw_event_id', $event->raw_event_id)->get();
+        $this->assertCount(2, $attachments);
+        $this->assertTrue($attachments->every(fn ($a) => $a->attachment_type === AttachmentType::Snapshot));
+        $this->assertEqualsCanonicalizing(
+            [
+                "teams/{$this->teamId}/raw-events/{$event->raw_event_id}/deferred-still-0-driver-facing.jpg",
+                "teams/{$this->teamId}/raw-events/{$event->raw_event_id}/deferred-still-1-driver-facing.jpg",
+            ],
+            $attachments->pluck('storage_path')->all(),
+        );
+
+        $this->assertSame(2, EventMediaContext::withoutGlobalScopes()->where('normalized_event_id', $event->id)->count());
+        Event::assertDispatched(EventMediaAvailable::class);
+    }
+
+    public function test_still_request_fails_when_provider_rejects_every_still(): void
+    {
+        $this->makeSamsaraIntegration();
+        $this->setMediaSetting(FetchDeferredEventMediaJob::SETTING_STILL_COUNT, 3);
+
+        Http::fake([
+            'api.samsara.com/cameras/media/retrieval*' => Http::response([], 500),
+        ]);
+
+        $request = $this->makeRequest(attributes: ['request_type' => MediaRequestType::FetchSnapshot]);
+
+        $this->runJob($request);
+
+        $this->assertSame(MediaRequestStatus::Failed, $request->fresh()->status);
+        Event::assertDispatched(EventMediaFailed::class);
+    }
+
+    public function test_still_request_fails_when_every_still_fails_at_the_provider(): void
+    {
+        $this->makeSamsaraIntegration();
+
+        Http::fake([
+            'api.samsara.com/cameras/media/retrieval*' => Http::response([
+                'data' => ['media' => [['input' => 'dashcamDriverFacing', 'status' => 'failed']]],
+            ]),
+        ]);
+
+        $request = $this->makeRequest(attributes: [
+            'request_type' => MediaRequestType::FetchSnapshot,
+            'status' => MediaRequestStatus::Sent,
+            'response_metadata_json' => ['still_retrievals' => [
+                ['retrieval_id' => 'still-1', 'index' => 0, 'offset_seconds' => -600],
+                ['retrieval_id' => 'still-2', 'index' => 1, 'offset_seconds' => 600],
+            ]],
+        ]);
+
+        $this->runJob($request);
+
+        $this->assertSame(MediaRequestStatus::Failed, $request->fresh()->status);
+        Event::assertDispatched(EventMediaFailed::class);
     }
 
     public function test_expired_request_is_closed_without_calling_the_provider(): void
@@ -244,6 +417,7 @@ class FetchDeferredEventMediaJobTest extends TestCase
             app(ObjectStorage::class),
             app(AttachImmediateEventMedia::class),
             app(RefreshContextMediaSnapshot::class),
+            app(TenantConfigResolver::class),
         );
 
         Http::assertNothingSent();

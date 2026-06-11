@@ -445,4 +445,95 @@ class NormalizeRawEventTest extends TestCase
                 && $event->providerId === $this->samsaraProvider->id;
         });
     }
+
+    public function test_internal_monitor_event_normalizes_without_provider_or_mapping_rule(): void
+    {
+        Event::fake([EventNormalized::class, EventUnmapped::class]);
+
+        $maintenanceCategory = EventCategory::factory()->create(['code' => 'maintenance']);
+        $offlineType = EventType::factory()->create([
+            'code' => 'device_offline',
+            'category_id' => $maintenanceCategory->id,
+            'default_severity_id' => $this->mediumSeverity->id,
+        ]);
+
+        $asset = Asset::factory()->create(['team_id' => $this->teamId]);
+
+        $rawEvent = RawEvent::factory()->pendingProcessing()->create([
+            'team_id' => $this->teamId,
+            'provider_id' => null,
+            'event_type_raw' => 'device_offline',
+            'payload_json' => [
+                'eventType' => 'device_offline',
+                'internal' => ['monitor' => 'offline_watchdog', 'asset_id' => $asset->id],
+                'silent_minutes' => 30,
+            ],
+        ]);
+
+        $normalized = app(NormalizeRawEvent::class)->execute($rawEvent);
+
+        $this->assertSame(NormalizedEventStatus::Normalized, $normalized->status);
+        $this->assertSame($offlineType->id, $normalized->event_type_id);
+        $this->assertSame($this->mediumSeverity->id, $normalized->event_severity_id);
+        $this->assertSame($asset->id, $normalized->asset_id);
+        $this->assertSame('device_offline', $normalized->payload_normalized_json['event_type_code']);
+
+        Event::assertDispatched(EventNormalized::class);
+        Event::assertNotDispatched(EventUnmapped::class);
+    }
+
+    public function test_internal_event_never_binds_an_asset_of_another_tenant(): void
+    {
+        Event::fake([EventNormalized::class, EventUnmapped::class]);
+
+        $maintenanceCategory = EventCategory::factory()->create(['code' => 'maintenance']);
+        EventType::factory()->create([
+            'code' => 'device_offline',
+            'category_id' => $maintenanceCategory->id,
+            'default_severity_id' => $this->mediumSeverity->id,
+        ]);
+
+        $foreignAsset = Asset::factory()->create([
+            'team_id' => User::factory()->create()->currentTeam->id,
+        ]);
+
+        $rawEvent = RawEvent::factory()->pendingProcessing()->create([
+            'team_id' => $this->teamId,
+            'provider_id' => null,
+            'event_type_raw' => 'device_offline',
+            'payload_json' => [
+                'internal' => ['asset_id' => $foreignAsset->id],
+            ],
+        ]);
+
+        $normalized = app(NormalizeRawEvent::class)->execute($rawEvent);
+
+        $this->assertNull($normalized->asset_id);
+    }
+
+    public function test_internal_payload_with_unknown_type_code_falls_back_to_unmapped(): void
+    {
+        Event::fake([EventNormalized::class, EventUnmapped::class]);
+
+        EventType::factory()->create([
+            'code' => 'unmapped',
+            'category_id' => $this->operationalCategory->id,
+            'default_severity_id' => $this->lowSeverity->id,
+        ]);
+
+        $asset = Asset::factory()->create(['team_id' => $this->teamId]);
+
+        $rawEvent = RawEvent::factory()->pendingProcessing()->create([
+            'team_id' => $this->teamId,
+            'provider_id' => null,
+            'event_type_raw' => 'no_such_type',
+            'payload_json' => [
+                'internal' => ['asset_id' => $asset->id],
+            ],
+        ]);
+
+        $normalized = app(NormalizeRawEvent::class)->execute($rawEvent);
+
+        $this->assertSame(NormalizedEventStatus::Unmapped, $normalized->status);
+    }
 }

@@ -47,6 +47,14 @@ that was "resolved" while on the road, outside a base, in a risk zone, or
 with any distress indication must NEVER be downgraded — a cancelled panic can
 be coercion; keep it "real_event" or "unclear". When these signals are
 missing or contradictory, do not downgrade.
+
+Safety correlation: recent_history may include `nearby_safety_events_count`,
+`nearby_safety_breakdown` and `harsh_driving_near_event` — safety events of
+the same vehicle in the minutes around the event. Harsh braking, harsh turns
+or evasive maneuvers shortly before or after a panic weigh strongly toward a
+real assault or forced stop ("real_event"). Calm telemetry around the event
+supports a false positive ONLY when the other benign signals (resolved,
+parked at base, clean media) also align — calm alone never downgrades.
 Never include any field outside this schema.
 INSTRUCTIONS;
     }

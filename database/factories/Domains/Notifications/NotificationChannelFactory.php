@@ -61,6 +61,19 @@ class NotificationChannelFactory extends Factory
         ]);
     }
 
+    public function voice(): static
+    {
+        return $this->state(fn () => [
+            'channel_type' => ChannelType::Voice,
+            'provider' => 'twilio',
+            'config_json' => [
+                'twilio_account_sid' => 'AC'.fake()->regexify('[a-f0-9]{32}'),
+                'twilio_auth_token' => fake()->regexify('[a-f0-9]{32}'),
+                'from' => '+15005550006',
+            ],
+        ]);
+    }
+
     public function inactive(): static
     {
         return $this->state(fn () => ['is_active' => false]);

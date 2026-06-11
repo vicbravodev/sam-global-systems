@@ -2,6 +2,8 @@
 
 namespace App\Domains\Context\Actions;
 
+use App\Contracts\TenantConfig\TenantConfigResolver;
+use App\Contracts\TenantConfig\TenantScheduleResolver;
 use App\Domains\Context\Enums\GeofenceMatchType;
 use App\Domains\Context\Enums\IncidentRelationType;
 use App\Domains\Context\Events\EventContextBuilt;
@@ -16,6 +18,10 @@ use Illuminate\Support\Facades\DB;
 
 class BuildEventContext
 {
+    public const string SETTING_SAFETY_CORRELATION = 'context.safety_correlation_minutes';
+
+    public const int DEFAULT_SAFETY_CORRELATION_MINUTES = 30;
+
     public function __construct(
         private ResolveGeofenceContext $resolveGeofenceContext,
         private LoadRecentAssetHistory $loadRecentAssetHistory,
@@ -24,6 +30,8 @@ class BuildEventContext
         private ResolveDriverOperationalContext $resolveDriverOperationalContext,
         private BuildOperationalContextProfile $buildOperationalContextProfile,
         private FetchLiveLocationForEvent $fetchLiveLocationForEvent,
+        private TenantConfigResolver $tenantConfigResolver,
+        private TenantScheduleResolver $tenantScheduleResolver,
     ) {}
 
     public function execute(NormalizedEvent $normalizedEvent): EventContextSnapshot
@@ -62,6 +70,20 @@ class BuildEventContext
                 $normalizedEvent->asset_id,
                 $normalizedEvent->event_type_id,
                 $normalizedEvent->occurred_at ?? now(),
+                correlationMinutes: max(1, (int) $this->tenantConfigResolver->resolve(
+                    (int) $normalizedEvent->team_id,
+                    self::SETTING_SAFETY_CORRELATION,
+                    self::DEFAULT_SAFETY_CORRELATION_MINUTES,
+                )),
+                excludeEventId: $normalizedEvent->id,
+            );
+
+            // After-hours context (Roadmap V2-C2): only a persisted schedule
+            // profile can flag an event as outside operating hours — tenants
+            // without one default to "always operating".
+            $schedule = $this->tenantScheduleResolver->resolve(
+                (int) $normalizedEvent->team_id,
+                $normalizedEvent->occurred_at ?? now(),
             );
 
             $signals = SignalsBuilder::build([
@@ -75,6 +97,7 @@ class BuildEventContext
                 'event' => [
                     'is_resolved' => $normalizedEvent->payload_normalized_json['is_resolved'] ?? null,
                 ],
+                'outside_operating_hours' => $schedule->isPersisted && ! $schedule->withinOperatingHours,
             ]);
 
             $existing = EventContextSnapshot::withoutGlobalScopes()
@@ -321,6 +344,9 @@ class BuildEventContext
             'recent_same_type_count' => $recentHistory['recent_same_type_count'],
             'recent_high_severity_count' => $recentHistory['recent_high_severity_count'],
             'repeated_panic_count_24h' => $recentHistory['repeated_panic_count_24h'] ?? 0,
+            'nearby_safety_events_count' => $recentHistory['nearby_safety_events_count'] ?? 0,
+            'nearby_safety_breakdown' => $recentHistory['nearby_safety_breakdown'] ?? [],
+            'harsh_driving_near_event' => $recentHistory['harsh_driving_near_event'] ?? false,
             'recent_locations' => $recentHistory['recent_locations_json'],
         ];
     }

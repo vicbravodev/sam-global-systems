@@ -1,184 +1,147 @@
 # ROADMAP — SAM Global Systems
 
-> Documento vivo de next steps para frontend y backend. Actualizado al **2026-06-10 (tarde)** tras auditoría completa del código: PR #58 (rutina nocturna) cerró B6 completo (P1–P8), F4 (drivers), F5a/F5b (notificaciones) y B1a (policies Tenancy).
+> Documento vivo de next steps para frontend y backend. Actualizado al **2026-06-11** tras auditoría completa del código (suite 1196 tests verde, 4308 assertions): **V1 está cerrado completo** (specs 01–16, B6 P1–P8, B7/B8/B9, todas las vistas, billing local, UI enterprise PR #65). Este documento define **V2 — "SAM Monitorista"**: el protocolo default afinado por SAM.
 > Úsalo al inicio de cada sesión para decidir qué sigue. Cuando un ítem se complete, anótale el PR que lo cerró y muévelo a §7. Actualiza este documento en el mismo PR que cierra cada ítem.
 
 ---
 
-## 1. Scope del producto (recordatorio)
+## 1. North star del producto (V2)
 
-SAM es una plataforma multi-tenant de gestión de flotas. El flujo central:
+SAM no es un dashboard de flotas: es un **monitorista virtual para flotas en México**. Su valor es doble:
 
-```
-Proveedor externo (Samsara) → Ingestion (webhooks + safety events feed) → Normalization → Context (enriquecimiento + media + GPS fresco)
-  → AI (evaluación texto + multimodal) → Decisions (motor de reglas + falsa alarma) → Incidents (bandeja + SLA + escalación)
-  → Automation (workflows) + Notifications (multicanal + on-call) + Audit + Analytics
-  → Billing metered local (usage events por tenant; cobro por transferencia, sin Stripe)
-```
+1. **Eliminar el ruido**: cuando llega una alerta (botón de pánico, safety event), SAM investiga solo — pide footage, analiza cada imagen y describe lo que se ve, correlaciona los safety events alrededor del momento (frenadas bruscas, maniobras evasivas), detecta pasajeros, revisa el historial — y si la evidencia apunta a falso positivo, lo degrada/descarta documentando por qué.
+2. **Escalar lo real sin fallas**: si la evidencia apunta a evento real (o es inconclusa), escala con los contactos pertinentes. **Sea cual sea el veredicto de la IA, en un pánico SIEMPRE se hace una llamada de voz de verificación al operador** (DTMF: 1 = real, 2 = error), con reintentos; si nadie contesta, se ejecutan los protocolos de escalación. El resultado de la llamada alimenta la evaluación.
 
-El producto terminado es: un operador de flota abre SAM, ve su flota en vivo, recibe incidentes triageados por IA **con evidencia visual (footage de cámara) solicitada y evaluada automáticamente**, los gestiona desde una bandeja en tiempo real con SLA y escalación reales, puede **confirmar/descartar incidentes respondiendo un SMS/WhatsApp**, configura reglas y automatizaciones desde la UI, y consulta analytics — todo tenant-scoped, facturado por uso.
+Principios de producto que gobiernan V2:
 
----
-
-## 2. Estado actual (auditoría 2026-06-10, verificada en código)
-
-### Backend — ✅ ~98% (specs 01–16 + I1/I2/I3 + B6 P1–P8 completos)
-
-- ~800+ tests verdes. 16 dominios + 3 specs de infra + pipeline de emergencias completo, mergeados (PRs #1–#61).
-- **B6 (pipeline de emergencias) CERRADO COMPLETO**: `isResolved` (P1), safety events feed con cursor (P2), media on-demand con `MediaRetrievalAdapter` real de Samsara (P3), GPS fresco en críticos (P4), notificación rica + auto-asignación on-call (P5), SLA real con ack + escalación por niveles (P6), validación de falsa alarma opt-in (P7), vínculo histórico de incidentes (P8).
-- IA real operando (B3, PR #50): OpenAI por env, costo/latencia reales, multimodal vía `SdkMediaAssessmentAgent`.
-- **La superficie API tenant-scoped está COMPLETA**: CRUD de decision rules, mapping rules, escalation policies, automation workflows, tenant config (settings/AI profile/escalación/schedules/versions), audit logs, analytics reports con download PDF/XLSX, eventos normalizados, media de eventos (`GET/POST /events/{id}/media`). **El gap del producto NO es API: es UI + 4 cabos sueltos de backend (abajo).**
-
-**Gaps backend reales que quedan (en orden de impacto):**
-
-| # | Gap | Detalle |
-|---|-----|---------|
-| ~~B7~~ | ~~Ejecutores de Automation son stubs~~ | ✅ **CERRADO (PR #63)** — ver §7. Solo `CreateTicket`/`UpdateAssetState` quedan en V2 (§5). |
-| ~~B8~~ | ~~El loop multimodal no se cierra~~ | ✅ **CERRADO (PR #63)** — ver §7. |
-| ~~B9~~ | ~~Twilio bidireccional~~ | ✅ **CERRADO (PR #63)** — ver §7. |
-| ~~B1b~~ | ~~Billing/Branding tenant-facing~~ | ✅ **CERRADO (PR #63)** — ver §7. |
-| ~~B2~~ | ~~Billing local (transferencia)~~ | ✅ **CERRADO (PR #63)** — ver §7. |
-| B3b | Afinado IA | Routing de modelo por tenant (`TenantAIProfileData.preferredModel`) + tuning de prompts. Menor. |
-
-**Nota operativa media:** el auto-request de footage en críticos está gateado por `TenantSetting media.auto_request_on_critical` con **default OFF** (consume cuota). Para verlo operar en dev/demo hay que activarlo por tenant — y la UI para hacerlo es parte de F-TenantConfig.
-
-### Frontend — 🟡 PARCIAL (~50% de las vistas; 6 links muertos en el sidebar)
-
-**Páginas reales conectadas:** `auth/*`, `dashboard` (PR #49), `incidents/index` (bandeja 3 layouts + realtime), `integrations/index` (patrón de referencia, PR #31), `assets/{index,show,map}` (PRs #53–#55), `drivers/{index,show}` (F4), `notifications/index` + `settings/notifications` (F5a/F5b), `settings/roles` (PR #48), `teams/*`, `settings/*`, y consola super-admin completa (`admin/*`, PRs #37/#41–#45).
-
-**Links del OpsSidebar que apuntan a `#` (módulo sin página, API ya lista):**
-
-| Link muerto | API que ya existe |
-|-------------|-------------------|
-
-**Gaps de la UI existente (no son páginas nuevas, son deudas de lo ya shippeado):**
-
-- ~~Incidentes — detalle apretado y sin media (F9)~~ — ✅ **CERRADO (PR #63)**: detalle full-page con galería de media, assessments IA, solicitar media e historial relacionado; el panel de la bandeja conserva el JSON y gana CTA "Abrir detalle".
-- ~~Notificaciones — falta gestión de canales del tenant (F5c)~~ — ✅ **CERRADO (PR #63)**: tab Canales en Configuración con CRUD, secrets enmascarados y probar canal.
+- **SAM define el default, el tenant lo afina.** Todo tenant nuevo nace con la "configuración SAM" probada y afinada por nosotros (reglas, protocolo de pánico, escalación, umbrales). Puede modificarla, pero el default ES el producto.
+- **Los canales de comunicación son del servicio, no del cliente.** Un cliente NO configura su Twilio: SAM provee los canales (voz/SMS/WhatsApp/email/push) a nivel plataforma; el tenant solo los activa/desactiva y decide cómo escalar qué cosa.
+- **Monitoreo proactivo, no solo reactivo**: activo que deja de reportar en X minutos → alerta; movimiento fuera de horario → alerta; pérdida de GPS en movimiento (posible jamming) → alerta. Enfoque robo/mal uso México.
+- **Predictivo donde se pueda**: usar los safety events acumulados para detectar deterioro de riesgo del conductor y avisar antes del accidente.
 
 ---
 
-## 3. V1 — lo que falta para el producto operativo (orden recomendado)
+## 2. Estado actual (auditoría 2026-06-11, verificada en código)
 
-Patrón obligatorio (el de `integrations/index`, PR #31): controller web dedicado en `routes/web.php` (grupo web = sesión + CSRF; NUNCA `/api` para acciones del navegador), props Inertia tipadas, Wayfinder, policy aplicada, `sam-fetch` + `router.reload({ only: [...] })` para acciones, tests de feature del controller.
+**V1 completo**: pipeline end-to-end (ingesta → normalización → contexto+media → IA multimodal → decisiones → incidentes con SLA/escalación → automation → notificaciones multicanal → audit/analytics), toda la superficie UI sin links muertos, billing local por transferencia, consola super-admin, i18n español, design system. Suite **1196 tests / 4308 assertions verde**.
 
-### Fase A — Cerrar el corazón del monitoreo automatizado (media + automation + 2-vías)
+**Gaps de V2 contra la visión del §1** (cada uno verificado en código):
 
-**B8 — Cerrar el loop multimodal. ✅ COMPLETADO (PR #63)** — ver §7.
-
-**B7 — Ejecutores reales de Automation. ✅ COMPLETADO (PR #63)** — ver §7. `CreateTicket`/`UpdateAssetState` movidos a V2 (§5).
-
-**B9 — Twilio bidireccional. ✅ COMPLETADO (PR #63)** — ver §7. **Fase A cerrada: el monitoreo automatizado opera de punta a punta.**
-
-### Fase B — La bandeja a la altura del pipeline
-
-**F9 — Rediseño del detalle de incidente + media viewer. ✅ COMPLETADO (PR #63)** — ver §7.
-
-**F10 — Página Eventos. ✅ COMPLETADO (PR #63)** — ver §7.
-
-### Fase C — Inteligencia configurable desde la UI
-
-**F11 — Página Reglas. ✅ COMPLETADO (PR #63)** — ver §7.
-
-**F12 — Página Automatizaciones. ✅ COMPLETADO (PR #63)** — ver §7.
-
-**F-TC — Página Configuración del tenant. ✅ COMPLETADO (PR #63)** — ver §7.
-
-### Fase D — Cierre operativo y monetización
-
-**F5c — Gestión de canales de notificación del tenant. ✅ COMPLETADO (PR #63)** — ver §7.
-
-**F13 — Analítica. ✅ COMPLETADO (PR #63)** — ver §7.
-
-**F14 — Auditoría del tenant. ✅ COMPLETADO (PR #63)** — ver §7. **Fase D completa: el sidebar no tiene links muertos.**
-
-**B1b + F7 — Billing + Branding tenant-facing. ✅ COMPLETADO (PR #63)** — ver §7.
-
-**B2 — Billing local (transferencia). ✅ COMPLETADO (PR #63)** — ver §7. Cashier/Billable **retirado** (2026-06-10, autorizado por el usuario): paquete removido, trait `Billable` fuera de `Team`, `ReportUsageToStripeJob` eliminado.
+| # | Capacidad de la visión | Estado | Detalle verificado |
+|---|------------------------|--------|--------------------|
+| G1 | Llamada de voz con DTMF al operador | ❌ NO EXISTE | `ChannelType` no tiene `Voice`; `TwilioMessenger` solo hace `messages->create()`; el webhook `TwilioInboundController` solo procesa SMS/WhatsApp (SI-/NO-/ESC-). `'voice'` aparece únicamente como dato de ejemplo en `TenantEscalationConfigFactory`. |
+| G2 | Canales gestionados por SAM | 🟡 PARCIAL | `NotificationChannel.team_id = null` = canal global ya existe y `SelectNotificationChannels` los incluye; pero **no hay CRUD de canales globales en la consola super-admin**, **no hay toggle por-tenant de un canal global** (un global aplica a todos sin opción de apagarlo), y la UI del tenant lo invita a meter SUS credenciales (F5c). |
+| G3 | Config default "SAM" para tenant nuevo | ❌ NO EXISTE | `CreateTenant` solo siembra `TenantFeature`; `tenant_settings` nace vacío; `media.auto_request_on_critical` default **OFF**; la regla `panic-false-alarm-review` está `is_active=false` y el seeder de reglas es solo del team demo (`serviexpress-jc`). No hay `ApplyDefaultTenantConfig` ni listener de `TenantCreated`. |
+| G4 | Media alrededor del momento del evento, análisis por imagen | 🟡 PARCIAL | Ventana hardcoded `±30s` (`FetchDeferredEventMediaJob::CLIP_WINDOW_SECONDS`), no configurable. El assessment multimodal existe (1 por media) pero el prompt de `MediaInspectorAgent` no pide detección de personas/pasajeros ni señales estructuradas (los `extracted_signals` son genéricos). |
+| G5 | Safety events alrededor del evento como evidencia | 🟡 PARCIAL | `LoadRecentAssetHistory` carga 60 min del mismo asset/tipo/alta severidad y `repeated_panic_count_24h`, pero **no correlaciona los safety events (frenadas, maniobras) en la ventana del pánico** ni los expone como señal/fact ni al prompt de IA. |
+| G6 | Activo deja de reportar X min → alerta proactiva | ❌ NO EXISTE | `assets.last_seen_at` se actualiza pero nadie lo vigila; el event type `device_offline` está seeded pero nada lo genera. No hay job watchdog. |
+| G7 | Movimiento fuera de horario | ❌ NO CABLEADO | La señal `outside_operating_hours` está declarada en `SignalsBuilder` pero `BuildEventContext` nunca la calcula; `TenantScheduleProfile.operating_hours_json` existe sin consumidor en el pipeline. |
+| G8 | Señales antirrobo (jamming, parada no autorizada) | 🟡 PARCIAL | Existen `gps_signal_weak`, `asset_recently_stopped` y los incident types `SuspiciousStop`/`RouteDeviation`/`GeofenceBreach`, pero sin lógica de detección dedicada (GPS perdido EN movimiento, parada prolongada fuera de base). |
+| G9 | Predicción/prevención de accidentes | 🟡 PARCIAL | `DriverRiskProfile` (risk_score, harsh_events_count, fatigue_flags_count) existe y se muestra en UI/contexto, pero **ningún job lo recalcula** — los contadores nunca se actualizan; no hay alertas de deterioro. |
+| G10 | Escalación por canal y con reintentos | 🟡 PARCIAL | `steps_json.channels` existe pero `CheckIncidentAcknowledgementJob` lo **ignora** (solo usa `contacts`); no hay `attempts` por step. |
 
 ---
 
-## 4. Orden global sugerido (fases por sesiones)
+## 3. V2 — "SAM Monitorista" (orden recomendado, un PR por ítem)
+
+Patrón obligatorio: mismo estándar de V1 — domain-modular, `BelongsToTenant`, factories+tests (aislamiento de tenant + idempotencia), `RecordUsageEvent` en puntos facturables, settings nuevos resueltos vía `TenantConfigResolver`, migraciones additive-only. **Cada PR que introduce un setting/regla/política nueva DEBE añadir su default afinado al SAM Default Pack (A5) en el mismo PR** (a partir de que A5 exista).
+
+### Fase A — Protocolo de pánico SAM (el corazón del valor)
+
+**A1 — Media alrededor del evento: ventana configurable + análisis por imagen + detección de pasajeros (cierra G4). ✅ COMPLETADO** — ver §7.
+
+**A2 — Correlación de safety events alrededor del evento (cierra G5). ✅ COMPLETADO** — ver §7.
+
+**A3 — Llamada de voz de verificación con DTMF (cierra G1). ✅ COMPLETADO** — ver §7.
+
+**A4 — Escalación que respeta canales y reintentos por step (cierra G10). ✅ COMPLETADO** — ver §7.
+
+**A5 — SAM Default Config Pack: el protocolo de fábrica (cierra G3). ✅ COMPLETADO** — ver §7. **Fase A completa: el protocolo de pánico SAM opera de fábrica en todo tenant nuevo.**
+
+### Fase B — Canales gestionados por SAM (cierra G2)
+
+**B1 — Canales plataforma + toggle por tenant. ✅ COMPLETADO** — ver §7. **Fase B completa: el cliente no configura Twilio jamás.**
+
+### Fase C — Monitoreo proactivo antirrobo México (cierra G6, G7, G8)
+
+**C1 — Watchdog "dejó de reportar" (cierra G6). ✅ COMPLETADO** — ver §7.
+
+**C2 — After-hours real (cierra G7). ✅ COMPLETADO** — ver §7.
+
+**C3 — Señales antirrobo (cierra G8). ✅ COMPLETADO** — ver §7. **Fase C completa: monitoreo proactivo antirrobo operando.**
+
+### Fase D — Predictivo (cierra G9)
+
+**D1 — Recalculo de riesgo del conductor + alerta preventiva. ✅ COMPLETADO** — ver §7. **Fase D completa — V2 "SAM Monitorista" COMPLETO (A1–A5, B1, C1–C3, D1).**
+
+---
+
+## 4. Orden global y reglas de sesión
 
 | Fase | Ítems | Resultado |
 |------|-------|-----------|
-| **A. Monitoreo automatizado real** ✅ COMPLETA (PR #63) | ~~B8~~ ✅ → ~~B7~~ ✅ → ~~B9~~ ✅ | El pipeline completo opera solo: detecta, pide footage, lo evalúa, re-decide, notifica, y el operador confirma/descarta desde el teléfono |
-| **B. Bandeja a la altura** ✅ COMPLETA (PR #63) | ~~F9~~ ✅ → ~~F10~~ ✅ | El operador VE todo lo que el pipeline produce (footage, visión IA, historial) en una UI espaciosa |
-| **C. Inteligencia configurable** ✅ COMPLETA (PR #63) | ~~F-TC~~ ✅ → ~~F11~~ ✅ → ~~F12~~ ✅ | Cero links muertos de inteligencia; el tenant se autoconfigura sin tinker |
-| **D. Cierre operativo** ✅ COMPLETA (PR #63) | ~~F5c~~ ✅ → ~~F13~~ ✅ → ~~F14~~ ✅ | Producto operativo completo, sidebar 100% vivo |
-| **E. Monetización** ✅ COMPLETA (PR #63) | ~~B1b+F7~~ ✅ → ~~B2~~ ✅ | Listo para facturar |
+| **A. Protocolo de pánico SAM** | A1 → A2 → A3 → A4 → A5 | Un pánico se investiga solo (media amplia + visión por imagen + safety events correlacionados), SIEMPRE se verifica por voz con DTMF y reintentos, la escalación respeta canales, y todo tenant nuevo nace con este protocolo activado y afinado por SAM |
+| **B. Canales SAM** | B1 | El cliente no configura Twilio jamás: activa/desactiva canales provistos por SAM y decide el routing |
+| **C. Proactivo antirrobo** | C1 → C2 → C3 | SAM avisa cuando un activo se calla, se mueve fuera de horario, pierde GPS en movimiento o se detiene donde no debe |
+| **D. Predictivo** | D1 | SAM avisa del conductor que va camino al accidente antes de que ocurra |
 
-**Regla de decisión al abrir sesión:** si la fase actual tiene un ítem a medias, continuarlo; si no, tomar el siguiente de la tabla. Un PR por ítem (o sub-ítem), CI verde antes de merge, y actualizar este documento en el mismo PR.
+**Regla de decisión al abrir sesión:** si la fase actual tiene un ítem a medias, continuarlo; si no, tomar el siguiente de la tabla. Un PR por ítem, CI verde antes de merge (merge solo con autorización del usuario, CLAUDE.md §6.1), y actualizar este documento en el mismo PR. Desde que A5 exista, todo ítem posterior añade sus defaults al pack en su propio PR.
 
 ---
 
-## 5. V2 — aplazado deliberadamente (no trabajar sin decisión del usuario)
+## 5. V3 — aplazado deliberadamente (no trabajar sin decisión del usuario)
 
-- **Segundo provider de integración (Geotab/Motive)** — solo con demanda real; valida que el adapter pattern generaliza.
-- **Acciones de automation `CreateTicket` / `UpdateAssetState`** — si B7 no encuentra caso de uso claro, quedan aquí (ticketing externo = integración nueva).
-- **Contacto directo al driver en panic (SMS/WhatsApp al conductor)** — la infra quedó como `ActionTemplate` opt-in (P5); activarlo es configuración, no código, pero el flujo conversacional con el driver (no solo el operador) es V2.
-- **Builder visual avanzado de workflows** (drag & drop) — V1 entrega lista + builder simple.
-- **B3b — routing de modelo por tenant + tuning fino de prompts** — el default actual opera bien; afinar con datos de producción.
-- **Hardening producción**: revisión de retention jobs (audit/analytics) bajo carga real, replay/backfill masivo de safety events.
-- **Reportes programados** (envío por email de PDF/XLSX en schedule) — el render ya existe; falta scheduling + entrega.
-- **App móvil / PWA del operador** — hoy el camino móvil es B9 (responder por WhatsApp).
+- **Desvío de ruta real** — requiere modelo de rutas/viajes planificados; `unauthorized_stop` (C3) cubre el 80% del caso robo sin esa inversión.
+- **Flujo conversacional con el driver** (SMS/WhatsApp al conductor, no al operador) — la infra quedó como `ActionTemplate` opt-in.
+- **Voz con IA conversacional** (agente que conversa en vez de DTMF) — DTMF primero: simple, robusto, telefonía mexicana lo soporta siempre.
+- **Segundo provider de integración (Geotab/Motive)** — solo con demanda real.
+- **App móvil / PWA del operador** — el camino móvil hoy es voz + WhatsApp bidireccional.
+- **Reportes programados por email** — el render PDF/XLSX ya existe; falta scheduling + entrega.
+- **B3b — routing de modelo IA por tenant + tuning fino con datos de producción.**
+- **Hardening producción**: retention jobs bajo carga real, replay/backfill masivo.
 
 ---
 
 ## 6. Notas de fiabilidad
 
-- La tabla de estado §3 de `CLAUDE.md` quedó congelada en la auditoría 2026-04-29 y NO refleja B6 ni los PRs #48–#61. Ante duda, **manda el código**, luego este documento, y al final CLAUDE.md.
+- La tabla de estado §3 de `CLAUDE.md` quedó congelada en la auditoría 2026-04-29 y NO refleja B6+ ni V2. Ante duda, **manda el código**, luego este documento, y al final CLAUDE.md.
 - El `ROADMAP.md` de la raíz es la **cola de la rutina nocturna**, no este roadmap de producto. Las tareas de la rutina salen de aquí (§3); al generar tareas nuevas respetar §8.7 de CLAUDE.md.
-- Para demos del pipeline de media: activar `media.auto_request_on_critical` en el tenant (default off) y verificar que la integración Samsara tenga scope *Read Camera Media*.
+- Para demos del pipeline de media hoy (pre-A5): activar `media.auto_request_on_critical` en el tenant y verificar scope *Read Camera Media* en la integración Samsara. A5 lo deja ON de fábrica.
+- Costos: A1 (más media) y A3 (llamadas) consumen cuota de proveedor — ambos quedan medidos (`media_requests`, `voice_calls`) y facturables vía billing local.
 
 ---
 
 ## 7. Completados (histórico resumido)
 
+### V2 — "SAM Monitorista" (COMPLETO 2026-06-11)
+
+- **D1** — Recalculo de riesgo del conductor (2026-06-11): `RecalculateDriverRiskProfilesJob` (diario 04:30) agrega 30 días de safety events + incidentes por driver → `DriverRiskProfile` real (score 0–100 ponderado: harsh×4, fatiga×8, severos×15, otros×2, incidentes×10; niveles low/medium/high/critical; tendencia `baseline/improving/deteriorating/stable` en metadata). Cruce a high/critical → notificación preventiva `driver.risk_deteriorated` (High, idempotente por driver/día; permanecer en el nivel sin empeorar no re-alerta). Drivers sin eventos ni perfil se omiten; el score decae al envejecer los eventos. Tests: 5 (agregación con ventana, decaimiento + improving sin re-alerta, cruce con alerta única, skip, aislamiento por driver).
+
+- **C3** — Señales antirrobo (2026-06-11): señal `gps_lost_in_motion` en `SignalsBuilder` (posición stale con última velocidad >5 km/h = heurística de jamming/dispositivo arrancado; velocidad desconocida nunca cuenta) + fact y entrada en el catálogo del builder. `DetectUnauthorizedStopJob` (scheduler cada 5 min): unidad detenida (posición fresca ≤15 min, speed ≤1) más de `monitoring.stop_alert_minutes` (default 10; 0 desactiva) FUERA de toda geocerca conocida → RawEvent interno `suspicious_stop` (tipo nuevo seeded, severidad high); guardas anti-ruido: requiere ≥1 geocerca activa del tenant, episodio anclado a la última posición en movimiento (dedup por anchor; sin movimiento en 24h = estacionamiento, no alerta). Defaults del pack: `monitoring.stop_alert_minutes = 10` + regla `suspicious-stop-review` → REQUIRE_HUMAN_REVIEW (un operador valida antes de escalar). Tests: 13 (parada prolongada, episodio único, dentro de geocerca, corta, sin geocercas, disable, en movimiento, parking largo, señal jamming en 4 variantes).
+
+- **C2** — After-hours real (2026-06-11): `BuildEventContext` por fin calcula `outside_operating_hours` vía `TenantScheduleResolver` (solo con perfil de horario persistido y activo; sin perfil = siempre operando) — la señal fluye a `signals_json`, al prompt de IA y como fact `outside_operating_hours` en el motor de reglas + catálogo. Detección activa: `DetectAfterHoursMovementJob` (scheduler cada 5 min) — asset con posición fresca (≤15 min) a >5 km/h fuera del horario del tenant → RawEvent interno `after_hours_movement` (tipo nuevo seeded, severidad high), un evento por asset por día local (dedup `after_hours:{asset}:{fecha local}`). Regla default del pack A5: `after-hours-movement-incident` (activa) → INCIDENT. Tests: 9 (detección, episodio diario, sin perfil, dentro de horario, lento/stale, inactivos, aislamiento de perfil cross-tenant, señal en contexto con/sin perfil).
+
+- **C1** — Watchdog de activos sin reportar (2026-06-11): `DetectOfflineAssetsJob` (scheduler cada 5 min, `onOneServer`) — assets no inactivos/mantenimiento con `last_seen_at` más viejo que el umbral (override por asset `metadata_json.offline_alert_minutes` > setting `monitoring.offline_alert_minutes` > default 15; `0` desactiva) generan un **RawEvent interno** (source nuevo `internal_monitor`, sin provider) con last known location + `was_in_motion` (silencio en movimiento ≈ jamming) que recorre el pipeline completo. Anti-spam sin estado: episodio = `offline:{asset}:{last_seen_at.ts}` como dedup key. Recuperación: al volver a reportar, el evento del episodio se marca `is_resolved` + `ApplyExternalResolutionJob` (anota/cierra el incidente según el setting del tenant). `NormalizeRawEvent` gana el camino interno: sin provider ni mapping rule, `event_type_raw` ES el código del tipo y `internal.asset_id` se honra solo si el asset pertenece al tenant del evento (anti-spoofing). Default del pack A5: `monitoring.offline_alert_minutes = 15`. Tests: 14 (episodios únicos/nuevos, umbrales por tenant/asset/disable, estados ignorados, recuperación idempotente, normalización interna con aislamiento de tenant y fallback a unmapped).
+
+- **B1** — Canales gestionados por SAM (2026-06-11): tabla additive `tenant_channel_toggles` + modelo `TenantChannelToggle` (sin fila = encendido; opt-out por tenant); scope `NotificationChannel::usableByTeam()` consumido por `SelectNotificationChannels` y la resolución de canal de voz (`PlaceVerificationCallJob`). **Policy endurecida**: un tenant ya NO puede editar/probar/eliminar canales globales (solo apagarlos/encenderlos para sí vía `POST tenant-config/channels/{id}/toggle`, policy `toggleGlobal`, upsert idempotente). Consola super-admin: página `admin/channels` (CRUD de canales de plataforma con credenciales cifradas at-rest, solo `team_id = null`, auditado `platform-channel.*`, item "Canales" en el sidebar admin). UI tenant: badge "Provisto por SAM" + botón Apagar/Encender para mi equipo, sin credenciales. Tests: 12 (CRUD admin con authz y 404 para canales tenant, toggle idempotente con aislamiento, exclusión en `usableByTeam` sin fuga cross-tenant, canal de voz global apagado nunca llama, tenant bloqueado de editar globales). **Fase B completa.**
+
+- **A5** — SAM Default Config Pack (2026-06-11): `ApplyDefaultTenantConfig` (TenantConfig, `PACK_VERSION 1`) — idempotente, solo crea lo que falta, NUNCA pisa valores del tenant (`firstOrCreate`; origen distinguible por `updated_by_type = System`). Siembra: 8 settings afinados (media auto ON, ventanas A1/A2, verificación por voz ON con 3 intentos), ruleset `sam-default` con `panic-button-always-incident` + `panic-false-alarm-review` **ambas activas** (guards anti-coacción intactos; se omite si el tenant ya tiene rulesets), escalación default de 3 niveles con canales+intentos (voz+push → SMS/WhatsApp/email → voz+SMS, contacts vacíos = fan-out al team), y snapshot `TenantConfigVersion` etiquetado `sam-default-v1`. Disparo: listener `ApplyDefaultConfigOnTenantCreated` (todo tenant nuevo nace con el protocolo), comando `tenants:apply-default-config {team?|--all}` para existentes, y botón "Aplicar configuración recomendada SAM" en la página de Configuración (POST `tenant-config/apply-sam-defaults`, authorize update, con confirm). `SamsaraTestDecisionRulesSeeder` ahora consume el pack (una sola fuente de verdad). Tests: 9 (contenido completo del pack, idempotencia, preservación de valores del tenant, skip con ruleset propio, aislamiento, listener vía `CreateTenant`, comando por slug y sin target, endpoint web). **Fase A completa.**
+
+- **A4** — Escalación por canal y reintentos por step (2026-06-11): `CheckIncidentAcknowledgementJob` consume `steps_json[].channels` (validados contra `ChannelType`, incluida voz → `force_channels` del payload, gate real = canal activo) y `steps_json[].attempts` con `retry_minutes` (default 5): el mismo nivel se re-notifica con event key propio (`…:a{n}`) sin duplicar timeline ni re-transicionar, y solo al agotar intentos avanza al siguiente nivel. Editor de steps gana campo "Intentos" (el selector de canales ya existía y ahora incluye `voice`); `attempts`/`retry_minutes` reconocidos por el parser sin caer al modo JSON. Tests: canales forzados con inválidos filtrados, reintento del mismo nivel antes de avanzar con timeline única.
+
+- **A3** — Llamada de voz de verificación con DTMF (2026-06-11): `ChannelType::Voice` + `VoiceNotificationDriver` (TTS es-MX vía `TwilioVoiceCaller`, para escalaciones que elijan voz) y, separado, el flujo interactivo de verificación en Incidents: modelo `IncidentCallVerification` (un row por intento, unique incident+attempt), `StartIncidentCallVerification` (contacto desde `voice.verification_contacts` o fallback a contacts telefónicos de escalación; reintentos reusan el número del intento previo), `PlaceVerificationCallJob` (canal voice del tenant con prioridad sobre el global de SAM, TwiML `<Gather numDigits=1>` con prompt es-MX, statusCallback, meter `voice_calls` idempotente) + `EvaluateVerificationCallOutcomeJob` (safety net con guard anti-entrega-temprana) + `HandleVerificationCallAttemptFailure` (encadena hasta `voice.call_attempts`, default 3; agotados → outcome `no_answer` + timeline + **escalación inmediata**). Webhooks firmados `POST /api/webhooks/twilio/voice/{id}/gather|status`: DTMF **1** = ack como emergencia real, **2** = cierre como falsa alarma (acciones reales de Incidents + timeline `verification_call` + auditoría), dígito inválido re-prompt, doble respuesta idempotente. Disparo: listener `StartCallVerificationOnIncidentCreated` en TODO incidente `panic_emergency` (independiente del veredicto IA), gate `voice.verification_enabled` (default off; el pack A5 lo prende). Fact `operator_call_outcome` en el motor de decisión + catálogo. UI: tipo de canal `voice` en la tab Canales. Tests: 33 (listener/idempotencia/fallback de contactos/aislamiento, placement con TwiML y canal global vs tenant, cadena de reintentos, escalación al agotar, webhooks firmados con DTMF 1/2/inválido/dobles/terminal, facts).
+
+- **A2** — Correlación de safety events (2026-06-11): `LoadRecentAssetHistory::correlateNearbySafetyEvents` — eventos de categorías safety/emergency del mismo asset en `occurred_at ± context.safety_correlation_minutes` (default 30, resuelto en `BuildEventContext` vía `TenantConfigResolver`), excluyendo el evento bajo evaluación; conteo + breakdown por tipo + flag `harsh_driving_near_event` (catálogo `HARSH_DRIVING_CODES`: frenadas, acelerones, vueltas bruscas, near-collision, etc.). Señales nuevas `harsh_driving_near_event` / `nearby_safety_activity` en `SignalsBuilder`; facts `harsh_driving_near_event` + `nearby_safety_events_count` en `DecisionFactsBuilder` y el catálogo del builder visual; persistido en `recent_history_snapshot_json` y `recent_flags_json` (fluye al prompt de IA vía `BuildAIInputContext`); guía explícita en el prompt del `EventClassifierAgent` (maniobra brusca cerca del pánico pesa hacia real; calma sola nunca degrada). Tests: ventana centrada con exclusión del evento, límites de ventana, categorías no-safety ignoradas, harsh flag, aislamiento por asset, passthrough de señales y facts.
+
+- **A1** — Media alrededor del evento (2026-06-11): ventana de clip configurable (`media.clip_window_seconds`, default 60s por lado) resuelta vía `TenantConfigResolver` en `FetchDeferredEventMediaJob`; stills distribuidos en `occurred_at ± media.still_window_minutes` (default 30) × `media.still_count` (default 6) — un retrieval `mediaType: image` por instante (`MediaRetrievalAdapter::requestMedia` ganó el parámetro), poll agregado por request con conteo `stills_downloaded`, fail solo si el proveedor falla todos. `RequestPanicMediaOnContextBuilt` pide clip + stills (skip con `still_count = 0`). Prompt del `MediaInspectorAgent` reescrito con framing de monitoreo de seguridad en México y señales estructuradas obligatorias (`persons_visible_count`, `passenger_detected`, `driver_visible`, `visible_threat`, `cabin_appears_normal`, `vehicle_moving`; `summary_text` en español); `DecisionFactsBuilder` agrega los facts `media_passenger_detected` / `media_visible_threat` / `media_persons_visible_count` / `media_cabin_appears_normal` (evidencia alarmante domina, agregado cross-versión de evaluación) y `DecisionConditionCatalog` los expone al builder visual. Tests: ciclo completo de stills, ventana por TenantSetting, rechazos totales/parciales, listener con stills on/off, agregación y aislamiento de los facts de visión.
+
+### V1 (cerrado 2026-06-10/11)
+
 - Backend specs 01–16 + I1/I2/I3 y cierre de diferidos: AI SDK, multimodal, PDF/XLSX, drivers de notificación, queries DB-backed, Echo wiring, DemoSeeder (PRs #1–#24).
 - UI Incidents con realtime (PRs #27–#30, #40) · UI Integraciones (PR #31).
 - Pipeline Samsara real: adapter, firma webhook, replay, seeders, sync periódica, scheduler dedicado (PRs #28, #32, #34, #35, #42, #46).
 - Consola super-admin completa (PRs #37, #39, #41, #43–#45): tenants, suscripción/plan, topes con enforcement, features, miembros, operadores, auditoría cross-tenant, impersonación, ciclo de vida.
-- **F1** — Página `settings/roles` (CRUD + permisos + cambio de rol) con `RolePolicy` (PR #48).
-- **F2** — Dashboard real: KPIs honestos, top-5, stream con decisiones, salud de integraciones, uso del tenant, realtime debounced (PR #49).
-- **B3** — IA real en operación: OpenAI por env, pricing/latencia/costo reales en ambos agentes SDK, validado con `samsara:replay` (PR #50).
-- **F3** — Assets/Flota completo: lista con filtros + realtime (PR #53), detalle con telemetría/historial/incidentes (PR #54), mapa en vivo MapLibre GL (PR #55).
-- **F4** — Drivers completo: `drivers/index` (filtros, asset actual, risk score) y `drivers/{id}` (perfil, contactos, documentos, assignments, status log) — rutina nocturna 2026-06-10, PR #58.
-- **F5a/F5b** — Centro de notificaciones con read markers por usuario (`notification_reads`) + preferencias por usuario en settings (PR #58).
-- **B1a** — Policies de Tenancy (`SubscriptionPolicy`/`TenantBrandingPolicy`/`TenantFeaturePolicy`) registradas con tests cross-team (PR #58).
-- **B6 COMPLETO (P1–P8)** — pipeline de emergencias end-to-end (PRs #56 y #58):
-  - **P1** `isResolved`: dedup por estado, `ApplyExternalResolution`, setting `annotate`/`close`.
-  - **P2** Safety events feed: `PollSamsaraSafetyEventsJob` con cursor en `sync_state_json`, dedup `safety:{id}:{eventState}`, media inline → attachments, seeders por behaviorLabel, `dismissed` → resolución externa.
-  - **P3** Media on-demand: `MediaRetrievalAdapter` en `SamsaraAdapter` (`/cameras/media/retrieval`), `FetchDeferredEventMediaJob` real (poll→download→`FileObject`→multimodal), listener `RequestPanicMediaOnContextBuilt` gateado por TenantSetting (default off), meter `media_requests`.
-  - **P4** GPS fresco: `fetchLiveLocation` (timeout 3s), `FetchLiveLocationForEvent` en `BuildEventContext` (solo critical, staleness configurable), fallback `position_stale`.
-  - **P5** Notificación rica + on-call: template por incident_type con asset/driver/ubicación/link/media-flag, `ResolveOnCallOperator` (shift rules + timezone + fallback), auto-asignación sin pisar previas.
-  - **P6** SLA real: `sla_due_at`/`acknowledged_at`, `CheckIncidentAcknowledgementJob` con delay (sin cron), escalación por niveles de `TenantEscalationConfig`, endpoint + botón ACK en la bandeja.
-  - **P7** Falsa alarma: señales `external_resolved`/`parked_at_base`/`repeated_panic_24h`/`media_assessment`, outcome `REQUIRE_HUMAN_REVIEW`, regla seed opt-in, prompt anti-coacción (panic "resuelto" en carretera nunca se degrada).
-  - **P8** Vínculo histórico: `GetPriorSimilarIncidents` (cerrados 7d), `PriorSimilarIncidentLink`, signal `has_prior_similar_incident`.
-- **T1/T2** — `assertInertia` en 5 páginas sin aserción + authz endpoint-level de incidents API (PR #58).
-- **B8** — Loop multimodal cerrado (PR #63): `MediaAssessmentCompleted` (solo assessments nuevos, idempotente) → `ReevaluateEventJob` con trigger `media_arrived` (guards: inline sin decisión, media ya evaluada en otra versión anti-loop, incidente terminal no re-corre); fact `media_assessment` cross-versión de evaluación; guard de contradicción en `ResolveDecisionOutcome` (footage que contradice un evento con decisión accionable previa → `REQUIRE_HUMAN_REVIEW`, nunca auto-cerrar); timeline `media_assessed` por assessment + broadcast `incidents.updated` que la bandeja ahora escucha.
-- **B7** — Ejecutores reales de Automation (PR #63): `ExecuteAction` puentea `Send*` al pipeline de Notifications (destinatarios desde el target del step — email/phone directo, user id, rol del team o `recipients` explícitos —, render del `ActionTemplate`, canal fijado con `force_channels` cuyo gate real es el `NotificationChannel` activo del tenant); `AssignIncident`/`Escalate`/`RequestHumanReview` ejecutan las actions reales de Incidents (nueva `RequestIncidentReview` open→in_review); meter `automation_actions` idempotente por ejecución; `CreateTicket`/`UpdateAssetState` → V2.
-- **B9** — Twilio bidireccional (PR #63): tabla `notification_reply_tokens` (token corto TTL 24h, reusado por incidente+address); los SMS/WhatsApp de incidente crítico llevan "Responde SI-XXXX / NO-XXXX / ESC-XXXX" (SMS pre-ajustado a 160); webhook `POST /api/webhooks/twilio` valida `X-Twilio-Signature` contra el canal del tenant resuelto por el número `To` (403 si falla); `ProcessInboundReply` ejecuta ack/falsa-alarma/escalar vía actions de Incidents con timeline "via sms/whatsapp" + auditoría `incident.reply.*`; desconocidos/tenant ajeno/sender inesperado → log y silencio; doble respuesta idempotente. **Fase A completa.**
-- **B2** — Billing local por transferencia (PR #63): comprobante de pago por factura (tenant sube pdf/imagen → FileObject `payment_receipt` + nota), card Facturas en la consola super-admin con Marcar pagada / Anular (+auditoría billing), `paid_at`/estado en la página del tenant; suspensión por impago = control existente. **TODAS las fases V1 (A–E) completas.** Cashier retirado en el mismo PR.
-- **B1b+F7** — Facturación y Marca (PR #63): página billing (plan, consumo por meter con barras, funcionalidades, facturas; item del sidebar) + tab Marca en Configuración (nombre/colores/firma + logo a rustfs con FileObject y preview vía temporaryUrl); policies B1a aplicadas. Verificado visualmente.
-- **F14** — Página Auditoría del tenant (PR #63): tabs Auditoría (AuditLog paginado con filtros por búsqueda/categoría/actor/fechas) y Eventos de dominio; fix de routing — el grupo /admin se declara antes del wildcard {current_team} para que /{team}/audit no trague /admin/audit. **Fase D completa, sidebar 100% vivo.** Verificado visualmente.
-- **F13** — Página Analítica (PR #63): tabs KPIs (snapshot TenantOverview + KpiRecords) y Reportes (generación por formato + ejecuciones con download); rutas web reusando ReportController/ReportExecutionController; sidebar vivo. Verificado visualmente (job real de PDF disparado desde la UI).
-- **F5c** — Gestión de canales del tenant (PR #63): tab Canales en Configuración (CRUD por tipo con campos específicos, secrets solo enmascarados hacia el navegador, claves alineadas a los drivers para el cifrado at-rest, eliminar bloqueado en globales) + endpoint 'probar canal' que envía por el driver real. Verificado visualmente.
-- **F12** — Página Automatizaciones (PR #63): tabs Workflows (builder simple trigger+pasos con destino, toggle, disparo manual) y Ejecuciones (estado, intentos, error, retry/confirm/cancel); fix en Store/UpdateAutomationWorkflowRequest que descartaba `order`/`target_type`/`target_reference` de los steps (los executors B7 los necesitan); sidebar vivo. Verificado visualmente. **Fase C completa.**
-- **F11** — Página Reglas (PR #63): 3 tabs — decisión (seed panic/falsa-alarma visibles con estado, condiciones expandibles, crear con editor JSON validado + docs de operadores, activar/desactivar), mapeo del proveedor (41 reglas Samsara, crear/toggle) y overrides del tenant (crear/eliminar); mutaciones reusando los controllers API como rutas web; sidebar vivo. Verificado visualmente.
-- **F-TC** — Página Configuración del tenant (PR #63): 6 tabs (settings del pipeline con los toggles de media/pánico/GPS, perfil IA, políticas de notificación, escalación con editor de steps, horario on-call, versiones con snapshot); mutaciones reusando los controllers API de TenantConfig como rutas web; OpsLayout + link del sidebar vivo; `canManage` por policy. Verificado visualmente (toggle persiste en BD).
-- **F10** — Página Eventos (PR #63): `events/index` (filtros tipo/severidad/categoría/estado/fechas + búsqueda, tab "Sin mapear" con contador, paginación 50) y `events/show` (payload normalizado/contexto/crudo, evaluación IA, decisión, incidente vinculado, media, banner unmapped); `NormalizedEventPolicy` nueva sobre `context.view`; link "Eventos" del sidebar vivo. Verificado visualmente.
-- **F9** — Detalle full-page de incidente + media viewer (PR #63): `incidents/{incident}` negocia contenido (JSON para el panel de la bandeja, Inertia `incidents/show` para el navegador); grid 3 columnas reutilizando los subcomponentes del panel + `MediaGallery` (thumbnails, lightbox imagen/video con el assessment IA, botón "Solicitar media" → ruta web `incidents/{incident}/media/request`), historial relacionado (P8) y recarga realtime debounced en `incidents.updated`; CTA "Abrir detalle" en el panel de la bandeja. Verificado visualmente con la app corriendo.
-
-## UI Enterprise (rama `claude/youthful-faraday-d4wzzw`, 2026-06-10/11)
-
-Roadmap de calidad post-V1 ejecutado en una sola rama con commits incrementales (decisión del usuario):
-
-- **F0 Fundaciones del DS**: `PRODUCT.md` + `DESIGN.md` en raíz; tokens de sombra tintados (hue 260, fuerza por tema) en `@theme`; cero colores Tailwind hardcodeados (destructive/health-ok/accent); Cards a `--radius-lg`; densidad real de la bandeja vía `--row-*`; primitivos nuevos sin deps: `combobox` (HeadlessUI), `textarea`, `radio-group` (nativo), `pagination`, `empty-state`, `page-header`.
-- **F1 ConditionBuilder** (dolor #1): `app/Support/Conditions` (DTO + `ValidConditionTree`/`ValidFlatConditions` con mensajes ES), `DecisionFactsBuilder` extraído de `ApplyTenantRuleSet`, `RuleConditionEvaluator::OPERATORS`, catálogos `DecisionConditionCatalog` (12 facts, labels ES) y `TriggerConditionCatalog` (por trigger); validación cableada en 10 FormRequests; props lazy en Rules/Automation/TenantConfig. Componente `<ConditionBuilder>` (variants `tree` y `flat-equality`, modo JSON con round-trip seguro y aviso de estructura avanzada) integrado en Reglas (crear+editar), Automation (condiciones por trigger) y EscalationCard. Probador "¿coincidiría?": `RuleTestController` (test-decision/test-mapping, solo lectura, aislamiento testeado) + `ConditionExplainer` con veredicto hoja por hoja y `rule-test-panel` bajo cada builder.
-- **F2 Español 100%**: `lang/es` (validation/auth/passwords + es.json para flashes y mails Fortify/invitaciones), locale default `es`, labels de enums Tenancy + TeamRole, mensajes API user-facing; barridos frontend de auth/settings/teams/modales y ui/admin/restos; helper `lib/format.ts` (es, MXN default).
-- **F3 Patrones**: `components/sam/data-table` (sorting, sticky header, densidad por tokens, selección, skeleton con forma real, EmptyState, paginación opcional; sin TanStack) con las 5 tablas ad-hoc migradas (assets/drivers/notifications/events/audit×2) + `PageHeader` en esas páginas; steps de escalación con editor estructurado (esperar N min → canales → destinatario rol/usuario → contactos) con fallback JSON sin pérdida; `target_reference` de automation con combobox de usuarios/roles del team (`teamTargets`/`recipientOptions`).
-- **F4 Polish**: botón con `active:scale-[0.98]` + transform 150ms `--ease-out`; exits más rápidos que enters en dialog/dropdown; `transform-origin` del trigger en dropdowns; barrido `transition-all`→propiedades explícitas; filas de bandeja y DataTable accesibles por teclado (tabIndex + Enter + focus-visible); command palette con datos reales (`GET /{team}/palette-search`) y navegación por teclado.
-- **F5 Cierre**: contraste WCAG AA verificado matemáticamente sobre los tokens (todas las combinaciones fg/surface pasan en ambos temas, peor caso 5.21:1); barrido anti-slop limpio (sin colores hardcodeados, sin transition-all fuera de welcome decorativa, sin gradientes/glass). Suite 1195 tests verde; tsc/eslint/prettier/build verdes.
-
-Pendiente de validación humana: verificación visual con la app corriendo (ambos temas, móvil+desktop) de dashboard, bandeja, detalle de incidente, reglas (builder nuevo), configuración del tenant y auth.
+- **F1** roles (PR #48) · **F2** dashboard real (PR #49) · **B3** IA real OpenAI (PR #50) · **F3** assets completo con mapa vivo (PRs #53–#55) · **F4** drivers (PR #58) · **F5a/F5b** notificaciones + preferencias (PR #58) · **B1a** policies Tenancy (PR #58).
+- **B6 COMPLETO (P1–P8)** — pipeline de emergencias end-to-end (PRs #56, #58): `isResolved`, safety events feed con cursor, media on-demand (`MediaRetrievalAdapter`), GPS fresco en críticos, notificación rica + on-call, SLA real con ack/escalación, validación de falsa alarma opt-in con guards anti-coacción, vínculo histórico de incidentes.
+- **PR #63 (V1 fases A–E)**: **B8** loop multimodal cerrado (re-evaluación al llegar media, guard de contradicción) · **B7** ejecutores reales de Automation · **B9** Twilio bidireccional SMS/WhatsApp (reply tokens SI/NO/ESC, webhook firmado, `ProcessInboundReply`) · **F9** detalle full-page de incidente + media viewer · **F10** página Eventos · **F11** Reglas · **F12** Automatizaciones · **F-TC** Configuración del tenant · **F5c** gestión de canales · **F13** Analítica · **F14** Auditoría · **B1b+F7** Billing+Branding tenant-facing · **B2** billing local por transferencia (Cashier retirado).
+- **UI Enterprise (PR #65)**: design system (tokens, sombras tintadas, primitivos nuevos), ConditionBuilder con probador "¿coincidiría?", español 100% (lang/es + barridos), DataTable reutilizable + formularios estructurados (escalación, targets), micro-interacciones, contraste WCAG AA verificado, command palette real. Suite 1195+ tests.

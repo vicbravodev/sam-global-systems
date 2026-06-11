@@ -89,6 +89,7 @@ interface ChannelRow {
     channelType: string | null;
     isActive: boolean;
     isGlobal: boolean;
+    enabledForTeam: boolean;
     configSummary: Record<string, string>;
 }
 
@@ -143,6 +144,7 @@ const CHANNEL_OPTIONS = [
     'web',
     'sms',
     'whatsapp',
+    'voice',
     'push',
     'slack',
     'webhook',
@@ -259,8 +261,44 @@ function GeneralTab({
             ].includes(s.key),
     );
 
+    const [applyingDefaults, setApplyingDefaults] = useState(false);
+
+    const applySamDefaults = async () => {
+        if (base === null) {
+            return;
+        }
+
+        if (
+            !window.confirm(
+                'Se aplicará la configuración recomendada SAM (protocolo de pánico, media automática, verificación por voz y escalación). Solo se crea lo que falta: nada de lo que ya configuraste se modifica. ¿Continuar?',
+            )
+        ) {
+            return;
+        }
+
+        setApplyingDefaults(true);
+        await submit(
+            postJson(`${base}/apply-sam-defaults`, {}),
+            'Configuración recomendada SAM aplicada.',
+        );
+        setApplyingDefaults(false);
+    };
+
     return (
         <div className="flex flex-col gap-4">
+            {canManage && (
+                <div className="flex justify-end">
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={applyingDefaults}
+                        onClick={() => void applySamDefaults()}
+                    >
+                        Aplicar configuración recomendada SAM
+                    </Button>
+                </div>
+            )}
             <Card>
                 <CardHeader>
                     <CardTitle className="text-[13px] uppercase">
@@ -848,6 +886,7 @@ interface EscalationStepDraft {
     channels: string[];
     recipient: string;
     contacts: string;
+    attempts: string;
 }
 
 let escalationStepId = 0;
@@ -866,7 +905,14 @@ function parseEscalationSteps(steps: unknown[]): EscalationStepDraft[] | null {
         }
 
         const record = step as Record<string, unknown>;
-        const known = ['delay_minutes', 'channels', 'recipient', 'contacts'];
+        const known = [
+            'delay_minutes',
+            'channels',
+            'recipient',
+            'contacts',
+            'attempts',
+            'retry_minutes',
+        ];
 
         if (Object.keys(record).some((key) => !known.includes(key))) {
             return null;
@@ -891,6 +937,7 @@ function parseEscalationSteps(steps: unknown[]): EscalationStepDraft[] | null {
             recipient:
                 typeof record.recipient === 'string' ? record.recipient : '',
             contacts: (contacts as string[]).join(', '),
+            attempts: String(Number(record.attempts ?? 1) || 1),
         });
     }
 
@@ -908,6 +955,7 @@ function serializeEscalationSteps(
             .split(',')
             .map((contact) => contact.trim())
             .filter((contact) => contact !== ''),
+        attempts: Math.max(1, Number(draft.attempts) || 1),
     }));
 }
 
@@ -1025,6 +1073,22 @@ function EscalationStepsEditor({
                         disabled={disabled}
                         className="h-8 w-64 text-[12px]"
                     />
+                    <label className="flex items-center gap-1.5 text-[12px] text-fg-2">
+                        Intentos
+                        <Input
+                            type="number"
+                            min="1"
+                            value={step.attempts}
+                            onChange={(e) =>
+                                replace(index, {
+                                    ...step,
+                                    attempts: e.target.value,
+                                })
+                            }
+                            disabled={disabled}
+                            className="h-8 w-16 text-[12px] tabular-nums"
+                        />
+                    </label>
                     {!disabled && (
                         <Button
                             type="button"
@@ -1056,6 +1120,7 @@ function EscalationStepsEditor({
                                     channels: [],
                                     recipient: '',
                                     contacts: '',
+                                    attempts: '1',
                                 },
                             ])
                         }
@@ -1328,6 +1393,11 @@ const CHANNEL_CONFIG_FIELDS: Record<string, { key: string; label: string }[]> =
             { key: 'twilio_auth_token', label: 'Twilio Auth Token' },
             { key: 'from', label: 'Emisor (whatsapp:+…)' },
         ],
+        voice: [
+            { key: 'twilio_account_sid', label: 'Twilio Account SID' },
+            { key: 'twilio_auth_token', label: 'Twilio Auth Token' },
+            { key: 'from', label: 'Número de voz (E.164)' },
+        ],
         push: [
             {
                 key: 'firebase_credentials',
@@ -1363,7 +1433,7 @@ function ChannelsTab({
     const [testingId, setTestingId] = useState<number | null>(null);
 
     const providerFor = (type: string): string =>
-        type === 'sms' || type === 'whatsapp'
+        type === 'sms' || type === 'whatsapp' || type === 'voice'
             ? 'twilio'
             : type === 'push'
               ? 'firebase'
@@ -1422,6 +1492,21 @@ function ChannelsTab({
         void submit(
             deleteJson(`${base}/channels/${channel.id}`),
             'Canal eliminado.',
+        );
+    };
+
+    const toggleGlobal = (channel: ChannelRow) => {
+        if (base === null) {
+            return;
+        }
+
+        void submit(
+            postJson(`${base}/channels/${channel.id}/toggle`, {
+                enabled: !channel.enabledForTeam,
+            }),
+            channel.enabledForTeam
+                ? 'Canal SAM apagado para tu equipo.'
+                : 'Canal SAM encendido para tu equipo.',
         );
     };
 
@@ -1599,19 +1684,42 @@ function ChannelsTab({
                                         variant="outline"
                                         className="text-[10px] text-fg-3"
                                     >
-                                        global
+                                        Provisto por SAM
                                     </Badge>
                                 )}
                                 <Badge
                                     variant="outline"
                                     className={
-                                        channel.isActive
+                                        channel.isActive &&
+                                        (!channel.isGlobal ||
+                                            channel.enabledForTeam)
                                             ? 'text-severity-low'
                                             : 'text-fg-3'
                                     }
                                 >
-                                    {channel.isActive ? 'activo' : 'inactivo'}
+                                    {channel.isGlobal
+                                        ? channel.enabledForTeam
+                                            ? 'activo'
+                                            : 'apagado para tu equipo'
+                                        : channel.isActive
+                                          ? 'activo'
+                                          : 'inactivo'}
                                 </Badge>
+                                {canManage && channel.isGlobal && (
+                                    <span className="ml-auto">
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() =>
+                                                toggleGlobal(channel)
+                                            }
+                                        >
+                                            {channel.enabledForTeam
+                                                ? 'Apagar para mi equipo'
+                                                : 'Encender'}
+                                        </Button>
+                                    </span>
+                                )}
                                 {canManage && !channel.isGlobal && (
                                     <span className="ml-auto flex gap-1">
                                         <Button

@@ -6,6 +6,7 @@ import {
     CreditCard,
     FileClock,
     LogOut,
+    Radio,
     Shield,
     UsersRound,
 } from 'lucide-react';
@@ -125,6 +126,11 @@ export function AdminSidebar() {
                     label: 'Operadores',
                     icon: UsersRound,
                     href: '/admin/operators',
+                },
+                {
+                    label: 'Canales',
+                    icon: Radio,
+                    href: '/admin/channels',
                 },
                 {
                     label: 'Auditoría',

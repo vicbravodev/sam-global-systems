@@ -61,7 +61,29 @@ class SignalsBuilder
             'external_resolved' => ($event['is_resolved'] ?? null) === true,
             'parked_at_base' => self::parkedAtBase($geofenceMatches, $telemetry),
             'repeated_panic_24h' => ($recentHistory['repeated_panic_count_24h'] ?? 0) > 1,
+            // Safety correlation (Roadmap V2-A2): harsh maneuvers around the
+            // event weigh toward a real assault / forced-stop scenario.
+            'harsh_driving_near_event' => (bool) ($recentHistory['harsh_driving_near_event'] ?? false),
+            'nearby_safety_activity' => ($recentHistory['nearby_safety_events_count'] ?? 0) > 0,
+            // Anti-theft (Roadmap V2-C3): losing the position while the unit
+            // was moving smells like jamming or a yanked device — different
+            // from plain weak GPS on a parked unit.
+            'gps_lost_in_motion' => self::gpsLostInMotion($telemetry),
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $telemetry
+     */
+    private static function gpsLostInMotion(array $telemetry): bool
+    {
+        if (! (bool) ($telemetry['position_stale'] ?? false)) {
+            return false;
+        }
+
+        $speed = $telemetry['speed_kph'] ?? null;
+
+        return is_numeric($speed) && (float) $speed > 5.0;
     }
 
     /**

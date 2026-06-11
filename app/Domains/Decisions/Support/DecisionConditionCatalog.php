@@ -5,6 +5,7 @@ namespace App\Domains\Decisions\Support;
 use App\Domains\AI\Enums\EvaluationPriority;
 use App\Domains\AI\Enums\EventClassification;
 use App\Domains\AI\Enums\MediaAssessmentResult;
+use App\Domains\Incidents\Enums\CallVerificationOutcome;
 use App\Domains\Normalization\Models\EventType;
 use App\Support\Conditions\ConditionField;
 
@@ -66,6 +67,32 @@ class DecisionConditionCatalog
                 options: self::mediaAssessmentOptions(),
             ),
             new ConditionField(
+                key: 'media_passenger_detected',
+                label: 'Cámara: pasajero detectado',
+                type: 'boolean',
+            ),
+            new ConditionField(
+                key: 'media_visible_threat',
+                label: 'Cámara: amenaza visible',
+                type: 'boolean',
+            ),
+            new ConditionField(
+                key: 'media_persons_visible_count',
+                label: 'Cámara: personas visibles',
+                type: 'number',
+            ),
+            new ConditionField(
+                key: 'media_cabin_appears_normal',
+                label: 'Cámara: cabina se ve normal',
+                type: 'boolean',
+            ),
+            new ConditionField(
+                key: 'operator_call_outcome',
+                label: 'Verificación telefónica del operador',
+                type: 'enum',
+                options: self::callOutcomeOptions(),
+            ),
+            new ConditionField(
                 key: 'external_resolved',
                 label: 'Resuelto externamente',
                 type: 'boolean',
@@ -78,6 +105,26 @@ class DecisionConditionCatalog
             new ConditionField(
                 key: 'repeated_panic_count_24h',
                 label: 'Pánicos repetidos en 24 h',
+                type: 'number',
+            ),
+            new ConditionField(
+                key: 'harsh_driving_near_event',
+                label: 'Manejo brusco cerca del evento',
+                type: 'boolean',
+            ),
+            new ConditionField(
+                key: 'outside_operating_hours',
+                label: 'Fuera del horario operativo',
+                type: 'boolean',
+            ),
+            new ConditionField(
+                key: 'gps_lost_in_motion',
+                label: 'GPS perdido en movimiento (posible jamming)',
+                type: 'boolean',
+            ),
+            new ConditionField(
+                key: 'nearby_safety_events_count',
+                label: 'Safety events alrededor del evento',
                 type: 'number',
             ),
             new ConditionField(
@@ -136,6 +183,20 @@ class DecisionConditionCatalog
         ];
 
         return self::optionsFromLabels(MediaAssessmentResult::cases(), $labels);
+    }
+
+    /**
+     * @return array<int, array{value: string, label: string}>
+     */
+    private static function callOutcomeOptions(): array
+    {
+        $labels = [
+            CallVerificationOutcome::ConfirmedReal->value => 'Confirmó emergencia real',
+            CallVerificationOutcome::ConfirmedFalse->value => 'Confirmó falsa alarma',
+            CallVerificationOutcome::NoAnswer->value => 'Sin respuesta',
+        ];
+
+        return self::optionsFromLabels(CallVerificationOutcome::cases(), $labels);
     }
 
     /**
