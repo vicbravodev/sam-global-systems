@@ -7,6 +7,7 @@ use App\Domains\Automation\Support\TriggerConditionCatalog;
 use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Tenancy\Models\TenantBranding;
+use App\Domains\TenantConfig\Actions\ApplyDefaultTenantConfig;
 use App\Domains\TenantConfig\Actions\ResolveTenantAIProfile;
 use App\Domains\TenantConfig\Enums\AutomationLevel;
 use App\Domains\TenantConfig\Enums\FalsePositiveTolerance;
@@ -21,6 +22,7 @@ use App\Domains\TenantConfig\Models\TenantSetting;
 use App\Enums\TeamRole;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
+use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -33,6 +35,27 @@ use Inertia\Response;
  */
 class TenantConfigPageController extends Controller
 {
+    /**
+     * Apply the SAM Default Config Pack (Roadmap V2-A5): fills in any missing
+     * recommended settings/rules/escalation without touching what the tenant
+     * already configured.
+     */
+    public function applySamDefaults(Team $current_team, ApplyDefaultTenantConfig $applyDefaultConfig): RedirectResponse
+    {
+        $this->authorize('update', TenantSetting::class);
+
+        $summary = $applyDefaultConfig->execute($current_team);
+
+        $created = $summary['settings_created'] + $summary['rules_created'] + ($summary['escalation_created'] ? 1 : 0);
+
+        return back()->with(
+            'success',
+            $created > 0
+                ? "Configuración recomendada SAM aplicada ({$created} elementos nuevos; lo modificado por ti no se tocó)."
+                : 'Tu configuración ya incluye todo lo recomendado por SAM.',
+        );
+    }
+
     public function show(Team $current_team, ResolveTenantAIProfile $resolveAIProfile): Response
     {
         $this->authorize('viewAny', TenantSetting::class);

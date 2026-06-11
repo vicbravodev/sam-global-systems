@@ -260,8 +260,44 @@ function GeneralTab({
             ].includes(s.key),
     );
 
+    const [applyingDefaults, setApplyingDefaults] = useState(false);
+
+    const applySamDefaults = async () => {
+        if (base === null) {
+            return;
+        }
+
+        if (
+            !window.confirm(
+                'Se aplicará la configuración recomendada SAM (protocolo de pánico, media automática, verificación por voz y escalación). Solo se crea lo que falta: nada de lo que ya configuraste se modifica. ¿Continuar?',
+            )
+        ) {
+            return;
+        }
+
+        setApplyingDefaults(true);
+        await submit(
+            postJson(`${base}/apply-sam-defaults`, {}),
+            'Configuración recomendada SAM aplicada.',
+        );
+        setApplyingDefaults(false);
+    };
+
     return (
         <div className="flex flex-col gap-4">
+            {canManage && (
+                <div className="flex justify-end">
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={applyingDefaults}
+                        onClick={() => void applySamDefaults()}
+                    >
+                        Aplicar configuración recomendada SAM
+                    </Button>
+                </div>
+            )}
             <Card>
                 <CardHeader>
                     <CardTitle className="text-[13px] uppercase">

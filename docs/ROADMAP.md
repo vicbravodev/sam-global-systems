@@ -56,13 +56,7 @@ Patrón obligatorio: mismo estándar de V1 — domain-modular, `BelongsToTenant`
 
 **A4 — Escalación que respeta canales y reintentos por step (cierra G10). ✅ COMPLETADO** — ver §7.
 
-**A5 — SAM Default Config Pack: el protocolo de fábrica (cierra G3).**
-- Action `ApplyDefaultTenantConfig` invocada desde `CreateTenant` (+ comando `php artisan tenants:apply-default-config {team?|--all}` para tenants existentes, idempotente). Siembra para el tenant:
-  - **Settings afinados por SAM**: `media.auto_request_on_critical = ON`, ventanas de A1/A2, intentos de voz de A3, umbrales del watchdog (C1) — la lista crece con cada PR posterior.
-  - **Reglas de decisión default**: `panic-button-always-incident` (dura) + `panic-false-alarm-review` **activa** (con los guards anti-coacción existentes: pánico "resuelto" en carretera nunca se degrada).
-  - **Escalación default** (steps con canales+intentos: 0 min voz+push al on-call → 5 min SMS/WhatsApp → 15 min llamada a contacto del nivel 2), **notification policy default**, templates de pánico (ya seeded global).
-  - Snapshot en `TenantConfigVersion` etiquetado `sam-default-v{N}`; columna/flag de origen (`managed_by: sam_default|tenant`) para distinguir lo que el tenant tocó, y acción "Restaurar configuración recomendada SAM" en la página de Configuración (no pisa lo modificado sin confirmación).
-- Esto convierte el seeder demo (`SamsaraTestDecisionRulesSeeder`) en consumidor del pack (no duplicar definiciones: una sola fuente de verdad de los defaults, versionada en código).
+**A5 — SAM Default Config Pack: el protocolo de fábrica (cierra G3). ✅ COMPLETADO** — ver §7. **Fase A completa: el protocolo de pánico SAM opera de fábrica en todo tenant nuevo.**
 
 ### Fase B — Canales gestionados por SAM (cierra G2)
 
@@ -132,6 +126,8 @@ Patrón obligatorio: mismo estándar de V1 — domain-modular, `BelongsToTenant`
 ## 7. Completados (histórico resumido)
 
 ### V2 — "SAM Monitorista"
+
+- **A5** — SAM Default Config Pack (2026-06-11): `ApplyDefaultTenantConfig` (TenantConfig, `PACK_VERSION 1`) — idempotente, solo crea lo que falta, NUNCA pisa valores del tenant (`firstOrCreate`; origen distinguible por `updated_by_type = System`). Siembra: 8 settings afinados (media auto ON, ventanas A1/A2, verificación por voz ON con 3 intentos), ruleset `sam-default` con `panic-button-always-incident` + `panic-false-alarm-review` **ambas activas** (guards anti-coacción intactos; se omite si el tenant ya tiene rulesets), escalación default de 3 niveles con canales+intentos (voz+push → SMS/WhatsApp/email → voz+SMS, contacts vacíos = fan-out al team), y snapshot `TenantConfigVersion` etiquetado `sam-default-v1`. Disparo: listener `ApplyDefaultConfigOnTenantCreated` (todo tenant nuevo nace con el protocolo), comando `tenants:apply-default-config {team?|--all}` para existentes, y botón "Aplicar configuración recomendada SAM" en la página de Configuración (POST `tenant-config/apply-sam-defaults`, authorize update, con confirm). `SamsaraTestDecisionRulesSeeder` ahora consume el pack (una sola fuente de verdad). Tests: 9 (contenido completo del pack, idempotencia, preservación de valores del tenant, skip con ruleset propio, aislamiento, listener vía `CreateTenant`, comando por slug y sin target, endpoint web). **Fase A completa.**
 
 - **A4** — Escalación por canal y reintentos por step (2026-06-11): `CheckIncidentAcknowledgementJob` consume `steps_json[].channels` (validados contra `ChannelType`, incluida voz → `force_channels` del payload, gate real = canal activo) y `steps_json[].attempts` con `retry_minutes` (default 5): el mismo nivel se re-notifica con event key propio (`…:a{n}`) sin duplicar timeline ni re-transicionar, y solo al agotar intentos avanza al siguiente nivel. Editor de steps gana campo "Intentos" (el selector de canales ya existía y ahora incluye `voice`); `attempts`/`retry_minutes` reconocidos por el parser sin caer al modo JSON. Tests: canales forzados con inválidos filtrados, reintento del mismo nivel antes de avanzar con timeline única.
 

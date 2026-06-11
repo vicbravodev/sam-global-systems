@@ -11,6 +11,7 @@ use App\Contracts\TenantConfig\TenantNotificationPoliciesResolver;
 use App\Contracts\TenantConfig\TenantNotificationPolicyResolver;
 use App\Contracts\TenantConfig\TenantRuleOverrideApplier;
 use App\Contracts\TenantConfig\TenantScheduleResolver;
+use App\Domains\Tenancy\Events\TenantCreated;
 use App\Domains\TenantConfig\Actions\ApplyTenantRuleOverrides;
 use App\Domains\TenantConfig\Actions\ResolveTenantAIProfile;
 use App\Domains\TenantConfig\Actions\ResolveTenantAnalyticsConfig;
@@ -20,6 +21,7 @@ use App\Domains\TenantConfig\Actions\ResolveTenantNotificationPolicies;
 use App\Domains\TenantConfig\Actions\ResolveTenantNotificationPolicy;
 use App\Domains\TenantConfig\Actions\ResolveTenantSchedule;
 use App\Domains\TenantConfig\Actions\ResolveTenantSetting;
+use App\Domains\TenantConfig\Listeners\ApplyDefaultConfigOnTenantCreated;
 use App\Domains\TenantConfig\Models\TenantAIProfile;
 use App\Domains\TenantConfig\Models\TenantConfigVersion;
 use App\Domains\TenantConfig\Models\TenantEscalationConfig;
@@ -34,6 +36,7 @@ use App\Domains\TenantConfig\Policies\TenantNotificationPolicyPolicy;
 use App\Domains\TenantConfig\Policies\TenantRuleOverridePolicy;
 use App\Domains\TenantConfig\Policies\TenantScheduleProfilePolicy;
 use App\Domains\TenantConfig\Policies\TenantSettingPolicy;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 
@@ -61,5 +64,8 @@ class TenantConfigServiceProvider extends ServiceProvider
         Gate::policy(TenantEscalationConfig::class, TenantEscalationConfigPolicy::class);
         Gate::policy(TenantScheduleProfile::class, TenantScheduleProfilePolicy::class);
         Gate::policy(TenantConfigVersion::class, TenantConfigVersionPolicy::class);
+
+        // Every new tenant is born with the SAM default pack (Roadmap V2-A5).
+        Event::listen(TenantCreated::class, ApplyDefaultConfigOnTenantCreated::class);
     }
 }

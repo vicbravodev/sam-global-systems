@@ -197,6 +197,7 @@ Route::prefix('{current_team}')
         Route::delete('rules/overrides/{override}', [TenantRuleOverrideController::class, 'destroy'])->name('rules.overrides.destroy');
 
         Route::get('settings/tenant-config', [TenantConfigPageController::class, 'show'])->name('tenant-config.show');
+        Route::post('settings/tenant-config/apply-sam-defaults', [TenantConfigPageController::class, 'applySamDefaults'])->name('tenant-config.apply-sam-defaults');
         Route::put('settings/tenant-config/settings', [TenantConfigController::class, 'update'])->name('tenant-config.settings.update');
         Route::put('settings/tenant-config/ai-profile', [TenantAIProfileController::class, 'update'])->name('tenant-config.ai-profile.update');
         Route::put('settings/tenant-config/notifications', [TenantNotificationPolicyController::class, 'update'])->name('tenant-config.notifications.update');
