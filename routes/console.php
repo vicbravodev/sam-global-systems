@@ -2,6 +2,7 @@
 
 use App\Domains\Analytics\Jobs\BuildAnalyticsSnapshotJob;
 use App\Domains\Analytics\Jobs\CalculateDailyKPIsJob;
+use App\Domains\Assets\Jobs\DetectOfflineAssetsJob;
 use App\Domains\Assets\Jobs\PollAllAssetLocationsJob;
 use App\Domains\Ingestion\Jobs\PollSamsaraSafetyEventsJob;
 use App\Domains\Integrations\Jobs\SyncDueIntegrationsJob;
@@ -24,3 +25,7 @@ Schedule::job(new BuildAnalyticsSnapshotJob)->dailyAt('04:00')->onOneServer();
 Schedule::job(new SyncDueIntegrationsJob)->everyFifteenMinutes()->onOneServer();
 Schedule::job(new PollAllAssetLocationsJob)->everyFiveMinutes()->onOneServer();
 Schedule::job(new PollSamsaraSafetyEventsJob)->everyTwoMinutes()->onOneServer();
+
+// Offline-asset watchdog (Roadmap V2-C1): silence beyond the tenant/asset
+// threshold raises an internal `device_offline` event through the pipeline.
+Schedule::job(new DetectOfflineAssetsJob)->everyFiveMinutes()->onOneServer();

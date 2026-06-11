@@ -10,4 +10,5 @@ enum EventSourceType: string
     case BatchImport = 'batch_import';
     case ApiPull = 'api_pull';
     case MessageQueue = 'message_queue';
+    case InternalMonitor = 'internal_monitor';
 }

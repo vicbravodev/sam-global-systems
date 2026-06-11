@@ -64,9 +64,7 @@ Patrón obligatorio: mismo estándar de V1 — domain-modular, `BelongsToTenant`
 
 ### Fase C — Monitoreo proactivo antirrobo México (cierra G6, G7, G8)
 
-**C1 — Watchdog "dejó de reportar" (cierra G6).**
-- Scheduler `assets:detect-offline` (cada 5 min, `onOneServer`): assets activos con `last_seen_at` más viejo que `monitoring.offline_alert_minutes` (setting por tenant, default SAM: 15; override por asset en `metadata_json`) → genera **RawEvent interno** (source `internal_monitor`, event_type `device_offline`) que recorre el pipeline completo (normalización → contexto → IA → decisión → incidente/notificación). Anti-spam: un solo evento por episodio offline (marca en el asset hasta que vuelva a reportar); al volver → resolución externa del evento (reusa `ApplyExternalResolution`).
-- Señal `offline_in_motion_context` si el último reporte iba en movimiento (más sospechoso = posible jamming/desconexión).
+**C1 — Watchdog "dejó de reportar" (cierra G6). ✅ COMPLETADO** — ver §7.
 
 **C2 — After-hours real (cierra G7).**
 - `BuildEventContext` calcula `outside_operating_hours` vía `ResolveTenantSchedule` (la señal ya está declarada; cablearla) y la expone como fact.
@@ -123,6 +121,8 @@ Patrón obligatorio: mismo estándar de V1 — domain-modular, `BelongsToTenant`
 ## 7. Completados (histórico resumido)
 
 ### V2 — "SAM Monitorista"
+
+- **C1** — Watchdog de activos sin reportar (2026-06-11): `DetectOfflineAssetsJob` (scheduler cada 5 min, `onOneServer`) — assets no inactivos/mantenimiento con `last_seen_at` más viejo que el umbral (override por asset `metadata_json.offline_alert_minutes` > setting `monitoring.offline_alert_minutes` > default 15; `0` desactiva) generan un **RawEvent interno** (source nuevo `internal_monitor`, sin provider) con last known location + `was_in_motion` (silencio en movimiento ≈ jamming) que recorre el pipeline completo. Anti-spam sin estado: episodio = `offline:{asset}:{last_seen_at.ts}` como dedup key. Recuperación: al volver a reportar, el evento del episodio se marca `is_resolved` + `ApplyExternalResolutionJob` (anota/cierra el incidente según el setting del tenant). `NormalizeRawEvent` gana el camino interno: sin provider ni mapping rule, `event_type_raw` ES el código del tipo y `internal.asset_id` se honra solo si el asset pertenece al tenant del evento (anti-spoofing). Default del pack A5: `monitoring.offline_alert_minutes = 15`. Tests: 14 (episodios únicos/nuevos, umbrales por tenant/asset/disable, estados ignorados, recuperación idempotente, normalización interna con aislamiento de tenant y fallback a unmapped).
 
 - **B1** — Canales gestionados por SAM (2026-06-11): tabla additive `tenant_channel_toggles` + modelo `TenantChannelToggle` (sin fila = encendido; opt-out por tenant); scope `NotificationChannel::usableByTeam()` consumido por `SelectNotificationChannels` y la resolución de canal de voz (`PlaceVerificationCallJob`). **Policy endurecida**: un tenant ya NO puede editar/probar/eliminar canales globales (solo apagarlos/encenderlos para sí vía `POST tenant-config/channels/{id}/toggle`, policy `toggleGlobal`, upsert idempotente). Consola super-admin: página `admin/channels` (CRUD de canales de plataforma con credenciales cifradas at-rest, solo `team_id = null`, auditado `platform-channel.*`, item "Canales" en el sidebar admin). UI tenant: badge "Provisto por SAM" + botón Apagar/Encender para mi equipo, sin credenciales. Tests: 12 (CRUD admin con authz y 404 para canales tenant, toggle idempotente con aislamiento, exclusión en `usableByTeam` sin fuga cross-tenant, canal de voz global apagado nunca llama, tenant bloqueado de editar globales). **Fase B completa.**
 

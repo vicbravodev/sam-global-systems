@@ -84,6 +84,8 @@ class ApplyDefaultTenantConfig
             ['key' => 'voice.verification_enabled', 'group' => SettingGroup::Operational, 'type' => SettingValueType::Boolean, 'value' => true],
             ['key' => 'voice.call_attempts', 'group' => SettingGroup::Operational, 'type' => SettingValueType::Number, 'value' => 3],
             ['key' => 'voice.retry_delay_seconds', 'group' => SettingGroup::Operational, 'type' => SettingValueType::Number, 'value' => 90],
+            // Proactive monitoring: alert when an asset stops reporting (V2-C1).
+            ['key' => 'monitoring.offline_alert_minutes', 'group' => SettingGroup::Operational, 'type' => SettingValueType::Number, 'value' => 15],
         ];
     }
 

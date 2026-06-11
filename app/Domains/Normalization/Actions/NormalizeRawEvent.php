@@ -2,6 +2,7 @@
 
 namespace App\Domains\Normalization\Actions;
 
+use App\Domains\Assets\Models\Asset;
 use App\Domains\Assets\Models\AssetExternalReference;
 use App\Domains\Drivers\Models\DriverExternalReference;
 use App\Domains\Ingestion\Models\RawEvent;
@@ -33,10 +34,89 @@ class NormalizeRawEvent
             : null;
 
         if (! $rule) {
+            // Internal monitor events (Roadmap V2-C1) carry no provider and
+            // need no mapping rule: their `event_type_raw` IS the event type
+            // code and the asset comes pre-resolved in the payload.
+            $internalType = $this->resolveInternalEventType($rawEvent, $payload);
+
+            if ($internalType !== null) {
+                return $this->createInternalNormalizedEvent($rawEvent, $internalType, $payload);
+            }
+
             return $this->createUnmappedEvent($rawEvent, $externalEventType, $providerId);
         }
 
         return $this->createNormalizedEvent($rawEvent, $rule, $payload);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function resolveInternalEventType(RawEvent $rawEvent, array $payload): ?EventType
+    {
+        if (! is_numeric(Arr::get($payload, 'internal.asset_id'))) {
+            return null;
+        }
+
+        $code = (string) ($rawEvent->event_type_raw ?? '');
+
+        if ($code === '') {
+            return null;
+        }
+
+        return EventType::query()->where('code', $code)->first();
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function createInternalNormalizedEvent(
+        RawEvent $rawEvent,
+        EventType $eventType,
+        array $payload,
+    ): NormalizedEvent {
+        $severity = $eventType->defaultSeverity ?? EventSeverity::query()->orderBy('level')->firstOrFail();
+
+        $normalizedEvent = NormalizedEvent::withoutGlobalScopes()->updateOrCreate(
+            ['raw_event_id' => $rawEvent->id],
+            [
+                'team_id' => $rawEvent->team_id,
+                'provider_id' => null,
+                'asset_id' => $this->resolveInternalAssetId($rawEvent, $payload),
+                'driver_id' => null,
+                'event_type_id' => $eventType->id,
+                'event_category_id' => $eventType->category?->id ?? $this->getUnmappedCategoryId(),
+                'event_severity_id' => $severity->id,
+                'occurred_at' => $rawEvent->occurred_at ?? $rawEvent->received_at,
+                'processed_at' => now(),
+                'payload_normalized_json' => $this->buildNormalizedPayload($rawEvent, $eventType, $severity, $payload),
+                'status' => NormalizedEventStatus::Normalized,
+            ],
+        );
+
+        $rawEvent->markAsProcessed();
+
+        EventNormalized::dispatch($normalizedEvent);
+
+        return $normalizedEvent;
+    }
+
+    /**
+     * The internal asset id is only honored when the asset belongs to the raw
+     * event's tenant — a forged payload can never bind a foreign asset.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function resolveInternalAssetId(RawEvent $rawEvent, array $payload): ?int
+    {
+        $assetId = (int) Arr::get($payload, 'internal.asset_id');
+
+        $belongs = Asset::withoutGlobalScopes()
+            ->whereKey($assetId)
+            ->where('team_id', $rawEvent->team_id)
+            ->exists();
+
+        return $belongs ? $assetId : null;
     }
 
     private function createUnmappedEvent(
