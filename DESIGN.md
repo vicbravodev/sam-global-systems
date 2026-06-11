@@ -95,6 +95,10 @@ Reglas:
 
 Español neutro, sin anglicismos ("Guardar", no "Salvar"; "Eliminar", no "Borrar" para acciones destructivas permanentes). Sin em dashes en copy de UI.
 
+## Contraste (verificado 2026-06-11)
+
+Cálculo WCAG sobre los tokens OKLCH (conversión OKLCH→sRGB→luminancia relativa): **todas** las combinaciones `fg-1/fg-2/fg-3` sobre `background/surface-1/surface-2/surface-3` pasan AA (≥4.5:1) en ambos temas. El peor caso es `fg-3` sobre `surface-2` en dark (5.21:1). Si se ajustan estos tokens, re-verificar.
+
 ## Checklist de cierre por pantalla
 
 1. ¿Cero colores hardcodeados? (grep `red-|green-|blue-|amber-|yellow-`)

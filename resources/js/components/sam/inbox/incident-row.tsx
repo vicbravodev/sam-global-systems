@@ -136,7 +136,16 @@ export function IncidentRow({
     const cellH = DENSITY_H[density];
 
     return (
-        <tr className={rowClass} onClick={onClick}>
+        <tr
+            className={cn(rowClass, 'outline-none focus-visible:bg-surface-2')}
+            onClick={onClick}
+            tabIndex={0}
+            onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                    onClick();
+                }
+            }}
+        >
             {/* Check */}
             <td
                 className={cn(
