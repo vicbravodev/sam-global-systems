@@ -10,6 +10,7 @@ use App\Domains\Incidents\Listeners\AnnotateIncidentOnMediaAssessmentCompleted;
 use App\Domains\Incidents\Listeners\ApplyExternalResolutionOnEventNormalized;
 use App\Domains\Incidents\Listeners\AssignOnCallOnIncidentCreated;
 use App\Domains\Incidents\Listeners\CreateIncidentOnDecisionMade;
+use App\Domains\Incidents\Listeners\StartCallVerificationOnIncidentCreated;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Policies\IncidentPolicy;
 use App\Domains\Incidents\Queries\DbIncidentMetricsQuery;
@@ -32,6 +33,7 @@ class IncidentsServiceProvider extends ServiceProvider
         Event::listen(DecisionMade::class, CreateIncidentOnDecisionMade::class);
         Event::listen(EventNormalized::class, ApplyExternalResolutionOnEventNormalized::class);
         Event::listen(IncidentCreated::class, AssignOnCallOnIncidentCreated::class);
+        Event::listen(IncidentCreated::class, StartCallVerificationOnIncidentCreated::class);
         Event::listen(MediaAssessmentCompleted::class, AnnotateIncidentOnMediaAssessmentCompleted::class);
     }
 }

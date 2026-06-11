@@ -6,6 +6,9 @@ use App\Domains\AI\Enums\MediaAssessmentResult;
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\AI\Models\AIMediaAssessment;
 use App\Domains\Context\Models\EventContextSnapshot;
+use App\Domains\Incidents\Enums\CallVerificationOutcome;
+use App\Domains\Incidents\Models\Incident;
+use App\Domains\Incidents\Models\IncidentCallVerification;
 use App\Domains\Normalization\Models\EventType;
 
 /**
@@ -51,7 +54,35 @@ class DecisionFactsBuilder
             'media_visible_threat' => $vision['visible_threat'],
             'media_persons_visible_count' => $vision['persons_visible_count'],
             'media_cabin_appears_normal' => $vision['cabin_appears_normal'],
+            // Operator phone verification (Roadmap V2-A3): what the human on
+            // call answered via DTMF, if the call already happened.
+            'operator_call_outcome' => $this->resolveOperatorCallOutcome($eval),
         ];
+    }
+
+    /**
+     * Latest DTMF verification outcome across the incidents opened for this
+     * event: `confirmed_real`, `confirmed_false` or `no_answer` — null while
+     * no call has concluded.
+     */
+    private function resolveOperatorCallOutcome(AIEventEvaluation $eval): ?string
+    {
+        $incidentIds = Incident::withoutGlobalScopes()
+            ->where('related_event_id', $eval->normalized_event_id)
+            ->select('id');
+
+        $outcome = IncidentCallVerification::withoutGlobalScopes()
+            ->whereIn('incident_id', $incidentIds)
+            ->whereNotNull('outcome')
+            ->orderByDesc('responded_at')
+            ->orderByDesc('id')
+            ->value('outcome');
+
+        if ($outcome instanceof CallVerificationOutcome) {
+            return $outcome->value;
+        }
+
+        return is_string($outcome) && $outcome !== '' ? $outcome : null;
     }
 
     /**

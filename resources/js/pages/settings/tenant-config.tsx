@@ -143,6 +143,7 @@ const CHANNEL_OPTIONS = [
     'web',
     'sms',
     'whatsapp',
+    'voice',
     'push',
     'slack',
     'webhook',
@@ -1328,6 +1329,11 @@ const CHANNEL_CONFIG_FIELDS: Record<string, { key: string; label: string }[]> =
             { key: 'twilio_auth_token', label: 'Twilio Auth Token' },
             { key: 'from', label: 'Emisor (whatsapp:+…)' },
         ],
+        voice: [
+            { key: 'twilio_account_sid', label: 'Twilio Account SID' },
+            { key: 'twilio_auth_token', label: 'Twilio Auth Token' },
+            { key: 'from', label: 'Número de voz (E.164)' },
+        ],
         push: [
             {
                 key: 'firebase_credentials',
@@ -1363,7 +1369,7 @@ function ChannelsTab({
     const [testingId, setTestingId] = useState<number | null>(null);
 
     const providerFor = (type: string): string =>
-        type === 'sms' || type === 'whatsapp'
+        type === 'sms' || type === 'whatsapp' || type === 'voice'
             ? 'twilio'
             : type === 'push'
               ? 'firebase'

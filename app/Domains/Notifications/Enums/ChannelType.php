@@ -11,4 +11,5 @@ enum ChannelType: string
     case Web = 'web';
     case Slack = 'slack';
     case Webhook = 'webhook';
+    case Voice = 'voice';
 }

@@ -5,6 +5,7 @@ namespace App\Domains\Decisions\Support;
 use App\Domains\AI\Enums\EvaluationPriority;
 use App\Domains\AI\Enums\EventClassification;
 use App\Domains\AI\Enums\MediaAssessmentResult;
+use App\Domains\Incidents\Enums\CallVerificationOutcome;
 use App\Domains\Normalization\Models\EventType;
 use App\Support\Conditions\ConditionField;
 
@@ -84,6 +85,12 @@ class DecisionConditionCatalog
                 key: 'media_cabin_appears_normal',
                 label: 'Cámara: cabina se ve normal',
                 type: 'boolean',
+            ),
+            new ConditionField(
+                key: 'operator_call_outcome',
+                label: 'Verificación telefónica del operador',
+                type: 'enum',
+                options: self::callOutcomeOptions(),
             ),
             new ConditionField(
                 key: 'external_resolved',
@@ -166,6 +173,20 @@ class DecisionConditionCatalog
         ];
 
         return self::optionsFromLabels(MediaAssessmentResult::cases(), $labels);
+    }
+
+    /**
+     * @return array<int, array{value: string, label: string}>
+     */
+    private static function callOutcomeOptions(): array
+    {
+        $labels = [
+            CallVerificationOutcome::ConfirmedReal->value => 'Confirmó emergencia real',
+            CallVerificationOutcome::ConfirmedFalse->value => 'Confirmó falsa alarma',
+            CallVerificationOutcome::NoAnswer->value => 'Sin respuesta',
+        ];
+
+        return self::optionsFromLabels(CallVerificationOutcome::cases(), $labels);
     }
 
     /**
