@@ -48,10 +48,7 @@ Patrón obligatorio: mismo estándar de V1 — domain-modular, `BelongsToTenant`
 
 ### Fase A — Protocolo de pánico SAM (el corazón del valor)
 
-**A1 — Media alrededor del evento: ventana configurable + análisis por imagen + detección de pasajeros (cierra G4).**
-- Settings nuevos: `media.clip_window_seconds` (default SAM: 60 → clip `±60s`) y `media.still_window_minutes` (default SAM: 30) + `media.still_count` (default 6): además del clip, solicitar capturas fotográficas distribuidas en `occurred_at ± still_window` (la API de retrieval de Samsara soporta stills); `FetchDeferredEventMediaJob` deja de usar la constante hardcoded.
-- Assessment **por cada media** (ya es 1:1) con prompt enriquecido y señales estructuradas: `persons_visible_count`, `passenger_detected`, `driver_visible`, `cabin_appears_normal`, `vehicle_moving`, `road_context` — definidas como schema del output del `SdkMediaAssessmentAgent`/`MediaInspectorAgent`, persistidas en `extracted_signals` y expuestas como facts (`media_passenger_detected`, etc.) en `DecisionFactsBuilder` + catálogo.
-- La descripción de lo visualizado (`summary_text`) ya existe — verificar que entra al prompt de re-evaluación y al detalle del incidente (galería F9 ya la muestra).
+**A1 — Media alrededor del evento: ventana configurable + análisis por imagen + detección de pasajeros (cierra G4). ✅ COMPLETADO** — ver §7.
 
 **A2 — Correlación de safety events alrededor del evento (cierra G5).**
 - `LoadRecentAssetHistory` (o acción nueva `CorrelateNearbySafetyEvents`) gana ventana `occurred_at ± N min` (setting `context.safety_correlation_minutes`, default SAM: 30) sobre TODOS los normalized events del asset (no solo mismo tipo): conteo y resumen por tipo (harsh_braking, harsh_turn, speeding…).
@@ -143,6 +140,10 @@ Patrón obligatorio: mismo estándar de V1 — domain-modular, `BelongsToTenant`
 ---
 
 ## 7. Completados (histórico resumido)
+
+### V2 — "SAM Monitorista"
+
+- **A1** — Media alrededor del evento (2026-06-11): ventana de clip configurable (`media.clip_window_seconds`, default 60s por lado) resuelta vía `TenantConfigResolver` en `FetchDeferredEventMediaJob`; stills distribuidos en `occurred_at ± media.still_window_minutes` (default 30) × `media.still_count` (default 6) — un retrieval `mediaType: image` por instante (`MediaRetrievalAdapter::requestMedia` ganó el parámetro), poll agregado por request con conteo `stills_downloaded`, fail solo si el proveedor falla todos. `RequestPanicMediaOnContextBuilt` pide clip + stills (skip con `still_count = 0`). Prompt del `MediaInspectorAgent` reescrito con framing de monitoreo de seguridad en México y señales estructuradas obligatorias (`persons_visible_count`, `passenger_detected`, `driver_visible`, `visible_threat`, `cabin_appears_normal`, `vehicle_moving`; `summary_text` en español); `DecisionFactsBuilder` agrega los facts `media_passenger_detected` / `media_visible_threat` / `media_persons_visible_count` / `media_cabin_appears_normal` (evidencia alarmante domina, agregado cross-versión de evaluación) y `DecisionConditionCatalog` los expone al builder visual. Tests: ciclo completo de stills, ventana por TenantSetting, rechazos totales/parciales, listener con stills on/off, agregación y aislamiento de los facts de visión.
 
 ### V1 (cerrado 2026-06-10/11)
 

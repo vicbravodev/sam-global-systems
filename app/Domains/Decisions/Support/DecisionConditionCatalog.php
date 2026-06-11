@@ -66,6 +66,26 @@ class DecisionConditionCatalog
                 options: self::mediaAssessmentOptions(),
             ),
             new ConditionField(
+                key: 'media_passenger_detected',
+                label: 'Cámara: pasajero detectado',
+                type: 'boolean',
+            ),
+            new ConditionField(
+                key: 'media_visible_threat',
+                label: 'Cámara: amenaza visible',
+                type: 'boolean',
+            ),
+            new ConditionField(
+                key: 'media_persons_visible_count',
+                label: 'Cámara: personas visibles',
+                type: 'number',
+            ),
+            new ConditionField(
+                key: 'media_cabin_appears_normal',
+                label: 'Cámara: cabina se ve normal',
+                type: 'boolean',
+            ),
+            new ConditionField(
                 key: 'external_resolved',
                 label: 'Resuelto externamente',
                 type: 'boolean',

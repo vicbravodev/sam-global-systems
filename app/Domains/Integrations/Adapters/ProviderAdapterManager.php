@@ -50,6 +50,7 @@ class ProviderAdapterManager implements MediaRetrievalAdapter, ProviderAdapter
         \DateTimeInterface $startTime,
         \DateTimeInterface $endTime,
         array $inputs = [],
+        string $mediaType = 'videoHighRes',
     ): ?string {
         $adapter = $this->forIntegration($integration);
 
@@ -57,7 +58,7 @@ class ProviderAdapterManager implements MediaRetrievalAdapter, ProviderAdapter
             return null;
         }
 
-        return $adapter->requestMedia($integration, $externalAssetId, $startTime, $endTime, $inputs);
+        return $adapter->requestMedia($integration, $externalAssetId, $startTime, $endTime, $inputs, $mediaType);
     }
 
     public function checkMedia(TenantIntegration $integration, string $retrievalId): array

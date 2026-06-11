@@ -13,7 +13,11 @@ interface MediaRetrievalAdapter
      * retrieval id to poll with {@see checkMedia}, or null when the request
      * could not be placed (no token, provider error, no media capability).
      *
+     * For still images the provider expects a single instant: pass the same
+     * timestamp as both `$startTime` and `$endTime` with `$mediaType` "image".
+     *
      * @param  array<int, string>  $inputs  Provider camera inputs (e.g. dashcamRoadFacing).
+     * @param  string  $mediaType  Provider media type (e.g. videoHighRes, image).
      */
     public function requestMedia(
         TenantIntegration $integration,
@@ -21,6 +25,7 @@ interface MediaRetrievalAdapter
         DateTimeInterface $startTime,
         DateTimeInterface $endTime,
         array $inputs = [],
+        string $mediaType = 'videoHighRes',
     ): ?string;
 
     /**

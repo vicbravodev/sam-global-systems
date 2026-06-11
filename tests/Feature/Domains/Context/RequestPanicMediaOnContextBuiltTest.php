@@ -76,9 +76,45 @@ class RequestPanicMediaOnContextBuiltTest extends TestCase
         app(RequestPanicMediaOnContextBuilt::class)->handle($event);
     }
 
-    public function test_requests_media_for_critical_event_with_camera_when_opted_in(): void
+    public function test_requests_clip_and_stills_for_critical_event_with_camera_when_opted_in(): void
     {
         $this->enableAutoRequest();
+
+        $event = $this->buildContext();
+
+        $this->handle($event);
+
+        $requests = EventMediaRequest::withoutGlobalScopes()
+            ->where('normalized_event_id', $event->snapshot->normalized_event_id)
+            ->get();
+
+        $this->assertEqualsCanonicalizing(
+            [MediaRequestType::FetchVideoClip, MediaRequestType::FetchSnapshot],
+            $requests->pluck('request_type')->all(),
+        );
+
+        foreach ($requests as $request) {
+            $this->assertSame(MediaRequestStatus::Pending, $request->status);
+            $this->assertSame($this->teamId, $request->team_id);
+
+            Queue::assertPushed(
+                FetchDeferredEventMediaJob::class,
+                fn (FetchDeferredEventMediaJob $job) => $job->eventMediaRequestId === $request->id,
+            );
+        }
+    }
+
+    public function test_stills_are_skipped_when_the_tenant_sets_still_count_to_zero(): void
+    {
+        $this->enableAutoRequest();
+
+        TenantSetting::factory()->create([
+            'team_id' => $this->teamId,
+            'setting_key' => FetchDeferredEventMediaJob::SETTING_STILL_COUNT,
+            'setting_group' => SettingGroup::Operational,
+            'value_json' => ['value' => 0],
+            'value_type' => SettingValueType::Number,
+        ]);
 
         $event = $this->buildContext();
 
@@ -89,13 +125,6 @@ class RequestPanicMediaOnContextBuiltTest extends TestCase
             ->sole();
 
         $this->assertSame(MediaRequestType::FetchVideoClip, $request->request_type);
-        $this->assertSame(MediaRequestStatus::Pending, $request->status);
-        $this->assertSame($this->teamId, $request->team_id);
-
-        Queue::assertPushed(
-            FetchDeferredEventMediaJob::class,
-            fn (FetchDeferredEventMediaJob $job) => $job->eventMediaRequestId === $request->id,
-        );
     }
 
     public function test_does_nothing_by_default_because_auto_request_is_opt_in(): void
@@ -133,7 +162,8 @@ class RequestPanicMediaOnContextBuiltTest extends TestCase
         $this->handle($event);
         $this->handle($event);
 
-        $this->assertSame(1, EventMediaRequest::withoutGlobalScopes()->count());
+        // One clip + one stills request, no duplicates on rebuild.
+        $this->assertSame(2, EventMediaRequest::withoutGlobalScopes()->count());
     }
 
     public function test_records_usage_once_per_request(): void
@@ -146,14 +176,14 @@ class RequestPanicMediaOnContextBuiltTest extends TestCase
         $this->handle($event);
         $this->handle($event);
 
-        $request = EventMediaRequest::withoutGlobalScopes()->sole();
+        foreach (EventMediaRequest::withoutGlobalScopes()->get() as $request) {
+            $usage = UsageEvent::withoutGlobalScopes()
+                ->where('team_id', $this->teamId)
+                ->where('event_key', "media_request:{$request->id}")
+                ->count();
 
-        $usage = UsageEvent::withoutGlobalScopes()
-            ->where('team_id', $this->teamId)
-            ->where('event_key', "media_request:{$request->id}")
-            ->count();
-
-        $this->assertSame(1, $usage);
+            $this->assertSame(1, $usage);
+        }
     }
 
     public function test_setting_of_another_tenant_does_not_leak(): void
