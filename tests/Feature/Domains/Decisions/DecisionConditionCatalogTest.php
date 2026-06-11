@@ -3,6 +3,7 @@
 namespace Tests\Feature\Domains\Decisions;
 
 use App\Domains\AI\Models\AIEventEvaluation;
+use App\Domains\Context\Models\EventContextSnapshot;
 use App\Domains\Decisions\Support\DecisionConditionCatalog;
 use App\Domains\Decisions\Support\DecisionFactsBuilder;
 use App\Domains\Decisions\Support\RuleConditionEvaluator;
@@ -71,5 +72,24 @@ class DecisionConditionCatalogTest extends TestCase
         $this->assertFalse($facts['has_context_snapshot']);
         $this->assertNull($facts['media_assessment']);
         $this->assertSame(0, $facts['repeated_panic_count_24h']);
+        $this->assertFalse($facts['harsh_driving_near_event']);
+        $this->assertSame(0, $facts['nearby_safety_events_count']);
+    }
+
+    public function test_safety_correlation_facts_flow_from_the_context_snapshot(): void
+    {
+        $eval = AIEventEvaluation::factory()->create();
+
+        $snapshot = EventContextSnapshot::factory()->create([
+            'team_id' => $eval->team_id,
+            'normalized_event_id' => $eval->normalized_event_id,
+            'signals_json' => ['harsh_driving_near_event' => true],
+            'recent_history_snapshot_json' => ['nearby_safety_events_count' => 2],
+        ]);
+
+        $facts = (new DecisionFactsBuilder)->build($eval->fresh(), $snapshot);
+
+        $this->assertTrue($facts['harsh_driving_near_event']);
+        $this->assertSame(2, $facts['nearby_safety_events_count']);
     }
 }

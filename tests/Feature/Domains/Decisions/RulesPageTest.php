@@ -148,7 +148,7 @@ class RulesPageTest extends TestCase
         $response->assertOk();
         $response->assertInertia(
             fn (Assert $page) => $page
-                ->has('conditionFields', 16)
+                ->has('conditionFields', 18)
                 ->where('conditionFields.0.key', 'classification')
                 ->has('conditionFields.0.options')
                 ->has('conditionFields.0.operators'),

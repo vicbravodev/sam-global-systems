@@ -2,6 +2,7 @@
 
 namespace App\Domains\Context\Actions;
 
+use App\Contracts\TenantConfig\TenantConfigResolver;
 use App\Domains\Context\Enums\GeofenceMatchType;
 use App\Domains\Context\Enums\IncidentRelationType;
 use App\Domains\Context\Events\EventContextBuilt;
@@ -16,6 +17,10 @@ use Illuminate\Support\Facades\DB;
 
 class BuildEventContext
 {
+    public const string SETTING_SAFETY_CORRELATION = 'context.safety_correlation_minutes';
+
+    public const int DEFAULT_SAFETY_CORRELATION_MINUTES = 30;
+
     public function __construct(
         private ResolveGeofenceContext $resolveGeofenceContext,
         private LoadRecentAssetHistory $loadRecentAssetHistory,
@@ -24,6 +29,7 @@ class BuildEventContext
         private ResolveDriverOperationalContext $resolveDriverOperationalContext,
         private BuildOperationalContextProfile $buildOperationalContextProfile,
         private FetchLiveLocationForEvent $fetchLiveLocationForEvent,
+        private TenantConfigResolver $tenantConfigResolver,
     ) {}
 
     public function execute(NormalizedEvent $normalizedEvent): EventContextSnapshot
@@ -62,6 +68,12 @@ class BuildEventContext
                 $normalizedEvent->asset_id,
                 $normalizedEvent->event_type_id,
                 $normalizedEvent->occurred_at ?? now(),
+                correlationMinutes: max(1, (int) $this->tenantConfigResolver->resolve(
+                    (int) $normalizedEvent->team_id,
+                    self::SETTING_SAFETY_CORRELATION,
+                    self::DEFAULT_SAFETY_CORRELATION_MINUTES,
+                )),
+                excludeEventId: $normalizedEvent->id,
             );
 
             $signals = SignalsBuilder::build([
@@ -321,6 +333,9 @@ class BuildEventContext
             'recent_same_type_count' => $recentHistory['recent_same_type_count'],
             'recent_high_severity_count' => $recentHistory['recent_high_severity_count'],
             'repeated_panic_count_24h' => $recentHistory['repeated_panic_count_24h'] ?? 0,
+            'nearby_safety_events_count' => $recentHistory['nearby_safety_events_count'] ?? 0,
+            'nearby_safety_breakdown' => $recentHistory['nearby_safety_breakdown'] ?? [],
+            'harsh_driving_near_event' => $recentHistory['harsh_driving_near_event'] ?? false,
             'recent_locations' => $recentHistory['recent_locations_json'],
         ];
     }

@@ -61,6 +61,10 @@ class SignalsBuilder
             'external_resolved' => ($event['is_resolved'] ?? null) === true,
             'parked_at_base' => self::parkedAtBase($geofenceMatches, $telemetry),
             'repeated_panic_24h' => ($recentHistory['repeated_panic_count_24h'] ?? 0) > 1,
+            // Safety correlation (Roadmap V2-A2): harsh maneuvers around the
+            // event weigh toward a real assault / forced-stop scenario.
+            'harsh_driving_near_event' => (bool) ($recentHistory['harsh_driving_near_event'] ?? false),
+            'nearby_safety_activity' => ($recentHistory['nearby_safety_events_count'] ?? 0) > 0,
         ];
     }
 

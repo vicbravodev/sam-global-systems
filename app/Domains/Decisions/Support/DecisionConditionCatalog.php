@@ -101,6 +101,16 @@ class DecisionConditionCatalog
                 type: 'number',
             ),
             new ConditionField(
+                key: 'harsh_driving_near_event',
+                label: 'Manejo brusco cerca del evento',
+                type: 'boolean',
+            ),
+            new ConditionField(
+                key: 'nearby_safety_events_count',
+                label: 'Safety events alrededor del evento',
+                type: 'number',
+            ),
+            new ConditionField(
                 key: 'has_context_snapshot',
                 label: 'Tiene contexto operacional',
                 type: 'boolean',
