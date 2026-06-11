@@ -68,10 +68,7 @@ Patrón obligatorio: mismo estándar de V1 — domain-modular, `BelongsToTenant`
 
 **C2 — After-hours real (cierra G7). ✅ COMPLETADO** — ver §7.
 
-**C3 — Señales antirrobo (cierra G8).**
-- `gps_lost_in_motion`: posición stale/perdida cuando la última telemetría iba en movimiento (heurística jamming) — distinta de `gps_signal_weak`.
-- `unauthorized_stop`: parada > `monitoring.stop_alert_minutes` (default SAM: 10) fuera de geofences conocidas (base/cliente/corredor) durante operación → RawEvent interno `suspicious_stop` (el incident type ya existe).
-- Ambas como señales+facts con reglas default en el pack. (Desvío de ruta real requiere rutas planificadas → V3.)
+**C3 — Señales antirrobo (cierra G8). ✅ COMPLETADO** — ver §7. **Fase C completa: monitoreo proactivo antirrobo operando.**
 
 ### Fase D — Predictivo (cierra G9)
 
@@ -119,6 +116,8 @@ Patrón obligatorio: mismo estándar de V1 — domain-modular, `BelongsToTenant`
 ## 7. Completados (histórico resumido)
 
 ### V2 — "SAM Monitorista"
+
+- **C3** — Señales antirrobo (2026-06-11): señal `gps_lost_in_motion` en `SignalsBuilder` (posición stale con última velocidad >5 km/h = heurística de jamming/dispositivo arrancado; velocidad desconocida nunca cuenta) + fact y entrada en el catálogo del builder. `DetectUnauthorizedStopJob` (scheduler cada 5 min): unidad detenida (posición fresca ≤15 min, speed ≤1) más de `monitoring.stop_alert_minutes` (default 10; 0 desactiva) FUERA de toda geocerca conocida → RawEvent interno `suspicious_stop` (tipo nuevo seeded, severidad high); guardas anti-ruido: requiere ≥1 geocerca activa del tenant, episodio anclado a la última posición en movimiento (dedup por anchor; sin movimiento en 24h = estacionamiento, no alerta). Defaults del pack: `monitoring.stop_alert_minutes = 10` + regla `suspicious-stop-review` → REQUIRE_HUMAN_REVIEW (un operador valida antes de escalar). Tests: 13 (parada prolongada, episodio único, dentro de geocerca, corta, sin geocercas, disable, en movimiento, parking largo, señal jamming en 4 variantes).
 
 - **C2** — After-hours real (2026-06-11): `BuildEventContext` por fin calcula `outside_operating_hours` vía `TenantScheduleResolver` (solo con perfil de horario persistido y activo; sin perfil = siempre operando) — la señal fluye a `signals_json`, al prompt de IA y como fact `outside_operating_hours` en el motor de reglas + catálogo. Detección activa: `DetectAfterHoursMovementJob` (scheduler cada 5 min) — asset con posición fresca (≤15 min) a >5 km/h fuera del horario del tenant → RawEvent interno `after_hours_movement` (tipo nuevo seeded, severidad high), un evento por asset por día local (dedup `after_hours:{asset}:{fecha local}`). Regla default del pack A5: `after-hours-movement-incident` (activa) → INCIDENT. Tests: 9 (detección, episodio diario, sin perfil, dentro de horario, lento/stale, inactivos, aislamiento de perfil cross-tenant, señal en contexto con/sin perfil).
 

@@ -43,7 +43,7 @@ class ApplyDefaultTenantConfigTest extends TestCase
         $summary = $this->apply($team);
 
         $this->assertSame(count(ApplyDefaultTenantConfig::defaultSettings()), $summary['settings_created']);
-        $this->assertSame(3, $summary['rules_created']);
+        $this->assertSame(4, $summary['rules_created']);
         $this->assertTrue($summary['escalation_created']);
         $this->assertSame(1, $summary['snapshot_version']);
 
@@ -72,6 +72,7 @@ class ApplyDefaultTenantConfigTest extends TestCase
         $this->assertTrue((bool) $rules['panic-button-always-incident']->is_active);
         $this->assertTrue((bool) $rules['panic-false-alarm-review']->is_active);
         $this->assertTrue((bool) $rules['after-hours-movement-incident']->is_active);
+        $this->assertTrue((bool) $rules['suspicious-stop-review']->is_active);
 
         $escalation = TenantEscalationConfig::withoutGlobalScopes()
             ->where('team_id', $team->id)

@@ -48,6 +48,8 @@ class DecisionFactsBuilder
             'nearby_safety_events_count' => (int) (($context?->recent_history_snapshot_json ?? [])['nearby_safety_events_count'] ?? 0),
             // After-hours context (Roadmap V2-C2).
             'outside_operating_hours' => (bool) (($context?->signals_json ?? [])['outside_operating_hours'] ?? false),
+            // Anti-theft (Roadmap V2-C3).
+            'gps_lost_in_motion' => (bool) (($context?->signals_json ?? [])['gps_lost_in_motion'] ?? false),
             'media_assessment' => $this->resolveMediaAssessment($eval),
             // Structured vision facts extracted per-media by the multimodal
             // inspector (Roadmap V2-A1): aggregated across every assessment of

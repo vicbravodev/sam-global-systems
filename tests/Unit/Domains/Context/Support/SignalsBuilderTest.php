@@ -338,6 +338,29 @@ class SignalsBuilderTest extends TestCase
         ])['harsh_driving_near_event']);
     }
 
+    public function test_gps_lost_in_motion_requires_stale_position_while_moving(): void
+    {
+        // Stale + moving = possible jamming.
+        $this->assertTrue(SignalsBuilder::build([
+            'telemetry' => ['position_stale' => true, 'speed_kph' => 60.0],
+        ])['gps_lost_in_motion']);
+
+        // Stale but parked: weak GPS, not jamming.
+        $this->assertFalse(SignalsBuilder::build([
+            'telemetry' => ['position_stale' => true, 'speed_kph' => 0.0],
+        ])['gps_lost_in_motion']);
+
+        // Moving with fresh position: nothing lost.
+        $this->assertFalse(SignalsBuilder::build([
+            'telemetry' => ['position_stale' => false, 'speed_kph' => 60.0],
+        ])['gps_lost_in_motion']);
+
+        // Unknown speed never counts.
+        $this->assertFalse(SignalsBuilder::build([
+            'telemetry' => ['position_stale' => true],
+        ])['gps_lost_in_motion']);
+    }
+
     public function test_nearby_safety_activity_requires_at_least_one_event(): void
     {
         $this->assertFalse(SignalsBuilder::build([

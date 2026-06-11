@@ -84,8 +84,10 @@ class ApplyDefaultTenantConfig
             ['key' => 'voice.verification_enabled', 'group' => SettingGroup::Operational, 'type' => SettingValueType::Boolean, 'value' => true],
             ['key' => 'voice.call_attempts', 'group' => SettingGroup::Operational, 'type' => SettingValueType::Number, 'value' => 3],
             ['key' => 'voice.retry_delay_seconds', 'group' => SettingGroup::Operational, 'type' => SettingValueType::Number, 'value' => 90],
-            // Proactive monitoring: alert when an asset stops reporting (V2-C1).
+            // Proactive monitoring: alert when an asset stops reporting (V2-C1)
+            // or stands still outside every known geofence (V2-C3).
             ['key' => 'monitoring.offline_alert_minutes', 'group' => SettingGroup::Operational, 'type' => SettingValueType::Number, 'value' => 15],
+            ['key' => 'monitoring.stop_alert_minutes', 'group' => SettingGroup::Operational, 'type' => SettingValueType::Number, 'value' => 10],
         ];
     }
 
@@ -192,6 +194,24 @@ class ApplyDefaultTenantConfig
         DecisionRule::withoutGlobalScopes()->create([
             'team_id' => $team->id,
             'ruleset_id' => $ruleSet->id,
+            'code' => 'suspicious-stop-review',
+            'name' => 'Parada sospechosa → revisión humana',
+            'description' => 'Una parada prolongada fuera de toda geocerca conocida pasa a revisión humana — un operador valida antes de escalar (V2-C3).',
+            'scope' => RuleScope::EventType,
+            'priority' => 85,
+            'conditions_json' => [
+                'all' => [
+                    ['field' => 'event_type_code', 'operator' => 'eq', 'value' => 'suspicious_stop'],
+                ],
+            ],
+            'outcome_override' => $review->id,
+            'stop_processing' => true,
+            'is_active' => true,
+        ]);
+
+        DecisionRule::withoutGlobalScopes()->create([
+            'team_id' => $team->id,
+            'ruleset_id' => $ruleSet->id,
             'code' => 'panic-button-always-incident',
             'name' => 'Botón de pánico → incidente',
             'description' => 'Todo evento panic_button abre un incidente (regla dura de seguridad).',
@@ -207,7 +227,7 @@ class ApplyDefaultTenantConfig
             'is_active' => true,
         ]);
 
-        return 3;
+        return 4;
     }
 
     /**

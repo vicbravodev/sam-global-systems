@@ -118,6 +118,11 @@ class DecisionConditionCatalog
                 type: 'boolean',
             ),
             new ConditionField(
+                key: 'gps_lost_in_motion',
+                label: 'GPS perdido en movimiento (posible jamming)',
+                type: 'boolean',
+            ),
+            new ConditionField(
                 key: 'nearby_safety_events_count',
                 label: 'Safety events alrededor del evento',
                 type: 'number',

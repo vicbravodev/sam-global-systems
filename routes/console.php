@@ -4,6 +4,7 @@ use App\Domains\Analytics\Jobs\BuildAnalyticsSnapshotJob;
 use App\Domains\Analytics\Jobs\CalculateDailyKPIsJob;
 use App\Domains\Assets\Jobs\DetectAfterHoursMovementJob;
 use App\Domains\Assets\Jobs\DetectOfflineAssetsJob;
+use App\Domains\Assets\Jobs\DetectUnauthorizedStopJob;
 use App\Domains\Assets\Jobs\PollAllAssetLocationsJob;
 use App\Domains\Ingestion\Jobs\PollSamsaraSafetyEventsJob;
 use App\Domains\Integrations\Jobs\SyncDueIntegrationsJob;
@@ -34,3 +35,7 @@ Schedule::job(new DetectOfflineAssetsJob)->everyFiveMinutes()->onOneServer();
 // After-hours movement detector (Roadmap V2-C2): a unit moving while the
 // tenant's schedule says "closed" raises an internal event (theft/misuse).
 Schedule::job(new DetectAfterHoursMovementJob)->everyFiveMinutes()->onOneServer();
+
+// Unauthorized-stop detector (Roadmap V2-C3): a prolonged stop outside every
+// known geofence raises an internal `suspicious_stop` event.
+Schedule::job(new DetectUnauthorizedStopJob)->everyFiveMinutes()->onOneServer();
