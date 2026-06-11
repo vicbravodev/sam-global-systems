@@ -1,3 +1,6 @@
+import type * as React from 'react';
+import { DataTable } from '@/components/sam/data-table';
+import type { DataTableColumn } from '@/components/sam/data-table';
 import { RelativeTime } from '@/components/sam/relative-time';
 import { cn } from '@/lib/utils';
 import type { DriverRow } from '@/types/drivers';
@@ -45,79 +48,86 @@ function RiskCell({ score }: { score: number | null }) {
     );
 }
 
+const COLUMNS: DataTableColumn<DriverRow>[] = [
+    {
+        key: 'name',
+        header: 'Conductor',
+        sortValue: (driver) => driver.fullName,
+        cell: (driver) => (
+            <div className="flex flex-col">
+                <span className="truncate text-[13px] font-medium text-fg-1">
+                    {driver.fullName}
+                </span>
+                {driver.employeeCode && (
+                    <span className="font-mono text-[10px] text-fg-3">
+                        {driver.employeeCode}
+                    </span>
+                )}
+            </div>
+        ),
+    },
+    {
+        key: 'status',
+        header: 'Estado',
+        width: 'w-36',
+        sortValue: (driver) => driver.status,
+        cell: (driver) => <DriverStatusBadge status={driver.status} />,
+    },
+    {
+        key: 'asset',
+        header: 'Asset asignado',
+        width: 'w-48',
+        cell: (driver) => <AssetCell asset={driver.currentAsset} />,
+    },
+    {
+        key: 'risk',
+        header: 'Riesgo',
+        width: 'w-24',
+        sortValue: (driver) => driver.riskScore,
+        cell: (driver) => <RiskCell score={driver.riskScore} />,
+    },
+    {
+        key: 'phone',
+        header: 'Teléfono',
+        width: 'w-40',
+        cell: (driver) =>
+            driver.phone ? (
+                <span className="font-mono text-[11px] text-fg-2 tabular-nums">
+                    {driver.phone}
+                </span>
+            ) : (
+                <span className="text-fg-3">—</span>
+            ),
+    },
+    {
+        key: 'lastSeen',
+        header: 'Visto',
+        width: 'w-28',
+        sortValue: (driver) =>
+            driver.lastSeenAt ? Date.parse(driver.lastSeenAt) : null,
+        cell: (driver) =>
+            driver.lastSeenAt ? (
+                <RelativeTime minutes={minutesSince(driver.lastSeenAt)} />
+            ) : (
+                <span className="text-fg-3">—</span>
+            ),
+    },
+];
+
 interface DriversTableProps {
     rows: DriverRow[];
     onSelect: (id: number) => void;
+    empty?: React.ReactNode;
 }
 
-export function DriversTable({ rows, onSelect }: DriversTableProps) {
+export function DriversTable({ rows, onSelect, empty }: DriversTableProps) {
     return (
-        <div className="min-h-0 flex-1 overflow-auto">
-            <table className="w-full border-collapse">
-                <thead>
-                    <tr className="sticky top-0 z-10 border-b border-border bg-surface-3 text-[10px] font-semibold tracking-[0.08em] text-fg-3 uppercase">
-                        <th className="px-2.5 py-2 text-left">Conductor</th>
-                        <th className="w-36 px-2.5 py-2 text-left">Estado</th>
-                        <th className="w-48 px-2.5 py-2 text-left">
-                            Asset asignado
-                        </th>
-                        <th className="w-24 px-2.5 py-2 text-left">Riesgo</th>
-                        <th className="w-40 px-2.5 py-2 text-left">Teléfono</th>
-                        <th className="w-28 px-2.5 py-2 text-left">Visto</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {rows.map((driver) => (
-                        <tr
-                            key={driver.id}
-                            className="cursor-pointer border-b border-border transition-colors hover:bg-surface-2"
-                            onClick={() => onSelect(driver.id)}
-                        >
-                            <td className="px-2.5 py-2.5">
-                                <div className="flex flex-col">
-                                    <span className="truncate text-[13px] font-medium text-fg-1">
-                                        {driver.fullName}
-                                    </span>
-                                    {driver.employeeCode && (
-                                        <span className="font-mono text-[10px] text-fg-3">
-                                            {driver.employeeCode}
-                                        </span>
-                                    )}
-                                </div>
-                            </td>
-                            <td className="px-2.5 py-2.5">
-                                <DriverStatusBadge status={driver.status} />
-                            </td>
-                            <td className="px-2.5 py-2.5">
-                                <AssetCell asset={driver.currentAsset} />
-                            </td>
-                            <td className="px-2.5 py-2.5">
-                                <RiskCell score={driver.riskScore} />
-                            </td>
-                            <td className="px-2.5 py-2.5">
-                                {driver.phone ? (
-                                    <span className="font-mono text-[11px] text-fg-2 tabular-nums">
-                                        {driver.phone}
-                                    </span>
-                                ) : (
-                                    <span className="text-fg-3">—</span>
-                                )}
-                            </td>
-                            <td className="px-2.5 py-2.5">
-                                {driver.lastSeenAt ? (
-                                    <RelativeTime
-                                        minutes={minutesSince(
-                                            driver.lastSeenAt,
-                                        )}
-                                    />
-                                ) : (
-                                    <span className="text-fg-3">—</span>
-                                )}
-                            </td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
-        </div>
+        <DataTable
+            columns={COLUMNS}
+            rows={rows}
+            rowKey={(driver) => driver.id}
+            onRowClick={(driver) => onSelect(driver.id)}
+            empty={empty}
+        />
     );
 }

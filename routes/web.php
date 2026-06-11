@@ -37,6 +37,7 @@ use App\Http\Controllers\Normalization\EventsPageController;
 use App\Http\Controllers\Normalization\MappingRuleController;
 use App\Http\Controllers\Notifications\NotificationChannelController;
 use App\Http\Controllers\Notifications\NotificationPageController;
+use App\Http\Controllers\Search\CommandPaletteController;
 use App\Http\Controllers\Teams\TeamInvitationController;
 use App\Http\Controllers\Tenancy\BillingPageController;
 use App\Http\Controllers\Tenancy\BrandingController;
@@ -118,6 +119,7 @@ Route::prefix('{current_team}')
         Route::get('events', [EventsPageController::class, 'index'])->name('events.index');
         Route::get('events/{normalizedEvent}', [EventsPageController::class, 'show'])->name('events.show');
 
+        Route::get('palette-search', CommandPaletteController::class)->name('palette.search');
         Route::get('incidents', [IncidentInboxController::class, 'index'])->name('incidents.index');
         Route::get('incidents/{incident}', [IncidentInboxController::class, 'show'])->name('incidents.show');
 

@@ -1,3 +1,6 @@
+import type * as React from 'react';
+import { DataTable } from '@/components/sam/data-table';
+import type { DataTableColumn } from '@/components/sam/data-table';
 import { RelativeTime } from '@/components/sam/relative-time';
 import {
     Tooltip,
@@ -59,73 +62,83 @@ function LocationCell({ location }: { location: AssetRow['lastLocation'] }) {
     );
 }
 
+const COLUMNS: DataTableColumn<AssetRow>[] = [
+    {
+        key: 'name',
+        header: 'Activo',
+        sortValue: (asset) => asset.name,
+        cell: (asset) => (
+            <div className="flex flex-col">
+                <span className="truncate text-[13px] font-medium text-fg-1">
+                    {asset.name}
+                </span>
+                {asset.code && (
+                    <span className="font-mono text-[10px] text-fg-3">
+                        {asset.code}
+                    </span>
+                )}
+            </div>
+        ),
+    },
+    {
+        key: 'status',
+        header: 'Estado',
+        width: 'w-32',
+        sortValue: (asset) => asset.status,
+        cell: (asset) => <AssetStatusBadge status={asset.status} />,
+    },
+    {
+        key: 'type',
+        header: 'Tipo',
+        width: 'w-32',
+        sortValue: (asset) => asset.type?.name ?? null,
+        cell: (asset) => (
+            <span className="text-[12px] text-fg-2">
+                {asset.type?.name ?? '—'}
+            </span>
+        ),
+    },
+    {
+        key: 'devices',
+        header: 'Dispositivos',
+        width: 'w-44',
+        cell: (asset) => <DevicesCell devices={asset.devices} />,
+    },
+    {
+        key: 'location',
+        header: 'Última posición',
+        width: 'w-56',
+        cell: (asset) => <LocationCell location={asset.lastLocation} />,
+    },
+    {
+        key: 'lastSeen',
+        header: 'Visto',
+        width: 'w-28',
+        sortValue: (asset) =>
+            asset.lastSeenAt ? Date.parse(asset.lastSeenAt) : null,
+        cell: (asset) =>
+            asset.lastSeenAt ? (
+                <RelativeTime minutes={minutesSince(asset.lastSeenAt)} />
+            ) : (
+                <span className="text-fg-3">—</span>
+            ),
+    },
+];
+
 interface AssetsTableProps {
     rows: AssetRow[];
     onSelect: (id: number) => void;
+    empty?: React.ReactNode;
 }
 
-export function AssetsTable({ rows, onSelect }: AssetsTableProps) {
+export function AssetsTable({ rows, onSelect, empty }: AssetsTableProps) {
     return (
-        <div className="min-h-0 flex-1 overflow-auto">
-            <table className="w-full border-collapse">
-                <thead>
-                    <tr className="sticky top-0 z-10 border-b border-border bg-surface-3 text-[10px] font-semibold tracking-[0.08em] text-fg-3 uppercase">
-                        <th className="px-2.5 py-2 text-left">Activo</th>
-                        <th className="w-32 px-2.5 py-2 text-left">Estado</th>
-                        <th className="w-32 px-2.5 py-2 text-left">Tipo</th>
-                        <th className="w-44 px-2.5 py-2 text-left">
-                            Dispositivos
-                        </th>
-                        <th className="w-56 px-2.5 py-2 text-left">
-                            Última posición
-                        </th>
-                        <th className="w-28 px-2.5 py-2 text-left">Visto</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {rows.map((asset) => (
-                        <tr
-                            key={asset.id}
-                            className="cursor-pointer border-b border-border transition-colors hover:bg-surface-2"
-                            onClick={() => onSelect(asset.id)}
-                        >
-                            <td className="px-2.5 py-2.5">
-                                <div className="flex flex-col">
-                                    <span className="truncate text-[13px] font-medium text-fg-1">
-                                        {asset.name}
-                                    </span>
-                                    {asset.code && (
-                                        <span className="font-mono text-[10px] text-fg-3">
-                                            {asset.code}
-                                        </span>
-                                    )}
-                                </div>
-                            </td>
-                            <td className="px-2.5 py-2.5">
-                                <AssetStatusBadge status={asset.status} />
-                            </td>
-                            <td className="px-2.5 py-2.5 text-[12px] text-fg-2">
-                                {asset.type?.name ?? '—'}
-                            </td>
-                            <td className="px-2.5 py-2.5">
-                                <DevicesCell devices={asset.devices} />
-                            </td>
-                            <td className="px-2.5 py-2.5">
-                                <LocationCell location={asset.lastLocation} />
-                            </td>
-                            <td className="px-2.5 py-2.5">
-                                {asset.lastSeenAt ? (
-                                    <RelativeTime
-                                        minutes={minutesSince(asset.lastSeenAt)}
-                                    />
-                                ) : (
-                                    <span className="text-fg-3">—</span>
-                                )}
-                            </td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
-        </div>
+        <DataTable
+            columns={COLUMNS}
+            rows={rows}
+            rowKey={(asset) => asset.id}
+            onRowClick={(asset) => onSelect(asset.id)}
+            empty={empty}
+        />
     );
 }

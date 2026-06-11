@@ -19,6 +19,8 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { EmptyState } from '@/components/ui/empty-state';
+import { PageHeader } from '@/components/ui/page-header';
 import { cn } from '@/lib/utils';
 import type {
     DriverFilterOptions,
@@ -39,29 +41,30 @@ function PageHead({
     refreshing: boolean;
 }) {
     return (
-        <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-surface-1 px-5 py-3">
-            <div className="flex items-center gap-3">
-                <h1 className="text-[15px] font-semibold text-fg-1">
-                    Conductores
-                </h1>
+        <PageHeader
+            title="Conductores"
+            meta={
                 <span className="text-[12px] text-fg-3">
                     <span className="font-medium text-fg-1">{total}</span>{' '}
                     {total === 1 ? 'conductor' : 'conductores'}
                 </span>
-            </div>
-            <Button
-                variant="ghost"
-                size="sm"
-                onClick={onRefresh}
-                disabled={refreshing}
-            >
-                <RefreshCw
-                    size={13}
-                    className={cn(refreshing && 'animate-spin')}
-                />
-                Refrescar
-            </Button>
-        </header>
+            }
+            actions={
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={onRefresh}
+                    disabled={refreshing}
+                >
+                    <RefreshCw
+                        size={13}
+                        className={cn(refreshing && 'animate-spin')}
+                    />
+                    Refrescar
+                </Button>
+            }
+            className="shrink-0 border-b border-border bg-surface-1 px-5 py-3"
+        />
     );
 }
 
@@ -238,19 +241,16 @@ function RosterFooter({
 
 function RosterEmptyState({ filtered }: { filtered: boolean }) {
     return (
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-6 py-16 text-center">
-            <div className="inline-grid size-12 place-items-center rounded-full border border-border bg-surface-2 text-fg-3">
-                <Users size={22} strokeWidth={1.5} />
-            </div>
-            <h2 className="text-[15px] font-semibold text-fg-1">
-                {filtered ? 'Sin resultados' : 'Sin conductores'}
-            </h2>
-            <p className="max-w-sm text-[12px] leading-[1.5] text-fg-3">
-                {filtered
+        <EmptyState
+            className="min-h-0 flex-1"
+            icon={Users}
+            title={filtered ? 'Sin resultados' : 'Sin conductores'}
+            description={
+                filtered
                     ? 'Ningún conductor coincide con los filtros aplicados.'
-                    : 'Cuando la sincronización de integraciones registre conductores aparecerán aquí.'}
-            </p>
-        </div>
+                    : 'Cuando la sincronización de integraciones registre conductores aparecerán aquí.'
+            }
+        />
     );
 }
 
@@ -342,11 +342,11 @@ export default function DriversIndex() {
                     onApply={applyFilters}
                 />
 
-                {drivers.length === 0 ? (
-                    <RosterEmptyState filtered={hasActiveFilters} />
-                ) : (
-                    <DriversTable rows={drivers} onSelect={handleSelect} />
-                )}
+                <DriversTable
+                    rows={drivers}
+                    onSelect={handleSelect}
+                    empty={<RosterEmptyState filtered={hasActiveFilters} />}
+                />
 
                 <RosterFooter
                     pagination={pagination}

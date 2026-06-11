@@ -1,8 +1,12 @@
 import { Head, router, usePage } from '@inertiajs/react';
-import { ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ScrollText, Search, X } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
+import { DataTable } from '@/components/sam/data-table';
+import type { DataTableColumn } from '@/components/sam/data-table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
+import { PageHeader } from '@/components/ui/page-header';
 
 interface AuditLogRow {
     id: number;
@@ -64,6 +68,121 @@ const EMPTY_FILTERS: AuditFilters = {
     to: null,
 };
 
+const LOG_COLUMNS: DataTableColumn<AuditLogRow>[] = [
+    {
+        key: 'occurredAt',
+        header: 'Cuándo',
+        sortValue: (log) =>
+            log.occurredAt ? Date.parse(log.occurredAt) : null,
+        cell: (log) => (
+            <span className="font-mono text-[11px] whitespace-nowrap text-fg-2">
+                {log.occurredAt
+                    ? new Date(log.occurredAt).toLocaleString('es')
+                    : '—'}
+            </span>
+        ),
+    },
+    {
+        key: 'action',
+        header: 'Acción',
+        sortValue: (log) => log.action,
+        cell: (log) => (
+            <span className="font-mono text-[11px] text-fg-1">
+                {log.action}
+            </span>
+        ),
+    },
+    {
+        key: 'category',
+        header: 'Categoría',
+        sortValue: (log) => log.category,
+        cell: (log) => (
+            <Badge variant="outline" className="text-[10px] text-fg-3">
+                {log.category ?? '—'}
+            </Badge>
+        ),
+    },
+    {
+        key: 'actor',
+        header: 'Actor',
+        sortValue: (log) => log.actorType,
+        cell: (log) => (
+            <span className="text-[12px] text-fg-2">
+                {log.actorType ?? '—'}
+                {log.actorId !== null && ` #${log.actorId}`}
+            </span>
+        ),
+    },
+    {
+        key: 'entity',
+        header: 'Entidad',
+        cell: (log) => (
+            <span className="font-mono text-[11px] text-fg-2">
+                {log.entityType ?? '—'}
+                {log.entityId !== null && ` #${log.entityId}`}
+            </span>
+        ),
+    },
+    {
+        key: 'summary',
+        header: 'Resumen',
+        cell: (log) => (
+            <span
+                className="block max-w-80 truncate text-[12px] text-fg-2"
+                title={log.summary ?? ''}
+            >
+                {log.summary ?? '—'}
+            </span>
+        ),
+    },
+];
+
+const EVENT_COLUMNS: DataTableColumn<DomainEventRow>[] = [
+    {
+        key: 'occurredAt',
+        header: 'Cuándo',
+        sortValue: (event) =>
+            event.occurredAt ? Date.parse(event.occurredAt) : null,
+        cell: (event) => (
+            <span className="font-mono text-[11px] whitespace-nowrap text-fg-2">
+                {event.occurredAt
+                    ? new Date(event.occurredAt).toLocaleString('es')
+                    : '—'}
+            </span>
+        ),
+    },
+    {
+        key: 'event',
+        header: 'Evento',
+        sortValue: (event) => event.eventName,
+        cell: (event) => (
+            <span className="font-mono text-[11px] text-fg-1">
+                {event.eventName}
+            </span>
+        ),
+    },
+    {
+        key: 'aggregate',
+        header: 'Agregado',
+        sortValue: (event) => event.aggregateType,
+        cell: (event) => (
+            <span className="font-mono text-[11px] text-fg-2">
+                {event.aggregateType ?? '—'}
+                {event.aggregateId !== null && ` #${event.aggregateId}`}
+            </span>
+        ),
+    },
+    {
+        key: 'correlation',
+        header: 'Correlación',
+        cell: (event) => (
+            <span className="font-mono text-[11px] text-fg-2">
+                {event.correlationId ?? '—'}
+            </span>
+        ),
+    },
+];
+
 export default function AuditIndex() {
     const page = usePage();
     const { logs, pagination, filterOptions, events } =
@@ -122,14 +241,11 @@ export default function AuditIndex() {
         <>
             <Head title="Auditoría" />
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                <div className="shrink-0 border-b border-border bg-background px-5 py-3">
-                    <h1 className="text-[16px] font-semibold text-fg-1">
-                        Auditoría
-                    </h1>
-                    <p className="text-[12px] text-fg-3">
-                        Registro de acciones y eventos de dominio del tenant.
-                    </p>
-                </div>
+                <PageHeader
+                    title="Auditoría"
+                    description="Registro de acciones y eventos de dominio del tenant."
+                    className="shrink-0 border-b border-border bg-background px-5 py-3"
+                />
 
                 <div className="flex shrink-0 gap-1 border-b border-border bg-background px-5">
                     {TABS.map((item) => (
@@ -250,79 +366,19 @@ export default function AuditIndex() {
                             )}
                         </div>
 
-                        <div className="min-h-0 flex-1 overflow-y-auto">
-                            {logs.length === 0 ? (
-                                <div className="flex h-40 items-center justify-center text-[13px] text-fg-3">
-                                    Sin registros de auditoría.
-                                </div>
-                            ) : (
-                                <table className="w-full text-left text-[12px]">
-                                    <thead className="sticky top-0 bg-surface-1 text-[11px] tracking-[0.05em] text-fg-3 uppercase">
-                                        <tr>
-                                            <th className="px-5 py-2">
-                                                Cuándo
-                                            </th>
-                                            <th className="px-3 py-2">
-                                                Acción
-                                            </th>
-                                            <th className="px-3 py-2">
-                                                Categoría
-                                            </th>
-                                            <th className="px-3 py-2">Actor</th>
-                                            <th className="px-3 py-2">
-                                                Entidad
-                                            </th>
-                                            <th className="px-3 py-2">
-                                                Resumen
-                                            </th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {logs.map((log) => (
-                                            <tr
-                                                key={log.id}
-                                                className="border-b border-border/50 text-fg-2"
-                                            >
-                                                <td className="px-5 py-2 font-mono text-[11px] whitespace-nowrap">
-                                                    {log.occurredAt
-                                                        ? new Date(
-                                                              log.occurredAt,
-                                                          ).toLocaleString('es')
-                                                        : '—'}
-                                                </td>
-                                                <td className="px-3 py-2 font-mono text-[11px] text-fg-1">
-                                                    {log.action}
-                                                </td>
-                                                <td className="px-3 py-2">
-                                                    <Badge
-                                                        variant="outline"
-                                                        className="text-[10px] text-fg-3"
-                                                    >
-                                                        {log.category ?? '—'}
-                                                    </Badge>
-                                                </td>
-                                                <td className="px-3 py-2">
-                                                    {log.actorType ?? '—'}
-                                                    {log.actorId !== null &&
-                                                        ` #${log.actorId}`}
-                                                </td>
-                                                <td className="px-3 py-2 font-mono text-[11px]">
-                                                    {log.entityType ?? '—'}
-                                                    {log.entityId !== null &&
-                                                        ` #${log.entityId}`}
-                                                </td>
-                                                <td
-                                                    className="max-w-80 truncate px-3 py-2"
-                                                    title={log.summary ?? ''}
-                                                >
-                                                    {log.summary ?? '—'}
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            )}
-                        </div>
+                        <DataTable
+                            columns={LOG_COLUMNS}
+                            rows={logs}
+                            rowKey={(log) => log.id}
+                            empty={
+                                <EmptyState
+                                    className="min-h-0 flex-1"
+                                    icon={ScrollText}
+                                    title="Sin registros de auditoría."
+                                    description="Cuando se registren acciones del tenant aparecerán aquí."
+                                />
+                            }
+                        />
 
                         <div className="flex shrink-0 items-center justify-between border-t border-border bg-background px-5 py-2 text-[12px] text-fg-3">
                             <span>
@@ -360,53 +416,19 @@ export default function AuditIndex() {
                 )}
 
                 {tab === 'events' && (
-                    <div className="min-h-0 flex-1 overflow-y-auto">
-                        {events.length === 0 ? (
-                            <div className="flex h-40 items-center justify-center text-[13px] text-fg-3">
-                                Sin eventos de dominio registrados.
-                            </div>
-                        ) : (
-                            <table className="w-full text-left text-[12px]">
-                                <thead className="sticky top-0 bg-surface-1 text-[11px] tracking-[0.05em] text-fg-3 uppercase">
-                                    <tr>
-                                        <th className="px-5 py-2">Cuándo</th>
-                                        <th className="px-3 py-2">Evento</th>
-                                        <th className="px-3 py-2">Agregado</th>
-                                        <th className="px-3 py-2">
-                                            Correlación
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {events.map((event) => (
-                                        <tr
-                                            key={event.id}
-                                            className="border-b border-border/50 text-fg-2"
-                                        >
-                                            <td className="px-5 py-2 font-mono text-[11px] whitespace-nowrap">
-                                                {event.occurredAt
-                                                    ? new Date(
-                                                          event.occurredAt,
-                                                      ).toLocaleString('es')
-                                                    : '—'}
-                                            </td>
-                                            <td className="px-3 py-2 font-mono text-[11px] text-fg-1">
-                                                {event.eventName}
-                                            </td>
-                                            <td className="px-3 py-2 font-mono text-[11px]">
-                                                {event.aggregateType ?? '—'}
-                                                {event.aggregateId !== null &&
-                                                    ` #${event.aggregateId}`}
-                                            </td>
-                                            <td className="px-3 py-2 font-mono text-[11px]">
-                                                {event.correlationId ?? '—'}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        )}
-                    </div>
+                    <DataTable
+                        columns={EVENT_COLUMNS}
+                        rows={events}
+                        rowKey={(event) => event.id}
+                        empty={
+                            <EmptyState
+                                className="min-h-0 flex-1"
+                                icon={ScrollText}
+                                title="Sin eventos de dominio registrados."
+                                description="Cuando el sistema emita eventos de dominio aparecerán aquí."
+                            />
+                        }
+                    />
                 )}
             </div>
         </>
