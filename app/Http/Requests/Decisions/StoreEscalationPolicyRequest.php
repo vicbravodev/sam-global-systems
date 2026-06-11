@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Decisions;
 
+use App\Support\Conditions\ValidFlatConditions;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreEscalationPolicyRequest extends FormRequest
@@ -15,7 +16,7 @@ class StoreEscalationPolicyRequest extends FormRequest
             'code' => ['required', 'string', 'max:120'],
             'name' => ['required', 'string', 'max:200'],
             'description' => ['nullable', 'string'],
-            'trigger_conditions_json' => ['nullable', 'array'],
+            'trigger_conditions_json' => ['nullable', 'array', new ValidFlatConditions],
             'escalation_steps_json' => ['required', 'array', 'min:1'],
             'max_wait_seconds' => ['nullable', 'integer', 'min:0'],
             'requires_acknowledgement' => ['nullable', 'boolean'],

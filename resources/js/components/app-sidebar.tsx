@@ -28,7 +28,7 @@ export function AppSidebar() {
     // in OpsSidebar (the tenant workspace shell); modules without a page yet are
     // intentionally omitted instead of pointing at a dead dashboard link.
     const mainNavItems: NavItem[] = [
-        { title: 'Dashboard', href: dashboardUrl, icon: LayoutGrid },
+        { title: 'Panel', href: dashboardUrl, icon: LayoutGrid },
         ...(teamSlug
             ? [
                   {

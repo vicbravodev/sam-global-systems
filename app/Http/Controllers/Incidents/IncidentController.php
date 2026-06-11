@@ -155,7 +155,7 @@ class IncidentController extends Controller
         $this->authorize('escalate', $incident);
 
         if ($incident->status?->code === IncidentStatusCode::Escalated->value) {
-            return response()->json(['message' => 'Incident is already escalated.'], 422);
+            return response()->json(['message' => 'El incidente ya está escalado.'], 422);
         }
 
         $reason = $request->string('reason')->toString() ?: null;
@@ -175,7 +175,7 @@ class IncidentController extends Controller
         $this->authorize('reopen', $incident);
 
         if (! $incident->isTerminal()) {
-            return response()->json(['message' => 'Incident is not in a terminal state.'], 422);
+            return response()->json(['message' => 'El incidente no está en un estado terminal.'], 422);
         }
 
         $openStatus = IncidentStatus::query()->where('code', IncidentStatusCode::Open->value)->firstOrFail();

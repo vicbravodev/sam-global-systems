@@ -92,7 +92,7 @@ class NotificationController extends Controller
         );
 
         return response()->json([
-            'message' => 'Notification dispatched',
+            'message' => 'Notificación encolada',
             'data' => $notification,
         ], 202);
     }

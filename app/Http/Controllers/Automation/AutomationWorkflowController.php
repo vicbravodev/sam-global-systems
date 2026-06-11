@@ -93,7 +93,7 @@ class AutomationWorkflowController extends Controller
 
         if ($execution === null) {
             return response()->json([
-                'message' => 'A workflow execution already exists for this source.',
+                'message' => 'Ya existe una ejecución del workflow para este origen.',
             ], 409);
         }
 

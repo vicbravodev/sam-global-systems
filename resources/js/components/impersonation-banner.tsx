@@ -15,7 +15,7 @@ export function ImpersonationBanner() {
     }
 
     return (
-        <div className="flex shrink-0 items-center justify-between gap-3 bg-amber-500 px-4 py-2 text-sm text-amber-950">
+        <div className="flex shrink-0 items-center justify-between gap-3 bg-accent px-4 py-2 text-sm text-accent-foreground">
             <span className="flex items-center gap-2">
                 <ShieldAlert size={16} className="shrink-0" />
                 Estás viendo como <strong>{impersonation.team.name}</strong> —
@@ -24,7 +24,7 @@ export function ImpersonationBanner() {
             <button
                 type="button"
                 onClick={() => router.delete(impersonateDestroy().url)}
-                className="rounded bg-amber-950/10 px-2.5 py-1 text-xs font-medium hover:bg-amber-950/20"
+                className="rounded bg-accent-foreground/10 px-2.5 py-1 text-xs font-medium hover:bg-accent-foreground/20"
             >
                 Salir de impersonación
             </button>

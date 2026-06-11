@@ -144,7 +144,7 @@ export function OpsSidebar({ navBadges }: OpsSidebarProps) {
             title: 'Operación',
             items: [
                 {
-                    label: 'Dashboard',
+                    label: 'Panel',
                     icon: LayoutGrid,
                     href: dashboardHref,
                 },

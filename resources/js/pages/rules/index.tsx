@@ -1,6 +1,11 @@
 import { Head, router, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import {
+    ConditionBuilder,
+    RuleTestPanel,
+} from '@/components/sam/condition-builder';
+import type { ConditionFieldDef } from '@/components/sam/condition-builder';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -79,6 +84,7 @@ interface RulesPageProps {
     };
     overrides: OverrideRow[];
     overrideTypes: string[];
+    conditionFields: ConditionFieldDef[];
     canManageDecisionRules: boolean;
     canManageOverrides: boolean;
 }
@@ -153,6 +159,73 @@ function ActiveBadge({ active }: { active: boolean }) {
     );
 }
 
+// ---- Decision rule conditions editor (expanded row) ----
+
+function RuleConditionsEditor({
+    rule,
+    fields,
+    canEdit,
+}: {
+    rule: DecisionRuleRow;
+    fields: ConditionFieldDef[];
+    canEdit: boolean;
+}) {
+    const base = useTeamBase();
+    const [conditions, setConditions] = useState<Record<string, unknown>>(
+        rule.conditions ?? {},
+    );
+    const [saving, setSaving] = useState(false);
+
+    const dirty =
+        JSON.stringify(conditions) !== JSON.stringify(rule.conditions ?? {});
+
+    const save = async () => {
+        if (base === null) {
+            return;
+        }
+
+        setSaving(true);
+
+        await submit(
+            putJson(`${base}/decision/${rule.id}`, {
+                conditions_json: conditions,
+            }),
+            'Condiciones guardadas.',
+        );
+
+        setSaving(false);
+    };
+
+    return (
+        <div className="flex flex-col gap-3">
+            <ConditionBuilder
+                variant="tree"
+                fields={fields}
+                value={conditions}
+                onChange={setConditions}
+                disabled={!canEdit}
+            />
+            {base !== null && (
+                <RuleTestPanel
+                    endpoint={`${base}/test-decision`}
+                    payload={() => ({ conditions_json: conditions })}
+                />
+            )}
+            {canEdit && (
+                <div>
+                    <Button
+                        size="sm"
+                        onClick={save}
+                        disabled={!dirty || saving}
+                    >
+                        {saving ? 'Guardando…' : 'Guardar condiciones'}
+                    </Button>
+                </div>
+            )}
+        </div>
+    );
+}
+
 // ---- Decision rules tab ----
 
 function DecisionRulesTab({
@@ -160,12 +233,14 @@ function DecisionRulesTab({
     rulesets,
     outcomes,
     scopes,
+    conditionFields,
     canManage,
 }: {
     rules: DecisionRuleRow[];
     rulesets: RulesPageProps['rulesets'];
     outcomes: RulesPageProps['outcomes'];
     scopes: string[];
+    conditionFields: ConditionFieldDef[];
     canManage: boolean;
 }) {
     const base = useTeamBase();
@@ -176,10 +251,17 @@ function DecisionRulesTab({
         name: '',
         scope: 'tenant',
         priority: '100',
-        conditions:
-            '{\n  "all": [\n    { "field": "event_type_code", "operator": "eq", "value": "panic_button" }\n  ]\n}',
         outcomeId: '',
         stopProcessing: false,
+    });
+    const [conditions, setConditions] = useState<Record<string, unknown>>({
+        all: [
+            {
+                field: 'event_type_code',
+                operator: 'eq',
+                value: 'panic_button',
+            },
+        ],
     });
 
     const toggleActive = (rule: DecisionRuleRow) => {
@@ -197,12 +279,6 @@ function DecisionRulesTab({
 
     const create = async () => {
         if (base === null) {
-            return;
-        }
-
-        const conditions = parseJson(form.conditions, 'condiciones');
-
-        if (conditions === null) {
             return;
         }
 
@@ -343,23 +419,21 @@ function DecisionRulesTab({
                                     stop
                                 </label>
                             </div>
-                            <Label className="text-[12px]">
-                                Condiciones (all/any · operadores: eq, neq, gt,
-                                gte, lt, lte, in, not_in, contains, is_null,
-                                is_not_null)
-                            </Label>
-                            <textarea
-                                value={form.conditions}
-                                onChange={(e) =>
-                                    setForm({
-                                        ...form,
-                                        conditions: e.target.value,
-                                    })
-                                }
-                                rows={6}
-                                spellCheck={false}
-                                className="rounded-md border border-border bg-surface-2 p-2 font-mono text-[11px] text-fg-2"
+                            <Label className="text-[12px]">Condiciones</Label>
+                            <ConditionBuilder
+                                variant="tree"
+                                fields={conditionFields}
+                                value={conditions}
+                                onChange={setConditions}
                             />
+                            {base !== null && (
+                                <RuleTestPanel
+                                    endpoint={`${base}/test-decision`}
+                                    payload={() => ({
+                                        conditions_json: conditions,
+                                    })}
+                                />
+                            )}
                             <div>
                                 <Button size="sm" onClick={create}>
                                     Crear regla
@@ -453,16 +527,16 @@ function DecisionRulesTab({
                                             <tr key={`${rule.id}-detail`}>
                                                 <td
                                                     colSpan={7}
-                                                    className="bg-surface-1 px-3 py-2"
+                                                    className="bg-surface-1 px-3 py-3"
                                                 >
-                                                    <pre className="overflow-auto rounded bg-surface-2 p-2 font-mono text-[11px] text-fg-2">
-                                                        {JSON.stringify(
-                                                            rule.conditions ??
-                                                                {},
-                                                            null,
-                                                            2,
-                                                        )}
-                                                    </pre>
+                                                    <RuleConditionsEditor
+                                                        rule={rule}
+                                                        fields={conditionFields}
+                                                        canEdit={
+                                                            canManage &&
+                                                            !rule.isGlobal
+                                                        }
+                                                    />
                                                 </td>
                                             </tr>
                                         )}
@@ -497,6 +571,7 @@ function MappingRulesTab({
         severityId: '',
         priority: '100',
     });
+    const [conditions, setConditions] = useState<Record<string, unknown>>({});
 
     const toggleActive = (rule: MappingRuleRow) => {
         if (base === null) {
@@ -530,6 +605,8 @@ function MappingRulesTab({
             postJson(`${base}/mapping`, {
                 provider_id: Number(form.providerId),
                 external_event_type: form.externalEventType,
+                external_conditions_json:
+                    Object.keys(conditions).length > 0 ? conditions : null,
                 mapped_event_type_id: Number(form.eventTypeId),
                 mapped_severity_id:
                     form.severityId === '' ? null : Number(form.severityId),
@@ -628,6 +705,29 @@ function MappingRulesTab({
                             }
                             className="w-24 text-[12px]"
                         />
+                        <div className="w-full">
+                            <Label className="mb-2 block text-[12px]">
+                                Condiciones sobre el payload (opcional)
+                            </Label>
+                            <ConditionBuilder
+                                variant="flat-equality"
+                                fields={[]}
+                                allowUnknownFields
+                                value={conditions}
+                                onChange={setConditions}
+                            />
+                            {base !== null &&
+                                Object.keys(conditions).length > 0 && (
+                                    <RuleTestPanel
+                                        className="mt-2"
+                                        endpoint={`${base}/test-mapping`}
+                                        payload={() => ({
+                                            external_conditions_json:
+                                                conditions,
+                                        })}
+                                    />
+                                )}
+                        </div>
                         <Button size="sm" onClick={create}>
                             Crear
                         </Button>
@@ -961,6 +1061,7 @@ export default function RulesIndex() {
                         rulesets={props.rulesets}
                         outcomes={props.outcomes}
                         scopes={props.scopes}
+                        conditionFields={props.conditionFields}
                         canManage={props.canManageDecisionRules}
                     />
                 )}

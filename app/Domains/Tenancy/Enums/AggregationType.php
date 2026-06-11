@@ -11,9 +11,9 @@ enum AggregationType: string
     public function label(): string
     {
         return match ($this) {
-            self::Sum => 'Sum',
-            self::Max => 'Max',
-            self::UniqueCount => 'Unique Count',
+            self::Sum => 'Suma',
+            self::Max => 'Máximo',
+            self::UniqueCount => 'Conteo único',
         };
     }
 }

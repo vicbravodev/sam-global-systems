@@ -60,7 +60,7 @@ class AIEvaluationController extends Controller
         );
 
         return response()->json([
-            'message' => 'Reevaluation dispatched',
+            'message' => 'Reevaluación encolada',
             'normalized_event_id' => $evaluation->normalized_event_id,
             'trigger' => ReevaluationTrigger::ManualReviewRequested->value,
         ], 202);

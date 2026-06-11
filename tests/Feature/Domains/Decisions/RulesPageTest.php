@@ -139,6 +139,66 @@ class RulesPageTest extends TestCase
             ->count());
     }
 
+    public function test_page_exposes_the_condition_field_catalog(): void
+    {
+        $response = $this->actingAs($this->user)->get(
+            route('rules.show', ['current_team' => $this->team->slug]),
+        );
+
+        $response->assertOk();
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->has('conditionFields', 12)
+                ->where('conditionFields.0.key', 'classification')
+                ->has('conditionFields.0.options')
+                ->has('conditionFields.0.operators'),
+        );
+    }
+
+    public function test_decision_rule_with_invalid_condition_tree_is_rejected(): void
+    {
+        $ruleset = RuleSet::factory()->create([
+            'team_id' => $this->team->id,
+            'is_default' => true,
+        ]);
+
+        $response = $this->actingAs($this->user)->postJson(
+            route('rules.decision.store', ['current_team' => $this->team->slug]),
+            [
+                'ruleset_id' => $ruleset->id,
+                'code' => 'invalid-conditions',
+                'name' => 'Regla con condiciones rotas',
+                'scope' => 'tenant',
+                'conditions_json' => [
+                    'all' => [
+                        ['field' => 'risk_score', 'operator' => 'between', 'value' => 0.5],
+                    ],
+                ],
+            ],
+        );
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors(['conditions_json']);
+    }
+
+    public function test_mapping_rule_with_invalid_flat_conditions_is_rejected(): void
+    {
+        $existing = EventMappingRule::factory()->create();
+
+        $response = $this->actingAs($this->user)->postJson(
+            route('rules.mapping.store', ['current_team' => $this->team->slug]),
+            [
+                'provider_id' => $existing->provider_id,
+                'external_event_type' => 'EdgePanicButton',
+                'mapped_event_type_id' => $existing->mapped_event_type_id,
+                'external_conditions_json' => ['data.alert.type' => ['nested' => 'array']],
+            ],
+        );
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors(['external_conditions_json']);
+    }
+
     public function test_decision_rule_can_be_deactivated_via_web_route(): void
     {
         $ruleset = RuleSet::factory()->create(['team_id' => $this->team->id]);

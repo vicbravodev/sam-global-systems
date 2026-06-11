@@ -23,6 +23,7 @@ use App\Http\Controllers\Automation\AutomationWorkflowController;
 use App\Http\Controllers\Dashboard\DashboardController;
 use App\Http\Controllers\Decisions\DecisionRuleController;
 use App\Http\Controllers\Decisions\RulesPageController;
+use App\Http\Controllers\Decisions\RuleTestController;
 use App\Http\Controllers\Drivers\DriverPageController;
 use App\Http\Controllers\Incidents\IncidentAssignmentController;
 use App\Http\Controllers\Incidents\IncidentCommentController;
@@ -36,6 +37,7 @@ use App\Http\Controllers\Normalization\EventsPageController;
 use App\Http\Controllers\Normalization\MappingRuleController;
 use App\Http\Controllers\Notifications\NotificationChannelController;
 use App\Http\Controllers\Notifications\NotificationPageController;
+use App\Http\Controllers\Search\CommandPaletteController;
 use App\Http\Controllers\Teams\TeamInvitationController;
 use App\Http\Controllers\Tenancy\BillingPageController;
 use App\Http\Controllers\Tenancy\BrandingController;
@@ -117,6 +119,7 @@ Route::prefix('{current_team}')
         Route::get('events', [EventsPageController::class, 'index'])->name('events.index');
         Route::get('events/{normalizedEvent}', [EventsPageController::class, 'show'])->name('events.show');
 
+        Route::get('palette-search', CommandPaletteController::class)->name('palette.search');
         Route::get('incidents', [IncidentInboxController::class, 'index'])->name('incidents.index');
         Route::get('incidents/{incident}', [IncidentInboxController::class, 'show'])->name('incidents.show');
 
@@ -187,6 +190,8 @@ Route::prefix('{current_team}')
         Route::post('rules/mapping', [MappingRuleController::class, 'store'])->name('rules.mapping.store');
         Route::put('rules/mapping/{mappingRule}', [MappingRuleController::class, 'update'])->name('rules.mapping.update');
         Route::delete('rules/mapping/{mappingRule}', [MappingRuleController::class, 'destroy'])->name('rules.mapping.destroy');
+        Route::post('rules/test-decision', [RuleTestController::class, 'testDecision'])->name('rules.test.decision');
+        Route::post('rules/test-mapping', [RuleTestController::class, 'testMapping'])->name('rules.test.mapping');
         Route::post('rules/overrides', [TenantRuleOverrideController::class, 'store'])->name('rules.overrides.store');
         Route::put('rules/overrides/{override}', [TenantRuleOverrideController::class, 'update'])->name('rules.overrides.update');
         Route::delete('rules/overrides/{override}', [TenantRuleOverrideController::class, 'destroy'])->name('rules.overrides.destroy');

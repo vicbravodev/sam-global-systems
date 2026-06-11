@@ -1,9 +1,12 @@
 import { Head, router, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { ConditionBuilder } from '@/components/sam/condition-builder';
+import type { ConditionFieldDef } from '@/components/sam/condition-builder';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Combobox } from '@/components/ui/combobox';
 import {
     Dialog,
     DialogContent,
@@ -108,6 +111,11 @@ interface TenantConfigProps {
     };
     notificationPolicies: NotificationPolicyRow[];
     escalationConfigs: EscalationConfigRow[];
+    escalationConditionFields: ConditionFieldDef[];
+    recipientOptions: {
+        roles: { value: string; label: string }[];
+        users: { value: string; label: string; description?: string }[];
+    };
     scheduleProfiles: ScheduleProfileRow[];
     versions: VersionRow[];
     channels: ChannelRow[];
@@ -736,28 +744,35 @@ function parseJson(
 
 function EscalationTab({
     configs,
+    conditionFields,
+    channelTypes,
+    recipientOptions,
     canManage,
 }: {
     configs: EscalationConfigRow[];
+    conditionFields: ConditionFieldDef[];
+    channelTypes: string[];
+    recipientOptions: TenantConfigProps['recipientOptions'];
     canManage: boolean;
 }) {
     const base = useTeamBase();
     const [saving, setSaving] = useState(false);
 
-    const saveExisting = async (config: EscalationConfigRow, raw: string) => {
+    const saveExisting = async (
+        config: EscalationConfigRow,
+        steps: unknown[],
+        conditions: Record<string, unknown>,
+    ) => {
         if (base === null) {
-            return;
-        }
-
-        const steps = parseJson(raw, `steps de ${config.escalationType}`);
-
-        if (steps === null) {
             return;
         }
 
         setSaving(true);
         await submit(
-            putJson(`${base}/escalation/${config.id}`, { steps }),
+            putJson(`${base}/escalation/${config.id}`, {
+                steps,
+                trigger_conditions: conditions,
+            }),
             'Escalación guardada.',
         );
         setSaving(false);
@@ -815,6 +830,9 @@ function EscalationTab({
                 <EscalationCard
                     key={config.id}
                     config={config}
+                    conditionFields={conditionFields}
+                    channelTypes={channelTypes}
+                    recipientOptions={recipientOptions}
                     canManage={canManage}
                     saving={saving}
                     onSave={saveExisting}
@@ -824,18 +842,284 @@ function EscalationTab({
     );
 }
 
+interface EscalationStepDraft {
+    id: number;
+    delayMinutes: string;
+    channels: string[];
+    recipient: string;
+    contacts: string;
+}
+
+let escalationStepId = 0;
+
+/**
+ * steps_json → filas editables. Devuelve null si algún step tiene una
+ * estructura que el editor no representa (se cae al modo JSON sin perder
+ * dato).
+ */
+function parseEscalationSteps(steps: unknown[]): EscalationStepDraft[] | null {
+    const drafts: EscalationStepDraft[] = [];
+
+    for (const step of steps) {
+        if (step === null || typeof step !== 'object' || Array.isArray(step)) {
+            return null;
+        }
+
+        const record = step as Record<string, unknown>;
+        const known = ['delay_minutes', 'channels', 'recipient', 'contacts'];
+
+        if (Object.keys(record).some((key) => !known.includes(key))) {
+            return null;
+        }
+
+        const channels = record.channels ?? [];
+        const contacts = record.contacts ?? [];
+
+        if (
+            !Array.isArray(channels) ||
+            channels.some((channel) => typeof channel !== 'string') ||
+            !Array.isArray(contacts) ||
+            contacts.some((contact) => typeof contact !== 'string')
+        ) {
+            return null;
+        }
+
+        drafts.push({
+            id: ++escalationStepId,
+            delayMinutes: String(Number(record.delay_minutes ?? 0)),
+            channels: channels as string[],
+            recipient:
+                typeof record.recipient === 'string' ? record.recipient : '',
+            contacts: (contacts as string[]).join(', '),
+        });
+    }
+
+    return drafts;
+}
+
+function serializeEscalationSteps(
+    drafts: EscalationStepDraft[],
+): Record<string, unknown>[] {
+    return drafts.map((draft) => ({
+        delay_minutes: Number(draft.delayMinutes) || 0,
+        channels: draft.channels,
+        recipient: draft.recipient,
+        contacts: draft.contacts
+            .split(',')
+            .map((contact) => contact.trim())
+            .filter((contact) => contact !== ''),
+    }));
+}
+
+function EscalationStepsEditor({
+    steps,
+    channelTypes,
+    recipientOptions,
+    disabled,
+    onChange,
+}: {
+    steps: EscalationStepDraft[];
+    channelTypes: string[];
+    recipientOptions: TenantConfigProps['recipientOptions'];
+    disabled: boolean;
+    onChange: (steps: EscalationStepDraft[]) => void;
+}) {
+    const replace = (index: number, step: EscalationStepDraft) => {
+        const next = [...steps];
+        next[index] = step;
+        onChange(next);
+    };
+
+    const recipientChoices = [
+        ...recipientOptions.roles,
+        ...recipientOptions.users.map((user) => ({
+            value: user.value,
+            label: user.label,
+            description: user.description,
+        })),
+    ];
+
+    return (
+        <div className="flex flex-col gap-2">
+            {steps.length === 0 && (
+                <p className="text-[12px] text-fg-3">
+                    Sin niveles de escalación definidos.
+                </p>
+            )}
+            {steps.map((step, index) => (
+                <div
+                    key={step.id}
+                    className="flex flex-wrap items-center gap-2 rounded-[6px] bg-surface-1 p-2"
+                >
+                    <span className="w-5 text-center font-mono text-[11px] text-fg-3">
+                        {index + 1}
+                    </span>
+                    <label className="flex items-center gap-1.5 text-[12px] text-fg-2">
+                        Esperar
+                        <Input
+                            type="number"
+                            min="0"
+                            value={step.delayMinutes}
+                            onChange={(e) =>
+                                replace(index, {
+                                    ...step,
+                                    delayMinutes: e.target.value,
+                                })
+                            }
+                            disabled={disabled}
+                            className="h-8 w-20 text-[12px] tabular-nums"
+                        />
+                        min
+                    </label>
+                    <div className="flex flex-wrap items-center gap-1">
+                        {channelTypes.map((channel) => {
+                            const active = step.channels.includes(channel);
+
+                            return (
+                                <button
+                                    key={channel}
+                                    type="button"
+                                    disabled={disabled}
+                                    onClick={() =>
+                                        replace(index, {
+                                            ...step,
+                                            channels: active
+                                                ? step.channels.filter(
+                                                      (c) => c !== channel,
+                                                  )
+                                                : [...step.channels, channel],
+                                        })
+                                    }
+                                    aria-pressed={active}
+                                    className={`rounded-full border px-2 py-0.5 font-mono text-[10px] transition-colors ${
+                                        active
+                                            ? 'border-primary bg-primary/10 text-fg-1'
+                                            : 'border-border text-fg-3 hover:text-fg-1'
+                                    }`}
+                                >
+                                    {channel}
+                                </button>
+                            );
+                        })}
+                    </div>
+                    <Combobox
+                        options={recipientChoices}
+                        value={step.recipient === '' ? null : step.recipient}
+                        onChange={(value) =>
+                            replace(index, { ...step, recipient: value ?? '' })
+                        }
+                        placeholder="Destinatario (rol o usuario)…"
+                        allowCustom
+                        disabled={disabled}
+                        className="w-56"
+                    />
+                    <Input
+                        placeholder="contactos externos (emails, coma)"
+                        value={step.contacts}
+                        onChange={(e) =>
+                            replace(index, {
+                                ...step,
+                                contacts: e.target.value,
+                            })
+                        }
+                        disabled={disabled}
+                        className="h-8 w-64 text-[12px]"
+                    />
+                    {!disabled && (
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-[12px] text-fg-3"
+                            onClick={() =>
+                                onChange(steps.filter((_, i) => i !== index))
+                            }
+                        >
+                            Quitar
+                        </Button>
+                    )}
+                </div>
+            ))}
+            {!disabled && (
+                <div>
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-[12px] text-fg-2"
+                        onClick={() =>
+                            onChange([
+                                ...steps,
+                                {
+                                    id: ++escalationStepId,
+                                    delayMinutes: '5',
+                                    channels: [],
+                                    recipient: '',
+                                    contacts: '',
+                                },
+                            ])
+                        }
+                    >
+                        Añadir nivel
+                    </Button>
+                </div>
+            )}
+        </div>
+    );
+}
+
 function EscalationCard({
     config,
+    conditionFields,
+    channelTypes,
+    recipientOptions,
     canManage,
     saving,
     onSave,
 }: {
     config: EscalationConfigRow;
+    conditionFields: ConditionFieldDef[];
+    channelTypes: string[];
+    recipientOptions: TenantConfigProps['recipientOptions'];
     canManage: boolean;
     saving: boolean;
-    onSave: (config: EscalationConfigRow, raw: string) => Promise<void>;
+    onSave: (
+        config: EscalationConfigRow,
+        steps: unknown[],
+        conditions: Record<string, unknown>,
+    ) => Promise<void>;
 }) {
+    const [stepDrafts, setStepDrafts] = useState<EscalationStepDraft[] | null>(
+        () => parseEscalationSteps(config.steps),
+    );
     const [raw, setRaw] = useState(JSON.stringify(config.steps, null, 2));
+    const [conditions, setConditions] = useState<Record<string, unknown>>(
+        config.triggerConditions ?? {},
+    );
+
+    const save = () => {
+        if (stepDrafts !== null) {
+            void onSave(
+                config,
+                serializeEscalationSteps(stepDrafts),
+                conditions,
+            );
+
+            return;
+        }
+
+        const parsed = parseJson(raw, `steps de ${config.escalationType}`);
+
+        if (parsed === null || !Array.isArray(parsed)) {
+            if (parsed !== null) {
+                toast.error('Los steps deben ser una lista JSON.');
+            }
+
+            return;
+        }
+
+        void onSave(config, parsed, conditions);
+    };
 
     return (
         <Card>
@@ -852,21 +1136,50 @@ function EscalationCard({
                     </Badge>
                 </CardTitle>
             </CardHeader>
-            <CardContent className="flex flex-col gap-2">
-                <JsonField
-                    label="Steps (delay_minutes / channels / recipient)"
-                    value={raw}
-                    onChange={setRaw}
-                    disabled={!canManage}
-                />
+            <CardContent className="flex flex-col gap-3">
+                <div className="flex flex-col gap-1">
+                    <Label className="text-[12px]">
+                        Condiciones del disparador
+                    </Label>
+                    <ConditionBuilder
+                        variant="flat-equality"
+                        fields={conditionFields}
+                        allowUnknownFields
+                        value={conditions}
+                        onChange={setConditions}
+                        disabled={!canManage}
+                    />
+                </div>
+                <div className="flex flex-col gap-1">
+                    <Label className="text-[12px]">Niveles de escalación</Label>
+                    {stepDrafts !== null ? (
+                        <EscalationStepsEditor
+                            steps={stepDrafts}
+                            channelTypes={channelTypes}
+                            recipientOptions={recipientOptions}
+                            disabled={!canManage}
+                            onChange={setStepDrafts}
+                        />
+                    ) : (
+                        <>
+                            <p className="text-[11px] text-fg-3">
+                                Estructura avanzada: estos steps usan campos que
+                                el editor visual no representa. Edítalos en
+                                JSON; no se perderá ningún dato.
+                            </p>
+                            <JsonField
+                                label="Steps (JSON)"
+                                value={raw}
+                                onChange={setRaw}
+                                disabled={!canManage}
+                            />
+                        </>
+                    )}
+                </div>
                 {canManage && (
                     <div>
-                        <Button
-                            size="sm"
-                            onClick={() => onSave(config, raw)}
-                            disabled={saving}
-                        >
-                            Guardar steps
+                        <Button size="sm" onClick={save} disabled={saving}>
+                            Guardar escalación
                         </Button>
                     </div>
                 )}
@@ -1653,6 +1966,9 @@ export default function TenantConfigPage() {
                 {tab === 'escalation' && (
                     <EscalationTab
                         configs={props.escalationConfigs}
+                        conditionFields={props.escalationConditionFields}
+                        channelTypes={props.channelTypes}
+                        recipientOptions={props.recipientOptions}
                         canManage={props.canManage}
                     />
                 )}

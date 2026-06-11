@@ -46,7 +46,7 @@ class ReportController extends Controller
         );
 
         return response()->json([
-            'message' => 'Report generation dispatched',
+            'message' => 'Generación del reporte encolada',
             'report_definition_id' => $report->id,
             'format' => $format->value,
         ], 202);

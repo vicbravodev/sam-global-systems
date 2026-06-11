@@ -53,7 +53,7 @@ class ActionExecutionController extends Controller
 
         if ($execution->status !== ActionExecutionStatus::Failed) {
             return response()->json([
-                'message' => 'Only failed executions can be retried.',
+                'message' => 'Solo las ejecuciones fallidas se pueden reintentar.',
             ], 422);
         }
 
@@ -61,7 +61,7 @@ class ActionExecutionController extends Controller
 
         if (! $requeued) {
             return response()->json([
-                'message' => 'Retry budget exhausted; execution remains failed.',
+                'message' => 'Se agotaron los reintentos; la ejecución sigue fallida.',
             ], 422);
         }
 
@@ -74,7 +74,7 @@ class ActionExecutionController extends Controller
 
         if ($execution->status !== ActionExecutionStatus::Pending) {
             return response()->json([
-                'message' => 'Only pending executions can be confirmed.',
+                'message' => 'Solo las ejecuciones pendientes se pueden confirmar.',
             ], 422);
         }
 
@@ -93,7 +93,7 @@ class ActionExecutionController extends Controller
             ActionExecutionStatus::Cancelled,
         ], true)) {
             return response()->json([
-                'message' => 'Execution is already in a terminal state.',
+                'message' => 'La ejecución ya está en un estado terminal.',
             ], 422);
         }
 

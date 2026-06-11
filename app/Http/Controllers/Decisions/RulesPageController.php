@@ -6,6 +6,7 @@ use App\Domains\Decisions\Enums\RuleScope;
 use App\Domains\Decisions\Models\DecisionOutcome;
 use App\Domains\Decisions\Models\DecisionRule;
 use App\Domains\Decisions\Models\RuleSet;
+use App\Domains\Decisions\Support\DecisionConditionCatalog;
 use App\Domains\Normalization\Models\EventCategory;
 use App\Domains\Normalization\Models\EventMappingRule;
 use App\Domains\Normalization\Models\EventSeverity;
@@ -81,6 +82,7 @@ class RulesPageController extends Controller
                 ])
                 ->all(),
             'scopes' => fn () => array_map(fn (RuleScope $scope) => $scope->value, RuleScope::cases()),
+            'conditionFields' => fn () => DecisionConditionCatalog::fields(),
             'mappingRules' => fn () => EventMappingRule::query()
                 ->with(['provider', 'mappedEventType', 'mappedSeverity'])
                 ->orderByDesc('priority')

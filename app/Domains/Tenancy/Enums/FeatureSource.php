@@ -12,10 +12,10 @@ enum FeatureSource: string
     public function label(): string
     {
         return match ($this) {
-            self::DefaultPlan => 'Default Plan',
-            self::ManualOverride => 'Manual Override',
-            self::Promo => 'Promo',
-            self::BetaAccess => 'Beta Access',
+            self::DefaultPlan => 'Plan por defecto',
+            self::ManualOverride => 'Ajuste manual',
+            self::Promo => 'Promoción',
+            self::BetaAccess => 'Acceso beta',
         };
     }
 }

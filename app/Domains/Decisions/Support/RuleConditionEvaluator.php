@@ -5,6 +5,17 @@ namespace App\Domains\Decisions\Support;
 class RuleConditionEvaluator
 {
     /**
+     * Every operator the leaf evaluator understands. Single source of truth
+     * for validation rules and the visual condition builder.
+     *
+     * @var array<int, string>
+     */
+    public const OPERATORS = [
+        'eq', 'neq', 'gt', 'gte', 'lt', 'lte',
+        'in', 'not_in', 'contains', 'is_null', 'is_not_null',
+    ];
+
+    /**
      * Evaluate a structured condition tree against a flat fact map.
      *
      * Conditions support `all` and `any` blocks containing leaf checks of the

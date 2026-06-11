@@ -2,9 +2,12 @@ import { Head, router, usePage } from '@inertiajs/react';
 import { Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { ConditionBuilder } from '@/components/sam/condition-builder';
+import type { ConditionFieldDef } from '@/components/sam/condition-builder';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Combobox } from '@/components/ui/combobox';
 import { Input } from '@/components/ui/input';
 import { postJson, putJson, readErrorMessage } from '@/lib/sam-fetch';
 
@@ -54,6 +57,11 @@ interface AutomationPageProps {
         actionTypes: string[];
         triggerTypes: string[];
         statuses: string[];
+    };
+    triggerConditionFields: Record<string, ConditionFieldDef[]>;
+    teamTargets: {
+        users: { value: string; label: string; description?: string }[];
+        roles: { value: string; label: string }[];
     };
     canManage: boolean;
 }
@@ -131,9 +139,13 @@ interface StepDraft {
 
 function WorkflowBuilder({
     options,
+    triggerConditionFields,
+    teamTargets,
     onCreated,
 }: {
     options: AutomationPageProps['options'];
+    triggerConditionFields: Record<string, ConditionFieldDef[]>;
+    teamTargets: AutomationPageProps['teamTargets'];
     onCreated: () => void;
 }) {
     const base = useTeamBase();
@@ -142,6 +154,7 @@ function WorkflowBuilder({
         name: '',
         triggerType: 'incident_created',
     });
+    const [conditions, setConditions] = useState<Record<string, unknown>>({});
     const [steps, setSteps] = useState<StepDraft[]>([
         {
             action_type: 'send_email',
@@ -188,6 +201,8 @@ function WorkflowBuilder({
                 code: form.code,
                 name: form.name,
                 trigger_type: form.triggerType,
+                trigger_conditions_json:
+                    Object.keys(conditions).length > 0 ? conditions : null,
                 status: 'active',
                 steps_json: steps.map((step, index) => ({
                     order: index + 1,
@@ -224,9 +239,10 @@ function WorkflowBuilder({
                 />
                 <select
                     value={form.triggerType}
-                    onChange={(e) =>
-                        setForm({ ...form, triggerType: e.target.value })
-                    }
+                    onChange={(e) => {
+                        setForm({ ...form, triggerType: e.target.value });
+                        setConditions({});
+                    }}
                     className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-[12px]"
                 >
                     {options.triggerTypes.map((trigger) => (
@@ -236,6 +252,17 @@ function WorkflowBuilder({
                     ))}
                 </select>
             </div>
+
+            <span className="text-[11px] text-fg-3 uppercase">
+                Condiciones del disparador
+            </span>
+            <ConditionBuilder
+                variant="flat-equality"
+                fields={triggerConditionFields[form.triggerType] ?? []}
+                allowUnknownFields
+                value={conditions}
+                onChange={setConditions}
+            />
 
             <span className="text-[11px] text-fg-3 uppercase">Pasos</span>
             {steps.map((step, index) => (
@@ -274,14 +301,48 @@ function WorkflowBuilder({
                             ),
                         )}
                     </select>
-                    <Input
-                        placeholder="destino (rol, email, tel, url…)"
-                        value={step.target_reference}
-                        onChange={(e) =>
-                            setStep(index, 'target_reference', e.target.value)
-                        }
-                        className="w-56 text-[12px]"
-                    />
+                    {step.target_type === 'user' ? (
+                        <Combobox
+                            options={teamTargets.users}
+                            value={
+                                step.target_reference === ''
+                                    ? null
+                                    : step.target_reference
+                            }
+                            onChange={(value) =>
+                                setStep(index, 'target_reference', value ?? '')
+                            }
+                            placeholder="Usuario del equipo…"
+                            className="w-56"
+                        />
+                    ) : step.target_type === 'role' ? (
+                        <Combobox
+                            options={teamTargets.roles}
+                            value={
+                                step.target_reference === ''
+                                    ? null
+                                    : step.target_reference
+                            }
+                            onChange={(value) =>
+                                setStep(index, 'target_reference', value ?? '')
+                            }
+                            placeholder="Rol del equipo…"
+                            className="w-56"
+                        />
+                    ) : (
+                        <Input
+                            placeholder="destino (email, tel, url…)"
+                            value={step.target_reference}
+                            onChange={(e) =>
+                                setStep(
+                                    index,
+                                    'target_reference',
+                                    e.target.value,
+                                )
+                            }
+                            className="w-56 text-[12px]"
+                        />
+                    )}
                     <Input
                         type="number"
                         title="delay en segundos"
@@ -320,10 +381,14 @@ function WorkflowBuilder({
 function WorkflowsTab({
     workflows,
     options,
+    triggerConditionFields,
+    teamTargets,
     canManage,
 }: {
     workflows: WorkflowRow[];
     options: AutomationPageProps['options'];
+    triggerConditionFields: Record<string, ConditionFieldDef[]>;
+    teamTargets: AutomationPageProps['teamTargets'];
     canManage: boolean;
 }) {
     const base = useTeamBase();
@@ -372,6 +437,8 @@ function WorkflowsTab({
             {creating && (
                 <WorkflowBuilder
                     options={options}
+                    triggerConditionFields={triggerConditionFields}
+                    teamTargets={teamTargets}
                     onCreated={() => setCreating(false)}
                 />
             )}
@@ -662,6 +729,8 @@ export default function AutomationIndex() {
                     <WorkflowsTab
                         workflows={props.workflows}
                         options={props.options}
+                        triggerConditionFields={props.triggerConditionFields}
+                        teamTargets={props.teamTargets}
                         canManage={props.canManage}
                     />
                 )}
