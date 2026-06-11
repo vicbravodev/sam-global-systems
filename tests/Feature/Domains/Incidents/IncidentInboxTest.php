@@ -146,6 +146,58 @@ class IncidentInboxTest extends TestCase
         );
     }
 
+    public function test_inbox_renders_array_location_from_normalized_payload(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+
+        $coordsEvent = NormalizedEvent::factory()->create([
+            'team_id' => $team->id,
+            'context_json' => null,
+            'payload_normalized_json' => [
+                'event_type' => 'harsh_brake',
+                'location' => ['latitude' => 32.822863, 'longitude' => -85.212265],
+            ],
+        ]);
+        $coordsIncident = Incident::factory()->create([
+            'team_id' => $team->id,
+            'related_event_id' => $coordsEvent->id,
+        ]);
+
+        $addressEvent = NormalizedEvent::factory()->create([
+            'team_id' => $team->id,
+            'context_json' => null,
+            'payload_normalized_json' => [
+                'event_type' => 'harsh_brake',
+                'location' => [
+                    'latitude' => -32.889458,
+                    'longitude' => -68.845839,
+                    'formatted_location' => 'RN7 km 184 · Mendoza',
+                ],
+            ],
+        ]);
+        $addressIncident = Incident::factory()->create([
+            'team_id' => $team->id,
+            'related_event_id' => $addressEvent->id,
+        ]);
+
+        $response = $this->actingAs($user)->get(
+            route('incidents.index', ['current_team' => $team->slug]),
+        );
+
+        $response->assertOk();
+        $response->assertInertia(function (Assert $page) use ($coordsIncident, $addressIncident) {
+            $page->component('incidents/index')->has('incidents', 2);
+
+            $locations = collect($page->toArray()['props']['incidents'])
+                ->keyBy('incidentId')
+                ->map(fn (array $row) => $row['location']);
+
+            $this->assertSame('32.82286, -85.21227', $locations[$coordsIncident->id]);
+            $this->assertSame('RN7 km 184 · Mendoza', $locations[$addressIncident->id]);
+        });
+    }
+
     public function test_show_returns_full_incident_detail_shape(): void
     {
         $user = User::factory()->create();
