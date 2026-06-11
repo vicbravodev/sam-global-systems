@@ -6,6 +6,7 @@ use App\Domains\Assets\Jobs\DetectAfterHoursMovementJob;
 use App\Domains\Assets\Jobs\DetectOfflineAssetsJob;
 use App\Domains\Assets\Jobs\DetectUnauthorizedStopJob;
 use App\Domains\Assets\Jobs\PollAllAssetLocationsJob;
+use App\Domains\Drivers\Jobs\RecalculateDriverRiskProfilesJob;
 use App\Domains\Ingestion\Jobs\PollSamsaraSafetyEventsJob;
 use App\Domains\Integrations\Jobs\SyncDueIntegrationsJob;
 use App\Domains\Tenancy\Jobs\AggregateUsageJob;
@@ -20,6 +21,10 @@ Artisan::command('inspire', function () {
 Schedule::job(new AggregateUsageJob)->dailyAt('02:00')->onOneServer();
 Schedule::job(new CalculateDailyKPIsJob)->dailyAt('03:00')->onOneServer();
 Schedule::job(new BuildAnalyticsSnapshotJob)->dailyAt('04:00')->onOneServer();
+
+// Daily driver risk recalculation (Roadmap V2-D1): aggregates safety events
+// into DriverRiskProfile and raises preventive deterioration alerts.
+Schedule::job(new RecalculateDriverRiskProfilesJob)->dailyAt('04:30')->onOneServer();
 
 // Background syncing of every active integration. The orchestrators fan out
 // per-tenant work and self-gate by interval (configurable per integration via

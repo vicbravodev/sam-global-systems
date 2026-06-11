@@ -72,9 +72,7 @@ Patrón obligatorio: mismo estándar de V1 — domain-modular, `BelongsToTenant`
 
 ### Fase D — Predictivo (cierra G9)
 
-**D1 — Recalculo de riesgo del conductor + alerta preventiva.**
-- Job diario `RecalculateDriverRiskProfilesJob`: agrega safety events de los últimos 30 días por driver (frenadas, speeding, fatiga, colisiones) → actualiza `harsh_events_count`/`fatigue_flags_count`/`risk_score`/`risk_level` + tendencia en `metadata_json`.
-- Deterioro significativo (cruce de umbral o pendiente) → notificación preventiva `driver.risk_deteriorated` al tenant ("el conductor X acumuló 5 frenadas bruscas esta semana — riesgo de accidente") + KPI en analytics. La señal `driver_has_recent_risk_events` ya existe para el tiempo real; esto cubre la tendencia.
+**D1 — Recalculo de riesgo del conductor + alerta preventiva. ✅ COMPLETADO** — ver §7. **Fase D completa — V2 "SAM Monitorista" COMPLETO (A1–A5, B1, C1–C3, D1).**
 
 ---
 
@@ -115,7 +113,9 @@ Patrón obligatorio: mismo estándar de V1 — domain-modular, `BelongsToTenant`
 
 ## 7. Completados (histórico resumido)
 
-### V2 — "SAM Monitorista"
+### V2 — "SAM Monitorista" (COMPLETO 2026-06-11)
+
+- **D1** — Recalculo de riesgo del conductor (2026-06-11): `RecalculateDriverRiskProfilesJob` (diario 04:30) agrega 30 días de safety events + incidentes por driver → `DriverRiskProfile` real (score 0–100 ponderado: harsh×4, fatiga×8, severos×15, otros×2, incidentes×10; niveles low/medium/high/critical; tendencia `baseline/improving/deteriorating/stable` en metadata). Cruce a high/critical → notificación preventiva `driver.risk_deteriorated` (High, idempotente por driver/día; permanecer en el nivel sin empeorar no re-alerta). Drivers sin eventos ni perfil se omiten; el score decae al envejecer los eventos. Tests: 5 (agregación con ventana, decaimiento + improving sin re-alerta, cruce con alerta única, skip, aislamiento por driver).
 
 - **C3** — Señales antirrobo (2026-06-11): señal `gps_lost_in_motion` en `SignalsBuilder` (posición stale con última velocidad >5 km/h = heurística de jamming/dispositivo arrancado; velocidad desconocida nunca cuenta) + fact y entrada en el catálogo del builder. `DetectUnauthorizedStopJob` (scheduler cada 5 min): unidad detenida (posición fresca ≤15 min, speed ≤1) más de `monitoring.stop_alert_minutes` (default 10; 0 desactiva) FUERA de toda geocerca conocida → RawEvent interno `suspicious_stop` (tipo nuevo seeded, severidad high); guardas anti-ruido: requiere ≥1 geocerca activa del tenant, episodio anclado a la última posición en movimiento (dedup por anchor; sin movimiento en 24h = estacionamiento, no alerta). Defaults del pack: `monitoring.stop_alert_minutes = 10` + regla `suspicious-stop-review` → REQUIRE_HUMAN_REVIEW (un operador valida antes de escalar). Tests: 13 (parada prolongada, episodio único, dentro de geocerca, corta, sin geocercas, disable, en movimiento, parking largo, señal jamming en 4 variantes).
 
