@@ -15,8 +15,10 @@ use App\Domains\Context\Models\OperationalContextProfile;
 use App\Domains\Drivers\Models\Driver;
 use App\Domains\Normalization\Models\EventSeverity;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Domains\TenantConfig\Models\TenantScheduleProfile;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
 
@@ -192,5 +194,36 @@ class BuildEventContextTest extends TestCase
 
         $this->assertNotNull($match);
         $this->assertSame(GeofenceMatchType::Inside, $match->match_type);
+    }
+
+    public function test_outside_operating_hours_signal_is_computed_from_the_schedule_profile(): void
+    {
+        TenantScheduleProfile::factory()->create([
+            'team_id' => $this->teamId,
+            'is_active' => true,
+        ]);
+
+        // Sunday 03:00 UTC — outside the factory's Mon-Fri 08:00-18:00
+        // window in America/Mexico_City.
+        $event = NormalizedEvent::factory()->create([
+            'team_id' => $this->teamId,
+            'occurred_at' => Carbon::parse('2026-06-14 03:00:00', 'UTC'),
+        ]);
+
+        $snapshot = app(BuildEventContext::class)->execute($event);
+
+        $this->assertTrue($snapshot->signals_json['outside_operating_hours']);
+    }
+
+    public function test_outside_operating_hours_stays_false_without_a_schedule_profile(): void
+    {
+        $event = NormalizedEvent::factory()->create([
+            'team_id' => $this->teamId,
+            'occurred_at' => Carbon::parse('2026-06-14 03:00:00', 'UTC'),
+        ]);
+
+        $snapshot = app(BuildEventContext::class)->execute($event);
+
+        $this->assertFalse($snapshot->signals_json['outside_operating_hours']);
     }
 }

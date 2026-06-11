@@ -121,6 +121,9 @@ class NormalizationSeeder extends Seeder
 
             // Maintenance
             ['code' => 'device_offline', 'name' => 'Device Offline', 'category' => 'maintenance', 'severity' => 'medium'],
+
+            // Internal monitors (Roadmap V2-C2)
+            ['code' => 'after_hours_movement', 'name' => 'After-Hours Movement', 'category' => 'operational', 'severity' => 'high'],
         ];
 
         $eventTypes = [];

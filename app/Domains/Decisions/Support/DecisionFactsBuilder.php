@@ -46,6 +46,8 @@ class DecisionFactsBuilder
             // Safety correlation around the event (Roadmap V2-A2).
             'harsh_driving_near_event' => (bool) (($context?->signals_json ?? [])['harsh_driving_near_event'] ?? false),
             'nearby_safety_events_count' => (int) (($context?->recent_history_snapshot_json ?? [])['nearby_safety_events_count'] ?? 0),
+            // After-hours context (Roadmap V2-C2).
+            'outside_operating_hours' => (bool) (($context?->signals_json ?? [])['outside_operating_hours'] ?? false),
             'media_assessment' => $this->resolveMediaAssessment($eval),
             // Structured vision facts extracted per-media by the multimodal
             // inspector (Roadmap V2-A1): aggregated across every assessment of

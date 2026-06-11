@@ -174,6 +174,24 @@ class ApplyDefaultTenantConfig
         DecisionRule::withoutGlobalScopes()->create([
             'team_id' => $team->id,
             'ruleset_id' => $ruleSet->id,
+            'code' => 'after-hours-movement-incident',
+            'name' => 'Movimiento fuera de horario → incidente',
+            'description' => 'Una unidad en movimiento fuera del horario operativo del tenant abre un incidente (señal de robo o mal uso). Requiere un perfil de horario activo (V2-C2).',
+            'scope' => RuleScope::EventType,
+            'priority' => 90,
+            'conditions_json' => [
+                'all' => [
+                    ['field' => 'event_type_code', 'operator' => 'eq', 'value' => 'after_hours_movement'],
+                ],
+            ],
+            'outcome_override' => $incident->id,
+            'stop_processing' => true,
+            'is_active' => true,
+        ]);
+
+        DecisionRule::withoutGlobalScopes()->create([
+            'team_id' => $team->id,
+            'ruleset_id' => $ruleSet->id,
             'code' => 'panic-button-always-incident',
             'name' => 'Botón de pánico → incidente',
             'description' => 'Todo evento panic_button abre un incidente (regla dura de seguridad).',
@@ -189,7 +207,7 @@ class ApplyDefaultTenantConfig
             'is_active' => true,
         ]);
 
-        return 2;
+        return 3;
     }
 
     /**

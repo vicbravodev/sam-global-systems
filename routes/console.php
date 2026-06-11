@@ -2,6 +2,7 @@
 
 use App\Domains\Analytics\Jobs\BuildAnalyticsSnapshotJob;
 use App\Domains\Analytics\Jobs\CalculateDailyKPIsJob;
+use App\Domains\Assets\Jobs\DetectAfterHoursMovementJob;
 use App\Domains\Assets\Jobs\DetectOfflineAssetsJob;
 use App\Domains\Assets\Jobs\PollAllAssetLocationsJob;
 use App\Domains\Ingestion\Jobs\PollSamsaraSafetyEventsJob;
@@ -29,3 +30,7 @@ Schedule::job(new PollSamsaraSafetyEventsJob)->everyTwoMinutes()->onOneServer();
 // Offline-asset watchdog (Roadmap V2-C1): silence beyond the tenant/asset
 // threshold raises an internal `device_offline` event through the pipeline.
 Schedule::job(new DetectOfflineAssetsJob)->everyFiveMinutes()->onOneServer();
+
+// After-hours movement detector (Roadmap V2-C2): a unit moving while the
+// tenant's schedule says "closed" raises an internal event (theft/misuse).
+Schedule::job(new DetectAfterHoursMovementJob)->everyFiveMinutes()->onOneServer();

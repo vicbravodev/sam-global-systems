@@ -3,6 +3,7 @@
 namespace App\Domains\Context\Actions;
 
 use App\Contracts\TenantConfig\TenantConfigResolver;
+use App\Contracts\TenantConfig\TenantScheduleResolver;
 use App\Domains\Context\Enums\GeofenceMatchType;
 use App\Domains\Context\Enums\IncidentRelationType;
 use App\Domains\Context\Events\EventContextBuilt;
@@ -30,6 +31,7 @@ class BuildEventContext
         private BuildOperationalContextProfile $buildOperationalContextProfile,
         private FetchLiveLocationForEvent $fetchLiveLocationForEvent,
         private TenantConfigResolver $tenantConfigResolver,
+        private TenantScheduleResolver $tenantScheduleResolver,
     ) {}
 
     public function execute(NormalizedEvent $normalizedEvent): EventContextSnapshot
@@ -76,6 +78,14 @@ class BuildEventContext
                 excludeEventId: $normalizedEvent->id,
             );
 
+            // After-hours context (Roadmap V2-C2): only a persisted schedule
+            // profile can flag an event as outside operating hours — tenants
+            // without one default to "always operating".
+            $schedule = $this->tenantScheduleResolver->resolve(
+                (int) $normalizedEvent->team_id,
+                $normalizedEvent->occurred_at ?? now(),
+            );
+
             $signals = SignalsBuilder::build([
                 'geofence_matches' => $geofenceMatches,
                 'incidents' => $incidents,
@@ -87,6 +97,7 @@ class BuildEventContext
                 'event' => [
                     'is_resolved' => $normalizedEvent->payload_normalized_json['is_resolved'] ?? null,
                 ],
+                'outside_operating_hours' => $schedule->isPersisted && ! $schedule->withinOperatingHours,
             ]);
 
             $existing = EventContextSnapshot::withoutGlobalScopes()

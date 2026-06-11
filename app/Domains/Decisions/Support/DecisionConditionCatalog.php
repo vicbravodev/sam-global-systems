@@ -113,6 +113,11 @@ class DecisionConditionCatalog
                 type: 'boolean',
             ),
             new ConditionField(
+                key: 'outside_operating_hours',
+                label: 'Fuera del horario operativo',
+                type: 'boolean',
+            ),
+            new ConditionField(
                 key: 'nearby_safety_events_count',
                 label: 'Safety events alrededor del evento',
                 type: 'number',

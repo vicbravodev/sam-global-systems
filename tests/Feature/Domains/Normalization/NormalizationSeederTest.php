@@ -58,7 +58,7 @@ class NormalizationSeederTest extends TestCase
             'mobile_usage', 'yaw_control', 'reversing', 'u_turn',
             'camera_obstructed', 'tampering', 'no_seatbelt', 'hos_violation', 'smoking_drinking',
             'geofence_exit', 'geofence_entry', 'vehicle_idle', 'unsafe_parking',
-            'device_offline',
+            'device_offline', 'after_hours_movement',
         ];
 
         foreach ($expectedEventTypes as $code) {

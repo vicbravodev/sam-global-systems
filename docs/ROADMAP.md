@@ -66,9 +66,7 @@ Patrón obligatorio: mismo estándar de V1 — domain-modular, `BelongsToTenant`
 
 **C1 — Watchdog "dejó de reportar" (cierra G6). ✅ COMPLETADO** — ver §7.
 
-**C2 — After-hours real (cierra G7).**
-- `BuildEventContext` calcula `outside_operating_hours` vía `ResolveTenantSchedule` (la señal ya está declarada; cablearla) y la expone como fact.
-- Detección activa: `PollAllAssetLocationsJob` (ya corre cada 5 min) detecta velocidad > umbral fuera del horario del `TenantScheduleProfile` → RawEvent interno `after_hours_movement` (un episodio = un evento). Regla default (vía pack A5): after-hours movement → incidente high + notificación.
+**C2 — After-hours real (cierra G7). ✅ COMPLETADO** — ver §7.
 
 **C3 — Señales antirrobo (cierra G8).**
 - `gps_lost_in_motion`: posición stale/perdida cuando la última telemetría iba en movimiento (heurística jamming) — distinta de `gps_signal_weak`.
@@ -121,6 +119,8 @@ Patrón obligatorio: mismo estándar de V1 — domain-modular, `BelongsToTenant`
 ## 7. Completados (histórico resumido)
 
 ### V2 — "SAM Monitorista"
+
+- **C2** — After-hours real (2026-06-11): `BuildEventContext` por fin calcula `outside_operating_hours` vía `TenantScheduleResolver` (solo con perfil de horario persistido y activo; sin perfil = siempre operando) — la señal fluye a `signals_json`, al prompt de IA y como fact `outside_operating_hours` en el motor de reglas + catálogo. Detección activa: `DetectAfterHoursMovementJob` (scheduler cada 5 min) — asset con posición fresca (≤15 min) a >5 km/h fuera del horario del tenant → RawEvent interno `after_hours_movement` (tipo nuevo seeded, severidad high), un evento por asset por día local (dedup `after_hours:{asset}:{fecha local}`). Regla default del pack A5: `after-hours-movement-incident` (activa) → INCIDENT. Tests: 9 (detección, episodio diario, sin perfil, dentro de horario, lento/stale, inactivos, aislamiento de perfil cross-tenant, señal en contexto con/sin perfil).
 
 - **C1** — Watchdog de activos sin reportar (2026-06-11): `DetectOfflineAssetsJob` (scheduler cada 5 min, `onOneServer`) — assets no inactivos/mantenimiento con `last_seen_at` más viejo que el umbral (override por asset `metadata_json.offline_alert_minutes` > setting `monitoring.offline_alert_minutes` > default 15; `0` desactiva) generan un **RawEvent interno** (source nuevo `internal_monitor`, sin provider) con last known location + `was_in_motion` (silencio en movimiento ≈ jamming) que recorre el pipeline completo. Anti-spam sin estado: episodio = `offline:{asset}:{last_seen_at.ts}` como dedup key. Recuperación: al volver a reportar, el evento del episodio se marca `is_resolved` + `ApplyExternalResolutionJob` (anota/cierra el incidente según el setting del tenant). `NormalizeRawEvent` gana el camino interno: sin provider ni mapping rule, `event_type_raw` ES el código del tipo y `internal.asset_id` se honra solo si el asset pertenece al tenant del evento (anti-spoofing). Default del pack A5: `monitoring.offline_alert_minutes = 15`. Tests: 14 (episodios únicos/nuevos, umbrales por tenant/asset/disable, estados ignorados, recuperación idempotente, normalización interna con aislamiento de tenant y fallback a unmapped).
 
