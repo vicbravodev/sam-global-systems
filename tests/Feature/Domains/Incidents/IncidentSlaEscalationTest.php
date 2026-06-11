@@ -70,9 +70,9 @@ class IncidentSlaEscalationTest extends TestCase
         ]);
     }
 
-    private function runWatchdog(Incident $incident, int $level = 0): void
+    private function runWatchdog(Incident $incident, int $level = 0, int $attempt = 1): void
     {
-        (new CheckIncidentAcknowledgementJob($incident->id, $level))->handle(
+        (new CheckIncidentAcknowledgementJob($incident->id, $level, $attempt))->handle(
             app(EscalateIncident::class),
             app(AppendTimelineEntry::class),
             app(SendNotification::class),
@@ -155,6 +155,68 @@ class IncidentSlaEscalationTest extends TestCase
         Queue::assertPushed(
             CheckIncidentAcknowledgementJob::class,
             fn (CheckIncidentAcknowledgementJob $job) => $job->incidentId === $incident->id && $job->level === 1,
+        );
+    }
+
+    public function test_step_channels_are_forced_on_the_notification(): void
+    {
+        Queue::fake();
+
+        $this->makeEscalationConfig([
+            ['delay_minutes' => 0, 'contacts' => ['+5215512345678'], 'channels' => ['voice', 'sms', 'not-a-channel']],
+        ]);
+
+        $incident = $this->makeOpenIncident();
+
+        $this->runWatchdog($incident);
+
+        $notification = Notification::withoutGlobalScopes()
+            ->where('event_key', "incident_sla_breached:{$incident->id}:0")
+            ->sole();
+
+        // Invalid channel names are dropped; valid ones pin the delivery.
+        $this->assertSame(['voice', 'sms'], $notification->payload_json['force_channels']);
+    }
+
+    public function test_step_attempts_retry_the_same_level_before_advancing(): void
+    {
+        Queue::fake();
+
+        $this->makeEscalationConfig([
+            ['delay_minutes' => 0, 'contacts' => ['oncall@example.com'], 'attempts' => 2, 'retry_minutes' => 3],
+            ['delay_minutes' => 15, 'contacts' => ['boss@example.com']],
+        ]);
+
+        $incident = $this->makeOpenIncident();
+
+        $this->runWatchdog($incident);
+
+        // First attempt re-arms the SAME level instead of moving on.
+        Queue::assertPushed(
+            CheckIncidentAcknowledgementJob::class,
+            fn (CheckIncidentAcknowledgementJob $job) => $job->level === 0 && $job->attempt === 2,
+        );
+        Queue::assertNotPushed(
+            CheckIncidentAcknowledgementJob::class,
+            fn (CheckIncidentAcknowledgementJob $job) => $job->level === 1,
+        );
+
+        $this->runWatchdog($incident, level: 0, attempt: 2);
+
+        // The retry notified again with its own idempotency key…
+        $this->assertNotNull(Notification::withoutGlobalScopes()
+            ->where('event_key', "incident_sla_breached:{$incident->id}:0:a2")
+            ->first());
+
+        // …did not duplicate the breach timeline…
+        $this->assertSame(1, $incident->timeline()
+            ->where('entry_type', TimelineEntryType::SlaBreached->value)
+            ->count());
+
+        // …and only then advanced to the next level.
+        Queue::assertPushed(
+            CheckIncidentAcknowledgementJob::class,
+            fn (CheckIncidentAcknowledgementJob $job) => $job->level === 1 && $job->attempt === 1,
         );
     }
 

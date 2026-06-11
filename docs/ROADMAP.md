@@ -54,9 +54,7 @@ Patrón obligatorio: mismo estándar de V1 — domain-modular, `BelongsToTenant`
 
 **A3 — Llamada de voz de verificación con DTMF (cierra G1). ✅ COMPLETADO** — ver §7.
 
-**A4 — Escalación que respeta canales y reintentos por step (cierra G10).**
-- `CheckIncidentAcknowledgementJob::notifyLevel()` consume `steps_json[].channels` (→ `force_channels` del payload, validados contra `ChannelType`, ahora incluyendo `voice`) y `steps_json[].attempts` (reintentos del step antes de pasar al siguiente nivel).
-- Editor de steps de escalación (UI ya existe, F-TC/F3 enterprise) gana selector de canales con voz y campo de intentos.
+**A4 — Escalación que respeta canales y reintentos por step (cierra G10). ✅ COMPLETADO** — ver §7.
 
 **A5 — SAM Default Config Pack: el protocolo de fábrica (cierra G3).**
 - Action `ApplyDefaultTenantConfig` invocada desde `CreateTenant` (+ comando `php artisan tenants:apply-default-config {team?|--all}` para tenants existentes, idempotente). Siembra para el tenant:
@@ -134,6 +132,8 @@ Patrón obligatorio: mismo estándar de V1 — domain-modular, `BelongsToTenant`
 ## 7. Completados (histórico resumido)
 
 ### V2 — "SAM Monitorista"
+
+- **A4** — Escalación por canal y reintentos por step (2026-06-11): `CheckIncidentAcknowledgementJob` consume `steps_json[].channels` (validados contra `ChannelType`, incluida voz → `force_channels` del payload, gate real = canal activo) y `steps_json[].attempts` con `retry_minutes` (default 5): el mismo nivel se re-notifica con event key propio (`…:a{n}`) sin duplicar timeline ni re-transicionar, y solo al agotar intentos avanza al siguiente nivel. Editor de steps gana campo "Intentos" (el selector de canales ya existía y ahora incluye `voice`); `attempts`/`retry_minutes` reconocidos por el parser sin caer al modo JSON. Tests: canales forzados con inválidos filtrados, reintento del mismo nivel antes de avanzar con timeline única.
 
 - **A3** — Llamada de voz de verificación con DTMF (2026-06-11): `ChannelType::Voice` + `VoiceNotificationDriver` (TTS es-MX vía `TwilioVoiceCaller`, para escalaciones que elijan voz) y, separado, el flujo interactivo de verificación en Incidents: modelo `IncidentCallVerification` (un row por intento, unique incident+attempt), `StartIncidentCallVerification` (contacto desde `voice.verification_contacts` o fallback a contacts telefónicos de escalación; reintentos reusan el número del intento previo), `PlaceVerificationCallJob` (canal voice del tenant con prioridad sobre el global de SAM, TwiML `<Gather numDigits=1>` con prompt es-MX, statusCallback, meter `voice_calls` idempotente) + `EvaluateVerificationCallOutcomeJob` (safety net con guard anti-entrega-temprana) + `HandleVerificationCallAttemptFailure` (encadena hasta `voice.call_attempts`, default 3; agotados → outcome `no_answer` + timeline + **escalación inmediata**). Webhooks firmados `POST /api/webhooks/twilio/voice/{id}/gather|status`: DTMF **1** = ack como emergencia real, **2** = cierre como falsa alarma (acciones reales de Incidents + timeline `verification_call` + auditoría), dígito inválido re-prompt, doble respuesta idempotente. Disparo: listener `StartCallVerificationOnIncidentCreated` en TODO incidente `panic_emergency` (independiente del veredicto IA), gate `voice.verification_enabled` (default off; el pack A5 lo prende). Fact `operator_call_outcome` en el motor de decisión + catálogo. UI: tipo de canal `voice` en la tab Canales. Tests: 33 (listener/idempotencia/fallback de contactos/aislamiento, placement con TwiML y canal global vs tenant, cadena de reintentos, escalación al agotar, webhooks firmados con DTMF 1/2/inválido/dobles/terminal, facts).
 

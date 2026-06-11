@@ -849,6 +849,7 @@ interface EscalationStepDraft {
     channels: string[];
     recipient: string;
     contacts: string;
+    attempts: string;
 }
 
 let escalationStepId = 0;
@@ -867,7 +868,14 @@ function parseEscalationSteps(steps: unknown[]): EscalationStepDraft[] | null {
         }
 
         const record = step as Record<string, unknown>;
-        const known = ['delay_minutes', 'channels', 'recipient', 'contacts'];
+        const known = [
+            'delay_minutes',
+            'channels',
+            'recipient',
+            'contacts',
+            'attempts',
+            'retry_minutes',
+        ];
 
         if (Object.keys(record).some((key) => !known.includes(key))) {
             return null;
@@ -892,6 +900,7 @@ function parseEscalationSteps(steps: unknown[]): EscalationStepDraft[] | null {
             recipient:
                 typeof record.recipient === 'string' ? record.recipient : '',
             contacts: (contacts as string[]).join(', '),
+            attempts: String(Number(record.attempts ?? 1) || 1),
         });
     }
 
@@ -909,6 +918,7 @@ function serializeEscalationSteps(
             .split(',')
             .map((contact) => contact.trim())
             .filter((contact) => contact !== ''),
+        attempts: Math.max(1, Number(draft.attempts) || 1),
     }));
 }
 
@@ -1026,6 +1036,22 @@ function EscalationStepsEditor({
                         disabled={disabled}
                         className="h-8 w-64 text-[12px]"
                     />
+                    <label className="flex items-center gap-1.5 text-[12px] text-fg-2">
+                        Intentos
+                        <Input
+                            type="number"
+                            min="1"
+                            value={step.attempts}
+                            onChange={(e) =>
+                                replace(index, {
+                                    ...step,
+                                    attempts: e.target.value,
+                                })
+                            }
+                            disabled={disabled}
+                            className="h-8 w-16 text-[12px] tabular-nums"
+                        />
+                    </label>
                     {!disabled && (
                         <Button
                             type="button"
@@ -1057,6 +1083,7 @@ function EscalationStepsEditor({
                                     channels: [],
                                     recipient: '',
                                     contacts: '',
+                                    attempts: '1',
                                 },
                             ])
                         }

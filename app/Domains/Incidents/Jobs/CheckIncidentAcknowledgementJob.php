@@ -10,6 +10,7 @@ use App\Domains\Incidents\Enums\TimelineActorType;
 use App\Domains\Incidents\Enums\TimelineEntryType;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Notifications\Actions\SendNotification;
+use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Enums\NotificationPriority;
 use App\Domains\Notifications\Enums\NotificationSourceType;
 use App\Domains\Notifications\Enums\NotificationTriggeredByType;
@@ -30,10 +31,16 @@ use Illuminate\Queue\SerializesModels;
  * entry, transitions to `escalated` (first breach only — the transition also
  * fires the escalation automation + realtime broadcast), and the contacts of
  * the current `TenantEscalationConfig.steps_json` level are notified.
+ *
+ * Roadmap V2-A4: each step may pin its delivery channels (`channels`, e.g.
+ * `["voice","sms"]` → `force_channels`) and retry itself (`attempts`, with
+ * `retry_minutes` between retries) before the chain moves to the next level.
  */
 class CheckIncidentAcknowledgementJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+
+    public const int DEFAULT_RETRY_MINUTES = 5;
 
     public int $tries = 2;
 
@@ -42,6 +49,7 @@ class CheckIncidentAcknowledgementJob implements ShouldQueue
     public function __construct(
         public readonly int $incidentId,
         public readonly int $level = 0,
+        public readonly int $attempt = 1,
     ) {
         $this->onQueue('incidents');
     }
@@ -64,35 +72,39 @@ class CheckIncidentAcknowledgementJob implements ShouldQueue
 
         // Delivered before the SLA actually expired (clock skew, sync queue in
         // tests): not a breach yet, never escalate early.
-        if ($this->level === 0 && $incident->sla_due_at !== null && now()->lt($incident->sla_due_at)) {
+        if ($this->level === 0 && $this->attempt === 1 && $incident->sla_due_at !== null && now()->lt($incident->sla_due_at)) {
             return;
         }
 
         $steps = $this->escalationSteps((int) $incident->team_id);
 
-        $appendTimelineEntry->execute(
-            incident: $incident,
-            entryType: TimelineEntryType::SlaBreached,
-            actorType: TimelineActorType::System,
-            title: 'SLA breached',
-            description: "Incident not acknowledged before its SLA (escalation level {$this->level}).",
-            payload: [
-                'level' => $this->level,
-                'sla_due_at' => $incident->sla_due_at?->toIso8601String(),
-            ],
-        );
-
-        if ($incident->status?->code !== IncidentStatusCode::Escalated->value) {
-            $incident = $escalateIncident->execute(
-                $incident,
-                reason: 'SLA breached without acknowledgement.',
-                escalatedByType: IncidentCreatorType::System,
+        // Retries of the same level only re-notify: the breach was already
+        // recorded and the incident already transitioned on the first attempt.
+        if ($this->attempt === 1) {
+            $appendTimelineEntry->execute(
+                incident: $incident,
+                entryType: TimelineEntryType::SlaBreached,
+                actorType: TimelineActorType::System,
+                title: 'SLA breached',
+                description: "Incident not acknowledged before its SLA (escalation level {$this->level}).",
+                payload: [
+                    'level' => $this->level,
+                    'sla_due_at' => $incident->sla_due_at?->toIso8601String(),
+                ],
             );
+
+            if ($incident->status?->code !== IncidentStatusCode::Escalated->value) {
+                $incident = $escalateIncident->execute(
+                    $incident,
+                    reason: 'SLA breached without acknowledgement.',
+                    escalatedByType: IncidentCreatorType::System,
+                );
+            }
         }
 
         $this->notifyLevel($sendNotification, $incident, $steps[$this->level] ?? null);
 
-        $this->scheduleNextLevel($steps);
+        $this->scheduleNext($steps);
     }
 
     /**
@@ -137,6 +149,20 @@ class CheckIncidentAcknowledgementJob implements ShouldQueue
             ], $contacts);
         }
 
+        // Channels pinned on the step (Roadmap V2-A4) override the tenant's
+        // notification policy — the gate stays the active NotificationChannel.
+        $channels = array_values(array_filter(
+            (array) ($step['channels'] ?? []),
+            fn ($channel) => is_string($channel) && ChannelType::tryFrom($channel) !== null,
+        ));
+
+        if ($channels !== []) {
+            $payload['force_channels'] = $channels;
+        }
+
+        $eventKey = "incident_sla_breached:{$incident->id}:{$this->level}"
+            .($this->attempt > 1 ? ":a{$this->attempt}" : '');
+
         $sendNotification->execute(
             teamId: (int) $incident->team_id,
             notificationType: 'incident.sla_breached',
@@ -145,18 +171,33 @@ class CheckIncidentAcknowledgementJob implements ShouldQueue
             priority: NotificationPriority::Critical,
             triggeredByType: NotificationTriggeredByType::System,
             triggeredById: null,
-            eventKey: "incident_sla_breached:{$incident->id}:{$this->level}",
+            eventKey: $eventKey,
             payload: $payload,
             subject: 'SLA vencido sin atención: '.$incident->title,
-            bodyPreview: "El incidente superó su SLA sin acknowledgement (nivel {$this->level}).",
+            bodyPreview: "El incidente superó su SLA sin acknowledgement (nivel {$this->level}, intento {$this->attempt}).",
         );
     }
 
     /**
+     * Retry the same level while its `attempts` budget lasts, then move to
+     * the next one.
+     *
      * @param  array<int, array<string, mixed>>  $steps
      */
-    private function scheduleNextLevel(array $steps): void
+    private function scheduleNext(array $steps): void
     {
+        $step = $steps[$this->level] ?? null;
+        $stepAttempts = max(1, (int) ($step['attempts'] ?? 1));
+
+        if ($this->attempt < $stepAttempts) {
+            $retryMinutes = max(1, (int) ($step['retry_minutes'] ?? self::DEFAULT_RETRY_MINUTES));
+
+            self::dispatch($this->incidentId, $this->level, $this->attempt + 1)
+                ->delay(now()->addMinutes($retryMinutes));
+
+            return;
+        }
+
         $nextLevel = $this->level + 1;
         $next = $steps[$nextLevel] ?? null;
 
