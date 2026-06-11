@@ -89,6 +89,7 @@ interface ChannelRow {
     channelType: string | null;
     isActive: boolean;
     isGlobal: boolean;
+    enabledForTeam: boolean;
     configSummary: Record<string, string>;
 }
 
@@ -1494,6 +1495,21 @@ function ChannelsTab({
         );
     };
 
+    const toggleGlobal = (channel: ChannelRow) => {
+        if (base === null) {
+            return;
+        }
+
+        void submit(
+            postJson(`${base}/channels/${channel.id}/toggle`, {
+                enabled: !channel.enabledForTeam,
+            }),
+            channel.enabledForTeam
+                ? 'Canal SAM apagado para tu equipo.'
+                : 'Canal SAM encendido para tu equipo.',
+        );
+    };
+
     const testChannel = async (channel: ChannelRow) => {
         if (base === null) {
             return;
@@ -1668,19 +1684,42 @@ function ChannelsTab({
                                         variant="outline"
                                         className="text-[10px] text-fg-3"
                                     >
-                                        global
+                                        Provisto por SAM
                                     </Badge>
                                 )}
                                 <Badge
                                     variant="outline"
                                     className={
-                                        channel.isActive
+                                        channel.isActive &&
+                                        (!channel.isGlobal ||
+                                            channel.enabledForTeam)
                                             ? 'text-severity-low'
                                             : 'text-fg-3'
                                     }
                                 >
-                                    {channel.isActive ? 'activo' : 'inactivo'}
+                                    {channel.isGlobal
+                                        ? channel.enabledForTeam
+                                            ? 'activo'
+                                            : 'apagado para tu equipo'
+                                        : channel.isActive
+                                          ? 'activo'
+                                          : 'inactivo'}
                                 </Badge>
+                                {canManage && channel.isGlobal && (
+                                    <span className="ml-auto">
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() =>
+                                                toggleGlobal(channel)
+                                            }
+                                        >
+                                            {channel.enabledForTeam
+                                                ? 'Apagar para mi equipo'
+                                                : 'Encender'}
+                                        </Button>
+                                    </span>
+                                )}
                                 {canManage && !channel.isGlobal && (
                                     <span className="ml-auto flex gap-1">
                                         <Button

@@ -14,6 +14,7 @@ use App\Domains\Incidents\Models\IncidentCallVerification;
 use App\Domains\Incidents\Models\IncidentTimeline;
 use App\Domains\Notifications\Channels\TwilioVoiceCaller;
 use App\Domains\Notifications\Models\NotificationChannel;
+use App\Domains\Notifications\Models\TenantChannelToggle;
 use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Domains\Tenancy\Models\UsageEvent;
 use App\Models\User;
@@ -127,6 +128,26 @@ class PlaceVerificationCallJobTest extends TestCase
         $this->runJob($verification);
 
         $this->assertSame($own->id, $verification->fresh()->notification_channel_id);
+    }
+
+    public function test_global_voice_channel_disabled_by_the_tenant_never_serves_calls(): void
+    {
+        $global = NotificationChannel::factory()->voice()->create(['team_id' => null]);
+
+        TenantChannelToggle::factory()->disabled()->create([
+            'team_id' => $this->teamId,
+            'notification_channel_id' => $global->id,
+        ]);
+
+        $verification = $this->makeVerification();
+
+        $this->mock(TwilioVoiceCaller::class, function ($mock) {
+            $mock->shouldReceive('createCall')->never();
+        });
+
+        $this->runJob($verification);
+
+        $this->assertSame(CallVerificationStatus::Failed, $verification->fresh()->status);
     }
 
     public function test_fails_without_consuming_attempts_when_no_voice_channel_exists(): void

@@ -60,10 +60,7 @@ Patrón obligatorio: mismo estándar de V1 — domain-modular, `BelongsToTenant`
 
 ### Fase B — Canales gestionados por SAM (cierra G2)
 
-**B1 — Canales plataforma + toggle por tenant.**
-- Consola super-admin: CRUD de canales globales (`team_id = null`) con credenciales de plataforma (Twilio/FCM/SMTP) — secrets cifrados at-rest (cast existente), enmascarados en UI.
-- Toggle por tenant: tabla additive `tenant_channel_toggles` (team_id, notification_channel_id, enabled) — `SelectNotificationChannels` excluye los globales apagados por el tenant. Default: encendidos.
-- UI tenant (tab Canales): los canales SAM aparecen como "Provistos por SAM" con switch on/off y SIN credenciales; crear canal propio pasa a ser opcional/avanzado. El tenant decide el routing (escalación/preferencias), no la infraestructura.
+**B1 — Canales plataforma + toggle por tenant. ✅ COMPLETADO** — ver §7. **Fase B completa: el cliente no configura Twilio jamás.**
 
 ### Fase C — Monitoreo proactivo antirrobo México (cierra G6, G7, G8)
 
@@ -126,6 +123,8 @@ Patrón obligatorio: mismo estándar de V1 — domain-modular, `BelongsToTenant`
 ## 7. Completados (histórico resumido)
 
 ### V2 — "SAM Monitorista"
+
+- **B1** — Canales gestionados por SAM (2026-06-11): tabla additive `tenant_channel_toggles` + modelo `TenantChannelToggle` (sin fila = encendido; opt-out por tenant); scope `NotificationChannel::usableByTeam()` consumido por `SelectNotificationChannels` y la resolución de canal de voz (`PlaceVerificationCallJob`). **Policy endurecida**: un tenant ya NO puede editar/probar/eliminar canales globales (solo apagarlos/encenderlos para sí vía `POST tenant-config/channels/{id}/toggle`, policy `toggleGlobal`, upsert idempotente). Consola super-admin: página `admin/channels` (CRUD de canales de plataforma con credenciales cifradas at-rest, solo `team_id = null`, auditado `platform-channel.*`, item "Canales" en el sidebar admin). UI tenant: badge "Provisto por SAM" + botón Apagar/Encender para mi equipo, sin credenciales. Tests: 12 (CRUD admin con authz y 404 para canales tenant, toggle idempotente con aislamiento, exclusión en `usableByTeam` sin fuga cross-tenant, canal de voz global apagado nunca llama, tenant bloqueado de editar globales). **Fase B completa.**
 
 - **A5** — SAM Default Config Pack (2026-06-11): `ApplyDefaultTenantConfig` (TenantConfig, `PACK_VERSION 1`) — idempotente, solo crea lo que falta, NUNCA pisa valores del tenant (`firstOrCreate`; origen distinguible por `updated_by_type = System`). Siembra: 8 settings afinados (media auto ON, ventanas A1/A2, verificación por voz ON con 3 intentos), ruleset `sam-default` con `panic-button-always-incident` + `panic-false-alarm-review` **ambas activas** (guards anti-coacción intactos; se omite si el tenant ya tiene rulesets), escalación default de 3 niveles con canales+intentos (voz+push → SMS/WhatsApp/email → voz+SMS, contacts vacíos = fan-out al team), y snapshot `TenantConfigVersion` etiquetado `sam-default-v1`. Disparo: listener `ApplyDefaultConfigOnTenantCreated` (todo tenant nuevo nace con el protocolo), comando `tenants:apply-default-config {team?|--all}` para existentes, y botón "Aplicar configuración recomendada SAM" en la página de Configuración (POST `tenant-config/apply-sam-defaults`, authorize update, con confirm). `SamsaraTestDecisionRulesSeeder` ahora consume el pack (una sola fuente de verdad). Tests: 9 (contenido completo del pack, idempotencia, preservación de valores del tenant, skip con ruleset propio, aislamiento, listener vía `CreateTenant`, comando por slug y sin target, endpoint web). **Fase A completa.**
 

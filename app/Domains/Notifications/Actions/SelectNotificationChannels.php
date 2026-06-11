@@ -32,10 +32,7 @@ class SelectNotificationChannels
         $policy = $this->policies->resolve($team);
 
         $channels = NotificationChannel::query()
-            ->where(function ($q) use ($team) {
-                $q->where('team_id', $team->id)->orWhereNull('team_id');
-            })
-            ->where('is_active', true)
+            ->usableByTeam((int) $team->id)
             ->get();
 
         if ($channels->isEmpty()) {

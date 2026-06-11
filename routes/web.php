@@ -3,6 +3,7 @@
 use App\Http\Controllers\Access\MemberRoleController;
 use App\Http\Controllers\Access\RoleController;
 use App\Http\Controllers\Admin\AuditController;
+use App\Http\Controllers\Admin\GlobalChannelController;
 use App\Http\Controllers\Admin\ImpersonationController;
 use App\Http\Controllers\Admin\OperatorController;
 use App\Http\Controllers\Admin\PlanController;
@@ -99,6 +100,12 @@ Route::prefix('admin')
         // Plan catalog: tune per-meter allowances (incl. the asset cap).
         Route::get('plans', [PlanController::class, 'index'])->name('plans.index');
         Route::put('plans/{plan}', [PlanController::class, 'update'])->name('plans.update');
+
+        // SAM platform notification channels (Roadmap V2-B1).
+        Route::get('channels', [GlobalChannelController::class, 'index'])->name('channels.index');
+        Route::post('channels', [GlobalChannelController::class, 'store'])->name('channels.store');
+        Route::put('channels/{channel}', [GlobalChannelController::class, 'update'])->name('channels.update');
+        Route::delete('channels/{channel}', [GlobalChannelController::class, 'destroy'])->name('channels.destroy');
 
         // SaaS operators (global super-admins).
         Route::get('operators', [OperatorController::class, 'index'])->name('operators.index');
@@ -208,6 +215,7 @@ Route::prefix('{current_team}')
         Route::put('settings/tenant-config/channels/{channel}', [NotificationChannelController::class, 'update'])->name('tenant-config.channels.update');
         Route::delete('settings/tenant-config/channels/{channel}', [NotificationChannelController::class, 'destroy'])->name('tenant-config.channels.destroy');
         Route::post('settings/tenant-config/channels/{channel}/test', [NotificationChannelController::class, 'test'])->name('tenant-config.channels.test');
+        Route::post('settings/tenant-config/channels/{channel}/toggle', [NotificationChannelController::class, 'toggle'])->name('tenant-config.channels.toggle');
 
         Route::get('settings/roles', [RoleController::class, 'index'])->name('access.roles.index');
         Route::post('settings/roles', [RoleController::class, 'store'])->name('access.roles.store');

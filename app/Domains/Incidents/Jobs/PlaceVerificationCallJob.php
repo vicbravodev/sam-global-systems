@@ -131,14 +131,14 @@ class PlaceVerificationCallJob implements ShouldQueue
     }
 
     /**
-     * The tenant's own voice channel wins over SAM's platform-wide one.
+     * The tenant's own voice channel wins over SAM's platform-wide one;
+     * globals the tenant switched off (Roadmap V2-B1) never serve calls.
      */
     private function resolveVoiceChannel(int $teamId): ?NotificationChannel
     {
-        return NotificationChannel::withoutGlobalScopes()
+        return NotificationChannel::query()
+            ->usableByTeam($teamId)
             ->where('channel_type', ChannelType::Voice)
-            ->where('is_active', true)
-            ->where(fn ($query) => $query->where('team_id', $teamId)->orWhereNull('team_id'))
             ->orderByRaw('team_id IS NULL')
             ->first();
     }

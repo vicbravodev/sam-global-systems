@@ -6,6 +6,7 @@ use App\Contracts\ObjectStorage;
 use App\Domains\Automation\Support\TriggerConditionCatalog;
 use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Models\NotificationChannel;
+use App\Domains\Notifications\Models\TenantChannelToggle;
 use App\Domains\Tenancy\Models\TenantBranding;
 use App\Domains\TenantConfig\Actions\ApplyDefaultTenantConfig;
 use App\Domains\TenantConfig\Actions\ResolveTenantAIProfile;
@@ -171,26 +172,36 @@ class TenantConfigPageController extends Controller
                     'snapshot' => $version->snapshot_json,
                 ])
                 ->all(),
-            'channels' => fn () => NotificationChannel::query()
-                ->where(fn ($query) => $query
+            'channels' => function () use ($current_team): array {
+                $disabledGlobals = TenantChannelToggle::withoutGlobalScopes()
                     ->where('team_id', $current_team->id)
-                    ->orWhereNull('team_id'))
-                ->orderBy('channel_type')
-                ->orderBy('name')
-                ->get()
-                ->map(fn (NotificationChannel $channel): array => [
-                    'id' => (int) $channel->id,
-                    'code' => $channel->code,
-                    'name' => $channel->name,
-                    'provider' => $channel->provider,
-                    'channelType' => $channel->channel_type?->value,
-                    'isActive' => (bool) $channel->is_active,
-                    'isGlobal' => $channel->team_id === null,
-                    // Secrets stay server-side: only key names + masked tails
-                    // reach the browser (Roadmap F5c).
-                    'configSummary' => $this->maskConfig((array) ($channel->config_json ?? [])),
-                ])
-                ->all(),
+                    ->where('enabled', false)
+                    ->pluck('notification_channel_id')
+                    ->all();
+
+                return NotificationChannel::query()
+                    ->where(fn ($query) => $query
+                        ->where('team_id', $current_team->id)
+                        ->orWhereNull('team_id'))
+                    ->orderBy('channel_type')
+                    ->orderBy('name')
+                    ->get()
+                    ->map(fn (NotificationChannel $channel): array => [
+                        'id' => (int) $channel->id,
+                        'code' => $channel->code,
+                        'name' => $channel->name,
+                        'provider' => $channel->provider,
+                        'channelType' => $channel->channel_type?->value,
+                        'isActive' => (bool) $channel->is_active,
+                        'isGlobal' => $channel->team_id === null,
+                        // Per-tenant switch over SAM platform channels (V2-B1).
+                        'enabledForTeam' => ! in_array($channel->id, $disabledGlobals, true),
+                        // Secrets stay server-side: only key names + masked tails
+                        // reach the browser (Roadmap F5c).
+                        'configSummary' => $this->maskConfig((array) ($channel->config_json ?? [])),
+                    ])
+                    ->all();
+            },
             'channelTypes' => fn () => array_map(
                 fn (ChannelType $type) => $type->value,
                 ChannelType::cases(),
