@@ -150,7 +150,7 @@ export default function AdminChannelsIndex({
                         credenciales viven aquí.
                     </span>
                     <div className="flex flex-wrap items-end gap-2">
-                        <div>
+                        <div className="flex flex-col gap-1">
                             <Label className="sam-meta">Código</Label>
                             <Input
                                 value={form.code}
@@ -161,7 +161,7 @@ export default function AdminChannelsIndex({
                                 className="w-44"
                             />
                         </div>
-                        <div>
+                        <div className="flex flex-col gap-1">
                             <Label className="sam-meta">Nombre</Label>
                             <Input
                                 value={form.name}
@@ -172,7 +172,7 @@ export default function AdminChannelsIndex({
                                 className="w-52"
                             />
                         </div>
-                        <div>
+                        <div className="flex flex-col gap-1">
                             <Label className="sam-meta">Tipo</Label>
                             <select
                                 value={form.channelType}
@@ -193,7 +193,10 @@ export default function AdminChannelsIndex({
                             </select>
                         </div>
                         {fields.map((field) => (
-                            <div key={field.key}>
+                            <div
+                                key={field.key}
+                                className="flex flex-col gap-1"
+                            >
                                 <Label className="sam-meta">
                                     {field.label}
                                 </Label>

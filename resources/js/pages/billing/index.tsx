@@ -217,8 +217,9 @@ export default function BillingIndex() {
                     <CardContent className="text-sm text-fg-2">
                         {subscription === null ? (
                             <p className="text-fg-3">
-                                Sin suscripción activa — contacta al
-                                administrador de SAM.
+                                Tu equipo todavía no tiene un plan activo. El
+                                equipo de SAM lo activa al confirmar tu pago;
+                                escríbenos si ya realizaste la transferencia.
                             </p>
                         ) : (
                             <div className="flex flex-wrap items-center gap-3">
@@ -267,8 +268,9 @@ export default function BillingIndex() {
                     <CardContent>
                         {usage.length === 0 ? (
                             <p className="text-xs text-fg-3">
-                                Aún sin contadores de uso para el periodo
-                                actual.
+                                El consumo aparecerá aquí en cuanto tu operación
+                                genere actividad este periodo (eventos, media,
+                                llamadas de verificación).
                             </p>
                         ) : (
                             <table className="w-full text-left text-xs">
@@ -340,8 +342,9 @@ export default function BillingIndex() {
                     <CardContent>
                         {features.length === 0 ? (
                             <p className="text-xs text-fg-3">
-                                Sin overrides de funcionalidades — aplica lo
-                                incluido en el plan.
+                                Tu plan aplica tal cual: no hay funcionalidades
+                                activadas o desactivadas a la medida para tu
+                                equipo.
                             </p>
                         ) : (
                             <div className="flex flex-wrap gap-2">
@@ -373,7 +376,8 @@ export default function BillingIndex() {
                     <CardContent>
                         {invoices.length === 0 ? (
                             <p className="text-xs text-fg-3">
-                                Aún sin facturas generadas.
+                                Tus facturas aparecerán aquí al cierre de cada
+                                periodo de facturación.
                             </p>
                         ) : (
                             <table className="w-full text-left text-xs">

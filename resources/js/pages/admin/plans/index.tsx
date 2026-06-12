@@ -9,6 +9,22 @@ interface MeterOption {
     name: string;
 }
 
+// Los nombres de los medidores viven en DB en inglés; la consola los muestra
+// en español (F4.1). Codes desconocidos caen al nombre de DB.
+const METER_LABELS: Record<string, string> = {
+    ai_calls: 'Evaluaciones IA',
+    ai_tokens_in: 'Tokens IA de entrada',
+    ai_tokens_out: 'Tokens IA de salida',
+    incident_workflows: 'Flujos de incidente',
+    outbound_notifications: 'Notificaciones salientes',
+    monitored_assets: 'Activos monitoreados',
+    active_cameras: 'Cámaras activas',
+    ingested_events: 'Eventos ingestados',
+    media_requests: 'Solicitudes de media',
+    voice_calls: 'Llamadas de voz',
+    automation_actions: 'Acciones de automatización',
+};
+
 interface PlanRow {
     id: number;
     code: string;
@@ -77,7 +93,9 @@ function PlanCard({ plan, meters }: { plan: PlanRow; meters: MeterOption[] }) {
                         key={meter.code}
                         className="flex flex-col gap-1 text-sm"
                     >
-                        <span className="sam-meta">{meter.name}</span>
+                        <span className="sam-meta">
+                            {METER_LABELS[meter.code] ?? meter.name}
+                        </span>
                         <Input
                             type="number"
                             min={0}

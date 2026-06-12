@@ -71,7 +71,9 @@ function LastLocationCard({
             <CardContent className="p-4">
                 {location === null ? (
                     <p className="text-sm text-fg-3">
-                        Sin posiciones registradas todavía.
+                        Este activo aún no reporta posición. Verifica que el
+                        dispositivo GPS esté instalado y la integración
+                        sincronizando.
                     </p>
                 ) : (
                     <div className="flex flex-col gap-2">
@@ -112,7 +114,9 @@ function TelemetryCard({ telemetry }: { telemetry: TelemetryEntry[] }) {
             <CardContent className="p-0">
                 {telemetry.length === 0 ? (
                     <p className="px-4 py-6 text-sm text-fg-3">
-                        Sin telemetría registrada todavía.
+                        Este activo aún no reporta telemetría (velocidad,
+                        odómetro, combustible). Aparecerá automáticamente en
+                        cuanto el dispositivo empiece a transmitir.
                     </p>
                 ) : (
                     <ul className="divide-y divide-border">
@@ -221,7 +225,8 @@ function LocationHistoryCard({ history }: { history: LocationHistoryEntry[] }) {
             <CardContent className="p-0">
                 {history.length === 0 ? (
                     <p className="px-4 py-6 text-sm text-fg-3">
-                        Sin posiciones registradas todavía.
+                        El historial de posiciones se llenará en cuanto el
+                        activo empiece a reportar ubicación.
                     </p>
                 ) : (
                     <div className="max-h-96 overflow-auto">

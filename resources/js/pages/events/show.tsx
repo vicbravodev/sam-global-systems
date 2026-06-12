@@ -1,5 +1,6 @@
 import { Head, Link, usePage } from '@inertiajs/react';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, ChevronRight, Copy } from 'lucide-react';
+import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -63,19 +64,65 @@ function JsonBlock({
     title: string;
     data: Record<string, unknown> | null;
 }) {
+    const json =
+        data !== null && Object.keys(data).length > 0
+            ? JSON.stringify(data, null, 2)
+            : null;
+
+    const copy = (e: React.MouseEvent) => {
+        // El botón vive dentro del <summary>: sin esto, copiar también
+        // colapsa/expande el bloque.
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (json !== null) {
+            void navigator.clipboard.writeText(json);
+            toast.success('Payload copiado al portapapeles.');
+        }
+    };
+
     return (
-        <Card>
-            <CardHeader>
-                <CardTitle className="text-sm uppercase">{title}</CardTitle>
-            </CardHeader>
-            <CardContent>
-                {data === null || Object.keys(data).length === 0 ? (
-                    <p className="text-xs text-fg-3">Sin datos.</p>
-                ) : (
-                    <pre className="max-h-72 overflow-auto rounded-md bg-surface-2 p-3 font-mono text-2xs leading-relaxed text-fg-2">
-                        {JSON.stringify(data, null, 2)}
-                    </pre>
-                )}
+        <Card className="py-0">
+            <CardContent className="p-0">
+                {/* Colapsado por defecto (F4.3): la evaluación/decisión es lo
+                    que el operador necesita; el JSON es material de soporte. */}
+                <details className="group">
+                    <summary className="flex cursor-pointer items-center gap-2 px-4 py-3 select-none [&::-webkit-details-marker]:hidden">
+                        <ChevronRight
+                            size={14}
+                            className="text-fg-3 transition-transform group-open:rotate-90"
+                        />
+                        <span className="flex-1 text-sm font-semibold text-fg-1 uppercase">
+                            {title}
+                        </span>
+                        {json !== null ? (
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={copy}
+                                aria-label={`Copiar ${title}`}
+                            >
+                                <Copy size={12} />
+                                Copiar
+                            </Button>
+                        ) : (
+                            <span className="text-2xs text-fg-3">
+                                sin datos
+                            </span>
+                        )}
+                    </summary>
+                    <div className="px-4 pb-4">
+                        {json === null ? (
+                            <p className="text-xs text-fg-3">
+                                Este evento no trae datos en esta sección.
+                            </p>
+                        ) : (
+                            <pre className="max-h-72 overflow-auto rounded-md bg-surface-2 p-3 font-mono text-2xs leading-relaxed text-fg-2">
+                                {json}
+                            </pre>
+                        )}
+                    </div>
+                </details>
             </CardContent>
         </Card>
     );
@@ -142,8 +189,8 @@ export default function EventShow() {
                                       'es',
                                   )
                                 : '—'}{' '}
-                            · {event.asset ?? 'sin activo'} ·{' '}
-                            {event.driver ?? 'sin conductor'} ·{' '}
+                            · {event.asset ?? 'Sin activo'} ·{' '}
+                            {event.driver ?? 'Sin conductor'} ·{' '}
                             {event.provider ?? '—'}
                         </p>
                     </div>

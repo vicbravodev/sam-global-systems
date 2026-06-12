@@ -80,7 +80,9 @@ function StreamCard({ incident, selected, onClick }: StreamCardProps) {
                 'flex cursor-pointer overflow-hidden rounded-md border border-border bg-surface-1',
                 'transition-colors hover:bg-surface-2',
                 selected ? 'border-primary/60 bg-primary/10' : '',
-                incident.realtime ? 'animate-[sam-flash_2.4s_ease-out_1]' : '',
+                incident.realtime
+                    ? 'motion-safe:animate-[sam-flash_2.4s_ease-out_1]'
+                    : '',
             )}
             onClick={onClick}
             role="button"

@@ -161,7 +161,9 @@ export function DataTable<T>({
 
     return (
         <div className={cn('min-h-0 flex-1 overflow-auto', className)}>
-            <table className="w-full border-collapse">
+            {/* min-w: en viewports angostos la tabla scrollea dentro del
+                wrapper en vez de aplastar las columnas. */}
+            <table className="w-full min-w-[640px] border-collapse">
                 <thead>
                     <tr className="sticky top-0 z-10 border-b border-border bg-surface-3 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
                         {selectable && (

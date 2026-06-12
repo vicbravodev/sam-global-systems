@@ -24,7 +24,11 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useInitials } from '@/hooks/use-initials';
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { TEAM_BROADCAST_EVENT_NAME } from '@/hooks/use-team-broadcasts';
 import type { TeamBroadcastDetail } from '@/hooks/use-team-broadcasts';
 import { postJson, readErrorMessage } from '@/lib/sam-fetch';
@@ -172,7 +176,7 @@ function PageHead({
                     <span>·</span>
                     <span className="flex items-center gap-1">
                         <span className="relative inline-flex size-1.5">
-                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-severity-critical opacity-60" />
+                            <span className="absolute inline-flex h-full w-full rounded-full bg-severity-critical opacity-60 motion-safe:animate-ping" />
                             <span className="relative inline-flex size-1.5 rounded-full bg-severity-critical" />
                         </span>
                         <span className="font-medium text-severity-critical">
@@ -217,17 +221,37 @@ function PageHead({
                     Refrescar
                 </Button>
 
-                <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={onAssignOldestCritical}
-                    disabled={assigningOldest}
-                >
-                    {assigningOldest ? (
-                        <Loader2 size={13} className="animate-spin" />
-                    ) : null}
-                    Asignarme crítico más viejo
-                </Button>
+                {criticalCount === 0 ? (
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <span tabIndex={0}>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    disabled
+                                    className="pointer-events-none"
+                                >
+                                    Asignarme crítico más viejo
+                                </Button>
+                            </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                            No hay incidentes críticos abiertos ahora mismo.
+                        </TooltipContent>
+                    </Tooltip>
+                ) : (
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={onAssignOldestCritical}
+                        disabled={assigningOldest}
+                    >
+                        {assigningOldest ? (
+                            <Loader2 size={13} className="animate-spin" />
+                        ) : null}
+                        Asignarme crítico más viejo
+                    </Button>
+                )}
             </div>
         </header>
     );
@@ -579,11 +603,8 @@ export default function IncidentsIndex() {
     const serverFilters = pageProps.filters ?? EMPTY_FILTERS;
     const filterOptions = pageProps.filterOptions ?? EMPTY_OPTIONS;
     const teamSlug = page.props.currentTeam?.slug ?? null;
-    const getInitials = useInitials();
-    const currentUserName = page.props.auth?.user?.name ?? null;
     const currentUserId =
         (page.props.auth?.user?.id as number | undefined) ?? null;
-    const myInitials = currentUserName ? getInitials(currentUserName) : null;
 
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [layout, setLayout] = useState<InboxLayout>('table');
@@ -634,8 +655,8 @@ export default function IncidentsIndex() {
             case 'mine':
                 source = incidents.filter(
                     (i) =>
-                        myInitials !== null &&
-                        i.assignee?.initials === myInitials,
+                        currentUserId !== null &&
+                        i.assignee?.id === currentUserId,
                 );
                 break;
             case 'unassigned':
@@ -658,7 +679,7 @@ export default function IncidentsIndex() {
         }
 
         return source;
-    }, [tab, openIncidents, incidents, myInitials]);
+    }, [tab, openIncidents, incidents, currentUserId]);
 
     const selectedRow = useMemo(
         () => incidents.find((i) => i.id === selectedId) ?? null,
@@ -777,6 +798,100 @@ export default function IncidentsIndex() {
         return () =>
             window.removeEventListener(TEAM_BROADCAST_EVENT_NAME, handler);
     }, []);
+
+    // Atajos de teclado que el footer anuncia (F2.2): J/K navegar, Enter
+    // abrir, X seleccionar, A asignarme, Esc cerrar el panel. Nunca dentro
+    // de inputs ni diálogos.
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => {
+            if (e.metaKey || e.ctrlKey || e.altKey) {
+                return;
+            }
+
+            const target = e.target as HTMLElement | null;
+
+            if (
+                target?.closest(
+                    'input, textarea, select, [contenteditable="true"], [role="dialog"]',
+                )
+            ) {
+                return;
+            }
+
+            if (e.key === 'Escape') {
+                setSelectedId(null);
+
+                return;
+            }
+
+            if (rows.length === 0) {
+                return;
+            }
+
+            const key = e.key.toLowerCase();
+            const idx = rows.findIndex((r) => r.id === selectedId);
+
+            if (key === 'j' || key === 'k') {
+                e.preventDefault();
+                const next =
+                    key === 'j'
+                        ? rows[Math.min(idx + 1, rows.length - 1)]
+                        : rows[Math.max(idx - 1, 0)];
+
+                if (next) {
+                    setSelectedId(next.id);
+                }
+            } else if (key === 'x' && selectedId !== null) {
+                e.preventDefault();
+                handleToggle(selectedId);
+            } else if (key === 'a' && selectedId !== null) {
+                e.preventDefault();
+                const row = rows.find((r) => r.id === selectedId);
+
+                if (row) {
+                    void assignIncidentToMe(row);
+                }
+            } else if (e.key === 'Enter' && selectedId !== null) {
+                // La fila enfocada ya maneja Enter (abre el panel).
+                if (target?.closest('tr, button, a')) {
+                    return;
+                }
+
+                const row = rows.find((r) => r.id === selectedId);
+
+                if (row && teamSlug !== null) {
+                    router.visit(`/${teamSlug}/incidents/${row.incidentId}`);
+                }
+            }
+        };
+
+        window.addEventListener('keydown', handler);
+
+        return () => window.removeEventListener('keydown', handler);
+    });
+
+    const assignIncidentToMe = async (incident: MockIncident) => {
+        if (teamSlug === null || currentUserId === null) {
+            return;
+        }
+
+        try {
+            const response = await postJson(
+                `/${teamSlug}/incidents/${incident.incidentId}/assign`,
+                { assigned_to_type: 'user', assigned_to_id: currentUserId },
+            );
+
+            if (response.ok) {
+                toast.success(`Te asignaste ${incident.id}.`);
+                router.reload({ only: ['incidents'] });
+            } else {
+                const message = await readErrorMessage(response);
+                toast.error(message ?? 'No se pudo asignar el incidente.');
+            }
+        } catch {
+            toast.error('Error de red. Vuelve a intentarlo.');
+        }
+    };
 
     const handleToggle = (id: string) => {
         setSelectedSet((prev) => {

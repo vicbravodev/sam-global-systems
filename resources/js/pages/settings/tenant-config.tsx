@@ -261,6 +261,68 @@ function GeneralTab({
             ].includes(s.key),
     );
 
+    // F3.4: keys técnicas → etiqueta en español. La key cruda queda como
+    // texto secundario mono.
+    const SETTING_LABELS: Record<
+        string,
+        { label: string; description: string }
+    > = {
+        'media.clip_window_seconds': {
+            label: 'Ventana de clip por lado',
+            description:
+                'Segundos de video antes y después del momento del evento.',
+        },
+        'media.still_window_minutes': {
+            label: 'Ventana de imágenes fijas',
+            description:
+                'Minutos alrededor del evento para distribuir las capturas.',
+        },
+        'media.still_count': {
+            label: 'Número de imágenes fijas',
+            description: 'Capturas pedidas alrededor del momento del evento.',
+        },
+        'media.retrieval_max_age_hours': {
+            label: 'Antigüedad máxima de media',
+            description:
+                'Horas hacia atrás en las que todavía se pide footage al proveedor.',
+        },
+        'context.safety_correlation_minutes': {
+            label: 'Correlación de safety events',
+            description:
+                'Minutos alrededor del evento para correlacionar frenadas y maniobras.',
+        },
+        'voice.verification_enabled': {
+            label: 'Verificación por voz',
+            description:
+                'Llamada con DTMF al operador en cada botón de pánico.',
+        },
+        'voice.call_attempts': {
+            label: 'Intentos de llamada',
+            description:
+                'Reintentos de la llamada de verificación antes de escalar.',
+        },
+        'voice.retry_delay_seconds': {
+            label: 'Espera entre llamadas',
+            description:
+                'Segundos entre reintentos de la llamada de verificación.',
+        },
+        'voice.verification_contacts': {
+            label: 'Contactos de verificación',
+            description:
+                'Teléfonos a los que se llama para verificar un pánico.',
+        },
+        'monitoring.offline_alert_minutes': {
+            label: 'Alerta de unidad sin reportar',
+            description:
+                'Minutos sin reportar antes de generar alerta (0 la desactiva).',
+        },
+        'monitoring.stop_alert_minutes': {
+            label: 'Alerta de parada sospechosa',
+            description:
+                'Minutos detenido fuera de geocercas antes de alertar (0 la desactiva).',
+        },
+    };
+
     const [applyingDefaults, setApplyingDefaults] = useState(false);
 
     const applySamDefaults = async () => {
@@ -385,28 +447,44 @@ function GeneralTab({
                         <table className="w-full text-left text-xs">
                             <thead className="text-2xs text-fg-3 uppercase">
                                 <tr>
-                                    <th className="py-1">Key</th>
+                                    <th className="py-1">Setting</th>
                                     <th className="py-1">Grupo</th>
                                     <th className="py-1">Valor</th>
                                     <th className="py-1">v</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {otherSettings.map((s) => (
-                                    <tr
-                                        key={s.id}
-                                        className="border-t border-border/50 text-fg-2"
-                                    >
-                                        <td className="py-1.5 font-mono text-2xs">
-                                            {s.key}
-                                        </td>
-                                        <td className="py-1.5">{s.group}</td>
-                                        <td className="py-1.5 font-mono text-2xs">
-                                            {JSON.stringify(s.value)}
-                                        </td>
-                                        <td className="py-1.5">{s.version}</td>
-                                    </tr>
-                                ))}
+                                {otherSettings.map((s) => {
+                                    const known = SETTING_LABELS[s.key];
+
+                                    return (
+                                        <tr
+                                            key={s.id}
+                                            className="border-t border-border/50 text-fg-2"
+                                        >
+                                            <td className="py-2 pr-4">
+                                                <span className="block text-fg-1">
+                                                    {known?.label ?? s.key}
+                                                </span>
+                                                {known && (
+                                                    <span className="block text-2xs text-fg-3">
+                                                        {known.description}
+                                                    </span>
+                                                )}
+                                                <span className="block font-mono text-3xs text-fg-3">
+                                                    {s.key}
+                                                </span>
+                                            </td>
+                                            <td className="py-2">{s.group}</td>
+                                            <td className="py-2 font-mono text-2xs">
+                                                {JSON.stringify(s.value)}
+                                            </td>
+                                            <td className="py-2">
+                                                {s.version}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
                         </table>
                     )}

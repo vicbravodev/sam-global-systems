@@ -2,6 +2,7 @@ import { Head, Link, router, usePage } from '@inertiajs/react';
 import { ChevronRight, Gauge, RefreshCw } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import {
+    MetaChip,
     ProviderTag,
     RealtimeStatus,
     SeverityBadge,
@@ -88,15 +89,19 @@ export default function Dashboard() {
                     openCount={kpis.openIncidents.value}
                 />
                 <KpiGrid kpis={kpis} />
-                <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
-                    <OpenIncidentsPanel
-                        incidents={incidents}
-                        teamSlug={teamSlug}
-                    />
+                {/* Jerarquía cockpit (F3.1): incidentes abiertos es el panel
+                    dominante; el stream vive como columna lateral persistente. */}
+                <div className="grid items-start gap-4 lg:grid-cols-[2fr_1fr]">
+                    <div className="flex min-w-0 flex-col gap-4">
+                        <OpenIncidentsPanel
+                            incidents={incidents}
+                            teamSlug={teamSlug}
+                        />
+                        <IntegrationsPanel integrations={integrations} />
+                        <UsagePanel usage={usage} />
+                    </div>
                     <LiveStreamPanel events={stream} />
                 </div>
-                <IntegrationsPanel integrations={integrations} />
-                <UsagePanel usage={usage} />
             </div>
         </>
     );
@@ -163,12 +168,14 @@ interface SparklineProps {
 }
 
 function Sparkline({ series, colorVar }: SparklineProps) {
-    if (series.length < 2) {
+    const max = Math.max(...series);
+    const min = Math.min(...series);
+
+    // Sin al menos dos puntos y variación real, la línea es ruido decorativo.
+    if (series.length < 2 || max === min) {
         return null;
     }
 
-    const max = Math.max(...series);
-    const min = Math.min(...series);
     const range = max - min || 1;
     const stepX = 90 / (series.length - 1);
 
@@ -208,6 +215,8 @@ interface KpiCardProps {
     deltaColorClass: string;
     series?: number[];
     sparkColorVar?: string;
+    /** Sin muestra en el periodo: estado vacío explícito en vez de un número. */
+    empty?: boolean;
 }
 
 function KpiCard({
@@ -217,29 +226,36 @@ function KpiCard({
     deltaColorClass,
     series,
     sparkColorVar,
+    empty = false,
 }: KpiCardProps) {
+    // Celda cockpit (F3.1): sin card individual; la fila de KPIs es una sola
+    // franja con hairlines entre celdas.
     return (
-        <Card className="relative gap-2 overflow-hidden bg-surface-1 py-4">
-            <CardHeader className="px-4">
-                <span className="sam-caps">{label}</span>
-            </CardHeader>
-            <CardContent className="px-4 pb-2">
-                <div className="font-mono text-3xl tracking-tight tabular-nums">
-                    {value}
+        <div className="relative overflow-hidden bg-surface-1 px-4 py-3">
+            <span className="sam-caps">{label}</span>
+            {empty ? (
+                <div className="flex h-[46px] items-center text-sm text-fg-3">
+                    Sin datos del periodo
                 </div>
-                <div
-                    className={cn(
-                        'mt-1.5 font-mono text-2xs tabular-nums',
-                        deltaColorClass,
-                    )}
-                >
-                    {delta}
-                </div>
-            </CardContent>
-            {series && sparkColorVar ? (
+            ) : (
+                <>
+                    <div className="mt-1 font-mono text-2xl tracking-tight tabular-nums">
+                        {value}
+                    </div>
+                    <div
+                        className={cn(
+                            'mt-1 font-mono text-2xs tabular-nums',
+                            deltaColorClass,
+                        )}
+                    >
+                        {delta}
+                    </div>
+                </>
+            )}
+            {!empty && series && sparkColorVar ? (
                 <Sparkline series={series} colorVar={sparkColorVar} />
             ) : null}
-        </Card>
+        </div>
     );
 }
 
@@ -253,7 +269,7 @@ function formatPercent(value: number | null): string {
 
 function formatDeltaPp(deltaPp: number | null): string {
     if (deltaPp === null) {
-        return 'sin datos previos';
+        return 'sin comparativa previa';
     }
 
     const arrow = deltaPp >= 0 ? '↗' : '↘';
@@ -282,18 +298,20 @@ function KpiGrid({ kpis }: { kpis: DashboardProps['kpis'] }) {
               ).toLocaleString('es', { maximumFractionDigits: 1 })} % vs ayer`;
 
     return (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border xl:grid-cols-4">
             <KpiCard
                 label="Incidentes abiertos"
                 value={String(kpis.openIncidents.value)}
                 delta={openDelta}
                 deltaColorClass={
-                    (kpis.openIncidents.deltaPct ?? 0) > 0
-                        ? 'text-severity-critical'
-                        : 'text-severity-low'
+                    kpis.openIncidents.deltaPct === null
+                        ? 'text-fg-3'
+                        : kpis.openIncidents.deltaPct > 0
+                          ? 'text-severity-critical'
+                          : 'text-severity-low'
                 }
                 series={kpis.openIncidents.series}
-                sparkColorVar="--severity-critical"
+                sparkColorVar="--fg-3"
             />
             <KpiCard
                 label="Críticos ahora"
@@ -303,23 +321,31 @@ function KpiGrid({ kpis }: { kpis: DashboardProps['kpis'] }) {
                 )}`}
                 deltaColorClass="text-severity-high"
                 series={kpis.criticalOpen.series}
-                sparkColorVar="--severity-high"
+                sparkColorVar="--fg-3"
             />
             <KpiCard
                 label="SLA cumplido · 7 d"
                 value={formatPercent(kpis.slaCompliance.value)}
                 delta={formatDeltaPp(kpis.slaCompliance.deltaPp)}
                 deltaColorClass={
-                    (kpis.slaCompliance.deltaPp ?? 0) >= 0
-                        ? 'text-severity-low'
-                        : 'text-severity-high'
+                    kpis.slaCompliance.deltaPp === null
+                        ? 'text-fg-3'
+                        : kpis.slaCompliance.deltaPp >= 0
+                          ? 'text-severity-low'
+                          : 'text-severity-high'
                 }
+                empty={kpis.slaCompliance.value === null}
             />
             <KpiCard
                 label="Precisión IA · 7 d"
                 value={formatPercent(kpis.aiPrecision.value)}
                 delta={formatDeltaPp(kpis.aiPrecision.deltaPp)}
-                deltaColorClass="text-confidence-high"
+                deltaColorClass={
+                    kpis.aiPrecision.deltaPp === null
+                        ? 'text-fg-3'
+                        : 'text-confidence-high'
+                }
+                empty={kpis.aiPrecision.value === null}
             />
         </div>
     );
@@ -467,17 +493,25 @@ function DecisionChip({
         low: 'text-severity-low border-severity-low/40 bg-severity-low/15',
         info: 'text-severity-info border-severity-info/40 bg-severity-info/15',
     };
+    const labels: Record<DashboardStreamEvent['decision'], string> = {
+        incident: 'Incidente',
+        escalate: 'Escalado',
+        info: 'Info',
+        discard: 'Descartado',
+    };
+
+    if (!isAlert) {
+        return <MetaChip>{labels[decision]}</MetaChip>;
+    }
 
     return (
         <span
             className={cn(
-                'inline-flex rounded-sm border px-1.5 py-0.5 text-3xs font-semibold whitespace-nowrap',
-                isAlert
-                    ? sevTextClass[sev]
-                    : 'border-border bg-surface-3 text-fg-3',
+                'inline-flex items-center rounded-sm border px-1.5 py-1 text-3xs font-semibold tracking-label whitespace-nowrap',
+                sevTextClass[sev],
             )}
         >
-            {decision}
+            {labels[decision]}
         </span>
     );
 }

@@ -39,8 +39,8 @@ function BigSlaDisplay({ incident }: BigSlaDisplayProps) {
                 'flex min-w-[104px] flex-col items-start gap-0.5 rounded-md border bg-surface-2 px-3.5 py-2 tabular-nums transition-colors',
                 urgent && !expired
                     ? consumed >= 0.95
-                        ? 'animate-[sam-sla-pulse_1.6s_ease-in-out_infinite] border-severity-critical bg-severity-critical/20'
-                        : 'animate-[sam-sla-pulse_1.6s_ease-in-out_infinite] border-severity-high bg-severity-high/15'
+                        ? 'border-severity-critical bg-severity-critical/20 motion-safe:animate-[sam-sla-pulse_1.6s_ease-in-out_infinite]'
+                        : 'border-severity-high bg-severity-high/15 motion-safe:animate-[sam-sla-pulse_1.6s_ease-in-out_infinite]'
                     : 'border-border',
             )}
         >

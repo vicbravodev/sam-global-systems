@@ -1,6 +1,6 @@
 import { Check, ExternalLink } from 'lucide-react';
 import * as React from 'react';
-import { DataTable } from '@/components/sam/data-table';
+import { CellEmpty, DataTable } from '@/components/sam/data-table';
 import type { DataTableColumn } from '@/components/sam/data-table';
 import { RelativeTime } from '@/components/sam/relative-time';
 import { cn } from '@/lib/utils';
@@ -184,7 +184,7 @@ export function NotificationsTable({
                             )}
                         />
                     ) : (
-                        <span className="text-fg-3">—</span>
+                        <CellEmpty />
                     ),
             },
             {

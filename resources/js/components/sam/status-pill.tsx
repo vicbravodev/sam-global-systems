@@ -11,36 +11,36 @@ export type IncidentStatus =
 
 const VARIANTS: Record<IncidentStatus, { label: string; className: string }> = {
     new: {
-        label: 'New',
+        label: 'Nuevo',
         className: 'bg-status-new/15 text-status-new border-status-new/40',
     },
     triaging: {
-        label: 'Triaging',
+        label: 'Triage',
         className:
             'bg-status-triaging/15 text-status-triaging border-status-triaging/40',
     },
     assigned: {
-        label: 'Assigned',
+        label: 'Asignado',
         className:
             'bg-status-assigned/15 text-status-assigned border-status-assigned/40',
     },
     'in-progress': {
-        label: 'In progress',
+        label: 'En curso',
         className:
             'bg-status-in-progress/15 text-status-in-progress border-status-in-progress/40',
     },
     resolved: {
-        label: 'Resolved',
+        label: 'Resuelto',
         className:
             'bg-status-resolved/15 text-status-resolved border-status-resolved/40',
     },
     closed: {
-        label: 'Closed',
+        label: 'Cerrado',
         className:
             'bg-status-closed/15 text-status-closed border-status-closed/40',
     },
     discarded: {
-        label: 'Discarded',
+        label: 'Descartado',
         className:
             'bg-status-discarded/15 text-status-discarded border-status-discarded/40',
     },
