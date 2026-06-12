@@ -81,25 +81,18 @@ visual: son los huecos funcionales, el shell legacy de settings y el móvil roto
   del árbol vivo: `app-layout.tsx`, `layouts/app/*`, `app-sidebar.tsx`, `app-header.tsx`,
   `nav-main.tsx`, `nav-user.tsx`, `team-switcher.tsx`, `app-logo.tsx`. Verificado con Playwright:
   perfil y equipos dentro del shell ops, tema accesible desde el topbar.
-- [ ] **F1.2 Empty states con voz de producto.** Hoy: "Aún no hay snapshot de resumen — se genera
-  con BuildAnalyticsSnapshotJob" (jerga interna en UI), "Sin suscripción activa — contacta al
-  administrador de SAM", cards apilados vacíos en Facturación y en el detalle de conductor.
-  Reescribir todos los empty states con el patrón del componente `ui/empty-state.tsx`: qué
-  significa, qué hacer a continuación (CTA real cuando exista: "Nuevo workflow", "Conectar
-  integración"), sin nombres de clases/jobs internos. De paso: eliminar el em-dash (`—`) como
-  separador de copy en mensajes (queda bien como placeholder de celda vacía en tablas, que es
-  numérico/neutral). Páginas: analytics, automation, billing, drivers/show, assets/show
-  (telemetría), notifications.
-- [ ] **F1.3 KPIs del dashboard sin datos falsos.** "SLA CUMPLIDO 0%" y "PRECISIÓN IA 100%" con
-  subtítulo "sin datos previos" comunican métricas que no existen (0% parece desastre, 100%
-  parece perfección; ambos son "no hay datos"). Cuando no haya muestra suficiente, el KPI debe
-  renderizar estado vacío explícito ("Sin datos del periodo") en lugar del número. Igual el
-  sparkline rojo decorativo bajo "39". Archivo: `pages/dashboard.tsx` + componentes de KPI.
-- [ ] **F1.4 Detalle de conductor: ocultar lo que no existe.** 5 secciones vacías apiladas
-  (riesgo, contactos, documentos, asignaciones, estado) producen una página fantasma. Colapsar
-  secciones vacías en una sola franja "Sin datos operativos todavía" + mantener las que tengan
-  contenido; en la lista, quitar (o poblar) las columnas muertas ASSET ASIGNADO / RIESGO /
-  TELÉFONO que hoy son `—` en las 215 filas.
+- [x] **F1.2 Empty states con voz de producto.** ✅ 2026-06-12 — analytics usa `EmptyState`
+  (sin `BuildAnalyticsSnapshotJob` en UI), automation con CTA real "Nuevo workflow", billing
+  reescrito sin em-dash (plan/consumo/funcionalidades/facturas explican qué significa y qué
+  sigue), assets/show explica por qué no hay posición/telemetría. Notifications ya cumplía.
+- [x] **F1.3 KPIs del dashboard sin datos falsos.** ✅ 2026-06-12 — `KpiCard` gana estado
+  `empty` ("Sin datos del periodo") activado cuando SLA/precisión vienen `null`; deltas null en
+  gris neutro ("sin comparativa previa"); sparkline neutro (`--fg-3`) y solo con variación real
+  (series planas no pintan línea).
+- [x] **F1.4 Detalle de conductor: ocultar lo que no existe.** ✅ 2026-06-12 — el detalle solo
+  pinta cards con contenido y colapsa lo vacío en una franja "Sin datos operativos todavía en:
+  …"; la lista auto-poda columnas sin un solo dato en el set (asset asignado / riesgo /
+  teléfono).
 - [ ] **F1.5 Landing pública y auth con marca.** `welcome.tsx` sigue siendo la página del starter
   de Laravel (hasta carga Instrument Sans de bunny.net, una fuente distinta a la del producto).
   Mínimo viable: hero simple con la marca SAM, value-prop de una línea y CTA a login (es un

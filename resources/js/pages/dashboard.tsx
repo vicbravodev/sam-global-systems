@@ -163,12 +163,14 @@ interface SparklineProps {
 }
 
 function Sparkline({ series, colorVar }: SparklineProps) {
-    if (series.length < 2) {
+    const max = Math.max(...series);
+    const min = Math.min(...series);
+
+    // Sin al menos dos puntos y variación real, la línea es ruido decorativo.
+    if (series.length < 2 || max === min) {
         return null;
     }
 
-    const max = Math.max(...series);
-    const min = Math.min(...series);
     const range = max - min || 1;
     const stepX = 90 / (series.length - 1);
 
@@ -208,6 +210,8 @@ interface KpiCardProps {
     deltaColorClass: string;
     series?: number[];
     sparkColorVar?: string;
+    /** Sin muestra en el periodo: estado vacío explícito en vez de un número. */
+    empty?: boolean;
 }
 
 function KpiCard({
@@ -217,6 +221,7 @@ function KpiCard({
     deltaColorClass,
     series,
     sparkColorVar,
+    empty = false,
 }: KpiCardProps) {
     return (
         <Card className="relative gap-2 overflow-hidden bg-surface-1 py-4">
@@ -224,19 +229,27 @@ function KpiCard({
                 <span className="sam-caps">{label}</span>
             </CardHeader>
             <CardContent className="px-4 pb-2">
-                <div className="font-mono text-3xl tracking-tight tabular-nums">
-                    {value}
-                </div>
-                <div
-                    className={cn(
-                        'mt-1.5 font-mono text-[11px] tabular-nums',
-                        deltaColorClass,
-                    )}
-                >
-                    {delta}
-                </div>
+                {empty ? (
+                    <div className="flex h-[52px] items-center text-[13px] text-fg-3">
+                        Sin datos del periodo
+                    </div>
+                ) : (
+                    <>
+                        <div className="font-mono text-3xl tracking-tight tabular-nums">
+                            {value}
+                        </div>
+                        <div
+                            className={cn(
+                                'mt-1.5 font-mono text-[11px] tabular-nums',
+                                deltaColorClass,
+                            )}
+                        >
+                            {delta}
+                        </div>
+                    </>
+                )}
             </CardContent>
-            {series && sparkColorVar ? (
+            {!empty && series && sparkColorVar ? (
                 <Sparkline series={series} colorVar={sparkColorVar} />
             ) : null}
         </Card>
@@ -253,7 +266,7 @@ function formatPercent(value: number | null): string {
 
 function formatDeltaPp(deltaPp: number | null): string {
     if (deltaPp === null) {
-        return 'sin datos previos';
+        return 'sin comparativa previa';
     }
 
     const arrow = deltaPp >= 0 ? '↗' : '↘';
@@ -288,12 +301,14 @@ function KpiGrid({ kpis }: { kpis: DashboardProps['kpis'] }) {
                 value={String(kpis.openIncidents.value)}
                 delta={openDelta}
                 deltaColorClass={
-                    (kpis.openIncidents.deltaPct ?? 0) > 0
-                        ? 'text-severity-critical'
-                        : 'text-severity-low'
+                    kpis.openIncidents.deltaPct === null
+                        ? 'text-fg-3'
+                        : kpis.openIncidents.deltaPct > 0
+                          ? 'text-severity-critical'
+                          : 'text-severity-low'
                 }
                 series={kpis.openIncidents.series}
-                sparkColorVar="--severity-critical"
+                sparkColorVar="--fg-3"
             />
             <KpiCard
                 label="Críticos ahora"
@@ -303,23 +318,31 @@ function KpiGrid({ kpis }: { kpis: DashboardProps['kpis'] }) {
                 )}`}
                 deltaColorClass="text-severity-high"
                 series={kpis.criticalOpen.series}
-                sparkColorVar="--severity-high"
+                sparkColorVar="--fg-3"
             />
             <KpiCard
                 label="SLA cumplido · 7 d"
                 value={formatPercent(kpis.slaCompliance.value)}
                 delta={formatDeltaPp(kpis.slaCompliance.deltaPp)}
                 deltaColorClass={
-                    (kpis.slaCompliance.deltaPp ?? 0) >= 0
-                        ? 'text-severity-low'
-                        : 'text-severity-high'
+                    kpis.slaCompliance.deltaPp === null
+                        ? 'text-fg-3'
+                        : kpis.slaCompliance.deltaPp >= 0
+                          ? 'text-severity-low'
+                          : 'text-severity-high'
                 }
+                empty={kpis.slaCompliance.value === null}
             />
             <KpiCard
                 label="Precisión IA · 7 d"
                 value={formatPercent(kpis.aiPrecision.value)}
                 delta={formatDeltaPp(kpis.aiPrecision.deltaPp)}
-                deltaColorClass="text-confidence-high"
+                deltaColorClass={
+                    kpis.aiPrecision.deltaPp === null
+                        ? 'text-fg-3'
+                        : 'text-confidence-high'
+                }
+                empty={kpis.aiPrecision.value === null}
             />
         </div>
     );

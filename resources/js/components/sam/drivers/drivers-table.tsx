@@ -1,4 +1,5 @@
 import type * as React from 'react';
+import { useMemo } from 'react';
 import { DataTable } from '@/components/sam/data-table';
 import type { DataTableColumn } from '@/components/sam/data-table';
 import { RelativeTime } from '@/components/sam/relative-time';
@@ -121,9 +122,31 @@ interface DriversTableProps {
 }
 
 export function DriversTable({ rows, onSelect, empty }: DriversTableProps) {
+    // Columnas sin un solo dato en todo el set (asset/riesgo/teléfono aún no
+    // sincronizados) se ocultan en vez de pintar "—" en cada fila.
+    const columns = useMemo(
+        () =>
+            COLUMNS.filter((column) => {
+                if (column.key === 'asset') {
+                    return rows.some((d) => d.currentAsset !== null);
+                }
+
+                if (column.key === 'risk') {
+                    return rows.some((d) => d.riskScore !== null);
+                }
+
+                if (column.key === 'phone') {
+                    return rows.some((d) => d.phone);
+                }
+
+                return true;
+            }),
+        [rows],
+    );
+
     return (
         <DataTable
-            columns={COLUMNS}
+            columns={columns}
             rows={rows}
             rowKey={(driver) => driver.id}
             onRowClick={(driver) => onSelect(driver.id)}

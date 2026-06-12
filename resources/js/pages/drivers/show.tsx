@@ -425,6 +425,14 @@ export default function DriverShow() {
         page.props as unknown as DriverShowProps;
     const teamSlug = page.props.currentTeam?.slug ?? null;
 
+    const emptySections = [
+        driver.riskProfile === null ? 'perfil de riesgo' : null,
+        driver.contacts.length === 0 ? 'contactos' : null,
+        driver.documents.length === 0 ? 'documentos' : null,
+        assignments.length === 0 ? 'asignaciones' : null,
+        statusLog.length === 0 ? 'historial de estado' : null,
+    ].filter((section): section is string => section !== null);
+
     return (
         <>
             <Head title={`${driver.fullName} - Conductores`} />
@@ -488,17 +496,38 @@ export default function DriverShow() {
                     )}
                 </header>
 
-                <div className="grid gap-4 lg:grid-cols-2">
-                    <RiskCard risk={driver.riskProfile} />
-                    <ContactsCard contacts={driver.contacts} />
-                </div>
+                {/* Secciones sin datos colapsadas en una sola franja (F1.4):
+                    solo se pintan las cards que tienen contenido real. */}
+                {(driver.riskProfile !== null ||
+                    driver.contacts.length > 0) && (
+                    <div className="grid gap-4 lg:grid-cols-2">
+                        {driver.riskProfile !== null && (
+                            <RiskCard risk={driver.riskProfile} />
+                        )}
+                        {driver.contacts.length > 0 && (
+                            <ContactsCard contacts={driver.contacts} />
+                        )}
+                    </div>
+                )}
 
-                <DocumentsCard documents={driver.documents} />
-                <AssignmentsCard
-                    assignments={assignments}
-                    teamSlug={teamSlug}
-                />
-                <StatusLogCard entries={statusLog} />
+                {driver.documents.length > 0 && (
+                    <DocumentsCard documents={driver.documents} />
+                )}
+                {assignments.length > 0 && (
+                    <AssignmentsCard
+                        assignments={assignments}
+                        teamSlug={teamSlug}
+                    />
+                )}
+                {statusLog.length > 0 && <StatusLogCard entries={statusLog} />}
+
+                {emptySections.length > 0 && (
+                    <div className="rounded-md border border-border bg-surface-1 px-4 py-3 text-[12px] text-fg-3">
+                        Sin datos operativos todavía en:{' '}
+                        {emptySections.join(' · ')}. Se llenan conforme la
+                        integración sincroniza y la operación genera actividad.
+                    </div>
+                )}
             </div>
         </>
     );

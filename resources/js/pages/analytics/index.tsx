@@ -1,9 +1,10 @@
 import { Head, router, usePage } from '@inertiajs/react';
-import { Download, FileBarChart2 } from 'lucide-react';
+import { BarChart3, Download, FileBarChart2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { postJson, readErrorMessage } from '@/lib/sam-fetch';
 
 interface OverviewProp {
@@ -83,10 +84,11 @@ function formatValue(value: number | null, unit: string | null): string {
 function OverviewCards({ overview }: { overview: OverviewProp | null }) {
     if (overview === null || overview.data === null) {
         return (
-            <p className="text-[12px] text-fg-3">
-                Aún no hay snapshot de resumen — se genera con
-                BuildAnalyticsSnapshotJob.
-            </p>
+            <EmptyState
+                icon={BarChart3}
+                title="Todavía no hay resumen del periodo"
+                description="Las métricas se calculan automáticamente cada noche con la actividad de tu operación. En cuanto haya datos, aparecerán aquí."
+            />
         );
     }
 
@@ -152,9 +154,10 @@ function KpisTab({
                 </CardHeader>
                 <CardContent>
                     {kpis.length === 0 ? (
-                        <p className="text-[12px] text-fg-3">
-                            Sin KPIs calculados todavía.
-                        </p>
+                        <EmptyState
+                            title="Todavía no hay KPIs calculados"
+                            description="Se calculan automáticamente cada noche. Mientras tanto, el panel muestra la actividad en vivo."
+                        />
                     ) : (
                         <table className="w-full text-left text-[12px]">
                             <thead className="text-[11px] text-fg-3 uppercase">
