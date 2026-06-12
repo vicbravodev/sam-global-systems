@@ -547,6 +547,59 @@ class FetchDeferredEventMediaJobTest extends TestCase
         Event::assertDispatched(EventMediaAvailable::class);
     }
 
+    public function test_generic_octet_stream_mime_is_normalized_from_the_filename(): void
+    {
+        $this->makeSamsaraIntegration();
+
+        $event = NormalizedEvent::factory()->create([
+            'team_id' => $this->teamId,
+            'asset_id' => $this->asset->id,
+            'occurred_at' => Carbon::parse('2026-06-11 12:00:00', 'UTC'),
+        ]);
+
+        Http::fake([
+            'api.samsara.com/cameras/media?*' => Http::response(['data' => ['media' => [[
+                'input' => 'dashcamDriverFacing',
+                'mediaType' => 'image',
+                'triggerReason' => 'panicButton',
+                'startTime' => '2026-06-11T11:59:50Z',
+                'urlInfo' => ['url' => 'https://media.samsara.com/uploads/panic.jpg'],
+            ]]]]),
+            'api.samsara.com/cameras/media/retrieval*' => Http::sequence()
+                ->push(['data' => ['retrievalId' => 'ret-1']])
+                ->push(['data' => ['media' => [[
+                    'input' => 'dashcamRoadFacing',
+                    'status' => 'available',
+                    'urlInfo' => ['url' => 'https://media.samsara.com/ret-1/road.mp4'],
+                ]]]]),
+            // Samsara serves binaries as octet-stream; persisting that verbatim
+            // makes the multimodal agent refuse every file.
+            'media.samsara.com/*' => Http::response('media-bytes', 200, ['Content-Type' => 'binary/octet-stream']),
+        ]);
+
+        $request = $this->makeRequest($event);
+
+        $this->runJob($request);
+
+        $snapshot = RawEventAttachment::where('raw_event_id', $event->raw_event_id)
+            ->where('storage_path', 'like', '%driver-facing.jpg')
+            ->sole();
+        $this->assertSame('image/jpeg', $snapshot->mime_type);
+
+        $clip = RawEventAttachment::where('raw_event_id', $event->raw_event_id)
+            ->where('storage_path', 'like', '%.mp4')
+            ->sole();
+        $this->assertSame('video/mp4', $clip->mime_type);
+
+        $this->assertEqualsCanonicalizing(
+            ['image/jpeg', 'video/mp4'],
+            EventMediaContext::withoutGlobalScopes()
+                ->where('normalized_event_id', $event->id)
+                ->pluck('mime_type')
+                ->all(),
+        );
+    }
+
     public function test_rejected_retrieval_completes_when_uploaded_media_backs_the_event(): void
     {
         $this->makeSamsaraIntegration();
