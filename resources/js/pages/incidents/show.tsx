@@ -169,7 +169,8 @@ export default function IncidentShow() {
                 incident={incident}
                 onMutated={reloadDetail}
             >
-                <div className="flex min-w-0 flex-col">
+                {/* The ops shell is h-dvh overflow-hidden: the page owns its scroll. */}
+                <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
                     <DetailHeader
                         incident={incident}
                         onClose={() =>
