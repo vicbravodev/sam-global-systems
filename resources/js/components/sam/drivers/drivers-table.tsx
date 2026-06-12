@@ -4,7 +4,7 @@ import { CellEmpty, DataTable } from '@/components/sam/data-table';
 import type { DataTableColumn } from '@/components/sam/data-table';
 import { RelativeTime } from '@/components/sam/relative-time';
 import { cn } from '@/lib/utils';
-import type { DriverRow } from '@/types/drivers';
+import type { DriverColumnPresence, DriverRow } from '@/types/drivers';
 import { DriverStatusBadge } from './driver-status-badge';
 
 function minutesSince(iso: string): number {
@@ -119,29 +119,52 @@ interface DriversTableProps {
     rows: DriverRow[];
     onSelect: (id: number) => void;
     empty?: React.ReactNode;
+    /**
+     * Presencia de datos por columna en TODO el tenant (la calcula el
+     * backend). Si llega, manda sobre la heurística por página: así la
+     * columna no parpadea entre páginas con y sin datos.
+     */
+    presence?: DriverColumnPresence;
 }
 
-export function DriversTable({ rows, onSelect, empty }: DriversTableProps) {
-    // Columnas sin un solo dato en todo el set (asset/riesgo/teléfono aún no
+export function DriversTable({
+    rows,
+    onSelect,
+    empty,
+    presence,
+}: DriversTableProps) {
+    // Columnas sin un solo dato (asset/riesgo/teléfono/visto aún no
     // sincronizados) se ocultan en vez de pintar "—" en cada fila.
     const columns = useMemo(
         () =>
             COLUMNS.filter((column) => {
                 if (column.key === 'asset') {
-                    return rows.some((d) => d.currentAsset !== null);
+                    return (
+                        presence?.asset ??
+                        rows.some((d) => d.currentAsset !== null)
+                    );
                 }
 
                 if (column.key === 'risk') {
-                    return rows.some((d) => d.riskScore !== null);
+                    return (
+                        presence?.risk ?? rows.some((d) => d.riskScore !== null)
+                    );
                 }
 
                 if (column.key === 'phone') {
-                    return rows.some((d) => d.phone);
+                    return presence?.phone ?? rows.some((d) => d.phone);
+                }
+
+                if (column.key === 'lastSeen') {
+                    return (
+                        presence?.lastSeen ??
+                        rows.some((d) => d.lastSeenAt !== null)
+                    );
                 }
 
                 return true;
             }),
-        [rows],
+        [rows, presence],
     );
 
     return (

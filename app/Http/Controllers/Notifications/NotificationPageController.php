@@ -34,6 +34,7 @@ class NotificationPageController extends Controller
 
         $notifications = Notification::query()
             ->with(['reads' => fn ($query) => $query->where('user_id', $user->id)])
+            ->withCount(['recipients', 'deliveries'])
             ->when($status, fn ($query) => $query->where('status', $status))
             ->when($priority, fn ($query) => $query->where('priority', $priority))
             ->when($unreadOnly, fn ($query) => $query->whereDoesntHave(
@@ -99,7 +100,32 @@ class NotificationPageController extends Controller
             'sentAt' => $notification->sent_at?->toIso8601String(),
             'createdAt' => $notification->created_at?->toIso8601String(),
             'isRead' => $notification->reads->isNotEmpty(),
+            'statusReason' => $this->statusReason($notification),
         ];
+    }
+
+    /**
+     * Human explanation for notifications that never went out. The dispatcher
+     * marks a notification "cancelled" in two cases it does not persist a
+     * reason for, but both are derivable from what it DID persist: it bails
+     * before creating recipients when nobody resolves, and it bails before
+     * creating deliveries when no channel is available/allowed.
+     */
+    private function statusReason(Notification $notification): ?string
+    {
+        if ($notification->status !== NotificationStatus::Cancelled) {
+            return null;
+        }
+
+        if ((int) $notification->recipients_count === 0) {
+            return 'No se envió: ninguna persona del equipo tenía datos de contacto al momento de generarse.';
+        }
+
+        if ((int) $notification->deliveries_count === 0) {
+            return 'No se envió: no había ningún canal de notificación activo o permitido para este aviso.';
+        }
+
+        return 'No se envió: el sistema la descartó antes de salir por algún canal.';
     }
 
     /**

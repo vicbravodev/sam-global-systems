@@ -31,6 +31,18 @@ export interface DriverFilterOptions {
     statuses: { value: string; label: string }[];
 }
 
+/**
+ * Qué columnas opcionales del roster tienen al menos un dato en TODO el
+ * tenant (lo calcula el backend); una columna vacía para toda la flota se
+ * oculta en vez de pintar "—" en cada fila.
+ */
+export interface DriverColumnPresence {
+    asset: boolean;
+    risk: boolean;
+    phone: boolean;
+    lastSeen: boolean;
+}
+
 export interface DriversPagination {
     page: number;
     perPage: number;
@@ -43,6 +55,7 @@ export interface DriversIndexProps {
     pagination: DriversPagination;
     filters: DriverFilters;
     filterOptions: DriverFilterOptions;
+    columns?: DriverColumnPresence;
 }
 
 export interface DriverRiskProfile {

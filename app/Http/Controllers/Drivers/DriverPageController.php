@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Drivers;
 
+use App\Domains\Drivers\Enums\AssignmentType;
 use App\Domains\Drivers\Enums\ContactType;
 use App\Domains\Drivers\Enums\DriverStatus;
 use App\Domains\Drivers\Models\Driver;
@@ -85,6 +86,7 @@ class DriverPageController extends Controller
             ],
             'filters' => $filters,
             'filterOptions' => fn () => $this->filterOptions(),
+            'columns' => fn () => $this->columnPresence($current_team),
         ]);
     }
 
@@ -151,6 +153,32 @@ class DriverPageController extends Controller
         if ($filters['status'] !== null) {
             $query->where('status', $filters['status']);
         }
+    }
+
+    /**
+     * Tenant-wide presence of the optional roster columns (F1.4). Computed
+     * over ALL drivers of the team — not the current page — so a column that
+     * is empty for the whole fleet disappears instead of painting "—" on
+     * every row, and the layout stays stable across pages and filters.
+     *
+     * @return array{asset: bool, risk: bool, phone: bool, lastSeen: bool}
+     */
+    private function columnPresence(Team $team): array
+    {
+        $drivers = fn (): Builder => Driver::query()->where('team_id', $team->id);
+
+        return [
+            'asset' => DriverAssignment::query()
+                ->where('team_id', $team->id)
+                ->where('assignment_type', AssignmentType::PrimaryDriver)
+                ->whereNull('ended_at')
+                ->exists(),
+            'risk' => $drivers()->whereHas('riskProfile')->exists(),
+            'phone' => $drivers()
+                ->whereHas('contacts', fn (Builder $q) => $q->where('contact_type', ContactType::MobilePhone))
+                ->exists(),
+            'lastSeen' => $drivers()->whereNotNull('last_seen_at')->exists(),
+        ];
     }
 
     /**

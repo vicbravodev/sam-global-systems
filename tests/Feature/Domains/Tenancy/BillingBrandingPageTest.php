@@ -79,7 +79,10 @@ class BillingBrandingPageTest extends TestCase
                 ->where('usage.0.meterCode', 'ai_calls')
                 ->where('usage.0.overage', 20)
                 ->has('features', 1)
-                ->has('invoices', 1),
+                ->has('invoices', 1)
+                // Camino de contacto (F1.2): el pago es por transferencia
+                // bancaria, así que la página ofrece una acción humana.
+                ->where('supportEmail', config('mail.from.address')),
         );
     }
 

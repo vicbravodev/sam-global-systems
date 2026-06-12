@@ -167,6 +167,102 @@ class DriversPageTest extends TestCase
         );
     }
 
+    public function test_column_presence_reflects_tenant_wide_data(): void
+    {
+        [$user, $team] = $this->createUserWithRole('roster_columns_1', ['drivers.view']);
+
+        $driver = Driver::factory()->create([
+            'team_id' => $team->id,
+            'last_seen_at' => now()->subHour(),
+        ]);
+
+        $asset = Asset::factory()->create(['team_id' => $team->id]);
+        DriverAssignment::factory()->create([
+            'team_id' => $team->id,
+            'driver_id' => $driver->id,
+            'asset_id' => $asset->id,
+        ]);
+        DriverRiskProfile::factory()->create(['driver_id' => $driver->id]);
+        DriverContact::factory()->create(['driver_id' => $driver->id]);
+
+        $response = $this->actingAs($user)->get(
+            route('drivers.index', ['current_team' => $team->slug]),
+        );
+
+        $response->assertOk();
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->component('drivers/index')
+                ->where('columns.asset', true)
+                ->where('columns.risk', true)
+                ->where('columns.phone', true)
+                ->where('columns.lastSeen', true),
+        );
+    }
+
+    public function test_column_presence_is_false_when_no_driver_of_the_tenant_has_data(): void
+    {
+        [$user, $team] = $this->createUserWithRole('roster_columns_2', ['drivers.view']);
+
+        Driver::factory()->create([
+            'team_id' => $team->id,
+            'last_seen_at' => null,
+        ]);
+
+        // Data on ANOTHER tenant must not switch the columns on here.
+        $foreignOwner = User::factory()->create();
+        $foreignDriver = Driver::factory()->create([
+            'team_id' => $foreignOwner->currentTeam->id,
+            'last_seen_at' => now(),
+        ]);
+        DriverContact::factory()->create(['driver_id' => $foreignDriver->id]);
+        DriverRiskProfile::factory()->create(['driver_id' => $foreignDriver->id]);
+
+        $response = $this->actingAs($user)->get(
+            route('drivers.index', ['current_team' => $team->slug]),
+        );
+
+        $response->assertOk();
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->component('drivers/index')
+                ->where('columns.asset', false)
+                ->where('columns.risk', false)
+                ->where('columns.phone', false)
+                ->where('columns.lastSeen', false),
+        );
+    }
+
+    public function test_column_presence_ignores_active_filters(): void
+    {
+        [$user, $team] = $this->createUserWithRole('roster_columns_3', ['drivers.view']);
+
+        $driver = Driver::factory()->create([
+            'team_id' => $team->id,
+            'status' => DriverStatus::Active,
+            'last_seen_at' => now(),
+        ]);
+        DriverContact::factory()->create(['driver_id' => $driver->id]);
+
+        // The filter excludes every driver, but the presence map stays
+        // tenant-wide so the layout does not jump when filters change.
+        $response = $this->actingAs($user)->get(
+            route('drivers.index', [
+                'current_team' => $team->slug,
+                'status' => 'suspended',
+            ]),
+        );
+
+        $response->assertOk();
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->component('drivers/index')
+                ->has('drivers', 0)
+                ->where('columns.phone', true)
+                ->where('columns.lastSeen', true),
+        );
+    }
+
     public function test_search_filter_matches_name_case_insensitively(): void
     {
         [$user, $team] = $this->createUserWithRole('roster_viewer_4', ['drivers.view']);

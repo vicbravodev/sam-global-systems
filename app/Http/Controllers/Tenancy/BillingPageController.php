@@ -23,6 +23,9 @@ class BillingPageController extends Controller
         $this->authorize('viewAny', Subscription::class);
 
         return Inertia::render('billing/index', [
+            // Contact point for billing questions (F1.2): payment is by bank
+            // transfer, so the page must offer a human path, not a checkout.
+            'supportEmail' => fn (): ?string => config('mail.from.address'),
             'subscription' => function () use ($current_team): ?array {
                 $subscription = Subscription::withoutGlobalScopes()
                     ->where('team_id', $current_team->id)

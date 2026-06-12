@@ -426,12 +426,45 @@ export default function DriverShow() {
     const teamSlug = page.props.currentTeam?.slug ?? null;
 
     const emptySections = [
-        driver.riskProfile === null ? 'perfil de riesgo' : null,
-        driver.contacts.length === 0 ? 'contactos' : null,
-        driver.documents.length === 0 ? 'documentos' : null,
-        assignments.length === 0 ? 'asignaciones' : null,
-        statusLog.length === 0 ? 'historial de estado' : null,
-    ].filter((section): section is string => section !== null);
+        driver.riskProfile === null
+            ? {
+                  label: 'Perfil de riesgo',
+                  explanation:
+                      'Se calcula automáticamente con la actividad de manejo del conductor: incidentes, maniobras bruscas y alertas de fatiga.',
+              }
+            : null,
+        driver.contacts.length === 0
+            ? {
+                  label: 'Contactos',
+                  explanation:
+                      'Sin teléfonos ni correos cargados. Se sincronizan desde tu proveedor de telemetría o se cargan manualmente.',
+              }
+            : null,
+        driver.documents.length === 0
+            ? {
+                  label: 'Documentos',
+                  explanation:
+                      'Sin documentos cargados. Las licencias y certificados del conductor se sincronizan desde tu proveedor o se cargan manualmente.',
+              }
+            : null,
+        assignments.length === 0
+            ? {
+                  label: 'Historial de asignaciones',
+                  explanation:
+                      'Sin asignaciones registradas. Aparecen cuando el conductor se vincula a un vehículo de la flota.',
+              }
+            : null,
+        statusLog.length === 0
+            ? {
+                  label: 'Historial de estado',
+                  explanation:
+                      'Sin cambios registrados. Aquí queda el historial de disponibilidad del conductor (activo, fuera de turno, suspendido).',
+              }
+            : null,
+    ].filter(
+        (section): section is { label: string; explanation: string } =>
+            section !== null,
+    );
 
     return (
         <>
@@ -522,10 +555,23 @@ export default function DriverShow() {
                 {statusLog.length > 0 && <StatusLogCard entries={statusLog} />}
 
                 {emptySections.length > 0 && (
-                    <div className="rounded-md border border-border bg-surface-1 px-4 py-3 text-[12px] text-fg-3">
-                        Sin datos operativos todavía en:{' '}
-                        {emptySections.join(' · ')}. Se llenan conforme la
-                        integración sincroniza y la operación genera actividad.
+                    <div className="rounded-md border border-border bg-surface-1 px-4 py-3">
+                        <p className="text-xs font-medium text-fg-2">
+                            Secciones sin datos todavía
+                        </p>
+                        <ul className="mt-2 flex flex-col gap-1.5">
+                            {emptySections.map((section) => (
+                                <li
+                                    key={section.label}
+                                    className="text-[12px] text-fg-3"
+                                >
+                                    <span className="font-medium text-fg-2">
+                                        {section.label}.
+                                    </span>{' '}
+                                    {section.explanation}
+                                </li>
+                            ))}
+                        </ul>
                     </div>
                 )}
             </div>
