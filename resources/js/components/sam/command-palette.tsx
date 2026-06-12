@@ -172,7 +172,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
             aria-label="Paleta de comandos"
         >
             <div
-                className="w-full max-w-[620px] overflow-hidden rounded-[10px] border border-border bg-surface-1 shadow-xl"
+                className="w-full max-w-[620px] overflow-hidden rounded-lg border border-border bg-surface-1 shadow-xl"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Search row */}
@@ -190,10 +190,10 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
                         role="combobox"
                         aria-expanded="true"
                         aria-controls="command-palette-results"
-                        className="flex-1 border-none bg-transparent text-[14px] font-medium text-fg-1 outline-none placeholder:text-fg-3"
+                        className="flex-1 border-none bg-transparent text-base font-medium text-fg-1 outline-none placeholder:text-fg-3"
                         placeholder="Buscar incidentes, acciones…"
                     />
-                    <kbd className="rounded-sm border border-b-2 border-border bg-surface-2 px-1.5 py-0.5 font-mono text-[10px] text-fg-2">
+                    <kbd className="rounded-sm border border-b-2 border-border bg-surface-2 px-1.5 py-0.5 font-mono text-3xs text-fg-2">
                         ESC
                     </kbd>
                 </div>
@@ -202,14 +202,14 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
                     {/* Incidents group */}
                     {incidents.length > 0 && (
                         <div>
-                            <div className="px-3.5 py-2.5 text-[10px] font-semibold tracking-[0.08em] text-fg-3 uppercase">
+                            <div className="px-3.5 py-2.5 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
                                 Incidentes recientes
                             </div>
                             {incidents.map((incident, idx) => (
                                 <div
                                     key={incident.id}
                                     className={cn(
-                                        'flex cursor-pointer items-center gap-2.5 px-3.5 py-2 text-[13px] transition-colors duration-75',
+                                        'flex cursor-pointer items-center gap-2.5 px-3.5 py-2 text-sm transition-colors duration-75',
                                         idx === activeIdx
                                             ? 'bg-primary/20'
                                             : 'hover:bg-surface-2',
@@ -219,7 +219,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
                                 >
                                     <span
                                         className={cn(
-                                            'shrink-0 font-mono text-[11px] font-semibold',
+                                            'shrink-0 font-mono text-2xs font-semibold',
                                             SEVERITY_CLASS[
                                                 incident.severity ?? ''
                                             ] ?? 'text-fg-3',
@@ -230,7 +230,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
                                     <span className="flex-1 truncate text-fg-1">
                                         {incident.title}
                                     </span>
-                                    <span className="shrink-0 text-[11px] text-fg-3">
+                                    <span className="shrink-0 text-2xs text-fg-3">
                                         {incident.status ?? ''}
                                     </span>
                                 </div>
@@ -241,7 +241,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
                     {/* Actions group */}
                     {filteredActions.length > 0 && (
                         <div>
-                            <div className="border-t border-border px-3.5 py-2.5 text-[10px] font-semibold tracking-[0.08em] text-fg-3 uppercase">
+                            <div className="border-t border-border px-3.5 py-2.5 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
                                 Acciones
                             </div>
                             {filteredActions.map((action, idx) => {
@@ -251,7 +251,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
                                     <div
                                         key={action.id}
                                         className={cn(
-                                            'flex cursor-pointer items-center gap-2.5 px-3.5 py-2 text-[13px] transition-colors duration-75',
+                                            'flex cursor-pointer items-center gap-2.5 px-3.5 py-2 text-sm transition-colors duration-75',
                                             absoluteIdx === activeIdx
                                                 ? 'bg-primary/20'
                                                 : 'hover:bg-surface-2',
@@ -264,7 +264,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
                                         <span className="flex-1 text-fg-1">
                                             {action.label}
                                         </span>
-                                        <span className="shrink-0 text-[11px] text-fg-3">
+                                        <span className="shrink-0 text-2xs text-fg-3">
                                             {action.description}
                                         </span>
                                     </div>
@@ -274,7 +274,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
                     )}
 
                     {totalItems === 0 && (
-                        <div className="px-3.5 py-6 text-center text-[13px] text-fg-3">
+                        <div className="px-3.5 py-6 text-center text-sm text-fg-3">
                             Sin resultados para «{query}»
                         </div>
                     )}

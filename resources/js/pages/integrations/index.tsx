@@ -112,7 +112,7 @@ function WebhookField({ url }: { url: string }) {
     return (
         <div className="flex items-center gap-1.5 rounded-md border border-border bg-surface-2 px-2 py-1.5">
             <Wifi size={12} className="shrink-0 text-fg-3" />
-            <code className="flex-1 truncate font-mono text-[10px] text-fg-2">
+            <code className="flex-1 truncate font-mono text-3xs text-fg-2">
                 {url}
             </code>
             <Button
@@ -205,7 +205,7 @@ function IntegrationCard({
                 ) : null}
             </div>
 
-            <div className="grid grid-cols-2 gap-2 text-[11px]">
+            <div className="grid grid-cols-2 gap-2 text-2xs">
                 <div>
                     <div className="sam-meta">Estado</div>
                     <div className="font-medium">
@@ -221,7 +221,7 @@ function IntegrationCard({
             </div>
 
             {integration.status === 'error' && integration.lastErrorMessage ? (
-                <div className="rounded-md border border-health-down/40 bg-health-down/10 px-2 py-1.5 text-[11px] text-health-down">
+                <div className="rounded-md border border-health-down/40 bg-health-down/10 px-2 py-1.5 text-2xs text-health-down">
                     {integration.lastErrorMessage}
                 </div>
             ) : null}

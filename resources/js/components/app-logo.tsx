@@ -10,7 +10,7 @@ export default function AppLogo() {
                 <span className="truncate text-sm font-semibold tracking-tight text-fg-1">
                     SAM
                 </span>
-                <span className="font-mono text-[10px] tracking-[0.12em] text-fg-3 uppercase">
+                <span className="font-mono text-3xs tracking-[0.12em] text-fg-3 uppercase">
                     Operations
                 </span>
             </div>

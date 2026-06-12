@@ -30,7 +30,7 @@ export function DetailTimeline({ incident }: DetailTimelineProps) {
         <div className="flex flex-col gap-4">
             {/* Timeline */}
             <section>
-                <h3 className="mb-3 text-[10px] font-semibold tracking-[0.08em] text-fg-3 uppercase">
+                <h3 className="mb-3 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
                     Timeline
                 </h3>
                 <ol
@@ -45,7 +45,7 @@ export function DetailTimeline({ incident }: DetailTimelineProps) {
                         return (
                             <li
                                 key={idx}
-                                className="grid items-start gap-2 py-1.5 text-[12px]"
+                                className="grid items-start gap-2 py-1.5 text-xs"
                                 style={{
                                     gridTemplateColumns: '24px 1fr auto',
                                 }}
@@ -77,13 +77,13 @@ export function DetailTimeline({ incident }: DetailTimelineProps) {
                                         </span>
                                     </div>
                                     {entry.sub && (
-                                        <div className="mt-0.5 text-[11px] text-fg-3">
+                                        <div className="mt-0.5 text-2xs text-fg-3">
                                             {entry.sub}
                                         </div>
                                     )}
                                 </div>
 
-                                <span className="font-mono text-[10px] whitespace-nowrap text-fg-3">
+                                <span className="font-mono text-3xs whitespace-nowrap text-fg-3">
                                     {entry.ts}
                                 </span>
                             </li>
@@ -95,10 +95,10 @@ export function DetailTimeline({ incident }: DetailTimelineProps) {
             {/* Related links */}
             {incident.relatedLinks.length > 0 && (
                 <section>
-                    <h3 className="mb-2 text-[10px] font-semibold tracking-[0.08em] text-fg-3 uppercase">
+                    <h3 className="mb-2 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
                         Relacionados · {incident.relatedLinks.length}
                     </h3>
-                    <ul className="m-0 list-none p-0 text-[12px] text-fg-2">
+                    <ul className="m-0 list-none p-0 text-xs text-fg-2">
                         {incident.relatedLinks.map((link, idx) => {
                             const decisionColor =
                                 link.decision === 'incident'
@@ -114,18 +114,18 @@ export function DetailTimeline({ incident }: DetailTimelineProps) {
                                     key={idx}
                                     className="flex flex-wrap items-center gap-2 border-b border-border py-2 last:border-b-0"
                                 >
-                                    <span className="shrink-0 font-mono text-[10px] text-fg-3">
+                                    <span className="shrink-0 font-mono text-3xs text-fg-3">
                                         {link.ts}
                                     </span>
-                                    <span className="shrink-0 font-mono text-[11px] text-fg-2">
+                                    <span className="shrink-0 font-mono text-2xs text-fg-2">
                                         {link.eventType}
                                     </span>
-                                    <span className="shrink-0 font-mono text-[11px] text-fg-1">
+                                    <span className="shrink-0 font-mono text-2xs text-fg-1">
                                         {link.asset}
                                     </span>
                                     <span
                                         className={cn(
-                                            'text-[11px] font-semibold',
+                                            'text-2xs font-semibold',
                                             decisionColor,
                                         )}
                                     >

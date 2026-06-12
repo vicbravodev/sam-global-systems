@@ -317,7 +317,7 @@ function DecisionRulesTab({
         <div className="flex flex-col gap-4">
             <Card>
                 <CardHeader>
-                    <CardTitle className="flex items-center justify-between text-[13px] uppercase">
+                    <CardTitle className="flex items-center justify-between text-sm uppercase">
                         Reglas de decisión ({rules.length})
                         {canManage && (
                             <Button
@@ -332,7 +332,7 @@ function DecisionRulesTab({
                 </CardHeader>
                 <CardContent>
                     {creating && (
-                        <div className="mb-4 flex flex-col gap-2 rounded-[6px] border border-border p-3">
+                        <div className="mb-4 flex flex-col gap-2 rounded-md border border-border p-3">
                             <div className="flex flex-wrap gap-2">
                                 <Input
                                     placeholder="code (ej. panic-vip)"
@@ -343,7 +343,7 @@ function DecisionRulesTab({
                                             code: e.target.value,
                                         })
                                     }
-                                    className="w-48 font-mono text-[12px]"
+                                    className="w-48 font-mono text-xs"
                                 />
                                 <Input
                                     placeholder="Nombre"
@@ -354,7 +354,7 @@ function DecisionRulesTab({
                                             name: e.target.value,
                                         })
                                     }
-                                    className="w-64 text-[12px]"
+                                    className="w-64 text-xs"
                                 />
                                 <select
                                     value={form.scope}
@@ -364,7 +364,7 @@ function DecisionRulesTab({
                                             scope: e.target.value,
                                         })
                                     }
-                                    className="rounded-md border border-border bg-surface-1 px-2 text-[12px]"
+                                    className="rounded-md border border-border bg-surface-1 px-2 text-xs"
                                 >
                                     {scopes.map((scope) => (
                                         <option key={scope} value={scope}>
@@ -382,7 +382,7 @@ function DecisionRulesTab({
                                             priority: e.target.value,
                                         })
                                     }
-                                    className="w-24 text-[12px]"
+                                    className="w-24 text-xs"
                                 />
                                 <select
                                     value={form.outcomeId}
@@ -392,7 +392,7 @@ function DecisionRulesTab({
                                             outcomeId: e.target.value,
                                         })
                                     }
-                                    className="rounded-md border border-border bg-surface-1 px-2 text-[12px]"
+                                    className="rounded-md border border-border bg-surface-1 px-2 text-xs"
                                 >
                                     <option value="">Outcome: ninguno</option>
                                     {outcomes.map((outcome) => (
@@ -404,7 +404,7 @@ function DecisionRulesTab({
                                         </option>
                                     ))}
                                 </select>
-                                <label className="flex items-center gap-1 text-[12px] text-fg-2">
+                                <label className="flex items-center gap-1 text-xs text-fg-2">
                                     <input
                                         type="checkbox"
                                         checked={form.stopProcessing}
@@ -419,7 +419,7 @@ function DecisionRulesTab({
                                     stop
                                 </label>
                             </div>
-                            <Label className="text-[12px]">Condiciones</Label>
+                            <Label className="text-xs">Condiciones</Label>
                             <ConditionBuilder
                                 variant="tree"
                                 fields={conditionFields}
@@ -443,12 +443,12 @@ function DecisionRulesTab({
                     )}
 
                     {rules.length === 0 ? (
-                        <p className="text-[12px] text-fg-3">
+                        <p className="text-xs text-fg-3">
                             Sin reglas de decisión.
                         </p>
                     ) : (
-                        <table className="w-full text-left text-[12px]">
-                            <thead className="text-[11px] text-fg-3 uppercase">
+                        <table className="w-full text-left text-xs">
+                            <thead className="text-2xs text-fg-3 uppercase">
                                 <tr>
                                     <th className="py-1.5 pr-4">Prio</th>
                                     <th className="py-1.5 pr-4">Código</th>
@@ -476,7 +476,7 @@ function DecisionRulesTab({
                                             <td className="py-2 pr-4 tabular-nums">
                                                 {rule.priority}
                                             </td>
-                                            <td className="py-2 pr-4 font-mono text-[11px]">
+                                            <td className="py-2 pr-4 font-mono text-2xs">
                                                 {rule.code}
                                             </td>
                                             <td className="py-2 pr-4 text-fg-1">
@@ -484,13 +484,13 @@ function DecisionRulesTab({
                                                 {rule.stopProcessing && (
                                                     <Badge
                                                         variant="outline"
-                                                        className="ml-1.5 text-[10px] text-fg-3"
+                                                        className="ml-1.5 text-3xs text-fg-3"
                                                     >
                                                         stop
                                                     </Badge>
                                                 )}
                                             </td>
-                                            <td className="py-2 pr-4 font-mono text-[11px]">
+                                            <td className="py-2 pr-4 font-mono text-2xs">
                                                 {rule.outcomeCode ?? '—'}
                                             </td>
                                             <td className="py-2 pr-4">
@@ -624,7 +624,7 @@ function MappingRulesTab({
     return (
         <Card>
             <CardHeader>
-                <CardTitle className="flex items-center justify-between text-[13px] uppercase">
+                <CardTitle className="flex items-center justify-between text-sm uppercase">
                     Reglas de mapeo ({rules.length})
                     {canManage && (
                         <Button
@@ -639,13 +639,13 @@ function MappingRulesTab({
             </CardHeader>
             <CardContent>
                 {creating && (
-                    <div className="mb-4 flex flex-wrap items-center gap-2 rounded-[6px] border border-border p-3">
+                    <div className="mb-4 flex flex-wrap items-center gap-2 rounded-md border border-border p-3">
                         <select
                             value={form.providerId}
                             onChange={(e) =>
                                 setForm({ ...form, providerId: e.target.value })
                             }
-                            className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-[12px]"
+                            className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-xs"
                         >
                             <option value="">Proveedor…</option>
                             {options.providers.map((option) => (
@@ -663,7 +663,7 @@ function MappingRulesTab({
                                     externalEventType: e.target.value,
                                 })
                             }
-                            className="w-60 font-mono text-[12px]"
+                            className="w-60 font-mono text-xs"
                         />
                         <span className="text-fg-3">→</span>
                         <select
@@ -674,7 +674,7 @@ function MappingRulesTab({
                                     eventTypeId: e.target.value,
                                 })
                             }
-                            className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-[12px]"
+                            className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-xs"
                         >
                             <option value="">Tipo de evento…</option>
                             {options.eventTypes.map((option) => (
@@ -688,7 +688,7 @@ function MappingRulesTab({
                             onChange={(e) =>
                                 setForm({ ...form, severityId: e.target.value })
                             }
-                            className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-[12px]"
+                            className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-xs"
                         >
                             <option value="">Severidad: default</option>
                             {options.severities.map((option) => (
@@ -703,10 +703,10 @@ function MappingRulesTab({
                             onChange={(e) =>
                                 setForm({ ...form, priority: e.target.value })
                             }
-                            className="w-24 text-[12px]"
+                            className="w-24 text-xs"
                         />
                         <div className="w-full">
-                            <Label className="mb-2 block text-[12px]">
+                            <Label className="mb-2 block text-xs">
                                 Condiciones sobre el payload (opcional)
                             </Label>
                             <ConditionBuilder
@@ -735,12 +735,10 @@ function MappingRulesTab({
                 )}
 
                 {rules.length === 0 ? (
-                    <p className="text-[12px] text-fg-3">
-                        Sin reglas de mapeo.
-                    </p>
+                    <p className="text-xs text-fg-3">Sin reglas de mapeo.</p>
                 ) : (
-                    <table className="w-full text-left text-[12px]">
-                        <thead className="text-[11px] text-fg-3 uppercase">
+                    <table className="w-full text-left text-xs">
+                        <thead className="text-2xs text-fg-3 uppercase">
                             <tr>
                                 <th className="py-1.5 pr-4">Prio</th>
                                 <th className="py-1.5 pr-4">Proveedor</th>
@@ -763,12 +761,12 @@ function MappingRulesTab({
                                     <td className="py-2 pr-4">
                                         {rule.provider}
                                     </td>
-                                    <td className="py-2 pr-4 font-mono text-[11px]">
+                                    <td className="py-2 pr-4 font-mono text-2xs">
                                         {rule.externalEventType}
                                         {rule.hasConditions && (
                                             <Badge
                                                 variant="outline"
-                                                className="ml-1 text-[10px] text-fg-3"
+                                                className="ml-1 text-3xs text-fg-3"
                                             >
                                                 cond
                                             </Badge>
@@ -875,7 +873,7 @@ function OverridesTab({
     return (
         <Card>
             <CardHeader>
-                <CardTitle className="flex items-center justify-between text-[13px] uppercase">
+                <CardTitle className="flex items-center justify-between text-sm uppercase">
                     Overrides del tenant ({overrides.length})
                     {canManage && (
                         <Button
@@ -890,7 +888,7 @@ function OverridesTab({
             </CardHeader>
             <CardContent>
                 {creating && (
-                    <div className="mb-4 flex flex-col gap-2 rounded-[6px] border border-border p-3">
+                    <div className="mb-4 flex flex-col gap-2 rounded-md border border-border p-3">
                         <div className="flex flex-wrap gap-2">
                             <Input
                                 placeholder="código de regla base"
@@ -902,7 +900,7 @@ function OverridesTab({
                                         baseRuleCode: e.target.value,
                                     })
                                 }
-                                className="w-64 font-mono text-[12px]"
+                                className="w-64 font-mono text-xs"
                             />
                             <datalist id="rule-codes">
                                 {decisionRuleCodes.map((code) => (
@@ -917,7 +915,7 @@ function OverridesTab({
                                         overrideType: e.target.value,
                                     })
                                 }
-                                className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-[12px]"
+                                className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-xs"
                             >
                                 {overrideTypes.map((type) => (
                                     <option key={type} value={type}>
@@ -934,12 +932,10 @@ function OverridesTab({
                                         reason: e.target.value,
                                     })
                                 }
-                                className="w-72 text-[12px]"
+                                className="w-72 text-xs"
                             />
                         </div>
-                        <Label className="text-[12px]">
-                            Configuración (JSON)
-                        </Label>
+                        <Label className="text-xs">Configuración (JSON)</Label>
                         <textarea
                             value={form.config}
                             onChange={(e) =>
@@ -947,7 +943,7 @@ function OverridesTab({
                             }
                             rows={4}
                             spellCheck={false}
-                            className="rounded-md border border-border bg-surface-2 p-2 font-mono text-[11px] text-fg-2"
+                            className="rounded-md border border-border bg-surface-2 p-2 font-mono text-2xs text-fg-2"
                         />
                         <div>
                             <Button size="sm" onClick={create}>
@@ -958,12 +954,12 @@ function OverridesTab({
                 )}
 
                 {overrides.length === 0 ? (
-                    <p className="text-[12px] text-fg-3">
+                    <p className="text-xs text-fg-3">
                         Sin overrides — las reglas base aplican tal cual.
                     </p>
                 ) : (
-                    <table className="w-full text-left text-[12px]">
-                        <thead className="text-[11px] text-fg-3 uppercase">
+                    <table className="w-full text-left text-xs">
+                        <thead className="text-2xs text-fg-3 uppercase">
                             <tr>
                                 <th className="py-1.5 pr-4">Regla base</th>
                                 <th className="py-1.5 pr-4">Tipo</th>
@@ -979,13 +975,13 @@ function OverridesTab({
                                     key={override.id}
                                     className="border-t border-border/50 text-fg-2"
                                 >
-                                    <td className="py-2 pr-4 font-mono text-[11px]">
+                                    <td className="py-2 pr-4 font-mono text-2xs">
                                         {override.baseRuleCode}
                                     </td>
                                     <td className="py-2 pr-4">
                                         {override.overrideType}
                                     </td>
-                                    <td className="py-2 pr-4 font-mono text-[11px]">
+                                    <td className="py-2 pr-4 font-mono text-2xs">
                                         {JSON.stringify(override.config)}
                                     </td>
                                     <td className="py-2 pr-4">
@@ -1029,10 +1025,8 @@ export default function RulesIndex() {
             <Head title="Reglas" />
             <div className="flex flex-col gap-4 p-5">
                 <div>
-                    <h1 className="text-[16px] font-semibold text-fg-1">
-                        Reglas
-                    </h1>
-                    <p className="text-[12px] text-fg-3">
+                    <h1 className="text-md font-semibold text-fg-1">Reglas</h1>
+                    <p className="text-xs text-fg-3">
                         Motor de decisiones, mapeo de eventos del proveedor y
                         overrides del tenant.
                     </p>
@@ -1044,7 +1038,7 @@ export default function RulesIndex() {
                             key={item.key}
                             type="button"
                             onClick={() => setTab(item.key)}
-                            className={`px-3 py-2 text-[13px] transition-colors ${
+                            className={`px-3 py-2 text-sm transition-colors ${
                                 tab === item.key
                                     ? 'border-b-2 border-primary font-medium text-fg-1'
                                     : 'text-fg-3 hover:text-fg-1'

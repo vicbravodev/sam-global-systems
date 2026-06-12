@@ -49,13 +49,13 @@ function PriorIncidentsCard({
     teamSlug: string | null;
 }) {
     return (
-        <section className="rounded-[8px] border border-border bg-surface-1 p-4">
-            <h3 className="mb-3 flex items-center gap-1.5 text-[13px] font-semibold tracking-[0.04em] text-fg-1 uppercase">
+        <section className="rounded-lg border border-border bg-surface-1 p-4">
+            <h3 className="mb-3 flex items-center gap-1.5 text-sm font-semibold tracking-caps text-fg-1 uppercase">
                 <History size={13} strokeWidth={1.5} />
                 Historial relacionado
             </h3>
             {priorIncidents.length === 0 ? (
-                <p className="text-[12px] text-fg-3">
+                <p className="text-xs text-fg-3">
                     Sin incidentes relacionados.
                 </p>
             ) : (
@@ -63,7 +63,7 @@ function PriorIncidentsCard({
                     {priorIncidents.map((prior) => (
                         <li
                             key={prior.incidentId}
-                            className="rounded-[6px] border border-border bg-surface-2 p-2.5"
+                            className="rounded-md border border-border bg-surface-2 p-2.5"
                         >
                             <div className="mb-1 flex items-center gap-1.5">
                                 {prior.severity &&
@@ -76,7 +76,7 @@ function PriorIncidentsCard({
                                     )}
                                 <Badge
                                     variant="outline"
-                                    className="text-[10px] text-fg-3"
+                                    className="text-3xs text-fg-3"
                                 >
                                     {RELATION_LABEL[prior.relationType ?? ''] ??
                                         'Relacionado'}
@@ -85,16 +85,16 @@ function PriorIncidentsCard({
                             {teamSlug ? (
                                 <Link
                                     href={`/${teamSlug}/incidents/${prior.incidentId}`}
-                                    className="text-[12px] font-medium text-fg-1 hover:underline"
+                                    className="text-xs font-medium text-fg-1 hover:underline"
                                 >
                                     {prior.title}
                                 </Link>
                             ) : (
-                                <span className="text-[12px] font-medium text-fg-1">
+                                <span className="text-xs font-medium text-fg-1">
                                     {prior.title}
                                 </span>
                             )}
-                            <div className="mt-0.5 text-[11px] text-fg-3">
+                            <div className="mt-0.5 text-2xs text-fg-3">
                                 {prior.status ?? '—'}
                                 {prior.openedAt &&
                                     ` · ${new Date(prior.openedAt).toLocaleString('es')}`}

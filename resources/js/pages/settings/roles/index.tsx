@@ -99,7 +99,7 @@ function PermissionPicker({
                                     <span className="block leading-tight">
                                         {option.name}
                                     </span>
-                                    <span className="block font-mono text-[10px] text-fg-3">
+                                    <span className="block font-mono text-3xs text-fg-3">
                                         {option.code}
                                     </span>
                                 </span>
@@ -551,7 +551,7 @@ function RoleCard({ role, canManage, onEdit, onDelete }: RoleCardProps) {
                             {role.name}
                         </span>
                     </div>
-                    <div className="font-mono text-[10px] text-fg-3">
+                    <div className="font-mono text-3xs text-fg-3">
                         {role.code}
                     </div>
                 </div>

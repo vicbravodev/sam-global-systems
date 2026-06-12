@@ -55,7 +55,7 @@ function VisibilityChip({ v }: { v: 'internal' | 'tenant' | 'audit' }) {
     return (
         <span
             className={cn(
-                'inline-flex rounded-[3px] border px-1.5 py-0.5 text-[9px] font-semibold tracking-[0.06em] uppercase',
+                'inline-flex rounded-sm border px-1.5 py-0.5 text-3xs font-semibold tracking-caps uppercase',
                 cls,
             )}
         >
@@ -123,12 +123,12 @@ function ReclassifyDialog({
                     <DialogTitle>Reclasificar incidente</DialogTitle>
                 </DialogHeader>
                 <div className="flex flex-col gap-3">
-                    <label className="flex flex-col gap-1 text-[12px] text-fg-2">
+                    <label className="flex flex-col gap-1 text-xs text-fg-2">
                         Tipo
                         <select
                             value={typeId}
                             onChange={(e) => setTypeId(e.target.value)}
-                            className="rounded-md border border-border bg-surface-1 px-2.5 py-1.5 text-[13px] text-fg-1 outline-none"
+                            className="rounded-md border border-border bg-surface-1 px-2.5 py-1.5 text-sm text-fg-1 outline-none"
                         >
                             <option value="">Selecciona un tipo…</option>
                             {reclassifyOptions.types.map((t) => (
@@ -138,12 +138,12 @@ function ReclassifyDialog({
                             ))}
                         </select>
                     </label>
-                    <label className="flex flex-col gap-1 text-[12px] text-fg-2">
+                    <label className="flex flex-col gap-1 text-xs text-fg-2">
                         Prioridad (opcional)
                         <select
                             value={priorityId}
                             onChange={(e) => setPriorityId(e.target.value)}
-                            className="rounded-md border border-border bg-surface-1 px-2.5 py-1.5 text-[13px] text-fg-1 outline-none"
+                            className="rounded-md border border-border bg-surface-1 px-2.5 py-1.5 text-sm text-fg-1 outline-none"
                         >
                             <option value="">Sin cambio</option>
                             {reclassifyOptions.priorities.map((p) => (
@@ -210,7 +210,7 @@ function FeedbackDialog({
                 <DialogHeader>
                     <DialogTitle>Feedback de la evaluación IA</DialogTitle>
                 </DialogHeader>
-                <p className="text-[12px] leading-[1.5] text-fg-3">
+                <p className="text-xs leading-normal text-fg-3">
                     Describe por qué la evaluación es incorrecta. SAM volverá a
                     evaluar el evento con tu feedback.
                 </p>
@@ -219,7 +219,7 @@ function FeedbackDialog({
                     onChange={(e) => setReason(e.target.value)}
                     rows={3}
                     placeholder="Motivo de la reevaluación…"
-                    className="mt-1 resize-none rounded-md border border-border bg-surface-1 px-2.5 py-1.5 text-[13px] text-fg-1 outline-none placeholder:text-fg-3"
+                    className="mt-1 resize-none rounded-md border border-border bg-surface-1 px-2.5 py-1.5 text-sm text-fg-1 outline-none placeholder:text-fg-3"
                 />
                 <DialogFooter>
                     <Button
@@ -258,27 +258,27 @@ function AiEvaluationCard({ incident }: AiEvaluationCardProps) {
     const { confirmAi, pending } = useIncidentActions();
 
     return (
-        <div className="relative overflow-hidden rounded-[6px] border border-ai-accent/35 bg-surface-1 p-3.5">
+        <div className="relative overflow-hidden rounded-md border border-ai-accent/35 bg-surface-1 p-3.5">
             {/* Left accent bar */}
             <div className="absolute inset-y-0 left-0 w-[3px] bg-ai-accent" />
 
             {/* Header */}
             <div className="mb-2 flex items-center justify-between gap-2">
-                <span className="text-[10px] font-semibold tracking-[0.08em] text-ai-accent uppercase">
+                <span className="text-3xs font-semibold tracking-caps text-ai-accent uppercase">
                     SAM · decisión IA
                 </span>
-                <span className="font-mono text-[10px] text-fg-3">
+                <span className="font-mono text-3xs text-fg-3">
                     {incident.model} · {incident.latencyMs} ms
                 </span>
             </div>
 
             {/* Decision */}
-            <div className="mb-1 text-[14px] font-semibold text-fg-1">
+            <div className="mb-1 text-base font-semibold text-fg-1">
                 {DECISION_LABEL[incident.aiDecision]}
             </div>
 
             {/* Reason */}
-            <p className="mb-2.5 text-[13px] leading-[1.5] text-fg-2">
+            <p className="mb-2.5 text-sm leading-normal text-fg-2">
                 {incident.aiReason}
             </p>
 
@@ -288,7 +288,7 @@ function AiEvaluationCard({ incident }: AiEvaluationCardProps) {
             {/* Reasoning toggle */}
             <button
                 type="button"
-                className="mb-2 flex items-center gap-1 text-[12px] text-fg-2 hover:text-fg-1"
+                className="mb-2 flex items-center gap-1 text-xs text-fg-2 hover:text-fg-1"
                 onClick={() => setShowReasoning((v) => !v)}
             >
                 {showReasoning ? (
@@ -300,7 +300,7 @@ function AiEvaluationCard({ incident }: AiEvaluationCardProps) {
             </button>
 
             {showReasoning && (
-                <div className="mb-3 rounded-sm border border-border bg-surface-2 p-3 text-[12px] leading-[1.5] text-fg-2">
+                <div className="mb-3 rounded-sm border border-border bg-surface-2 p-3 text-xs leading-normal text-fg-2">
                     <ol className="list-inside list-decimal space-y-1">
                         <li>
                             Webhook recibido con firma válida · provider:{' '}
@@ -406,7 +406,7 @@ function CommentComposer() {
 
     return (
         <div
-            className="mt-2.5 grid items-center gap-2 rounded-[6px] border border-border bg-surface-1 p-2"
+            className="mt-2.5 grid items-center gap-2 rounded-md border border-border bg-surface-1 p-2"
             style={{ gridTemplateColumns: 'auto 1fr auto auto' }}
         >
             <UserAvatar initials={myInitials} size={24} />
@@ -421,14 +421,14 @@ function CommentComposer() {
                     }
                 }}
                 placeholder="Escribí un comentario…"
-                className="min-w-0 border-none bg-transparent text-[13px] text-fg-1 outline-none placeholder:text-fg-3"
+                className="min-w-0 border-none bg-transparent text-sm text-fg-1 outline-none placeholder:text-fg-3"
             />
             <select
                 value={visibility}
                 onChange={(e) =>
                     setVisibility(e.target.value as CommentVisibilityUi)
                 }
-                className="cursor-pointer border-none bg-transparent text-[12px] text-fg-2 outline-none"
+                className="cursor-pointer border-none bg-transparent text-xs text-fg-2 outline-none"
             >
                 <option value="internal">Interno</option>
                 <option value="tenant">Tenant</option>
@@ -458,17 +458,17 @@ export function DetailCenter({ incident }: DetailCenterProps) {
         <div className="flex flex-col gap-5">
             {/* Description */}
             <section>
-                <h3 className="mb-2 text-[10px] font-semibold tracking-[0.08em] text-fg-3 uppercase">
+                <h3 className="mb-2 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
                     Descripción
                 </h3>
-                <p className="text-[13px] leading-[1.55] text-fg-1">
+                <p className="text-sm leading-[1.55] text-fg-1">
                     {incident.aiReason}
                 </p>
             </section>
 
             {/* AI Evaluation */}
             <section>
-                <h3 className="mb-2 text-[10px] font-semibold tracking-[0.08em] text-fg-3 uppercase">
+                <h3 className="mb-2 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
                     Evaluación IA
                 </h3>
                 <AiEvaluationCard incident={incident} />
@@ -477,7 +477,7 @@ export function DetailCenter({ incident }: DetailCenterProps) {
             {/* Evidence */}
             {incident.evidence.length > 0 && (
                 <section>
-                    <h3 className="mb-2 text-[10px] font-semibold tracking-[0.08em] text-fg-3 uppercase">
+                    <h3 className="mb-2 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
                         Evidencia
                     </h3>
                     <div className="grid grid-cols-2 gap-1.5">
@@ -495,10 +495,10 @@ export function DetailCenter({ incident }: DetailCenterProps) {
                                         strokeWidth={1.25}
                                         aria-hidden="true"
                                     />
-                                    <span className="text-[11px] font-medium text-fg-1">
+                                    <span className="text-2xs font-medium text-fg-1">
                                         {ev.label}
                                     </span>
-                                    <span className="font-mono text-[10px] text-fg-3">
+                                    <span className="font-mono text-3xs text-fg-3">
                                         {ev.sub}
                                     </span>
                                 </button>
@@ -510,7 +510,7 @@ export function DetailCenter({ incident }: DetailCenterProps) {
 
             {/* Comments */}
             <section>
-                <h3 className="mb-3 text-[10px] font-semibold tracking-[0.08em] text-fg-3 uppercase">
+                <h3 className="mb-3 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
                     Comentarios{' '}
                     {incident.comments.length > 0
                         ? `· ${incident.comments.length}`
@@ -527,15 +527,15 @@ export function DetailCenter({ incident }: DetailCenterProps) {
                                 />
                                 <div className="min-w-0 flex-1">
                                     <div className="mb-1 flex flex-wrap items-center gap-2">
-                                        <span className="text-[12px] font-semibold text-fg-1">
+                                        <span className="text-xs font-semibold text-fg-1">
                                             {c.authorName}
                                         </span>
                                         <VisibilityChip v={c.visibility} />
-                                        <span className="text-[11px] text-fg-3">
+                                        <span className="text-2xs text-fg-3">
                                             {c.relativeTime}
                                         </span>
                                     </div>
-                                    <p className="text-[13px] leading-[1.5] text-fg-1">
+                                    <p className="text-sm leading-normal text-fg-1">
                                         {c.body}
                                     </p>
                                 </div>

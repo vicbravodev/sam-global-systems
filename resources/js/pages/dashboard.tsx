@@ -229,7 +229,7 @@ function KpiCard({
                 </div>
                 <div
                     className={cn(
-                        'mt-1.5 font-mono text-[11px] tabular-nums',
+                        'mt-1.5 font-mono text-2xs tabular-nums',
                         deltaColorClass,
                     )}
                 >
@@ -365,7 +365,7 @@ function OpenIncidentsPanel({
                                     className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-surface-2"
                                 >
                                     <SeverityBadge level={incident.severity} />
-                                    <span className="w-16 shrink-0 font-mono text-[11px] text-fg-3 tabular-nums">
+                                    <span className="w-16 shrink-0 font-mono text-2xs text-fg-3 tabular-nums">
                                         {incident.id.replace(
                                             /^INC-\d+-/,
                                             'INC-',
@@ -427,7 +427,7 @@ function LiveStreamPanel({ events }: { events: DashboardStreamEvent[] }) {
                                     index === 0 && 'sam-flash',
                                 )}
                             >
-                                <span className="w-14 shrink-0 font-mono text-[11px] text-fg-3 tabular-nums">
+                                <span className="w-14 shrink-0 font-mono text-2xs text-fg-3 tabular-nums">
                                     {event.ts}
                                 </span>
                                 <ProviderTag name={event.provider} />
@@ -471,7 +471,7 @@ function DecisionChip({
     return (
         <span
             className={cn(
-                'inline-flex rounded-sm border px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap',
+                'inline-flex rounded-sm border px-1.5 py-0.5 text-3xs font-semibold whitespace-nowrap',
                 isAlert
                     ? sevTextClass[sev]
                     : 'border-border bg-surface-3 text-fg-3',
@@ -531,7 +531,7 @@ function IntegrationsPanel({
                                 {integration.events24h.toLocaleString('es')}
                             </div>
                             <div className="sam-meta">eventos · últ. 24 h</div>
-                            <div className="mt-2 font-mono text-[10px] text-fg-3">
+                            <div className="mt-2 font-mono text-3xs text-fg-3">
                                 sync: {integration.lastSync ?? '—'}
                             </div>
                         </div>
@@ -592,7 +592,7 @@ function UsagePanel({ usage }: { usage: UsageCounterRow[] }) {
                                     style={{ width: `${fillPct}%` }}
                                 />
                             </div>
-                            <div className="mt-2 flex items-center justify-between font-mono text-[10px] text-fg-3">
+                            <div className="mt-2 flex items-center justify-between font-mono text-3xs text-fg-3">
                                 <span>
                                     {hasOverage
                                         ? `+${counter.overage.toLocaleString('es')} excedente`

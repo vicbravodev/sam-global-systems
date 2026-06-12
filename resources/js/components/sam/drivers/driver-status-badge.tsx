@@ -49,7 +49,7 @@ export function DriverStatusBadge({ status, className }: Props) {
     return (
         <span
             className={cn(
-                'inline-flex items-center gap-1.5 rounded-sm border px-1.5 py-1 text-[10px] font-semibold tracking-[0.02em] whitespace-nowrap',
+                'inline-flex items-center gap-1.5 rounded-sm border px-1.5 py-1 text-3xs font-semibold tracking-label whitespace-nowrap',
                 v.className,
                 className,
             )}

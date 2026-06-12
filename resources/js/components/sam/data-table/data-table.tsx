@@ -163,7 +163,7 @@ export function DataTable<T>({
         <div className={cn('min-h-0 flex-1 overflow-auto', className)}>
             <table className="w-full border-collapse">
                 <thead>
-                    <tr className="sticky top-0 z-10 border-b border-border bg-surface-3 text-[10px] font-semibold tracking-[0.08em] text-fg-3 uppercase">
+                    <tr className="sticky top-0 z-10 border-b border-border bg-surface-3 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
                         {selectable && (
                             <th className="w-[34px] px-2.5 py-2 text-left">
                                 <input
@@ -305,7 +305,7 @@ export function DataTable<T>({
                                                   column.align === 'right' &&
                                                       'text-right',
                                                   column.numeric &&
-                                                      'font-mono text-[12px] tabular-nums',
+                                                      'font-mono text-xs tabular-nums',
                                               )}
                                           >
                                               {column.cell(row)}

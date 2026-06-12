@@ -56,7 +56,7 @@ function LiveSlaCell({ seconds, total }: { seconds: number; total: number }) {
         : `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 
     return (
-        <span className="font-mono text-[12px] tabular-nums" style={{ color }}>
+        <span className="font-mono text-xs tabular-nums" style={{ color }}>
             {high && !critical && (
                 <span aria-hidden="true" className="mr-0.5">
                     ▲
@@ -80,7 +80,7 @@ function RelativeTimeCell({ min }: { min: number }) {
                 : `${Math.floor(min / 1440)} d`;
 
     return (
-        <span className="font-mono text-[11px] text-fg-3 tabular-nums">
+        <span className="font-mono text-2xs text-fg-3 tabular-nums">
             {text}
         </span>
     );
@@ -149,7 +149,7 @@ export function IncidentRow({
             {/* Check */}
             <td
                 className={cn(
-                    'w-[34px] border-b border-border px-2.5 align-middle text-[12px]',
+                    'w-[34px] border-b border-border px-2.5 align-middle text-xs',
                     cellH,
                 )}
                 onClick={(e) => {
@@ -192,7 +192,7 @@ export function IncidentRow({
             {/* Severity */}
             <td
                 className={cn(
-                    'w-24 border-b border-border px-2.5 align-middle text-[12px]',
+                    'w-24 border-b border-border px-2.5 align-middle text-xs',
                     cellH,
                 )}
             >
@@ -202,7 +202,7 @@ export function IncidentRow({
             {/* Incident */}
             <td
                 className={cn(
-                    'flex-1 border-b border-border px-2.5 align-middle text-[12px]',
+                    'flex-1 border-b border-border px-2.5 align-middle text-xs',
                     cellH,
                 )}
             >
@@ -211,13 +211,13 @@ export function IncidentRow({
                         <span className="truncate font-medium text-fg-1">
                             {incident.title}
                         </span>
-                        <span className="shrink-0 font-mono text-[10px] text-fg-3">
+                        <span className="shrink-0 font-mono text-3xs text-fg-3">
                             {incident.id}
                         </span>
                         {incident.realtime && <LiveDot />}
                     </div>
                     {!isCompact && (
-                        <div className="flex min-w-0 items-center gap-1.5 text-[11px] text-fg-3">
+                        <div className="flex min-w-0 items-center gap-1.5 text-2xs text-fg-3">
                             <span className="shrink-0">
                                 {incident.provider}
                             </span>
@@ -233,16 +233,16 @@ export function IncidentRow({
             {/* Asset */}
             <td
                 className={cn(
-                    'w-36 border-b border-border px-2.5 align-middle text-[12px]',
+                    'w-36 border-b border-border px-2.5 align-middle text-xs',
                     cellH,
                 )}
             >
                 <div className="flex min-w-0 flex-col">
-                    <span className="truncate font-mono text-[11px] text-fg-1">
+                    <span className="truncate font-mono text-2xs text-fg-1">
                         {incident.asset.split(' · ')[0]}
                     </span>
                     {!isCompact && (
-                        <span className="truncate text-[10px] text-fg-3">
+                        <span className="truncate text-3xs text-fg-3">
                             {incident.asset.split(' · ')[1] ?? ''}
                         </span>
                     )}
@@ -252,7 +252,7 @@ export function IncidentRow({
             {/* Driver */}
             <td
                 className={cn(
-                    'w-28 border-b border-border px-2.5 align-middle text-[12px] text-fg-2',
+                    'w-28 border-b border-border px-2.5 align-middle text-xs text-fg-2',
                     cellH,
                 )}
             >
@@ -262,7 +262,7 @@ export function IncidentRow({
             {/* Assignee */}
             <td
                 className={cn(
-                    'w-40 border-b border-border px-2.5 align-middle text-[12px]',
+                    'w-40 border-b border-border px-2.5 align-middle text-xs',
                     cellH,
                 )}
             >
@@ -272,12 +272,12 @@ export function IncidentRow({
                             initials={incident.assignee.initials}
                             size={20}
                         />
-                        <span className="truncate text-[11px] text-fg-1">
+                        <span className="truncate text-2xs text-fg-1">
                             {incident.assignee.name}
                         </span>
                     </div>
                 ) : (
-                    <span className="text-[11px] text-fg-3 italic">
+                    <span className="text-2xs text-fg-3 italic">
                         Sin asignar
                     </span>
                 )}
@@ -286,7 +286,7 @@ export function IncidentRow({
             {/* Status */}
             <td
                 className={cn(
-                    'w-28 border-b border-border px-2.5 align-middle text-[12px]',
+                    'w-28 border-b border-border px-2.5 align-middle text-xs',
                     cellH,
                 )}
             >
@@ -296,7 +296,7 @@ export function IncidentRow({
             {/* SLA */}
             <td
                 className={cn(
-                    'w-24 border-b border-border px-2.5 align-middle text-[12px]',
+                    'w-24 border-b border-border px-2.5 align-middle text-xs',
                     cellH,
                 )}
             >
@@ -309,7 +309,7 @@ export function IncidentRow({
             {/* Age */}
             <td
                 className={cn(
-                    'w-20 border-b border-border px-2.5 align-middle text-[12px]',
+                    'w-20 border-b border-border px-2.5 align-middle text-xs',
                     cellH,
                 )}
             >

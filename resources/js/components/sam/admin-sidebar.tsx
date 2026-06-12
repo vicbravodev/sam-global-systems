@@ -51,7 +51,7 @@ function NavItemButton({
             prefetch
             className={cn(
                 'flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-[7px]',
-                'text-[13px] font-medium text-fg-2',
+                'text-sm font-medium text-fg-2',
                 'hover:bg-sidebar-accent hover:text-fg-1',
                 'transition-colors duration-100',
                 isActive &&
@@ -68,7 +68,7 @@ function NavItemButton({
                     {item.badge !== undefined && item.badge > 0 && (
                         <span
                             className={cn(
-                                'rounded-full px-1.5 py-0.5 font-mono text-[10px] font-semibold',
+                                'rounded-full px-1.5 py-0.5 font-mono text-3xs font-semibold',
                                 isActive
                                     ? 'bg-primary text-primary-foreground'
                                     : pulse
@@ -159,10 +159,10 @@ export function AdminSidebar() {
                 {!collapsed && (
                     <>
                         <div className="min-w-0 flex-1">
-                            <div className="truncate text-[13px] font-semibold text-fg-1">
+                            <div className="truncate text-sm font-semibold text-fg-1">
                                 SAM · Operador
                             </div>
-                            <div className="mt-0.5 font-mono text-[11px] text-fg-3">
+                            <div className="mt-0.5 font-mono text-2xs text-fg-3">
                                 consola saas
                             </div>
                         </div>
@@ -183,7 +183,7 @@ export function AdminSidebar() {
                 {navGroups.map((group) => (
                     <div key={group.title}>
                         {!collapsed && (
-                            <div className="px-2.5 pt-4 pb-1.5 text-[10px] font-semibold tracking-[0.08em] text-fg-3 uppercase">
+                            <div className="px-2.5 pt-4 pb-1.5 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
                                 {group.title}
                             </div>
                         )}

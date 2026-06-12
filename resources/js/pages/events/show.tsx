@@ -66,13 +66,13 @@ function JsonBlock({
     return (
         <Card>
             <CardHeader>
-                <CardTitle className="text-[13px] uppercase">{title}</CardTitle>
+                <CardTitle className="text-sm uppercase">{title}</CardTitle>
             </CardHeader>
             <CardContent>
                 {data === null || Object.keys(data).length === 0 ? (
-                    <p className="text-[12px] text-fg-3">Sin datos.</p>
+                    <p className="text-xs text-fg-3">Sin datos.</p>
                 ) : (
-                    <pre className="max-h-72 overflow-auto rounded-[6px] bg-surface-2 p-3 font-mono text-[11px] leading-relaxed text-fg-2">
+                    <pre className="max-h-72 overflow-auto rounded-md bg-surface-2 p-3 font-mono text-2xs leading-relaxed text-fg-2">
                         {JSON.stringify(data, null, 2)}
                     </pre>
                 )}
@@ -104,7 +104,7 @@ export default function EventShow() {
                         <div className="mb-1 flex flex-wrap items-center gap-1.5">
                             {event.severityLabel && (
                                 <span
-                                    className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase"
+                                    className="rounded px-1.5 py-0.5 text-3xs font-semibold uppercase"
                                     style={{
                                         color: event.severityColor ?? undefined,
                                         backgroundColor: event.severityColor
@@ -131,12 +131,12 @@ export default function EventShow() {
                                 </Badge>
                             )}
                         </div>
-                        <h1 className="text-[18px] font-semibold text-fg-1">
+                        <h1 className="text-lg font-semibold text-fg-1">
                             {event.eventType ??
                                 event.eventTypeCode ??
                                 `Evento #${event.id}`}
                         </h1>
-                        <p className="text-[12px] text-fg-3">
+                        <p className="text-xs text-fg-3">
                             {event.occurredAt
                                 ? new Date(event.occurredAt).toLocaleString(
                                       'es',
@@ -156,7 +156,7 @@ export default function EventShow() {
                 </div>
 
                 {unmapped && (
-                    <div className="rounded-[6px] border border-severity-high/40 bg-severity-high/10 px-3 py-2 text-[12px] text-fg-2">
+                    <div className="rounded-md border border-severity-high/40 bg-severity-high/10 px-3 py-2 text-xs text-fg-2">
                         Este evento no coincidió con ninguna regla de mapeo —
                         revisa el payload crudo y añade la regla en
                         Normalización.
@@ -167,11 +167,11 @@ export default function EventShow() {
                 <div className="grid gap-4 lg:grid-cols-3">
                     <Card>
                         <CardHeader>
-                            <CardTitle className="text-[13px] uppercase">
+                            <CardTitle className="text-sm uppercase">
                                 Evaluación IA
                             </CardTitle>
                         </CardHeader>
-                        <CardContent className="text-[12px] text-fg-2">
+                        <CardContent className="text-xs text-fg-2">
                             {evaluation === null ? (
                                 <p className="text-fg-3">Sin evaluación.</p>
                             ) : (
@@ -205,11 +205,11 @@ export default function EventShow() {
 
                     <Card>
                         <CardHeader>
-                            <CardTitle className="text-[13px] uppercase">
+                            <CardTitle className="text-sm uppercase">
                                 Decisión
                             </CardTitle>
                         </CardHeader>
-                        <CardContent className="text-[12px] text-fg-2">
+                        <CardContent className="text-xs text-fg-2">
                             {decision === null ? (
                                 <p className="text-fg-3">Sin decisión.</p>
                             ) : (
@@ -231,7 +231,7 @@ export default function EventShow() {
                                     <li className="text-fg-3">
                                         {decision.reason ?? ''}
                                     </li>
-                                    <li className="font-mono text-[11px] text-fg-3">
+                                    <li className="font-mono text-2xs text-fg-3">
                                         {decision.decidedAt
                                             ? new Date(
                                                   decision.decidedAt,
@@ -245,11 +245,11 @@ export default function EventShow() {
 
                     <Card>
                         <CardHeader>
-                            <CardTitle className="text-[13px] uppercase">
+                            <CardTitle className="text-sm uppercase">
                                 Incidente
                             </CardTitle>
                         </CardHeader>
-                        <CardContent className="text-[12px] text-fg-2">
+                        <CardContent className="text-xs text-fg-2">
                             {incident === null ? (
                                 <p className="text-fg-3">
                                     No generó incidente.
@@ -282,7 +282,7 @@ export default function EventShow() {
                 {media.length > 0 && (
                     <Card>
                         <CardHeader>
-                            <CardTitle className="text-[13px] uppercase">
+                            <CardTitle className="text-sm uppercase">
                                 Media ({media.length})
                             </CardTitle>
                         </CardHeader>
@@ -294,7 +294,7 @@ export default function EventShow() {
                                         href={item.url ?? '#'}
                                         target="_blank"
                                         rel="noreferrer"
-                                        className="flex h-20 w-32 items-center justify-center overflow-hidden rounded-[6px] border border-border bg-surface-2 text-[11px] text-fg-3"
+                                        className="flex h-20 w-32 items-center justify-center overflow-hidden rounded-md border border-border bg-surface-2 text-2xs text-fg-3"
                                     >
                                         {item.thumbnailUrl ? (
                                             <img

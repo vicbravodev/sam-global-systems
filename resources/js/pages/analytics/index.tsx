@@ -83,7 +83,7 @@ function formatValue(value: number | null, unit: string | null): string {
 function OverviewCards({ overview }: { overview: OverviewProp | null }) {
     if (overview === null || overview.data === null) {
         return (
-            <p className="text-[12px] text-fg-3">
+            <p className="text-xs text-fg-3">
                 Aún no hay snapshot de resumen — se genera con
                 BuildAnalyticsSnapshotJob.
             </p>
@@ -99,12 +99,12 @@ function OverviewCards({ overview }: { overview: OverviewProp | null }) {
             {entries.slice(0, 12).map(([key, value]) => (
                 <div
                     key={key}
-                    className="rounded-[6px] border border-border bg-surface-1 p-3"
+                    className="rounded-md border border-border bg-surface-1 p-3"
                 >
-                    <div className="text-[11px] text-fg-3 uppercase">
+                    <div className="text-2xs text-fg-3 uppercase">
                         {key.replaceAll('_', ' ')}
                     </div>
-                    <div className="text-[20px] font-semibold text-fg-1 tabular-nums">
+                    <div className="text-xl font-semibold text-fg-1 tabular-nums">
                         {typeof value === 'number'
                             ? value.toLocaleString('es')
                             : String(value)}
@@ -126,7 +126,7 @@ function KpisTab({
         <div className="flex flex-col gap-4">
             <Card>
                 <CardHeader>
-                    <CardTitle className="text-[13px] uppercase">
+                    <CardTitle className="text-sm uppercase">
                         Resumen del tenant
                         {overview?.periodStart && (
                             <span className="ml-2 font-normal text-fg-3 normal-case">
@@ -146,18 +146,18 @@ function KpisTab({
 
             <Card>
                 <CardHeader>
-                    <CardTitle className="text-[13px] uppercase">
+                    <CardTitle className="text-sm uppercase">
                         KPIs recientes ({kpis.length})
                     </CardTitle>
                 </CardHeader>
                 <CardContent>
                     {kpis.length === 0 ? (
-                        <p className="text-[12px] text-fg-3">
+                        <p className="text-xs text-fg-3">
                             Sin KPIs calculados todavía.
                         </p>
                     ) : (
-                        <table className="w-full text-left text-[12px]">
-                            <thead className="text-[11px] text-fg-3 uppercase">
+                        <table className="w-full text-left text-xs">
+                            <thead className="text-2xs text-fg-3 uppercase">
                                 <tr>
                                     <th className="py-1.5 pr-4">KPI</th>
                                     <th className="py-1.5 pr-4">Valor</th>
@@ -172,7 +172,7 @@ function KpisTab({
                                         key={kpi.id}
                                         className="border-t border-border/50 text-fg-2"
                                     >
-                                        <td className="py-2 pr-4 font-mono text-[11px]">
+                                        <td className="py-2 pr-4 font-mono text-2xs">
                                             {kpi.code}
                                         </td>
                                         <td className="py-2 pr-4 font-semibold text-fg-1 tabular-nums">
@@ -188,7 +188,7 @@ function KpisTab({
                                                 ? `${kpi.dimensionType}${kpi.dimensionReference ? ` #${kpi.dimensionReference}` : ''}`
                                                 : 'global'}
                                         </td>
-                                        <td className="py-2 pr-4 font-mono text-[11px] whitespace-nowrap">
+                                        <td className="py-2 pr-4 font-mono text-2xs whitespace-nowrap">
                                             {kpi.calculatedAt
                                                 ? new Date(
                                                       kpi.calculatedAt,
@@ -262,20 +262,20 @@ function ReportsTab({
         <div className="flex flex-col gap-4">
             <Card>
                 <CardHeader>
-                    <CardTitle className="text-[13px] uppercase">
+                    <CardTitle className="text-sm uppercase">
                         Reportes disponibles ({reports.length})
                     </CardTitle>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-2">
                     {reports.length === 0 ? (
-                        <p className="text-[12px] text-fg-3">
+                        <p className="text-xs text-fg-3">
                             Sin definiciones de reporte activas.
                         </p>
                     ) : (
                         reports.map((report) => (
                             <div
                                 key={report.id}
-                                className="flex flex-wrap items-center gap-2 rounded-[6px] border border-border p-2.5 text-[12px]"
+                                className="flex flex-wrap items-center gap-2 rounded-md border border-border p-2.5 text-xs"
                             >
                                 <FileBarChart2
                                     size={14}
@@ -315,18 +315,18 @@ function ReportsTab({
 
             <Card>
                 <CardHeader>
-                    <CardTitle className="text-[13px] uppercase">
+                    <CardTitle className="text-sm uppercase">
                         Ejecuciones recientes ({executions.length})
                     </CardTitle>
                 </CardHeader>
                 <CardContent>
                     {executions.length === 0 ? (
-                        <p className="text-[12px] text-fg-3">
+                        <p className="text-xs text-fg-3">
                             Aún sin ejecuciones.
                         </p>
                     ) : (
-                        <table className="w-full text-left text-[12px]">
-                            <thead className="text-[11px] text-fg-3 uppercase">
+                        <table className="w-full text-left text-xs">
+                            <thead className="text-2xs text-fg-3 uppercase">
                                 <tr>
                                     <th className="py-1.5 pr-4">#</th>
                                     <th className="py-1.5 pr-4">Reporte</th>
@@ -342,13 +342,13 @@ function ReportsTab({
                                         key={execution.id}
                                         className="border-t border-border/50 text-fg-2"
                                     >
-                                        <td className="py-2 pr-4 font-mono text-[11px]">
+                                        <td className="py-2 pr-4 font-mono text-2xs">
                                             {execution.id}
                                         </td>
                                         <td className="py-2 pr-4 text-fg-1">
                                             {execution.reportName ?? '—'}
                                         </td>
-                                        <td className="py-2 pr-4 font-mono text-[11px] uppercase">
+                                        <td className="py-2 pr-4 font-mono text-2xs uppercase">
                                             {execution.format}
                                         </td>
                                         <td
@@ -357,7 +357,7 @@ function ReportsTab({
                                         >
                                             {execution.status}
                                         </td>
-                                        <td className="py-2 pr-4 font-mono text-[11px] whitespace-nowrap">
+                                        <td className="py-2 pr-4 font-mono text-2xs whitespace-nowrap">
                                             {execution.finishedAt
                                                 ? new Date(
                                                       execution.finishedAt,
@@ -404,10 +404,10 @@ export default function AnalyticsIndex() {
             <Head title="Analítica" />
             <div className="flex flex-col gap-4 p-5">
                 <div>
-                    <h1 className="text-[16px] font-semibold text-fg-1">
+                    <h1 className="text-md font-semibold text-fg-1">
                         Analítica
                     </h1>
-                    <p className="text-[12px] text-fg-3">
+                    <p className="text-xs text-fg-3">
                         KPIs operativos del tenant y reportes descargables.
                     </p>
                 </div>
@@ -418,7 +418,7 @@ export default function AnalyticsIndex() {
                             key={item.key}
                             type="button"
                             onClick={() => setTab(item.key)}
-                            className={`px-3 py-2 text-[13px] transition-colors ${
+                            className={`px-3 py-2 text-sm transition-colors ${
                                 tab === item.key
                                     ? 'border-b-2 border-primary font-medium text-fg-1'
                                     : 'text-fg-3 hover:text-fg-1'

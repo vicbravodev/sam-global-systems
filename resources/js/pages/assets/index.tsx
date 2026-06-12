@@ -55,7 +55,7 @@ function PageHead({
         <PageHeader
             title="Flota"
             meta={
-                <span className="text-[12px] text-fg-3">
+                <span className="text-xs text-fg-3">
                     <span className="font-medium text-fg-1">{total}</span>{' '}
                     {total === 1 ? 'activo' : 'activos'}
                 </span>
@@ -103,7 +103,7 @@ function FilterDropdown({
                 <button
                     type="button"
                     className={cn(
-                        'flex items-center gap-1 rounded-sm border px-2.5 py-1.5 text-[11px] transition-colors',
+                        'flex items-center gap-1 rounded-sm border px-2.5 py-1.5 text-2xs transition-colors',
                         active
                             ? 'border-primary/40 bg-primary/10 text-primary'
                             : 'border-border bg-surface-1 text-fg-2 hover:border-border-strong',
@@ -172,14 +172,14 @@ function FilterBar({ filters, options, onApply }: FilterBarProps) {
 
     return (
         <div className="flex shrink-0 items-center gap-2 border-b border-border bg-background px-5 py-2">
-            <div className="mr-1 flex items-center gap-1.5 rounded-md border border-border bg-surface-1 px-2.5 py-1.5 text-[12px] text-fg-3">
+            <div className="mr-1 flex items-center gap-1.5 rounded-md border border-border bg-surface-1 px-2.5 py-1.5 text-xs text-fg-3">
                 <Search size={12} />
                 <input
                     type="text"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="Buscar por nombre o código…"
-                    className="w-48 border-none bg-transparent text-[12px] text-fg-1 outline-none placeholder:text-fg-3"
+                    className="w-48 border-none bg-transparent text-xs text-fg-1 outline-none placeholder:text-fg-3"
                 />
             </div>
 
@@ -202,7 +202,7 @@ function FilterBar({ filters, options, onApply }: FilterBarProps) {
                     onClick={() =>
                         onApply({ q: null, status: null, type: null })
                     }
-                    className="flex items-center gap-1 rounded-sm border border-dashed border-border px-2.5 py-1.5 text-[11px] text-fg-3 transition-colors hover:border-border-strong"
+                    className="flex items-center gap-1 rounded-sm border border-dashed border-border px-2.5 py-1.5 text-2xs text-fg-3 transition-colors hover:border-border-strong"
                 >
                     <X size={11} />
                     Limpiar
@@ -229,7 +229,7 @@ function FleetFooter({
 
     return (
         <div className="flex shrink-0 items-center justify-between border-t border-border bg-surface-1 px-5 py-2">
-            <span className="text-[11px] text-fg-3">
+            <span className="text-2xs text-fg-3">
                 {from}–{to} de {pagination.total}{' '}
                 {pagination.total === 1 ? 'activo' : 'activos'}
             </span>

@@ -120,7 +120,7 @@ export function RuleTestPanel({
 
             {result?.checks && result.checks.length > 0 && (
                 <table className="w-full text-left text-xs">
-                    <thead className="text-[11px] text-fg-3 uppercase">
+                    <thead className="text-2xs text-fg-3 uppercase">
                         <tr>
                             <th className="py-1 pr-3">Campo</th>
                             <th className="py-1 pr-3">Condición</th>
@@ -135,17 +135,17 @@ export function RuleTestPanel({
                                 key={`${check.field}-${index}`}
                                 className="border-t border-border/50 text-fg-2"
                             >
-                                <td className="py-1.5 pr-3 font-mono text-[11px]">
+                                <td className="py-1.5 pr-3 font-mono text-2xs">
                                     {check.field}
                                 </td>
                                 <td className="py-1.5 pr-3">
                                     {OPERATOR_LABELS[check.operator] ??
                                         check.operator}
                                 </td>
-                                <td className="py-1.5 pr-3 font-mono text-[11px]">
+                                <td className="py-1.5 pr-3 font-mono text-2xs">
                                     {formatValue(check.expected)}
                                 </td>
-                                <td className="py-1.5 pr-3 font-mono text-[11px]">
+                                <td className="py-1.5 pr-3 font-mono text-2xs">
                                     {formatValue(check.actual)}
                                 </td>
                                 <td className="py-1.5">

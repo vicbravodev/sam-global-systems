@@ -48,7 +48,7 @@ function PriorityBadge({ priority }: { priority: NotificationPriorityValue }) {
     return (
         <span
             className={cn(
-                'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold',
+                'inline-flex items-center rounded-full px-2 py-0.5 text-3xs font-semibold',
                 PRIORITY_STYLES[priority],
             )}
         >
@@ -61,7 +61,7 @@ function StatusCell({ status }: { status: NotificationStatusValue }) {
     return (
         <span
             className={cn(
-                'text-[11px]',
+                'text-2xs',
                 status === 'failed'
                     ? 'font-medium text-severity-critical'
                     : 'text-fg-2',
@@ -108,18 +108,18 @@ export function NotificationsTable({
                     <div className="flex flex-col">
                         <span
                             className={cn(
-                                'truncate text-[13px] text-fg-1',
+                                'truncate text-sm text-fg-1',
                                 !notification.isRead && 'font-semibold',
                             )}
                         >
                             {notification.subject ?? notification.type}
                         </span>
                         {notification.bodyPreview && (
-                            <span className="line-clamp-1 text-[11px] text-fg-3">
+                            <span className="line-clamp-1 text-2xs text-fg-3">
                                 {notification.bodyPreview}
                             </span>
                         )}
-                        <span className="font-mono text-[10px] text-fg-3">
+                        <span className="font-mono text-3xs text-fg-3">
                             {notification.type}
                         </span>
                     </div>
@@ -152,7 +152,7 @@ export function NotificationsTable({
                     notification.sourceUrl ? (
                         <button
                             type="button"
-                            className="flex cursor-pointer items-center gap-1 text-[11px] text-primary hover:underline"
+                            className="flex cursor-pointer items-center gap-1 text-2xs text-primary hover:underline"
                             onClick={() =>
                                 onOpenSource(notification.sourceUrl as string)
                             }
@@ -161,7 +161,7 @@ export function NotificationsTable({
                             Ver incidente
                         </button>
                     ) : (
-                        <span className="text-[11px] text-fg-3">
+                        <span className="text-2xs text-fg-3">
                             {notification.sourceType}
                         </span>
                     ),
@@ -195,7 +195,7 @@ export function NotificationsTable({
                     !notification.isRead ? (
                         <button
                             type="button"
-                            className="flex cursor-pointer items-center gap-1 rounded-sm border border-border px-2 py-1 text-[11px] text-fg-2 transition-colors hover:border-border-strong hover:text-fg-1"
+                            className="flex cursor-pointer items-center gap-1 rounded-sm border border-border px-2 py-1 text-2xs text-fg-2 transition-colors hover:border-border-strong hover:text-fg-1"
                             onClick={() => onMarkRead(notification.id)}
                         >
                             <Check size={11} />

@@ -80,11 +80,11 @@ function PreferenceRow({
         <div className="rounded-md border border-border p-4">
             <div className="flex items-center justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-2">
-                    <span className="truncate font-mono text-[12px] font-medium">
+                    <span className="truncate font-mono text-xs font-medium">
                         {type}
                     </span>
                     {!configured && (
-                        <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
+                        <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-3xs text-muted-foreground">
                             Sin configurar
                         </span>
                     )}
@@ -103,7 +103,7 @@ function PreferenceRow({
                 {channelOptions.map((option) => (
                     <label
                         key={option.value}
-                        className="flex cursor-pointer items-center gap-2 text-[12px]"
+                        className="flex cursor-pointer items-center gap-2 text-xs"
                     >
                         <Checkbox
                             checked={channels.includes(option.value)}
@@ -116,7 +116,7 @@ function PreferenceRow({
 
             <label
                 className={cn(
-                    'mt-3 flex w-fit cursor-pointer items-center gap-2 text-[12px]',
+                    'mt-3 flex w-fit cursor-pointer items-center gap-2 text-xs',
                     muted && 'text-muted-foreground',
                 )}
             >
@@ -129,7 +129,7 @@ function PreferenceRow({
             </label>
 
             {channels.length === 0 && (
-                <p className="mt-2 text-[11px] text-muted-foreground">
+                <p className="mt-2 text-2xs text-muted-foreground">
                     Selecciona al menos un canal para guardar.
                 </p>
             )}

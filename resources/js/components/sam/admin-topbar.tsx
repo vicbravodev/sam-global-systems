@@ -45,7 +45,7 @@ export function AdminTopbar({ breadcrumbs = [] }: AdminTopbarProps) {
                                 )}
                                 <span
                                     className={cn(
-                                        'text-[12px] font-medium',
+                                        'text-xs font-medium',
                                         isLast
                                             ? 'font-semibold text-fg-1'
                                             : 'text-fg-3',
@@ -80,15 +80,15 @@ export function AdminTopbar({ breadcrumbs = [] }: AdminTopbarProps) {
             {/* User pill */}
             <div className="flex items-center gap-2 rounded-full border border-border pr-2 pl-0.5">
                 <div className="grid size-[26px] shrink-0 place-items-center rounded-full bg-primary">
-                    <span className="text-[11px] font-semibold text-white">
+                    <span className="text-2xs font-semibold text-white">
                         {userInitials}
                     </span>
                 </div>
                 <div className="min-w-0">
-                    <div className="max-w-[120px] truncate text-[12px] font-semibold text-fg-1">
+                    <div className="max-w-[120px] truncate text-xs font-semibold text-fg-1">
                         {user.name}
                     </div>
-                    <div className="mt-0.5 font-mono text-[10px] text-fg-3">
+                    <div className="mt-0.5 font-mono text-3xs text-fg-3">
                         Operador SAM
                     </div>
                 </div>

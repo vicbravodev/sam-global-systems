@@ -129,10 +129,10 @@ function RiskCard({ risk }: { risk: DriverDetail['riskProfile'] }) {
                                     key={label}
                                     className="rounded-md border border-border bg-surface-2 px-2 py-2"
                                 >
-                                    <dt className="text-[10px] text-fg-3">
+                                    <dt className="text-3xs text-fg-3">
                                         {label}
                                     </dt>
-                                    <dd className="font-mono text-[15px] font-semibold text-fg-1 tabular-nums">
+                                    <dd className="font-mono text-md font-semibold text-fg-1 tabular-nums">
                                         {value}
                                     </dd>
                                 </div>
@@ -169,7 +169,7 @@ function ContactsCard({ contacts }: { contacts: DriverContactEntry[] }) {
                                 key={contact.id}
                                 className="flex items-center gap-3 px-4 py-2.5"
                             >
-                                <span className="w-44 shrink-0 text-[12px] text-fg-2">
+                                <span className="w-44 shrink-0 text-xs text-fg-2">
                                     {CONTACT_TYPE_LABELS[contact.contactType] ??
                                         contact.contactType}
                                     {contact.label && (
@@ -179,16 +179,16 @@ function ContactsCard({ contacts }: { contacts: DriverContactEntry[] }) {
                                         </span>
                                     )}
                                 </span>
-                                <span className="flex-1 font-mono text-[12px] text-fg-1 tabular-nums">
+                                <span className="flex-1 font-mono text-xs text-fg-1 tabular-nums">
                                     {contact.value}
                                 </span>
                                 {contact.isPrimary && (
-                                    <span className="rounded-sm border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                                    <span className="rounded-sm border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-3xs font-semibold text-primary">
                                         Primario
                                     </span>
                                 )}
                                 {contact.isEmergency && (
-                                    <span className="rounded-sm border border-severity-critical/40 bg-severity-critical/10 px-1.5 py-0.5 text-[10px] font-semibold text-severity-critical">
+                                    <span className="rounded-sm border border-severity-critical/40 bg-severity-critical/10 px-1.5 py-0.5 text-3xs font-semibold text-severity-critical">
                                         Emergencia
                                     </span>
                                 )}
@@ -225,20 +225,20 @@ function DocumentsCard({ documents }: { documents: DriverDocumentEntry[] }) {
                                 key={document.id}
                                 className="flex items-center gap-3 px-4 py-2.5"
                             >
-                                <span className="w-44 shrink-0 text-[12px] text-fg-2">
+                                <span className="w-44 shrink-0 text-xs text-fg-2">
                                     {DOCUMENT_TYPE_LABELS[
                                         document.documentType
                                     ] ?? document.documentType}
                                 </span>
-                                <span className="flex-1 font-mono text-[11px] text-fg-2">
+                                <span className="flex-1 font-mono text-2xs text-fg-2">
                                     {document.documentNumber ?? '—'}
                                 </span>
-                                <span className="text-[11px] text-fg-3">
+                                <span className="text-2xs text-fg-3">
                                     vence {formatDate(document.expiresAt)}
                                 </span>
                                 <span
                                     className={cn(
-                                        'rounded-sm border px-1.5 py-0.5 text-[10px] font-semibold',
+                                        'rounded-sm border px-1.5 py-0.5 text-3xs font-semibold',
                                         document.isExpired ||
                                             document.status === 'expired'
                                             ? 'border-severity-critical/40 bg-severity-critical/10 text-severity-critical'
@@ -259,7 +259,7 @@ function DocumentsCard({ documents }: { documents: DriverDocumentEntry[] }) {
                                         href={document.fileUrl}
                                         target="_blank"
                                         rel="noreferrer"
-                                        className="text-[11px] text-primary hover:underline"
+                                        className="text-2xs text-primary hover:underline"
                                     >
                                         Ver
                                     </a>
@@ -297,7 +297,7 @@ function AssignmentsCard({
                     <div className="max-h-96 overflow-auto">
                         <table className="w-full border-collapse">
                             <thead>
-                                <tr className="sticky top-0 z-10 border-b border-border bg-surface-3 text-[10px] font-semibold tracking-[0.08em] text-fg-3 uppercase">
+                                <tr className="sticky top-0 z-10 border-b border-border bg-surface-3 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
                                     <th className="px-4 py-2 text-left">
                                         Asset
                                     </th>
@@ -326,11 +326,11 @@ function AssignmentsCard({
                                                             ? `/${teamSlug}/assets/${assignment.asset.id}`
                                                             : '#'
                                                     }
-                                                    className="text-[12px] text-fg-1 hover:text-primary hover:underline"
+                                                    className="text-xs text-fg-1 hover:text-primary hover:underline"
                                                 >
                                                     {assignment.asset.name}
                                                     {assignment.asset.code && (
-                                                        <span className="ml-1.5 font-mono text-[10px] text-fg-3">
+                                                        <span className="ml-1.5 font-mono text-3xs text-fg-3">
                                                             {
                                                                 assignment.asset
                                                                     .code
@@ -344,17 +344,17 @@ function AssignmentsCard({
                                                 </span>
                                             )}
                                         </td>
-                                        <td className="px-2.5 py-2 text-[12px] text-fg-2">
+                                        <td className="px-2.5 py-2 text-xs text-fg-2">
                                             {ASSIGNMENT_TYPE_LABELS[
                                                 assignment.assignmentType
                                             ] ?? assignment.assignmentType}
                                         </td>
-                                        <td className="px-2.5 py-2 text-[11px] text-fg-2">
+                                        <td className="px-2.5 py-2 text-2xs text-fg-2">
                                             {formatDate(assignment.startedAt)}
                                         </td>
-                                        <td className="px-2.5 py-2 text-[11px]">
+                                        <td className="px-2.5 py-2 text-2xs">
                                             {assignment.isCurrent ? (
-                                                <span className="rounded-sm border border-severity-low/40 bg-severity-low/10 px-1.5 py-0.5 text-[10px] font-semibold text-severity-low">
+                                                <span className="rounded-sm border border-severity-low/40 bg-severity-low/10 px-1.5 py-0.5 text-3xs font-semibold text-severity-low">
                                                     Vigente
                                                 </span>
                                             ) : (
@@ -400,10 +400,10 @@ function StatusLogCard({ entries }: { entries: DriverStatusLogEntry[] }) {
                                 <SeverityBadge
                                     level={toSeverity(entry.severity)}
                                 />
-                                <span className="flex-1 text-[12px] text-fg-1">
+                                <span className="flex-1 text-xs text-fg-1">
                                     {entry.statusLabel ?? entry.statusCode}
                                 </span>
-                                <span className="text-[11px] text-fg-3">
+                                <span className="text-2xs text-fg-3">
                                     {formatDate(entry.effectiveFrom)}
                                     {entry.effectiveTo &&
                                         ` → ${formatDate(entry.effectiveTo)}`}

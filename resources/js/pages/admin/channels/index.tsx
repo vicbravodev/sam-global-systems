@@ -183,7 +183,7 @@ export default function AdminChannelsIndex({
                                         config: {},
                                     })
                                 }
-                                className="h-9 w-36 rounded-md border border-border bg-surface-1 px-2 text-[13px]"
+                                className="h-9 w-36 rounded-md border border-border bg-surface-1 px-2 text-sm"
                             >
                                 {channelTypes.map((type) => (
                                     <option key={type} value={type}>
@@ -260,17 +260,17 @@ export default function AdminChannelsIndex({
                                         <span className="font-medium">
                                             {channel.name}
                                         </span>
-                                        <span className="ml-2 font-mono text-[11px] text-fg-3">
+                                        <span className="ml-2 font-mono text-2xs text-fg-3">
                                             {channel.code}
                                         </span>
                                     </td>
-                                    <td className="px-3 py-2 font-mono text-[12px]">
+                                    <td className="px-3 py-2 font-mono text-xs">
                                         {channel.channelType}
                                     </td>
                                     <td className="px-3 py-2">
                                         {channel.provider}
                                     </td>
-                                    <td className="px-3 py-2 font-mono text-[11px] text-fg-3">
+                                    <td className="px-3 py-2 font-mono text-2xs text-fg-3">
                                         {channel.configKeys.join(', ') || '—'}
                                     </td>
                                     <td className="px-3 py-2">

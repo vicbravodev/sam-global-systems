@@ -97,7 +97,7 @@ function ReceiptUploader({ invoice }: { invoice: InvoiceRow }) {
 
     if (invoice.status === 'paid') {
         return (
-            <span className="text-[11px] text-severity-low">
+            <span className="text-2xs text-severity-low">
                 Pagada
                 {invoice.paidAt &&
                     ` el ${new Date(invoice.paidAt).toLocaleDateString('es')}`}
@@ -162,7 +162,7 @@ function ReceiptUploader({ invoice }: { invoice: InvoiceRow }) {
                 type="button"
                 disabled={uploading}
                 onClick={() => inputRef.current?.click()}
-                className="text-[11px] text-fg-2 underline hover:text-fg-1"
+                className="text-2xs text-fg-2 underline hover:text-fg-1"
             >
                 {uploading
                     ? 'Subiendo…'
@@ -197,10 +197,10 @@ export default function BillingIndex() {
             <Head title="Facturación" />
             <div className="flex flex-col gap-4 p-5">
                 <div>
-                    <h1 className="text-[16px] font-semibold text-fg-1">
+                    <h1 className="text-md font-semibold text-fg-1">
                         Facturación
                     </h1>
-                    <p className="text-[12px] text-fg-3">
+                    <p className="text-xs text-fg-3">
                         Plan, consumo del periodo y facturas. El pago es por
                         transferencia bancaria — contacta a soporte para cambios
                         de plan.
@@ -210,11 +210,11 @@ export default function BillingIndex() {
                 {/* Plan */}
                 <Card>
                     <CardHeader>
-                        <CardTitle className="text-[13px] uppercase">
+                        <CardTitle className="text-sm uppercase">
                             Plan actual
                         </CardTitle>
                     </CardHeader>
-                    <CardContent className="text-[13px] text-fg-2">
+                    <CardContent className="text-sm text-fg-2">
                         {subscription === null ? (
                             <p className="text-fg-3">
                                 Sin suscripción activa — contacta al
@@ -222,7 +222,7 @@ export default function BillingIndex() {
                             </p>
                         ) : (
                             <div className="flex flex-wrap items-center gap-3">
-                                <span className="text-[18px] font-semibold text-fg-1">
+                                <span className="text-lg font-semibold text-fg-1">
                                     {subscription.planName ?? '—'}
                                 </span>
                                 <Badge
@@ -260,19 +260,19 @@ export default function BillingIndex() {
                 {/* Usage */}
                 <Card>
                     <CardHeader>
-                        <CardTitle className="text-[13px] uppercase">
+                        <CardTitle className="text-sm uppercase">
                             Consumo del periodo
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
                         {usage.length === 0 ? (
-                            <p className="text-[12px] text-fg-3">
+                            <p className="text-xs text-fg-3">
                                 Aún sin contadores de uso para el periodo
                                 actual.
                             </p>
                         ) : (
-                            <table className="w-full text-left text-[12px]">
-                                <thead className="text-[11px] text-fg-3 uppercase">
+                            <table className="w-full text-left text-xs">
+                                <thead className="text-2xs text-fg-3 uppercase">
                                     <tr>
                                         <th className="py-1.5 pr-4">Meter</th>
                                         <th className="py-1.5 pr-4">
@@ -298,7 +298,7 @@ export default function BillingIndex() {
                                                     {row.meterName ??
                                                         row.meterCode}
                                                 </span>
-                                                <span className="ml-1 text-[11px] text-fg-3">
+                                                <span className="ml-1 text-2xs text-fg-3">
                                                     ({row.unit})
                                                 </span>
                                             </td>
@@ -333,13 +333,13 @@ export default function BillingIndex() {
                 {/* Features */}
                 <Card>
                     <CardHeader>
-                        <CardTitle className="text-[13px] uppercase">
+                        <CardTitle className="text-sm uppercase">
                             Funcionalidades ({features.length})
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
                         {features.length === 0 ? (
-                            <p className="text-[12px] text-fg-3">
+                            <p className="text-xs text-fg-3">
                                 Sin overrides de funcionalidades — aplica lo
                                 incluido en el plan.
                             </p>
@@ -366,18 +366,18 @@ export default function BillingIndex() {
                 {/* Invoices */}
                 <Card>
                     <CardHeader>
-                        <CardTitle className="text-[13px] uppercase">
+                        <CardTitle className="text-sm uppercase">
                             Facturas ({invoices.length})
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
                         {invoices.length === 0 ? (
-                            <p className="text-[12px] text-fg-3">
+                            <p className="text-xs text-fg-3">
                                 Aún sin facturas generadas.
                             </p>
                         ) : (
-                            <table className="w-full text-left text-[12px]">
-                                <thead className="text-[11px] text-fg-3 uppercase">
+                            <table className="w-full text-left text-xs">
+                                <thead className="text-2xs text-fg-3 uppercase">
                                     <tr>
                                         <th className="py-1.5 pr-4">Periodo</th>
                                         <th className="py-1.5 pr-4">

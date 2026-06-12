@@ -19,7 +19,7 @@ export function RelativeTime({ minutes, className }: Props) {
     return (
         <span
             className={cn(
-                'font-mono text-[11px] text-fg-3 tabular-nums',
+                'font-mono text-2xs text-fg-3 tabular-nums',
                 className,
             )}
         >

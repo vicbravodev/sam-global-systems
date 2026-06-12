@@ -223,19 +223,19 @@ function WorkflowBuilder({
     };
 
     return (
-        <div className="flex flex-col gap-2 rounded-[6px] border border-border p-3">
+        <div className="flex flex-col gap-2 rounded-md border border-border p-3">
             <div className="flex flex-wrap gap-2">
                 <Input
                     placeholder="code (ej. critico-notifica)"
                     value={form.code}
                     onChange={(e) => setForm({ ...form, code: e.target.value })}
-                    className="w-56 font-mono text-[12px]"
+                    className="w-56 font-mono text-xs"
                 />
                 <Input
                     placeholder="Nombre"
                     value={form.name}
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    className="w-64 text-[12px]"
+                    className="w-64 text-xs"
                 />
                 <select
                     value={form.triggerType}
@@ -243,7 +243,7 @@ function WorkflowBuilder({
                         setForm({ ...form, triggerType: e.target.value });
                         setConditions({});
                     }}
-                    className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-[12px]"
+                    className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-xs"
                 >
                     {options.triggerTypes.map((trigger) => (
                         <option key={trigger} value={trigger}>
@@ -253,7 +253,7 @@ function WorkflowBuilder({
                 </select>
             </div>
 
-            <span className="text-[11px] text-fg-3 uppercase">
+            <span className="text-2xs text-fg-3 uppercase">
                 Condiciones del disparador
             </span>
             <ConditionBuilder
@@ -264,13 +264,13 @@ function WorkflowBuilder({
                 onChange={setConditions}
             />
 
-            <span className="text-[11px] text-fg-3 uppercase">Pasos</span>
+            <span className="text-2xs text-fg-3 uppercase">Pasos</span>
             {steps.map((step, index) => (
                 <div
                     key={index}
-                    className="flex flex-wrap items-center gap-2 rounded-[6px] bg-surface-1 p-2"
+                    className="flex flex-wrap items-center gap-2 rounded-md bg-surface-1 p-2"
                 >
-                    <span className="w-5 text-center font-mono text-[11px] text-fg-3">
+                    <span className="w-5 text-center font-mono text-2xs text-fg-3">
                         {index + 1}
                     </span>
                     <select
@@ -278,7 +278,7 @@ function WorkflowBuilder({
                         onChange={(e) =>
                             setStep(index, 'action_type', e.target.value)
                         }
-                        className="rounded-md border border-border bg-surface-2 px-2 py-1 text-[12px]"
+                        className="rounded-md border border-border bg-surface-2 px-2 py-1 text-xs"
                     >
                         {options.actionTypes.map((action) => (
                             <option key={action} value={action}>
@@ -291,7 +291,7 @@ function WorkflowBuilder({
                         onChange={(e) =>
                             setStep(index, 'target_type', e.target.value)
                         }
-                        className="rounded-md border border-border bg-surface-2 px-2 py-1 text-[12px]"
+                        className="rounded-md border border-border bg-surface-2 px-2 py-1 text-xs"
                     >
                         {['role', 'user', 'email', 'phone', 'url'].map(
                             (target) => (
@@ -340,7 +340,7 @@ function WorkflowBuilder({
                                     e.target.value,
                                 )
                             }
-                            className="w-56 text-[12px]"
+                            className="w-56 text-xs"
                         />
                     )}
                     <Input
@@ -350,7 +350,7 @@ function WorkflowBuilder({
                         onChange={(e) =>
                             setStep(index, 'delay_seconds', e.target.value)
                         }
-                        className="w-20 text-[12px]"
+                        className="w-20 text-xs"
                     />
                     {steps.length > 1 && (
                         <button
@@ -445,7 +445,7 @@ function WorkflowsTab({
 
             {workflows.length === 0 && !creating && (
                 <Card>
-                    <CardContent className="py-6 text-center text-[12px] text-fg-3">
+                    <CardContent className="py-6 text-center text-xs text-fg-3">
                         Sin workflows — crea el primero para automatizar
                         notificaciones y acciones sobre incidentes.
                     </CardContent>
@@ -455,7 +455,7 @@ function WorkflowsTab({
             {workflows.map((workflow) => (
                 <Card key={workflow.id}>
                     <CardHeader>
-                        <CardTitle className="flex flex-wrap items-center gap-2 text-[14px]">
+                        <CardTitle className="flex flex-wrap items-center gap-2 text-base">
                             {workflow.name}
                             <Badge variant="outline" className="text-fg-3">
                                 {workflow.triggerType}
@@ -497,24 +497,24 @@ function WorkflowsTab({
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <ol className="flex flex-col gap-1 text-[12px] text-fg-2">
+                        <ol className="flex flex-col gap-1 text-xs text-fg-2">
                             {workflow.steps.map((step, index) => (
                                 <li
                                     key={index}
                                     className="flex flex-wrap items-center gap-2"
                                 >
-                                    <span className="font-mono text-[11px] text-fg-3">
+                                    <span className="font-mono text-2xs text-fg-3">
                                         {index + 1}.
                                     </span>
                                     <Badge
                                         variant="outline"
-                                        className="font-mono text-[10px]"
+                                        className="font-mono text-3xs"
                                     >
                                         {String(step.action_type ?? '—')}
                                     </Badge>
                                     <span className="text-fg-3">→</span>
                                     {String(step.target_type ?? '')}{' '}
-                                    <span className="font-mono text-[11px]">
+                                    <span className="font-mono text-2xs">
                                         {String(step.target_reference ?? '')}
                                     </span>
                                     {Number(step.delay_seconds ?? 0) > 0 && (
@@ -564,18 +564,18 @@ function ExecutionsTab({
     return (
         <Card>
             <CardHeader>
-                <CardTitle className="text-[13px] uppercase">
+                <CardTitle className="text-sm uppercase">
                     Últimas ejecuciones ({executions.length})
                 </CardTitle>
             </CardHeader>
             <CardContent>
                 {executions.length === 0 ? (
-                    <p className="text-[12px] text-fg-3">
+                    <p className="text-xs text-fg-3">
                         Aún sin ejecuciones de acciones.
                     </p>
                 ) : (
-                    <table className="w-full text-left text-[12px]">
-                        <thead className="text-[11px] text-fg-3 uppercase">
+                    <table className="w-full text-left text-xs">
+                        <thead className="text-2xs text-fg-3 uppercase">
                             <tr>
                                 <th className="py-1.5 pr-4">#</th>
                                 <th className="py-1.5 pr-4">Acción</th>
@@ -593,15 +593,15 @@ function ExecutionsTab({
                                     key={execution.id}
                                     className="border-t border-border/50 text-fg-2"
                                 >
-                                    <td className="py-2 pr-4 font-mono text-[11px]">
+                                    <td className="py-2 pr-4 font-mono text-2xs">
                                         {execution.id}
                                     </td>
-                                    <td className="py-2 pr-4 font-mono text-[11px]">
+                                    <td className="py-2 pr-4 font-mono text-2xs">
                                         {execution.actionType}
                                         {execution.isStub && (
                                             <Badge
                                                 variant="outline"
-                                                className="ml-1 text-[10px] text-fg-3"
+                                                className="ml-1 text-3xs text-fg-3"
                                             >
                                                 stub
                                             </Badge>
@@ -609,7 +609,7 @@ function ExecutionsTab({
                                     </td>
                                     <td className="py-2 pr-4">
                                         {execution.targetType}:{' '}
-                                        <span className="font-mono text-[11px]">
+                                        <span className="font-mono text-2xs">
                                             {execution.targetReference ?? '—'}
                                         </span>
                                     </td>
@@ -622,12 +622,12 @@ function ExecutionsTab({
                                         {execution.attempts}
                                     </td>
                                     <td
-                                        className="max-w-56 truncate py-2 pr-4 text-[11px]"
+                                        className="max-w-56 truncate py-2 pr-4 text-2xs"
                                         title={execution.errorMessage ?? ''}
                                     >
                                         {execution.errorMessage ?? '—'}
                                     </td>
-                                    <td className="py-2 pr-4 font-mono text-[11px] whitespace-nowrap">
+                                    <td className="py-2 pr-4 font-mono text-2xs whitespace-nowrap">
                                         {execution.executedAt
                                             ? new Date(
                                                   execution.executedAt,
@@ -699,10 +699,10 @@ export default function AutomationIndex() {
             <Head title="Automatizaciones" />
             <div className="flex flex-col gap-4 p-5">
                 <div>
-                    <h1 className="text-[16px] font-semibold text-fg-1">
+                    <h1 className="text-md font-semibold text-fg-1">
                         Automatizaciones
                     </h1>
-                    <p className="text-[12px] text-fg-3">
+                    <p className="text-xs text-fg-3">
                         Workflows que reaccionan a decisiones e incidentes, y el
                         historial de acciones ejecutadas.
                     </p>
@@ -714,7 +714,7 @@ export default function AutomationIndex() {
                             key={item.key}
                             type="button"
                             onClick={() => setTab(item.key)}
-                            className={`px-3 py-2 text-[13px] transition-colors ${
+                            className={`px-3 py-2 text-sm transition-colors ${
                                 tab === item.key
                                     ? 'border-b-2 border-primary font-medium text-fg-1'
                                     : 'text-fg-3 hover:text-fg-1'

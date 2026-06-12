@@ -17,9 +17,9 @@ function AssetCell({ asset }: { asset: DriverRow['currentAsset'] }) {
 
     return (
         <div className="flex flex-col">
-            <span className="truncate text-[12px] text-fg-2">{asset.name}</span>
+            <span className="truncate text-xs text-fg-2">{asset.name}</span>
             {asset.code && (
-                <span className="font-mono text-[10px] text-fg-3">
+                <span className="font-mono text-3xs text-fg-3">
                     {asset.code}
                 </span>
             )}
@@ -35,7 +35,7 @@ function RiskCell({ score }: { score: number | null }) {
     return (
         <span
             className={cn(
-                'font-mono text-[12px] font-semibold tabular-nums',
+                'font-mono text-xs font-semibold tabular-nums',
                 score >= 70
                     ? 'text-severity-critical'
                     : score >= 40
@@ -55,11 +55,11 @@ const COLUMNS: DataTableColumn<DriverRow>[] = [
         sortValue: (driver) => driver.fullName,
         cell: (driver) => (
             <div className="flex flex-col">
-                <span className="truncate text-[13px] font-medium text-fg-1">
+                <span className="truncate text-sm font-medium text-fg-1">
                     {driver.fullName}
                 </span>
                 {driver.employeeCode && (
-                    <span className="font-mono text-[10px] text-fg-3">
+                    <span className="font-mono text-3xs text-fg-3">
                         {driver.employeeCode}
                     </span>
                 )}
@@ -92,7 +92,7 @@ const COLUMNS: DataTableColumn<DriverRow>[] = [
         width: 'w-40',
         cell: (driver) =>
             driver.phone ? (
-                <span className="font-mono text-[11px] text-fg-2 tabular-nums">
+                <span className="font-mono text-2xs text-fg-2 tabular-nums">
                     {driver.phone}
                 </span>
             ) : (
