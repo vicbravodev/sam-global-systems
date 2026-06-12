@@ -74,14 +74,13 @@ visual: son los huecos funcionales, el shell legacy de settings y el móvil roto
 
 ## Fase 1 — Un solo producto, un solo shell (P1)
 
-- [ ] **F1.1 Migrar settings de usuario y equipos al shell ops.** `settings/profile|security|appearance|notifications`
-  y `teams/*` usan el starter `AppLayout` + `SettingsLayout`: otra marca ("SAM OPERATIONS"),
-  otro sidebar con nav obsoleta ("Panel / Bandeja / Integraciones"), sin topbar ni paleta.
-  Se siente otro producto. Mover esas páginas dentro de `OpsLayout` (sección "Cuenta" con
-  sub-nav lateral propia, como ya hacen `settings/roles` y `settings/tenant-config`), y borrar
-  `app-sidebar.tsx`/`app-layout.tsx` del árbol vivo si nada más los usa. Criterio: cero páginas
-  autenticadas fuera del shell ops (salvo `/admin/*` con su `AdminLayout` deliberado); el switcher
-  de tema sigue accesible.
+- [x] **F1.1 Migrar settings de usuario y equipos al shell ops.** ✅ 2026-06-12 — `settings/*` y
+  `teams/*` ahora renderizan `[OpsLayout, SettingsLayout]` con heading "Cuenta" y sub-nav propia;
+  default del resolver de layouts pasó a `OpsLayout`. El user pill del topbar es ahora un dropdown
+  real (`UserMenuContent`: perfil + cerrar sesión — antes el shell ops no tenía logout). Borrados
+  del árbol vivo: `app-layout.tsx`, `layouts/app/*`, `app-sidebar.tsx`, `app-header.tsx`,
+  `nav-main.tsx`, `nav-user.tsx`, `team-switcher.tsx`, `app-logo.tsx`. Verificado con Playwright:
+  perfil y equipos dentro del shell ops, tema accesible desde el topbar.
 - [ ] **F1.2 Empty states con voz de producto.** Hoy: "Aún no hay snapshot de resumen — se genera
   con BuildAnalyticsSnapshotJob" (jerga interna en UI), "Sin suscripción activa — contacta al
   administrador de SAM", cards apilados vacíos en Facturación y en el detalle de conductor.

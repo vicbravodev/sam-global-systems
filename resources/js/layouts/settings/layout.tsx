@@ -44,9 +44,9 @@ export default function SettingsLayout({ children }: PropsWithChildren) {
     const { isCurrentOrParentUrl } = useCurrentUrl();
 
     return (
-        <div className="px-4 py-6">
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-6">
             <Heading
-                title="Configuración"
+                title="Cuenta"
                 description="Gestiona tu perfil y la configuración de tu cuenta"
             />
 
@@ -63,7 +63,8 @@ export default function SettingsLayout({ children }: PropsWithChildren) {
                                 variant="ghost"
                                 asChild
                                 className={cn('w-full justify-start', {
-                                    'bg-muted': isCurrentOrParentUrl(item.href),
+                                    'bg-surface-2 text-fg-1':
+                                        isCurrentOrParentUrl(item.href),
                                 })}
                             >
                                 <Link href={item.href}>

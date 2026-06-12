@@ -3,6 +3,12 @@ import { Bell, ChevronRight, Menu, Moon, Search, Sun } from 'lucide-react';
 import { useState } from 'react';
 import { RealtimeStatus } from '@/components/sam/realtime-status';
 import type { RealtimeState } from '@/components/sam/realtime-status';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { UserMenuContent } from '@/components/user-menu-content';
 import { useAppearance } from '@/hooks/use-appearance';
 import { useInitials } from '@/hooks/use-initials';
 import { cn } from '@/lib/utils';
@@ -142,22 +148,33 @@ export function OpsTopbar({
                 )}
             </button>
 
-            {/* User pill */}
-            <div className="flex items-center gap-2 rounded-full border border-border pr-2 pl-0.5">
-                <div className="grid size-[26px] shrink-0 place-items-center rounded-full bg-primary">
-                    <span className="text-[11px] font-semibold text-white">
-                        {userInitials}
-                    </span>
-                </div>
-                <div className="hidden min-w-0 sm:block">
-                    <div className="max-w-[100px] truncate text-[12px] font-semibold text-fg-1">
-                        {user.name}
-                    </div>
-                    <div className="mt-0.5 font-mono text-[10px] text-fg-3">
-                        Supervisor
-                    </div>
-                </div>
-            </div>
+            {/* User menu */}
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <button
+                        type="button"
+                        className="flex cursor-pointer items-center gap-2 rounded-full border border-border bg-transparent pr-2 pl-0.5 transition-colors duration-100 hover:bg-surface-2"
+                        aria-label="Menú de usuario"
+                    >
+                        <div className="grid size-[26px] shrink-0 place-items-center rounded-full bg-primary">
+                            <span className="text-[11px] font-semibold text-white">
+                                {userInitials}
+                            </span>
+                        </div>
+                        <div className="hidden min-w-0 text-left sm:block">
+                            <div className="max-w-[100px] truncate text-[12px] font-semibold text-fg-1">
+                                {user.name}
+                            </div>
+                            <div className="mt-0.5 font-mono text-[10px] text-fg-3">
+                                Supervisor
+                            </div>
+                        </div>
+                    </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="min-w-56" align="end">
+                    <UserMenuContent user={user} />
+                </DropdownMenuContent>
+            </DropdownMenu>
         </header>
     );
 }
