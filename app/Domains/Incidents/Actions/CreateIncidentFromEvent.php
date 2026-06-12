@@ -10,6 +10,7 @@ use App\Domains\Incidents\Enums\EvidenceType;
 use App\Domains\Incidents\Enums\IncidentCreatorType;
 use App\Domains\Incidents\Enums\IncidentSourceType;
 use App\Domains\Incidents\Enums\IncidentStatusCode;
+use App\Domains\Incidents\Enums\IncidentTypeCode;
 use App\Domains\Incidents\Enums\TimelineActorType;
 use App\Domains\Incidents\Enums\TimelineEntryType;
 use App\Domains\Incidents\Events\IncidentCreated;
@@ -175,26 +176,61 @@ class CreateIncidentFromEvent
             ->first();
     }
 
+    /**
+     * Event-type codes whose incident type uses a different code 1:1.
+     */
+    private const EVENT_TYPE_INCIDENT_ALIASES = [
+        'panic_button' => IncidentTypeCode::PanicEmergency,
+        'geofence_exit' => IncidentTypeCode::GeofenceBreach,
+        'geofence_entry' => IncidentTypeCode::GeofenceBreach,
+        'tampering' => IncidentTypeCode::EmergencyAlert,
+    ];
+
+    /**
+     * Per-category buckets when no specific incident type matches the event.
+     */
+    private const CATEGORY_INCIDENT_FALLBACKS = [
+        'emergency' => IncidentTypeCode::EmergencyAlert,
+        'safety' => IncidentTypeCode::SafetyViolation,
+        'compliance' => IncidentTypeCode::ComplianceViolation,
+        'operational' => IncidentTypeCode::OperationalAlert,
+        'maintenance' => IncidentTypeCode::OperationalAlert,
+    ];
+
+    /**
+     * Resolve the incident type by trying, in order: the explicit code from
+     * the decision context, the event-type code itself, a 1:1 alias, the
+     * event-category bucket, and finally the generic `other` type. Picking an
+     * arbitrary type by id is never acceptable here — that once turned a
+     * speeding event into a "Panic Emergency" because panic happened to be
+     * the first row.
+     */
     private function resolveIncidentType(?string $code, NormalizedEvent $event): IncidentType
     {
-        if ($code !== null) {
-            $type = IncidentType::query()->where('code', $code)->where('is_active', true)->first();
+        $eventType = $event->relationLoaded('eventType')
+            ? $event->eventType
+            : $event->eventType()->with('category')->first();
+
+        $eventTypeCode = $eventType?->code;
+
+        $candidates = array_values(array_unique(array_filter([
+            $code,
+            $eventTypeCode,
+            (self::EVENT_TYPE_INCIDENT_ALIASES[$eventTypeCode] ?? null)?->value,
+            (self::CATEGORY_INCIDENT_FALLBACKS[$eventType?->category?->code] ?? null)?->value,
+            IncidentTypeCode::Other->value,
+        ])));
+
+        foreach ($candidates as $candidate) {
+            $type = IncidentType::query()->where('code', $candidate)->where('is_active', true)->first();
+
             if ($type !== null) {
                 return $type;
             }
         }
 
-        $eventTypeCode = $event->relationLoaded('eventType')
-            ? $event->eventType?->code
-            : $event->eventType()->first()?->code;
-
-        if ($eventTypeCode !== null) {
-            $type = IncidentType::query()->where('code', $eventTypeCode)->where('is_active', true)->first();
-            if ($type !== null) {
-                return $type;
-            }
-        }
-
+        // Catalog predates the generic buckets (seeder not yet run): keep the
+        // legacy any-active-type resort over failing incident creation.
         return IncidentType::query()->where('is_active', true)->orderBy('id')->firstOrFail();
     }
 

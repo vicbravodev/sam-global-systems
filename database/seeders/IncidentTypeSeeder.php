@@ -22,6 +22,14 @@ class IncidentTypeSeeder extends Seeder
             ['code' => 'geofence_breach', 'name' => 'Geofence Breach', 'default_priority_id' => $high?->id],
             ['code' => 'driver_fatigue', 'name' => 'Driver Fatigue', 'default_priority_id' => $high?->id],
             ['code' => 'suspicious_stop', 'name' => 'Suspicious Stop', 'default_priority_id' => $medium?->id],
+            // Category-level buckets: every normalized event category resolves
+            // to one of these when no specific incident type matches, so an
+            // incident is never mislabeled as another type by fallback.
+            ['code' => 'emergency_alert', 'name' => 'Emergency Alert', 'default_priority_id' => $critical?->id],
+            ['code' => 'safety_violation', 'name' => 'Safety Violation', 'default_priority_id' => $high?->id],
+            ['code' => 'compliance_violation', 'name' => 'Compliance Violation', 'default_priority_id' => $medium?->id],
+            ['code' => 'operational_alert', 'name' => 'Operational Alert', 'default_priority_id' => $medium?->id],
+            ['code' => 'other', 'name' => 'Other', 'default_priority_id' => $medium?->id],
         ];
 
         foreach ($types as $type) {

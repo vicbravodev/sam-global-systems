@@ -19,6 +19,8 @@ use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentEventLink;
 use App\Domains\Incidents\Models\IncidentEvidence;
 use App\Domains\Incidents\Models\IncidentTimeline;
+use App\Domains\Normalization\Models\EventCategory;
+use App\Domains\Normalization\Models\EventType;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\Tenancy\Models\UsageEvent;
 use App\Models\Team;
@@ -192,6 +194,63 @@ class CreateIncidentFromEventTest extends TestCase
         $this->assertNotNull($created);
         $this->assertSame(22, $created->payload_json['decision_id']);
         $this->assertSame($event->id, $created->payload_json['normalized_event_id']);
+    }
+
+    public function test_safety_event_without_matching_incident_type_resolves_to_its_category_bucket(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+
+        $category = EventCategory::factory()->create(['code' => 'safety']);
+        $eventType = EventType::factory()->create(['code' => 'speeding', 'category_id' => $category->id]);
+
+        $event = NormalizedEvent::factory()->create([
+            'team_id' => $team->id,
+            'event_type_id' => $eventType->id,
+            'event_category_id' => $category->id,
+        ]);
+
+        $incident = app(CreateIncidentFromEvent::class)->execute($event);
+
+        // A speeding event must NEVER masquerade as another incident type
+        // (the old first-active-type fallback labeled these Panic Emergency).
+        $this->assertSame('safety_violation', $incident->type->code);
+    }
+
+    public function test_panic_button_event_type_aliases_to_panic_emergency(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+
+        $category = EventCategory::factory()->create(['code' => 'emergency']);
+        $eventType = EventType::factory()->create(['code' => 'panic_button', 'category_id' => $category->id]);
+
+        $event = NormalizedEvent::factory()->create([
+            'team_id' => $team->id,
+            'event_type_id' => $eventType->id,
+            'event_category_id' => $category->id,
+        ]);
+
+        $incident = app(CreateIncidentFromEvent::class)->execute($event);
+
+        $this->assertSame('panic_emergency', $incident->type->code);
+    }
+
+    public function test_unknown_event_type_resolves_to_the_generic_other_type(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+
+        $eventType = EventType::factory()->create(['code' => 'something_never_catalogued']);
+
+        $event = NormalizedEvent::factory()->create([
+            'team_id' => $team->id,
+            'event_type_id' => $eventType->id,
+        ]);
+
+        $incident = app(CreateIncidentFromEvent::class)->execute($event);
+
+        $this->assertSame('other', $incident->type->code);
     }
 
     private function makeAsset(Team $team): Asset

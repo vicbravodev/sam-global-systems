@@ -26,6 +26,7 @@ use App\Domains\TenantConfig\Enums\SettingGroup;
 use App\Domains\TenantConfig\Enums\SettingValueType;
 use App\Domains\TenantConfig\Models\TenantSetting;
 use App\Models\User;
+use GuzzleHttp\Promise\PromiseInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Event;
@@ -115,11 +116,24 @@ class FetchDeferredEventMediaJobTest extends TestCase
         ]);
     }
 
+    /**
+     * Fake entry for the uploaded-media sweep (`GET /cameras/media`) the job
+     * now runs on every cycle. The `?` keeps it from shadowing the retrieval
+     * endpoint fakes.
+     *
+     * @return array<string, PromiseInterface>
+     */
+    private function fakeNoUploadedMedia(): array
+    {
+        return ['api.samsara.com/cameras/media?*' => Http::response(['data' => ['media' => []]])];
+    }
+
     public function test_full_cycle_pending_to_completed_downloads_and_materializes_media(): void
     {
         $this->makeSamsaraIntegration();
 
         Http::fake([
+            ...$this->fakeNoUploadedMedia(),
             'api.samsara.com/cameras/media/retrieval*' => Http::sequence()
                 // POST: place the retrieval.
                 ->push(['data' => ['retrievalId' => 'ret-1']])
@@ -184,6 +198,7 @@ class FetchDeferredEventMediaJobTest extends TestCase
         ]);
 
         Http::fake([
+            ...$this->fakeNoUploadedMedia(),
             'api.samsara.com/cameras/media/retrieval*' => Http::sequence()
                 ->push(['data' => ['retrievalId' => 'ret-1']])
                 ->push(['data' => ['media' => [[
@@ -222,6 +237,7 @@ class FetchDeferredEventMediaJobTest extends TestCase
         ]);
 
         Http::fake([
+            ...$this->fakeNoUploadedMedia(),
             'api.samsara.com/cameras/media/retrieval*' => Http::sequence()
                 // POST × 2: one image retrieval per still offset.
                 ->push(['data' => ['retrievalId' => 'still-1']])
@@ -288,6 +304,7 @@ class FetchDeferredEventMediaJobTest extends TestCase
         $this->setMediaSetting(FetchDeferredEventMediaJob::SETTING_STILL_COUNT, 3);
 
         Http::fake([
+            ...$this->fakeNoUploadedMedia(),
             'api.samsara.com/cameras/media/retrieval*' => Http::response([], 500),
         ]);
 
@@ -304,6 +321,7 @@ class FetchDeferredEventMediaJobTest extends TestCase
         $this->makeSamsaraIntegration();
 
         Http::fake([
+            ...$this->fakeNoUploadedMedia(),
             'api.samsara.com/cameras/media/retrieval*' => Http::response([
                 'data' => ['media' => [['input' => 'dashcamDriverFacing', 'status' => 'failed']]],
             ]),
@@ -361,6 +379,7 @@ class FetchDeferredEventMediaJobTest extends TestCase
         $this->makeSamsaraIntegration();
 
         Http::fake([
+            ...$this->fakeNoUploadedMedia(),
             'api.samsara.com/cameras/media/retrieval*' => Http::response([], 500),
         ]);
 
@@ -377,6 +396,7 @@ class FetchDeferredEventMediaJobTest extends TestCase
         $this->makeSamsaraIntegration();
 
         Http::fake([
+            ...$this->fakeNoUploadedMedia(),
             'api.samsara.com/cameras/media/retrieval*' => Http::response([
                 'data' => ['media' => [['input' => 'dashcamRoadFacing', 'status' => 'failed']]],
             ]),
@@ -421,6 +441,100 @@ class FetchDeferredEventMediaJobTest extends TestCase
         );
 
         Http::assertNothingSent();
+    }
+
+    public function test_uploaded_panic_media_is_swept_and_attached_alongside_the_retrieval(): void
+    {
+        $this->makeSamsaraIntegration();
+
+        $occurredAt = Carbon::parse('2026-06-11 12:00:00', 'UTC');
+
+        $event = NormalizedEvent::factory()->create([
+            'team_id' => $this->teamId,
+            'asset_id' => $this->asset->id,
+            'occurred_at' => $occurredAt,
+        ]);
+
+        Http::fake([
+            'api.samsara.com/cameras/media?*' => Http::response(['data' => ['media' => [[
+                'input' => 'dashcamForwardFacing',
+                'mediaType' => 'videoHighRes',
+                'triggerReason' => 'panicButton',
+                'startTime' => '2026-06-11T11:59:50Z',
+                'urlInfo' => ['url' => 'https://media.samsara.com/uploads/panic.mp4'],
+            ]]]]),
+            'api.samsara.com/cameras/media/retrieval*' => Http::sequence()
+                ->push(['data' => ['retrievalId' => 'ret-1']])
+                ->push(['data' => ['media' => [[
+                    'input' => 'dashcamRoadFacing',
+                    'status' => 'available',
+                    'urlInfo' => ['url' => 'https://media.samsara.com/ret-1/road.mp4'],
+                ]]]]),
+            'media.samsara.com/*' => Http::response('clip-bytes', 200, ['Content-Type' => 'video/mp4']),
+        ]);
+
+        $request = $this->makeRequest($event);
+
+        $this->runJob($request);
+
+        $fresh = $request->fresh();
+        $this->assertSame(MediaRequestStatus::Completed, $fresh->status);
+        $this->assertSame(1, $fresh->response_metadata_json['uploaded_media_downloaded']);
+
+        // The sweep filters to event-evidence triggers within the still window.
+        Http::assertSent(function ($req) {
+            if (! str_contains($req->url(), 'cameras/media?')) {
+                return true;
+            }
+
+            return $req['vehicleIds'] === 'veh-1'
+                && $req['triggerReasons'] === 'panicButton,safetyEvent';
+        });
+
+        $uploaded = RawEventAttachment::where('raw_event_id', $event->raw_event_id)
+            ->where('storage_path', 'like', '%uploaded-panicButton-20260611-115950-road-facing.mp4')
+            ->sole();
+        $this->assertSame(AttachmentType::Clip, $uploaded->attachment_type);
+        $this->assertSame('uploaded_media', $uploaded->metadata_json['source']);
+        $this->assertSame('panicButton', $uploaded->metadata_json['trigger_reason']);
+
+        // Both the auto-uploaded clip and the retrieval clip materialize.
+        $this->assertSame(2, EventMediaContext::withoutGlobalScopes()->where('normalized_event_id', $event->id)->count());
+        Event::assertDispatched(EventMediaAvailable::class);
+    }
+
+    public function test_rejected_retrieval_completes_when_uploaded_media_backs_the_event(): void
+    {
+        $this->makeSamsaraIntegration();
+
+        Http::fake([
+            'api.samsara.com/cameras/media?*' => Http::response(['data' => ['media' => [[
+                'input' => 'dashcamForwardFacing',
+                'mediaType' => 'image',
+                'triggerReason' => 'panicButton',
+                'startTime' => '2026-06-11T12:00:00Z',
+                'urlInfo' => ['url' => 'https://media.samsara.com/uploads/panic.jpg'],
+            ]]]]),
+            // The provider rejects the retrieval placement outright.
+            'api.samsara.com/cameras/media/retrieval*' => Http::response(['message' => 'quota exceeded'], 400),
+            'media.samsara.com/*' => Http::response('still-bytes', 200, ['Content-Type' => 'image/jpeg']),
+        ]);
+
+        $request = $this->makeRequest();
+
+        $this->runJob($request);
+
+        $fresh = $request->fresh();
+
+        // The alert is backed by the auto-uploaded evidence, so the request
+        // closes as completed — no media failure is surfaced.
+        $this->assertSame(MediaRequestStatus::Completed, $fresh->status);
+        $this->assertNotNull($fresh->completed_at);
+        $this->assertSame('uploaded_media', $fresh->response_metadata_json['completed_via']);
+        $this->assertSame('Provider rejected the media retrieval request.', $fresh->response_metadata_json['retrieval_close_reason']);
+
+        Event::assertDispatched(EventMediaAvailable::class);
+        Event::assertNotDispatched(EventMediaFailed::class);
     }
 
     public function test_failed_marks_request_failed_and_dispatches_event(): void

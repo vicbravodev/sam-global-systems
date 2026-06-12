@@ -3,9 +3,13 @@
 namespace Database\Seeders;
 
 use App\Domains\Access\Models\Role;
+use App\Domains\Context\Listeners\RequestPanicMediaOnContextBuilt;
 use App\Domains\Integrations\Enums\IntegrationProviderStatus;
 use App\Domains\Integrations\Enums\IntegrationProviderType;
 use App\Domains\Integrations\Models\IntegrationProvider;
+use App\Domains\TenantConfig\Enums\SettingGroup;
+use App\Domains\TenantConfig\Enums\SettingValueType;
+use App\Domains\TenantConfig\Models\TenantSetting;
 use App\Enums\TeamRole;
 use App\Models\Membership;
 use App\Models\Team;
@@ -58,6 +62,7 @@ class SamsaraTestSeeder extends Seeder
             $team = $this->createTeam();
             $this->createUsers($team);
             $this->ensureSamsaraProvider();
+            $this->enablePanicMediaAutoRequest($team);
         });
 
         $this->command?->info("\nTenant de prueba listo [".self::TEAM_SLUG.'].');
@@ -119,6 +124,27 @@ class SamsaraTestSeeder extends Seeder
         }
 
         $user->forceFill(['current_team_id' => $team->id])->save();
+    }
+
+    /**
+     * Auto-request camera media on critical events (panic button) for the
+     * test tenant: the platform default is OFF (retrievals cost provider
+     * quota), but the whole point of this tenant is validating the
+     * emergency pipeline end-to-end — including the visual evidence.
+     */
+    private function enablePanicMediaAutoRequest(Team $team): void
+    {
+        TenantSetting::withoutGlobalScopes()->updateOrCreate(
+            [
+                'team_id' => $team->id,
+                'setting_key' => RequestPanicMediaOnContextBuilt::SETTING_KEY,
+            ],
+            [
+                'setting_group' => SettingGroup::Operational,
+                'value_json' => ['value' => true],
+                'value_type' => SettingValueType::Boolean,
+            ],
+        );
     }
 
     private function ensureSamsaraProvider(): IntegrationProvider

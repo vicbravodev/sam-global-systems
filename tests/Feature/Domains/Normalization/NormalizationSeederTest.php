@@ -59,6 +59,8 @@ class NormalizationSeederTest extends TestCase
             'camera_obstructed', 'tampering', 'no_seatbelt', 'hos_violation', 'smoking_drinking',
             'geofence_exit', 'geofence_entry', 'vehicle_idle', 'unsafe_parking',
             'device_offline', 'after_hours_movement', 'suspicious_stop',
+            'did_not_yield', 'railroad_crossing_violation', 'other_violation',
+            'policy_violation', 'unauthorized_passenger', 'driving_context', 'defensive_driving',
         ];
 
         foreach ($expectedEventTypes as $code) {
@@ -127,6 +129,52 @@ class NormalizationSeederTest extends TestCase
             'speeding',
             $maxSpeedRule->mappedEventType->code,
             'MaxSpeed behavior label should map to the speeding canonical event type',
+        );
+    }
+
+    /**
+     * Every behavior label documented in Samsara's `GET /safety-events/stream`
+     * enum (SafetyEventV2BehaviorLabels, as of 2026-06) must have an active
+     * mapping rule — otherwise real events silently land as `unmapped` and
+     * never reach the incident pipeline (this happened with
+     * EdgeRailroadCrossingViolation and Passenger in production data).
+     */
+    public function test_every_official_stream_v2_behavior_label_is_mapped(): void
+    {
+        $officialLabels = [
+            'Acceleration', 'AggressiveDriving', 'BluetoothHeadset', 'Braking',
+            'ContextConstructionOrWorkZone', 'ContextSnowyOrIcy', 'ContextVulnerableRoadUser', 'ContextWet',
+            'Crash', 'DefensiveDriving', 'DidNotYield', 'Drinking', 'Drowsy', 'Eating', 'EatingDrinking',
+            'EdgeDistractedDriving', 'EdgeRailroadCrossingViolation', 'FollowingDistance',
+            'FollowingDistanceModerate', 'FollowingDistanceSevere', 'ForwardCollisionWarning',
+            'GenericDistraction', 'GenericTailgating', 'HarshImpact', 'HarshTurn', 'HeavySpeeding',
+            'HighSpeedSuddenDisconnect', 'HosViolation', 'Idling', 'Invalid', 'LaneDeparture',
+            'LateResponse', 'LeftTurn', 'LightSpeeding', 'MaxSpeed', 'MobileUsage', 'ModerateSpeeding',
+            'NearCollison', 'NearPedestrianCollision', 'NoSeatbelt', 'ObstructedCamera',
+            'OperationalEvent', 'OtherViolation', 'Passenger', 'PolicyViolationMask',
+            'ProtectiveEquipment', 'RanRedLight', 'RearCollisionWarning', 'Reversing', 'RollingStop',
+            'RolloverProtection', 'SevereSpeeding', 'Smoking', 'Speeding', 'UTurn', 'UnsafeManeuver',
+            'UnsafeParking', 'VehicleInBlindSpotWarning', 'VulnerableRoadUserCollisionWarning', 'YawControl',
+        ];
+
+        IntegrationProvider::factory()->samsara()->create();
+
+        $this->seed(NormalizationSeeder::class);
+
+        $samsara = IntegrationProvider::where('code', 'samsara')->first();
+
+        $mappedLabels = EventMappingRule::where('provider_id', $samsara->id)
+            ->where('is_active', true)
+            ->where('external_event_type', '!=', 'AlertIncident')
+            ->pluck('external_event_type')
+            ->all();
+
+        $missing = array_values(array_diff($officialLabels, $mappedLabels));
+
+        $this->assertSame(
+            [],
+            $missing,
+            'Behavior labels from the official Samsara stream v2 enum without a mapping rule: '.implode(', ', $missing),
         );
     }
 
