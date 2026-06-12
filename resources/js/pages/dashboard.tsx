@@ -2,6 +2,7 @@ import { Head, Link, router, usePage } from '@inertiajs/react';
 import { ChevronRight, Gauge, RefreshCw } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import {
+    MetaChip,
     ProviderTag,
     RealtimeStatus,
     SeverityBadge,
@@ -490,17 +491,25 @@ function DecisionChip({
         low: 'text-severity-low border-severity-low/40 bg-severity-low/15',
         info: 'text-severity-info border-severity-info/40 bg-severity-info/15',
     };
+    const labels: Record<DashboardStreamEvent['decision'], string> = {
+        incident: 'Incidente',
+        escalate: 'Escalado',
+        info: 'Info',
+        discard: 'Descartado',
+    };
+
+    if (!isAlert) {
+        return <MetaChip>{labels[decision]}</MetaChip>;
+    }
 
     return (
         <span
             className={cn(
-                'inline-flex rounded-sm border px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap',
-                isAlert
-                    ? sevTextClass[sev]
-                    : 'border-border bg-surface-3 text-fg-3',
+                'inline-flex items-center rounded-sm border px-1.5 py-1 text-[10px] font-semibold tracking-[0.02em] whitespace-nowrap',
+                sevTextClass[sev],
             )}
         >
-            {decision}
+            {labels[decision]}
         </span>
     );
 }

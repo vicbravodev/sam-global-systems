@@ -138,10 +138,12 @@ visual: son los huecos funcionales, el shell legacy de settings y el móvil roto
   los timestamps de auditoría ya van en `font-mono`, las fechas de notificaciones usan
   `RelativeTime` (mono + tabular), los codes de canal van en mono. No quedaron offenders; los
   IDs `INC-*` del inbox ya eran mono desde V1.
-- [ ] **F3.3 Chips y badges: un solo sistema.** Conviven: badge severidad (Alta/Crítica), chip
-  estado (VENCIDO rojo), chip acción (`escalate`/`info`), badge "activa", pill "Sistema",
-  tag `stop`. Consolidar en 3 variantes documentadas (severity / status / meta) con la misma
-  geometría (radio, padding, caja tipográfica) en `components/sam/`.
+- [x] **F3.3 Chips y badges: un solo sistema.** ✅ 2026-06-12 — las 3 variantes documentadas
+  viven en `components/sam/`: `SeverityBadge` (severidad), `StatusPill` (estado) y el nuevo
+  `MetaChip` (metadatos neutros), las tres con geometría idéntica (`rounded-sm px-1.5 py-1
+  text-[10px] font-semibold tracking-[0.02em]`). De paso: los labels de `StatusPill` estaban en
+  inglés ("New", "In progress"…) → traducidos, y el `DecisionChip` del stream del dashboard se
+  alineó a la geometría común con labels en español (Incidente/Escalado/Info/Descartado).
 - [x] **F3.4 Configuración del tenant: humanizar las keys.** ✅ 2026-06-12 — la tabla "Otros
   settings" mapea las keys del SAM Default Pack a etiqueta en español + descripción corta, con
   la key técnica como texto secundario mono (keys desconocidas caen a la key cruda).
