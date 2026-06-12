@@ -7,9 +7,10 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 // MapLibre dependency for F3).
 const MAP_STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty';
 
-// Fallback view when the fleet has no positions yet (world view).
-const FALLBACK_CENTER: [number, number] = [-99.5, 23.5];
-const FALLBACK_ZOOM = 3.5;
+// Fallback view when the fleet has no positions yet: frame México, not all
+// of North America.
+const FALLBACK_CENTER: [number, number] = [-102, 23.8];
+const FALLBACK_ZOOM = 4.6;
 
 const STATUS_COLORS: Record<AssetStatusValue, string> = {
     active: 'var(--severity-low)',

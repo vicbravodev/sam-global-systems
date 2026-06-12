@@ -136,11 +136,13 @@ visual: son los huecos funcionales, el shell legacy de settings y el móvil roto
   estado (VENCIDO rojo), chip acción (`escalate`/`info`), badge "activa", pill "Sistema",
   tag `stop`. Consolidar en 3 variantes documentadas (severity / status / meta) con la misma
   geometría (radio, padding, caja tipográfica) en `components/sam/`.
-- [ ] **F3.4 Configuración del tenant: humanizar las keys.** La tabla "OTROS SETTINGS (10)" expone
-  `context.safety_correlation_minutes` crudo. Mapear key→label en español + descripción corta
-  (el catálogo ya existe en backend), dejando la key técnica como texto secundario mono.
-- [ ] **F3.5 Mapa en vivo.** Cluster/zoom inicial ajustado al bounding box de la flota (hoy abre
-  mostrando todo Norteamérica), leyenda de estados y empty state si no hay posiciones frescas.
+- [x] **F3.4 Configuración del tenant: humanizar las keys.** ✅ 2026-06-12 — la tabla "Otros
+  settings" mapea las keys del SAM Default Pack a etiqueta en español + descripción corta, con
+  la key técnica como texto secundario mono (keys desconocidas caen a la key cruda).
+- [x] **F3.5 Mapa en vivo.** ✅ 2026-06-12 — verificado en código: el fit al bounding box de la
+  flota ya existía (`LiveMap` hace `fitBounds` al primer load y nunca re-encuadra para no mover
+  el viewport del operador), igual que la leyenda de estados presentes y el empty state. Lo que
+  faltaba: el fallback sin posiciones ahora encuadra México (zoom 4.6) en vez de Norteamérica.
 - [x] **F3.6 Favicon y OG.** ✅ 2026-06-12 — `public/favicon.svg` con el mark SAM (rect azul
   marca + trazo blanco) y metadatos OG/description básicos en `app.blade.php`.
 
