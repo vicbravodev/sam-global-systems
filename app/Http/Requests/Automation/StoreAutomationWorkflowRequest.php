@@ -4,6 +4,7 @@ namespace App\Http\Requests\Automation;
 
 use App\Domains\Automation\Enums\WorkflowStatus;
 use App\Domains\Automation\Enums\WorkflowTriggerType;
+use App\Models\Team;
 use App\Support\Conditions\ValidFlatConditions;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -21,7 +22,14 @@ class StoreAutomationWorkflowRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'code' => ['required', 'string', 'max:255'],
+            'code' => [
+                'required',
+                'string',
+                'max:255',
+                // D-02: un doble submit no debe crear workflows duplicados —
+                // el código es único por tenant.
+                Rule::unique('automation_workflows', 'code')->where('team_id', $this->currentTeamId()),
+            ],
             'name' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'trigger_type' => ['required', Rule::enum(WorkflowTriggerType::class)],
@@ -37,5 +45,28 @@ class StoreAutomationWorkflowRequest extends FormRequest
             'steps_json.*.target_reference' => ['nullable', 'string', 'max:255'],
             'is_active' => ['nullable', 'boolean'],
         ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'code.unique' => 'Ya existe un workflow con este código en tu equipo.',
+        ];
+    }
+
+    private function currentTeamId(): ?int
+    {
+        $team = $this->route('current_team');
+
+        if ($team instanceof Team) {
+            return $team->id;
+        }
+
+        return is_string($team)
+            ? Team::query()->where('slug', $team)->value('id')
+            : null;
     }
 }

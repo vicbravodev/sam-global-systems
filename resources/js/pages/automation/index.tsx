@@ -2,6 +2,7 @@ import { Head, router, usePage } from '@inertiajs/react';
 import { Plus, Trash2, Workflow } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import InputError from '@/components/input-error';
 import { ConditionBuilder } from '@/components/sam/condition-builder';
 import type { ConditionFieldDef } from '@/components/sam/condition-builder';
 import { Badge } from '@/components/ui/badge';
@@ -10,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Combobox } from '@/components/ui/combobox';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
-import { postJson, putJson, readErrorMessage } from '@/lib/sam-fetch';
+import { postJson, putJson, readErrorPayload } from '@/lib/sam-fetch';
 
 // ---- Types ----
 
@@ -100,10 +101,16 @@ function useTeamBase(): string | null {
     return slug ? `/${slug}/automation` : null;
 }
 
+interface SubmitResult {
+    ok: boolean;
+    /** Primer mensaje por campo del `errors` de Laravel (D-04). */
+    fieldErrors: Record<string, string>;
+}
+
 async function submit(
     promise: Promise<Response>,
     successMessage: string,
-): Promise<boolean> {
+): Promise<SubmitResult> {
     try {
         const response = await promise;
 
@@ -111,22 +118,29 @@ async function submit(
             toast.success(successMessage);
             router.reload();
 
-            return true;
+            return { ok: true, fieldErrors: {} };
         }
 
         if (response.status === 403) {
             toast.error('No tienes permisos para esta acción.');
-        } else {
-            toast.error(
-                (await readErrorMessage(response)) ??
-                    'No se pudo completar la acción.',
-            );
+
+            return { ok: false, fieldErrors: {} };
         }
+
+        const { message, fieldErrors } = await readErrorPayload(response);
+
+        toast.error(
+            Object.values(fieldErrors)[0] ??
+                message ??
+                'No se pudo completar la acción.',
+        );
+
+        return { ok: false, fieldErrors };
     } catch {
         toast.error('Error de red. Vuelve a intentarlo.');
     }
 
-    return false;
+    return { ok: false, fieldErrors: {} };
 }
 
 // ---- Workflows tab ----
@@ -150,6 +164,8 @@ function WorkflowBuilder({
     onCreated: () => void;
 }) {
     const base = useTeamBase();
+    const [submitting, setSubmitting] = useState(false);
+    const [errors, setErrors] = useState<Record<string, string>>({});
     const [form, setForm] = useState({
         code: '',
         name: '',
@@ -187,17 +203,32 @@ function WorkflowBuilder({
         );
 
     const create = async () => {
-        if (base === null) {
+        // D-02: guard contra doble click — no se emite un segundo POST
+        // mientras el primero sigue en vuelo.
+        if (base === null || submitting) {
             return;
         }
 
-        if (form.code === '' || form.name === '') {
-            toast.error('Código y nombre son obligatorios.');
+        const nextErrors: Record<string, string> = {};
+
+        if (form.code === '') {
+            nextErrors.code = 'El código es obligatorio.';
+        }
+
+        if (form.name === '') {
+            nextErrors.name = 'El nombre es obligatorio.';
+        }
+
+        if (Object.keys(nextErrors).length > 0) {
+            setErrors(nextErrors);
 
             return;
         }
 
-        const ok = await submit(
+        setErrors({});
+        setSubmitting(true);
+
+        const result = await submit(
             postJson(`${base}/workflows`, {
                 code: form.code,
                 name: form.name,
@@ -218,26 +249,54 @@ function WorkflowBuilder({
             'Workflow creado.',
         );
 
-        if (ok) {
+        setSubmitting(false);
+
+        if (result.ok) {
             onCreated();
+        } else {
+            setErrors(result.fieldErrors);
         }
     };
+
+    // Errores de validación sin campo visible directo (p. ej. steps_json.*)
+    // — se muestran como bloque persistente junto al botón (D-04).
+    const otherErrors = Object.entries(errors).filter(
+        ([field]) => field !== 'code' && field !== 'name',
+    );
 
     return (
         <div className="flex flex-col gap-2 rounded-md border border-border p-3">
             <div className="flex flex-wrap gap-2">
-                <Input
-                    placeholder="code (ej. critico-notifica)"
-                    value={form.code}
-                    onChange={(e) => setForm({ ...form, code: e.target.value })}
-                    className="w-56 font-mono text-xs"
-                />
-                <Input
-                    placeholder="Nombre"
-                    value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    className="w-64 text-xs"
-                />
+                <div className="flex flex-col gap-1">
+                    <Input
+                        placeholder="code (ej. critico-notifica)"
+                        value={form.code}
+                        aria-invalid={Boolean(errors.code)}
+                        onChange={(e) =>
+                            setForm({ ...form, code: e.target.value })
+                        }
+                        className="w-56 font-mono text-xs"
+                    />
+                    <InputError
+                        message={errors.code}
+                        className="max-w-56 text-xs"
+                    />
+                </div>
+                <div className="flex flex-col gap-1">
+                    <Input
+                        placeholder="Nombre"
+                        value={form.name}
+                        aria-invalid={Boolean(errors.name)}
+                        onChange={(e) =>
+                            setForm({ ...form, name: e.target.value })
+                        }
+                        className="w-64 text-xs"
+                    />
+                    <InputError
+                        message={errors.name}
+                        className="max-w-64 text-xs"
+                    />
+                </div>
                 <select
                     value={form.triggerType}
                     onChange={(e) => {
@@ -366,13 +425,23 @@ function WorkflowBuilder({
                 </div>
             ))}
 
+            {otherErrors.length > 0 && (
+                <ul className="flex flex-col gap-0.5">
+                    {otherErrors.map(([field, message]) => (
+                        <li key={field}>
+                            <InputError message={message} className="text-xs" />
+                        </li>
+                    ))}
+                </ul>
+            )}
+
             <div className="flex gap-2">
                 <Button size="sm" variant="outline" onClick={addStep}>
                     <Plus size={12} />
                     Añadir paso
                 </Button>
-                <Button size="sm" onClick={create}>
-                    Crear workflow
+                <Button size="sm" onClick={create} disabled={submitting}>
+                    {submitting ? 'Creando…' : 'Crear workflow'}
                 </Button>
             </div>
         </div>

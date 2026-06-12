@@ -266,7 +266,7 @@ aplican: feature test (`assertInertia`) por página tocada + gates de front verd
   `lg:` con persistencia, panel de detalle de incidente full-width en <768px con cierre visible y
   textarea usable, forms apilados a 1 columna. Cierre: en 390px se puede navegar, abrir/cerrar/
   comentar un incidente y crear una regla sin overflow horizontal.
-- [ ] **R0.3 Datos veraces de flota e incidentes** *(C1-a, C1-b, B5)*: `last_seen_at` por señal
+- [x] **R0.3 Datos veraces de flota e incidentes** *(C1-a, C1-b, B5)*: `last_seen_at` por señal
   real (o renombrar a "Última sincronización" + degradar estado sin señal); estado canónico único
   de incidente en bandeja/detalle/paleta/activo; filtro Estado con los estados reales y en español.
   Cierre: criterios de C1-a/C1-b y B5 (§3).
@@ -322,7 +322,7 @@ aplican: feature test (`assertInertia`) por página tocada + gates de front verd
 - [ ] **R2.2 Auditoría legible** *(C-10, C-13)*: labels en español para acción/categoría/actor,
   Resumen con contenido real, sin FQCN visibles, agrupación del ruido de telemetría, paginador con
   aria-labels, tab y rango de fechas validado en URL. Cierre: criterio de C-10/C-13.
-- [ ] **R2.3 Empty states con voz de producto** *(C-09, F1.2 residual, F1.4, B10, B12)*: analytics
+- [x] **R2.3 Empty states con voz de producto** *(B12 quedó dentro de R1.2)* *(C-09, F1.2 residual, F1.4, B10, B12)*: analytics
   con CTA o explicación sin jerga; billing con acción de contacto; detalle de conductor colapsa
   secciones vacías y la lista puebla o elimina columnas muertas; explicar el estado "Cancelada" de
   notificaciones (o corregir la agregación). Cierre: todo empty state dice qué significa y qué

@@ -90,6 +90,7 @@ export default function Register() {
                                 type="submit"
                                 className="mt-2 w-full"
                                 tabIndex={5}
+                                disabled={processing}
                                 data-test="register-user-button"
                             >
                                 {processing && <Spinner />}

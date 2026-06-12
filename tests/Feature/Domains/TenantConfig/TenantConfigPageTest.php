@@ -113,6 +113,63 @@ class TenantConfigPageTest extends TestCase
         $this->assertTrue((bool) $setting->typed_value);
     }
 
+    public function test_gps_staleness_setting_rejects_non_positive_values(): void
+    {
+        // D-07: el umbral de obsolescencia GPS no puede ser negativo ni cero.
+        foreach ([-5, 0, 'no-es-numero'] as $invalid) {
+            $response = $this->actingAs($this->user)->putJson(
+                route('tenant-config.settings.update', ['current_team' => $this->team->slug]),
+                [
+                    'settings' => [
+                        [
+                            'setting_key' => 'context.live_location_staleness_seconds',
+                            'setting_group' => 'operational',
+                            'value_type' => 'number',
+                            'value' => $invalid,
+                        ],
+                    ],
+                ],
+            );
+
+            $response->assertUnprocessable();
+            $response->assertJsonValidationErrors(['settings.0.value']);
+        }
+
+        $this->assertNull(
+            TenantSetting::withoutGlobalScopes()
+                ->where('team_id', $this->team->id)
+                ->where('setting_key', 'context.live_location_staleness_seconds')
+                ->first(),
+        );
+    }
+
+    public function test_gps_staleness_setting_accepts_valid_integer(): void
+    {
+        $response = $this->actingAs($this->user)->putJson(
+            route('tenant-config.settings.update', ['current_team' => $this->team->slug]),
+            [
+                'settings' => [
+                    [
+                        'setting_key' => 'context.live_location_staleness_seconds',
+                        'setting_group' => 'operational',
+                        'value_type' => 'number',
+                        'value' => 120,
+                    ],
+                ],
+            ],
+        );
+
+        $response->assertOk();
+
+        $setting = TenantSetting::withoutGlobalScopes()
+            ->where('team_id', $this->team->id)
+            ->where('setting_key', 'context.live_location_staleness_seconds')
+            ->first();
+
+        $this->assertNotNull($setting);
+        $this->assertSame(120, (int) $setting->typed_value);
+    }
+
     public function test_web_ai_profile_update_persists(): void
     {
         $response = $this->actingAs($this->user)->putJson(
