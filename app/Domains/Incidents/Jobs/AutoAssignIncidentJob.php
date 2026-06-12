@@ -5,6 +5,7 @@ namespace App\Domains\Incidents\Jobs;
 use App\Domains\Incidents\Actions\AssignIncident;
 use App\Domains\Incidents\Enums\AssigneeType;
 use App\Domains\Incidents\Models\Incident;
+use App\Domains\Incidents\Models\IncidentAssignment;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -30,6 +31,18 @@ class AutoAssignIncidentJob implements ShouldQueue
         $incident = Incident::withoutGlobalScopes()->find($this->incidentId);
 
         if ($incident === null) {
+            return;
+        }
+
+        // A deduped event (or a B8 re-decision) re-dispatches this job for an
+        // incident that is already routed — re-assigning would spam the
+        // timeline and steal assignments operators already took.
+        $alreadyAssigned = IncidentAssignment::query()
+            ->where('incident_id', $incident->id)
+            ->whereNull('unassigned_at')
+            ->exists();
+
+        if ($alreadyAssigned) {
             return;
         }
 

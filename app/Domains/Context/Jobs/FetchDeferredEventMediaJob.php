@@ -604,7 +604,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
                 ],
                 [
                     'attachment_type' => $type,
-                    'mime_type' => $storage->mimeType($storagePath) ?? $defaultMimeType,
+                    'mime_type' => $this->resolveMimeType($storage->mimeType($storagePath), $filename, $defaultMimeType),
                     'size_bytes' => $storage->size($storagePath) ?? 0,
                     'metadata_json' => ['source' => $source, 'input' => $item['input']],
                 ],
@@ -629,7 +629,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
             return false;
         }
 
-        $mimeType = $response->header('Content-Type') ?: $defaultMimeType;
+        $mimeType = $this->resolveMimeType($response->header('Content-Type'), $filename, $defaultMimeType);
 
         $storage->put($storagePath, $response->body(), [
             'visibility' => 'private',
@@ -735,6 +735,31 @@ class FetchDeferredEventMediaJob implements ShouldQueue
             'status' => $status->value,
             'reason' => $reason,
         ]);
+    }
+
+    /**
+     * Samsara serves downloads as `binary/octet-stream`; persisting that
+     * verbatim makes the multimodal agent refuse every file. Prefer a real
+     * reported mime, then the filename extension, then the per-type default.
+     */
+    private function resolveMimeType(?string $reported, string $filename, string $default): string
+    {
+        $bare = strtolower(trim(explode(';', (string) $reported)[0]));
+
+        if ($bare !== '' && $bare !== 'binary/octet-stream' && $bare !== 'application/octet-stream') {
+            return $bare;
+        }
+
+        return match (strtolower(pathinfo($filename, PATHINFO_EXTENSION))) {
+            'jpg', 'jpeg' => 'image/jpeg',
+            'png' => 'image/png',
+            'webp' => 'image/webp',
+            'gif' => 'image/gif',
+            'mp4' => 'video/mp4',
+            'webm' => 'video/webm',
+            'mov' => 'video/quicktime',
+            default => $default,
+        };
     }
 
     public function failed(\Throwable $exception): void

@@ -44,6 +44,9 @@ function MediaThumb({
 }) {
     const video = isVideo(item);
     const preview = item.thumbnailUrl ?? (video ? null : item.url);
+    // Signed URLs expire (30 min): degrade to the placeholder icon instead of
+    // a wall of broken images on long-lived tabs.
+    const [previewFailed, setPreviewFailed] = useState(false);
 
     return (
         <button
@@ -53,11 +56,12 @@ function MediaThumb({
             className="group relative flex aspect-video items-center justify-center overflow-hidden rounded-[6px] border border-border bg-surface-2 transition-colors hover:border-fg-3 disabled:cursor-not-allowed disabled:opacity-60"
             aria-label={`Abrir media #${item.id}`}
         >
-            {preview ? (
+            {preview && !previewFailed ? (
                 <img
                     src={preview}
                     alt={`Media del incidente #${item.id}`}
                     className="h-full w-full object-cover"
+                    onError={() => setPreviewFailed(true)}
                 />
             ) : (
                 <span className="flex flex-col items-center gap-1 text-fg-3">
