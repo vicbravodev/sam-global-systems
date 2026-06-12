@@ -234,17 +234,17 @@ function KpiCard({
         <div className="relative overflow-hidden bg-surface-1 px-4 py-3">
             <span className="sam-caps">{label}</span>
             {empty ? (
-                <div className="flex h-[46px] items-center text-[13px] text-fg-3">
+                <div className="flex h-[46px] items-center text-sm text-fg-3">
                     Sin datos del periodo
                 </div>
             ) : (
                 <>
-                    <div className="mt-1 font-mono text-[26px] leading-tight tracking-tight tabular-nums">
+                    <div className="mt-1 font-mono text-2xl tracking-tight tabular-nums">
                         {value}
                     </div>
                     <div
                         className={cn(
-                            'mt-1 font-mono text-[11px] tabular-nums',
+                            'mt-1 font-mono text-2xs tabular-nums',
                             deltaColorClass,
                         )}
                     >
@@ -391,7 +391,7 @@ function OpenIncidentsPanel({
                                     className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-surface-2"
                                 >
                                     <SeverityBadge level={incident.severity} />
-                                    <span className="w-16 shrink-0 font-mono text-[11px] text-fg-3 tabular-nums">
+                                    <span className="w-16 shrink-0 font-mono text-2xs text-fg-3 tabular-nums">
                                         {incident.id.replace(
                                             /^INC-\d+-/,
                                             'INC-',
@@ -453,7 +453,7 @@ function LiveStreamPanel({ events }: { events: DashboardStreamEvent[] }) {
                                     index === 0 && 'sam-flash',
                                 )}
                             >
-                                <span className="w-14 shrink-0 font-mono text-[11px] text-fg-3 tabular-nums">
+                                <span className="w-14 shrink-0 font-mono text-2xs text-fg-3 tabular-nums">
                                     {event.ts}
                                 </span>
                                 <ProviderTag name={event.provider} />
@@ -507,7 +507,7 @@ function DecisionChip({
     return (
         <span
             className={cn(
-                'inline-flex items-center rounded-sm border px-1.5 py-1 text-[10px] font-semibold tracking-[0.02em] whitespace-nowrap',
+                'inline-flex items-center rounded-sm border px-1.5 py-1 text-3xs font-semibold tracking-label whitespace-nowrap',
                 sevTextClass[sev],
             )}
         >
@@ -565,7 +565,7 @@ function IntegrationsPanel({
                                 {integration.events24h.toLocaleString('es')}
                             </div>
                             <div className="sam-meta">eventos · últ. 24 h</div>
-                            <div className="mt-2 font-mono text-[10px] text-fg-3">
+                            <div className="mt-2 font-mono text-3xs text-fg-3">
                                 sync: {integration.lastSync ?? '—'}
                             </div>
                         </div>
@@ -626,7 +626,7 @@ function UsagePanel({ usage }: { usage: UsageCounterRow[] }) {
                                     style={{ width: `${fillPct}%` }}
                                 />
                             </div>
-                            <div className="mt-2 flex items-center justify-between font-mono text-[10px] text-fg-3">
+                            <div className="mt-2 flex items-center justify-between font-mono text-3xs text-fg-3">
                                 <span>
                                     {hasOverage
                                         ? `+${counter.overage.toLocaleString('es')} excedente`

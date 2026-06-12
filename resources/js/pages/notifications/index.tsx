@@ -43,7 +43,7 @@ function PageHead({
         <PageHeader
             title="Notificaciones"
             meta={
-                <span className="text-[12px] text-fg-3">
+                <span className="text-xs text-fg-3">
                     <span className="font-medium text-fg-1">{total}</span>{' '}
                     {total === 1 ? 'notificación' : 'notificaciones'}
                 </span>
@@ -91,7 +91,7 @@ function FilterDropdown({
                 <button
                     type="button"
                     className={cn(
-                        'flex items-center gap-1 rounded-sm border px-2.5 py-1.5 text-[11px] transition-colors',
+                        'flex items-center gap-1 rounded-sm border px-2.5 py-1.5 text-2xs transition-colors',
                         active
                             ? 'border-primary/40 bg-primary/10 text-primary'
                             : 'border-border bg-surface-1 text-fg-2 hover:border-border-strong',
@@ -154,7 +154,7 @@ function FilterBar({ filters, options, onApply }: FilterBarProps) {
                 type="button"
                 onClick={() => onApply({ ...filters, unread: !filters.unread })}
                 className={cn(
-                    'flex items-center gap-1 rounded-sm border px-2.5 py-1.5 text-[11px] transition-colors',
+                    'flex items-center gap-1 rounded-sm border px-2.5 py-1.5 text-2xs transition-colors',
                     filters.unread
                         ? 'border-primary/40 bg-primary/10 text-primary'
                         : 'border-border bg-surface-1 text-fg-2 hover:border-border-strong',
@@ -170,7 +170,7 @@ function FilterBar({ filters, options, onApply }: FilterBarProps) {
                     onClick={() =>
                         onApply({ status: null, priority: null, unread: false })
                     }
-                    className="flex items-center gap-1 rounded-sm border border-dashed border-border px-2.5 py-1.5 text-[11px] text-fg-3 transition-colors hover:border-border-strong"
+                    className="flex items-center gap-1 rounded-sm border border-dashed border-border px-2.5 py-1.5 text-2xs text-fg-3 transition-colors hover:border-border-strong"
                 >
                     <X size={11} />
                     Limpiar
@@ -197,7 +197,7 @@ function CenterFooter({
 
     return (
         <div className="flex shrink-0 items-center justify-between border-t border-border bg-surface-1 px-5 py-2">
-            <span className="text-[11px] text-fg-3">
+            <span className="text-2xs text-fg-3">
                 {from}–{to} de {pagination.total}{' '}
                 {pagination.total === 1 ? 'notificación' : 'notificaciones'}
             </span>

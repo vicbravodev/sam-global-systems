@@ -36,7 +36,7 @@ function BigSlaDisplay({ incident }: BigSlaDisplayProps) {
     return (
         <div
             className={cn(
-                'flex min-w-[104px] flex-col items-start gap-0.5 rounded-[6px] border bg-surface-2 px-3.5 py-2 tabular-nums transition-colors',
+                'flex min-w-[104px] flex-col items-start gap-0.5 rounded-md border bg-surface-2 px-3.5 py-2 tabular-nums transition-colors',
                 urgent && !expired
                     ? consumed >= 0.95
                         ? 'border-severity-critical bg-severity-critical/20 motion-safe:animate-[sam-sla-pulse_1.6s_ease-in-out_infinite]'
@@ -45,19 +45,19 @@ function BigSlaDisplay({ incident }: BigSlaDisplayProps) {
             )}
         >
             <span
-                className="text-[10px] font-semibold tracking-[0.08em] uppercase"
+                className="text-3xs font-semibold tracking-caps uppercase"
                 style={{ color }}
             >
                 SLA
             </span>
             <span
-                className="font-mono text-[20px] font-semibold tabular-nums"
+                className="font-mono text-xl font-semibold tabular-nums"
                 style={{ color }}
             >
                 {txt}
             </span>
             {urgent && !expired && (
-                <span className="text-[11px]" style={{ color }}>
+                <span className="text-2xs" style={{ color }}>
                     vence pronto
                 </span>
             )}
@@ -92,7 +92,7 @@ export function DetailHeader({
                     <SeverityBadge level={incident.severity} />
                     <StatusPill state={incident.status} />
                     <ProviderTag name={incident.provider} />
-                    <span className="font-mono text-[11px] text-fg-3">
+                    <span className="font-mono text-2xs text-fg-3">
                         {incident.id}
                     </span>
                     <button
@@ -104,11 +104,11 @@ export function DetailHeader({
                     </button>
                 </div>
 
-                <h2 className="mb-1.5 text-[20px] leading-tight font-semibold text-fg-1">
+                <h2 className="mb-1.5 text-xl leading-tight font-semibold text-fg-1">
                     {incident.title}
                 </h2>
 
-                <div className="flex flex-wrap items-center gap-3 text-[12px] text-fg-2">
+                <div className="flex flex-wrap items-center gap-3 text-xs text-fg-2">
                     <span className="flex items-center gap-1">
                         <Truck
                             size={12}

@@ -79,7 +79,7 @@ function AssigneeMenu({
             <button
                 type="button"
                 disabled={busy}
-                className="inline-flex cursor-pointer items-center gap-1 border-none bg-transparent text-[12px] font-medium whitespace-nowrap text-fg-2 hover:text-fg-1 disabled:opacity-50"
+                className="inline-flex cursor-pointer items-center gap-1 border-none bg-transparent text-xs font-medium whitespace-nowrap text-fg-2 hover:text-fg-1 disabled:opacity-50"
             >
                 {busy ? <Loader2 size={11} className="animate-spin" /> : null}
                 {label}
@@ -111,7 +111,7 @@ function AssigneeMenu({
                         />
                         <span className="truncate">{member.name}</span>
                         {member.id === currentUserId && (
-                            <span className="ml-auto text-[10px] text-fg-3">
+                            <span className="ml-auto text-3xs text-fg-3">
                                 tú
                             </span>
                         )}
@@ -140,7 +140,7 @@ function RiskBar({ value }: { value: number }) {
 
     return (
         <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-            <span className={cn('font-mono text-[11px] font-semibold', color)}>
+            <span className={cn('font-mono text-2xs font-semibold', color)}>
                 {value}
             </span>
             <span className="h-1 w-12 shrink-0 overflow-hidden rounded-full bg-surface-3">
@@ -157,7 +157,7 @@ function RiskBar({ value }: { value: number }) {
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
     return (
-        <h3 className="mb-2 text-[10px] font-semibold tracking-[0.08em] text-fg-3 uppercase">
+        <h3 className="mb-2 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
             {children}
         </h3>
     );
@@ -209,12 +209,12 @@ function ResolveDialog({
                     <DialogTitle>Resolver incidente</DialogTitle>
                 </DialogHeader>
                 <div className="flex flex-col gap-3">
-                    <label className="flex flex-col gap-1 text-[12px] text-fg-2">
+                    <label className="flex flex-col gap-1 text-xs text-fg-2">
                         Código de resolución
                         <select
                             value={code}
                             onChange={(e) => setCode(e.target.value)}
-                            className="rounded-md border border-border bg-surface-1 px-2.5 py-1.5 text-[13px] text-fg-1 outline-none"
+                            className="rounded-md border border-border bg-surface-1 px-2.5 py-1.5 text-sm text-fg-1 outline-none"
                         >
                             {RESOLUTION_OPTIONS.map((o) => (
                                 <option key={o.value} value={o.value}>
@@ -223,14 +223,14 @@ function ResolveDialog({
                             ))}
                         </select>
                     </label>
-                    <label className="flex flex-col gap-1 text-[12px] text-fg-2">
+                    <label className="flex flex-col gap-1 text-xs text-fg-2">
                         Resumen
                         <textarea
                             value={summary}
                             onChange={(e) => setSummary(e.target.value)}
                             rows={3}
                             placeholder="Describe cómo se resolvió…"
-                            className="resize-none rounded-md border border-border bg-surface-1 px-2.5 py-1.5 text-[13px] text-fg-1 outline-none placeholder:text-fg-3"
+                            className="resize-none rounded-md border border-border bg-surface-1 px-2.5 py-1.5 text-sm text-fg-1 outline-none placeholder:text-fg-3"
                         />
                     </label>
                 </div>
@@ -280,7 +280,7 @@ export function DetailSide({ incident }: DetailSideProps) {
             <section>
                 <SectionTitle>Asignación</SectionTitle>
                 <div
-                    className="grid items-center gap-2.5 rounded-[6px] border border-border bg-surface-2 p-3"
+                    className="grid items-center gap-2.5 rounded-md border border-border bg-surface-2 p-3"
                     style={{
                         gridTemplateColumns: 'auto minmax(0,1fr) auto',
                     }}
@@ -293,10 +293,10 @@ export function DetailSide({ incident }: DetailSideProps) {
                                 isPrimary
                             />
                             <div className="min-w-0">
-                                <div className="truncate text-[13px] font-semibold text-fg-1">
+                                <div className="truncate text-sm font-semibold text-fg-1">
                                     {incident.assignee.name}
                                 </div>
-                                <div className="text-[11px] text-fg-3">
+                                <div className="text-2xs text-fg-3">
                                     Responsable actual
                                 </div>
                             </div>
@@ -306,7 +306,7 @@ export function DetailSide({ incident }: DetailSideProps) {
                         <>
                             <UserAvatar size={32} isEmpty />
                             <div className="min-w-0">
-                                <div className="text-[13px] text-fg-2 italic">
+                                <div className="text-sm text-fg-2 italic">
                                     Sin asignar
                                 </div>
                             </div>
@@ -351,7 +351,7 @@ export function DetailSide({ incident }: DetailSideProps) {
                         type="button"
                         onClick={() => void acknowledge()}
                         disabled={isTerminal || pending === 'acknowledge'}
-                        className="inline-flex cursor-pointer items-center gap-1.5 border-none bg-transparent py-1 text-[12px] font-medium text-fg-2 hover:text-fg-1 disabled:cursor-not-allowed disabled:opacity-40"
+                        className="inline-flex cursor-pointer items-center gap-1.5 border-none bg-transparent py-1 text-xs font-medium text-fg-2 hover:text-fg-1 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                         {pending === 'acknowledge' ? (
                             <Loader2 size={12} className="animate-spin" />
@@ -364,7 +364,7 @@ export function DetailSide({ incident }: DetailSideProps) {
                         type="button"
                         onClick={() => void escalate()}
                         disabled={isTerminal || pending === 'escalate'}
-                        className="inline-flex cursor-pointer items-center gap-1.5 border-none bg-transparent py-1 text-[12px] font-medium text-fg-2 hover:text-fg-1 disabled:cursor-not-allowed disabled:opacity-40"
+                        className="inline-flex cursor-pointer items-center gap-1.5 border-none bg-transparent py-1 text-xs font-medium text-fg-2 hover:text-fg-1 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                         {pending === 'escalate' ? (
                             <Loader2 size={12} className="animate-spin" />
@@ -377,7 +377,7 @@ export function DetailSide({ incident }: DetailSideProps) {
                         type="button"
                         onClick={() => void discard()}
                         disabled={isTerminal || pending === 'discard'}
-                        className="inline-flex cursor-pointer items-center gap-1.5 border-none bg-transparent py-1 text-[12px] font-medium text-fg-2 hover:text-fg-1 disabled:cursor-not-allowed disabled:opacity-40"
+                        className="inline-flex cursor-pointer items-center gap-1.5 border-none bg-transparent py-1 text-xs font-medium text-fg-2 hover:text-fg-1 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                         {pending === 'discard' ? (
                             <Loader2 size={12} className="animate-spin" />
@@ -390,7 +390,7 @@ export function DetailSide({ incident }: DetailSideProps) {
                         type="button"
                         onClick={() => void reopen()}
                         disabled={!isTerminal || pending === 'reopen'}
-                        className="inline-flex cursor-pointer items-center gap-1.5 border-none bg-transparent py-1 text-[12px] font-medium text-fg-2 hover:text-fg-1 disabled:cursor-not-allowed disabled:opacity-40"
+                        className="inline-flex cursor-pointer items-center gap-1.5 border-none bg-transparent py-1 text-xs font-medium text-fg-2 hover:text-fg-1 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                         <RefreshCw size={12} />
                         Reabrir
@@ -401,7 +401,7 @@ export function DetailSide({ incident }: DetailSideProps) {
             {/* Operational context */}
             <section>
                 <SectionTitle>Contexto operativo</SectionTitle>
-                <div className="flex flex-col overflow-hidden rounded-[6px] border border-border bg-surface-2">
+                <div className="flex flex-col overflow-hidden rounded-md border border-border bg-surface-2">
                     {[
                         { key: 'Clima', value: ctx.weather },
                         { key: 'Tráfico', value: ctx.traffic },
@@ -414,12 +414,12 @@ export function DetailSide({ incident }: DetailSideProps) {
                     ].map(({ key, value }) => (
                         <div
                             key={key}
-                            className="grid items-center gap-3 border-b border-border px-3 py-2 text-[12px] last:border-b-0"
+                            className="grid items-center gap-3 border-b border-border px-3 py-2 text-xs last:border-b-0"
                             style={{
                                 gridTemplateColumns: 'minmax(88px,auto) 1fr',
                             }}
                         >
-                            <span className="text-[11px] font-medium whitespace-nowrap text-fg-3">
+                            <span className="text-2xs font-medium whitespace-nowrap text-fg-3">
                                 {key}
                             </span>
                             <span className="justify-self-end text-right text-fg-1">

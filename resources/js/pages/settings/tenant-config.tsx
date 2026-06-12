@@ -363,11 +363,11 @@ function GeneralTab({
             )}
             <Card>
                 <CardHeader>
-                    <CardTitle className="text-[13px] uppercase">
+                    <CardTitle className="text-sm uppercase">
                         Pipeline de emergencias
                     </CardTitle>
                 </CardHeader>
-                <CardContent className="flex flex-col gap-4 text-[13px]">
+                <CardContent className="flex flex-col gap-4 text-sm">
                     <label className="flex items-start gap-2">
                         <input
                             type="checkbox"
@@ -381,7 +381,7 @@ function GeneralTab({
                                 Solicitar footage automáticamente en eventos
                                 críticos
                             </span>
-                            <span className="block text-[12px] text-fg-3">
+                            <span className="block text-xs text-fg-3">
                                 {MEDIA_AUTO_REQUEST_KEY} — consume cuota de
                                 retrievals del proveedor (default: apagado).
                             </span>
@@ -389,7 +389,7 @@ function GeneralTab({
                     </label>
 
                     <div className="flex flex-col gap-1">
-                        <Label className="text-[12px]">
+                        <Label className="text-xs">
                             Resolución externa de pánico ({PANIC_AUTO_CLOSE_KEY}
                             )
                         </Label>
@@ -397,7 +397,7 @@ function GeneralTab({
                             value={panicMode}
                             disabled={!canManage}
                             onChange={(e) => setPanicMode(e.target.value)}
-                            className="w-64 rounded-md border border-border bg-surface-1 px-2 py-1.5 text-[13px]"
+                            className="w-64 rounded-md border border-border bg-surface-1 px-2 py-1.5 text-sm"
                         >
                             <option value="annotate">
                                 Solo anotar (annotate)
@@ -409,7 +409,7 @@ function GeneralTab({
                     </div>
 
                     <div className="flex flex-col gap-1">
-                        <Label className="text-[12px]">
+                        <Label className="text-xs">
                             GPS fresco: umbral de obsolescencia en segundos (
                             {LIVE_LOCATION_KEY})
                         </Label>
@@ -434,18 +434,18 @@ function GeneralTab({
 
             <Card>
                 <CardHeader>
-                    <CardTitle className="text-[13px] uppercase">
+                    <CardTitle className="text-sm uppercase">
                         Otros settings ({otherSettings.length})
                     </CardTitle>
                 </CardHeader>
                 <CardContent>
                     {otherSettings.length === 0 ? (
-                        <p className="text-[12px] text-fg-3">
+                        <p className="text-xs text-fg-3">
                             Sin settings adicionales.
                         </p>
                     ) : (
-                        <table className="w-full text-left text-[12px]">
-                            <thead className="text-[11px] text-fg-3 uppercase">
+                        <table className="w-full text-left text-xs">
+                            <thead className="text-2xs text-fg-3 uppercase">
                                 <tr>
                                     <th className="py-1">Setting</th>
                                     <th className="py-1">Grupo</th>
@@ -467,16 +467,16 @@ function GeneralTab({
                                                     {known?.label ?? s.key}
                                                 </span>
                                                 {known && (
-                                                    <span className="block text-[11px] text-fg-3">
+                                                    <span className="block text-2xs text-fg-3">
                                                         {known.description}
                                                     </span>
                                                 )}
-                                                <span className="block font-mono text-[10px] text-fg-3">
+                                                <span className="block font-mono text-3xs text-fg-3">
                                                     {s.key}
                                                 </span>
                                             </td>
                                             <td className="py-2">{s.group}</td>
-                                            <td className="py-2 font-mono text-[11px]">
+                                            <td className="py-2 font-mono text-2xs">
                                                 {JSON.stringify(s.value)}
                                             </td>
                                             <td className="py-2">
@@ -566,13 +566,13 @@ function AiTab({
     return (
         <Card>
             <CardHeader>
-                <CardTitle className="text-[13px] uppercase">
+                <CardTitle className="text-sm uppercase">
                     Perfil de evaluación IA
                 </CardTitle>
             </CardHeader>
-            <CardContent className="flex max-w-xl flex-col gap-3 text-[13px]">
+            <CardContent className="flex max-w-xl flex-col gap-3 text-sm">
                 <div className="flex flex-col gap-1">
-                    <Label className="text-[12px]">Nombre</Label>
+                    <Label className="text-xs">Nombre</Label>
                     <Input
                         value={form.name}
                         disabled={!canManage}
@@ -580,7 +580,7 @@ function AiTab({
                     />
                 </div>
                 <div className="flex flex-col gap-1">
-                    <Label className="text-[12px]">Descripción</Label>
+                    <Label className="text-xs">Descripción</Label>
                     <Input
                         value={form.description}
                         disabled={!canManage}
@@ -589,12 +589,12 @@ function AiTab({
                 </div>
                 {selects.map((select) => (
                     <div key={select.key} className="flex flex-col gap-1">
-                        <Label className="text-[12px]">{select.label}</Label>
+                        <Label className="text-xs">{select.label}</Label>
                         <select
                             value={form[select.key]}
                             disabled={!canManage}
                             onChange={(e) => set(select.key, e.target.value)}
-                            className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-[13px]"
+                            className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-sm"
                         >
                             {select.options.map((option) => (
                                 <option key={option} value={option}>
@@ -698,13 +698,13 @@ function NotificationsTab({
     return (
         <Card>
             <CardHeader>
-                <CardTitle className="text-[13px] uppercase">
+                <CardTitle className="text-sm uppercase">
                     Políticas de notificación
                 </CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
                 {drafts.length === 0 && (
-                    <p className="text-[12px] text-fg-3">
+                    <p className="text-xs text-fg-3">
                         Sin políticas — aplican los defaults del sistema (email
                         + web; críticos añaden sms/push).
                     </p>
@@ -712,7 +712,7 @@ function NotificationsTab({
                 {drafts.map((policy, index) => (
                     <div
                         key={`${policy.policyCode}-${index}`}
-                        className="rounded-[6px] border border-border p-3"
+                        className="rounded-md border border-border p-3"
                     >
                         <div className="mb-2 flex flex-wrap items-center gap-2">
                             <Input
@@ -731,7 +731,7 @@ function NotificationsTab({
                                         ),
                                     )
                                 }
-                                className="w-52 font-mono text-[12px]"
+                                className="w-52 font-mono text-xs"
                             />
                             <Input
                                 value={policy.notificationType ?? ''}
@@ -752,9 +752,9 @@ function NotificationsTab({
                                         ),
                                     )
                                 }
-                                className="w-56 text-[12px]"
+                                className="w-56 text-xs"
                             />
-                            <label className="flex items-center gap-1 text-[12px] text-fg-2">
+                            <label className="flex items-center gap-1 text-xs text-fg-2">
                                 <input
                                     type="checkbox"
                                     checked={policy.isActive}
@@ -780,7 +780,7 @@ function NotificationsTab({
                             {CHANNEL_OPTIONS.map((channel) => (
                                 <label
                                     key={channel}
-                                    className="flex items-center gap-1 text-[12px] text-fg-2"
+                                    className="flex items-center gap-1 text-xs text-fg-2"
                                 >
                                     <input
                                         type="checkbox"
@@ -832,14 +832,14 @@ function JsonField({
 }) {
     return (
         <div className="flex flex-col gap-1">
-            <Label className="text-[12px]">{label}</Label>
+            <Label className="text-xs">{label}</Label>
             <textarea
                 value={value}
                 disabled={disabled}
                 onChange={(e) => onChange(e.target.value)}
                 rows={rows}
                 spellCheck={false}
-                className="rounded-md border border-border bg-surface-2 p-2 font-mono text-[11px] leading-relaxed text-fg-2"
+                className="rounded-md border border-border bg-surface-2 p-2 font-mono text-2xs leading-relaxed text-fg-2"
             />
         </div>
     );
@@ -927,7 +927,7 @@ function EscalationTab({
         <div className="flex flex-col gap-4">
             {configs.length === 0 && (
                 <Card>
-                    <CardContent className="flex items-center justify-between py-4 text-[12px] text-fg-3">
+                    <CardContent className="flex items-center justify-between py-4 text-xs text-fg-3">
                         Sin configuración de escalación — el SLA (P6) no escala
                         por niveles hasta definir los steps.
                         {canManage && (
@@ -1068,19 +1068,19 @@ function EscalationStepsEditor({
     return (
         <div className="flex flex-col gap-2">
             {steps.length === 0 && (
-                <p className="text-[12px] text-fg-3">
+                <p className="text-xs text-fg-3">
                     Sin niveles de escalación definidos.
                 </p>
             )}
             {steps.map((step, index) => (
                 <div
                     key={step.id}
-                    className="flex flex-wrap items-center gap-2 rounded-[6px] bg-surface-1 p-2"
+                    className="flex flex-wrap items-center gap-2 rounded-md bg-surface-1 p-2"
                 >
-                    <span className="w-5 text-center font-mono text-[11px] text-fg-3">
+                    <span className="w-5 text-center font-mono text-2xs text-fg-3">
                         {index + 1}
                     </span>
-                    <label className="flex items-center gap-1.5 text-[12px] text-fg-2">
+                    <label className="flex items-center gap-1.5 text-xs text-fg-2">
                         Esperar
                         <Input
                             type="number"
@@ -1093,7 +1093,7 @@ function EscalationStepsEditor({
                                 })
                             }
                             disabled={disabled}
-                            className="h-8 w-20 text-[12px] tabular-nums"
+                            className="h-8 w-20 text-xs tabular-nums"
                         />
                         min
                     </label>
@@ -1117,7 +1117,7 @@ function EscalationStepsEditor({
                                         })
                                     }
                                     aria-pressed={active}
-                                    className={`rounded-full border px-2 py-0.5 font-mono text-[10px] transition-colors ${
+                                    className={`rounded-full border px-2 py-0.5 font-mono text-3xs transition-colors ${
                                         active
                                             ? 'border-primary bg-primary/10 text-fg-1'
                                             : 'border-border text-fg-3 hover:text-fg-1'
@@ -1149,9 +1149,9 @@ function EscalationStepsEditor({
                             })
                         }
                         disabled={disabled}
-                        className="h-8 w-64 text-[12px]"
+                        className="h-8 w-64 text-xs"
                     />
-                    <label className="flex items-center gap-1.5 text-[12px] text-fg-2">
+                    <label className="flex items-center gap-1.5 text-xs text-fg-2">
                         Intentos
                         <Input
                             type="number"
@@ -1164,7 +1164,7 @@ function EscalationStepsEditor({
                                 })
                             }
                             disabled={disabled}
-                            className="h-8 w-16 text-[12px] tabular-nums"
+                            className="h-8 w-16 text-xs tabular-nums"
                         />
                     </label>
                     {!disabled && (
@@ -1172,7 +1172,7 @@ function EscalationStepsEditor({
                             type="button"
                             variant="ghost"
                             size="sm"
-                            className="h-7 text-[12px] text-fg-3"
+                            className="h-7 text-xs text-fg-3"
                             onClick={() =>
                                 onChange(steps.filter((_, i) => i !== index))
                             }
@@ -1188,7 +1188,7 @@ function EscalationStepsEditor({
                         type="button"
                         variant="ghost"
                         size="sm"
-                        className="h-7 text-[12px] text-fg-2"
+                        className="h-7 text-xs text-fg-2"
                         onClick={() =>
                             onChange([
                                 ...steps,
@@ -1267,7 +1267,7 @@ function EscalationCard({
     return (
         <Card>
             <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-[13px] uppercase">
+                <CardTitle className="flex items-center gap-2 text-sm uppercase">
                     {config.escalationType}
                     <Badge
                         variant="outline"
@@ -1281,7 +1281,7 @@ function EscalationCard({
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
                 <div className="flex flex-col gap-1">
-                    <Label className="text-[12px]">
+                    <Label className="text-xs">
                         Condiciones del disparador
                     </Label>
                     <ConditionBuilder
@@ -1294,7 +1294,7 @@ function EscalationCard({
                     />
                 </div>
                 <div className="flex flex-col gap-1">
-                    <Label className="text-[12px]">Niveles de escalación</Label>
+                    <Label className="text-xs">Niveles de escalación</Label>
                     {stepDrafts !== null ? (
                         <EscalationStepsEditor
                             steps={stepDrafts}
@@ -1305,7 +1305,7 @@ function EscalationCard({
                         />
                     ) : (
                         <>
-                            <p className="text-[11px] text-fg-3">
+                            <p className="text-2xs text-fg-3">
                                 Estructura avanzada: estos steps usan campos que
                                 el editor visual no representa. Edítalos en
                                 JSON; no se perderá ningún dato.
@@ -1344,7 +1344,7 @@ function ScheduleTab({
     if (profiles.length === 0) {
         return (
             <Card>
-                <CardContent className="py-4 text-[12px] text-fg-3">
+                <CardContent className="py-4 text-xs text-fg-3">
                     Sin perfiles de horario — la asignación on-call (P5) usa el
                     fallback (primer admin del equipo). Los perfiles se crean al
                     configurar la integración o por API.
@@ -1420,13 +1420,13 @@ function ScheduleCard({
     return (
         <Card>
             <CardHeader>
-                <CardTitle className="text-[13px] uppercase">
+                <CardTitle className="text-sm uppercase">
                     {profile.profileCode}
                 </CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
                 <div className="flex flex-col gap-1">
-                    <Label className="text-[12px]">Zona horaria</Label>
+                    <Label className="text-xs">Zona horaria</Label>
                     <Input
                         value={timezone}
                         disabled={!canManage}
@@ -1631,7 +1631,7 @@ function ChannelsTab({
     return (
         <Card>
             <CardHeader>
-                <CardTitle className="flex items-center justify-between text-[13px] uppercase">
+                <CardTitle className="flex items-center justify-between text-sm uppercase">
                     Canales de notificación ({channels.length})
                     {canManage && (
                         <Button
@@ -1646,7 +1646,7 @@ function ChannelsTab({
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
                 {creating && (
-                    <div className="flex flex-col gap-2 rounded-[6px] border border-border p-3">
+                    <div className="flex flex-col gap-2 rounded-md border border-border p-3">
                         <div className="flex flex-wrap gap-2">
                             <Input
                                 placeholder="code (ej. twilio_sms)"
@@ -1654,7 +1654,7 @@ function ChannelsTab({
                                 onChange={(e) =>
                                     setForm({ ...form, code: e.target.value })
                                 }
-                                className="w-48 font-mono text-[12px]"
+                                className="w-48 font-mono text-xs"
                             />
                             <Input
                                 placeholder="Nombre"
@@ -1662,7 +1662,7 @@ function ChannelsTab({
                                 onChange={(e) =>
                                     setForm({ ...form, name: e.target.value })
                                 }
-                                className="w-56 text-[12px]"
+                                className="w-56 text-xs"
                             />
                             <select
                                 value={form.channelType}
@@ -1673,7 +1673,7 @@ function ChannelsTab({
                                         config: {},
                                     })
                                 }
-                                className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-[12px]"
+                                className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-xs"
                             >
                                 {channelTypes.map((type) => (
                                     <option key={type} value={type}>
@@ -1687,9 +1687,7 @@ function ChannelsTab({
                                 key={field.key}
                                 className="flex flex-col gap-1"
                             >
-                                <Label className="text-[12px]">
-                                    {field.label}
-                                </Label>
+                                <Label className="text-xs">{field.label}</Label>
                                 <Input
                                     type="password"
                                     autoComplete="off"
@@ -1703,7 +1701,7 @@ function ChannelsTab({
                                             },
                                         })
                                     }
-                                    className="max-w-md font-mono text-[12px]"
+                                    className="max-w-md font-mono text-xs"
                                 />
                             </div>
                         ))}
@@ -1717,20 +1715,20 @@ function ChannelsTab({
 
                 {canManage && channels.length > 0 && (
                     <div className="flex items-center gap-2">
-                        <Label className="text-[12px] whitespace-nowrap">
+                        <Label className="text-xs whitespace-nowrap">
                             Destino de prueba
                         </Label>
                         <Input
                             placeholder="email, +52…, user id o URL"
                             value={testAddress}
                             onChange={(e) => setTestAddress(e.target.value)}
-                            className="max-w-xs text-[12px]"
+                            className="max-w-xs text-xs"
                         />
                     </div>
                 )}
 
                 {channels.length === 0 ? (
-                    <p className="text-[12px] text-fg-3">
+                    <p className="text-xs text-fg-3">
                         Sin canales — configura Slack, Twilio (SMS/WhatsApp) o
                         FCM para que las notificaciones y B9 operen.
                     </p>
@@ -1739,18 +1737,18 @@ function ChannelsTab({
                         {channels.map((channel) => (
                             <li
                                 key={channel.id}
-                                className="flex flex-wrap items-center gap-2 rounded-[6px] border border-border p-2.5 text-[12px]"
+                                className="flex flex-wrap items-center gap-2 rounded-md border border-border p-2.5 text-xs"
                             >
                                 <Badge
                                     variant="outline"
-                                    className="font-mono text-[10px]"
+                                    className="font-mono text-3xs"
                                 >
                                     {channel.channelType}
                                 </Badge>
                                 <span className="font-medium text-fg-1">
                                     {channel.name}
                                 </span>
-                                <span className="font-mono text-[11px] text-fg-3">
+                                <span className="font-mono text-2xs text-fg-3">
                                     {Object.entries(channel.configSummary)
                                         .map(
                                             ([key, value]) => `${key}=${value}`,
@@ -1760,7 +1758,7 @@ function ChannelsTab({
                                 {channel.isGlobal && (
                                     <Badge
                                         variant="outline"
-                                        className="text-[10px] text-fg-3"
+                                        className="text-3xs text-fg-3"
                                     >
                                         Provisto por SAM
                                     </Badge>
@@ -1920,25 +1918,25 @@ function BrandingTab({
     return (
         <Card>
             <CardHeader>
-                <CardTitle className="text-[13px] uppercase">
+                <CardTitle className="text-sm uppercase">
                     Marca del tenant
                 </CardTitle>
             </CardHeader>
-            <CardContent className="flex max-w-xl flex-col gap-3 text-[13px]">
+            <CardContent className="flex max-w-xl flex-col gap-3 text-sm">
                 <div className="flex items-center gap-3">
                     {branding.logoUrl ? (
                         <img
                             src={branding.logoUrl}
                             alt="Logo del tenant"
-                            className="h-14 w-14 rounded-[6px] border border-border object-contain"
+                            className="h-14 w-14 rounded-md border border-border object-contain"
                         />
                     ) : (
-                        <div className="flex h-14 w-14 items-center justify-center rounded-[6px] border border-dashed border-border text-[10px] text-fg-3">
+                        <div className="flex h-14 w-14 items-center justify-center rounded-md border border-dashed border-border text-3xs text-fg-3">
                             sin logo
                         </div>
                     )}
                     {canManage && (
-                        <label className="cursor-pointer text-[12px] text-fg-2 underline">
+                        <label className="cursor-pointer text-xs text-fg-2 underline">
                             {uploading ? 'Subiendo…' : 'Subir logo'}
                             <input
                                 type="file"
@@ -1958,7 +1956,7 @@ function BrandingTab({
                 </div>
 
                 <div className="flex flex-col gap-1">
-                    <Label className="text-[12px]">Nombre para mostrar</Label>
+                    <Label className="text-xs">Nombre para mostrar</Label>
                     <Input
                         value={form.display_name}
                         disabled={!canManage}
@@ -1969,7 +1967,7 @@ function BrandingTab({
                 </div>
                 <div className="flex gap-4">
                     <div className="flex flex-col gap-1">
-                        <Label className="text-[12px]">Color primario</Label>
+                        <Label className="text-xs">Color primario</Label>
                         <input
                             type="color"
                             value={form.primary_color}
@@ -1984,7 +1982,7 @@ function BrandingTab({
                         />
                     </div>
                     <div className="flex flex-col gap-1">
-                        <Label className="text-[12px]">Color secundario</Label>
+                        <Label className="text-xs">Color secundario</Label>
                         <input
                             type="color"
                             value={form.secondary_color}
@@ -2000,7 +1998,7 @@ function BrandingTab({
                     </div>
                 </div>
                 <div className="flex flex-col gap-1">
-                    <Label className="text-[12px]">Firma de email</Label>
+                    <Label className="text-xs">Firma de email</Label>
                     <textarea
                         value={form.email_signature}
                         disabled={!canManage}
@@ -2011,7 +2009,7 @@ function BrandingTab({
                             })
                         }
                         rows={3}
-                        className="rounded-md border border-border bg-surface-2 p-2 text-[12px] text-fg-2"
+                        className="rounded-md border border-border bg-surface-2 p-2 text-xs text-fg-2"
                     />
                 </div>
                 {canManage && (
@@ -2034,13 +2032,13 @@ function VersionsTab({ versions }: { versions: VersionRow[] }) {
     return (
         <Card>
             <CardHeader>
-                <CardTitle className="text-[13px] uppercase">
+                <CardTitle className="text-sm uppercase">
                     Historial de versiones
                 </CardTitle>
             </CardHeader>
             <CardContent>
                 {versions.length === 0 ? (
-                    <p className="text-[12px] text-fg-3">
+                    <p className="text-xs text-fg-3">
                         Aún sin versiones — se crean automáticamente al guardar
                         cualquier configuración.
                     </p>
@@ -2049,7 +2047,7 @@ function VersionsTab({ versions }: { versions: VersionRow[] }) {
                         {versions.map((version) => (
                             <li
                                 key={version.id}
-                                className="flex items-center justify-between border-b border-border/50 py-2 text-[12px]"
+                                className="flex items-center justify-between border-b border-border/50 py-2 text-xs"
                             >
                                 <span className="font-mono text-fg-1">
                                     v{version.version}
@@ -2082,7 +2080,7 @@ function VersionsTab({ versions }: { versions: VersionRow[] }) {
                         <DialogHeader>
                             <DialogTitle>Snapshot v{open?.version}</DialogTitle>
                         </DialogHeader>
-                        <pre className="max-h-[60vh] overflow-auto rounded-[6px] bg-surface-2 p-3 font-mono text-[11px] text-fg-2">
+                        <pre className="max-h-[60vh] overflow-auto rounded-md bg-surface-2 p-3 font-mono text-2xs text-fg-2">
                             {JSON.stringify(open?.snapshot ?? {}, null, 2)}
                         </pre>
                     </DialogContent>
@@ -2104,10 +2102,10 @@ export default function TenantConfigPage() {
             <Head title="Configuración del tenant" />
             <div className="flex flex-col gap-4 p-5">
                 <div>
-                    <h1 className="text-[16px] font-semibold text-fg-1">
+                    <h1 className="text-md font-semibold text-fg-1">
                         Configuración
                     </h1>
-                    <p className="text-[12px] text-fg-3">
+                    <p className="text-xs text-fg-3">
                         Ajustes del tenant: pipeline, IA, notificaciones,
                         escalación y horarios on-call.
                     </p>
@@ -2119,7 +2117,7 @@ export default function TenantConfigPage() {
                             key={item.key}
                             type="button"
                             onClick={() => setTab(item.key)}
-                            className={`px-3 py-2 text-[13px] transition-colors ${
+                            className={`px-3 py-2 text-sm transition-colors ${
                                 tab === item.key
                                     ? 'border-b-2 border-primary font-medium text-fg-1'
                                     : 'text-fg-3 hover:text-fg-1'

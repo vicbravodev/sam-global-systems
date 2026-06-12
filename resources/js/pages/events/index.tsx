@@ -81,7 +81,7 @@ const COLUMNS: DataTableColumn<EventRow>[] = [
         sortValue: (event) =>
             event.occurredAt ? Date.parse(event.occurredAt) : null,
         cell: (event) => (
-            <span className="font-mono text-[11px] whitespace-nowrap text-fg-2">
+            <span className="font-mono text-2xs whitespace-nowrap text-fg-2">
                 {event.occurredAt
                     ? new Date(event.occurredAt).toLocaleString('es')
                     : '—'}
@@ -93,7 +93,7 @@ const COLUMNS: DataTableColumn<EventRow>[] = [
         header: 'Tipo',
         sortValue: (event) => event.eventType ?? event.eventTypeCode,
         cell: (event) => (
-            <span className="text-[12px] text-fg-1">
+            <span className="text-xs text-fg-1">
                 {event.eventType ?? event.eventTypeCode ?? '—'}
             </span>
         ),
@@ -105,7 +105,7 @@ const COLUMNS: DataTableColumn<EventRow>[] = [
         cell: (event) =>
             event.severityLabel ? (
                 <span
-                    className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase"
+                    className="rounded px-1.5 py-0.5 text-3xs font-semibold uppercase"
                     style={{
                         color: event.severityColor ?? undefined,
                         backgroundColor: event.severityColor
@@ -116,7 +116,7 @@ const COLUMNS: DataTableColumn<EventRow>[] = [
                     {event.severityLabel}
                 </span>
             ) : (
-                <span className="text-[12px] text-fg-2">—</span>
+                <span className="text-xs text-fg-2">—</span>
             ),
     },
     {
@@ -124,7 +124,7 @@ const COLUMNS: DataTableColumn<EventRow>[] = [
         header: 'Activo',
         sortValue: (event) => event.asset,
         cell: (event) => (
-            <span className="text-[12px] text-fg-2">{event.asset ?? '—'}</span>
+            <span className="text-xs text-fg-2">{event.asset ?? '—'}</span>
         ),
     },
     {
@@ -132,16 +132,14 @@ const COLUMNS: DataTableColumn<EventRow>[] = [
         header: 'Conductor',
         sortValue: (event) => event.driver,
         cell: (event) => (
-            <span className="text-[12px] text-fg-2">{event.driver ?? '—'}</span>
+            <span className="text-xs text-fg-2">{event.driver ?? '—'}</span>
         ),
     },
     {
         key: 'provider',
         header: 'Proveedor',
         cell: (event) => (
-            <span className="text-[12px] text-fg-2">
-                {event.provider ?? '—'}
-            </span>
+            <span className="text-xs text-fg-2">{event.provider ?? '—'}</span>
         ),
     },
     {
@@ -150,7 +148,7 @@ const COLUMNS: DataTableColumn<EventRow>[] = [
         sortValue: (event) => event.status,
         cell: (event) => (
             <span
-                className={`text-[11px] ${STATUS_BADGE[event.status ?? ''] ?? 'text-fg-3'}`}
+                className={`text-2xs ${STATUS_BADGE[event.status ?? ''] ?? 'text-fg-3'}`}
             >
                 {event.status ?? '—'}
             </span>
@@ -176,7 +174,7 @@ function FilterSelect({
             onChange={(event) =>
                 onChange(event.target.value === '' ? null : event.target.value)
             }
-            className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-[12px] text-fg-2"
+            className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-xs text-fg-2"
         >
             <option value="">{label}: todos</option>
             {options.map((option) => (
@@ -275,7 +273,7 @@ export default function EventsIndex() {
                             Sin mapear
                             <Badge
                                 variant="secondary"
-                                className="ml-1 px-1.5 text-[10px]"
+                                className="ml-1 px-1.5 text-3xs"
                             >
                                 {unmappedCount}
                             </Badge>
@@ -293,7 +291,7 @@ export default function EventsIndex() {
                             value={search}
                             onChange={(event) => setSearch(event.target.value)}
                             placeholder="Buscar por activo o tipo…"
-                            className="w-44 border-none bg-transparent text-[12px] text-fg-1 outline-none"
+                            className="w-44 border-none bg-transparent text-xs text-fg-1 outline-none"
                         />
                     </div>
                     <FilterSelect
@@ -365,7 +363,7 @@ export default function EventsIndex() {
                                         : event.target.value,
                             })
                         }
-                        className="rounded-md border border-border bg-surface-1 px-2 py-1 text-[12px] text-fg-2"
+                        className="rounded-md border border-border bg-surface-1 px-2 py-1 text-xs text-fg-2"
                     />
                     <input
                         type="date"
@@ -380,7 +378,7 @@ export default function EventsIndex() {
                                         : event.target.value,
                             })
                         }
-                        className="rounded-md border border-border bg-surface-1 px-2 py-1 text-[12px] text-fg-2"
+                        className="rounded-md border border-border bg-surface-1 px-2 py-1 text-xs text-fg-2"
                     />
                     {hasActive && (
                         <button
@@ -389,7 +387,7 @@ export default function EventsIndex() {
                                 setSearch('');
                                 applyFilters(EMPTY_FILTERS);
                             }}
-                            className="flex items-center gap-1 text-[12px] text-fg-3 hover:text-fg-1"
+                            className="flex items-center gap-1 text-xs text-fg-3 hover:text-fg-1"
                         >
                             <X size={11} />
                             Limpiar
@@ -426,7 +424,7 @@ export default function EventsIndex() {
                 />
 
                 {/* Footer / pagination */}
-                <div className="flex shrink-0 items-center justify-between border-t border-border bg-background px-5 py-2 text-[12px] text-fg-3">
+                <div className="flex shrink-0 items-center justify-between border-t border-border bg-background px-5 py-2 text-xs text-fg-3">
                     <span>
                         {events.length} de {pagination.total} eventos
                     </span>

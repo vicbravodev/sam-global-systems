@@ -59,7 +59,7 @@ function LiveSlaCell({ seconds, total }: { seconds: number; total: number }) {
         : `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 
     return (
-        <span className="font-mono text-[11px] tabular-nums" style={{ color }}>
+        <span className="font-mono text-2xs tabular-nums" style={{ color }}>
             {label}
         </span>
     );
@@ -77,7 +77,7 @@ function StreamCard({ incident, selected, onClick }: StreamCardProps) {
     return (
         <div
             className={cn(
-                'flex cursor-pointer overflow-hidden rounded-[6px] border border-border bg-surface-1',
+                'flex cursor-pointer overflow-hidden rounded-md border border-border bg-surface-1',
                 'transition-colors hover:bg-surface-2',
                 selected ? 'border-primary/60 bg-primary/10' : '',
                 incident.realtime
@@ -108,7 +108,7 @@ function StreamCard({ incident, selected, onClick }: StreamCardProps) {
                     <SeverityBadge level={incident.severity} />
                     <StatusPill state={incident.status} />
                     <ProviderTag name={incident.provider} />
-                    <span className="font-mono text-[10px] text-fg-3">
+                    <span className="font-mono text-3xs text-fg-3">
                         {incident.id}
                     </span>
                     <span className="flex-1" />
@@ -119,12 +119,12 @@ function StreamCard({ incident, selected, onClick }: StreamCardProps) {
                 </div>
 
                 {/* Title */}
-                <div className="text-[14px] font-medium text-fg-1">
+                <div className="text-base font-medium text-fg-1">
                     {incident.title}
                 </div>
 
                 {/* Meta row */}
-                <div className="flex flex-wrap items-center gap-3 text-[11px] text-fg-2">
+                <div className="flex flex-wrap items-center gap-3 text-2xs text-fg-2">
                     <span className="flex items-center gap-1">
                         <Truck className="size-3 text-fg-3" strokeWidth={1.5} />
                         {incident.asset}
@@ -147,12 +147,12 @@ function StreamCard({ incident, selected, onClick }: StreamCardProps) {
                                 initials={incident.assignee.initials}
                                 size={16}
                             />
-                            <span className="text-[11px] text-fg-2">
+                            <span className="text-2xs text-fg-2">
                                 {incident.assignee.name}
                             </span>
                         </span>
                     ) : (
-                        <span className="text-[11px] text-fg-3 italic">
+                        <span className="text-2xs text-fg-3 italic">
                             Sin asignar
                         </span>
                     )}

@@ -11,7 +11,7 @@ export function ProviderTag({ name, className }: Props) {
     return (
         <span
             className={cn(
-                'inline-flex rounded-[3px] border border-border bg-surface-2 px-1.5 py-[3px] font-mono text-[9px] tracking-[0.08em] text-fg-3',
+                'inline-flex rounded-sm border border-border bg-surface-2 px-1.5 py-[3px] font-mono text-3xs tracking-caps text-fg-3',
                 className,
             )}
             title={name}

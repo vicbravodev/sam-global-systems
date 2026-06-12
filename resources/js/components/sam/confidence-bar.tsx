@@ -32,7 +32,7 @@ export function ConfidenceBar({ value, className }: Props) {
                     aria-valuemax={100}
                 />
             </div>
-            <span className={cn('font-mono text-[11px] tabular-nums', color)}>
+            <span className={cn('font-mono text-2xs tabular-nums', color)}>
                 {pct} %
             </span>
         </div>

@@ -28,7 +28,7 @@ export function InboxTable({
                 wrapper en vez de aplastar las columnas. */}
             <table className="w-full min-w-[760px] border-collapse">
                 <thead>
-                    <tr className="sticky top-0 z-10 border-b border-border bg-surface-3 text-[10px] font-semibold tracking-[0.08em] text-fg-3 uppercase">
+                    <tr className="sticky top-0 z-10 border-b border-border bg-surface-3 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
                         <th className="w-[34px] px-2.5 py-2 text-left">
                             <span
                                 className="inline-grid cursor-pointer place-items-center rounded-sm border border-border-strong select-none"

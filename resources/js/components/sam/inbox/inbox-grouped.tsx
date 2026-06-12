@@ -28,7 +28,7 @@ function MinSlaCell({ seconds, total }: { seconds: number; total: number }) {
         : `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 
     return (
-        <span className="font-mono text-[11px] tabular-nums" style={{ color }}>
+        <span className="font-mono text-2xs tabular-nums" style={{ color }}>
             {label}
         </span>
     );
@@ -90,13 +90,13 @@ export function InboxGrouped({
                             )}
                         >
                             <SeverityBadge level={severity} />
-                            <span className="text-[12px] font-semibold text-fg-2">
+                            <span className="text-xs font-semibold text-fg-2">
                                 {items.length}{' '}
                                 {items.length === 1
                                     ? 'incidente'
                                     : 'incidentes'}
                             </span>
-                            <span className="ml-auto flex items-center gap-1 text-[11px] text-fg-3">
+                            <span className="ml-auto flex items-center gap-1 text-2xs text-fg-3">
                                 SLA mín:
                                 <MinSlaCell
                                     seconds={minSla.slaSeconds}

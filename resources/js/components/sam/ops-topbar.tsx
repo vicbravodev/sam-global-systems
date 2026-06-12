@@ -71,7 +71,7 @@ export function OpsTopbar({
                                 )}
                                 <span
                                     className={cn(
-                                        'text-[12px] font-medium',
+                                        'text-xs font-medium',
                                         isLast
                                             ? 'font-semibold text-fg-1'
                                             : 'text-fg-3',
@@ -104,10 +104,10 @@ export function OpsTopbar({
                 aria-label="Buscar"
             >
                 <Search className="size-3.5 shrink-0 text-fg-3" />
-                <span className="flex-1 text-left text-[12px] text-fg-3">
+                <span className="flex-1 text-left text-xs text-fg-3">
                     Buscar incidentes, activos…
                 </span>
-                <kbd className="rounded-sm border border-b-2 border-border bg-surface-2 px-1.5 py-0.5 font-mono text-[10px] text-fg-2">
+                <kbd className="rounded-sm border border-b-2 border-border bg-surface-2 px-1.5 py-0.5 font-mono text-3xs text-fg-2">
                     ⌘K
                 </kbd>
             </button>
@@ -157,15 +157,15 @@ export function OpsTopbar({
                         aria-label="Menú de usuario"
                     >
                         <div className="grid size-[26px] shrink-0 place-items-center rounded-full bg-primary">
-                            <span className="text-[11px] font-semibold text-white">
+                            <span className="text-2xs font-semibold text-white">
                                 {userInitials}
                             </span>
                         </div>
                         <div className="hidden min-w-0 text-left sm:block">
-                            <div className="max-w-[100px] truncate text-[12px] font-semibold text-fg-1">
+                            <div className="max-w-[100px] truncate text-xs font-semibold text-fg-1">
                                 {user.name}
                             </div>
-                            <div className="mt-0.5 font-mono text-[10px] text-fg-3">
+                            <div className="mt-0.5 font-mono text-3xs text-fg-3">
                                 Supervisor
                             </div>
                         </div>

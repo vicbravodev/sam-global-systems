@@ -66,7 +66,7 @@ function BulkBar({
 
     return (
         <div className="flex shrink-0 items-center gap-2.5 border-b border-border bg-primary/18 px-5 py-2">
-            <span className="text-[12px] font-semibold text-primary">
+            <span className="text-xs font-semibold text-primary">
                 {count} seleccionados
             </span>
             <Button
@@ -163,10 +163,10 @@ function PageHead({
     return (
         <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-surface-1 px-5 py-3">
             <div className="flex items-center gap-3">
-                <h1 className="text-[15px] font-semibold text-fg-1">
+                <h1 className="text-md font-semibold text-fg-1">
                     Bandeja de incidentes
                 </h1>
-                <div className="flex items-center gap-2 text-[12px] text-fg-3">
+                <div className="flex items-center gap-2 text-xs text-fg-3">
                     <span>
                         <span className="font-medium text-fg-1">
                             {openCount}
@@ -196,7 +196,7 @@ function PageHead({
                             type="button"
                             onClick={() => setLayout(l.value)}
                             className={cn(
-                                'inline-flex items-center gap-1 rounded-sm px-2 py-1 text-[11px] font-medium transition-colors',
+                                'inline-flex items-center gap-1 rounded-sm px-2 py-1 text-2xs font-medium transition-colors',
                                 layout === l.value
                                     ? 'bg-surface-1 text-fg-1 shadow-sm'
                                     : 'text-fg-3 hover:text-fg-2',
@@ -298,7 +298,7 @@ function TabBar({
                         type="button"
                         onClick={() => setTab(t.value)}
                         className={cn(
-                            '-mb-px border-b-2 px-3.5 py-2.5 text-[12px] font-medium transition-colors',
+                            '-mb-px border-b-2 px-3.5 py-2.5 text-xs font-medium transition-colors',
                             tab === t.value
                                 ? 'border-primary text-fg-1'
                                 : 'border-transparent text-fg-3 hover:text-fg-2',
@@ -306,7 +306,7 @@ function TabBar({
                     >
                         {t.label}
                         {t.value === 'open' && openIncidents.length > 0 && (
-                            <span className="ml-1.5 font-mono text-[10px] text-fg-3">
+                            <span className="ml-1.5 font-mono text-3xs text-fg-3">
                                 {openIncidents.length}
                             </span>
                         )}
@@ -322,7 +322,7 @@ function TabBar({
                         type="button"
                         onClick={() => setDensity(d.value)}
                         className={cn(
-                            'h-6 w-6 rounded-sm text-[10px] font-semibold transition-colors',
+                            'h-6 w-6 rounded-sm text-3xs font-semibold transition-colors',
                             density === d.value
                                 ? 'bg-surface-3 text-fg-1'
                                 : 'text-fg-3 hover:text-fg-2',
@@ -361,7 +361,7 @@ function FilterDropdown({
                 <button
                     type="button"
                     className={cn(
-                        'flex items-center gap-1 rounded-sm border px-2.5 py-1.5 text-[11px] transition-colors',
+                        'flex items-center gap-1 rounded-sm border px-2.5 py-1.5 text-2xs transition-colors',
                         active
                             ? 'border-primary/40 bg-primary/10 text-primary'
                             : 'border-border bg-surface-1 text-fg-2 hover:border-border-strong',
@@ -439,14 +439,14 @@ function FilterBar({ filters, options, onApply }: FilterBarProps) {
 
     return (
         <div className="flex shrink-0 items-center gap-2 border-b border-border bg-background px-5 py-2">
-            <div className="mr-1 flex items-center gap-1.5 rounded-md border border-border bg-surface-1 px-2.5 py-1.5 text-[12px] text-fg-3">
+            <div className="mr-1 flex items-center gap-1.5 rounded-md border border-border bg-surface-1 px-2.5 py-1.5 text-xs text-fg-3">
                 <Search size={12} />
                 <input
                     type="text"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="Buscar incidente…"
-                    className="w-40 border-none bg-transparent text-[12px] text-fg-1 outline-none placeholder:text-fg-3"
+                    className="w-40 border-none bg-transparent text-xs text-fg-1 outline-none placeholder:text-fg-3"
                 />
             </div>
 
@@ -487,7 +487,7 @@ function FilterBar({ filters, options, onApply }: FilterBarProps) {
                             shift: null,
                         })
                     }
-                    className="flex items-center gap-1 rounded-sm border border-dashed border-border px-2.5 py-1.5 text-[11px] text-fg-3 transition-colors hover:border-border-strong"
+                    className="flex items-center gap-1 rounded-sm border border-dashed border-border px-2.5 py-1.5 text-2xs text-fg-3 transition-colors hover:border-border-strong"
                 >
                     <X size={11} />
                     Limpiar
@@ -502,10 +502,10 @@ function FilterBar({ filters, options, onApply }: FilterBarProps) {
 function InboxFooter({ count, total }: { count: number; total: number }) {
     return (
         <div className="flex shrink-0 items-center justify-between border-t border-border bg-surface-1 px-5 py-2">
-            <span className="text-[11px] text-fg-3">
+            <span className="text-2xs text-fg-3">
                 {count} de {total} incidentes
             </span>
-            <div className="flex items-center gap-2 font-mono text-[10px] text-fg-3">
+            <div className="flex items-center gap-2 font-mono text-3xs text-fg-3">
                 <span className="sam-kbd">J</span>
                 <span className="sam-kbd">K</span>
                 <span>navegar</span>
@@ -528,10 +528,8 @@ function InboxEmptyState() {
             <div className="inline-grid size-12 place-items-center rounded-full border border-border bg-surface-2 text-fg-3">
                 <Inbox size={22} strokeWidth={1.5} />
             </div>
-            <h2 className="text-[15px] font-semibold text-fg-1">
-                Sin incidentes
-            </h2>
-            <p className="max-w-sm text-[12px] leading-[1.5] text-fg-3">
+            <h2 className="text-md font-semibold text-fg-1">Sin incidentes</h2>
+            <p className="max-w-sm text-xs leading-normal text-fg-3">
                 Cuando el pipeline genere incidentes para tu equipo aparecerán
                 aquí en tiempo real.
             </p>
@@ -561,12 +559,10 @@ function DetailPlaceholder({
             {loading ? (
                 <>
                     <Loader2 size={22} className="animate-spin text-fg-3" />
-                    <span className="text-[12px] text-fg-3">
-                        Cargando detalle…
-                    </span>
+                    <span className="text-xs text-fg-3">Cargando detalle…</span>
                 </>
             ) : (
-                <span className="text-[12px] text-fg-3">
+                <span className="text-xs text-fg-3">
                     No se pudo cargar el detalle del incidente.
                 </span>
             )}

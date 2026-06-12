@@ -28,6 +28,40 @@
     --radius-lg: 10px;
     --radius-xl: 14px;
 
+    /* Type scale (px) — single source of truth; use text-* utilities, never
+       arbitrary values like text-[12px]. 2xs (11px) is the dense-table meta
+       size; 3xs (10px) is reserved for badges/caps. */
+    --text-3xs: 10px;
+    --text-3xs--line-height: var(--line-snug);
+    --text-2xs: 11px;
+    --text-2xs--line-height: var(--line-snug);
+    --text-xs: 12px;
+    --text-xs--line-height: var(--line-snug);
+    --text-sm: 13px;
+    --text-sm--line-height: var(--line-normal);
+    --text-base: 14px;
+    --text-base--line-height: var(--line-normal);
+    --text-md: 15px;
+    --text-md--line-height: var(--line-normal);
+    --text-lg: 18px;
+    --text-lg--line-height: var(--line-snug);
+    --text-xl: 22px;
+    --text-xl--line-height: var(--line-snug);
+    --text-2xl: 28px;
+    --text-2xl--line-height: var(--line-tight);
+    --text-3xl: 36px;
+    --text-3xl--line-height: var(--line-tight);
+
+    /* Tracking */
+    --tracking-tight: -0.01em;
+    --tracking-normal: 0;
+    --tracking-label: 0.02em;
+    --tracking-caps: 0.08em;
+
+    /* Motion — strong curves; built-in CSS easings are too weak */
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
     /* shadcn surface mappings */
     --color-background: var(--background);
     --color-foreground: var(--foreground);
@@ -234,38 +268,21 @@
        components that reference it directly. */
     --radius: 6px;
 
-    /* Motion */
+    /* Motion durations (easings live in @theme) */
     --motion-instant: 50ms;
     --motion-fast: 120ms;
     --motion-normal: 200ms;
     --motion-slow: 320ms;
-    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-    --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
 
     /* Density — row height */
     --row-compact: 32px;
     --row-comfortable: 40px;
     --row-relaxed: 56px;
 
-    /* Type scale (px) */
-    --text-2xs: 10px;
-    --text-xs: 12px;
-    --text-sm: 13px;
-    --text-base: 14px;
-    --text-md: 15px;
-    --text-lg: 18px;
-    --text-xl: 22px;
-    --text-2xl: 28px;
-    --text-3xl: 36px;
-
+    /* Line heights (type scale + tracking live in @theme) */
     --line-tight: 1.15;
     --line-snug: 1.35;
     --line-normal: 1.5;
-
-    --tracking-tight: -0.01em;
-    --tracking-normal: 0;
-    --tracking-label: 0.02em;
-    --tracking-caps: 0.08em;
 }
 
 /* -------------------- Root tokens (DARK — the real default) -------------------- */
@@ -394,7 +411,7 @@
     color: var(--fg-2);
 }
 .sam-caps {
-    font: 600 var(--text-2xs) / var(--line-snug) var(--font-sans);
+    font: 600 var(--text-3xs) / var(--line-snug) var(--font-sans);
     letter-spacing: var(--tracking-caps);
     color: var(--fg-3);
     text-transform: uppercase;
@@ -409,7 +426,7 @@
     color: var(--fg-1);
 }
 .sam-kbd {
-    font: 500 var(--text-2xs) / 1 var(--font-mono);
+    font: 500 var(--text-3xs) / 1 var(--font-mono);
     padding: 2px 5px;
     border: 1px solid var(--border);
     border-bottom-width: 2px;

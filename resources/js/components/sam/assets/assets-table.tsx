@@ -23,13 +23,13 @@ function DevicesCell({ devices }: { devices: AssetRow['devices'] }) {
 
     return (
         <span className="flex items-center gap-1.5">
-            <span className="truncate font-mono text-[11px] text-fg-2">
+            <span className="truncate font-mono text-2xs text-fg-2">
                 {first.deviceType}
             </span>
             {rest.length > 0 && (
                 <Tooltip>
                     <TooltipTrigger asChild>
-                        <span className="rounded-full bg-surface-3 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-fg-2">
+                        <span className="rounded-full bg-surface-3 px-1.5 py-0.5 font-mono text-3xs font-semibold text-fg-2">
                             +{rest.length}
                         </span>
                     </TooltipTrigger>
@@ -49,14 +49,14 @@ function LocationCell({ location }: { location: AssetRow['lastLocation'] }) {
 
     if (location.formattedLocation) {
         return (
-            <span className="truncate text-[12px] text-fg-2">
+            <span className="truncate text-xs text-fg-2">
                 {location.formattedLocation}
             </span>
         );
     }
 
     return (
-        <span className="font-mono text-[11px] text-fg-2 tabular-nums">
+        <span className="font-mono text-2xs text-fg-2 tabular-nums">
             {location.latitude.toFixed(5)}, {location.longitude.toFixed(5)}
         </span>
     );
@@ -69,11 +69,11 @@ const COLUMNS: DataTableColumn<AssetRow>[] = [
         sortValue: (asset) => asset.name,
         cell: (asset) => (
             <div className="flex flex-col">
-                <span className="truncate text-[13px] font-medium text-fg-1">
+                <span className="truncate text-sm font-medium text-fg-1">
                     {asset.name}
                 </span>
                 {asset.code && (
-                    <span className="font-mono text-[10px] text-fg-3">
+                    <span className="font-mono text-3xs text-fg-3">
                         {asset.code}
                     </span>
                 )}
@@ -93,9 +93,7 @@ const COLUMNS: DataTableColumn<AssetRow>[] = [
         width: 'w-32',
         sortValue: (asset) => asset.type?.name ?? null,
         cell: (asset) => (
-            <span className="text-[12px] text-fg-2">
-                {asset.type?.name ?? '—'}
-            </span>
+            <span className="text-xs text-fg-2">{asset.type?.name ?? '—'}</span>
         ),
     },
     {

@@ -169,10 +169,10 @@ export default function AssetsMap() {
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                 <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border bg-surface-1 px-5 py-3">
                     <div className="flex items-center gap-3">
-                        <h1 className="text-[15px] font-semibold text-fg-1">
+                        <h1 className="text-md font-semibold text-fg-1">
                             Mapa en vivo
                         </h1>
-                        <span className="text-[12px] text-fg-3">
+                        <span className="text-xs text-fg-3">
                             <span className="font-medium text-fg-1">
                                 {markers.length}
                             </span>{' '}
@@ -188,7 +188,7 @@ export default function AssetsMap() {
                             {presentStatuses.map((status) => (
                                 <span
                                     key={status}
-                                    className="flex items-center gap-1 text-[11px] text-fg-3"
+                                    className="flex items-center gap-1 text-2xs text-fg-3"
                                 >
                                     <span
                                         className={cn(
@@ -226,7 +226,7 @@ export default function AssetsMap() {
                     />
                     {markers.length === 0 && (
                         <div className="pointer-events-none absolute inset-x-0 top-4 z-10 flex justify-center">
-                            <span className="rounded-md border border-border bg-surface-1/95 px-3 py-1.5 text-[12px] text-fg-2 shadow-sm">
+                            <span className="rounded-md border border-border bg-surface-1/95 px-3 py-1.5 text-xs text-fg-2 shadow-sm">
                                 Sin activos posicionados todavía — aparecerán
                                 aquí cuando la sincronización registre
                                 ubicaciones.

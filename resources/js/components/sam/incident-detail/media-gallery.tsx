@@ -53,7 +53,7 @@ function MediaThumb({
             type="button"
             onClick={onOpen}
             disabled={item.url === null}
-            className="group relative flex aspect-video items-center justify-center overflow-hidden rounded-[6px] border border-border bg-surface-2 transition-colors hover:border-fg-3 disabled:cursor-not-allowed disabled:opacity-60"
+            className="group relative flex aspect-video items-center justify-center overflow-hidden rounded-md border border-border bg-surface-2 transition-colors hover:border-fg-3 disabled:cursor-not-allowed disabled:opacity-60"
             aria-label={`Abrir media #${item.id}`}
         >
             {preview && !previewFailed ? (
@@ -70,13 +70,13 @@ function MediaThumb({
                     ) : (
                         <Camera size={20} strokeWidth={1.5} />
                     )}
-                    <span className="text-[10px] uppercase">
+                    <span className="text-3xs uppercase">
                         {item.mediaType ?? 'media'}
                     </span>
                 </span>
             )}
             {video && item.durationSeconds !== null && (
-                <span className="absolute right-1 bottom-1 rounded bg-black/70 px-1 font-mono text-[10px] text-white">
+                <span className="absolute right-1 bottom-1 rounded bg-black/70 px-1 font-mono text-3xs text-white">
                     {Math.floor(item.durationSeconds / 60)}:
                     {String(item.durationSeconds % 60).padStart(2, '0')}
                 </span>
@@ -158,9 +158,9 @@ export function MediaGallery({
     const openAssessment = openItem ? assessmentFor(openItem) : null;
 
     return (
-        <section className="rounded-[8px] border border-border bg-surface-1 p-4">
+        <section className="rounded-lg border border-border bg-surface-1 p-4">
             <div className="mb-3 flex items-center justify-between gap-2">
-                <h3 className="text-[13px] font-semibold tracking-[0.04em] text-fg-1 uppercase">
+                <h3 className="text-sm font-semibold tracking-caps text-fg-1 uppercase">
                     Media del evento
                 </h3>
                 {pendingRequest ? (
@@ -182,9 +182,9 @@ export function MediaGallery({
             </div>
 
             {media.length === 0 ? (
-                <div className="flex flex-col items-center gap-2 rounded-[6px] border border-dashed border-border py-8 text-fg-3">
+                <div className="flex flex-col items-center gap-2 rounded-md border border-dashed border-border py-8 text-fg-3">
                     <FileQuestion size={20} strokeWidth={1.5} />
-                    <span className="text-[12px]">
+                    <span className="text-xs">
                         Sin media disponible para este evento.
                     </span>
                 </div>
@@ -197,7 +197,7 @@ export function MediaGallery({
                                 onOpen={() => setOpenItem(item)}
                             />
                             {assessmentFor(item) && (
-                                <span className="truncate text-[11px] text-fg-3">
+                                <span className="truncate text-2xs text-fg-3">
                                     IA:{' '}
                                     {RESULT_LABEL[
                                         assessmentFor(item)?.result ?? ''
@@ -227,17 +227,17 @@ export function MediaGallery({
                                 src={openItem.url}
                                 controls
                                 autoPlay
-                                className="max-h-[60vh] w-full rounded-[6px] bg-black"
+                                className="max-h-[60vh] w-full rounded-md bg-black"
                             />
                         ) : (
                             <img
                                 src={openItem.url}
                                 alt={`Media del incidente #${openItem.id}`}
-                                className="max-h-[60vh] w-full rounded-[6px] object-contain"
+                                className="max-h-[60vh] w-full rounded-md object-contain"
                             />
                         ))}
                     {openAssessment && (
-                        <div className="rounded-[6px] border border-border bg-surface-2 p-3 text-[12px]">
+                        <div className="rounded-md border border-border bg-surface-2 p-3 text-xs">
                             <div className="mb-1 font-semibold text-fg-1">
                                 Qué vio la IA —{' '}
                                 {RESULT_LABEL[openAssessment.result ?? ''] ??

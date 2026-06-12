@@ -80,11 +80,11 @@ function LastLocationCard({
                         <div className="text-sm text-fg-1">
                             {location.formattedLocation ?? 'Sin geocodificar'}
                         </div>
-                        <div className="font-mono text-[12px] text-fg-2 tabular-nums">
+                        <div className="font-mono text-xs text-fg-2 tabular-nums">
                             {location.latitude.toFixed(5)},{' '}
                             {location.longitude.toFixed(5)}
                         </div>
-                        <div className="flex items-center gap-3 font-mono text-[11px] text-fg-3 tabular-nums">
+                        <div className="flex items-center gap-3 font-mono text-2xs text-fg-3 tabular-nums">
                             {location.speed !== null && (
                                 <span>
                                     {location.speed.toLocaleString('es')} km/h
@@ -125,10 +125,10 @@ function TelemetryCard({ telemetry }: { telemetry: TelemetryEntry[] }) {
                                 key={entry.type}
                                 className="flex items-center gap-3 px-4 py-2.5"
                             >
-                                <span className="w-36 shrink-0 text-[12px] text-fg-2">
+                                <span className="w-36 shrink-0 text-xs text-fg-2">
                                     {entry.label}
                                 </span>
-                                <span className="flex-1 font-mono text-[13px] text-fg-1 tabular-nums">
+                                <span className="flex-1 font-mono text-sm text-fg-1 tabular-nums">
                                     {formatTelemetryValue(entry.data)}
                                 </span>
                                 <RelativeTime
@@ -190,7 +190,7 @@ function IncidentsCard({
                                     <span className="flex-1 truncate text-sm text-fg-1">
                                         {incident.title}
                                     </span>
-                                    <span className="rounded-sm border border-border bg-surface-3 px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap text-fg-3">
+                                    <span className="rounded-sm border border-border bg-surface-3 px-1.5 py-0.5 text-3xs font-semibold whitespace-nowrap text-fg-3">
                                         {incident.status?.name ?? '—'}
                                     </span>
                                     {incident.openedAt && (
@@ -232,7 +232,7 @@ function LocationHistoryCard({ history }: { history: LocationHistoryEntry[] }) {
                     <div className="max-h-96 overflow-auto">
                         <table className="w-full border-collapse">
                             <thead>
-                                <tr className="sticky top-0 z-10 border-b border-border bg-surface-3 text-[10px] font-semibold tracking-[0.08em] text-fg-3 uppercase">
+                                <tr className="sticky top-0 z-10 border-b border-border bg-surface-3 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
                                     <th className="w-32 px-4 py-2 text-left">
                                         Cuándo
                                     </th>
@@ -265,27 +265,27 @@ function LocationHistoryCard({ history }: { history: LocationHistoryEntry[] }) {
                                         </td>
                                         <td className="px-2.5 py-2">
                                             {entry.formattedLocation ? (
-                                                <span className="text-[12px] text-fg-2">
+                                                <span className="text-xs text-fg-2">
                                                     {entry.formattedLocation}
                                                 </span>
                                             ) : (
-                                                <span className="font-mono text-[11px] text-fg-2 tabular-nums">
+                                                <span className="font-mono text-2xs text-fg-2 tabular-nums">
                                                     {entry.latitude.toFixed(5)},{' '}
                                                     {entry.longitude.toFixed(5)}
                                                 </span>
                                             )}
                                         </td>
-                                        <td className="px-2.5 py-2 font-mono text-[11px] text-fg-2 tabular-nums">
+                                        <td className="px-2.5 py-2 font-mono text-2xs text-fg-2 tabular-nums">
                                             {entry.speed !== null
                                                 ? `${entry.speed.toLocaleString('es')} km/h`
                                                 : '—'}
                                         </td>
-                                        <td className="px-2.5 py-2 font-mono text-[11px] text-fg-2 tabular-nums">
+                                        <td className="px-2.5 py-2 font-mono text-2xs text-fg-2 tabular-nums">
                                             {entry.heading !== null
                                                 ? `${entry.heading}°`
                                                 : '—'}
                                         </td>
-                                        <td className="px-2.5 py-2 font-mono text-[10px] text-fg-3">
+                                        <td className="px-2.5 py-2 font-mono text-3xs text-fg-3">
                                             {entry.source}
                                         </td>
                                     </tr>
@@ -414,7 +414,7 @@ export default function AssetShow() {
                         {asset.devices.map((device) => (
                             <span
                                 key={device.id}
-                                className="rounded-sm border border-border bg-surface-2 px-2 py-1 font-mono text-[11px] text-fg-2"
+                                className="rounded-sm border border-border bg-surface-2 px-2 py-1 font-mono text-2xs text-fg-2"
                             >
                                 {device.deviceType}
                                 {device.externalDeviceId && (
