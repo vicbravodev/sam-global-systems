@@ -93,15 +93,13 @@ visual: son los huecos funcionales, el shell legacy de settings y el móvil roto
   pinta cards con contenido y colapsa lo vacío en una franja "Sin datos operativos todavía en:
   …"; la lista auto-poda columnas sin un solo dato en el set (asset asignado / riesgo /
   teléfono).
-- [ ] **F1.5 Landing pública y auth con marca.** `welcome.tsx` sigue siendo la página del starter
-  de Laravel (hasta carga Instrument Sans de bunny.net, una fuente distinta a la del producto).
-  Mínimo viable: hero simple con la marca SAM, value-prop de una línea y CTA a login (es un
-  producto B2B por invitación; no necesita marketing site completo). Unificar tipografía con
-  Geist. Revisar también `auth/login` (captura pendiente) para que el card use la misma marca.
-- [ ] **F1.6 Self-host de fuentes.** Geist y Geist Mono se cargan vía `<link>` a Google Fonts
-  (`app.blade.php:39-41`): dependencia externa, FOUT y petición bloqueante en cada cold load.
-  Servirlas con `@font-face` + `font-display: swap` desde `public/fonts/` (woff2, pesos usados)
-  y eliminar los preconnect. Criterio: cero requests a `fonts.googleapis.com`.
+- [x] **F1.5 Landing pública y auth con marca.** ✅ 2026-06-12 — `welcome.tsx` reescrita: hero
+  SAM (mark + value-prop "Cada alerta investigada. Solo lo real escala." + CTA a login), tokens
+  y Geist del producto, sin bunny.net. Los layouts de auth ya usaban `AppLogoIcon`.
+- [x] **F1.6 Self-host de fuentes.** ✅ 2026-06-12 — Geist y Geist Mono variables (subset latin,
+  woff2) servidas desde `public/fonts/` con `@font-face` + `font-display: swap` + preload en
+  `app.blade.php`; preconnect/links a Google Fonts eliminados. Verificado con Playwright: 0
+  requests a fonts.googleapis/gstatic/bunny.net.
 
 ## Fase 2 — Consistencia y accesibilidad (P1–P2)
 
@@ -143,8 +141,8 @@ visual: son los huecos funcionales, el shell legacy de settings y el móvil roto
   (el catálogo ya existe en backend), dejando la key técnica como texto secundario mono.
 - [ ] **F3.5 Mapa en vivo.** Cluster/zoom inicial ajustado al bounding box de la flota (hoy abre
   mostrando todo Norteamérica), leyenda de estados y empty state si no hay posiciones frescas.
-- [ ] **F3.6 Favicon y OG.** Definir favicon con el mark SAM (existe `app-logo-icon.tsx`) y
-  metadatos OG básicos; hoy queda el default.
+- [x] **F3.6 Favicon y OG.** ✅ 2026-06-12 — `public/favicon.svg` con el mark SAM (rect azul
+  marca + trazo blanco) y metadatos OG/description básicos en `app.blade.php`.
 
 ## Fase 4 — Deuda de plataforma frontend (P3)
 

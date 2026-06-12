@@ -36,9 +36,36 @@
         <link rel="icon" href="/favicon.svg" type="image/svg+xml">
         <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 
-        <link rel="preconnect" href="https://fonts.googleapis.com">
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+        {{-- Metadatos OG básicos (F3.6) --}}
+        <meta property="og:site_name" content="{{ config('app.name') }}">
+        <meta property="og:title" content="{{ config('app.name') }} — Monitorista virtual para flotas">
+        <meta property="og:description" content="SAM investiga cada alerta de tu flota, descarta el ruido y escala lo real: media, IA y verificación por voz en un solo protocolo.">
+        <meta property="og:type" content="website">
+        <meta property="og:image" content="{{ url('/apple-touch-icon.png') }}">
+        <meta name="description" content="SAM investiga cada alerta de tu flota, descarta el ruido y escala lo real.">
+
+        {{-- Fuentes self-hosted (F1.6): variables Geist/Geist Mono, subset latin --}}
+        <link rel="preload" href="/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
+        <link rel="preload" href="/fonts/geist-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
+        <style>
+            @font-face {
+                font-family: 'Geist';
+                font-style: normal;
+                font-weight: 100 900;
+                font-display: swap;
+                src: url('/fonts/geist-latin.woff2') format('woff2');
+                unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+            }
+
+            @font-face {
+                font-family: 'Geist Mono';
+                font-style: normal;
+                font-weight: 100 900;
+                font-display: swap;
+                src: url('/fonts/geist-mono-latin.woff2') format('woff2');
+                unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+            }
+        </style>
 
         @viteReactRefresh
         @vite(['resources/css/app.css', 'resources/js/app.tsx', "resources/js/pages/{$page['component']}.tsx"])
