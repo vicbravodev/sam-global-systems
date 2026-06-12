@@ -119,9 +119,9 @@ visual: son los huecos funcionales, el shell legacy de settings y el móvil roto
 - [ ] **F2.4 Unificar el placeholder de celdas vacías.** Conviven `—`, "Sin asignar", "sin
   conductor", vacío. Definir uno por tipo (texto vs persona vs número) en el data-table y
   aplicarlo transversalmente.
-- [ ] **F2.5 Reduced motion.** Las transiciones existentes son discretas (correcto para ops), pero
-  el sparkline animado del dashboard y cualquier pulso del indicador "Conectado" deben respetar
-  `prefers-reduced-motion`.
+- [x] **F2.5 Reduced motion.** ✅ 2026-06-12 — todas las animaciones custom (`sam-badge-pulse`,
+  `sam-sla-pulse`, `sam-flash`) ahora van detrás de `motion-safe:`; el indicador "Conectado" ya
+  lo cumplía y el sparkline del dashboard es estático.
 
 ## Fase 3 — Calidad visual fina (P2)
 
@@ -152,9 +152,9 @@ visual: son los huecos funcionales, el shell legacy de settings y el móvil roto
 - [ ] **F4.2 Tests de regresión visual.** Con Playwright CLI ya disponible, añadir un flujo
   manual documentado (o script `scripts/audit-frontend.sh`) que recorra las páginas clave y
   guarde screenshots por viewport/tema, para re-auditar tras cada fase de este roadmap.
-- [ ] **F4.3 Página `events/show`: payloads colapsables.** Los bloques JSON (normalizado + crudo)
-  dominan la página; meterlos en `<details>`/acordeón colapsado por defecto con copy-button,
-  dejando arriba la evaluación IA / decisión / incidente que es lo que el operador necesita.
+- [x] **F4.3 Página `events/show`: payloads colapsables.** ✅ 2026-06-12 — `JsonBlock` es ahora
+  un `<details>` colapsado por defecto con botón "Copiar" (clipboard + toast); la evaluación IA /
+  decisión / incidente quedan dominando la página.
 - [ ] **F4.4 Bandeja: revisar el botón "Asignarme crítico más viejo".** Verificar estados
   (sin críticos disponibles → disabled con tooltip), feedback con toast y actualización
   optimista de la fila.

@@ -130,7 +130,9 @@ export function IncidentRow({
             ? 'bg-primary/10 [&>td:first-child]:shadow-[inset_3px_0_0_var(--color-primary)]'
             : 'hover:[&>td]:bg-surface-2',
         checked ? 'bg-primary/[8%]' : '',
-        incident.realtime ? 'animate-[sam-flash_2.4s_ease-out_1]' : '',
+        incident.realtime
+            ? 'motion-safe:animate-[sam-flash_2.4s_ease-out_1]'
+            : '',
     );
 
     const cellH = DENSITY_H[density];

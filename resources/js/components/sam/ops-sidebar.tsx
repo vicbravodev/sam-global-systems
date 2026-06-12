@@ -94,7 +94,7 @@ function NavItemButton({
                                 isActive
                                     ? 'bg-primary text-primary-foreground'
                                     : pulse
-                                      ? 'animate-[sam-badge-pulse_2s_ease-out_infinite] bg-severity-critical text-white'
+                                      ? 'bg-severity-critical text-white motion-safe:animate-[sam-badge-pulse_2s_ease-out_infinite]'
                                       : 'bg-surface-3 text-fg-2',
                             )}
                         >
