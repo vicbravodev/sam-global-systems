@@ -187,7 +187,7 @@ class FetchDeferredEventMediaJobTest extends TestCase
     public function test_clip_window_honors_the_tenant_setting(): void
     {
         $this->makeSamsaraIntegration();
-        $this->setMediaSetting(FetchDeferredEventMediaJob::SETTING_CLIP_WINDOW, 120);
+        $this->setMediaSetting(FetchDeferredEventMediaJob::SETTING_CLIP_WINDOW, 20);
 
         $occurredAt = Carbon::parse('2026-06-11 12:00:00', 'UTC');
 
@@ -217,8 +217,47 @@ class FetchDeferredEventMediaJobTest extends TestCase
             }
 
             return $request['mediaType'] === 'videoHighRes'
-                && $request['startTime'] === $occurredAt->copy()->subSeconds(120)->toIso8601String()
-                && $request['endTime'] === $occurredAt->copy()->addSeconds(120)->toIso8601String();
+                && $request['startTime'] === $occurredAt->copy()->subSeconds(20)->toIso8601String()
+                && $request['endTime'] === $occurredAt->copy()->addSeconds(20)->toIso8601String();
+        });
+    }
+
+    public function test_clip_window_is_clamped_to_the_provider_video_cap(): void
+    {
+        $this->makeSamsaraIntegration();
+        $this->setMediaSetting(FetchDeferredEventMediaJob::SETTING_CLIP_WINDOW, 120);
+
+        $occurredAt = Carbon::parse('2026-06-11 12:00:00', 'UTC');
+
+        $event = NormalizedEvent::factory()->create([
+            'team_id' => $this->teamId,
+            'asset_id' => $this->asset->id,
+            'occurred_at' => $occurredAt,
+        ]);
+
+        Http::fake([
+            ...$this->fakeNoUploadedMedia(),
+            'api.samsara.com/cameras/media/retrieval*' => Http::sequence()
+                ->push(['data' => ['retrievalId' => 'ret-1']])
+                ->push(['data' => ['media' => [[
+                    'input' => 'dashcamRoadFacing',
+                    'status' => 'available',
+                    'urlInfo' => ['url' => 'https://media.samsara.com/ret-1/road.mp4'],
+                ]]]]),
+            'media.samsara.com/*' => Http::response('clip-bytes', 200, ['Content-Type' => 'video/mp4']),
+        ]);
+
+        $this->runJob($this->makeRequest($event));
+
+        // Samsara caps high-res retrievals at 1 minute total: a misconfigured
+        // window must clamp to 30s per side instead of getting rejected.
+        Http::assertSent(function ($request) use ($occurredAt) {
+            if ($request->method() !== 'POST') {
+                return true;
+            }
+
+            return $request['startTime'] === $occurredAt->copy()->subSeconds(FetchDeferredEventMediaJob::MAX_CLIP_WINDOW_SECONDS)->toIso8601String()
+                && $request['endTime'] === $occurredAt->copy()->addSeconds(FetchDeferredEventMediaJob::MAX_CLIP_WINDOW_SECONDS)->toIso8601String();
         });
     }
 
@@ -488,7 +527,7 @@ class FetchDeferredEventMediaJobTest extends TestCase
             }
 
             return $req['vehicleIds'] === 'veh-1'
-                && $req['triggerReasons'] === 'panicButton,safetyEvent';
+                && str_contains($req->url(), 'triggerReasons=panicButton&triggerReasons=safetyEvent');
         });
 
         $uploaded = RawEventAttachment::where('raw_event_id', $event->raw_event_id)

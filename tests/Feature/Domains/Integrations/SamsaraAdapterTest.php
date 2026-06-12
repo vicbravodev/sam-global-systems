@@ -237,10 +237,13 @@ class SamsaraAdapterTest extends TestCase
         $this->assertSame('pending', $items[1]['status']);
         $this->assertNull($items[1]['url']);
 
+        // triggerReasons is an exploded form param: one repeated key per value,
+        // never comma-joined or bracketed (Samsara rejects both).
         Http::assertSent(function ($request) {
             return $request->method() === 'GET'
                 && $request['vehicleIds'] === '281474993032573'
-                && $request['triggerReasons'] === 'panicButton,safetyEvent'
+                && str_contains($request->url(), 'triggerReasons=panicButton&triggerReasons=safetyEvent')
+                && ! str_contains($request->url(), 'triggerReasons%5B')
                 && isset($request['startTime'], $request['endTime']);
         });
     }
