@@ -80,7 +80,10 @@ class SamsaraAdapterTest extends TestCase
     {
         Http::fake([
             'api.samsara.com/fleet/vehicles*' => Http::response([
-                'data' => [['id' => '100', 'name' => 'Truck 1', 'vin' => 'VIN100']],
+                'data' => [
+                    ['id' => '100', 'name' => 'Truck 1', 'vin' => 'VIN100', 'cameraSerial' => 'CM-123', 'make' => 'Volvo'],
+                    ['id' => '101', 'name' => 'Truck 2', 'vin' => 'VIN101'],
+                ],
                 'pagination' => ['hasNextPage' => false],
             ], 200),
             'api.samsara.com/fleet/drivers*' => Http::response([
@@ -91,12 +94,21 @@ class SamsaraAdapterTest extends TestCase
 
         $result = app(SamsaraAdapter::class)->sync($this->makeIntegration(), 'full');
 
-        $this->assertCount(1, $result['assets']);
+        $this->assertCount(2, $result['assets']);
         $this->assertSame('100', $result['assets'][0]['external_id']);
         $this->assertSame('VIN100', $result['assets'][0]['vin']);
+
+        // A paired CM dashcam surfaces as has_camera metadata — this gates the
+        // panic-media auto-request listener and the context signals.
+        $this->assertTrue($result['assets'][0]['metadata']['has_camera']);
+        $this->assertSame('CM-123', $result['assets'][0]['metadata']['camera_serial']);
+        $this->assertSame('Volvo', $result['assets'][0]['metadata']['make']);
+        $this->assertFalse($result['assets'][1]['metadata']['has_camera']);
+        $this->assertArrayNotHasKey('camera_serial', $result['assets'][1]['metadata']);
+
         $this->assertCount(1, $result['drivers']);
         $this->assertSame('200', $result['drivers'][0]['external_id']);
-        $this->assertSame(2, $result['records_processed']);
+        $this->assertSame(3, $result['records_processed']);
         $this->assertSame([], $result['events']);
     }
 

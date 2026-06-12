@@ -269,6 +269,44 @@ class SafetyEventsPollingTest extends TestCase
         Http::assertSentCount(1);
     }
 
+    public function test_stream_v2_media_array_is_downloaded_into_attachments(): void
+    {
+        Queue::fake();
+
+        $integration = $this->makeIntegration();
+
+        Http::fake([
+            'media.samsara.com/*' => Http::response('binary-video-bytes', 200, ['Content-Type' => 'video/mp4']),
+        ]);
+
+        // Stream v2 shape: per-camera media items instead of top-level URLs.
+        $payload = $this->safetyEventPayload([
+            'media' => [
+                ['input' => 'dashcamRoadFacing', 'url' => 'https://media.samsara.com/evt-1/road.mp4', 'cameraRole' => 'front'],
+                ['input' => 'dashcamDriverFacing', 'url' => 'https://media.samsara.com/evt-1/driver.mp4'],
+            ],
+        ]);
+
+        $rawEvent = app(IngestSafetyEvent::class)->execute($integration, $payload);
+
+        $attachments = RawEventAttachment::where('raw_event_id', $rawEvent->id)->get();
+
+        $this->assertCount(2, $attachments);
+        $this->assertEqualsCanonicalizing(
+            [
+                "teams/{$integration->team_id}/raw-events/{$rawEvent->id}/media-0-road-facing.mp4",
+                "teams/{$integration->team_id}/raw-events/{$rawEvent->id}/media-1-driver-facing.mp4",
+            ],
+            $attachments->pluck('storage_path')->all(),
+        );
+
+        $road = $attachments->firstWhere('metadata_json.input', 'dashcamRoadFacing');
+        $this->assertSame('front', $road->metadata_json['camera_role']);
+        $this->assertSame('media.0.url', $road->metadata_json['source_url_key']);
+
+        Storage::disk('rustfs')->assertExists("teams/{$integration->team_id}/raw-events/{$rawEvent->id}/media-0-road-facing.mp4");
+    }
+
     public function test_usage_is_recorded_once_per_event_state(): void
     {
         Queue::fake();

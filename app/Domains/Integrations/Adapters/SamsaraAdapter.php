@@ -566,11 +566,24 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
      */
     private function mapVehicle(array $vehicle): array
     {
+        $cameraSerial = Arr::get($vehicle, 'cameraSerial');
+
         return [
             'external_id' => (string) Arr::get($vehicle, 'id'),
             'name' => Arr::get($vehicle, 'name'),
             'vin' => Arr::get($vehicle, 'vin'),
             'license_plate' => Arr::get($vehicle, 'licensePlate'),
+            // `has_camera` gates the panic-media auto-request listener and the
+            // context signals — a vehicle with a paired CM dashcam reports its
+            // serial here.
+            'metadata' => array_filter([
+                'has_camera' => is_string($cameraSerial) && $cameraSerial !== '',
+                'camera_serial' => $cameraSerial,
+                'make' => Arr::get($vehicle, 'make'),
+                'model' => Arr::get($vehicle, 'model'),
+                'year' => Arr::get($vehicle, 'year'),
+                'serial' => Arr::get($vehicle, 'serial'),
+            ], fn ($value) => $value !== null && $value !== ''),
             'raw' => $vehicle,
         ];
     }

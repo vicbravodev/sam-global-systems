@@ -104,6 +104,7 @@ class IngestSafetyEvent
      */
     private function downloadInlineMedia(RawEvent $rawEvent, array $payload): void
     {
+        // Legacy safety-event shape: top-level download URLs.
         foreach (self::MEDIA_URL_KEYS as $key => $filename) {
             $url = Arr::get($payload, $key);
 
@@ -111,39 +112,76 @@ class IngestSafetyEvent
                 continue;
             }
 
-            try {
-                $response = Http::timeout((int) config('services.samsara.media_download_timeout', 30))->get($url);
-            } catch (\Throwable $e) {
-                Log::warning('Safety event inline media download failed', [
-                    'raw_event_id' => $rawEvent->id,
-                    'url_key' => $key,
-                    'error' => $e->getMessage(),
-                ]);
-
-                continue;
-            }
-
-            if (! $response->successful() || $response->body() === '') {
-                continue;
-            }
-
-            $storagePath = "teams/{$rawEvent->team_id}/raw-events/{$rawEvent->id}/{$filename}";
-            $mimeType = $response->header('Content-Type') ?: 'video/mp4';
-
-            $this->storage->put($storagePath, $response->body(), [
-                'visibility' => 'private',
-                'ContentType' => $mimeType,
-            ]);
-
-            RawEventAttachment::create([
-                'raw_event_id' => $rawEvent->id,
-                'attachment_type' => AttachmentType::Clip,
-                'storage_path' => $storagePath,
-                'mime_type' => $mimeType,
-                'size_bytes' => strlen($response->body()),
-                'metadata_json' => ['source_url_key' => $key],
-            ]);
+            $this->storeMediaDownload($rawEvent, $url, $filename, ['source_url_key' => $key]);
         }
+
+        // Stream v2 shape (`GET /safety-events/stream`): a `media` array with
+        // one `{input, url, cameraRole}` item per camera stream. The URLs are
+        // pre-signed and expire, so they must be captured at ingest time.
+        foreach ((array) Arr::get($payload, 'media', []) as $index => $media) {
+            $media = (array) $media;
+            $url = $media['url'] ?? null;
+
+            if (! is_string($url) || $url === '') {
+                continue;
+            }
+
+            $filename = sprintf('media-%d-%s.mp4', (int) $index, $this->mediaInputSlug($media['input'] ?? null));
+
+            $this->storeMediaDownload($rawEvent, $url, $filename, array_filter([
+                'source_url_key' => "media.{$index}.url",
+                'input' => $media['input'] ?? null,
+                'camera_role' => $media['cameraRole'] ?? null,
+            ]));
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $metadata
+     */
+    private function storeMediaDownload(RawEvent $rawEvent, string $url, string $filename, array $metadata): void
+    {
+        try {
+            $response = Http::timeout((int) config('services.samsara.media_download_timeout', 30))->get($url);
+        } catch (\Throwable $e) {
+            Log::warning('Safety event inline media download failed', [
+                'raw_event_id' => $rawEvent->id,
+                'url_key' => $metadata['source_url_key'] ?? null,
+                'error' => $e->getMessage(),
+            ]);
+
+            return;
+        }
+
+        if (! $response->successful() || $response->body() === '') {
+            return;
+        }
+
+        $storagePath = "teams/{$rawEvent->team_id}/raw-events/{$rawEvent->id}/{$filename}";
+        $mimeType = $response->header('Content-Type') ?: 'video/mp4';
+
+        $this->storage->put($storagePath, $response->body(), [
+            'visibility' => 'private',
+            'ContentType' => $mimeType,
+        ]);
+
+        RawEventAttachment::create([
+            'raw_event_id' => $rawEvent->id,
+            'attachment_type' => AttachmentType::Clip,
+            'storage_path' => $storagePath,
+            'mime_type' => $mimeType,
+            'size_bytes' => strlen($response->body()),
+            'metadata_json' => $metadata,
+        ]);
+    }
+
+    private function mediaInputSlug(?string $input): string
+    {
+        return match ($input) {
+            'dashcamRoadFacing' => 'road-facing',
+            'dashcamDriverFacing' => 'driver-facing',
+            default => preg_replace('/[^a-z0-9]+/', '-', strtolower((string) ($input ?: 'unknown'))) ?: 'unknown',
+        };
     }
 
     private function recordUsage(TenantIntegration $integration, string $externalEventId, string $eventState, RawEvent $rawEvent): void

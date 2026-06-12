@@ -105,6 +105,9 @@ class NormalizationSeeder extends Seeder
             ['code' => 'yaw_control', 'name' => 'Yaw Control', 'category' => 'safety', 'severity' => 'high'],
             ['code' => 'reversing', 'name' => 'Reversing', 'category' => 'safety', 'severity' => 'low'],
             ['code' => 'u_turn', 'name' => 'U-Turn', 'category' => 'safety', 'severity' => 'medium'],
+            ['code' => 'did_not_yield', 'name' => 'Did Not Yield', 'category' => 'safety', 'severity' => 'high'],
+            ['code' => 'railroad_crossing_violation', 'name' => 'Railroad Crossing Violation', 'category' => 'safety', 'severity' => 'high'],
+            ['code' => 'other_violation', 'name' => 'Other Violation', 'category' => 'safety', 'severity' => 'medium'],
 
             // Compliance
             ['code' => 'camera_obstructed', 'name' => 'Camera Obstructed', 'category' => 'compliance', 'severity' => 'high'],
@@ -112,12 +115,16 @@ class NormalizationSeeder extends Seeder
             ['code' => 'no_seatbelt', 'name' => 'No Seatbelt', 'category' => 'compliance', 'severity' => 'medium'],
             ['code' => 'hos_violation', 'name' => 'HOS Violation', 'category' => 'compliance', 'severity' => 'high'],
             ['code' => 'smoking_drinking', 'name' => 'Smoking or Drinking', 'category' => 'compliance', 'severity' => 'low'],
+            ['code' => 'policy_violation', 'name' => 'Policy Violation', 'category' => 'compliance', 'severity' => 'medium'],
+            ['code' => 'unauthorized_passenger', 'name' => 'Unauthorized Passenger', 'category' => 'compliance', 'severity' => 'medium'],
 
             // Operational
             ['code' => 'geofence_exit', 'name' => 'Geofence Exit', 'category' => 'operational', 'severity' => 'low'],
             ['code' => 'geofence_entry', 'name' => 'Geofence Entry', 'category' => 'operational', 'severity' => 'low'],
             ['code' => 'vehicle_idle', 'name' => 'Vehicle Idle', 'category' => 'operational', 'severity' => 'low'],
             ['code' => 'unsafe_parking', 'name' => 'Unsafe Parking', 'category' => 'operational', 'severity' => 'low'],
+            ['code' => 'driving_context', 'name' => 'Driving Context', 'category' => 'operational', 'severity' => 'low'],
+            ['code' => 'defensive_driving', 'name' => 'Defensive Driving', 'category' => 'operational', 'severity' => 'low'],
 
             // Maintenance
             ['code' => 'device_offline', 'name' => 'Device Offline', 'category' => 'maintenance', 'severity' => 'medium'],
@@ -192,7 +199,11 @@ class NormalizationSeeder extends Seeder
             );
         }
 
-        // Safety Event behavior label rules (stream API, direct match)
+        // Safety Event behavior label rules (stream API, direct match).
+        // Covers the FULL official enum of GET /safety-events/stream
+        // (SafetyEventV2BehaviorLabels) — Samsara warns the list changes over
+        // time, so unmapped labels still land as `unmapped` for triage, but
+        // every label documented as of 2026-06 has an explicit translation.
         $behaviorLabelMappings = [
             'MaxSpeed' => 'speeding',
             'Speeding' => 'speeding',
@@ -232,6 +243,35 @@ class NormalizationSeeder extends Seeder
             'UTurn' => 'u_turn',
             'YawControl' => 'yaw_control',
             'UnsafeParking' => 'unsafe_parking',
+            'BluetoothHeadset' => 'driver_distraction',
+            'LateResponse' => 'driver_distraction',
+            'GenericTailgating' => 'following_distance',
+            'LeftTurn' => 'harsh_turn',
+            'DidNotYield' => 'did_not_yield',
+            'EdgeRailroadCrossingViolation' => 'railroad_crossing_violation',
+            // HarshImpact is a confirmed high-G impact — treat as collision.
+            'HarshImpact' => 'collision',
+            // Camera/gateway dropping at highway speed is a tamper signal.
+            'HighSpeedSuddenDisconnect' => 'tampering',
+            'RearCollisionWarning' => 'near_collision',
+            'VehicleInBlindSpotWarning' => 'near_collision',
+            'UnsafeManeuver' => 'aggressive_driving',
+            'Passenger' => 'unauthorized_passenger',
+            'PolicyViolationMask' => 'policy_violation',
+            'ProtectiveEquipment' => 'policy_violation',
+            'OtherViolation' => 'other_violation',
+            // Events re-labeled Invalid by safety admins still flow through
+            // (low-stakes type) so the audit trail stays complete.
+            'Invalid' => 'other_violation',
+            // Road-condition context labels and positive recognitions are not
+            // violations: low-severity operational types keep them out of the
+            // incident funnel while preserving the data.
+            'ContextConstructionOrWorkZone' => 'driving_context',
+            'ContextSnowyOrIcy' => 'driving_context',
+            'ContextVulnerableRoadUser' => 'driving_context',
+            'ContextWet' => 'driving_context',
+            'OperationalEvent' => 'driving_context',
+            'DefensiveDriving' => 'defensive_driving',
         ];
 
         foreach ($behaviorLabelMappings as $label => $typeCode) {
