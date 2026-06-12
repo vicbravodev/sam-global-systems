@@ -9,6 +9,7 @@ use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Real adapter for Samsara's Fleet API (https://developers.samsara.com).
@@ -265,11 +266,25 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
                 'endTime' => Carbon::instance($endTime)->toIso8601String(),
                 'mediaType' => $mediaType,
             ]);
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            Log::warning('Samsara media retrieval request failed', [
+                'vehicle_id' => $externalAssetId,
+                'media_type' => $mediaType,
+                'error' => $e->getMessage(),
+            ]);
+
             return null;
         }
 
         if (! $response->successful()) {
+            Log::warning('Samsara rejected media retrieval request', [
+                'vehicle_id' => $externalAssetId,
+                'media_type' => $mediaType,
+                'http_status' => $response->status(),
+                'message' => $response->json('message'),
+                'request_id' => $response->json('requestId'),
+            ]);
+
             return null;
         }
 
@@ -291,11 +306,23 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
 
         try {
             $response = $this->client($token)->get('/cameras/media/retrieval', ['retrievalId' => $retrievalId]);
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            Log::warning('Samsara media retrieval poll failed', [
+                'retrieval_id' => $retrievalId,
+                'error' => $e->getMessage(),
+            ]);
+
             return ['items' => []];
         }
 
         if (! $response->successful()) {
+            Log::warning('Samsara rejected media retrieval poll', [
+                'retrieval_id' => $retrievalId,
+                'http_status' => $response->status(),
+                'message' => $response->json('message'),
+                'request_id' => $response->json('requestId'),
+            ]);
+
             return ['items' => []];
         }
 
@@ -312,6 +339,87 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
         }
 
         return ['items' => $items];
+    }
+
+    /**
+     * List media already uploaded by the device (`GET /cameras/media`) —
+     * panic-button and safety-event footage is auto-uploaded by the dashcam
+     * and only discoverable here, never via webhooks. Listing is quota-free.
+     *
+     * The response uses a different input vocabulary than retrievals
+     * (`dashcamForwardFacing`/`dashcamInwardFacing`); inputs are normalized to
+     * the retrieval names so downstream filename mapping stays uniform.
+     */
+    public function listUploadedMedia(
+        TenantIntegration $integration,
+        string $externalAssetId,
+        \DateTimeInterface $startTime,
+        \DateTimeInterface $endTime,
+        array $triggerReasons = [],
+    ): array {
+        $token = $this->resolveToken($integration);
+
+        if ($token === null || $externalAssetId === '') {
+            return ['items' => []];
+        }
+
+        $query = [
+            'vehicleIds' => $externalAssetId,
+            'startTime' => Carbon::instance($startTime)->toIso8601String(),
+            'endTime' => Carbon::instance($endTime)->toIso8601String(),
+        ];
+
+        if ($triggerReasons !== []) {
+            $query['triggerReasons'] = implode(',', $triggerReasons);
+        }
+
+        try {
+            $response = $this->client($token)->get('/cameras/media', $query);
+        } catch (\Throwable $e) {
+            Log::warning('Samsara uploaded-media listing failed', [
+                'vehicle_id' => $externalAssetId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return ['items' => []];
+        }
+
+        if (! $response->successful()) {
+            Log::warning('Samsara rejected uploaded-media listing', [
+                'vehicle_id' => $externalAssetId,
+                'http_status' => $response->status(),
+                'message' => $response->json('message'),
+                'request_id' => $response->json('requestId'),
+            ]);
+
+            return ['items' => []];
+        }
+
+        $items = [];
+
+        foreach ((array) $response->json('data.media', []) as $media) {
+            $media = (array) $media;
+
+            $items[] = [
+                'input' => $this->normalizeUploadedInput(Arr::get($media, 'input')),
+                'status' => Arr::get($media, 'urlInfo.url') ? 'available' : 'pending',
+                'url' => Arr::get($media, 'urlInfo.url'),
+                'media_type' => Arr::get($media, 'mediaType'),
+                'trigger_reason' => Arr::get($media, 'triggerReason'),
+                'start_time' => Arr::get($media, 'startTime'),
+            ];
+        }
+
+        return ['items' => $items];
+    }
+
+    private function normalizeUploadedInput(?string $input): ?string
+    {
+        return match ($input) {
+            'dashcamForwardFacing' => 'dashcamRoadFacing',
+            'dashcamInwardFacing' => 'dashcamDriverFacing',
+            default => $input,
+        };
     }
 
     private function normalizeMediaStatus(string $status): string

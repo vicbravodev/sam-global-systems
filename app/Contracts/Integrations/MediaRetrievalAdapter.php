@@ -40,4 +40,27 @@ interface MediaRetrievalAdapter
      * @return array{items: array<int, array{input: string|null, status: string, url: string|null}>}
      */
     public function checkMedia(TenantIntegration $integration, string $retrievalId): array;
+
+    /**
+     * List media the provider already holds for a vehicle and time window
+     * (e.g. Samsara `GET /cameras/media`), without placing a new retrieval —
+     * devices auto-upload footage for triggers like the panic button, so this
+     * is the cheap, quota-free path to event evidence.
+     *
+     * Items use the same normalized shape as {@see checkMedia} plus the media
+     * type, trigger and capture instant. Camera inputs are normalized to the
+     * retrieval vocabulary (`dashcamRoadFacing`/`dashcamDriverFacing`). An
+     * empty list means nothing is uploaded for the window (or the provider
+     * could not be queried).
+     *
+     * @param  array<int, string>  $triggerReasons  Provider trigger filters (e.g. panicButton, safetyEvent); empty = all.
+     * @return array{items: array<int, array{input: string|null, status: string, url: string|null, media_type: string|null, trigger_reason: string|null, start_time: string|null}>}
+     */
+    public function listUploadedMedia(
+        TenantIntegration $integration,
+        string $externalAssetId,
+        DateTimeInterface $startTime,
+        DateTimeInterface $endTime,
+        array $triggerReasons = [],
+    ): array;
 }

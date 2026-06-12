@@ -41,6 +41,14 @@ use Illuminate\Support\Facades\Log;
  * evenly distributed across `occurred_at ± media.still_window_minutes`
  * (`media.still_count` stills), so the assessment pipeline can see what
  * happened around the event, not just at the instant.
+ *
+ * Every run also sweeps the provider's already-uploaded media for the event
+ * window (`listUploadedMedia`) — panic-button/safety-event footage is
+ * auto-uploaded by the dashcam, never announced via webhooks, and listing is
+ * quota-free. The sweep repeats on every poll so late uploads still land, and
+ * a request whose retrieval the provider rejects/fails closes as Completed
+ * instead of Failed when that evidence already backs the event: a panic alert
+ * must never end without media when the provider holds some.
  */
 class FetchDeferredEventMediaJob implements ShouldQueue
 {
@@ -54,8 +62,15 @@ class FetchDeferredEventMediaJob implements ShouldQueue
 
     public const string SETTING_STILL_COUNT = 'media.still_count';
 
-    /** Capture window around the event timestamp, per side (system default). */
-    public const int DEFAULT_CLIP_WINDOW_SECONDS = 60;
+    /** Device-side triggers whose auto-uploaded media count as event evidence. */
+    public const array UPLOADED_TRIGGER_REASONS = ['panicButton', 'safetyEvent'];
+
+    /**
+     * Capture window around the event timestamp, per side (system default):
+     * 10s per side → 20s clip. Samsara caps high-res retrieval duration and
+     * longer clips burn the org's monthly media quota.
+     */
+    public const int DEFAULT_CLIP_WINDOW_SECONDS = 10;
 
     public const int DEFAULT_STILL_WINDOW_MINUTES = 30;
 
@@ -85,13 +100,6 @@ class FetchDeferredEventMediaJob implements ShouldQueue
             return;
         }
 
-        if ($request->expires_at !== null && $request->expires_at->isPast()) {
-            $this->markFailed($request, MediaRequestStatus::Expired, 'Media retrieval window expired before the provider delivered the media.');
-            $refreshSnapshot->execute($request->normalized_event_id);
-
-            return;
-        }
-
         $event = NormalizedEvent::withoutGlobalScopes()->find($request->normalized_event_id);
 
         if ($event === null) {
@@ -100,16 +108,25 @@ class FetchDeferredEventMediaJob implements ShouldQueue
             return;
         }
 
+        if ($request->expires_at !== null && $request->expires_at->isPast()) {
+            $this->closeWithoutNewMedia($request, $event, MediaRequestStatus::Expired, 'Media retrieval window expired before the provider delivered the media.');
+            $refreshSnapshot->execute($event->id);
+
+            return;
+        }
+
         $resolved = $this->resolveIntegration($event);
 
         if ($resolved === null) {
-            $this->markFailed($request, MediaRequestStatus::Failed, 'No active integration with an external asset reference can serve this media request.');
+            $this->closeWithoutNewMedia($request, $event, MediaRequestStatus::Failed, 'No active integration with an external asset reference can serve this media request.');
             $refreshSnapshot->execute($event->id);
 
             return;
         }
 
         [$integration, $externalAssetId] = $resolved;
+
+        $this->sweepUploadedMedia($request, $event, $integration, $externalAssetId, $mediaAdapter, $storage, $attachImmediate, $refreshSnapshot, $tenantConfig);
 
         $metadata = $request->response_metadata_json ?? [];
 
@@ -164,7 +181,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         );
 
         if ($retrievalId === null) {
-            $this->markFailed($request, MediaRequestStatus::Failed, 'Provider rejected the media retrieval request.');
+            $this->closeWithoutNewMedia($request, $event, MediaRequestStatus::Failed, 'Provider rejected the media retrieval request.');
             $refreshSnapshot->execute($event->id);
 
             return;
@@ -237,7 +254,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         }
 
         if ($retrievals === []) {
-            $this->markFailed($request, MediaRequestStatus::Failed, 'Provider rejected every still-image retrieval request.');
+            $this->closeWithoutNewMedia($request, $event, MediaRequestStatus::Failed, 'Provider rejected every still-image retrieval request.');
             $refreshSnapshot->execute($event->id);
 
             return;
@@ -298,7 +315,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         }
 
         if ($available === []) {
-            $this->markFailed($request, MediaRequestStatus::Failed, 'Provider reported every requested clip as failed.');
+            $this->closeWithoutNewMedia($request, $event, MediaRequestStatus::Failed, 'Provider reported every requested clip as failed.');
             $refreshSnapshot->execute($event->id);
 
             return;
@@ -389,7 +406,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
 
         if ((int) $metadata['stills_downloaded'] === 0) {
             $request->forceFill(['response_metadata_json' => $metadata])->save();
-            $this->markFailed($request, MediaRequestStatus::Failed, 'Provider reported every requested still as failed.');
+            $this->closeWithoutNewMedia($request, $event, MediaRequestStatus::Failed, 'Provider reported every requested still as failed.');
             $refreshSnapshot->execute($event->id);
 
             return;
@@ -402,6 +419,138 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         ])->save();
 
         $refreshSnapshot->execute($event->id);
+    }
+
+    /**
+     * Download any media the device already auto-uploaded for the event window
+     * (panic-button/safety-event triggers). Runs on every poll cycle so
+     * uploads that land late are still captured — this is the monitorist
+     * re-checking the camera after the event. Quota-free at the provider.
+     */
+    private function sweepUploadedMedia(
+        EventMediaRequest $request,
+        NormalizedEvent $event,
+        TenantIntegration $integration,
+        string $externalAssetId,
+        MediaRetrievalAdapter $mediaAdapter,
+        ObjectStorage $storage,
+        AttachImmediateEventMedia $attachImmediate,
+        RefreshContextMediaSnapshot $refreshSnapshot,
+        TenantConfigResolver $tenantConfig,
+    ): void {
+        $occurredAt = Carbon::instance($event->occurred_at ?? $request->requested_at ?? now());
+
+        $windowSeconds = 60 * max(1, (int) $tenantConfig->resolve(
+            (int) $event->team_id,
+            self::SETTING_STILL_WINDOW,
+            self::DEFAULT_STILL_WINDOW_MINUTES,
+        ));
+
+        $items = $mediaAdapter->listUploadedMedia(
+            $integration,
+            $externalAssetId,
+            $occurredAt->copy()->subSeconds($windowSeconds),
+            $occurredAt->copy()->addSeconds($windowSeconds),
+            self::UPLOADED_TRIGGER_REASONS,
+        )['items'];
+
+        $downloaded = 0;
+
+        foreach ($items as $item) {
+            if ($item['status'] !== 'available' || ! is_string($item['url'] ?? null) || $item['url'] === '') {
+                continue;
+            }
+
+            $isVideo = str_starts_with((string) ($item['media_type'] ?? ''), 'video');
+
+            $stored = $this->downloadMedia(
+                $event,
+                $item,
+                $storage,
+                $this->uploadedFilenameFor($item),
+                $isVideo ? AttachmentType::Clip : AttachmentType::Snapshot,
+                $isVideo ? 'video/mp4' : 'image/jpeg',
+                'uploaded_media',
+            );
+
+            if ($stored) {
+                $downloaded++;
+            }
+        }
+
+        if ($downloaded === 0) {
+            return;
+        }
+
+        $attachImmediate->execute($event);
+
+        $metadata = $request->response_metadata_json ?? [];
+        $metadata['uploaded_media_downloaded'] = (int) ($metadata['uploaded_media_downloaded'] ?? 0) + $downloaded;
+
+        $request->forceFill(['response_metadata_json' => $metadata])->save();
+
+        $refreshSnapshot->execute($event->id);
+    }
+
+    /**
+     * Close a request whose retrieval path delivered nothing: when the event
+     * already holds auto-uploaded evidence the request completes (the alert IS
+     * backed by media), otherwise it fails/expires as before.
+     */
+    private function closeWithoutNewMedia(
+        EventMediaRequest $request,
+        NormalizedEvent $event,
+        MediaRequestStatus $status,
+        string $reason,
+    ): void {
+        $hasUploadedEvidence = RawEventAttachment::query()
+            ->where('raw_event_id', $event->raw_event_id)
+            ->where('metadata_json->source', 'uploaded_media')
+            ->exists();
+
+        if (! $hasUploadedEvidence) {
+            $this->markFailed($request, $status, $reason);
+
+            return;
+        }
+
+        $metadata = $request->response_metadata_json ?? [];
+        $metadata['completed_via'] = 'uploaded_media';
+        $metadata['retrieval_close_reason'] = $reason;
+
+        $request->forceFill([
+            'status' => MediaRequestStatus::Completed,
+            'completed_at' => now(),
+            'response_metadata_json' => $metadata,
+        ])->save();
+    }
+
+    /**
+     * Deterministic filename per uploaded item (trigger + capture instant +
+     * input) so every poll's sweep dedupes against storage instead of
+     * re-downloading.
+     *
+     * @param  array{input: string|null, media_type?: string|null, trigger_reason?: string|null, start_time?: string|null}  $item
+     */
+    private function uploadedFilenameFor(array $item): string
+    {
+        $startTime = $item['start_time'] ?? null;
+
+        $stamp = is_string($startTime) && $startTime !== ''
+            ? Carbon::parse($startTime)->utc()->format('Ymd-His')
+            : 'unknown';
+
+        $input = match ($item['input']) {
+            'dashcamRoadFacing' => 'road-facing',
+            'dashcamDriverFacing' => 'driver-facing',
+            default => 'input-'.substr(md5((string) $item['input']), 0, 8),
+        };
+
+        $trigger = preg_replace('/[^a-zA-Z0-9]+/', '', (string) ($item['trigger_reason'] ?? 'unknown')) ?: 'unknown';
+
+        $extension = str_starts_with((string) ($item['media_type'] ?? ''), 'video') ? 'mp4' : 'jpg';
+
+        return sprintf('uploaded-%s-%s-%s.%s', $trigger, $stamp, $input, $extension);
     }
 
     /**
@@ -428,7 +577,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
     }
 
     /**
-     * @param  array{input: string|null, status: string, url: string|null, offset_seconds?: int}  $item
+     * @param  array{input: string|null, status: string, url: string|null, offset_seconds?: int, trigger_reason?: string|null}  $item
      */
     private function downloadMedia(
         NormalizedEvent $event,
@@ -437,6 +586,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         string $filename,
         AttachmentType $type,
         string $defaultMimeType,
+        string $source = 'deferred_retrieval',
     ): bool {
         $storagePath = "teams/{$event->team_id}/raw-events/{$event->raw_event_id}/{$filename}";
 
@@ -453,7 +603,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
                     'attachment_type' => $type,
                     'mime_type' => $storage->mimeType($storagePath) ?? $defaultMimeType,
                     'size_bytes' => $storage->size($storagePath) ?? 0,
-                    'metadata_json' => ['source' => 'deferred_retrieval', 'input' => $item['input']],
+                    'metadata_json' => ['source' => $source, 'input' => $item['input']],
                 ],
             );
 
@@ -483,10 +633,14 @@ class FetchDeferredEventMediaJob implements ShouldQueue
             'ContentType' => $mimeType,
         ]);
 
-        $metadata = ['source' => 'deferred_retrieval', 'input' => $item['input']];
+        $metadata = ['source' => $source, 'input' => $item['input']];
 
         if (array_key_exists('offset_seconds', $item)) {
             $metadata['offset_seconds'] = (int) $item['offset_seconds'];
+        }
+
+        if (! empty($item['trigger_reason'])) {
+            $metadata['trigger_reason'] = (string) $item['trigger_reason'];
         }
 
         RawEventAttachment::firstOrCreate(

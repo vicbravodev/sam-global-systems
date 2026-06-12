@@ -72,6 +72,22 @@ class ProviderAdapterManager implements MediaRetrievalAdapter, ProviderAdapter
         return $adapter->checkMedia($integration, $retrievalId);
     }
 
+    public function listUploadedMedia(
+        TenantIntegration $integration,
+        string $externalAssetId,
+        \DateTimeInterface $startTime,
+        \DateTimeInterface $endTime,
+        array $triggerReasons = [],
+    ): array {
+        $adapter = $this->forIntegration($integration);
+
+        if (! $adapter instanceof MediaRetrievalAdapter) {
+            return ['items' => []];
+        }
+
+        return $adapter->listUploadedMedia($integration, $externalAssetId, $startTime, $endTime, $triggerReasons);
+    }
+
     public function validateWebhookSignature(string $payload, string $signature, string $secret, ?string $timestamp = null): bool
     {
         // No integration context is available at signature-validation time.

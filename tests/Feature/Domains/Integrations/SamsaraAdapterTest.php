@@ -172,6 +172,98 @@ class SamsaraAdapterTest extends TestCase
         $this->assertTrue($adapter->validateWebhookSignature($payload, 'v1='.$hmac, $secret, $timestamp));
     }
 
+    public function test_list_uploaded_media_maps_items_and_normalizes_inputs(): void
+    {
+        Http::fake([
+            'api.samsara.com/cameras/media?*' => Http::response([
+                'data' => ['media' => [
+                    [
+                        'input' => 'dashcamForwardFacing',
+                        'mediaType' => 'videoHighRes',
+                        'triggerReason' => 'panicButton',
+                        'startTime' => '2026-06-07T01:29:35Z',
+                        'endTime' => '2026-06-07T01:30:35Z',
+                        'urlInfo' => ['url' => 'https://media.samsara.com/panic.mp4'],
+                        'vehicleId' => '281474993032573',
+                        'availableAtTime' => '2026-06-07T01:31:00Z',
+                    ],
+                    [
+                        'input' => 'dashcamInwardFacing',
+                        'mediaType' => 'image',
+                        'triggerReason' => 'panicButton',
+                        'startTime' => '2026-06-07T01:29:40Z',
+                        'endTime' => '2026-06-07T01:29:40Z',
+                        'vehicleId' => '281474993032573',
+                        'availableAtTime' => '2026-06-07T01:31:00Z',
+                    ],
+                ]],
+                'pagination' => ['endCursor' => '', 'hasNextPage' => false],
+            ]),
+        ]);
+
+        $items = app(SamsaraAdapter::class)->listUploadedMedia(
+            $this->makeIntegration(),
+            '281474993032573',
+            new \DateTimeImmutable('2026-06-07T01:00:00Z'),
+            new \DateTimeImmutable('2026-06-07T02:00:00Z'),
+            ['panicButton', 'safetyEvent'],
+        )['items'];
+
+        $this->assertCount(2, $items);
+
+        // Uploaded-media inputs come in the forward/inward vocabulary and are
+        // normalized to the retrieval names used by the rest of the pipeline.
+        $this->assertSame('dashcamRoadFacing', $items[0]['input']);
+        $this->assertSame('available', $items[0]['status']);
+        $this->assertSame('https://media.samsara.com/panic.mp4', $items[0]['url']);
+        $this->assertSame('videoHighRes', $items[0]['media_type']);
+        $this->assertSame('panicButton', $items[0]['trigger_reason']);
+        $this->assertSame('2026-06-07T01:29:35Z', $items[0]['start_time']);
+
+        // No urlInfo yet → pending, never a downloadable item.
+        $this->assertSame('dashcamDriverFacing', $items[1]['input']);
+        $this->assertSame('pending', $items[1]['status']);
+        $this->assertNull($items[1]['url']);
+
+        Http::assertSent(function ($request) {
+            return $request->method() === 'GET'
+                && $request['vehicleIds'] === '281474993032573'
+                && $request['triggerReasons'] === 'panicButton,safetyEvent'
+                && isset($request['startTime'], $request['endTime']);
+        });
+    }
+
+    public function test_list_uploaded_media_returns_empty_items_on_provider_error(): void
+    {
+        Http::fake([
+            'api.samsara.com/cameras/media?*' => Http::response(['message' => 'forbidden'], 403),
+        ]);
+
+        $result = app(SamsaraAdapter::class)->listUploadedMedia(
+            $this->makeIntegration(),
+            'veh-1',
+            new \DateTimeImmutable('2026-06-07T01:00:00Z'),
+            new \DateTimeImmutable('2026-06-07T02:00:00Z'),
+        );
+
+        $this->assertSame(['items' => []], $result);
+    }
+
+    public function test_list_uploaded_media_without_token_skips_the_provider(): void
+    {
+        Http::fake();
+
+        $result = app(SamsaraAdapter::class)->listUploadedMedia(
+            $this->makeIntegration(token: null),
+            'veh-1',
+            new \DateTimeImmutable('2026-06-07T01:00:00Z'),
+            new \DateTimeImmutable('2026-06-07T02:00:00Z'),
+        );
+
+        $this->assertSame(['items' => []], $result);
+        Http::assertNothingSent();
+    }
+
     public function test_manager_routes_samsara_provider_to_samsara_adapter(): void
     {
         Http::fake([
