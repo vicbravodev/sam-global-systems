@@ -4,18 +4,18 @@ import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { initializeTheme } from '@/hooks/use-appearance';
 import AdminLayout from '@/layouts/admin-layout';
-import AppLayout from '@/layouts/app-layout';
 import AuthLayout from '@/layouts/auth-layout';
 import OpsLayout from '@/layouts/ops-layout';
 import SettingsLayout from '@/layouts/settings/layout';
 
-const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
+const appName = import.meta.env.VITE_APP_NAME || 'SAM';
 
 createInertiaApp({
     title: (title) => (title ? `${title} - ${appName}` : appName),
     layout: (name) => {
         switch (true) {
             case name === 'welcome':
+            case name.startsWith('errors/'):
                 return null;
             case name.startsWith('auth/'):
                 return AuthLayout;
@@ -25,9 +25,11 @@ createInertiaApp({
             case name.startsWith('settings/roles'):
             case name.startsWith('settings/tenant-config'):
                 return OpsLayout;
+            // Settings de usuario y equipos viven en el shell ops con la
+            // sub-nav "Cuenta" (F1.1: un solo producto, un solo shell).
             case name.startsWith('settings/'):
             case name.startsWith('teams/'):
-                return [AppLayout, SettingsLayout];
+                return [OpsLayout, SettingsLayout];
             case name.startsWith('admin/'):
                 return AdminLayout;
             case name === 'dashboard':
@@ -44,7 +46,7 @@ createInertiaApp({
             case name.startsWith('events/'):
                 return OpsLayout;
             default:
-                return AppLayout;
+                return OpsLayout;
         }
     },
     strictMode: true,

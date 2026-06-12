@@ -1,5 +1,6 @@
 import type * as React from 'react';
-import { DataTable } from '@/components/sam/data-table';
+import { useMemo } from 'react';
+import { CellEmpty, DataTable } from '@/components/sam/data-table';
 import type { DataTableColumn } from '@/components/sam/data-table';
 import { RelativeTime } from '@/components/sam/relative-time';
 import { cn } from '@/lib/utils';
@@ -12,7 +13,7 @@ function minutesSince(iso: string): number {
 
 function AssetCell({ asset }: { asset: DriverRow['currentAsset'] }) {
     if (asset === null) {
-        return <span className="text-fg-3">—</span>;
+        return <CellEmpty />;
     }
 
     return (
@@ -29,7 +30,7 @@ function AssetCell({ asset }: { asset: DriverRow['currentAsset'] }) {
 
 function RiskCell({ score }: { score: number | null }) {
     if (score === null) {
-        return <span className="text-fg-3">—</span>;
+        return <CellEmpty />;
     }
 
     return (
@@ -96,7 +97,7 @@ const COLUMNS: DataTableColumn<DriverRow>[] = [
                     {driver.phone}
                 </span>
             ) : (
-                <span className="text-fg-3">—</span>
+                <CellEmpty />
             ),
     },
     {
@@ -109,7 +110,7 @@ const COLUMNS: DataTableColumn<DriverRow>[] = [
             driver.lastSeenAt ? (
                 <RelativeTime minutes={minutesSince(driver.lastSeenAt)} />
             ) : (
-                <span className="text-fg-3">—</span>
+                <CellEmpty />
             ),
     },
 ];
@@ -121,9 +122,31 @@ interface DriversTableProps {
 }
 
 export function DriversTable({ rows, onSelect, empty }: DriversTableProps) {
+    // Columnas sin un solo dato en todo el set (asset/riesgo/teléfono aún no
+    // sincronizados) se ocultan en vez de pintar "—" en cada fila.
+    const columns = useMemo(
+        () =>
+            COLUMNS.filter((column) => {
+                if (column.key === 'asset') {
+                    return rows.some((d) => d.currentAsset !== null);
+                }
+
+                if (column.key === 'risk') {
+                    return rows.some((d) => d.riskScore !== null);
+                }
+
+                if (column.key === 'phone') {
+                    return rows.some((d) => d.phone);
+                }
+
+                return true;
+            }),
+        [rows],
+    );
+
     return (
         <DataTable
-            columns={COLUMNS}
+            columns={columns}
             rows={rows}
             rowKey={(driver) => driver.id}
             onRowClick={(driver) => onSelect(driver.id)}

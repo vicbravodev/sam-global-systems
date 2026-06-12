@@ -1,5 +1,5 @@
 import { usePage } from '@inertiajs/react';
-import { ChevronRight, Moon, Sun } from 'lucide-react';
+import { ChevronRight, Menu, Moon, Sun } from 'lucide-react';
 import { useAppearance } from '@/hooks/use-appearance';
 import { useInitials } from '@/hooks/use-initials';
 import { cn } from '@/lib/utils';
@@ -7,6 +7,7 @@ import type { BreadcrumbItem } from '@/types';
 
 interface AdminTopbarProps {
     breadcrumbs?: BreadcrumbItem[];
+    onOpenMobileNav?: () => void;
 }
 
 /**
@@ -14,7 +15,10 @@ interface AdminTopbarProps {
  * no command palette, search or realtime status — the operator console is not
  * scoped to a single tenant's live operations.
  */
-export function AdminTopbar({ breadcrumbs = [] }: AdminTopbarProps) {
+export function AdminTopbar({
+    breadcrumbs = [],
+    onOpenMobileNav,
+}: AdminTopbarProps) {
     const page = usePage();
     const user = page.props.auth.user;
     const { appearance, updateAppearance } = useAppearance();
@@ -23,7 +27,17 @@ export function AdminTopbar({ breadcrumbs = [] }: AdminTopbarProps) {
     const userInitials = getInitials(user.name);
 
     return (
-        <header className="flex h-[52px] shrink-0 items-center gap-2.5 border-b border-border bg-background px-4">
+        <header className="flex h-[52px] shrink-0 items-center gap-2.5 border-b border-border bg-background px-3 sm:px-4">
+            {/* Mobile nav trigger */}
+            <button
+                type="button"
+                className="grid h-[30px] w-[30px] shrink-0 cursor-pointer place-items-center rounded-md border border-transparent bg-transparent text-fg-2 transition-colors duration-100 hover:bg-surface-2 hover:text-fg-1 lg:hidden"
+                onClick={onOpenMobileNav}
+                aria-label="Abrir menú de navegación"
+            >
+                <Menu className="size-4" />
+            </button>
+
             {breadcrumbs.length > 0 && (
                 <nav
                     className="flex items-center gap-1.5"

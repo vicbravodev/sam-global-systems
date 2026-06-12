@@ -7,6 +7,7 @@ export type IntegrationHealth = 'ok' | 'warn' | 'down' | 'unknown';
 export type AiDecision = 'incident' | 'escalate' | 'info' | 'discard';
 
 export interface MockAssignee {
+    id: number;
     name: string;
     initials: string;
 }
@@ -145,8 +146,6 @@ export interface ReclassifyOptions {
 
 export interface NavBadges {
     inbox: number;
-    rules: number;
-    integrations: number;
 }
 
 // ---- Timeline entries for detail panel ----

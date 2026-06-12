@@ -1,5 +1,5 @@
 import { Head, router, usePage } from '@inertiajs/react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, Workflow } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { ConditionBuilder } from '@/components/sam/condition-builder';
@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Combobox } from '@/components/ui/combobox';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { postJson, putJson, readErrorMessage } from '@/lib/sam-fetch';
 
@@ -445,9 +446,22 @@ function WorkflowsTab({
 
             {workflows.length === 0 && !creating && (
                 <Card>
-                    <CardContent className="py-6 text-center text-[12px] text-fg-3">
-                        Sin workflows — crea el primero para automatizar
-                        notificaciones y acciones sobre incidentes.
+                    <CardContent>
+                        <EmptyState
+                            icon={Workflow}
+                            title="Todavía no hay automatizaciones"
+                            description="Un workflow reacciona solo: cuando se crea o escala un incidente puede notificar al equipo, pedir media o ejecutar acciones sin que nadie lo toque."
+                            action={
+                                canManage ? (
+                                    <Button
+                                        size="sm"
+                                        onClick={() => setCreating(true)}
+                                    >
+                                        Nuevo workflow
+                                    </Button>
+                                ) : undefined
+                            }
+                        />
                     </CardContent>
                 </Card>
             )}

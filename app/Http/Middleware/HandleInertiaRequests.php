@@ -3,9 +3,11 @@
 namespace App\Http\Middleware;
 
 use App\Domains\Access\Actions\AuthorizeAction;
+use App\Domains\Incidents\Models\Incident;
 use App\Domains\Tenancy\Enums\SubscriptionStatus;
 use App\Domains\Tenancy\Models\Subscription;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Inertia\Middleware;
 
 class HandleInertiaRequests extends Middleware
@@ -68,7 +70,29 @@ class HandleInertiaRequests extends Middleware
             'adminBadges' => fn () => $user?->isSuperAdmin()
                 ? $this->adminBadges()
                 : null,
+            // Tenant-scoped counters for the workspace sidebar badges.
+            'navBadges' => fn () => $user?->current_team_id
+                ? $this->navBadges($user->current_team_id)
+                : null,
         ];
+    }
+
+    /**
+     * @return array{inbox: int}
+     */
+    private function navBadges(int $teamId): array
+    {
+        return Cache::remember(
+            "nav-badges:{$teamId}",
+            now()->addMinute(),
+            fn (): array => [
+                'inbox' => Incident::query()
+                    ->withoutGlobalScopes()
+                    ->where('team_id', $teamId)
+                    ->open()
+                    ->count(),
+            ],
+        );
     }
 
     /**
