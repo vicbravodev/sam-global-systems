@@ -115,10 +115,11 @@ visual: son los huecos funcionales, el shell legacy de settings y el móvil roto
   A asignarme, Esc cerrar) **no existían** — ahora están implementados con guard para inputs/
   diálogos. Verificado con Playwright: j abre panel, x activa bulk bar, esc cierra, escribir
   "jjkk" en el buscador no dispara nada.
-- [ ] **F2.3 Estados de carga consistentes.** `data-table` ya tiene skeleton; verificar que cada
-  página con fetch diferido (mapa, media de incidente, analytics) tenga skeleton con la forma
-  del layout final y no spinner genérico ni salto de layout (CLS). Reservar alto para el mapa
-  y para `MEDIA DEL EVENTO`.
+- [x] **F2.3 Estados de carga consistentes.** ✅ 2026-06-12 — verificado: `data-table` tiene
+  skeleton con la forma de las filas; el panel de detalle del inbox usa `DetailPlaceholder`
+  durante el fetch JSON; el mapa reserva alto (`flex-1` del shell); media de incidente y
+  analytics llegan como props server-side (lazy de Inertia, sin fetch diferido en cliente), así
+  que no producen CLS. Sin spinners genéricos fuera de acciones puntuales (botones).
 - [x] **F2.4 Unificar el placeholder de celdas vacías.** ✅ 2026-06-12 — convención codificada
   en `sam/data-table/cell-empty.tsx` (`CellEmpty`: dash neutro para texto/número, "Sin asignar"
   cursiva para persona) y aplicada en las tablas de assets/drivers/notifications; los
@@ -133,9 +134,10 @@ visual: son los huecos funcionales, el shell legacy de settings y el móvil roto
   integraciones son correctas pero planas. Propuesta: fila de KPIs más compacta (sin card por
   KPI: número + label separados por hairline, estilo cockpit), "Incidentes abiertos" como panel
   dominante (es el job principal del usuario), stream como columna lateral persistente.
-- [ ] **F3.2 Tipografía de datos.** Buen uso de mono tabular; revisar que TODOS los timestamps,
-  IDs (`INC-00040`) y counts usen `font-mono` con `tabular-nums` (hoy hay mezcla en metadatos
-  de notificaciones y auditoría).
+- [x] **F3.2 Tipografía de datos.** ✅ 2026-06-12 — barrido sobre notificaciones y auditoría:
+  los timestamps de auditoría ya van en `font-mono`, las fechas de notificaciones usan
+  `RelativeTime` (mono + tabular), los codes de canal van en mono. No quedaron offenders; los
+  IDs `INC-*` del inbox ya eran mono desde V1.
 - [ ] **F3.3 Chips y badges: un solo sistema.** Conviven: badge severidad (Alta/Crítica), chip
   estado (VENCIDO rojo), chip acción (`escalate`/`info`), badge "activa", pill "Sistema",
   tag `stop`. Consolidar en 3 variantes documentadas (severity / status / meta) con la misma
