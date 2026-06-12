@@ -68,6 +68,9 @@ return [
             'bucket' => env('RUSTFS_BUCKET', 'sam'),
             'url' => env('RUSTFS_URL'),
             'endpoint' => env('RUSTFS_ENDPOINT', 'http://rustfs:9000'),
+            // Endpoint alcanzable desde el navegador para URLs prefirmadas
+            // (el endpoint interno de Docker no resuelve fuera del cluster).
+            'public_endpoint' => env('RUSTFS_PUBLIC_ENDPOINT'),
             'use_path_style_endpoint' => true,
             'throw' => true,
         ],

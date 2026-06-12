@@ -4,6 +4,7 @@ namespace App\Infrastructure\Storage;
 
 use App\Contracts\ObjectStorage;
 use DateTimeInterface;
+use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Storage;
 
 class RustFsObjectStorage implements ObjectStorage
@@ -34,7 +35,25 @@ class RustFsObjectStorage implements ObjectStorage
 
     public function temporaryUrl(string $path, DateTimeInterface $expiresAt, array $options = []): string
     {
-        return Storage::disk('rustfs')->temporaryUrl($path, $expiresAt, $options);
+        return $this->temporaryUrlDisk()->temporaryUrl($path, $expiresAt, $options);
+    }
+
+    /**
+     * Las URLs prefirmadas las consume el navegador, que no resuelve el
+     * hostname interno de Docker del endpoint. SigV4 firma el header Host,
+     * así que cuando hay un endpoint público configurado hay que firmar
+     * contra él (reescribir la URL después de firmar invalidaría la firma).
+     */
+    private function temporaryUrlDisk(): Filesystem
+    {
+        $config = config('filesystems.disks.rustfs', []);
+        $publicEndpoint = $config['public_endpoint'] ?? null;
+
+        if (! is_string($publicEndpoint) || $publicEndpoint === '' || $publicEndpoint === ($config['endpoint'] ?? null)) {
+            return Storage::disk('rustfs');
+        }
+
+        return Storage::build(array_merge($config, ['endpoint' => $publicEndpoint]));
     }
 
     public function mimeType(string $path): ?string
