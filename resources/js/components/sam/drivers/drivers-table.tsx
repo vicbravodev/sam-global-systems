@@ -1,6 +1,6 @@
 import type * as React from 'react';
 import { useMemo } from 'react';
-import { DataTable } from '@/components/sam/data-table';
+import { CellEmpty, DataTable } from '@/components/sam/data-table';
 import type { DataTableColumn } from '@/components/sam/data-table';
 import { RelativeTime } from '@/components/sam/relative-time';
 import { cn } from '@/lib/utils';
@@ -13,7 +13,7 @@ function minutesSince(iso: string): number {
 
 function AssetCell({ asset }: { asset: DriverRow['currentAsset'] }) {
     if (asset === null) {
-        return <span className="text-fg-3">—</span>;
+        return <CellEmpty />;
     }
 
     return (
@@ -30,7 +30,7 @@ function AssetCell({ asset }: { asset: DriverRow['currentAsset'] }) {
 
 function RiskCell({ score }: { score: number | null }) {
     if (score === null) {
-        return <span className="text-fg-3">—</span>;
+        return <CellEmpty />;
     }
 
     return (
@@ -97,7 +97,7 @@ const COLUMNS: DataTableColumn<DriverRow>[] = [
                     {driver.phone}
                 </span>
             ) : (
-                <span className="text-fg-3">—</span>
+                <CellEmpty />
             ),
     },
     {
@@ -110,7 +110,7 @@ const COLUMNS: DataTableColumn<DriverRow>[] = [
             driver.lastSeenAt ? (
                 <RelativeTime minutes={minutesSince(driver.lastSeenAt)} />
             ) : (
-                <span className="text-fg-3">—</span>
+                <CellEmpty />
             ),
     },
 ];

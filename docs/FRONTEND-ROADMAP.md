@@ -119,9 +119,10 @@ visual: son los huecos funcionales, el shell legacy de settings y el móvil roto
   página con fetch diferido (mapa, media de incidente, analytics) tenga skeleton con la forma
   del layout final y no spinner genérico ni salto de layout (CLS). Reservar alto para el mapa
   y para `MEDIA DEL EVENTO`.
-- [ ] **F2.4 Unificar el placeholder de celdas vacías.** Conviven `—`, "Sin asignar", "sin
-  conductor", vacío. Definir uno por tipo (texto vs persona vs número) en el data-table y
-  aplicarlo transversalmente.
+- [x] **F2.4 Unificar el placeholder de celdas vacías.** ✅ 2026-06-12 — convención codificada
+  en `sam/data-table/cell-empty.tsx` (`CellEmpty`: dash neutro para texto/número, "Sin asignar"
+  cursiva para persona) y aplicada en las tablas de assets/drivers/notifications; los
+  placeholders inline de events/show capitalizados ("Sin activo"/"Sin conductor").
 - [x] **F2.5 Reduced motion.** ✅ 2026-06-12 — todas las animaciones custom (`sam-badge-pulse`,
   `sam-sla-pulse`, `sam-flash`) ahora van detrás de `motion-safe:`; el indicador "Conectado" ya
   lo cumplía y el sparkline del dashboard es estático.

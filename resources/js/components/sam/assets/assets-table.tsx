@@ -1,5 +1,5 @@
 import type * as React from 'react';
-import { DataTable } from '@/components/sam/data-table';
+import { CellEmpty, DataTable } from '@/components/sam/data-table';
 import type { DataTableColumn } from '@/components/sam/data-table';
 import { RelativeTime } from '@/components/sam/relative-time';
 import {
@@ -16,7 +16,7 @@ function minutesSince(iso: string): number {
 
 function DevicesCell({ devices }: { devices: AssetRow['devices'] }) {
     if (devices.length === 0) {
-        return <span className="text-fg-3">—</span>;
+        return <CellEmpty />;
     }
 
     const [first, ...rest] = devices;
@@ -44,7 +44,7 @@ function DevicesCell({ devices }: { devices: AssetRow['devices'] }) {
 
 function LocationCell({ location }: { location: AssetRow['lastLocation'] }) {
     if (location === null) {
-        return <span className="text-fg-3">—</span>;
+        return <CellEmpty />;
     }
 
     if (location.formattedLocation) {
@@ -120,7 +120,7 @@ const COLUMNS: DataTableColumn<AssetRow>[] = [
             asset.lastSeenAt ? (
                 <RelativeTime minutes={minutesSince(asset.lastSeenAt)} />
             ) : (
-                <span className="text-fg-3">—</span>
+                <CellEmpty />
             ),
     },
 ];

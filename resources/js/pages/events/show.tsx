@@ -189,8 +189,8 @@ export default function EventShow() {
                                       'es',
                                   )
                                 : '—'}{' '}
-                            · {event.asset ?? 'sin activo'} ·{' '}
-                            {event.driver ?? 'sin conductor'} ·{' '}
+                            · {event.asset ?? 'Sin activo'} ·{' '}
+                            {event.driver ?? 'Sin conductor'} ·{' '}
                             {event.provider ?? '—'}
                         </p>
                     </div>
