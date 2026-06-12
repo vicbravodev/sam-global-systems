@@ -363,18 +363,20 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
             return ['items' => []];
         }
 
-        $query = [
-            'vehicleIds' => $externalAssetId,
-            'startTime' => Carbon::instance($startTime)->toIso8601String(),
-            'endTime' => Carbon::instance($endTime)->toIso8601String(),
+        // `triggerReasons` is an exploded form param (`triggerReasons=a&triggerReasons=b`);
+        // Samsara rejects both comma-joined and PHP's bracketed array encoding.
+        $pairs = [
+            'vehicleIds='.urlencode($externalAssetId),
+            'startTime='.urlencode(Carbon::instance($startTime)->toIso8601String()),
+            'endTime='.urlencode(Carbon::instance($endTime)->toIso8601String()),
         ];
 
-        if ($triggerReasons !== []) {
-            $query['triggerReasons'] = implode(',', $triggerReasons);
+        foreach ($triggerReasons as $reason) {
+            $pairs[] = 'triggerReasons='.urlencode($reason);
         }
 
         try {
-            $response = $this->client($token)->get('/cameras/media', $query);
+            $response = $this->client($token)->get('/cameras/media?'.implode('&', $pairs));
         } catch (\Throwable $e) {
             Log::warning('Samsara uploaded-media listing failed', [
                 'vehicle_id' => $externalAssetId,

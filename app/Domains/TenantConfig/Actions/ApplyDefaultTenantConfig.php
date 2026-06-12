@@ -75,7 +75,8 @@ class ApplyDefaultTenantConfig
         return [
             // Investigate automatically: footage + stills around every critical event.
             ['key' => 'media.auto_request_on_critical', 'group' => SettingGroup::Operational, 'type' => SettingValueType::Boolean, 'value' => true],
-            ['key' => 'media.clip_window_seconds', 'group' => SettingGroup::Operational, 'type' => SettingValueType::Number, 'value' => 60],
+            // Per side around occurred_at: 10s → 20s clip (Samsara caps retrievals at 1 min total).
+            ['key' => 'media.clip_window_seconds', 'group' => SettingGroup::Operational, 'type' => SettingValueType::Number, 'value' => 10],
             ['key' => 'media.still_window_minutes', 'group' => SettingGroup::Operational, 'type' => SettingValueType::Number, 'value' => 30],
             ['key' => 'media.still_count', 'group' => SettingGroup::Operational, 'type' => SettingValueType::Number, 'value' => 6],
             // Correlate what happened on the road around the event.

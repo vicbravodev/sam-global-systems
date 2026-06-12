@@ -72,6 +72,9 @@ class FetchDeferredEventMediaJob implements ShouldQueue
      */
     public const int DEFAULT_CLIP_WINDOW_SECONDS = 10;
 
+    /** Samsara caps high-res video retrievals at 1 minute total → 30s per side. */
+    public const int MAX_CLIP_WINDOW_SECONDS = 30;
+
     public const int DEFAULT_STILL_WINDOW_MINUTES = 30;
 
     public const int DEFAULT_STILL_COUNT = 6;
@@ -166,11 +169,11 @@ class FetchDeferredEventMediaJob implements ShouldQueue
     ): void {
         $occurredAt = Carbon::instance($event->occurred_at ?? $request->requested_at ?? now());
 
-        $windowSeconds = max(1, (int) $tenantConfig->resolve(
+        $windowSeconds = min(self::MAX_CLIP_WINDOW_SECONDS, max(1, (int) $tenantConfig->resolve(
             (int) $event->team_id,
             self::SETTING_CLIP_WINDOW,
             self::DEFAULT_CLIP_WINDOW_SECONDS,
-        ));
+        )));
 
         $retrievalId = $mediaAdapter->requestMedia(
             $integration,
