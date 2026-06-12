@@ -152,9 +152,18 @@ visual: son los huecos funcionales, el shell legacy de settings y el móvil roto
 
 ## Fase 4 — Deuda de plataforma frontend (P3)
 
-- [ ] **F4.1 Consola `/admin/*`: auditoría visual pendiente.** Requiere un usuario con
-  `global_role=super_admin` en dev (seeder opcional `task fresh` o comando artisan). Repetir
-  esta auditoría sobre las 6 páginas admin y anexar hallazgos aquí.
+- [x] **F4.1 Consola `/admin/*`: auditoría visual pendiente.** ✅ 2026-06-12 — auditadas las 5
+  páginas (tenants, plans, operators, channels, audit) con Playwright en desktop 1440 y móvil
+  390, usuario `super_admin` local. **Hallazgos anexados:**
+  - 🟢 Desktop sólido: shell admin consistente, 0px de overflow horizontal en las 5 páginas,
+    tablas densas legibles, badges de morosos/trial funcionando.
+  - 🟡 **Planes: labels de medidores en inglés** ("AI Evaluations", "Active Cameras", "Ingested
+    Events"…) en un producto 100% español — mapear a etiquetas es como en F3.4.
+  - 🟡 **Canales: el label "Tipo" se encima con el select** en el form de creación (fila de
+    campos sin wrap correcto en anchos medios).
+  - 🟡 **Móvil: `AdminLayout` no colapsa el sidebar** (mismo patrón pre-F0.1 del shell ops);
+    aceptable mientras la consola del operador SAM sea desktop-first, pero si se usa desde
+    móvil hay que replicar el drawer de F0.1.
 - [x] **F4.2 Tests de regresión visual.** ✅ 2026-06-12 — `scripts/audit-frontend.mjs`: recorre
   17 páginas clave × desktop/móvil × oscuro/claro con Playwright, guarda screenshots en
   `storage/app/frontend-audit/{fecha}/` (gitignored) y falla si detecta overflow horizontal.
