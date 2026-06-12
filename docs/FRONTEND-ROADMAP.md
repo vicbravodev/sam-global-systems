@@ -108,10 +108,12 @@ visual: son los huecos funcionales, el shell legacy de settings y el móvil roto
   `text-2xs`) están al borde. Verificar AA (4.5:1 cuerpo, 3:1 texto grande) con los tokens
   reales en oscuro y claro; ajustar los tokens, no caso por caso. Incluir badges de severidad
   (Alta/Crítica) y los chips `escalate`/`info` del stream.
-- [ ] **F2.2 Navegación por teclado de las tablas.** Las filas de bandeja/eventos/flota deben ser
-  focusables y activables con Enter (link real o `role="link"` + handler), con focus ring
-  visible. La paleta ya lista atajos (`v` ir al panel, `e` ir a incidentes…): documentarlos en
-  un popover "?" de atajos y asegurar que no chocan con inputs.
+- [x] **F2.2 Navegación por teclado de las tablas.** ✅ 2026-06-12 — las filas de DataTable e
+  inbox ya eran focusables con Enter + focus ring. Lo que faltaba (y era otra mentira de UI):
+  los atajos que el footer de la bandeja anuncia (J/K navegar, Enter abrir, X seleccionar,
+  A asignarme, Esc cerrar) **no existían** — ahora están implementados con guard para inputs/
+  diálogos. Verificado con Playwright: j abre panel, x activa bulk bar, esc cierra, escribir
+  "jjkk" en el buscador no dispara nada.
 - [ ] **F2.3 Estados de carga consistentes.** `data-table` ya tiene skeleton; verificar que cada
   página con fetch diferido (mapa, media de incidente, analytics) tenga skeleton con la forma
   del layout final y no spinner genérico ni salto de layout (CLS). Reservar alto para el mapa
@@ -157,9 +159,10 @@ visual: son los huecos funcionales, el shell legacy de settings y el móvil roto
 - [x] **F4.3 Página `events/show`: payloads colapsables.** ✅ 2026-06-12 — `JsonBlock` es ahora
   un `<details>` colapsado por defecto con botón "Copiar" (clipboard + toast); la evaluación IA /
   decisión / incidente quedan dominando la página.
-- [ ] **F4.4 Bandeja: revisar el botón "Asignarme crítico más viejo".** Verificar estados
-  (sin críticos disponibles → disabled con tooltip), feedback con toast y actualización
-  optimista de la fila.
+- [x] **F4.4 Bandeja: revisar el botón "Asignarme crítico más viejo".** ✅ 2026-06-12 — sin
+  críticos abiertos el botón queda disabled con tooltip explicativo; el feedback con toast y
+  spinner ya existía y el refresh es parcial (`router.reload({only: ['incidents']})`). El pulso
+  del contador de críticos ahora respeta reduced motion.
 
 ---
 
