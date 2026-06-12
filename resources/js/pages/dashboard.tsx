@@ -89,15 +89,19 @@ export default function Dashboard() {
                     openCount={kpis.openIncidents.value}
                 />
                 <KpiGrid kpis={kpis} />
-                <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
-                    <OpenIncidentsPanel
-                        incidents={incidents}
-                        teamSlug={teamSlug}
-                    />
+                {/* Jerarquía cockpit (F3.1): incidentes abiertos es el panel
+                    dominante; el stream vive como columna lateral persistente. */}
+                <div className="grid items-start gap-4 lg:grid-cols-[2fr_1fr]">
+                    <div className="flex min-w-0 flex-col gap-4">
+                        <OpenIncidentsPanel
+                            incidents={incidents}
+                            teamSlug={teamSlug}
+                        />
+                        <IntegrationsPanel integrations={integrations} />
+                        <UsagePanel usage={usage} />
+                    </div>
                     <LiveStreamPanel events={stream} />
                 </div>
-                <IntegrationsPanel integrations={integrations} />
-                <UsagePanel usage={usage} />
             </div>
         </>
     );
@@ -224,36 +228,34 @@ function KpiCard({
     sparkColorVar,
     empty = false,
 }: KpiCardProps) {
+    // Celda cockpit (F3.1): sin card individual; la fila de KPIs es una sola
+    // franja con hairlines entre celdas.
     return (
-        <Card className="relative gap-2 overflow-hidden bg-surface-1 py-4">
-            <CardHeader className="px-4">
-                <span className="sam-caps">{label}</span>
-            </CardHeader>
-            <CardContent className="px-4 pb-2">
-                {empty ? (
-                    <div className="flex h-[52px] items-center text-[13px] text-fg-3">
-                        Sin datos del periodo
+        <div className="relative overflow-hidden bg-surface-1 px-4 py-3">
+            <span className="sam-caps">{label}</span>
+            {empty ? (
+                <div className="flex h-[46px] items-center text-[13px] text-fg-3">
+                    Sin datos del periodo
+                </div>
+            ) : (
+                <>
+                    <div className="mt-1 font-mono text-[26px] leading-tight tracking-tight tabular-nums">
+                        {value}
                     </div>
-                ) : (
-                    <>
-                        <div className="font-mono text-3xl tracking-tight tabular-nums">
-                            {value}
-                        </div>
-                        <div
-                            className={cn(
-                                'mt-1.5 font-mono text-[11px] tabular-nums',
-                                deltaColorClass,
-                            )}
-                        >
-                            {delta}
-                        </div>
-                    </>
-                )}
-            </CardContent>
+                    <div
+                        className={cn(
+                            'mt-1 font-mono text-[11px] tabular-nums',
+                            deltaColorClass,
+                        )}
+                    >
+                        {delta}
+                    </div>
+                </>
+            )}
             {!empty && series && sparkColorVar ? (
                 <Sparkline series={series} colorVar={sparkColorVar} />
             ) : null}
-        </Card>
+        </div>
     );
 }
 
@@ -296,7 +298,7 @@ function KpiGrid({ kpis }: { kpis: DashboardProps['kpis'] }) {
               ).toLocaleString('es', { maximumFractionDigits: 1 })} % vs ayer`;
 
     return (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border xl:grid-cols-4">
             <KpiCard
                 label="Incidentes abiertos"
                 value={String(kpis.openIncidents.value)}

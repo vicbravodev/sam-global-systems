@@ -130,10 +130,11 @@ visual: son los huecos funcionales, el shell legacy de settings y el móvil roto
 
 ## Fase 3 — Calidad visual fina (P2)
 
-- [ ] **F3.1 Jerarquía del dashboard.** Las 4 KPI cards idénticas + 2 paneles + 1 card de
-  integraciones son correctas pero planas. Propuesta: fila de KPIs más compacta (sin card por
-  KPI: número + label separados por hairline, estilo cockpit), "Incidentes abiertos" como panel
-  dominante (es el job principal del usuario), stream como columna lateral persistente.
+- [x] **F3.1 Jerarquía del dashboard.** ✅ 2026-06-12 — la fila de KPIs es ahora una sola franja
+  cockpit (celdas con hairlines vía `gap-px bg-border`, número mono 26px, sin card por KPI);
+  "Incidentes abiertos" es el panel dominante (`2fr`) con Integraciones y Consumo debajo en la
+  misma columna, y el stream en vivo quedó como columna lateral persistente (`1fr`). Verificado
+  con screenshot.
 - [x] **F3.2 Tipografía de datos.** ✅ 2026-06-12 — barrido sobre notificaciones y auditoría:
   los timestamps de auditoría ya van en `font-mono`, las fechas de notificaciones usan
   `RelativeTime` (mono + tabular), los codes de canal van en mono. No quedaron offenders; los
