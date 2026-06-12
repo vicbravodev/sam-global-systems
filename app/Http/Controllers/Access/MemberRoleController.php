@@ -27,6 +27,8 @@ class MemberRoleController extends Controller
 
         $assignRoleToMember->execute($membership, $request->validated('role_code'));
 
-        return back();
+        // 303 so fetch/browser follow-ups re-emit as GET (a 302 keeps the
+        // PUT method and lands on the GET-only route as a 405).
+        return back(303);
     }
 }

@@ -258,7 +258,7 @@ aplican: feature test (`assertInertia`) por página tocada + gates de front verd
 
 ### Fase 0 — Deja de mentir / deja de atrapar (Critical)
 
-- [ ] **R0.1 Quick wins de locale e identidad** *(E2, F0.5, D-08)*: `APP_LOCALE=es`,
+- [x] **R0.1 Quick wins de locale e identidad** *(E2, F0.5, D-08)*: `APP_LOCALE=es`,
   `APP_FALLBACK_LOCALE=es`, `APP_NAME=SAM` en `.env` + `.env.example`; redirect 303 tras el PUT de
   cambio de rol. Cierre: login fallido en español, `<html lang="es">`, títulos "… - SAM", cero 405
   en consola al cambiar un rol.
