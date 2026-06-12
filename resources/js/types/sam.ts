@@ -7,6 +7,7 @@ export type IntegrationHealth = 'ok' | 'warn' | 'down' | 'unknown';
 export type AiDecision = 'incident' | 'escalate' | 'info' | 'discard';
 
 export interface MockAssignee {
+    id: number;
     name: string;
     initials: string;
 }

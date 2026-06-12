@@ -176,7 +176,7 @@ class IncidentInboxPresenter
 
     /**
      * @param  Collection<int, User>  $users
-     * @return array{name: string, initials: string}|null
+     * @return array{id: int, name: string, initials: string}|null
      */
     private function assignee(Incident $incident, Collection $users): ?array
     {
@@ -190,6 +190,7 @@ class IncidentInboxPresenter
         $name = (string) ($user?->name ?? 'Usuario');
 
         return [
+            'id' => (int) $assignment->assigned_to_id,
             'name' => $name,
             'initials' => $this->initials($name),
         ];

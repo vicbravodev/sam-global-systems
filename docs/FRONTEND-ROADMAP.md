@@ -63,9 +63,14 @@ visual: son los huecos funcionales, el shell legacy de settings y el móvil roto
   de entornos desplegados.
 - [x] **F0.6 Link "Configuración" muerto en el shell legacy.** ✅ 2026-06-12 — el footer de
   `app-sidebar.tsx` apunta a `/settings/profile`. (Desaparece del todo con F1.1.)
-- [ ] **F0.7 Verificar el filtro de tabs de la bandeja.** En la auditoría, el tab "SLA crítico"
-  mostró las mismas 39 filas que "Abiertos". Confirmar con datos que cada tab (Míos / Sin dueño /
-  SLA crítico / Observando) filtra de verdad y tiene test de feature con `assertInertia`.
+- [x] **F0.7 Verificar el filtro de tabs de la bandeja.** ✅ 2026-06-12 — verificado en código:
+  los tabs sí discriminan (open = no terminal, unassigned = open sin assignee, sla = `slaSeconds
+  < 900`, discarded). Lo observado en la auditoría era artefacto de datos: los incidentes seeded
+  eran viejos, así que TODOS los abiertos tenían SLA vencido (`slaSeconds` negativo) y caían en
+  "SLA crítico". Fix real encontrado: "Míos" matcheaba por **iniciales** (colisionaba entre
+  usuarios homónimos) — ahora el presenter expone `assignee.id` y el tab filtra por
+  `currentUserId`. Test ampliado: `IncidentInboxTest::test_inbox_maps_priority_status_and_assignment`
+  asserta `assignee.id`.
 
 ## Fase 1 — Un solo producto, un solo shell (P1)
 

@@ -24,7 +24,6 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useInitials } from '@/hooks/use-initials';
 import { TEAM_BROADCAST_EVENT_NAME } from '@/hooks/use-team-broadcasts';
 import type { TeamBroadcastDetail } from '@/hooks/use-team-broadcasts';
 import { postJson, readErrorMessage } from '@/lib/sam-fetch';
@@ -583,11 +582,8 @@ export default function IncidentsIndex() {
     const serverFilters = pageProps.filters ?? EMPTY_FILTERS;
     const filterOptions = pageProps.filterOptions ?? EMPTY_OPTIONS;
     const teamSlug = page.props.currentTeam?.slug ?? null;
-    const getInitials = useInitials();
-    const currentUserName = page.props.auth?.user?.name ?? null;
     const currentUserId =
         (page.props.auth?.user?.id as number | undefined) ?? null;
-    const myInitials = currentUserName ? getInitials(currentUserName) : null;
 
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [layout, setLayout] = useState<InboxLayout>('table');
@@ -638,8 +634,8 @@ export default function IncidentsIndex() {
             case 'mine':
                 source = incidents.filter(
                     (i) =>
-                        myInitials !== null &&
-                        i.assignee?.initials === myInitials,
+                        currentUserId !== null &&
+                        i.assignee?.id === currentUserId,
                 );
                 break;
             case 'unassigned':
@@ -662,7 +658,7 @@ export default function IncidentsIndex() {
         }
 
         return source;
-    }, [tab, openIncidents, incidents, myInitials]);
+    }, [tab, openIncidents, incidents, currentUserId]);
 
     const selectedRow = useMemo(
         () => incidents.find((i) => i.id === selectedId) ?? null,

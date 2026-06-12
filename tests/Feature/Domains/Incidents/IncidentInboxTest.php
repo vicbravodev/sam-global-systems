@@ -140,6 +140,7 @@ class IncidentInboxTest extends TestCase
                 ->component('incidents/index')
                 ->where('incidents.0.severity', 'critical')
                 ->where('incidents.0.status', 'assigned')
+                ->where('incidents.0.assignee.id', $assignee->id)
                 ->where('incidents.0.assignee.name', 'María Gómez')
                 ->where('incidents.0.assignee.initials', 'MG')
                 ->where('incidents.0.slaTotal', (int) $critical->sla_seconds),
