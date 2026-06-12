@@ -305,7 +305,7 @@ aplican: feature test (`assertInertia`) por página tocada + gates de front verd
   menos eliminables); edición completa de reglas o aviso de inmutabilidad; confirmación en todo
   destructivo (patrón único); quitar política antes de guardar; cada guardado registra versión.
   Cierre: criterios de D-09..D-12/D-18 (§3).
-- [ ] **R1.7 Páginas de error SAM** *(F0.4, A11, C-12)*: página Inertia de error (403/404/500/503)
+- [x] **R1.7 Páginas de error SAM** *(verificado 2026-06-12: ya cerrado por F0.4 en `bootstrap/app.php` + `errors/error.tsx`, posterior a la auditoría)* *(F0.4, A11, C-12)*: página Inertia de error (403/404/500/503)
   con shell mínimo, español, tema de la app y CTA de regreso, cableada en `bootstrap/app.php`.
   Cierre: `/esta-ruta-no-existe`, `/incidents/999999` y `/admin/tenants` muestran la página SAM en
   el tema correcto, consola limpia.
@@ -340,7 +340,7 @@ aplican: feature test (`assertInertia`) por página tocada + gates de front verd
 - [ ] **R3.1 F1.1**: migrar settings de usuario/equipos al shell ops (con el menú de usuario de
   R1.1 como puerta de entrada); retirar `app-sidebar.tsx`/`app-layout.tsx` del árbol vivo; corregir
   F0.6 mientras tanto.
-- [ ] **R3.2 F1.5 + F1.6 + F3.6 + E11**: welcome con marca SAM, fuentes self-hosted (cero requests
+- [x] **R3.2 F1.5 + F1.6 + F3.6 + E11** *(verificado 2026-06-12: welcome/fuentes/OG ya cerrados post-auditoría; E11 corregido con glifo knockout `var(--background)`)*: welcome con marca SAM, fuentes self-hosted (cero requests
   a googleapis/bunny), favicon + OG, glifo del logo visible en login claro.
 - [ ] **R3.3 F3.3 + F2.4 + IDs**: sistema único de chips/badges (3 variantes), placeholder único
   por tipo de celda, formato canónico de referencia de incidente.
