@@ -5,6 +5,7 @@ namespace App\Domains\Context\Jobs;
 use App\Contracts\Integrations\MediaRetrievalAdapter;
 use App\Contracts\ObjectStorage;
 use App\Contracts\TenantConfig\TenantConfigResolver;
+use App\Domains\Assets\Models\Asset;
 use App\Domains\Assets\Models\AssetExternalReference;
 use App\Domains\Context\Actions\AttachImmediateEventMedia;
 use App\Domains\Context\Actions\RefreshContextMediaSnapshot;
@@ -49,6 +50,13 @@ use Illuminate\Support\Facades\Log;
  * a request whose retrieval the provider rejects/fails closes as Completed
  * instead of Failed when that evidence already backs the event: a panic alert
  * must never end without media when the provider holds some.
+ *
+ * Retrievals are skipped entirely in two cases (the sweep still runs):
+ * events older than `media.retrieval_max_age_hours` (the dashcam SD card
+ * overwrites itself within days, so the provider would reject every call),
+ * and assets whose provider record reports no paired camera (the flag can be
+ * stale, so the request stays alive as a sweep-only poll until uploaded
+ * media lands or it expires).
  */
 class FetchDeferredEventMediaJob implements ShouldQueue
 {
@@ -56,7 +64,12 @@ class FetchDeferredEventMediaJob implements ShouldQueue
 
     public const int POLL_DELAY_SECONDS = 60;
 
+    /** Sweep-only polls have no retrieval to babysit: re-check uploads slower. */
+    public const int SWEEP_POLL_DELAY_SECONDS = 300;
+
     public const string SETTING_CLIP_WINDOW = 'media.clip_window_seconds';
+
+    public const string SETTING_RETRIEVAL_MAX_AGE = 'media.retrieval_max_age_hours';
 
     public const string SETTING_STILL_WINDOW = 'media.still_window_minutes';
 
@@ -78,6 +91,9 @@ class FetchDeferredEventMediaJob implements ShouldQueue
     public const int DEFAULT_STILL_WINDOW_MINUTES = 30;
 
     public const int DEFAULT_STILL_COUNT = 6;
+
+    /** Past this event age the SD footage is gone and every retrieval 400s. */
+    public const int DEFAULT_RETRIEVAL_MAX_AGE_HOURS = 72;
 
     public int $tries = 5;
 
@@ -132,6 +148,32 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         $this->sweepUploadedMedia($request, $event, $integration, $externalAssetId, $mediaAdapter, $storage, $attachImmediate, $refreshSnapshot, $tenantConfig);
 
         $metadata = $request->response_metadata_json ?? [];
+
+        if (! isset($metadata['retrieval_id']) && ! isset($metadata['still_retrievals'])) {
+            $maxAgeHours = max(1, (int) $tenantConfig->resolve(
+                (int) $event->team_id,
+                self::SETTING_RETRIEVAL_MAX_AGE,
+                self::DEFAULT_RETRIEVAL_MAX_AGE_HOURS,
+            ));
+
+            $occurredAt = Carbon::instance($event->occurred_at ?? $request->requested_at ?? now());
+
+            if ($occurredAt->lt(now()->subHours($maxAgeHours))) {
+                $this->closeWithoutNewMedia($request, $event, MediaRequestStatus::Failed, sprintf(
+                    'Event is older than the device footage retention window (%dh); only already-uploaded media was swept.',
+                    $maxAgeHours,
+                ));
+                $refreshSnapshot->execute($event->id);
+
+                return;
+            }
+
+            if ($this->assetReportsNoCamera($event)) {
+                $this->continueSweepOnly($request, $event, $refreshSnapshot);
+
+                return;
+            }
+        }
 
         if ($request->request_type === MediaRequestType::FetchSnapshot) {
             $retrievals = $metadata['still_retrievals'] ?? null;
@@ -500,18 +542,62 @@ class FetchDeferredEventMediaJob implements ShouldQueue
      * already holds auto-uploaded evidence the request completes (the alert IS
      * backed by media), otherwise it fails/expires as before.
      */
+    /**
+     * Keep a request alive as a sweep-only poll: the asset reports no paired
+     * camera, so no retrieval will ever be placed, but the provider flag can
+     * be stale — re-sweep the uploaded media until evidence lands or the
+     * request's `expires_at` closes it.
+     */
+    private function continueSweepOnly(
+        EventMediaRequest $request,
+        NormalizedEvent $event,
+        RefreshContextMediaSnapshot $refreshSnapshot,
+    ): void {
+        if ($this->hasUploadedEvidence($event)) {
+            $this->closeWithoutNewMedia($request, $event, MediaRequestStatus::Failed, 'Asset reports no paired camera; request fulfilled by the uploaded-media sweep.');
+            $refreshSnapshot->execute($event->id);
+
+            return;
+        }
+
+        $request->forceFill(['status' => MediaRequestStatus::Processing])->save();
+        $refreshSnapshot->execute($event->id);
+
+        self::dispatch($request->id)->delay(now()->addSeconds(self::SWEEP_POLL_DELAY_SECONDS));
+    }
+
+    /**
+     * Only an explicit `has_camera = false` from the provider sync counts:
+     * assets synced before the flag existed keep the retrieval path.
+     */
+    private function assetReportsNoCamera(NormalizedEvent $event): bool
+    {
+        if ($event->asset_id === null) {
+            return false;
+        }
+
+        $metadata = Asset::withoutGlobalScopes()->find($event->asset_id)?->metadata_json;
+
+        return is_array($metadata)
+            && array_key_exists('has_camera', $metadata)
+            && $metadata['has_camera'] === false;
+    }
+
+    private function hasUploadedEvidence(NormalizedEvent $event): bool
+    {
+        return RawEventAttachment::query()
+            ->where('raw_event_id', $event->raw_event_id)
+            ->where('metadata_json->source', 'uploaded_media')
+            ->exists();
+    }
+
     private function closeWithoutNewMedia(
         EventMediaRequest $request,
         NormalizedEvent $event,
         MediaRequestStatus $status,
         string $reason,
     ): void {
-        $hasUploadedEvidence = RawEventAttachment::query()
-            ->where('raw_event_id', $event->raw_event_id)
-            ->where('metadata_json->source', 'uploaded_media')
-            ->exists();
-
-        if (! $hasUploadedEvidence) {
+        if (! $this->hasUploadedEvidence($event)) {
             $this->markFailed($request, $status, $reason);
 
             return;

@@ -79,6 +79,8 @@ class ApplyDefaultTenantConfig
             ['key' => 'media.clip_window_seconds', 'group' => SettingGroup::Operational, 'type' => SettingValueType::Number, 'value' => 10],
             ['key' => 'media.still_window_minutes', 'group' => SettingGroup::Operational, 'type' => SettingValueType::Number, 'value' => 30],
             ['key' => 'media.still_count', 'group' => SettingGroup::Operational, 'type' => SettingValueType::Number, 'value' => 6],
+            // Past this event age the dashcam SD already overwrote the footage: sweep only.
+            ['key' => 'media.retrieval_max_age_hours', 'group' => SettingGroup::Operational, 'type' => SettingValueType::Number, 'value' => 72],
             // Correlate what happened on the road around the event.
             ['key' => 'context.safety_correlation_minutes', 'group' => SettingGroup::Operational, 'type' => SettingValueType::Number, 'value' => 30],
             // Always verify a panic with a human by phone (1 = real, 2 = error).
