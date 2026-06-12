@@ -96,8 +96,14 @@ function NavItemButton({
     return link;
 }
 
-export function AdminSidebar() {
-    const [collapsed, setCollapsed] = useState(false);
+export function AdminSidebar({
+    mobile = false,
+}: {
+    /** Render dentro del drawer móvil: ancho fluido y sin botón de colapso. */
+    mobile?: boolean;
+}) {
+    const [collapsedState, setCollapsedState] = useState(false);
+    const collapsed = mobile ? false : collapsedState;
     const page = usePage();
     const currentUrl = page.url;
     const badges = page.props.adminBadges;
@@ -146,9 +152,14 @@ export function AdminSidebar() {
     return (
         <aside
             className={cn(
-                'flex shrink-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar',
-                'transition-[width] duration-200 ease-out',
-                collapsed ? 'w-[58px]' : 'w-[232px]',
+                'shrink-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar',
+                mobile
+                    ? 'flex h-full w-full border-r-0'
+                    : [
+                          'hidden lg:flex',
+                          'transition-[width] duration-200 ease-out',
+                          collapsed ? 'w-[58px]' : 'w-[232px]',
+                      ],
             )}
         >
             {/* Operator block */}
@@ -166,14 +177,16 @@ export function AdminSidebar() {
                                 consola saas
                             </div>
                         </div>
-                        <button
-                            type="button"
-                            className="relative grid h-[30px] w-[30px] shrink-0 cursor-pointer place-items-center rounded-md border border-transparent bg-transparent text-fg-2 hover:bg-sidebar-accent hover:text-fg-1"
-                            onClick={() => setCollapsed(true)}
-                            aria-label="Colapsar sidebar"
-                        >
-                            <ChevronLeft className="size-4" />
-                        </button>
+                        {!mobile && (
+                            <button
+                                type="button"
+                                className="relative grid h-[30px] w-[30px] shrink-0 cursor-pointer place-items-center rounded-md border border-transparent bg-transparent text-fg-2 hover:bg-sidebar-accent hover:text-fg-1"
+                                onClick={() => setCollapsedState(true)}
+                                aria-label="Colapsar sidebar"
+                            >
+                                <ChevronLeft className="size-4" />
+                            </button>
+                        )}
                     </>
                 )}
             </div>
@@ -215,7 +228,7 @@ export function AdminSidebar() {
                         <button
                             type="button"
                             className="relative grid h-[30px] w-[30px] cursor-pointer place-items-center rounded-md border border-transparent bg-transparent text-fg-2 hover:bg-sidebar-accent hover:text-fg-1"
-                            onClick={() => setCollapsed(false)}
+                            onClick={() => setCollapsedState(false)}
                             aria-label="Expandir sidebar"
                         >
                             <ChevronRight className="size-4" />

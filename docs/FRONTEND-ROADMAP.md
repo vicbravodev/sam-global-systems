@@ -162,13 +162,13 @@ visual: son los huecos funcionales, el shell legacy de settings y el móvil roto
   390, usuario `super_admin` local. **Hallazgos anexados:**
   - 🟢 Desktop sólido: shell admin consistente, 0px de overflow horizontal en las 5 páginas,
     tablas densas legibles, badges de morosos/trial funcionando.
-  - 🟡 **Planes: labels de medidores en inglés** ("AI Evaluations", "Active Cameras", "Ingested
-    Events"…) en un producto 100% español — mapear a etiquetas es como en F3.4.
-  - 🟡 **Canales: el label "Tipo" se encima con el select** en el form de creación (fila de
-    campos sin wrap correcto en anchos medios).
-  - 🟡 **Móvil: `AdminLayout` no colapsa el sidebar** (mismo patrón pre-F0.1 del shell ops);
-    aceptable mientras la consola del operador SAM sea desktop-first, pero si se usa desde
-    móvil hay que replicar el drawer de F0.1.
+  - ✅ ~~Planes: labels de medidores en inglés~~ — resuelto 2026-06-12: mapa code→español en
+    `admin/plans` (mismo patrón F3.4), fallback al nombre de DB para codes desconocidos.
+  - ✅ ~~Canales: el label "Tipo" se encima con el select~~ — resuelto 2026-06-12: cada campo
+    del form es `flex flex-col gap-1` (label arriba, control abajo).
+  - ✅ ~~Móvil: `AdminLayout` no colapsa el sidebar~~ — resuelto 2026-06-12: drawer móvil
+    replicando F0.1 (Sheet + hamburguesa en `AdminTopbar`, cierre al navegar). Verificado con
+    Playwright a 390px.
 - [x] **F4.2 Tests de regresión visual.** ✅ 2026-06-12 — `scripts/audit-frontend.mjs`: recorre
   17 páginas clave × desktop/móvil × oscuro/claro con Playwright, guarda screenshots en
   `storage/app/frontend-audit/{fecha}/` (gitignored) y falla si detecta overflow horizontal.
