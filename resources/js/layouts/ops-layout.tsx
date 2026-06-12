@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { usePage } from '@inertiajs/react';
+import { useEffect, useState } from 'react';
 import { ImpersonationBanner } from '@/components/impersonation-banner';
 import { RealtimeBootstrap } from '@/components/realtime-bootstrap';
 import { CommandPalette } from '@/components/sam/command-palette';
@@ -11,14 +12,25 @@ interface OpsLayoutProps {
     breadcrumbs?: BreadcrumbItem[];
 }
 
-// Temporary hardcoded values until navBadges is a shared Inertia prop
-const navBadges = { inbox: 14, rules: 2, integrations: 1 };
-
 export default function OpsLayout({
     children,
     breadcrumbs = [],
 }: OpsLayoutProps) {
     const [commandOpen, setCommandOpen] = useState(false);
+    const navBadges = usePage().props.navBadges ?? { inbox: 0 };
+
+    useEffect(() => {
+        const handleKey = (e: KeyboardEvent) => {
+            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+                e.preventDefault();
+                setCommandOpen((prev) => !prev);
+            }
+        };
+
+        window.addEventListener('keydown', handleKey);
+
+        return () => window.removeEventListener('keydown', handleKey);
+    }, []);
 
     return (
         <>

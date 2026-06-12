@@ -145,8 +145,6 @@ export interface ReclassifyOptions {
 
 export interface NavBadges {
     inbox: number;
-    rules: number;
-    integrations: number;
 }
 
 // ---- Timeline entries for detail panel ----

@@ -1,4 +1,5 @@
 import type { Auth } from '@/types/auth';
+import type { NavBadges } from '@/types/sam';
 import type { AdminBadges, Impersonation, Team } from '@/types/teams';
 
 declare module '@inertiajs/core' {
@@ -11,6 +12,7 @@ declare module '@inertiajs/core' {
             teams: Team[];
             impersonation: Impersonation | null;
             adminBadges: AdminBadges | null;
+            navBadges: NavBadges | null;
             [key: string]: unknown;
         };
     }

@@ -27,12 +27,7 @@ import {
 import { cn } from '@/lib/utils';
 import { dashboard } from '@/routes';
 import { index as adminTenantsIndex } from '@/routes/admin/tenants';
-
-interface NavBadges {
-    inbox: number;
-    rules: number;
-    integrations: number;
-}
+import type { NavBadges } from '@/types/sam';
 
 interface NavItemConfig {
     label: string;
@@ -189,7 +184,6 @@ export function OpsSidebar({ navBadges }: OpsSidebarProps) {
                     label: 'Reglas',
                     icon: Workflow,
                     href: `/${teamSlug}/rules`,
-                    badge: 'rules',
                 },
                 {
                     label: 'Automatizaciones',
@@ -210,7 +204,6 @@ export function OpsSidebar({ navBadges }: OpsSidebarProps) {
                     label: 'Integraciones',
                     icon: Plug,
                     href: `/${teamSlug}/integrations`,
-                    badge: 'integrations',
                 },
                 {
                     label: 'Notificaciones',

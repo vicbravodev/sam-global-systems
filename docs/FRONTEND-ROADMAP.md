@@ -48,28 +48,23 @@ visual: son los huecos funcionales, el shell legacy de settings y el móvil roto
   `resources/js/components/sam/ops-sidebar.tsx`, `ops-topbar.tsx`, `sam/data-table/*`.
   Criterio: ninguna página operativa con overflow horizontal en 390px; navegación completa
   posible con una mano.
-- [ ] **F0.2 Badges del sidebar hardcodeados.** `ops-layout.tsx:15` declara
-  `const navBadges = { inbox: 14, rules: 2, integrations: 1 }` ("Temporary hardcoded values").
-  El sidebar muestra "Incidentes 14" cuando hay 39 abiertos, en todas las páginas. Convertirlo
-  en shared prop de Inertia (middleware `HandleInertiaRequests` con counts reales cacheados
-  por tenant) o eliminarlos hasta tenerlos. Criterio: badge = count real o sin badge.
-- [ ] **F0.3 El atajo ⌘K anunciado no existe.** El topbar pinta el hint `⌘K` pero nadie registra
-  el listener global; la paleta solo abre con click. Añadir keydown global (Cmd/Ctrl+K) en
-  `ops-layout.tsx` o dentro de `command-palette.tsx`. Criterio: ⌘K abre/cierra la paleta en
-  cualquier página del shell ops.
+- [x] **F0.2 Badges del sidebar hardcodeados.** ✅ 2026-06-12 — `navBadges` es shared prop de
+  Inertia (`HandleInertiaRequests::navBadges()`, count real de incidentes abiertos por tenant,
+  cacheado 60s). Los badges de Reglas/Integraciones se eliminaron hasta tener un count real.
+  Test: `tests/Feature/Http/NavBadgesShareTest.php` (count real, aislamiento de tenant, guest).
+- [x] **F0.3 El atajo ⌘K anunciado no existe.** ✅ 2026-06-12 — listener global Cmd/Ctrl+K en
+  `ops-layout.tsx` (toggle de la paleta con `preventDefault`).
 - [ ] **F0.4 Páginas de error default de Laravel.** 403/404/500/503 renderizan la página blanca
   de Laravel (inglés, sin marca, flash claro sobre app oscura). Crear página Inertia `errors/error.tsx`
   (shell mínimo + mensaje en español + acción de volver) y cablearla vía `respond()` en
   `bootstrap/app.php`. Criterio: 403 al entrar a `/admin/*` sin permisos y 404 de recurso ajeno
   muestran página SAM en el tema correcto.
-- [ ] **F0.5 Identidad de la app en metadata.** `APP_NAME=Laravel` y `APP_LOCALE=en` en `.env` /
-  `.env.example`: los títulos dicen "Panel operativo - Laravel" y el `<html lang="en">` contradice
-  la UI 100% en español (a11y/SEO/lectores de pantalla). Fijar `APP_NAME=SAM`, `APP_LOCALE=es`
-  en `.env.example` (y los `.env` de los entornos). Criterio: título "Panel operativo - SAM",
-  `<html lang="es">`.
-- [ ] **F0.6 Link "Configuración" muerto en el shell legacy.** En `components/app-sidebar.tsx`
-  el item de footer `Configuración` apunta a `dashboardUrl`. Mientras el shell legacy siga vivo,
-  apuntarlo a `/settings/profile`. (Desaparece del todo con F1.1.)
+- [x] **F0.5 Identidad de la app en metadata.** ✅ 2026-06-12 — `APP_NAME=SAM` en `.env.example`
+  y fallbacks `'SAM'` en `config/app.php` y `resources/js/app.tsx` (`APP_LOCALE=es` ya estaba en
+  `.env.example`; `config/app.php` ya tenía default `es`). Pendiente manual: actualizar los `.env`
+  de entornos desplegados.
+- [x] **F0.6 Link "Configuración" muerto en el shell legacy.** ✅ 2026-06-12 — el footer de
+  `app-sidebar.tsx` apunta a `/settings/profile`. (Desaparece del todo con F1.1.)
 - [ ] **F0.7 Verificar el filtro de tabs de la bandeja.** En la auditoría, el tab "SLA crítico"
   mostró las mismas 39 filas que "Abiertos". Confirmar con datos que cada tab (Míos / Sin dueño /
   SLA crítico / Observando) filtra de verdad y tiene test de feature con `assertInertia`.

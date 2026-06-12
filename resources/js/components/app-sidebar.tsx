@@ -55,7 +55,7 @@ export function AppSidebar() {
                   },
               ]
             : []),
-        { title: 'Configuración', href: dashboardUrl, icon: Settings },
+        { title: 'Configuración', href: '/settings/profile', icon: Settings },
     ];
 
     return (
