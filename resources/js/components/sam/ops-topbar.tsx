@@ -1,5 +1,5 @@
 import { usePage } from '@inertiajs/react';
-import { Bell, ChevronRight, Moon, Search, Sun } from 'lucide-react';
+import { Bell, ChevronRight, Menu, Moon, Search, Sun } from 'lucide-react';
 import { useState } from 'react';
 import { RealtimeStatus } from '@/components/sam/realtime-status';
 import type { RealtimeState } from '@/components/sam/realtime-status';
@@ -11,11 +11,13 @@ import type { BreadcrumbItem } from '@/types';
 interface OpsTopbarProps {
     breadcrumbs?: BreadcrumbItem[];
     onOpenCommandPalette?: () => void;
+    onOpenMobileNav?: () => void;
 }
 
 export function OpsTopbar({
     breadcrumbs = [],
     onOpenCommandPalette,
+    onOpenMobileNav,
 }: OpsTopbarProps) {
     const page = usePage();
     const user = page.props.auth.user;
@@ -30,11 +32,21 @@ export function OpsTopbar({
     };
 
     return (
-        <header className="flex h-[52px] shrink-0 items-center gap-2.5 border-b border-border bg-background px-4">
+        <header className="flex h-[52px] shrink-0 items-center gap-2.5 border-b border-border bg-background px-3 sm:px-4">
+            {/* Mobile nav trigger */}
+            <button
+                type="button"
+                className="grid h-[30px] w-[30px] shrink-0 cursor-pointer place-items-center rounded-md border border-transparent bg-transparent text-fg-2 transition-colors duration-100 hover:bg-surface-2 hover:text-fg-1 lg:hidden"
+                onClick={onOpenMobileNav}
+                aria-label="Abrir menú de navegación"
+            >
+                <Menu className="size-4" />
+            </button>
+
             {/* Breadcrumbs */}
             {breadcrumbs.length > 0 && (
                 <nav
-                    className="flex items-center gap-1.5"
+                    className="hidden items-center gap-1.5 sm:flex"
                     aria-label="Breadcrumb"
                 >
                     {breadcrumbs.map((crumb, idx) => {
@@ -70,10 +82,18 @@ export function OpsTopbar({
             {/* Spacer */}
             <div className="flex-1" />
 
-            {/* Search button */}
+            {/* Search button (icon-only on small screens) */}
             <button
                 type="button"
-                className="flex w-[280px] cursor-pointer items-center gap-2 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 transition-colors duration-100 hover:bg-surface-3"
+                className="grid h-[30px] w-[30px] shrink-0 cursor-pointer place-items-center rounded-md border border-transparent bg-transparent text-fg-2 transition-colors duration-100 hover:bg-surface-2 hover:text-fg-1 md:hidden"
+                onClick={onOpenCommandPalette}
+                aria-label="Buscar"
+            >
+                <Search className="size-4" />
+            </button>
+            <button
+                type="button"
+                className="hidden w-[280px] cursor-pointer items-center gap-2 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 transition-colors duration-100 hover:bg-surface-3 md:flex"
                 onClick={onOpenCommandPalette}
                 aria-label="Buscar"
             >
@@ -129,7 +149,7 @@ export function OpsTopbar({
                         {userInitials}
                     </span>
                 </div>
-                <div className="min-w-0">
+                <div className="hidden min-w-0 sm:block">
                     <div className="max-w-[100px] truncate text-[12px] font-semibold text-fg-1">
                         {user.name}
                     </div>

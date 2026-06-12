@@ -39,15 +39,13 @@ visual: son los huecos funcionales, el shell legacy de settings y el móvil roto
 
 ## Fase 0 — Bugs funcionales visibles (P0, antes que cualquier estética)
 
-- [ ] **F0.1 Móvil: el shell no responde.** `OpsSidebar` se renderiza fijo (`grid-cols-[auto_1fr]`,
-  ancho 232px) en cualquier viewport; en 390px el contenido queda en ~150px y el topbar se
-  encima con el botón de búsqueda. Implementar: sidebar como drawer/Sheet bajo `lg:` con botón
-  hamburguesa en `OpsTopbar`, topbar compacto (buscador como icono), y colapso explícito por
-  página de las tablas densas (las tablas de incidentes/eventos/flota necesitan una variante
-  card-row en `< md`). Archivos: `resources/js/layouts/ops-layout.tsx`,
-  `resources/js/components/sam/ops-sidebar.tsx`, `ops-topbar.tsx`, `sam/data-table/*`.
-  Criterio: ninguna página operativa con overflow horizontal en 390px; navegación completa
-  posible con una mano.
+- [x] **F0.1 Móvil: el shell no responde.** ✅ 2026-06-12 — sidebar como drawer (`Sheet` side
+  left) bajo `lg:` con hamburguesa en `OpsTopbar` y cierre automático al navegar
+  (`router.on('navigate')`); topbar compacto (< `md`: buscador como icono, breadcrumbs y texto
+  del user pill ocultos en < `sm`); tablas densas (`data-table` + `inbox-table`) con `min-w` para
+  scroll horizontal contenido dentro del wrapper en vez de aplastar columnas. Verificado con
+  Playwright a 390×844: 0px de overflow horizontal en dashboard/bandeja, drawer navegable con
+  una mano. (Refinamiento futuro opcional: variante card-row por página en `< md`.)
 - [x] **F0.2 Badges del sidebar hardcodeados.** ✅ 2026-06-12 — `navBadges` es shared prop de
   Inertia (`HandleInertiaRequests::navBadges()`, count real de incidentes abiertos por tenant,
   cacheado 60s). Los badges de Reglas/Integraciones se eliminaron hasta tener un count real.

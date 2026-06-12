@@ -1,10 +1,16 @@
-import { usePage } from '@inertiajs/react';
+import { router, usePage } from '@inertiajs/react';
 import { useEffect, useState } from 'react';
 import { ImpersonationBanner } from '@/components/impersonation-banner';
 import { RealtimeBootstrap } from '@/components/realtime-bootstrap';
 import { CommandPalette } from '@/components/sam/command-palette';
 import { OpsSidebar } from '@/components/sam/ops-sidebar';
 import { OpsTopbar } from '@/components/sam/ops-topbar';
+import {
+    Sheet,
+    SheetContent,
+    SheetHeader,
+    SheetTitle,
+} from '@/components/ui/sheet';
 import type { BreadcrumbItem } from '@/types';
 
 interface OpsLayoutProps {
@@ -17,6 +23,7 @@ export default function OpsLayout({
     breadcrumbs = [],
 }: OpsLayoutProps) {
     const [commandOpen, setCommandOpen] = useState(false);
+    const [mobileNavOpen, setMobileNavOpen] = useState(false);
     const navBadges = usePage().props.navBadges ?? { inbox: 0 };
 
     useEffect(() => {
@@ -32,6 +39,11 @@ export default function OpsLayout({
         return () => window.removeEventListener('keydown', handleKey);
     }, []);
 
+    // El layout persiste entre visitas Inertia: cerrar el drawer al navegar.
+    useEffect(() => {
+        return router.on('navigate', () => setMobileNavOpen(false));
+    }, []);
+
     return (
         <>
             <RealtimeBootstrap />
@@ -43,6 +55,7 @@ export default function OpsLayout({
                         <OpsTopbar
                             breadcrumbs={breadcrumbs}
                             onOpenCommandPalette={() => setCommandOpen(true)}
+                            onOpenMobileNav={() => setMobileNavOpen(true)}
                         />
                         {children}
                     </div>
@@ -52,6 +65,17 @@ export default function OpsLayout({
                     />
                 </div>
             </div>
+            <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+                <SheetContent
+                    side="left"
+                    className="w-[260px] gap-0 p-0 lg:hidden"
+                >
+                    <SheetHeader className="sr-only">
+                        <SheetTitle>Navegación</SheetTitle>
+                    </SheetHeader>
+                    <OpsSidebar mobile navBadges={navBadges} />
+                </SheetContent>
+            </Sheet>
         </>
     );
 }
