@@ -18,6 +18,11 @@ use App\Domains\Normalization\Models\NormalizedEvent;
  * Roadmap V2-A1: alongside the clip, still images spread across the tenant's
  * wider `media.still_window_minutes` window are requested too (skipped when
  * `media.still_count` is 0), so the AI sees the minutes around the event.
+ *
+ * Assets that report no paired dashcam still get a single clip request: the
+ * provider's camera flag can be stale, and the request drives the quota-free
+ * uploaded-media sweep — {@see FetchDeferredEventMediaJob} skips the actual
+ * retrievals for those assets, so no rejected calls are placed.
  */
 class RequestPanicMediaOnContextBuilt
 {
@@ -40,10 +45,6 @@ class RequestPanicMediaOnContextBuilt
             return;
         }
 
-        if (! (bool) ($snapshot->asset_snapshot_json['has_camera'] ?? false)) {
-            return;
-        }
-
         $enabled = filter_var(
             $this->tenantConfigResolver->resolve(
                 (int) $normalizedEvent->team_id,
@@ -58,6 +59,12 @@ class RequestPanicMediaOnContextBuilt
         }
 
         $this->requestDeferredEventMedia->execute($normalizedEvent, MediaRequestType::FetchVideoClip);
+
+        // Without a camera the stills retrievals would never be placed: the
+        // single clip request above already drives the uploaded-media sweep.
+        if (! (bool) ($snapshot->asset_snapshot_json['has_camera'] ?? false)) {
+            return;
+        }
 
         $stillCount = (int) $this->tenantConfigResolver->resolve(
             (int) $normalizedEvent->team_id,

@@ -144,13 +144,25 @@ class RequestPanicMediaOnContextBuiltTest extends TestCase
         $this->assertSame(0, EventMediaRequest::withoutGlobalScopes()->count());
     }
 
-    public function test_never_requests_without_camera(): void
+    public function test_camera_less_asset_still_requests_the_clip_to_drive_the_uploaded_sweep(): void
     {
         $this->enableAutoRequest();
 
-        $this->handle($this->buildContext(hasCamera: false));
+        $event = $this->buildContext(hasCamera: false);
 
-        $this->assertSame(0, EventMediaRequest::withoutGlobalScopes()->count());
+        $this->handle($event);
+
+        // Only the clip request: stills retrievals would never be placed, and
+        // a single request is enough to keep the uploaded-media sweep alive.
+        $request = EventMediaRequest::withoutGlobalScopes()
+            ->where('normalized_event_id', $event->snapshot->normalized_event_id)
+            ->sole();
+
+        $this->assertSame(MediaRequestType::FetchVideoClip, $request->request_type);
+        Queue::assertPushed(
+            FetchDeferredEventMediaJob::class,
+            fn (FetchDeferredEventMediaJob $job) => $job->eventMediaRequestId === $request->id,
+        );
     }
 
     public function test_is_idempotent_across_context_rebuilds(): void
