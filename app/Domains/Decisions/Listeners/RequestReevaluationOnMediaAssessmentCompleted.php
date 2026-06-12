@@ -61,11 +61,23 @@ class RequestReevaluationOnMediaAssessmentCompleted
 
         $latest = $event->assessments->last();
 
+        // Burst guard: a panic can land a dozen-plus clips within a minute and
+        // every assessed item fires this listener. The job is unique per
+        // (event, trigger), so the first dispatch opens a short debounce window
+        // and the rest collapse into it; the run that finally executes reads
+        // every assessment present at that moment (DecisionFactsBuilder
+        // aggregates across evaluation versions), so one re-evaluation — one
+        // decision — reflects the whole burst instead of one per clip.
         ReevaluateEventJob::dispatch(
             (int) $evaluation->normalized_event_id,
             ReevaluationTrigger::MediaArrived->value,
             $latest?->id,
             'Deferred media assessed: '.($latest?->result?->value ?? 'unknown'),
-        );
+        )->delay($this->debounceSeconds());
+    }
+
+    private function debounceSeconds(): int
+    {
+        return max(0, (int) config('ai.reevaluation.media_debounce_seconds', 60));
     }
 }

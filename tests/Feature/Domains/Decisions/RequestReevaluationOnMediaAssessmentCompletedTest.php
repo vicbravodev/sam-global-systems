@@ -64,6 +64,19 @@ class RequestReevaluationOnMediaAssessmentCompletedTest extends TestCase
         return [$event, $evaluation, $assessment];
     }
 
+    private function assessNewMedia(NormalizedEvent $event, AIEventEvaluation $evaluation): AIMediaAssessment
+    {
+        $media = EventMediaContext::factory()->create([
+            'team_id' => $this->team->id,
+            'normalized_event_id' => $event->id,
+        ]);
+
+        return AIMediaAssessment::factory()->create([
+            'evaluation_id' => $evaluation->id,
+            'event_media_context_id' => $media->id,
+        ]);
+    }
+
     private function handle(AIEventEvaluation $evaluation, AIMediaAssessment $assessment): void
     {
         (new RequestReevaluationOnMediaAssessmentCompleted)->handle(
@@ -94,6 +107,61 @@ class RequestReevaluationOnMediaAssessmentCompletedTest extends TestCase
                 && $job->triggerType === ReevaluationTrigger::MediaArrived->value
                 && $job->triggerReferenceId === $assessment->id
         );
+    }
+
+    public function test_burst_of_assessments_coalesces_into_one_delayed_reevaluation(): void
+    {
+        config(['ai.reevaluation.media_debounce_seconds' => 45]);
+
+        [$event, $evaluation, $firstAssessment] = $this->makeAssessedEvaluation();
+
+        Decision::factory()->create([
+            'team_id' => $this->team->id,
+            'normalized_event_id' => $event->id,
+            'ai_evaluation_id' => $evaluation->id,
+        ]);
+
+        Incident::factory()->open()->create([
+            'team_id' => $this->team->id,
+            'related_event_id' => $event->id,
+        ]);
+
+        // A panic-style burst: every clip lands as its own assessment and
+        // fires its own MediaAssessmentCompleted event.
+        $this->handle($evaluation, $firstAssessment);
+        $this->handle($evaluation, $this->assessNewMedia($event, $evaluation));
+        $this->handle($evaluation, $this->assessNewMedia($event, $evaluation));
+
+        Bus::assertDispatchedTimes(ReevaluateEventJob::class, 1);
+
+        Bus::assertDispatched(
+            ReevaluateEventJob::class,
+            fn (ReevaluateEventJob $job) => $job->delay === 45
+                && $job->normalizedEventId === $event->id
+                && $job->triggerType === ReevaluationTrigger::MediaArrived->value
+        );
+    }
+
+    public function test_distinct_events_keep_independent_debounce_windows(): void
+    {
+        foreach (range(1, 2) as $i) {
+            [$event, $evaluation, $assessment] = $this->makeAssessedEvaluation();
+
+            Decision::factory()->create([
+                'team_id' => $this->team->id,
+                'normalized_event_id' => $event->id,
+                'ai_evaluation_id' => $evaluation->id,
+            ]);
+
+            Incident::factory()->open()->create([
+                'team_id' => $this->team->id,
+                'related_event_id' => $event->id,
+            ]);
+
+            $this->handle($evaluation, $assessment);
+        }
+
+        Bus::assertDispatchedTimes(ReevaluateEventJob::class, 2);
     }
 
     public function test_no_ops_when_decision_has_not_run_yet(): void
