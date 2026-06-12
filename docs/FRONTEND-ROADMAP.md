@@ -54,11 +54,11 @@ visual: son los huecos funcionales, el shell legacy de settings y el móvil roto
   Test: `tests/Feature/Http/NavBadgesShareTest.php` (count real, aislamiento de tenant, guest).
 - [x] **F0.3 El atajo ⌘K anunciado no existe.** ✅ 2026-06-12 — listener global Cmd/Ctrl+K en
   `ops-layout.tsx` (toggle de la paleta con `preventDefault`).
-- [ ] **F0.4 Páginas de error default de Laravel.** 403/404/500/503 renderizan la página blanca
-  de Laravel (inglés, sin marca, flash claro sobre app oscura). Crear página Inertia `errors/error.tsx`
-  (shell mínimo + mensaje en español + acción de volver) y cablearla vía `respond()` en
-  `bootstrap/app.php`. Criterio: 403 al entrar a `/admin/*` sin permisos y 404 de recurso ajeno
-  muestran página SAM en el tema correcto.
+- [x] **F0.4 Páginas de error default de Laravel.** ✅ 2026-06-12 — página Inertia
+  `errors/error.tsx` (sin layout, marca SAM, mensajes 403/404/500/503 en español, volver atrás /
+  ir al inicio) cableada vía `$exceptions->respond()` en `bootstrap/app.php`. Excluye JSON/API/
+  webhooks; 500/503 conservan la página de debug con `APP_DEBUG=true`. Test:
+  `tests/Feature/Http/ErrorPagesTest.php` (404, 403 en `/admin/*`, 500 con debug off, JSON intacto).
 - [x] **F0.5 Identidad de la app en metadata.** ✅ 2026-06-12 — `APP_NAME=SAM` en `.env.example`
   y fallbacks `'SAM'` en `config/app.php` y `resources/js/app.tsx` (`APP_LOCALE=es` ya estaba en
   `.env.example`; `config/app.php` ya tenía default `es`). Pendiente manual: actualizar los `.env`
