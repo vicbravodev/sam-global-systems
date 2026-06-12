@@ -11,6 +11,7 @@ use App\Domains\Assets\Models\AssetLocationSnapshot;
 use App\Domains\Assets\Models\AssetTelemetrySnapshot;
 use App\Domains\Assets\Models\AssetType;
 use App\Domains\Incidents\Models\Incident;
+use App\Domains\Incidents\Support\IncidentStatusPresenter;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
 use Illuminate\Database\Eloquent\Builder;
@@ -77,6 +78,7 @@ class AssetPageController extends Controller
             ->with([
                 'assetType',
                 'latestLocation',
+                'latestTelemetry',
                 // Only devices currently attached (mirrors AssetDevice::isAttached()).
                 'devices' => fn (HasMany $q) => $q
                     ->whereNull('detached_at')
@@ -140,6 +142,7 @@ class AssetPageController extends Controller
         $asset->load([
             'assetType',
             'latestLocation',
+            'latestTelemetry',
             'provider',
             'sourceIntegration',
             'devices' => fn (HasMany $q) => $q
@@ -265,7 +268,29 @@ class AssetPageController extends Controller
                 'recordedAt' => $location->recorded_at->toIso8601String(),
             ] : null,
             'lastSeenAt' => $asset->last_seen_at?->toIso8601String(),
+            // Most recent REAL signal (location or telemetry) — what the UI
+            // shows as "seen". Never derived from the inventory-sync
+            // timestamp, which bumps in bulk for the whole fleet (C1-a).
+            'lastSignalAt' => $this->lastSignalAt($asset),
         ];
+    }
+
+    /**
+     * Timestamp of the asset's latest real signal: its newest location or
+     * telemetry snapshot. Null when the asset has never reported anything.
+     */
+    private function lastSignalAt(Asset $asset): ?string
+    {
+        $candidates = array_filter([
+            $asset->latestLocation?->recorded_at,
+            $asset->latestTelemetry?->recorded_at,
+        ]);
+
+        if ($candidates === []) {
+            return null;
+        }
+
+        return max($candidates)->toIso8601String();
     }
 
     /**
@@ -376,7 +401,7 @@ class AssetPageController extends Controller
         return Incident::query()
             ->where('team_id', $asset->team_id)
             ->where('asset_id', $asset->id)
-            ->with(['status', 'priority', 'type'])
+            ->with(['status', 'priority', 'type', 'currentAssignment'])
             ->orderByDesc('opened_at')
             ->limit(self::INCIDENTS_LIMIT)
             ->get()
@@ -385,7 +410,11 @@ class AssetPageController extends Controller
                 'title' => (string) $incident->title,
                 'status' => $incident->status ? [
                     'code' => (string) $incident->status->code,
-                    'name' => (string) $incident->status->name,
+                    // Same rendered string as inbox/detail/palette (C1-b).
+                    'name' => IncidentStatusPresenter::label(
+                        $incident->status->code,
+                        $incident->currentAssignment !== null,
+                    ),
                 ] : null,
                 'priority' => $incident->priority ? [
                     'code' => (string) $incident->priority->code,

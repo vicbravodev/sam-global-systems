@@ -5,6 +5,7 @@ namespace Tests\Feature\Domains\Assets;
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Assets\Models\AssetDevice;
 use App\Domains\Assets\Models\AssetLocationSnapshot;
+use App\Domains\Assets\Models\AssetTelemetrySnapshot;
 use App\Domains\Assets\Models\AssetType;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -86,12 +87,99 @@ class AssetsPageTest extends TestCase
                                 ->has('speed')
                                 ->has('heading'),
                         )
-                        ->where('lastSeenAt', $asset->last_seen_at->toIso8601String()),
+                        ->where('lastSeenAt', $asset->last_seen_at->toIso8601String())
+                        ->where('lastSignalAt', $latest->recorded_at->toIso8601String()),
                 )
                 ->where('pagination.page', 1)
                 ->where('pagination.total', 1)
                 ->has('filterOptions.statuses', 6)
                 ->has('filterOptions.types', 1),
+        );
+    }
+
+    public function test_last_signal_reflects_each_assets_own_signal_not_the_sync_bump(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+        $type = AssetType::factory()->vehicle()->create();
+
+        // The three assets share the same bulk sync bump (C1-a repro): the
+        // exposed signal must still differ because their real signals differ.
+        $syncedAt = now()->subMinutes(2);
+
+        $fresh = Asset::factory()->create([
+            'team_id' => $team->id,
+            'asset_type_id' => $type->id,
+            'last_seen_at' => $syncedAt,
+        ]);
+        $freshLocation = AssetLocationSnapshot::factory()->create([
+            'asset_id' => $fresh->id,
+            'recorded_at' => now()->subMinutes(4),
+        ]);
+
+        $stale = Asset::factory()->create([
+            'team_id' => $team->id,
+            'asset_type_id' => $type->id,
+            'last_seen_at' => $syncedAt,
+        ]);
+        $staleLocation = AssetLocationSnapshot::factory()->create([
+            'asset_id' => $stale->id,
+            'recorded_at' => now()->subDays(190),
+        ]);
+
+        $silent = Asset::factory()->create([
+            'team_id' => $team->id,
+            'asset_type_id' => $type->id,
+            'last_seen_at' => $syncedAt,
+        ]);
+
+        $response = $this->actingAs($user)->get(
+            route('assets.index', ['current_team' => $team->slug]),
+        );
+
+        $response->assertInertia(function (Assert $page) use ($fresh, $stale, $silent, $freshLocation, $staleLocation) {
+            $signals = collect($page->toArray()['props']['assets'])
+                ->keyBy('id')
+                ->map(fn (array $row) => $row['lastSignalAt']);
+
+            $this->assertSame($freshLocation->recorded_at->toIso8601String(), $signals[$fresh->id]);
+            $this->assertSame($staleLocation->recorded_at->toIso8601String(), $signals[$stale->id]);
+            $this->assertNotSame($signals[$fresh->id], $signals[$stale->id]);
+
+            // An asset that never reported anything exposes no signal at all,
+            // so the UI can never render a fake "hace N min" for it.
+            $this->assertNull($signals[$silent->id]);
+        });
+    }
+
+    public function test_last_signal_uses_telemetry_when_newer_than_location(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+        $type = AssetType::factory()->vehicle()->create();
+
+        $asset = Asset::factory()->create([
+            'team_id' => $team->id,
+            'asset_type_id' => $type->id,
+        ]);
+        AssetLocationSnapshot::factory()->create([
+            'asset_id' => $asset->id,
+            'recorded_at' => now()->subHours(2),
+        ]);
+        $telemetry = AssetTelemetrySnapshot::factory()->speed()->create([
+            'asset_id' => $asset->id,
+            'recorded_at' => now()->subMinutes(10),
+        ]);
+
+        $response = $this->actingAs($user)->get(
+            route('assets.index', ['current_team' => $team->slug]),
+        );
+
+        $response->assertInertia(
+            fn (Assert $page) => $page->where(
+                'assets.0.lastSignalAt',
+                $telemetry->recorded_at->toIso8601String(),
+            ),
         );
     }
 

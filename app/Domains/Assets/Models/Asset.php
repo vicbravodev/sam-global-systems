@@ -83,6 +83,14 @@ class Asset extends Model
     }
 
     /**
+     * @return HasOne<AssetTelemetrySnapshot, $this>
+     */
+    public function latestTelemetry(): HasOne
+    {
+        return $this->hasOne(AssetTelemetrySnapshot::class)->latestOfMany('recorded_at');
+    }
+
+    /**
      * @return HasMany<AssetExternalReference, $this>
      */
     public function externalReferences(): HasMany

@@ -292,7 +292,10 @@ export function IncidentRow({
                     cellH,
                 )}
             >
-                <StatusPill state={incident.status} />
+                <StatusPill
+                    state={incident.status}
+                    label={incident.statusLabel}
+                />
             </td>
 
             {/* SLA */}

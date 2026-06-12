@@ -36,7 +36,10 @@ export interface AssetRow {
     type: AssetTypeSummary | null;
     devices: AssetDeviceSummary[];
     lastLocation: AssetLocationSummary | null;
+    /** Inventory-sync timestamp (bumps in bulk; NOT a real signal). */
     lastSeenAt: string | null;
+    /** Latest REAL signal: newest location or telemetry snapshot. */
+    lastSignalAt: string | null;
 }
 
 export interface AssetFilters {

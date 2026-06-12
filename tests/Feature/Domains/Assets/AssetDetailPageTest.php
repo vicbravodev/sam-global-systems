@@ -81,7 +81,8 @@ class AssetDetailPageTest extends TestCase
                         ->where('provider', 'Samsara')
                         ->where('sourceIntegration', null)
                         ->where('firstSeenAt', $asset->first_seen_at->toIso8601String())
-                        ->where('lastSeenAt', $asset->last_seen_at->toIso8601String()),
+                        ->where('lastSeenAt', $asset->last_seen_at->toIso8601String())
+                        ->has('lastSignalAt'),
                 )
                 ->has('telemetry')
                 ->has('locationHistory', 1)

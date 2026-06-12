@@ -4,11 +4,14 @@ export type IncidentStatus =
     | 'new'
     | 'triaging'
     | 'assigned'
+    | 'escalated'
     | 'in-progress'
     | 'resolved'
     | 'closed'
     | 'discarded';
 
+// Labels MUST mirror IncidentStatusPresenter::UI_LABELS (backend), the single
+// source of truth for the status string shown to operators.
 const VARIANTS: Record<IncidentStatus, { label: string; className: string }> = {
     new: {
         label: 'Nuevo',
@@ -23,6 +26,11 @@ const VARIANTS: Record<IncidentStatus, { label: string; className: string }> = {
         label: 'Asignado',
         className:
             'bg-status-assigned/15 text-status-assigned border-status-assigned/40',
+    },
+    escalated: {
+        label: 'Escalado',
+        className:
+            'bg-status-escalated/15 text-status-escalated border-status-escalated/40',
     },
     'in-progress': {
         label: 'En curso',
@@ -50,6 +58,7 @@ const DOT: Record<IncidentStatus, string> = {
     new: 'bg-status-new',
     triaging: 'bg-status-triaging',
     assigned: 'bg-status-assigned',
+    escalated: 'bg-status-escalated',
     'in-progress': 'bg-status-in-progress',
     resolved: 'bg-status-resolved',
     closed: 'bg-status-closed',
@@ -58,11 +67,16 @@ const DOT: Record<IncidentStatus, string> = {
 
 interface Props {
     state: IncidentStatus;
+    /**
+     * Server-provided label (IncidentStatusPresenter). When present it wins,
+     * keeping the rendered string identical across every surface.
+     */
+    label?: string;
     className?: string;
 }
 
-export function StatusPill({ state, className }: Props) {
-    const v = VARIANTS[state];
+export function StatusPill({ state, label, className }: Props) {
+    const v = VARIANTS[state] ?? VARIANTS.new;
 
     return (
         <span
@@ -73,10 +87,10 @@ export function StatusPill({ state, className }: Props) {
             )}
         >
             <span
-                className={cn('size-1.5 rounded-full', DOT[state])}
+                className={cn('size-1.5 rounded-full', DOT[state] ?? DOT.new)}
                 aria-hidden="true"
             />
-            {v.label}
+            {label ?? v.label}
         </span>
     );
 }

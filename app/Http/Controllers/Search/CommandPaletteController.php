@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Search;
 
 use App\Domains\Incidents\Models\Incident;
+use App\Domains\Incidents\Support\IncidentStatusPresenter;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
 use Illuminate\Http\JsonResponse;
@@ -23,7 +24,7 @@ class CommandPaletteController extends Controller
 
         $incidents = Incident::withoutGlobalScopes()
             ->where('team_id', $current_team->id)
-            ->with(['priority', 'status'])
+            ->with(['priority', 'status', 'currentAssignment'])
             ->when($query !== '', function ($builder) use ($query) {
                 $builder->where(function ($q) use ($query) {
                     $q->where('title', 'like', "%{$query}%")
@@ -38,6 +39,11 @@ class CommandPaletteController extends Controller
                 'title' => (string) $incident->title,
                 'severity' => $incident->priority?->code,
                 'status' => $incident->status?->code,
+                // Same rendered string as the inbox/detail/asset surfaces.
+                'statusLabel' => IncidentStatusPresenter::label(
+                    $incident->status?->code,
+                    $incident->currentAssignment !== null,
+                ),
             ])
             ->all();
 

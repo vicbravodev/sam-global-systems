@@ -8,6 +8,8 @@ interface PaletteIncident {
     title: string;
     severity: string | null;
     status: string | null;
+    /** Server-rendered status string (IncidentStatusPresenter). */
+    statusLabel: string | null;
 }
 
 interface PaletteAction {
@@ -231,7 +233,9 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
                                         {incident.title}
                                     </span>
                                     <span className="shrink-0 text-2xs text-fg-3">
-                                        {incident.status ?? ''}
+                                        {incident.statusLabel ??
+                                            incident.status ??
+                                            ''}
                                     </span>
                                 </div>
                             ))}

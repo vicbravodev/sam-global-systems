@@ -1,6 +1,7 @@
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { ChevronLeft, ChevronRight, MapPin, Truck } from 'lucide-react';
 import { useEffect, useRef } from 'react';
+import { AssetSignal } from '@/components/sam/assets/asset-signal';
 import { AssetStatusBadge } from '@/components/sam/assets/asset-status-badge';
 import { RelativeTime } from '@/components/sam/relative-time';
 import { SeverityBadge } from '@/components/sam/severity-badge';
@@ -397,14 +398,13 @@ export default function AssetShow() {
                             </p>
                         </div>
                     </div>
-                    {asset.lastSeenAt && (
-                        <span className="sam-meta">
-                            Visto{' '}
-                            <RelativeTime
-                                minutes={minutesSince(asset.lastSeenAt)}
-                            />
-                        </span>
-                    )}
+                    <span className="sam-meta">
+                        <AssetSignal
+                            lastSignalAt={asset.lastSignalAt}
+                            hasDevice={asset.devices.length > 0}
+                            withPrefix
+                        />
+                    </span>
                 </header>
 
                 {/* Devices */}

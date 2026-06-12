@@ -90,7 +90,10 @@ export function DetailHeader({
             <div className="min-w-0">
                 <div className="mb-1 flex flex-wrap items-center gap-1.5">
                     <SeverityBadge level={incident.severity} />
-                    <StatusPill state={incident.status} />
+                    <StatusPill
+                        state={incident.status}
+                        label={incident.statusLabel}
+                    />
                     <ProviderTag name={incident.provider} />
                     <span className="font-mono text-2xs text-fg-3">
                         {incident.id}
