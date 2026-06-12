@@ -153,9 +153,10 @@ visual: son los huecos funcionales, el shell legacy de settings y el móvil roto
 - [ ] **F4.1 Consola `/admin/*`: auditoría visual pendiente.** Requiere un usuario con
   `global_role=super_admin` en dev (seeder opcional `task fresh` o comando artisan). Repetir
   esta auditoría sobre las 6 páginas admin y anexar hallazgos aquí.
-- [ ] **F4.2 Tests de regresión visual.** Con Playwright CLI ya disponible, añadir un flujo
-  manual documentado (o script `scripts/audit-frontend.sh`) que recorra las páginas clave y
-  guarde screenshots por viewport/tema, para re-auditar tras cada fase de este roadmap.
+- [x] **F4.2 Tests de regresión visual.** ✅ 2026-06-12 — `scripts/audit-frontend.mjs`: recorre
+  17 páginas clave × desktop/móvil × oscuro/claro con Playwright, guarda screenshots en
+  `storage/app/frontend-audit/{fecha}/` (gitignored) y falla si detecta overflow horizontal.
+  Primera corrida: 68 capturas, 0 páginas con overflow.
 - [x] **F4.3 Página `events/show`: payloads colapsables.** ✅ 2026-06-12 — `JsonBlock` es ahora
   un `<details>` colapsado por defecto con botón "Copiar" (clipboard + toast); la evaluación IA /
   decisión / incidente quedan dominando la página.
