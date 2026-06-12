@@ -8,6 +8,7 @@ use App\Domains\Integrations\Enums\IntegrationProviderStatus;
 use App\Domains\Integrations\Enums\IntegrationProviderType;
 use App\Domains\Integrations\Models\IntegrationProvider;
 use App\Domains\TenantConfig\Enums\SettingGroup;
+use App\Domains\TenantConfig\Enums\SettingUpdatedByType;
 use App\Domains\TenantConfig\Enums\SettingValueType;
 use App\Domains\TenantConfig\Models\TenantSetting;
 use App\Enums\TeamRole;
@@ -143,6 +144,7 @@ class SamsaraTestSeeder extends Seeder
                 'setting_group' => SettingGroup::Operational,
                 'value_json' => ['value' => true],
                 'value_type' => SettingValueType::Boolean,
+                'updated_by_type' => SettingUpdatedByType::System,
             ],
         );
     }
