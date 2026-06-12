@@ -164,4 +164,21 @@ return [
         'gpt-5.4-pro' => ['input' => 30.00, 'output' => 180.00],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Re-evaluation Coalescing
+    |--------------------------------------------------------------------------
+    |
+    | Deferred media lands in bursts (a panic can upload a dozen-plus clips in
+    | under a minute) and every assessed item requests a re-evaluation of its
+    | event. Media-triggered `ReevaluateEventJob`s are unique per event and
+    | delayed by this debounce window so a burst collapses into a single run
+    | that sees every assessment present at execution time.
+    |
+    */
+
+    'reevaluation' => [
+        'media_debounce_seconds' => (int) env('AI_REEVALUATION_MEDIA_DEBOUNCE_SECONDS', 60),
+    ],
+
 ];
