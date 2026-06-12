@@ -29,6 +29,7 @@ tasks:
       - composer install
       - npm install
       - '{{.SAIL}} up -d'
+      - '{{.SAIL}} artisan storage:ensure-bucket'
       - '{{.SAIL}} artisan migrate:fresh --seed'
       - npm run build
       - '{{.SAIL}} artisan optimize:clear'
@@ -40,6 +41,7 @@ tasks:
       - git pull --ff-only origin main
       - composer install
       - npm install
+      - '{{.SAIL}} artisan storage:ensure-bucket'
       - '{{.SAIL}} artisan migrate'
       - npm run build
       - '{{.SAIL}} artisan optimize:clear'
@@ -81,6 +83,7 @@ tasks:
     desc: 'Resetear DB de dev: tenant único ServiExpress JC + catálogos + reglas'
     prompt: 'Esto BORRA la DB de dev y la re-siembra. ¿Continuar?'
     cmds:
+      - '{{.SAIL}} artisan storage:ensure-bucket'
       - '{{.SAIL}} artisan migrate:fresh --seed'
       - '{{.SAIL}} artisan optimize:clear'
       - docker compose restart horizon
