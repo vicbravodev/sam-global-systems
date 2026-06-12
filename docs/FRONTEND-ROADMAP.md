@@ -103,11 +103,12 @@ visual: son los huecos funcionales, el shell legacy de settings y el móvil roto
 
 ## Fase 2 — Consistencia y accesibilidad (P1–P2)
 
-- [ ] **F2.1 Auditoría de contraste WCAG AA en ambos temas.** Los textos `fg-3`/muted sobre
-  superficies oscuras (subtítulos de KPI, metadatos de tablas, hints mono pequeños tipo
-  `text-2xs`) están al borde. Verificar AA (4.5:1 cuerpo, 3:1 texto grande) con los tokens
-  reales en oscuro y claro; ajustar los tokens, no caso por caso. Incluir badges de severidad
-  (Alta/Crítica) y los chips `escalate`/`info` del stream.
+- [x] **F2.1 Auditoría de contraste WCAG AA en ambos temas.** ✅ 2026-06-12 — medido con
+  conversión OKLCH→sRGB + ratio WCAG sobre los tokens reales: `fg-2`/`fg-3` pasan AA holgado en
+  ambos temas (≥5.2:1) y todo el tema oscuro pasa. Fallaban los colores de severidad/confianza
+  **como texto en tema claro** (medium 1.85:1, high 2.48:1, low 2.46:1, critical 3.74:1):
+  oscurecidos a nivel token (`L 0.49–0.5`) → ahora 5.3–6.7:1 sobre sus fondos y superficies, y
+  de paso el blanco sobre badge sólido también mejora.
 - [x] **F2.2 Navegación por teclado de las tablas.** ✅ 2026-06-12 — las filas de DataTable e
   inbox ya eran focusables con Enter + focus ring. Lo que faltaba (y era otra mentira de UI):
   los atajos que el footer de la bandeja anuncia (J/K navegar, Enter abrir, X seleccionar,

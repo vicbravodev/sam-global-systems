@@ -13,6 +13,7 @@
  */
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import process from 'node:process';
 
 const args = Object.fromEntries(
     process.argv
