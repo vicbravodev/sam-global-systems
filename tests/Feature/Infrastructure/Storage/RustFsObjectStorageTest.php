@@ -96,4 +96,34 @@ class RustFsObjectStorageTest extends TestCase
         $this->assertIsString($url);
         $this->assertNotEmpty($url);
     }
+
+    public function test_temporary_url_signs_against_public_endpoint_when_configured(): void
+    {
+        config()->set('filesystems.disks.rustfs', [
+            'driver' => 's3',
+            'key' => 'sail',
+            'secret' => 'password',
+            'region' => 'us-east-1',
+            'bucket' => 'sam',
+            'endpoint' => 'http://rustfs:9000',
+            'public_endpoint' => 'http://localhost:9000',
+            'use_path_style_endpoint' => true,
+            'throw' => true,
+        ]);
+
+        $url = $this->storage->temporaryUrl('teams/1/events/171/media/clip.mp4', now()->addMinutes(30));
+
+        $this->assertStringStartsWith('http://localhost:9000/sam/teams/1/events/171/media/clip.mp4', $url);
+        $this->assertStringContainsString('X-Amz-Signature=', $url);
+        $this->assertStringNotContainsString('rustfs:9000', $url);
+    }
+
+    public function test_temporary_url_uses_the_disk_when_no_public_endpoint_is_configured(): void
+    {
+        config()->set('filesystems.disks.rustfs.public_endpoint', null);
+
+        $this->storage->put('temp.txt', 'x');
+
+        $this->assertIsString($this->storage->temporaryUrl('temp.txt', now()->addMinutes(5)));
+    }
 }
