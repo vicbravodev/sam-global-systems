@@ -395,4 +395,64 @@ class RulesPageTest extends TestCase
             ->where('team_id', $this->team->id)
             ->count());
     }
+
+    public function test_decision_rule_metadata_is_editable_via_web_route(): void
+    {
+        // D-10: nombre, prioridad y outcome dejan de ser inmutables.
+        $ruleset = RuleSet::factory()->create(['team_id' => $this->team->id]);
+        $rule = DecisionRule::factory()->create([
+            'team_id' => $this->team->id,
+            'ruleset_id' => $ruleset->id,
+            'code' => 'panic-vip',
+            'name' => 'Nombre viejo',
+            'priority' => 50,
+        ]);
+        $outcome = DecisionOutcome::query()->firstOrFail();
+
+        $response = $this->actingAs($this->user)->putJson(
+            route('rules.decision.update', [
+                'current_team' => $this->team->slug,
+                'rule' => $rule->id,
+            ]),
+            [
+                'name' => 'Nombre nuevo',
+                'priority' => 200,
+                'outcome_override' => $outcome->id,
+            ],
+        );
+
+        $response->assertOk();
+        $fresh = $rule->fresh();
+        $this->assertSame('Nombre nuevo', $fresh->name);
+        $this->assertSame(200, (int) $fresh->priority);
+        $this->assertSame($outcome->id, (int) $fresh->outcome_override);
+    }
+
+    public function test_decision_rule_code_is_immutable_via_web_route(): void
+    {
+        // D-10: el `code` identifica la regla; aunque se mande, se ignora (la
+        // regla de validación no lo acepta), no se cambia la identidad.
+        $ruleset = RuleSet::factory()->create(['team_id' => $this->team->id]);
+        $rule = DecisionRule::factory()->create([
+            'team_id' => $this->team->id,
+            'ruleset_id' => $ruleset->id,
+            'code' => 'codigo-original',
+            'name' => 'Regla',
+        ]);
+
+        $this->actingAs($this->user)->putJson(
+            route('rules.decision.update', [
+                'current_team' => $this->team->slug,
+                'rule' => $rule->id,
+            ]),
+            [
+                'code' => 'codigo-hackeado',
+                'name' => 'Regla renombrada',
+            ],
+        )->assertOk();
+
+        $fresh = $rule->fresh();
+        $this->assertSame('codigo-original', $fresh->code);
+        $this->assertSame('Regla renombrada', $fresh->name);
+    }
 }
