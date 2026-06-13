@@ -369,12 +369,23 @@ function EditRoleDialog({
         );
     }, [role, teamSlug, name, description, permissions, onOpenChange]);
 
+    // D-17: al cerrar se descarta el borrador local (incluido `hydratedId`),
+    // de modo que reabrir el mismo rol vuelve a hidratar desde el estado del
+    // servidor en lugar de mostrar cambios sin guardar.
+    const handleClose = () => {
+        setHydratedId(null);
+        setName('');
+        setDescription('');
+        setPermissions([]);
+        onOpenChange(false);
+    };
+
     return (
         <Dialog
             open={role !== null}
             onOpenChange={(next) => {
                 if (!next) {
-                    onOpenChange(false);
+                    handleClose();
                 }
             }}
         >
@@ -423,7 +434,7 @@ function EditRoleDialog({
                 <DialogFooter>
                     <Button
                         variant="ghost"
-                        onClick={() => onOpenChange(false)}
+                        onClick={handleClose}
                         disabled={submitting}
                     >
                         Cancelar

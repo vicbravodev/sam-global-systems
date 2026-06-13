@@ -327,7 +327,7 @@ aplican: feature test (`assertInertia`) por página tocada + gates de front verd
   secciones vacías y la lista puebla o elimina columnas muertas; explicar el estado "Cancelada" de
   notificaciones (o corregir la agregación). Cierre: todo empty state dice qué significa y qué
   hacer; cero nombres de jobs/clases en UI.
-- [ ] **R2.4 Seguridad de cuenta y flujos auth** *(E4, E7, E10, D-21, D-16, D-17)*: mensaje neutro
+- [x] **R2.4 Seguridad de cuenta y flujos auth** *(E4, E7, E10, D-21, D-16, D-17)*: mensaje neutro
   en forgot-password; confirm-password sin sacar del shell; limpiar passwords tras error;
   `email:rfc` con TLD en invitaciones; código de rol restringido a slug; modales de edición
   recargan estado del servidor al reabrir. Cierre: repros de E4/E7/D-16/D-17 corregidos.
