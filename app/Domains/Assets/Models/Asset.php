@@ -4,6 +4,8 @@ namespace App\Domains\Assets\Models;
 
 use App\Concerns\BelongsToTenant;
 use App\Domains\Assets\Enums\AssetStatus;
+use App\Domains\Drivers\Enums\AssignmentType;
+use App\Domains\Drivers\Models\DriverAssignment;
 use App\Domains\Integrations\Models\IntegrationProvider;
 use App\Domains\Integrations\Models\TenantIntegration;
 use Database\Factories\Domains\Assets\AssetFactory;
@@ -96,6 +98,21 @@ class Asset extends Model
     public function externalReferences(): HasMany
     {
         return $this->hasMany(AssetExternalReference::class);
+    }
+
+    /**
+     * Active primary-driver assignment for this asset, if any. Mirrors
+     * Driver::currentAssignment() from the other side of the relation so the
+     * asset detail can surface who is currently operating it (C-08).
+     *
+     * @return HasOne<DriverAssignment, $this>
+     */
+    public function currentDriverAssignment(): HasOne
+    {
+        return $this->hasOne(DriverAssignment::class)
+            ->where('assignment_type', AssignmentType::PrimaryDriver)
+            ->whereNull('ended_at')
+            ->latestOfMany('started_at');
     }
 
     /**

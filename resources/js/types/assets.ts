@@ -67,11 +67,19 @@ export interface AssetsIndexProps {
     filterOptions: AssetFilterOptions;
 }
 
+export interface AssetDriverSummary {
+    id: number;
+    name: string;
+    employeeCode: string | null;
+}
+
 export interface AssetDetail extends AssetRow {
     externalPrimaryId: string | null;
     provider: string | null;
     sourceIntegration: string | null;
     firstSeenAt: string | null;
+    /** Currently assigned primary driver, null when none (C-08). */
+    driver: AssetDriverSummary | null;
 }
 
 export interface TelemetryEntry {

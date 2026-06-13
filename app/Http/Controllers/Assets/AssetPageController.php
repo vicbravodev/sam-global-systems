@@ -145,6 +145,7 @@ class AssetPageController extends Controller
             'latestTelemetry',
             'provider',
             'sourceIntegration',
+            'currentDriverAssignment.driver',
             'devices' => fn (HasMany $q) => $q
                 ->whereNull('detached_at')
                 ->where('status', '!=', DeviceStatus::Detached)
@@ -324,12 +325,22 @@ class AssetPageController extends Controller
      */
     private function toDetail(Asset $asset): array
     {
+        $driver = $asset->currentDriverAssignment?->driver;
+
         return [
             ...$this->toRow($asset),
             'externalPrimaryId' => $asset->external_primary_id,
             'provider' => $asset->provider?->name,
             'sourceIntegration' => $asset->sourceIntegration?->name,
             'firstSeenAt' => $asset->first_seen_at?->toIso8601String(),
+            // Currently assigned primary driver, the reciprocal of the
+            // asset link the driver detail already shows (C-08). Null when
+            // nobody is assigned right now.
+            'driver' => $driver ? [
+                'id' => (int) $driver->id,
+                'name' => (string) $driver->full_name,
+                'employeeCode' => $driver->employee_code,
+            ] : null,
         ];
     }
 
