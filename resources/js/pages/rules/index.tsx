@@ -197,7 +197,8 @@ function RuleConditionsEditor({
         meta.name !== rule.name ||
         meta.description !== (rule.description ?? '') ||
         meta.priority !== String(rule.priority) ||
-        meta.outcomeId !== (rule.outcomeId === null ? '' : String(rule.outcomeId));
+        meta.outcomeId !==
+            (rule.outcomeId === null ? '' : String(rule.outcomeId));
     const dirty =
         metaDirty ||
         JSON.stringify(conditions) !== JSON.stringify(rule.conditions ?? {});
@@ -328,7 +329,10 @@ function RuleConditionsEditor({
                         <Input
                             value={meta.description}
                             onChange={(e) =>
-                                setMeta({ ...meta, description: e.target.value })
+                                setMeta({
+                                    ...meta,
+                                    description: e.target.value,
+                                })
                             }
                             className="max-w-xl text-xs"
                         />
