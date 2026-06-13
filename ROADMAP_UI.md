@@ -297,7 +297,7 @@ aplican: feature test (`assertInertia`) por página tocada + gates de front verd
   críticos siempre visibles en el panel (ponderar prioridad); pasada de jerarquía (KPIs compactos,
   panel de incidentes dominante). Cierre: click en INC-00040 abre `/{team}/incidents/40`; con ≥1
   crítico abierto, aparece en el panel.
-- [ ] **R1.5 Mapa y cross-links de flota** *(C-04, C-05, C-06, C-08, C-14)*: clustering/spiderfy
+- [x] **R1.5 Mapa y cross-links de flota** *(C-04, C-05, C-06, C-08, C-14)*: clustering/spiderfy
   para co-ubicados; markers enfocables con aria-label real; incidente vinculado → detalle del
   incidente; sección conductor en detalle de activo y viceversa (cuando el dato exista); estilo de
   tiles acorde al tema + skeleton hasta `load`. Cierre: criterios de C-04..C-08 (§3).
