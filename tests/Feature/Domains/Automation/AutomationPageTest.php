@@ -2,11 +2,15 @@
 
 namespace Tests\Feature\Domains\Automation;
 
+use App\Domains\Access\Enums\RoleScope;
+use App\Domains\Access\Models\Permission;
+use App\Domains\Access\Models\Role;
 use App\Domains\Automation\Enums\ActionExecutionStatus;
 use App\Domains\Automation\Enums\ActionType;
 use App\Domains\Automation\Enums\WorkflowTriggerType;
 use App\Domains\Automation\Models\ActionExecution;
 use App\Domains\Automation\Models\AutomationWorkflow;
+use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Models\User;
 use Database\Seeders\AccessSeeder;
@@ -168,5 +172,124 @@ class AutomationPageTest extends TestCase
             ActionExecutionStatus::Cancelled,
             $execution->fresh()->status,
         );
+    }
+
+    public function test_workflow_can_be_deleted_via_web_route(): void
+    {
+        // D-09: un workflow ya no es eterno — se puede eliminar.
+        $workflow = AutomationWorkflow::factory()->create([
+            'team_id' => $this->team->id,
+        ]);
+
+        $response = $this->actingAs($this->user)->deleteJson(
+            route('automation.workflows.destroy', [
+                'current_team' => $this->team->slug,
+                'workflow' => $workflow->id,
+            ]),
+        );
+
+        $response->assertNoContent();
+        $this->assertDatabaseMissing('automation_workflows', [
+            'id' => $workflow->id,
+        ]);
+    }
+
+    public function test_workflow_metadata_can_be_edited_via_web_route(): void
+    {
+        // D-09: editar nombre/descripción y activar/desactivar.
+        $workflow = AutomationWorkflow::factory()->create([
+            'team_id' => $this->team->id,
+            'name' => 'Nombre viejo',
+            'is_active' => true,
+        ]);
+
+        $response = $this->actingAs($this->user)->putJson(
+            route('automation.workflows.update', [
+                'current_team' => $this->team->slug,
+                'workflow' => $workflow->id,
+            ]),
+            [
+                'name' => 'Nombre nuevo',
+                'description' => 'Descripción editada',
+                'is_active' => false,
+            ],
+        );
+
+        $response->assertOk();
+        $fresh = $workflow->fresh();
+        $this->assertSame('Nombre nuevo', $fresh->name);
+        $this->assertSame('Descripción editada', $fresh->description);
+        $this->assertFalse((bool) $fresh->is_active);
+    }
+
+    public function test_member_without_automation_manage_cannot_delete_workflow(): void
+    {
+        // Viewer (sin automation.manage) sobre un workflow de su propio team:
+        // la negativa proviene de la policy (403), no de aislamiento de tenant.
+        [$viewer, $viewerTeam] = $this->createUserWithRole('auto_viewer', ['automation.view']);
+
+        $workflow = AutomationWorkflow::factory()->create([
+            'team_id' => $viewerTeam->id,
+        ]);
+
+        $this->actingAs($viewer)->deleteJson(
+            route('automation.workflows.destroy', [
+                'current_team' => $viewerTeam->slug,
+                'workflow' => $workflow->id,
+            ]),
+        )->assertForbidden();
+
+        $this->assertDatabaseHas('automation_workflows', ['id' => $workflow->id]);
+    }
+
+    public function test_non_member_cannot_delete_workflow(): void
+    {
+        $workflow = AutomationWorkflow::factory()->create([
+            'team_id' => $this->team->id,
+        ]);
+
+        $stranger = User::factory()->create();
+
+        $this->actingAs($stranger)->deleteJson(
+            route('automation.workflows.destroy', [
+                'current_team' => $this->team->slug,
+                'workflow' => $workflow->id,
+            ]),
+        )->assertForbidden();
+    }
+
+    /**
+     * @param  array<int, string>  $permissionCodes
+     * @return array{0: User, 1: Team}
+     */
+    private function createUserWithRole(string $roleCode, array $permissionCodes): array
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+
+        $role = Role::factory()->create([
+            'code' => $roleCode,
+            'scope' => RoleScope::Tenant,
+        ]);
+
+        $permissionIds = [];
+        foreach ($permissionCodes as $code) {
+            $permission = Permission::firstOrCreate(
+                ['code' => $code],
+                [
+                    'name' => ucfirst(str_replace('.', ' ', $code)),
+                    'module' => explode('.', $code, 2)[0],
+                ],
+            );
+            $permissionIds[] = $permission->id;
+        }
+        $role->permissions()->sync($permissionIds);
+
+        $team->members()->updateExistingPivot($user->id, [
+            'role' => TeamRole::Member->value,
+            'role_id' => $role->id,
+        ]);
+
+        return [$user, $team];
     }
 }

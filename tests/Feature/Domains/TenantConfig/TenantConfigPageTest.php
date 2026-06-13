@@ -111,6 +111,67 @@ class TenantConfigPageTest extends TestCase
 
         $this->assertNotNull($setting);
         $this->assertTrue((bool) $setting->typed_value);
+
+        // D-18: guardar settings del grupo operational (tab General) registra
+        // una versión del tenant-config. Antes no se creaba ninguna.
+        $this->assertSame(
+            1,
+            TenantConfigVersion::withoutGlobalScopes()
+                ->where('team_id', $this->team->id)
+                ->count(),
+            'Saving operational settings must create exactly one config version',
+        );
+    }
+
+    public function test_each_operational_settings_save_registers_a_new_version(): void
+    {
+        // D-18: el repro de la auditoría fueron 4 guardados que no dejaron
+        // ninguna versión; cada guardado debe sumar exactamente una fila.
+        foreach ([60, 90, 120, 180] as $i => $value) {
+            $this->actingAs($this->user)->putJson(
+                route('tenant-config.settings.update', ['current_team' => $this->team->slug]),
+                [
+                    'settings' => [
+                        [
+                            'setting_key' => 'context.live_location_staleness_seconds',
+                            'setting_group' => 'operational',
+                            'value_type' => 'number',
+                            'value' => $value,
+                        ],
+                    ],
+                ],
+            )->assertOk();
+
+            $this->assertSame(
+                $i + 1,
+                TenantConfigVersion::withoutGlobalScopes()
+                    ->where('team_id', $this->team->id)
+                    ->count(),
+            );
+        }
+    }
+
+    public function test_saving_notification_policies_registers_a_version(): void
+    {
+        // D-18: guardar políticas de notificación también deja una versión.
+        $this->actingAs($this->user)->putJson(
+            route('tenant-config.notifications.update', ['current_team' => $this->team->slug]),
+            [
+                'policies' => [
+                    [
+                        'policy_code' => 'critical_default',
+                        'allowed_channels' => ['email', 'sms'],
+                    ],
+                ],
+            ],
+        )->assertOk();
+
+        $this->assertSame(
+            1,
+            TenantConfigVersion::withoutGlobalScopes()
+                ->where('team_id', $this->team->id)
+                ->count(),
+        );
     }
 
     public function test_gps_staleness_setting_rejects_non_positive_values(): void

@@ -737,6 +737,12 @@ function NotificationsTab({
         ]);
     };
 
+    // D-12: quitar una política pendiente (aún no guardada) del estado local
+    // sin tener que recargar la página y perder el resto del borrador.
+    const removeDraft = (index: number) => {
+        setDrafts((prev) => prev.filter((_, i) => i !== index));
+    };
+
     return (
         <Card>
             <CardHeader>
@@ -817,6 +823,17 @@ function NotificationsTab({
                                 />
                                 activa
                             </label>
+                            {canManage && policy.id === 0 && (
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    className="ml-auto h-7 text-xs text-fg-3 hover:text-severity-critical"
+                                    onClick={() => removeDraft(index)}
+                                >
+                                    Quitar
+                                </Button>
+                            )}
                         </div>
                         <div className="flex flex-wrap gap-3">
                             {CHANNEL_OPTIONS.map((channel) => (

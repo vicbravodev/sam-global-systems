@@ -7,6 +7,7 @@ import {
     RuleTestPanel,
 } from '@/components/sam/condition-builder';
 import type { ConditionFieldDef } from '@/components/sam/condition-builder';
+import { ConfirmDialog } from '@/components/sam/confirm-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -168,21 +169,37 @@ function ActiveBadge({ active }: { active: boolean }) {
 function RuleConditionsEditor({
     rule,
     fields,
+    outcomes,
     canEdit,
 }: {
     rule: DecisionRuleRow;
     fields: ConditionFieldDef[];
+    outcomes: RulesPageProps['outcomes'];
     canEdit: boolean;
 }) {
     const base = useTeamBase();
     const [conditions, setConditions] = useState<Record<string, unknown>>(
         rule.conditions ?? {},
     );
+    // D-10: nombre/descripción/prioridad/outcome ahora son editables; `code`
+    // sigue siendo inmutable (identidad de la regla) y se avisa en la UI.
+    const [meta, setMeta] = useState({
+        name: rule.name,
+        description: rule.description ?? '',
+        priority: String(rule.priority),
+        outcomeId: rule.outcomeId === null ? '' : String(rule.outcomeId),
+    });
     const [saving, setSaving] = useState(false);
     const [jsonError, setJsonError] = useState<string | null>(null);
     const [errors, setErrors] = useState<Record<string, string>>({});
 
+    const metaDirty =
+        meta.name !== rule.name ||
+        meta.description !== (rule.description ?? '') ||
+        meta.priority !== String(rule.priority) ||
+        meta.outcomeId !== (rule.outcomeId === null ? '' : String(rule.outcomeId));
     const dirty =
+        metaDirty ||
         JSON.stringify(conditions) !== JSON.stringify(rule.conditions ?? {});
 
     const save = async () => {
@@ -200,14 +217,25 @@ function RuleConditionsEditor({
             return;
         }
 
+        if (meta.name.trim() === '') {
+            setErrors({ name: 'El nombre es obligatorio.' });
+
+            return;
+        }
+
         setErrors({});
         setSaving(true);
 
         const result = await submit(
             putJson(`${base}/decision/${rule.id}`, {
+                name: meta.name,
+                description: meta.description === '' ? null : meta.description,
+                priority: Number(meta.priority) || 0,
+                outcome_override:
+                    meta.outcomeId === '' ? null : Number(meta.outcomeId),
                 conditions_json: conditions,
             }),
-            'Condiciones guardadas.',
+            'Regla guardada.',
         );
 
         if (!result.ok) {
@@ -219,6 +247,100 @@ function RuleConditionsEditor({
 
     return (
         <div className="flex flex-col gap-3">
+            {canEdit ? (
+                <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-col gap-1">
+                        <Label className="text-2xs text-fg-3 uppercase">
+                            Código (no editable)
+                        </Label>
+                        <Input
+                            value={rule.code}
+                            disabled
+                            title="El código identifica la regla y no se puede cambiar."
+                            className="w-48 font-mono text-xs"
+                        />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <Label className="text-2xs text-fg-3 uppercase">
+                            Nombre
+                        </Label>
+                        <Input
+                            value={meta.name}
+                            aria-invalid={Boolean(errors.name)}
+                            onChange={(e) =>
+                                setMeta({ ...meta, name: e.target.value })
+                            }
+                            className="w-64 text-xs"
+                        />
+                        <InputError
+                            message={errors.name}
+                            className="max-w-64 text-xs"
+                        />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <Label className="text-2xs text-fg-3 uppercase">
+                            Prioridad
+                        </Label>
+                        <Input
+                            type="number"
+                            value={meta.priority}
+                            aria-invalid={Boolean(errors.priority)}
+                            onChange={(e) =>
+                                setMeta({ ...meta, priority: e.target.value })
+                            }
+                            className="w-24 text-xs"
+                        />
+                        <InputError
+                            message={errors.priority}
+                            className="text-xs"
+                        />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <Label className="text-2xs text-fg-3 uppercase">
+                            Outcome
+                        </Label>
+                        <select
+                            value={meta.outcomeId}
+                            onChange={(e) =>
+                                setMeta({ ...meta, outcomeId: e.target.value })
+                            }
+                            className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-xs"
+                        >
+                            <option value="">Outcome: ninguno</option>
+                            {outcomes.map((outcome) => (
+                                <option
+                                    key={outcome.id}
+                                    value={String(outcome.id)}
+                                >
+                                    {outcome.code}
+                                </option>
+                            ))}
+                        </select>
+                        <InputError
+                            message={errors.outcome_override}
+                            className="text-xs"
+                        />
+                    </div>
+                    <div className="flex w-full flex-col gap-1">
+                        <Label className="text-2xs text-fg-3 uppercase">
+                            Descripción
+                        </Label>
+                        <Input
+                            value={meta.description}
+                            onChange={(e) =>
+                                setMeta({ ...meta, description: e.target.value })
+                            }
+                            className="max-w-xl text-xs"
+                        />
+                    </div>
+                </div>
+            ) : (
+                <p className="text-2xs text-fg-3">
+                    Regla global: solo lectura para tu tenant. Usa un override
+                    del tenant para ajustar su comportamiento.
+                </p>
+            )}
+            <Label className="text-2xs text-fg-3 uppercase">Condiciones</Label>
             <ConditionBuilder
                 variant="tree"
                 fields={fields}
@@ -244,7 +366,7 @@ function RuleConditionsEditor({
                         onClick={save}
                         disabled={!dirty || saving}
                     >
-                        {saving ? 'Guardando…' : 'Guardar condiciones'}
+                        {saving ? 'Guardando…' : 'Guardar regla'}
                     </Button>
                 </div>
             )}
@@ -651,6 +773,7 @@ function DecisionRulesTab({
                                                     <RuleConditionsEditor
                                                         rule={rule}
                                                         fields={conditionFields}
+                                                        outcomes={outcomes}
                                                         canEdit={
                                                             canManage &&
                                                             !rule.isGlobal
@@ -970,6 +1093,7 @@ function OverridesTab({
     const [creating, setCreating] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [errors, setErrors] = useState<Record<string, string>>({});
+    const [deleting, setDeleting] = useState<OverrideRow | null>(null);
     const [form, setForm] = useState({
         baseRuleCode: '',
         overrideType: 'force_human_review',
@@ -1038,15 +1162,21 @@ function OverridesTab({
         }
     };
 
-    const remove = (override: OverrideRow) => {
+    // D-11: eliminar un override ahora exige confirmación (mismo patrón que
+    // roles), igual que el resto de acciones destructivas.
+    const remove = async (override: OverrideRow) => {
         if (base === null) {
             return;
         }
 
-        void submit(
+        const result = await submit(
             deleteJson(`${base}/overrides/${override.id}`),
             'Override eliminado.',
         );
+
+        if (result.ok) {
+            setDeleting(null);
+        }
     };
 
     return (
@@ -1207,7 +1337,9 @@ function OverridesTab({
                                             <Button
                                                 size="sm"
                                                 variant="ghost"
-                                                onClick={() => remove(override)}
+                                                onClick={() =>
+                                                    setDeleting(override)
+                                                }
                                             >
                                                 Eliminar
                                             </Button>
@@ -1218,6 +1350,22 @@ function OverridesTab({
                         </tbody>
                     </table>
                 )}
+
+                <ConfirmDialog
+                    open={deleting !== null}
+                    title="Eliminar override"
+                    description={
+                        deleting
+                            ? `¿Seguro que deseas eliminar el override de la regla "${deleting.baseRuleCode}"? La regla base volverá a aplicarse tal cual.`
+                            : ''
+                    }
+                    onConfirm={() => {
+                        if (deleting) {
+                            return remove(deleting);
+                        }
+                    }}
+                    onOpenChange={(open) => !open && setDeleting(null)}
+                />
             </CardContent>
         </Card>
     );

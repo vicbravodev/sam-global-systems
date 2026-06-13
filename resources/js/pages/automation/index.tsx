@@ -5,13 +5,27 @@ import { toast } from 'sonner';
 import InputError from '@/components/input-error';
 import { ConditionBuilder } from '@/components/sam/condition-builder';
 import type { ConditionFieldDef } from '@/components/sam/condition-builder';
+import { ConfirmDialog } from '@/components/sam/confirm-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Combobox } from '@/components/ui/combobox';
+import {
+    Dialog,
+    DialogContent,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
-import { postJson, putJson, readErrorPayload } from '@/lib/sam-fetch';
+import { Label } from '@/components/ui/label';
+import {
+    deleteJson,
+    postJson,
+    putJson,
+    readErrorPayload,
+} from '@/lib/sam-fetch';
 
 // ---- Types ----
 
@@ -448,6 +462,121 @@ function WorkflowBuilder({
     );
 }
 
+// ---- Edit metadata dialog (D-09) ----
+
+function EditWorkflowDialog({
+    workflow,
+    onOpenChange,
+}: {
+    workflow: WorkflowRow | null;
+    onOpenChange: (open: boolean) => void;
+}) {
+    const base = useTeamBase();
+    const [name, setName] = useState('');
+    const [description, setDescription] = useState('');
+    const [errors, setErrors] = useState<Record<string, string>>({});
+    const [saving, setSaving] = useState(false);
+
+    // Sincroniza el form cuando se abre con un workflow distinto.
+    const [lastId, setLastId] = useState<number | null>(null);
+
+    if (workflow !== null && workflow.id !== lastId) {
+        setLastId(workflow.id);
+        setName(workflow.name);
+        setDescription(workflow.description ?? '');
+        setErrors({});
+    }
+
+    const save = async () => {
+        if (base === null || workflow === null || saving) {
+            return;
+        }
+
+        if (name.trim() === '') {
+            setErrors({ name: 'El nombre es obligatorio.' });
+
+            return;
+        }
+
+        setErrors({});
+        setSaving(true);
+
+        const result = await submit(
+            putJson(`${base}/workflows/${workflow.id}`, {
+                name,
+                description: description === '' ? null : description,
+            }),
+            'Workflow actualizado.',
+        );
+
+        setSaving(false);
+
+        if (result.ok) {
+            onOpenChange(false);
+        } else {
+            setErrors(result.fieldErrors);
+        }
+    };
+
+    return (
+        <Dialog
+            open={workflow !== null}
+            onOpenChange={(next) => {
+                if (!next && !saving) {
+                    onOpenChange(false);
+                }
+            }}
+        >
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Editar workflow</DialogTitle>
+                </DialogHeader>
+                <div className="flex flex-col gap-3">
+                    <div className="flex flex-col gap-1">
+                        <Label className="text-xs">Nombre</Label>
+                        <Input
+                            value={name}
+                            aria-invalid={Boolean(errors.name)}
+                            onChange={(e) => setName(e.target.value)}
+                        />
+                        <InputError message={errors.name} className="text-xs" />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <Label className="text-xs">Descripción</Label>
+                        <textarea
+                            value={description}
+                            onChange={(e) => setDescription(e.target.value)}
+                            rows={3}
+                            className="rounded-md border border-border bg-surface-2 p-2 text-sm text-fg-2"
+                        />
+                        <InputError
+                            message={errors.description}
+                            className="text-xs"
+                        />
+                    </div>
+                    <p className="text-2xs text-fg-3">
+                        El código del workflow ({workflow?.code}) identifica el
+                        registro y no se puede cambiar. Para editar los pasos,
+                        elimina el workflow y créalo de nuevo.
+                    </p>
+                </div>
+                <DialogFooter>
+                    <Button
+                        variant="ghost"
+                        onClick={() => onOpenChange(false)}
+                        disabled={saving}
+                    >
+                        Cancelar
+                    </Button>
+                    <Button onClick={save} disabled={saving}>
+                        {saving ? 'Guardando…' : 'Guardar'}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 function WorkflowsTab({
     workflows,
     options,
@@ -463,6 +592,8 @@ function WorkflowsTab({
 }) {
     const base = useTeamBase();
     const [creating, setCreating] = useState(false);
+    const [editing, setEditing] = useState<WorkflowRow | null>(null);
+    const [deleting, setDeleting] = useState<WorkflowRow | null>(null);
 
     const toggleActive = (workflow: WorkflowRow) => {
         if (base === null) {
@@ -475,6 +606,21 @@ function WorkflowsTab({
             }),
             workflow.isActive ? 'Workflow desactivado.' : 'Workflow activado.',
         );
+    };
+
+    const remove = async (workflow: WorkflowRow) => {
+        if (base === null) {
+            return;
+        }
+
+        const result = await submit(
+            deleteJson(`${base}/workflows/${workflow.id}`),
+            'Workflow eliminado.',
+        );
+
+        if (result.ok) {
+            setDeleting(null);
+        }
     };
 
     const triggerNow = (workflow: WorkflowRow) => {
@@ -576,6 +722,25 @@ function WorkflowsTab({
                                             : 'Activar'}
                                     </Button>
                                 )}
+                                {canManage && (
+                                    <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => setEditing(workflow)}
+                                    >
+                                        Editar
+                                    </Button>
+                                )}
+                                {canManage && (
+                                    <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="text-fg-3 hover:text-severity-critical"
+                                        onClick={() => setDeleting(workflow)}
+                                    >
+                                        Eliminar
+                                    </Button>
+                                )}
                             </span>
                         </CardTitle>
                     </CardHeader>
@@ -611,6 +776,27 @@ function WorkflowsTab({
                     </CardContent>
                 </Card>
             ))}
+
+            <EditWorkflowDialog
+                workflow={editing}
+                onOpenChange={(open) => !open && setEditing(null)}
+            />
+
+            <ConfirmDialog
+                open={deleting !== null}
+                title="Eliminar workflow"
+                description={
+                    deleting
+                        ? `¿Seguro que deseas eliminar el workflow "${deleting.name}"? Dejará de reaccionar a incidentes y decisiones. Esta acción no se puede deshacer.`
+                        : ''
+                }
+                onConfirm={() => {
+                    if (deleting) {
+                        return remove(deleting);
+                    }
+                }}
+                onOpenChange={(open) => !open && setDeleting(null)}
+            />
         </div>
     );
 }
