@@ -301,7 +301,7 @@ aplican: feature test (`assertInertia`) por página tocada + gates de front verd
   para co-ubicados; markers enfocables con aria-label real; incidente vinculado → detalle del
   incidente; sección conductor en detalle de activo y viceversa (cuando el dato exista); estilo de
   tiles acorde al tema + skeleton hasta `load`. Cierre: criterios de C-04..C-08 (§3).
-- [ ] **R1.6 Ciclo de vida editable** *(D-09, D-10, D-11, D-12, D-18)*: workflows editables (o al
+- [x] **R1.6 Ciclo de vida editable** *(edición de steps de workflow diferida; ver nota)* *(D-09, D-10, D-11, D-12, D-18)*: workflows editables (o al
   menos eliminables); edición completa de reglas o aviso de inmutabilidad; confirmación en todo
   destructivo (patrón único); quitar política antes de guardar; cada guardado registra versión.
   Cierre: criterios de D-09..D-12/D-18 (§3).
