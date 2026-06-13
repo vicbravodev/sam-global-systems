@@ -202,9 +202,12 @@ class TenantController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'display_name' => ['nullable', 'string', 'max:255'],
-            'primary_color' => ['nullable', 'string', 'max:32'],
-            'secondary_color' => ['nullable', 'string', 'max:32'],
+            'primary_color' => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
+            'secondary_color' => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
             'logo_url' => ['nullable', 'string', 'max:2048'],
+        ], [
+            'primary_color.regex' => 'El color primario debe ser un hex de 6 dígitos (ej. #2563eb).',
+            'secondary_color.regex' => 'El color secundario debe ser un hex de 6 dígitos (ej. #2563eb).',
         ]);
 
         $updateTenant->execute($team, $data);

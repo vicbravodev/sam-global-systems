@@ -353,7 +353,7 @@ aplican: feature test (`assertInertia`) por página tocada + gates de front verd
 - [ ] **R4.2 Microcopy**: "1 seleccionados", voseo/tuteo, "· —" colgantes, "últimas 0", subtítulo
   de vista "Sin mapear", contador de caracteres en comentarios, "Aplicar configuración recomendada"
   con preview (D-23), warning de escalación con `[]` (D-22).
-- [ ] **R4.3 Auditoría de `/admin/*`** (F4.1): seeder/comando para `global_role=super_admin` en dev
+- [x] **R4.3 Auditoría de `/admin/*`** (F4.1): seeder/comando para `global_role=super_admin` en dev
   y repetir este protocolo sobre las 6 páginas admin.
 - [ ] **R4.4 Pendientes de re-verificación**: F0.7 con datos de SLA vivo; `/settings/security` con
   permiso de confirm-password; warning maplibre (`null` en expresión de estilo); flash de tema
