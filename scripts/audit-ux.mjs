@@ -84,6 +84,7 @@ async function loadPlaywright() {
         '/Users/victorjesusbravodelapena/.npm/_npx/e41f203b7505f1fb/node_modules/playwright/index.mjs',
         '/opt/node22/lib/node_modules/playwright/index.mjs',
     ];
+
     for (const c of candidates) {
         try {
             return await import(c);
@@ -91,6 +92,7 @@ async function loadPlaywright() {
             /* siguiente */
         }
     }
+
     throw new Error('Playwright no encontrado');
 }
 
@@ -122,7 +124,12 @@ async function shoot(page, name, viewport, theme) {
         });
         const flag = overflow > 0 ? ` ⚠ overflow ${overflow}px` : '';
         console.log(`✓ ${name} [${viewport.name}/${theme}]${flag}`);
-        if (overflow > 0) log.push(`OVERFLOW ${name} ${viewport.name}/${theme}: ${overflow}px`);
+
+        if (overflow > 0) {
+            log.push(
+                `OVERFLOW ${name} ${viewport.name}/${theme}: ${overflow}px`,
+            );
+        }
     } catch (e) {
         console.error(`✗ ${name} [${viewport.name}/${theme}]: ${e.message.split('\n')[0]}`);
         log.push(`FAIL ${name} ${viewport.name}/${theme}: ${e.message.split('\n')[0]}`);
@@ -152,6 +159,7 @@ async function login(page, creds) {
 for (const viewport of VIEWPORTS) {
     const context = await browser.newContext({ viewport });
     const page = await context.newPage();
+
     for (const theme of THEMES) {
         for (const [name, path] of PUBLIC_PAGES) {
             await go(page, `${BASE}${path}`);
@@ -159,6 +167,7 @@ for (const viewport of VIEWPORTS) {
             await shoot(page, name, viewport, theme);
         }
     }
+
     await context.close();
 }
 
@@ -168,13 +177,16 @@ for (const viewport of VIEWPORTS) {
     const page = await context.newPage();
     await login(page, TENANT);
     const slug = new URL(page.url()).pathname.split('/')[1] || 'app';
+
     for (const theme of THEMES) {
         await setTheme(page, theme);
+
         for (const [name, path] of TENANT_PAGES) {
             await go(page, `${BASE}${path.replace('{slug}', slug)}`);
             await setTheme(page, theme);
             await shoot(page, name, viewport, theme);
         }
+
         for (const [name, segment] of DRILL) {
             await go(page, `${BASE}/${slug}/${segment}`);
             const href = await page.evaluate((seg) => {
@@ -182,8 +194,10 @@ for (const viewport of VIEWPORTS) {
                 const a = [...document.querySelectorAll('a')].find((el) =>
                     re.test(new URL(el.href, location.origin).pathname),
                 );
+
                 return a ? a.href : null;
             }, segment);
+
             if (href) {
                 await go(page, href);
                 await setTheme(page, theme);
@@ -194,6 +208,7 @@ for (const viewport of VIEWPORTS) {
             }
         }
     }
+
     await context.close();
 }
 
@@ -202,27 +217,33 @@ for (const viewport of VIEWPORTS) {
     const context = await browser.newContext({ viewport });
     const page = await context.newPage();
     await login(page, SUPERADMIN);
+
     for (const theme of THEMES) {
         await setTheme(page, theme);
+
         for (const [name, path] of ADMIN_PAGES) {
             await go(page, `${BASE}${path}`);
             await setTheme(page, theme);
             await shoot(page, name, viewport, theme);
         }
+
         // Drill al primer tenant.
         await go(page, `${BASE}/admin/tenants`);
         const href = await page.evaluate(() => {
             const a = [...document.querySelectorAll('a')].find((el) =>
                 /\/admin\/tenants\/[A-Za-z0-9-]+$/.test(new URL(el.href, location.origin).pathname),
             );
+
             return a ? a.href : null;
         });
+
         if (href) {
             await go(page, href);
             await setTheme(page, theme);
             await shoot(page, 'admin-tenant-detail', viewport, theme);
         }
     }
+
     await context.close();
 }
 

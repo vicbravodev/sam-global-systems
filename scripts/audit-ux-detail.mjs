@@ -23,6 +23,7 @@ async function loadPlaywright() {
             /* next */
         }
     }
+
     throw new Error('no playwright');
 }
 const { chromium } = await loadPlaywright();
@@ -54,13 +55,17 @@ for (const viewport of VIEWPORTS) {
                     '[data-row]',
                     'table tr:not(:first-child)',
                 ];
+
                 for (const s of sel) {
                     const el = document.querySelector(s);
+
                     if (el) {
                         el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
                         return true;
                     }
                 }
+
                 return false;
             });
             await page.waitForTimeout(1500);
@@ -75,7 +80,9 @@ for (const viewport of VIEWPORTS) {
             console.error(`${seg} [${viewport.name}]: ${e.message.split('\n')[0]}`);
         }
     }
+
     await context.close();
 }
+
 await browser.close();
 console.log('done');
