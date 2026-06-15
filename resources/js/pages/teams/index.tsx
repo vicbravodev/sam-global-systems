@@ -15,9 +15,10 @@ import type { Team } from '@/types';
 
 type Props = {
     teams: Team[];
+    canCreateTeam: boolean;
 };
 
-export default function TeamsIndex({ teams }: Props) {
+export default function TeamsIndex({ teams, canCreateTeam }: Props) {
     return (
         <>
             <Head title="Equipos" />
@@ -29,14 +30,19 @@ export default function TeamsIndex({ teams }: Props) {
                     <Heading
                         variant="small"
                         title="Equipos"
-                        description="Gestiona tus equipos y tus membresías de equipo"
+                        description="Consulta y gestiona tus membresías de equipo"
                     />
 
-                    <CreateTeamModal>
-                        <Button data-test="teams-new-team-button">
-                            <Plus /> Nuevo equipo
-                        </Button>
-                    </CreateTeamModal>
+                    {/* C3: la creación de equipos/tenants es exclusiva del
+                        superadmin (Team = tenant). El usuario solo ve/gestiona
+                        sus membresías existentes. */}
+                    {canCreateTeam && (
+                        <CreateTeamModal>
+                            <Button data-test="teams-new-team-button">
+                                <Plus /> Nuevo equipo
+                            </Button>
+                        </CreateTeamModal>
+                    )}
                 </div>
 
                 <div className="space-y-3">
