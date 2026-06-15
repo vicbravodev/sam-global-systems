@@ -260,7 +260,65 @@ export default function AdminTenantsIndex({
                     <StatCard label="Morosos" value={stats.pastDue} />
                 </div>
 
-                <div className="overflow-hidden rounded-md border border-border">
+                {/* D1: tarjetas apiladas en < md en vez de scroll lateral. */}
+                <div className="flex flex-col gap-2 md:hidden">
+                    {tenants.map((tenant) => (
+                        <div
+                            key={tenant.id}
+                            className="flex flex-col gap-2 rounded-lg border border-border bg-surface-1 p-3"
+                        >
+                            <div className="flex items-center justify-between gap-2">
+                                <Link
+                                    href={adminTenantShow(tenant.slug).url}
+                                    className="flex min-w-0 items-center gap-2 font-medium hover:underline"
+                                >
+                                    <Building2
+                                        size={14}
+                                        className="shrink-0 text-fg-3"
+                                    />
+                                    <span className="truncate">
+                                        {tenant.name}
+                                    </span>
+                                    {tenant.isPersonal ? (
+                                        <span className="sam-meta shrink-0 rounded bg-surface-2 px-1.5 py-0.5">
+                                            personal
+                                        </span>
+                                    ) : null}
+                                </Link>
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="shrink-0"
+                                    onClick={() =>
+                                        router.post(
+                                            impersonateStore(tenant.slug).url,
+                                        )
+                                    }
+                                >
+                                    <UserCog size={13} /> Impersonar
+                                </Button>
+                            </div>
+                            <div className="flex flex-wrap gap-x-4 gap-y-1 text-2xs text-fg-3">
+                                <span>{tenant.plan ?? 'Sin plan'}</span>
+                                <span>
+                                    {tenant.subscriptionStatus
+                                        ? (STATUS_LABEL[
+                                              tenant.subscriptionStatus
+                                          ] ?? tenant.subscriptionStatus)
+                                        : 'Sin suscripción'}
+                                </span>
+                                <span className="tabular-nums">
+                                    {tenant.membersCount} miembros
+                                </span>
+                                <span className="tabular-nums">
+                                    {formatDate(tenant.createdAt)}
+                                </span>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+
+                <div className="hidden overflow-hidden rounded-md border border-border md:block">
                     <table className="w-full text-sm">
                         <thead className="bg-surface-2 text-left">
                             <tr className="sam-meta">

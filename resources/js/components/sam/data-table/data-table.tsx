@@ -161,9 +161,9 @@ export function DataTable<T>({
 
     return (
         <div className={cn('min-h-0 flex-1 overflow-auto', className)}>
-            {/* min-w: en viewports angostos la tabla scrollea dentro del
-                wrapper en vez de aplastar las columnas. */}
-            <table className="w-full min-w-[640px] border-collapse">
+            {/* D1: en < md las filas se vuelven tarjetas apiladas (abajo); la
+                tabla densa solo aparece en md+ para no forzar scroll lateral. */}
+            <table className="hidden w-full min-w-[640px] border-collapse md:table">
                 <thead>
                     <tr className="sticky top-0 z-10 border-b border-border bg-surface-3 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
                         {selectable && (
@@ -318,6 +318,89 @@ export function DataTable<T>({
                           })}
                 </tbody>
             </table>
+
+            {/* D1: variante card-row para < md. */}
+            <div className="flex flex-col gap-2 py-1 md:hidden">
+                {loading
+                    ? Array.from({ length: skeletonRows }).map((_, i) => (
+                          <div
+                              key={`skeleton-card-${i}`}
+                              className="rounded-lg border border-border p-3"
+                          >
+                              <Skeleton className="h-4 w-2/3" />
+                              <Skeleton className="mt-2 h-3 w-1/2" />
+                          </div>
+                      ))
+                    : visible.map((row) => {
+                          const key = rowKey(row);
+
+                          return (
+                              <div
+                                  key={key}
+                                  onClick={
+                                      onRowClick
+                                          ? () => onRowClick(row)
+                                          : undefined
+                                  }
+                                  onKeyDown={
+                                      onRowClick
+                                          ? (e) => {
+                                                if (e.key === 'Enter') {
+                                                    onRowClick(row);
+                                                }
+                                            }
+                                          : undefined
+                                  }
+                                  tabIndex={onRowClick ? 0 : undefined}
+                                  className={cn(
+                                      'flex flex-col gap-1.5 rounded-lg border border-border bg-surface-1 p-3 transition-colors',
+                                      onRowClick &&
+                                          'cursor-pointer outline-none hover:bg-surface-2 focus-visible:bg-surface-2',
+                                      selectable &&
+                                          selected.has(key) &&
+                                          'bg-primary/[8%]',
+                                  )}
+                              >
+                                  {selectable && (
+                                      <label
+                                          className="flex items-center gap-2 text-2xs text-fg-3"
+                                          onClick={(e) => e.stopPropagation()}
+                                      >
+                                          <input
+                                              type="checkbox"
+                                              checked={selected.has(key)}
+                                              onChange={() =>
+                                                  onToggleSelect(key)
+                                              }
+                                              aria-label="Seleccionar fila"
+                                              className="size-3.5 accent-primary"
+                                          />
+                                          Seleccionar
+                                      </label>
+                                  )}
+                                  {columns.map((column) => (
+                                      <div
+                                          key={column.key}
+                                          className="flex items-start justify-between gap-3"
+                                      >
+                                          <span className="shrink-0 text-2xs tracking-caps text-fg-3 uppercase">
+                                              {column.header}
+                                          </span>
+                                          <span
+                                              className={cn(
+                                                  'min-w-0 text-right text-sm',
+                                                  column.numeric &&
+                                                      'font-mono tabular-nums',
+                                              )}
+                                          >
+                                              {column.cell(row)}
+                                          </span>
+                                      </div>
+                                  ))}
+                              </div>
+                          );
+                      })}
+            </div>
 
             {pageSize !== undefined && totalPages > 1 && (
                 <Pagination
