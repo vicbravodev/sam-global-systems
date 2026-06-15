@@ -136,6 +136,36 @@ function KpisTab({
     hasReports: boolean;
     onShowReports: () => void;
 }) {
+    // B2: cuando no hay ni resumen ni KPIs, las dos cards mostraban
+    // empty-states casi idénticos apilados. Fusionar en uno solo.
+    const noOverview = overview === null || overview.data === null;
+
+    if (noOverview && kpis.length === 0) {
+        return (
+            <Card>
+                <CardContent className="py-2">
+                    <EmptyState
+                        icon={BarChart3}
+                        title="Todavía no hay métricas para este periodo"
+                        description="Los KPIs y el resumen del tenant se calculan automáticamente cada noche con la actividad de tu operación. En cuanto haya datos, aparecerán aquí; mientras tanto, el panel muestra la actividad en vivo."
+                        action={
+                            hasReports ? (
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={onShowReports}
+                                >
+                                    <FileBarChart2 size={13} />
+                                    Ver reportes disponibles
+                                </Button>
+                            ) : undefined
+                        }
+                    />
+                </CardContent>
+            </Card>
+        );
+    }
+
     return (
         <div className="flex flex-col gap-4">
             <Card>
