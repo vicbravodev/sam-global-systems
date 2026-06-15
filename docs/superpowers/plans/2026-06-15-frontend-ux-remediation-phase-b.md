@@ -4,7 +4,7 @@
 > mayoritariamente de **layout/markup en React** (sin tocar dominio ni props nuevas salvo donde
 > se indique). Para cada página tocada, el feature test `assertInertia` existente actúa como
 > guardia de regresión y debe quedar verde; se añaden aserciones nuevas solo donde se introduzcan
-> props nuevas. Steps en checkbox (`- [ ]`).
+> props nuevas. Steps en checkbox (`- [x]`).
 
 **Goal:** Recuperar el espacio mal distribuido en Facturación, Analítica, Dashboard y Detalle de
 conductor: que cada pantalla use su alto/ancho con densidad útil en vez de tarjetas de una línea,
@@ -49,13 +49,13 @@ grid compacto 2×2 de métricas, dejando las tablas (consumo, facturas) a ancho 
 - Modify: `resources/js/pages/billing/index.tsx`
 - Test: `tests/Feature/Domains/Tenancy/BillingBrandingPageTest.php`
 
-- [ ] **Step 1: Guardia de regresión**
+- [x] **Step 1: Guardia de regresión**
 
 Run: `vendor/bin/phpunit --no-coverage --filter=BillingBrandingPageTest`
 Expected: verde antes de tocar nada (baseline). Anotar los props que asserta (`subscription`,
 `usage`, `features`, `invoices`) para no romperlos.
 
-- [ ] **Step 2: Refactor de layout (sin cambiar props)**
+- [x] **Step 2: Refactor de layout (sin cambiar props)**
 
 En `billing/index.tsx`, sustituir las tarjetas-de-una-línea de la cabecera de plan por una tira
 compacta de métricas (grid `grid-cols-2 md:grid-cols-4` o `2x2`), reutilizando el patrón visual de
@@ -65,12 +65,12 @@ ciclo**, **Próxima renovación**. Mantener las tablas de **Consumo del periodo*
 ancho completo debajo. La tarjeta de soporte ("¿Dudas con tu facturación?") pasa a una franja
 delgada al pie (no una Card a ancho completo).
 
-- [ ] **Step 3: tipos + formato + regresión**
+- [x] **Step 3: tipos + formato + regresión**
 
 Run: `npm run types:check` → sin errores.
 Run: `vendor/bin/phpunit --no-coverage --filter=BillingBrandingPageTest` → verde (mismos props).
 
-- [ ] **Step 4: format + commit**
+- [x] **Step 4: format + commit**
 
 ```bash
 npx prettier --write resources/js/pages/billing/index.tsx
@@ -89,17 +89,17 @@ calculan cada noche"). Objetivo: un solo empty-state claro por pestaña, recuper
 - Modify: `resources/js/pages/analytics/index.tsx`
 - Test: `tests/Feature/Domains/Analytics/AnalyticsPageTest.php`
 
-- [ ] **Step 1: Guardia de regresión**
+- [x] **Step 1: Guardia de regresión**
 
 Run: `vendor/bin/phpunit --no-coverage --filter=AnalyticsPageTest` → verde baseline.
 
-- [ ] **Step 2: Localizar los dos empty-states**
+- [x] **Step 2: Localizar los dos empty-states**
 
 Run: `grep -n "EmptyState\|se calculan\|cada noche\|BarChart3\|FileBarChart2" resources/js/pages/analytics/index.tsx`
 En la pestaña KPIs, "Resumen del tenant" y "KPIs recientes" muestran cada uno su propio empty-state
 con mensaje casi idéntico cuando no hay datos.
 
-- [ ] **Step 3: Fusionar (KPIs tab)**
+- [x] **Step 3: Fusionar (KPIs tab)**
 
 Cuando NO hay overview ni kpis, renderizar **un solo** `EmptyState` (no dos Cards apiladas), con
 copy único y claro ("Las métricas se calculan cada noche; aún no hay datos para este periodo."),
@@ -107,12 +107,12 @@ ocupando el ancho de la pestaña. Cuando sí hay datos, mantener las dos seccion
 en la pestaña Reportes si presenta empty-states duplicados ("Reportes disponibles" vs
 "Ejecuciones recientes"): si ambos están vacíos, un solo mensaje.
 
-- [ ] **Step 4: tipos + formato + regresión**
+- [x] **Step 4: tipos + formato + regresión**
 
 Run: `npm run types:check` → sin errores.
 Run: `vendor/bin/phpunit --no-coverage --filter=AnalyticsPageTest` → verde.
 
-- [ ] **Step 5: format + commit**
+- [x] **Step 5: format + commit**
 
 ```bash
 npx prettier --write resources/js/pages/analytics/index.tsx
@@ -134,12 +134,12 @@ no haya contadores) y rebalancear para que la franja viva ocupe el alto disponib
 - Modify: `resources/js/pages/dashboard.tsx`
 - Test: `tests/Feature/DashboardTest.php`
 
-- [ ] **Step 1: Guardia de regresión**
+- [x] **Step 1: Guardia de regresión**
 
 Run: `vendor/bin/phpunit --no-coverage --filter=DashboardTest` → verde baseline. Anota que asserta
 `kpis`, `incidents`, `stream`, `integrations`, `usage`.
 
-- [ ] **Step 2: "Uso del plan" siempre presente**
+- [x] **Step 2: "Uso del plan" siempre presente**
 
 Run: `grep -n "usage\|UsagePanel\|Integraciones\|Uso del plan" resources/js/pages/dashboard.tsx`
 Cambiar el guard que oculta el panel cuando `usage.length === 0`: en vez de `return null`,
@@ -147,25 +147,25 @@ renderizar la Card "Uso del plan" con un `EmptyState` compacto ("Sin consumo med
 periodo todavía."). Así la columna izquierda (Incidentes + Integraciones + Uso del plan) llena el
 alto y se elimina el hueco muerto.
 
-- [ ] **Step 3: Rebalance del grid si queda hueco**
+- [x] **Step 3: Rebalance del grid si queda hueco**
 
 Si tras el Step 2 sigue habiendo hueco en desktop, ajustar el grid inferior
 (`lg:grid-cols-[2fr_1fr]`) para que el "Stream en vivo" (columna derecha) estire su alto
 (`h-full`/`flex-1`) hasta el borde de la fila, evitando el bloque vacío. No añadir datos ficticios.
 
-- [ ] **Step 4: Test de que el panel de uso aparece aun sin contadores**
+- [x] **Step 4: Test de que el panel de uso aparece aun sin contadores**
 
 Añadir a `DashboardTest` un test (o extender el existente) que cargue el dashboard SIN usage
 counters y asserte vía `assertInertia` que el componente sigue siendo `dashboard` y que `usage`
 está presente como array (`->has('usage')`). Como el cambio es de markup, el valor del test es de
 regresión; no se inventan props.
 
-- [ ] **Step 5: tipos + formato + regresión**
+- [x] **Step 5: tipos + formato + regresión**
 
 Run: `npm run types:check` → sin errores.
 Run: `vendor/bin/phpunit --no-coverage --filter=DashboardTest` → verde.
 
-- [ ] **Step 6: format + commit**
+- [x] **Step 6: format + commit**
 
 ```bash
 npx prettier --write resources/js/pages/dashboard.tsx
@@ -187,13 +187,13 @@ siempre tiene contenido, de modo que la página aporte aun sin historial.
 - Modify: `resources/js/pages/drivers/show.tsx`
 - Test: `tests/Feature/Domains/Drivers/DriverShowPageTest.php`
 
-- [ ] **Step 1: Guardia de regresión**
+- [x] **Step 1: Guardia de regresión**
 
 Run: `vendor/bin/phpunit --no-coverage --filter=DriverShowPageTest` → verde baseline. Los props ya
 incluyen `driver.fullName/employeeCode/externalPrimaryId/firstSeenAt/lastSeenAt/currentAsset` — no
 hacen falta props nuevas.
 
-- [ ] **Step 2: Tarjeta de Identidad siempre visible**
+- [x] **Step 2: Tarjeta de Identidad siempre visible**
 
 Run: `grep -n "Sin datos\|riskProfile\|currentAsset\|employeeCode\|externalPrimaryId\|firstSeenAt" resources/js/pages/drivers/show.tsx`
 Añadir como primera Card del cuerpo una **"Identidad"** con un grid de campos: Nombre completo,
@@ -201,24 +201,24 @@ Código de empleado, ID externo (proveedor), Primera conexión, Última conexió
 (enlace si existe). Usar `'—'` como placeholder por campo ausente. Esta Card se renderiza siempre
 (no condicionada a historial), de modo que el "95% vacío" pasa a tener contenido real.
 
-- [ ] **Step 3: La caja "sin datos" se reduce a las secciones realmente vacías**
+- [x] **Step 3: La caja "sin datos" se reduce a las secciones realmente vacías**
 
 Mantener la caja colapsada de secciones sin datos (riesgo/contactos/documentos/asignaciones/estado)
 pero DESPUÉS de la Card de Identidad, como nota secundaria, no como contenido principal.
 
-- [ ] **Step 4: Test de identidad**
+- [x] **Step 4: Test de identidad**
 
 Extender `DriverShowPageTest`: un test que cree un conductor SIN riskProfile/contactos/documentos/
 asignaciones (solo identidad, con factory) y asserte vía `assertInertia` que el componente es
 `drivers/show` y que `driver.employeeCode` / `driver.externalPrimaryId` se exponen. Factories
 siempre; aislamiento de tenant ya cubierto por los tests existentes.
 
-- [ ] **Step 5: tipos + formato + regresión**
+- [x] **Step 5: tipos + formato + regresión**
 
 Run: `npm run types:check` → sin errores.
 Run: `vendor/bin/phpunit --no-coverage --filter=DriverShowPageTest` → verde.
 
-- [ ] **Step 6: format + commit**
+- [x] **Step 6: format + commit**
 
 ```bash
 npx prettier --write resources/js/pages/drivers/show.tsx
@@ -230,11 +230,11 @@ git commit -m "fix(drivers): tarjeta de identidad siempre presente en el detalle
 
 ## Cierre de la Fase B (gate completo)
 
-- [ ] **Step 1:** `vendor/bin/phpunit --no-coverage` → todo verde.
-- [ ] **Step 2:** `vendor/bin/pint --test` → limpio (esta fase no toca PHP salvo tests; igual se corre).
-- [ ] **Step 3:** `npm run types:check && npm run lint:check && npm run format:check` → verdes.
-- [ ] **Step 4:** `npm run build` → exitoso.
-- [ ] **Step 5 (opcional):** `node scripts/audit-ux.mjs --base=http://localhost` y revisar
+- [x] **Step 1:** `vendor/bin/phpunit --no-coverage` → todo verde.
+- [x] **Step 2:** `vendor/bin/pint --test` → limpio (esta fase no toca PHP salvo tests; igual se corre).
+- [x] **Step 3:** `npm run types:check && npm run lint:check && npm run format:check` → verdes.
+- [x] **Step 4:** `npm run build` → exitoso.
+- [x] **Step 5 (opcional):** `node scripts/audit-ux.mjs --base=http://localhost` y revisar
   `billing`, `analytics`, `dashboard`, `detail-drivers` — confirmar densidad útil sin huecos.
 
 ---
