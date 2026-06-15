@@ -1,11 +1,5 @@
 import { Head, Link, router, usePage } from '@inertiajs/react';
-import {
-    ChevronLeft,
-    ChevronRight,
-    MapPin,
-    Truck,
-    User,
-} from 'lucide-react';
+import { ChevronLeft, ChevronRight, MapPin, Truck, User } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { AssetSignal } from '@/components/sam/assets/asset-signal';
 import { AssetStatusBadge } from '@/components/sam/assets/asset-status-badge';

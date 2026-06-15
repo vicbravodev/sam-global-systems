@@ -240,8 +240,10 @@ export function LiveMap({ markers, statusLabels, onSelect }: LiveMapProps) {
 
                         if (!rendered.has(key)) {
                             const marker = new maplibregl.Marker({
-                                element: buildSingleMarker(asset, labels, (id) =>
-                                    select(id),
+                                element: buildSingleMarker(
+                                    asset,
+                                    labels,
+                                    (id) => select(id),
                                 ),
                             })
                                 .setLngLat([fanned.lng, fanned.lat])
@@ -269,10 +271,8 @@ export function LiveMap({ markers, statusLabels, onSelect }: LiveMapProps) {
 
                 const element =
                     cluster.members.length === 1
-                        ? buildSingleMarker(
-                              cluster.members[0],
-                              labels,
-                              (id) => select(id),
+                        ? buildSingleMarker(cluster.members[0], labels, (id) =>
+                              select(id),
                           )
                         : buildClusterMarker(cluster, labels, () => {
                               // Try to break the cluster by zooming in; if its
@@ -282,10 +282,14 @@ export function LiveMap({ markers, statusLabels, onSelect }: LiveMapProps) {
                                   (m) =>
                                       m.longitude ===
                                           cluster.members[0].longitude &&
-                                      m.latitude === cluster.members[0].latitude,
+                                      m.latitude ===
+                                          cluster.members[0].latitude,
                               );
 
-                              if (samePoint || map.getZoom() >= map.getMaxZoom()) {
+                              if (
+                                  samePoint ||
+                                  map.getZoom() >= map.getMaxZoom()
+                              ) {
                                   spiderKeyRef.current = cluster.key;
                                   redrawRef.current();
                               } else {
@@ -311,7 +315,10 @@ export function LiveMap({ markers, statusLabels, onSelect }: LiveMapProps) {
 
             // Drop markers whose cluster no longer exists. If the spiderfied
             // cluster vanished, clear the spider state too.
-            if (spiderKey !== null && !clusters.some((c) => c.key === spiderKey)) {
+            if (
+                spiderKey !== null &&
+                !clusters.some((c) => c.key === spiderKey)
+            ) {
                 spiderKeyRef.current = null;
             }
 

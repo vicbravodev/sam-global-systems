@@ -551,10 +551,13 @@ class FetchDeferredEventMediaJobTest extends TestCase
     {
         $this->makeSamsaraIntegration();
 
+        $occurredAt = Carbon::parse('2026-06-11 12:00:00', 'UTC');
+        Carbon::setTestNow($occurredAt->copy()->addMinutes(5));
+
         $event = NormalizedEvent::factory()->create([
             'team_id' => $this->teamId,
             'asset_id' => $this->asset->id,
-            'occurred_at' => Carbon::parse('2026-06-11 12:00:00', 'UTC'),
+            'occurred_at' => $occurredAt,
         ]);
 
         Http::fake([
