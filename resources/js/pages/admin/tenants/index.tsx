@@ -80,8 +80,10 @@ function formatDate(iso: string | null): string {
 }
 
 function StatCard({ label, value }: { label: string; value: number }) {
+    // D6: misma celda cockpit que la franja de KPIs del dashboard (F3.1):
+    // sin borde por celda; la franja lleva el borde único y los hairlines.
     return (
-        <div className="rounded-md border border-border bg-surface-1 px-4 py-3">
+        <div className="bg-surface-1 px-4 py-3">
             <div className="sam-meta">{label}</div>
             <div className="text-2xl font-semibold tabular-nums">{value}</div>
         </div>
@@ -251,7 +253,7 @@ export default function AdminTenantsIndex({
             </header>
 
             <div className="flex-1 overflow-y-auto p-5">
-                <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="mb-5 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-4">
                     <StatCard label="Tenants" value={stats.total} />
                     <StatCard label="Activos" value={stats.active} />
                     <StatCard label="Trial" value={stats.trialing} />
