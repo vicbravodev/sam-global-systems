@@ -153,9 +153,12 @@ backend con `vendor/bin/pint --dirty --format agent` y PHPUnit.
 ### Fase C — P1 navegación
 - **C1** Desambiguar "Notificaciones": renombrar las tres entradas según su función (p.ej.
   "Bandeja", "Mis preferencias de notificación", "Política de notificaciones del tenant").
-- **C2** Clarificar el solapamiento Configuración/Cuenta/Equipo y roles/Equipos (agrupar o
-  renombrar; decisión de IA de producto, ver §4).
-- **C3** Revisar/retirar "Nuevo equipo" en Cuenta→Equipos según el modelo Team=tenant.
+- **C2** **(decidido)** Agrupar las entradas de configuración bajo un solo menú "Ajustes" con
+  sub-secciones (tenant + cuenta + equipo y roles), en vez de cuatro entradas sueltas y solapadas
+  en el sidebar.
+- **C3** **(decidido)** Retirar "Nuevo equipo" de Cuenta→Equipos. La creación de equipos/tenants
+  es exclusiva del superadmin (Team = tenant es el modelo de negocio). El usuario solo ve/gestiona
+  sus membresías existentes, sin botón de crear.
 
 ### Fase D — P2 móvil + polish
 - **D1** Variante card-row para las tablas densas en `< md` (al menos incidentes, conductores,
@@ -168,13 +171,13 @@ backend con `vendor/bin/pint --dirty --format agent` y PHPUnit.
 
 ---
 
-## 4. Decisiones que requieren al usuario (IA de producto)
+## 4. Decisiones de producto (resueltas con el usuario, 2026-06-15)
 
-- **C2**: cómo reorganizar las 4 entradas de "configuración". Opciones: (a) agrupar bajo un solo
-  menú "Ajustes" con sub-secciones; (b) mantener separadas pero renombrar para que el alcance sea
-  obvio (tenant vs cuenta).
-- **C3**: ¿debe un usuario poder crear equipos/tenants desde sus ajustes, o eso es exclusivo del
-  superadmin? Define si "Nuevo equipo" se retira.
+- **C2 — resuelto:** agrupar las 4 entradas de configuración bajo un solo menú **"Ajustes"** con
+  sub-secciones. No mantener entradas sueltas y solapadas.
+- **C3 — resuelto:** **retirar** "Nuevo equipo" de Cuenta→Equipos. La creación de equipos/tenants
+  es **exclusiva del superadmin** (Team = tenant es el modelo de negocio). El usuario solo
+  ve/gestiona sus membresías existentes.
 
 ## 5. Fuera de alcance
 
