@@ -131,7 +131,7 @@ interface TenantConfigProps {
 const TABS = [
     { key: 'general', label: 'General' },
     { key: 'ai', label: 'Perfil IA' },
-    { key: 'notifications', label: 'Notificaciones' },
+    { key: 'notifications', label: 'Política de notificaciones' },
     { key: 'escalation', label: 'Escalación' },
     { key: 'schedule', label: 'Horario on-call' },
     { key: 'channels', label: 'Canales' },

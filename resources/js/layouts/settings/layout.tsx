@@ -34,7 +34,7 @@ const sidebarNavItems: NavItem[] = [
         icon: null,
     },
     {
-        title: 'Notificaciones',
+        title: 'Mis notificaciones',
         href: editNotifications(),
         icon: null,
     },

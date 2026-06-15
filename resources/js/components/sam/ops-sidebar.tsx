@@ -209,7 +209,7 @@ export function OpsSidebar({ navBadges, mobile = false }: OpsSidebarProps) {
                     href: `/${teamSlug}/integrations`,
                 },
                 {
-                    label: 'Notificaciones',
+                    label: 'Bandeja de notificaciones',
                     icon: Bell,
                     href: `/${teamSlug}/notifications`,
                 },
