@@ -42,15 +42,15 @@ regresión; se añaden tests para los cambios observables (label nuevo, ausencia
   elimina su import en teams/index o se conserva el componente sin montar)
 - Test: `tests/Feature/Teams/TeamTest.php` (+ test de que la página no ofrece crear)
 
-- [ ] **Step 1: Baseline** — `vendor/bin/phpunit --no-coverage --filter=TeamTest` verde. Anotar que
+- [x] **Step 1: Baseline** — `vendor/bin/phpunit --no-coverage --filter=TeamTest` verde. Anotar que
   `test_teams_can_be_created` postea a `teams.store`.
-- [ ] **Step 2: Test que falla** — añadir a un test de la página de equipos (Inertia) una aserción
+- [x] **Step 2: Test que falla** — añadir a un test de la página de equipos (Inertia) una aserción
   de que el prop/flag que habilita "crear equipo" es false o que la página ya no expone el modal.
   Como es UI, el test robusto es a nivel de prop: si la página recibe un flag `canCreateTeam`,
   pasarlo `false` para usuarios no-superadmin y assertarlo. Si no existe tal prop, el test cubre la
   ruta: un usuario normal que postea a `teams.store` recibe 403 (la creación pasa a ser exclusiva
   del superadmin). Confirmar fallo.
-- [ ] **Step 3: Implementación** —
+- [x] **Step 3: Implementación** —
   - Frontend: quitar el botón "Nuevo equipo" y el `CreateTeamModal` de `teams/index.tsx`. La página
     pasa a ser solo lista/gestión de membresías existentes.
   - Backend: en `TeamController::store` (o su policy/middleware), autorizar solo a superadmin
@@ -58,9 +58,9 @@ regresión; se añaden tests para los cambios observables (label nuevo, ausencia
     superadmin/seed. Si ya existe una `TeamPolicy`, añadir `create()` que solo permita superadmin.
   - Decidir sobre `create-team-modal.tsx`: si queda sin uso, retirar su import; conservar el archivo
     solo si lo usa el superadmin en otra vista.
-- [ ] **Step 4: Verde** — `vendor/bin/phpunit --no-coverage --filter=TeamTest` verde (ajustar
+- [x] **Step 4: Verde** — `vendor/bin/phpunit --no-coverage --filter=TeamTest` verde (ajustar
   `test_teams_can_be_created` para actuar como superadmin, o renombrarlo a reflejar la nueva regla).
-- [ ] **Step 5: tipos + format + commit**
+- [x] **Step 5: tipos + format + commit**
 ```bash
 npm run types:check && npx prettier --write resources/js/pages/teams/index.tsx
 vendor/bin/pint --dirty --format agent
@@ -83,12 +83,12 @@ Tres entradas con el mismo nombre. Renombrar por función (manteniendo es-ES):
 - Modify: `resources/js/pages/settings/tenant-config.tsx`
 - Test: la página/tab afectada (tenant-config ya tiene feature test; sidebar/layout son strings).
 
-- [ ] **Step 1: Localizar los 3 labels** — `grep -n "Notificaciones" resources/js/components/sam/ops-sidebar.tsx resources/js/layouts/settings/layout.tsx resources/js/pages/settings/tenant-config.tsx`
-- [ ] **Step 2: Renombrar** los tres strings según el mapeo de arriba. No cambian rutas ni props.
-- [ ] **Step 3 (si hay test de tenant-config tabs):** extender el feature test del tenant-config
+- [x] **Step 1: Localizar los 3 labels** — `grep -n "Notificaciones" resources/js/components/sam/ops-sidebar.tsx resources/js/layouts/settings/layout.tsx resources/js/pages/settings/tenant-config.tsx`
+- [x] **Step 2: Renombrar** los tres strings según el mapeo de arriba. No cambian rutas ni props.
+- [x] **Step 3 (si hay test de tenant-config tabs):** extender el feature test del tenant-config
   para assertar que el label de la sección de política es "Política de notificaciones" (si el label
   viaja como prop/objeto de tabs). Si los labels son puramente de frontend, basta `tsc` + build.
-- [ ] **Step 4: tipos + format + commit**
+- [x] **Step 4: tipos + format + commit**
 ```bash
 npm run types:check && npx prettier --write resources/js/components/sam/ops-sidebar.tsx resources/js/layouts/settings/layout.tsx resources/js/pages/settings/tenant-config.tsx
 git add -A
@@ -118,24 +118,24 @@ Facturación y la Bandeja de notificaciones permanecen como entradas operativas 
   evaluar reutilizar el layout existente sin crear página nueva.
 - Test: feature test de que la entrada "Ajustes" y sus sub-secciones resuelven a las páginas correctas.
 
-- [ ] **Step 1: Diseño de la sub-nav unificada** — listar las secciones finales y a qué ruta apunta
+- [x] **Step 1: Diseño de la sub-nav unificada** — listar las secciones finales y a qué ruta apunta
   cada una (tenant: `settings/tenant-config`, `settings/roles`; cuenta: `profile`, `security`,
   `appearance`, `notifications` (Mis notificaciones), `teams`). Agruparlas visualmente en el layout
   de settings en dos bloques: "Cuenta" y "Tenant".
-- [ ] **Step 2: Sidebar** — reemplazar en `ops-sidebar.tsx` las entradas "Equipo y roles" y
+- [x] **Step 2: Sidebar** — reemplazar en `ops-sidebar.tsx` las entradas "Equipo y roles" y
   "Configuración" por una sola **"Ajustes"** (icono settings) que apunte a la primera sub-sección
   (p.ej. `settings/tenant-config` para roles tenant, o `profile` para cuenta — elegir landing
   estable y consistente con permisos). Mantener Integraciones/Auditoría/Facturación/Bandeja.
-- [ ] **Step 3: Layout de settings** — en `layouts/settings/layout.tsx` añadir las secciones tenant
+- [x] **Step 3: Layout de settings** — en `layouts/settings/layout.tsx` añadir las secciones tenant
   (Configuración del tenant, Equipo y roles) junto a las de cuenta, separadas por encabezado de
   grupo. Respetar autorización: las secciones tenant solo se muestran a quien tenga el permiso
   correspondiente (reutilizar los flags `can*` que ya pasan las páginas).
-- [ ] **Step 4: Tests** — feature test (Inertia) que verifique que las páginas de settings tenant y
+- [x] **Step 4: Tests** — feature test (Inertia) que verifique que las páginas de settings tenant y
   cuenta siguen resolviendo (componentes correctos) tras la reorganización, y que el sidebar ya no
   duplica entradas de configuración. Como la mayor parte es markup de nav, el test cubre que las
   rutas existentes siguen vivas y que la autorización por sección se respeta (un usuario sin permiso
   de config no ve la sección tenant). Factories siempre.
-- [ ] **Step 5: tipos + format + (wayfinder si cambian rutas) + commit**
+- [x] **Step 5: tipos + format + (wayfinder si cambian rutas) + commit**
 ```bash
 npm run types:check && npm run lint:check
 npx prettier --write resources/js/components/sam/ops-sidebar.tsx resources/js/layouts/settings/layout.tsx
@@ -152,12 +152,12 @@ git commit -m "feat(nav): agrupar configuración bajo un solo menú 'Ajustes' co
 
 ## Cierre de la Fase C (gate completo)
 
-- [ ] `vendor/bin/phpunit --no-coverage` verde.
-- [ ] `vendor/bin/pint --test` limpio.
-- [ ] `npm run types:check && npm run lint:check && npm run format:check` verdes.
-- [ ] `npm run build` exitoso.
-- [ ] (si se tocaron rutas) `php artisan wayfinder:generate`.
-- [ ] (opcional) `node scripts/audit-ux.mjs --base=http://localhost` — confirmar nav sin duplicados.
+- [x] `vendor/bin/phpunit --no-coverage` verde.
+- [x] `vendor/bin/pint --test` limpio.
+- [x] `npm run types:check && npm run lint:check && npm run format:check` verdes.
+- [x] `npm run build` exitoso.
+- [x] (si se tocaron rutas) `php artisan wayfinder:generate`.
+- [x] (opcional) `node scripts/audit-ux.mjs --base=http://localhost` — confirmar nav sin duplicados.
 
 ---
 
