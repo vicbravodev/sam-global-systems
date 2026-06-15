@@ -41,13 +41,15 @@ class IncidentInboxPresenter
         $now ??= Carbon::now();
         $event = $incident->relatedEvent;
         $evaluation = $incident->aiEvaluation;
+        $status = $this->status($incident);
 
         return [
             'id' => $this->reference($incident),
             'incidentId' => (int) $incident->id,
             'title' => (string) ($incident->title ?? 'Incidente'),
             'severity' => $this->severity($incident),
-            'status' => $this->status($incident),
+            'status' => $status,
+            'statusLabel' => IncidentStatusPresenter::UI_LABELS[$status],
             'provider' => $this->provider($event),
             'asset' => $this->asset($incident),
             'driver' => $this->driver($incident),
@@ -122,23 +124,12 @@ class IncidentInboxPresenter
 
     private function status(Incident $incident): string
     {
-        $base = match ($incident->status?->code) {
-            'open' => 'new',
-            'in_review' => 'triaging',
-            'escalated' => 'in-progress',
-            'resolved' => 'resolved',
-            'closed' => 'closed',
-            'false_positive', 'cancelled' => 'discarded',
-            default => 'new',
-        };
-
-        // Surface an "assigned" state when an open/triaging incident already
-        // has an active owner, which the UI styles distinctly.
-        if (in_array($base, ['new', 'triaging'], true) && $this->activeAssignment($incident) !== null) {
-            return 'assigned';
-        }
-
-        return $base;
+        // Canonical mapping lives in IncidentStatusPresenter so every surface
+        // (inbox, detail, palette, asset detail) renders the same string.
+        return IncidentStatusPresenter::uiStatus(
+            $incident->status?->code,
+            $this->activeAssignment($incident) !== null,
+        );
     }
 
     private function provider(?NormalizedEvent $event): string

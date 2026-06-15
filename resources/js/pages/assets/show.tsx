@@ -1,6 +1,7 @@
 import { Head, Link, router, usePage } from '@inertiajs/react';
-import { ChevronLeft, ChevronRight, MapPin, Truck } from 'lucide-react';
+import { ChevronLeft, ChevronRight, MapPin, Truck, User } from 'lucide-react';
 import { useEffect, useRef } from 'react';
+import { AssetSignal } from '@/components/sam/assets/asset-signal';
 import { AssetStatusBadge } from '@/components/sam/assets/asset-status-badge';
 import { RelativeTime } from '@/components/sam/relative-time';
 import { SeverityBadge } from '@/components/sam/severity-badge';
@@ -177,7 +178,7 @@ function IncidentsCard({
                                 <Link
                                     href={
                                         teamSlug
-                                            ? `/${teamSlug}/incidents`
+                                            ? `/${teamSlug}/incidents/${incident.id}`
                                             : '#'
                                     }
                                     className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-surface-2"
@@ -397,14 +398,13 @@ export default function AssetShow() {
                             </p>
                         </div>
                     </div>
-                    {asset.lastSeenAt && (
-                        <span className="sam-meta">
-                            Visto{' '}
-                            <RelativeTime
-                                minutes={minutesSince(asset.lastSeenAt)}
-                            />
-                        </span>
-                    )}
+                    <span className="sam-meta">
+                        <AssetSignal
+                            lastSignalAt={asset.lastSignalAt}
+                            hasDevice={asset.devices.length > 0}
+                            withPrefix
+                        />
+                    </span>
                 </header>
 
                 {/* Devices */}
@@ -427,6 +427,34 @@ export default function AssetShow() {
                         ))}
                     </div>
                 )}
+
+                {/* Conductor asignado (C-08): recíproco del activo que el
+                    detalle de conductor ya muestra. Solo cuando hay vínculo. */}
+                <div className="flex flex-wrap items-center gap-2">
+                    <span className="sam-caps">Conductor</span>
+                    {asset.driver ? (
+                        <Link
+                            href={
+                                teamSlug
+                                    ? `/${teamSlug}/drivers/${asset.driver.id}`
+                                    : '#'
+                            }
+                            className="flex items-center gap-1.5 rounded-sm border border-border bg-surface-2 px-2 py-1 text-2xs text-fg-1 transition-colors hover:border-primary/40 hover:text-primary"
+                        >
+                            <User size={12} strokeWidth={1.5} />
+                            {asset.driver.name}
+                            {asset.driver.employeeCode && (
+                                <span className="font-mono text-fg-3">
+                                    · {asset.driver.employeeCode}
+                                </span>
+                            )}
+                        </Link>
+                    ) : (
+                        <span className="text-2xs text-fg-3">
+                            Sin conductor asignado actualmente.
+                        </span>
+                    )}
+                </div>
 
                 <div className="grid gap-4 lg:grid-cols-2">
                     <LastLocationCard location={asset.lastLocation} />

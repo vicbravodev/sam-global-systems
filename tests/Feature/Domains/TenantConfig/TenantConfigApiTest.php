@@ -5,6 +5,8 @@ namespace Tests\Feature\Domains\TenantConfig;
 use App\Domains\Access\Enums\RoleScope;
 use App\Domains\Access\Models\Permission;
 use App\Domains\Access\Models\Role;
+use App\Domains\Decisions\Models\DecisionRule;
+use App\Domains\Decisions\Models\RuleSet;
 use App\Domains\TenantConfig\Models\TenantConfigVersion;
 use App\Domains\TenantConfig\Models\TenantScheduleProfile;
 use App\Enums\TeamRole;
@@ -116,6 +118,13 @@ class TenantConfigApiTest extends TestCase
     {
         [$user, $team] = $this->createUserWithRole('cfg_rule_admin', ['config.view', 'config.manage']);
 
+        $ruleset = RuleSet::factory()->create(['team_id' => $team->id]);
+        DecisionRule::factory()->create([
+            'team_id' => $team->id,
+            'ruleset_id' => $ruleset->id,
+            'code' => 'speed_violation',
+        ]);
+
         $this->actingAs($user)->getJson("/api/{$team->slug}/settings/rules")->assertOk();
 
         $created = $this->actingAs($user)->postJson("/api/{$team->slug}/settings/rules", [
@@ -220,6 +229,15 @@ class TenantConfigApiTest extends TestCase
             'automation_level' => 'assisted',
             'media_strategy' => 'preferred',
         ])->assertForbidden();
+
+        // El código de regla debe existir para que el request pase la
+        // validación (D-06) y la negativa provenga de la policy (403).
+        $ruleset = RuleSet::factory()->create(['team_id' => $team->id]);
+        DecisionRule::factory()->create([
+            'team_id' => $team->id,
+            'ruleset_id' => $ruleset->id,
+            'code' => 'x',
+        ]);
 
         $this->actingAs($user)->postJson("/api/{$team->slug}/settings/rules", [
             'base_rule_code' => 'x',

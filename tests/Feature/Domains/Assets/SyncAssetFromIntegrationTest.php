@@ -118,6 +118,45 @@ class SyncAssetFromIntegrationTest extends TestCase
         );
     }
 
+    public function test_inventory_resync_does_not_bump_last_seen_at(): void
+    {
+        Event::fake([AssetDiscovered::class]);
+
+        [, $team, , $integration] = $this->createSetup();
+
+        $action = app(SyncAssetFromIntegration::class);
+
+        $asset = $action->execute($team->id, $integration->id, [
+            'external_id' => 'ext-vehicle-003',
+            'name' => 'Truck Beta',
+            'asset_type_code' => 'vehicle',
+        ]);
+
+        // Last real signal was 190 days ago; the provider merely still lists
+        // the asset in its inventory.
+        $lastSignal = now()->subDays(190)->startOfSecond();
+        $asset->forceFill(['last_seen_at' => $lastSignal])->save();
+
+        $resynced = $action->execute($team->id, $integration->id, [
+            'external_id' => 'ext-vehicle-003',
+            'name' => 'Truck Beta Renamed',
+            'asset_type_code' => 'vehicle',
+        ]);
+
+        $this->assertEquals(
+            'Truck Beta Renamed',
+            $resynced->name,
+            'Inventory data should still be refreshed on resync',
+        );
+
+        $this->assertTrue(
+            $resynced->last_seen_at->equalTo($lastSignal),
+            'An inventory resync must NOT bump last_seen_at: only real signals '
+                .'(location/telemetry) move it, otherwise the whole fleet looks '
+                .'"seen minutes ago" forever (C1-a)',
+        );
+    }
+
     public function test_it_dispatches_asset_discovered_event_for_new_asset(): void
     {
         Event::fake([AssetDiscovered::class]);

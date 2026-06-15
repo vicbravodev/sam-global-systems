@@ -128,10 +128,11 @@
     --color-severity-info: var(--severity-info);
     --color-severity-info-bg: var(--severity-info-bg);
 
-    /* Incident lifecycle (7 states) */
+    /* Incident lifecycle (8 states) */
     --color-status-new: var(--status-new);
     --color-status-triaging: var(--status-triaging);
     --color-status-assigned: var(--status-assigned);
+    --color-status-escalated: var(--status-escalated);
     --color-status-in-progress: var(--status-in-progress);
     --color-status-resolved: var(--status-resolved);
     --color-status-closed: var(--status-closed);
@@ -225,6 +226,7 @@
     --status-new: oklch(0.62 0.14 255);
     --status-triaging: oklch(0.72 0.14 80);
     --status-assigned: oklch(0.55 0.1 285);
+    --status-escalated: oklch(0.58 0.19 28);
     --status-in-progress: oklch(0.7 0.15 52);
     --status-resolved: oklch(0.6 0.12 160);
     --status-closed: oklch(0.52 0.01 260);
@@ -335,6 +337,7 @@
     --status-new: oklch(0.72 0.13 255);
     --status-triaging: oklch(0.8 0.14 80);
     --status-assigned: oklch(0.68 0.12 285);
+    --status-escalated: oklch(0.7 0.18 28);
     --status-in-progress: oklch(0.78 0.14 52);
     --status-resolved: oklch(0.72 0.12 160);
     --status-closed: oklch(0.62 0.01 260);

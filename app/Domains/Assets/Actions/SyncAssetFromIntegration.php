@@ -42,12 +42,16 @@ class SyncAssetFromIntegration
      */
     private function updateExistingAsset(Asset $asset, array $assetData, int $providerId): Asset
     {
+        // Deliberately does NOT bump the asset's `last_seen_at`: this is an
+        // inventory sync (the provider still lists the asset), not a real
+        // signal. `last_seen_at` only moves with actual telemetry/location
+        // (UpdateAssetLocationSnapshot), otherwise the whole fleet looks
+        // "seen minutes ago" forever (C1-a) and offline detection goes blind.
         $asset->update(array_filter([
             'name' => $assetData['name'] ?? null,
             'code' => $assetData['code'] ?? null,
             'external_primary_id' => $assetData['external_id'],
             'metadata_json' => $assetData['metadata'] ?? null,
-            'last_seen_at' => now(),
         ]));
 
         AssetExternalReference::where('provider_id', $providerId)

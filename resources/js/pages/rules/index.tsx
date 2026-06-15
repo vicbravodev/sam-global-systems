@@ -1,11 +1,13 @@
 import { Head, router, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import InputError from '@/components/input-error';
 import {
     ConditionBuilder,
     RuleTestPanel,
 } from '@/components/sam/condition-builder';
 import type { ConditionFieldDef } from '@/components/sam/condition-builder';
+import { ConfirmDialog } from '@/components/sam/confirm-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,7 +17,7 @@ import {
     deleteJson,
     postJson,
     putJson,
-    readErrorMessage,
+    readErrorPayload,
 } from '@/lib/sam-fetch';
 
 // ---- Types ----
@@ -109,10 +111,16 @@ function useTeamBase(): string | null {
     return slug ? `/${slug}/rules` : null;
 }
 
+interface SubmitResult {
+    ok: boolean;
+    /** Primer mensaje por campo del `errors` de Laravel (D-04). */
+    fieldErrors: Record<string, string>;
+}
+
 async function submit(
     promise: Promise<Response>,
     successMessage: string,
-): Promise<boolean> {
+): Promise<SubmitResult> {
     try {
         const response = await promise;
 
@@ -120,32 +128,29 @@ async function submit(
             toast.success(successMessage);
             router.reload();
 
-            return true;
+            return { ok: true, fieldErrors: {} };
         }
 
         if (response.status === 403) {
             toast.error('No tienes permisos para esta acción.');
-        } else {
-            toast.error(
-                (await readErrorMessage(response)) ??
-                    'No se pudo guardar la regla.',
-            );
+
+            return { ok: false, fieldErrors: {} };
         }
+
+        const { message, fieldErrors } = await readErrorPayload(response);
+
+        toast.error(
+            Object.values(fieldErrors)[0] ??
+                message ??
+                'No se pudo guardar la regla.',
+        );
+
+        return { ok: false, fieldErrors };
     } catch {
         toast.error('Error de red. Vuelve a intentarlo.');
     }
 
-    return false;
-}
-
-function parseJson(raw: string, label: string): Record<string, unknown> | null {
-    try {
-        return JSON.parse(raw) as Record<string, unknown>;
-    } catch {
-        toast.error(`JSON inválido en ${label}.`);
-
-        return null;
-    }
+    return { ok: false, fieldErrors: {} };
 }
 
 function ActiveBadge({ active }: { active: boolean }) {
@@ -164,47 +169,194 @@ function ActiveBadge({ active }: { active: boolean }) {
 function RuleConditionsEditor({
     rule,
     fields,
+    outcomes,
     canEdit,
 }: {
     rule: DecisionRuleRow;
     fields: ConditionFieldDef[];
+    outcomes: RulesPageProps['outcomes'];
     canEdit: boolean;
 }) {
     const base = useTeamBase();
     const [conditions, setConditions] = useState<Record<string, unknown>>(
         rule.conditions ?? {},
     );
+    // D-10: nombre/descripción/prioridad/outcome ahora son editables; `code`
+    // sigue siendo inmutable (identidad de la regla) y se avisa en la UI.
+    const [meta, setMeta] = useState({
+        name: rule.name,
+        description: rule.description ?? '',
+        priority: String(rule.priority),
+        outcomeId: rule.outcomeId === null ? '' : String(rule.outcomeId),
+    });
     const [saving, setSaving] = useState(false);
+    const [jsonError, setJsonError] = useState<string | null>(null);
+    const [errors, setErrors] = useState<Record<string, string>>({});
 
+    const metaDirty =
+        meta.name !== rule.name ||
+        meta.description !== (rule.description ?? '') ||
+        meta.priority !== String(rule.priority) ||
+        meta.outcomeId !==
+            (rule.outcomeId === null ? '' : String(rule.outcomeId));
     const dirty =
+        metaDirty ||
         JSON.stringify(conditions) !== JSON.stringify(rule.conditions ?? {});
 
     const save = async () => {
-        if (base === null) {
+        if (base === null || saving) {
             return;
         }
 
+        // D-05: con JSON inválido en modo avanzado no se guarda nada (antes
+        // se mandaban silenciosamente las condiciones previas del builder).
+        if (jsonError !== null) {
+            setErrors({
+                conditions_json: 'JSON inválido: corrígelo antes de guardar.',
+            });
+
+            return;
+        }
+
+        if (meta.name.trim() === '') {
+            setErrors({ name: 'El nombre es obligatorio.' });
+
+            return;
+        }
+
+        setErrors({});
         setSaving(true);
 
-        await submit(
+        const result = await submit(
             putJson(`${base}/decision/${rule.id}`, {
+                name: meta.name,
+                description: meta.description === '' ? null : meta.description,
+                priority: Number(meta.priority) || 0,
+                outcome_override:
+                    meta.outcomeId === '' ? null : Number(meta.outcomeId),
                 conditions_json: conditions,
             }),
-            'Condiciones guardadas.',
+            'Regla guardada.',
         );
+
+        if (!result.ok) {
+            setErrors(result.fieldErrors);
+        }
 
         setSaving(false);
     };
 
     return (
         <div className="flex flex-col gap-3">
+            {canEdit ? (
+                <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-col gap-1">
+                        <Label className="text-2xs text-fg-3 uppercase">
+                            Código (no editable)
+                        </Label>
+                        <Input
+                            value={rule.code}
+                            disabled
+                            title="El código identifica la regla y no se puede cambiar."
+                            className="w-48 font-mono text-xs"
+                        />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <Label className="text-2xs text-fg-3 uppercase">
+                            Nombre
+                        </Label>
+                        <Input
+                            value={meta.name}
+                            aria-invalid={Boolean(errors.name)}
+                            onChange={(e) =>
+                                setMeta({ ...meta, name: e.target.value })
+                            }
+                            className="w-64 text-xs"
+                        />
+                        <InputError
+                            message={errors.name}
+                            className="max-w-64 text-xs"
+                        />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <Label className="text-2xs text-fg-3 uppercase">
+                            Prioridad
+                        </Label>
+                        <Input
+                            type="number"
+                            value={meta.priority}
+                            aria-invalid={Boolean(errors.priority)}
+                            onChange={(e) =>
+                                setMeta({ ...meta, priority: e.target.value })
+                            }
+                            className="w-24 text-xs"
+                        />
+                        <InputError
+                            message={errors.priority}
+                            className="text-xs"
+                        />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <Label className="text-2xs text-fg-3 uppercase">
+                            Outcome
+                        </Label>
+                        <select
+                            value={meta.outcomeId}
+                            onChange={(e) =>
+                                setMeta({ ...meta, outcomeId: e.target.value })
+                            }
+                            className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-xs"
+                        >
+                            <option value="">Outcome: ninguno</option>
+                            {outcomes.map((outcome) => (
+                                <option
+                                    key={outcome.id}
+                                    value={String(outcome.id)}
+                                >
+                                    {outcome.code}
+                                </option>
+                            ))}
+                        </select>
+                        <InputError
+                            message={errors.outcome_override}
+                            className="text-xs"
+                        />
+                    </div>
+                    <div className="flex w-full flex-col gap-1">
+                        <Label className="text-2xs text-fg-3 uppercase">
+                            Descripción
+                        </Label>
+                        <Input
+                            value={meta.description}
+                            onChange={(e) =>
+                                setMeta({
+                                    ...meta,
+                                    description: e.target.value,
+                                })
+                            }
+                            className="max-w-xl text-xs"
+                        />
+                    </div>
+                </div>
+            ) : (
+                <p className="text-2xs text-fg-3">
+                    Regla global: solo lectura para tu tenant. Usa un override
+                    del tenant para ajustar su comportamiento.
+                </p>
+            )}
+            <Label className="text-2xs text-fg-3 uppercase">Condiciones</Label>
             <ConditionBuilder
                 variant="tree"
                 fields={fields}
                 value={conditions}
-                onChange={setConditions}
+                onChange={(next) => {
+                    setConditions(next);
+                    setErrors({});
+                }}
+                onJsonErrorChange={setJsonError}
                 disabled={!canEdit}
             />
+            <InputError message={errors.conditions_json} className="text-xs" />
             {base !== null && (
                 <RuleTestPanel
                     endpoint={`${base}/test-decision`}
@@ -218,7 +370,7 @@ function RuleConditionsEditor({
                         onClick={save}
                         disabled={!dirty || saving}
                     >
-                        {saving ? 'Guardando…' : 'Guardar condiciones'}
+                        {saving ? 'Guardando…' : 'Guardar regla'}
                     </Button>
                 </div>
             )}
@@ -246,6 +398,9 @@ function DecisionRulesTab({
     const base = useTeamBase();
     const [expanded, setExpanded] = useState<number | null>(null);
     const [creating, setCreating] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
+    const [errors, setErrors] = useState<Record<string, string>>({});
+    const [jsonError, setJsonError] = useState<string | null>(null);
     const [form, setForm] = useState({
         code: '',
         name: '',
@@ -278,7 +433,20 @@ function DecisionRulesTab({
     };
 
     const create = async () => {
-        if (base === null) {
+        // D-01: guard contra doble click — no se emite un segundo POST
+        // mientras el primero sigue en vuelo.
+        if (base === null || submitting) {
+            return;
+        }
+
+        // D-05: el JSON inválido del modo avanzado bloquea el submit en vez
+        // de mandar silenciosamente las condiciones previas del builder.
+        if (jsonError !== null) {
+            setErrors({
+                conditions_json:
+                    'JSON inválido: corrígelo antes de crear la regla.',
+            });
+
             return;
         }
 
@@ -292,7 +460,10 @@ function DecisionRulesTab({
             return;
         }
 
-        const ok = await submit(
+        setErrors({});
+        setSubmitting(true);
+
+        const result = await submit(
             postJson(`${base}/decision`, {
                 ruleset_id: ruleset.id,
                 code: form.code,
@@ -308,10 +479,28 @@ function DecisionRulesTab({
             'Regla creada.',
         );
 
-        if (ok) {
+        setSubmitting(false);
+
+        if (result.ok) {
             setCreating(false);
+        } else {
+            setErrors(result.fieldErrors);
         }
     };
+
+    // Errores que no corresponden a ningún campo visible del form (p. ej.
+    // ruleset_id) — se muestran como bloque persistente, no solo toast.
+    const knownFields = [
+        'code',
+        'name',
+        'scope',
+        'priority',
+        'outcome_override',
+        'conditions_json',
+    ];
+    const otherErrors = Object.entries(errors).filter(
+        ([field]) => !knownFields.includes(field),
+    );
 
     return (
         <div className="flex flex-col gap-4">
@@ -334,76 +523,111 @@ function DecisionRulesTab({
                     {creating && (
                         <div className="mb-4 flex flex-col gap-2 rounded-md border border-border p-3">
                             <div className="flex flex-wrap gap-2">
-                                <Input
-                                    placeholder="code (ej. panic-vip)"
-                                    value={form.code}
-                                    onChange={(e) =>
-                                        setForm({
-                                            ...form,
-                                            code: e.target.value,
-                                        })
-                                    }
-                                    className="w-48 font-mono text-xs"
-                                />
-                                <Input
-                                    placeholder="Nombre"
-                                    value={form.name}
-                                    onChange={(e) =>
-                                        setForm({
-                                            ...form,
-                                            name: e.target.value,
-                                        })
-                                    }
-                                    className="w-64 text-xs"
-                                />
-                                <select
-                                    value={form.scope}
-                                    onChange={(e) =>
-                                        setForm({
-                                            ...form,
-                                            scope: e.target.value,
-                                        })
-                                    }
-                                    className="rounded-md border border-border bg-surface-1 px-2 text-xs"
-                                >
-                                    {scopes.map((scope) => (
-                                        <option key={scope} value={scope}>
-                                            {scope}
+                                <div className="flex flex-col gap-1">
+                                    <Input
+                                        placeholder="code (ej. panic-vip)"
+                                        value={form.code}
+                                        aria-invalid={Boolean(errors.code)}
+                                        onChange={(e) =>
+                                            setForm({
+                                                ...form,
+                                                code: e.target.value,
+                                            })
+                                        }
+                                        className="w-48 font-mono text-xs"
+                                    />
+                                    <InputError
+                                        message={errors.code}
+                                        className="max-w-48 text-xs"
+                                    />
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                    <Input
+                                        placeholder="Nombre"
+                                        value={form.name}
+                                        aria-invalid={Boolean(errors.name)}
+                                        onChange={(e) =>
+                                            setForm({
+                                                ...form,
+                                                name: e.target.value,
+                                            })
+                                        }
+                                        className="w-64 text-xs"
+                                    />
+                                    <InputError
+                                        message={errors.name}
+                                        className="max-w-64 text-xs"
+                                    />
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                    <select
+                                        value={form.scope}
+                                        onChange={(e) =>
+                                            setForm({
+                                                ...form,
+                                                scope: e.target.value,
+                                            })
+                                        }
+                                        className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-xs"
+                                    >
+                                        {scopes.map((scope) => (
+                                            <option key={scope} value={scope}>
+                                                {scope}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <InputError
+                                        message={errors.scope}
+                                        className="text-xs"
+                                    />
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                    <Input
+                                        type="number"
+                                        placeholder="prioridad"
+                                        value={form.priority}
+                                        aria-invalid={Boolean(errors.priority)}
+                                        onChange={(e) =>
+                                            setForm({
+                                                ...form,
+                                                priority: e.target.value,
+                                            })
+                                        }
+                                        className="w-24 text-xs"
+                                    />
+                                    <InputError
+                                        message={errors.priority}
+                                        className="text-xs"
+                                    />
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                    <select
+                                        value={form.outcomeId}
+                                        onChange={(e) =>
+                                            setForm({
+                                                ...form,
+                                                outcomeId: e.target.value,
+                                            })
+                                        }
+                                        className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-xs"
+                                    >
+                                        <option value="">
+                                            Outcome: ninguno
                                         </option>
-                                    ))}
-                                </select>
-                                <Input
-                                    type="number"
-                                    placeholder="prioridad"
-                                    value={form.priority}
-                                    onChange={(e) =>
-                                        setForm({
-                                            ...form,
-                                            priority: e.target.value,
-                                        })
-                                    }
-                                    className="w-24 text-xs"
-                                />
-                                <select
-                                    value={form.outcomeId}
-                                    onChange={(e) =>
-                                        setForm({
-                                            ...form,
-                                            outcomeId: e.target.value,
-                                        })
-                                    }
-                                    className="rounded-md border border-border bg-surface-1 px-2 text-xs"
-                                >
-                                    <option value="">Outcome: ninguno</option>
-                                    {outcomes.map((outcome) => (
-                                        <option
-                                            key={outcome.id}
-                                            value={String(outcome.id)}
-                                        >
-                                            {outcome.code}
-                                        </option>
-                                    ))}
-                                </select>
+                                        {outcomes.map((outcome) => (
+                                            <option
+                                                key={outcome.id}
+                                                value={String(outcome.id)}
+                                            >
+                                                {outcome.code}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <InputError
+                                        message={errors.outcome_override}
+                                        className="text-xs"
+                                    />
+                                </div>
                                 <label className="flex items-center gap-1 text-xs text-fg-2">
                                     <input
                                         type="checkbox"
@@ -425,6 +649,11 @@ function DecisionRulesTab({
                                 fields={conditionFields}
                                 value={conditions}
                                 onChange={setConditions}
+                                onJsonErrorChange={setJsonError}
+                            />
+                            <InputError
+                                message={errors.conditions_json}
+                                className="text-xs"
                             />
                             {base !== null && (
                                 <RuleTestPanel
@@ -434,9 +663,25 @@ function DecisionRulesTab({
                                     })}
                                 />
                             )}
+                            {otherErrors.length > 0 && (
+                                <ul className="flex flex-col gap-0.5">
+                                    {otherErrors.map(([field, message]) => (
+                                        <li key={field}>
+                                            <InputError
+                                                message={message}
+                                                className="text-xs"
+                                            />
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
                             <div>
-                                <Button size="sm" onClick={create}>
-                                    Crear regla
+                                <Button
+                                    size="sm"
+                                    onClick={create}
+                                    disabled={submitting}
+                                >
+                                    {submitting ? 'Creando…' : 'Crear regla'}
                                 </Button>
                             </div>
                         </div>
@@ -532,6 +777,7 @@ function DecisionRulesTab({
                                                     <RuleConditionsEditor
                                                         rule={rule}
                                                         fields={conditionFields}
+                                                        outcomes={outcomes}
                                                         canEdit={
                                                             canManage &&
                                                             !rule.isGlobal
@@ -564,6 +810,8 @@ function MappingRulesTab({
 }) {
     const base = useTeamBase();
     const [creating, setCreating] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
+    const [errors, setErrors] = useState<Record<string, string>>({});
     const [form, setForm] = useState({
         providerId: '',
         externalEventType: '',
@@ -587,7 +835,8 @@ function MappingRulesTab({
     };
 
     const create = async () => {
-        if (base === null) {
+        // D-01: guard contra doble click.
+        if (base === null || submitting) {
             return;
         }
 
@@ -601,7 +850,10 @@ function MappingRulesTab({
             return;
         }
 
-        const ok = await submit(
+        setErrors({});
+        setSubmitting(true);
+
+        const result = await submit(
             postJson(`${base}/mapping`, {
                 provider_id: Number(form.providerId),
                 external_event_type: form.externalEventType,
@@ -616,8 +868,12 @@ function MappingRulesTab({
             'Regla de mapeo creada.',
         );
 
-        if (ok) {
+        setSubmitting(false);
+
+        if (result.ok) {
             setCreating(false);
+        } else {
+            setErrors(result.fieldErrors);
         }
     };
 
@@ -728,8 +984,26 @@ function MappingRulesTab({
                                     />
                                 )}
                         </div>
-                        <Button size="sm" onClick={create}>
-                            Crear
+                        {Object.keys(errors).length > 0 && (
+                            <ul className="flex w-full flex-col gap-0.5">
+                                {Object.entries(errors).map(
+                                    ([field, message]) => (
+                                        <li key={field}>
+                                            <InputError
+                                                message={message}
+                                                className="text-xs"
+                                            />
+                                        </li>
+                                    ),
+                                )}
+                            </ul>
+                        )}
+                        <Button
+                            size="sm"
+                            onClick={create}
+                            disabled={submitting}
+                        >
+                            {submitting ? 'Creando…' : 'Crear'}
                         </Button>
                     </div>
                 )}
@@ -821,6 +1095,9 @@ function OverridesTab({
 }) {
     const base = useTeamBase();
     const [creating, setCreating] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
+    const [errors, setErrors] = useState<Record<string, string>>({});
+    const [deleting, setDeleting] = useState<OverrideRow | null>(null);
     const [form, setForm] = useState({
         baseRuleCode: '',
         overrideType: 'force_human_review',
@@ -829,21 +1106,47 @@ function OverridesTab({
     });
 
     const create = async () => {
-        if (base === null) {
+        // D-01: guard contra doble click.
+        if (base === null || submitting) {
             return;
         }
 
-        const config = parseJson(form.config, 'configuración del override');
+        const nextErrors: Record<string, string> = {};
+        let config: Record<string, unknown> | null = null;
 
-        if (config === null || form.baseRuleCode === '') {
-            if (form.baseRuleCode === '') {
-                toast.error('Indica el código de la regla base.');
+        // D-05: JSON inválido bloquea el submit con error inline.
+        try {
+            const parsed = JSON.parse(form.config) as unknown;
+
+            if (
+                parsed === null ||
+                typeof parsed !== 'object' ||
+                Array.isArray(parsed)
+            ) {
+                nextErrors.override_config =
+                    'La configuración debe ser un objeto JSON.';
+            } else {
+                config = parsed as Record<string, unknown>;
             }
+        } catch {
+            nextErrors.override_config =
+                'JSON inválido: revisa la sintaxis de la configuración.';
+        }
+
+        if (form.baseRuleCode === '') {
+            nextErrors.base_rule_code = 'Indica el código de la regla base.';
+        }
+
+        if (config === null || Object.keys(nextErrors).length > 0) {
+            setErrors(nextErrors);
 
             return;
         }
 
-        const ok = await submit(
+        setErrors({});
+        setSubmitting(true);
+
+        const result = await submit(
             postJson(`${base}/overrides`, {
                 base_rule_code: form.baseRuleCode,
                 override_type: form.overrideType,
@@ -854,20 +1157,30 @@ function OverridesTab({
             'Override creado.',
         );
 
-        if (ok) {
+        setSubmitting(false);
+
+        if (result.ok) {
             setCreating(false);
+        } else {
+            setErrors(result.fieldErrors);
         }
     };
 
-    const remove = (override: OverrideRow) => {
+    // D-11: eliminar un override ahora exige confirmación (mismo patrón que
+    // roles), igual que el resto de acciones destructivas.
+    const remove = async (override: OverrideRow) => {
         if (base === null) {
             return;
         }
 
-        void submit(
+        const result = await submit(
             deleteJson(`${base}/overrides/${override.id}`),
             'Override eliminado.',
         );
+
+        if (result.ok) {
+            setDeleting(null);
+        }
     };
 
     return (
@@ -890,54 +1203,77 @@ function OverridesTab({
                 {creating && (
                     <div className="mb-4 flex flex-col gap-2 rounded-md border border-border p-3">
                         <div className="flex flex-wrap gap-2">
-                            <Input
-                                placeholder="código de regla base"
-                                list="rule-codes"
-                                value={form.baseRuleCode}
-                                onChange={(e) =>
-                                    setForm({
-                                        ...form,
-                                        baseRuleCode: e.target.value,
-                                    })
-                                }
-                                className="w-64 font-mono text-xs"
-                            />
+                            <div className="flex flex-col gap-1">
+                                <Input
+                                    placeholder="código de regla base"
+                                    list="rule-codes"
+                                    value={form.baseRuleCode}
+                                    aria-invalid={Boolean(
+                                        errors.base_rule_code,
+                                    )}
+                                    onChange={(e) =>
+                                        setForm({
+                                            ...form,
+                                            baseRuleCode: e.target.value,
+                                        })
+                                    }
+                                    className="w-64 font-mono text-xs"
+                                />
+                                <InputError
+                                    message={errors.base_rule_code}
+                                    className="max-w-64 text-xs"
+                                />
+                            </div>
                             <datalist id="rule-codes">
                                 {decisionRuleCodes.map((code) => (
                                     <option key={code} value={code} />
                                 ))}
                             </datalist>
-                            <select
-                                value={form.overrideType}
-                                onChange={(e) =>
-                                    setForm({
-                                        ...form,
-                                        overrideType: e.target.value,
-                                    })
-                                }
-                                className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-xs"
-                            >
-                                {overrideTypes.map((type) => (
-                                    <option key={type} value={type}>
-                                        {type}
-                                    </option>
-                                ))}
-                            </select>
-                            <Input
-                                placeholder="motivo (opcional)"
-                                value={form.reason}
-                                onChange={(e) =>
-                                    setForm({
-                                        ...form,
-                                        reason: e.target.value,
-                                    })
-                                }
-                                className="w-72 text-xs"
-                            />
+                            <div className="flex flex-col gap-1">
+                                <select
+                                    value={form.overrideType}
+                                    onChange={(e) =>
+                                        setForm({
+                                            ...form,
+                                            overrideType: e.target.value,
+                                        })
+                                    }
+                                    className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-xs"
+                                >
+                                    {overrideTypes.map((type) => (
+                                        <option key={type} value={type}>
+                                            {type}
+                                        </option>
+                                    ))}
+                                </select>
+                                <InputError
+                                    message={errors.override_type}
+                                    className="text-xs"
+                                />
+                            </div>
+                            <div className="flex flex-col gap-1">
+                                <Input
+                                    placeholder="motivo (opcional)"
+                                    value={form.reason}
+                                    aria-invalid={Boolean(errors.reason)}
+                                    onChange={(e) =>
+                                        setForm({
+                                            ...form,
+                                            reason: e.target.value,
+                                        })
+                                    }
+                                    className="w-72 text-xs"
+                                />
+                                <InputError
+                                    message={errors.reason}
+                                    className="max-w-72 text-xs"
+                                />
+                            </div>
                         </div>
                         <Label className="text-xs">Configuración (JSON)</Label>
                         <textarea
                             value={form.config}
+                            aria-invalid={Boolean(errors.override_config)}
                             onChange={(e) =>
                                 setForm({ ...form, config: e.target.value })
                             }
@@ -945,9 +1281,17 @@ function OverridesTab({
                             spellCheck={false}
                             className="rounded-md border border-border bg-surface-2 p-2 font-mono text-2xs text-fg-2"
                         />
+                        <InputError
+                            message={errors.override_config}
+                            className="text-xs"
+                        />
                         <div>
-                            <Button size="sm" onClick={create}>
-                                Crear override
+                            <Button
+                                size="sm"
+                                onClick={create}
+                                disabled={submitting}
+                            >
+                                {submitting ? 'Creando…' : 'Crear override'}
                             </Button>
                         </div>
                     </div>
@@ -997,7 +1341,9 @@ function OverridesTab({
                                             <Button
                                                 size="sm"
                                                 variant="ghost"
-                                                onClick={() => remove(override)}
+                                                onClick={() =>
+                                                    setDeleting(override)
+                                                }
                                             >
                                                 Eliminar
                                             </Button>
@@ -1008,6 +1354,22 @@ function OverridesTab({
                         </tbody>
                     </table>
                 )}
+
+                <ConfirmDialog
+                    open={deleting !== null}
+                    title="Eliminar override"
+                    description={
+                        deleting
+                            ? `¿Seguro que deseas eliminar el override de la regla "${deleting.baseRuleCode}"? La regla base volverá a aplicarse tal cual.`
+                            : ''
+                    }
+                    onConfirm={() => {
+                        if (deleting) {
+                            return remove(deleting);
+                        }
+                    }}
+                    onOpenChange={(open) => !open && setDeleting(null)}
+                />
             </CardContent>
         </Card>
     );

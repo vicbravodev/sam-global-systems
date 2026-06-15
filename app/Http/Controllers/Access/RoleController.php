@@ -62,7 +62,7 @@ class RoleController extends Controller
 
         $syncRolePermissions->execute($role, $request->validated('permissions'));
 
-        return back();
+        return back(303);
     }
 
     public function update(UpdateRoleRequest $request, Team $current_team, Role $role, SyncRolePermissions $syncRolePermissions): RedirectResponse
@@ -75,7 +75,7 @@ class RoleController extends Controller
 
         $syncRolePermissions->execute($role, $request->validated('permissions'));
 
-        return back();
+        return back(303);
     }
 
     public function destroy(Team $current_team, Role $role): RedirectResponse
@@ -86,7 +86,7 @@ class RoleController extends Controller
 
         $role->delete();
 
-        return back();
+        return back(303);
     }
 
     /**

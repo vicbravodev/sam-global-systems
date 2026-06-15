@@ -242,8 +242,130 @@ class RulesPageTest extends TestCase
             ->count());
     }
 
+    public function test_duplicate_decision_rule_code_is_rejected(): void
+    {
+        $ruleset = RuleSet::factory()->create([
+            'team_id' => $this->team->id,
+            'is_default' => true,
+        ]);
+
+        $payload = [
+            'ruleset_id' => $ruleset->id,
+            'code' => 'duplicated-code',
+            'name' => 'Primera regla',
+            'scope' => 'tenant',
+            'conditions_json' => [
+                'all' => [
+                    ['field' => 'risk_score', 'operator' => 'gte', 'value' => 0.5],
+                ],
+            ],
+        ];
+
+        $this->actingAs($this->user)->postJson(
+            route('rules.decision.store', ['current_team' => $this->team->slug]),
+            $payload,
+        )->assertCreated();
+
+        // D-01: el segundo POST con el mismo code (doble click) debe fallar
+        // con 422, no crear una segunda regla.
+        $duplicate = $this->actingAs($this->user)->postJson(
+            route('rules.decision.store', ['current_team' => $this->team->slug]),
+            [...$payload, 'name' => 'Segunda regla'],
+        );
+
+        $duplicate->assertUnprocessable();
+        $duplicate->assertJsonValidationErrors(['code']);
+
+        $this->assertSame(1, DecisionRule::withoutGlobalScopes()
+            ->where('team_id', $this->team->id)
+            ->where('code', 'duplicated-code')
+            ->count());
+    }
+
+    public function test_duplicate_decision_rule_code_is_allowed_for_another_tenant(): void
+    {
+        $otherTeam = User::factory()->create()->currentTeam;
+        $foreignRuleset = RuleSet::factory()->create(['team_id' => $otherTeam->id]);
+
+        DecisionRule::factory()->create([
+            'team_id' => $otherTeam->id,
+            'ruleset_id' => $foreignRuleset->id,
+            'code' => 'shared-code',
+        ]);
+
+        $ruleset = RuleSet::factory()->create([
+            'team_id' => $this->team->id,
+            'is_default' => true,
+        ]);
+
+        $this->actingAs($this->user)->postJson(
+            route('rules.decision.store', ['current_team' => $this->team->slug]),
+            [
+                'ruleset_id' => $ruleset->id,
+                'code' => 'shared-code',
+                'name' => 'Mismo código, otro tenant',
+                'scope' => 'tenant',
+                'conditions_json' => [
+                    'all' => [
+                        ['field' => 'risk_score', 'operator' => 'gte', 'value' => 0.5],
+                    ],
+                ],
+            ],
+        )->assertCreated();
+    }
+
+    public function test_override_with_unknown_rule_code_is_rejected(): void
+    {
+        // D-06: un override que apunta a una regla inexistente no debe crear
+        // una fila que no aplica a nada.
+        $response = $this->actingAs($this->user)->postJson(
+            route('rules.overrides.store', ['current_team' => $this->team->slug]),
+            [
+                'base_rule_code' => 'AUDIT-no-existe',
+                'override_type' => 'force_human_review',
+                'override_config' => ['note' => 'should fail'],
+            ],
+        );
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors(['base_rule_code']);
+
+        $this->assertSame(0, TenantRuleOverride::withoutGlobalScopes()
+            ->where('team_id', $this->team->id)
+            ->count());
+    }
+
+    public function test_override_cannot_reference_another_tenants_rule_code(): void
+    {
+        $otherTeam = User::factory()->create()->currentTeam;
+        $foreignRuleset = RuleSet::factory()->create(['team_id' => $otherTeam->id]);
+
+        DecisionRule::factory()->create([
+            'team_id' => $otherTeam->id,
+            'ruleset_id' => $foreignRuleset->id,
+            'code' => 'foreign-only-rule',
+        ]);
+
+        $this->actingAs($this->user)->postJson(
+            route('rules.overrides.store', ['current_team' => $this->team->slug]),
+            [
+                'base_rule_code' => 'foreign-only-rule',
+                'override_type' => 'force_human_review',
+                'override_config' => ['note' => 'cross tenant'],
+            ],
+        )->assertUnprocessable();
+    }
+
     public function test_override_can_be_created_and_deleted_via_web_routes(): void
     {
+        // El override puede apuntar a una regla global (team_id null).
+        $ruleset = RuleSet::factory()->global()->create();
+        DecisionRule::factory()->create([
+            'team_id' => null,
+            'ruleset_id' => $ruleset->id,
+            'code' => 'panic-button-always-incident',
+        ]);
+
         $store = $this->actingAs($this->user)->postJson(
             route('rules.overrides.store', ['current_team' => $this->team->slug]),
             [
@@ -272,5 +394,65 @@ class RulesPageTest extends TestCase
         $this->assertSame(0, TenantRuleOverride::withoutGlobalScopes()
             ->where('team_id', $this->team->id)
             ->count());
+    }
+
+    public function test_decision_rule_metadata_is_editable_via_web_route(): void
+    {
+        // D-10: nombre, prioridad y outcome dejan de ser inmutables.
+        $ruleset = RuleSet::factory()->create(['team_id' => $this->team->id]);
+        $rule = DecisionRule::factory()->create([
+            'team_id' => $this->team->id,
+            'ruleset_id' => $ruleset->id,
+            'code' => 'panic-vip',
+            'name' => 'Nombre viejo',
+            'priority' => 50,
+        ]);
+        $outcome = DecisionOutcome::query()->firstOrFail();
+
+        $response = $this->actingAs($this->user)->putJson(
+            route('rules.decision.update', [
+                'current_team' => $this->team->slug,
+                'rule' => $rule->id,
+            ]),
+            [
+                'name' => 'Nombre nuevo',
+                'priority' => 200,
+                'outcome_override' => $outcome->id,
+            ],
+        );
+
+        $response->assertOk();
+        $fresh = $rule->fresh();
+        $this->assertSame('Nombre nuevo', $fresh->name);
+        $this->assertSame(200, (int) $fresh->priority);
+        $this->assertSame($outcome->id, (int) $fresh->outcome_override);
+    }
+
+    public function test_decision_rule_code_is_immutable_via_web_route(): void
+    {
+        // D-10: el `code` identifica la regla; aunque se mande, se ignora (la
+        // regla de validación no lo acepta), no se cambia la identidad.
+        $ruleset = RuleSet::factory()->create(['team_id' => $this->team->id]);
+        $rule = DecisionRule::factory()->create([
+            'team_id' => $this->team->id,
+            'ruleset_id' => $ruleset->id,
+            'code' => 'codigo-original',
+            'name' => 'Regla',
+        ]);
+
+        $this->actingAs($this->user)->putJson(
+            route('rules.decision.update', [
+                'current_team' => $this->team->slug,
+                'rule' => $rule->id,
+            ]),
+            [
+                'code' => 'codigo-hackeado',
+                'name' => 'Regla renombrada',
+            ],
+        )->assertOk();
+
+        $fresh = $rule->fresh();
+        $this->assertSame('codigo-original', $fresh->code);
+        $this->assertSame('Regla renombrada', $fresh->name);
     }
 }

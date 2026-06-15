@@ -1,18 +1,14 @@
 import type * as React from 'react';
 import { CellEmpty, DataTable } from '@/components/sam/data-table';
 import type { DataTableColumn } from '@/components/sam/data-table';
-import { RelativeTime } from '@/components/sam/relative-time';
 import {
     Tooltip,
     TooltipContent,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
 import type { AssetRow } from '@/types/assets';
+import { AssetSignal } from './asset-signal';
 import { AssetStatusBadge } from './asset-status-badge';
-
-function minutesSince(iso: string): number {
-    return Math.max(0, Math.floor((Date.now() - Date.parse(iso)) / 60000));
-}
 
 function DevicesCell({ devices }: { devices: AssetRow['devices'] }) {
     if (devices.length === 0) {
@@ -109,17 +105,17 @@ const COLUMNS: DataTableColumn<AssetRow>[] = [
         cell: (asset) => <LocationCell location={asset.lastLocation} />,
     },
     {
-        key: 'lastSeen',
-        header: 'Visto',
-        width: 'w-28',
+        key: 'signal',
+        header: 'Señal',
+        width: 'w-44',
         sortValue: (asset) =>
-            asset.lastSeenAt ? Date.parse(asset.lastSeenAt) : null,
-        cell: (asset) =>
-            asset.lastSeenAt ? (
-                <RelativeTime minutes={minutesSince(asset.lastSeenAt)} />
-            ) : (
-                <CellEmpty />
-            ),
+            asset.lastSignalAt ? Date.parse(asset.lastSignalAt) : null,
+        cell: (asset) => (
+            <AssetSignal
+                lastSignalAt={asset.lastSignalAt}
+                hasDevice={asset.devices.length > 0}
+            />
+        ),
     },
 ];
 

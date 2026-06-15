@@ -16,8 +16,10 @@ export default function AppLogoIcon(props: SVGAttributes<SVGElement>) {
                 rx="8"
                 fill="currentColor"
             />
+            {/* Glifo en knockout: usa el color de fondo de la página para
+                contrastar con el rect (currentColor) en ambos temas. */}
             <g
-                stroke="var(--sam-mark-fg, #0B0B0C)"
+                stroke="var(--sam-mark-fg, var(--background, #0B0B0C))"
                 strokeWidth="2.2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -28,7 +30,7 @@ export default function AppLogoIcon(props: SVGAttributes<SVGElement>) {
                     cx="20"
                     cy="20"
                     r="1.3"
-                    fill="var(--sam-mark-fg, #0B0B0C)"
+                    fill="var(--sam-mark-fg, var(--background, #0B0B0C))"
                     stroke="none"
                 />
             </g>

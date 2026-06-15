@@ -20,6 +20,8 @@ export interface NotificationRow {
     sentAt: string | null;
     createdAt: string | null;
     isRead: boolean;
+    /** Explicación humana de por qué no salió (solo estados cancelados). */
+    statusReason: string | null;
 }
 
 export interface NotificationFilters {

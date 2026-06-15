@@ -172,24 +172,44 @@ class DashboardController extends Controller
     {
         $now = Carbon::now();
 
-        $incidents = Incident::query()
+        $relations = [
+            'status',
+            'priority',
+            'type',
+            'asset',
+            'driver',
+            'relatedEvent.provider',
+            'relatedEvent.eventType',
+            'relatedEvent.eventSeverity',
+            'aiEvaluation',
+            'currentAssignment',
+        ];
+
+        // Critical incidents always make the panel: fill the top-5 with
+        // criticals first, then the most recent of the rest.
+        $critical = Incident::query()
             ->where('team_id', $team->id)
             ->open()
-            ->with([
-                'status',
-                'priority',
-                'type',
-                'asset',
-                'driver',
-                'relatedEvent.provider',
-                'relatedEvent.eventType',
-                'relatedEvent.eventSeverity',
-                'aiEvaluation',
-                'currentAssignment',
-            ])
+            ->whereHas('priority', fn ($query) => $query->where('code', 'critical'))
+            ->with($relations)
             ->orderByDesc('opened_at')
             ->limit(5)
             ->get();
+
+        $incidents = $critical;
+
+        if ($critical->count() < 5) {
+            $rest = Incident::query()
+                ->where('team_id', $team->id)
+                ->open()
+                ->whereNotIn('id', $critical->pluck('id'))
+                ->with($relations)
+                ->orderByDesc('opened_at')
+                ->limit(5 - $critical->count())
+                ->get();
+
+            $incidents = $critical->concat($rest);
+        }
 
         $users = $this->assigneeUsers($incidents);
 

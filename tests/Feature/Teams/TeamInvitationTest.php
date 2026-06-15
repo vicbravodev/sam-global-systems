@@ -39,6 +39,49 @@ class TeamInvitationTest extends TestCase
         ]);
     }
 
+    public function test_team_invitations_reject_email_without_tld(): void
+    {
+        Notification::fake();
+
+        $owner = User::factory()->create();
+        $team = Team::factory()->create();
+        $team->members()->attach($owner, ['role' => TeamRole::Owner->value]);
+
+        $this->actingAs($owner)
+            ->from(route('teams.edit', $team))
+            ->post(route('teams.invitations.store', $team), [
+                'email' => 'foo@bar',
+                'role' => TeamRole::Member->value,
+            ])
+            ->assertSessionHasErrors('email');
+
+        $this->assertDatabaseMissing('team_invitations', [
+            'team_id' => $team->id,
+            'email' => 'foo@bar',
+        ]);
+    }
+
+    public function test_team_invitations_accept_email_with_tld(): void
+    {
+        Notification::fake();
+
+        $owner = User::factory()->create();
+        $team = Team::factory()->create();
+        $team->members()->attach($owner, ['role' => TeamRole::Owner->value]);
+
+        $this->actingAs($owner)
+            ->post(route('teams.invitations.store', $team), [
+                'email' => 'foo@bar.com',
+                'role' => TeamRole::Member->value,
+            ])
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('team_invitations', [
+            'team_id' => $team->id,
+            'email' => 'foo@bar.com',
+        ]);
+    }
+
     public function test_team_invitations_can_be_created_by_admins()
     {
         Notification::fake();

@@ -70,6 +70,68 @@ class AutomationApiTest extends TestCase
         ]);
     }
 
+    public function test_store_rejects_duplicate_workflow_code_for_same_team(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+
+        $this->actingAs($user);
+
+        $payload = [
+            'code' => 'wf_duplicated',
+            'name' => 'Workflow duplicado',
+            'trigger_type' => WorkflowTriggerType::IncidentCreated->value,
+            'status' => WorkflowStatus::Active->value,
+            'steps_json' => [[
+                'order' => 1,
+                'action_type' => ActionType::SendEmail->value,
+                'execution_mode' => 'async',
+            ]],
+        ];
+
+        $this->postJson("/api/{$team->slug}/automation/workflows", $payload)
+            ->assertCreated();
+
+        // D-02: el segundo POST con el mismo code (doble click) debe fallar
+        // con 422, no crear un segundo workflow.
+        $duplicate = $this->postJson("/api/{$team->slug}/automation/workflows", $payload);
+
+        $duplicate->assertUnprocessable();
+        $duplicate->assertJsonValidationErrors(['code']);
+
+        $this->assertSame(1, AutomationWorkflow::withoutGlobalScopes()
+            ->where('team_id', $team->id)
+            ->where('code', 'wf_duplicated')
+            ->count());
+    }
+
+    public function test_store_allows_same_workflow_code_for_another_team(): void
+    {
+        $other = User::factory()->create();
+
+        AutomationWorkflow::factory()->create([
+            'team_id' => $other->currentTeam->id,
+            'code' => 'wf_shared_code',
+        ]);
+
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+
+        $this->actingAs($user);
+
+        $this->postJson("/api/{$team->slug}/automation/workflows", [
+            'code' => 'wf_shared_code',
+            'name' => 'Mismo código, otro tenant',
+            'trigger_type' => WorkflowTriggerType::IncidentCreated->value,
+            'status' => WorkflowStatus::Active->value,
+            'steps_json' => [[
+                'order' => 1,
+                'action_type' => ActionType::SendEmail->value,
+                'execution_mode' => 'async',
+            ]],
+        ])->assertCreated();
+    }
+
     public function test_trigger_endpoint_dispatches_workflow_run(): void
     {
         Bus::fake();

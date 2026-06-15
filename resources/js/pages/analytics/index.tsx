@@ -1,5 +1,6 @@
 import { Head, router, usePage } from '@inertiajs/react';
 import { BarChart3, Download, FileBarChart2 } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -81,13 +82,20 @@ function formatValue(value: number | null, unit: string | null): string {
     return unit ? `${formatted} ${unit}` : formatted;
 }
 
-function OverviewCards({ overview }: { overview: OverviewProp | null }) {
+function OverviewCards({
+    overview,
+    action,
+}: {
+    overview: OverviewProp | null;
+    action?: ReactNode;
+}) {
     if (overview === null || overview.data === null) {
         return (
             <EmptyState
                 icon={BarChart3}
                 title="Todavía no hay resumen del periodo"
                 description="Las métricas se calculan automáticamente cada noche con la actividad de tu operación. En cuanto haya datos, aparecerán aquí."
+                action={action}
             />
         );
     }
@@ -120,9 +128,13 @@ function OverviewCards({ overview }: { overview: OverviewProp | null }) {
 function KpisTab({
     overview,
     kpis,
+    hasReports,
+    onShowReports,
 }: {
     overview: OverviewProp | null;
     kpis: KpiRow[];
+    hasReports: boolean;
+    onShowReports: () => void;
 }) {
     return (
         <div className="flex flex-col gap-4">
@@ -142,7 +154,21 @@ function KpisTab({
                     </CardTitle>
                 </CardHeader>
                 <CardContent>
-                    <OverviewCards overview={overview} />
+                    <OverviewCards
+                        overview={overview}
+                        action={
+                            hasReports ? (
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={onShowReports}
+                                >
+                                    <FileBarChart2 size={13} />
+                                    Ver reportes disponibles
+                                </Button>
+                            ) : undefined
+                        }
+                    />
                 </CardContent>
             </Card>
 
@@ -271,9 +297,11 @@ function ReportsTab({
                 </CardHeader>
                 <CardContent className="flex flex-col gap-2">
                     {reports.length === 0 ? (
-                        <p className="text-xs text-fg-3">
-                            Sin definiciones de reporte activas.
-                        </p>
+                        <EmptyState
+                            icon={FileBarChart2}
+                            title="Todavía no hay reportes configurados"
+                            description="Aquí verás reportes descargables con la actividad de tu operación: incidentes, flota y consumo. El equipo de SAM los configura contigo — escríbenos y los activamos para tu cuenta."
+                        />
                     ) : (
                         reports.map((report) => (
                             <div
@@ -325,7 +353,9 @@ function ReportsTab({
                 <CardContent>
                     {executions.length === 0 ? (
                         <p className="text-xs text-fg-3">
-                            Aún sin ejecuciones.
+                            Aún no has generado ningún reporte. Cuando generes
+                            uno, aparecerá aquí listo para descargar en el
+                            formato que elijas.
                         </p>
                     ) : (
                         <table className="w-full text-left text-xs">
@@ -433,7 +463,12 @@ export default function AnalyticsIndex() {
                 </div>
 
                 {tab === 'kpis' && (
-                    <KpisTab overview={props.overview} kpis={props.kpis} />
+                    <KpisTab
+                        overview={props.overview}
+                        kpis={props.kpis}
+                        hasReports={props.reports.length > 0}
+                        onShowReports={() => setTab('reports')}
+                    />
                 )}
                 {tab === 'reports' && (
                     <ReportsTab

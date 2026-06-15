@@ -228,6 +228,36 @@ class DashboardTest extends TestCase
         );
     }
 
+    public function test_open_incidents_panel_always_includes_open_criticals(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+
+        $critical = IncidentPriority::factory()->critical()->create();
+
+        // An old critical that a plain "5 most recent" ordering would drop.
+        $criticalIncident = Incident::factory()->open()->create([
+            'team_id' => $team->id,
+            'incident_priority_id' => $critical->id,
+            'opened_at' => now()->subDays(3),
+        ]);
+
+        Incident::factory()->open()->count(5)->create([
+            'team_id' => $team->id,
+            'opened_at' => now()->subHour(),
+        ]);
+
+        $response = $this
+            ->actingAs($user)
+            ->get(route('dashboard', ['current_team' => $team->slug]));
+
+        $response->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('incidents', 5)
+            ->where('incidents.0.incidentId', $criticalIncident->id)
+            ->where('incidents.0.severity', 'critical')
+        );
+    }
+
     public function test_stream_limits_to_eight_latest_and_maps_decision_codes(): void
     {
         $user = User::factory()->create();

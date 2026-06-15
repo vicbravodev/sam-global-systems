@@ -9,7 +9,9 @@ use App\Domains\Notifications\Enums\NotificationPriority;
 use App\Domains\Notifications\Enums\NotificationSourceType;
 use App\Domains\Notifications\Enums\NotificationStatus;
 use App\Domains\Notifications\Models\Notification;
+use App\Domains\Notifications\Models\NotificationDelivery;
 use App\Domains\Notifications\Models\NotificationRead;
+use App\Domains\Notifications\Models\NotificationRecipient;
 use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Models\User;
@@ -193,6 +195,89 @@ class NotificationCenterPageTest extends TestCase
                 ->has('notifications', 1)
                 ->where('notifications.0.subject', 'Sin leer')
                 ->where('filters.unread', true),
+        );
+    }
+
+    public function test_cancelled_without_recipients_explains_why_it_was_not_sent(): void
+    {
+        [$user, $team] = $this->createUserWithRole('notif_cancel_1', ['notifications.view']);
+
+        Notification::factory()->create([
+            'team_id' => $team->id,
+            'status' => NotificationStatus::Cancelled,
+        ]);
+
+        $response = $this->actingAs($user)->get(
+            route('notifications.index', ['current_team' => $team->slug]),
+        );
+
+        $response->assertOk();
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->component('notifications/index')
+                ->where('notifications.0.status', 'cancelled')
+                ->where(
+                    'notifications.0.statusReason',
+                    'No se envió: ninguna persona del equipo tenía datos de contacto al momento de generarse.',
+                ),
+        );
+    }
+
+    public function test_cancelled_with_recipients_but_no_deliveries_blames_channels(): void
+    {
+        [$user, $team] = $this->createUserWithRole('notif_cancel_2', ['notifications.view']);
+
+        $notification = Notification::factory()->create([
+            'team_id' => $team->id,
+            'status' => NotificationStatus::Cancelled,
+        ]);
+        NotificationRecipient::factory()->create([
+            'notification_id' => $notification->id,
+            'team_id' => $team->id,
+        ]);
+
+        $response = $this->actingAs($user)->get(
+            route('notifications.index', ['current_team' => $team->slug]),
+        );
+
+        $response->assertOk();
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->component('notifications/index')
+                ->where(
+                    'notifications.0.statusReason',
+                    'No se envió: no había ningún canal de notificación activo o permitido para este aviso.',
+                ),
+        );
+    }
+
+    public function test_non_cancelled_notifications_have_no_status_reason(): void
+    {
+        [$user, $team] = $this->createUserWithRole('notif_cancel_3', ['notifications.view']);
+
+        $notification = Notification::factory()->sent()->create([
+            'team_id' => $team->id,
+        ]);
+        $recipient = NotificationRecipient::factory()->create([
+            'notification_id' => $notification->id,
+            'team_id' => $team->id,
+        ]);
+        NotificationDelivery::factory()->delivered()->create([
+            'notification_id' => $notification->id,
+            'recipient_id' => $recipient->id,
+            'team_id' => $team->id,
+        ]);
+
+        $response = $this->actingAs($user)->get(
+            route('notifications.index', ['current_team' => $team->slug]),
+        );
+
+        $response->assertOk();
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->component('notifications/index')
+                ->where('notifications.0.status', 'sent')
+                ->where('notifications.0.statusReason', null),
         );
     }
 

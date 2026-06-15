@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\TenantConfig;
 
+use App\Domains\TenantConfig\Actions\SnapshotTenantConfig;
+use App\Domains\TenantConfig\Enums\SettingUpdatedByType;
 use App\Domains\TenantConfig\Models\TenantNotificationPolicy;
 use App\Domains\TenantConfig\Support\CacheKeys;
 use App\Http\Controllers\Controller;
@@ -13,6 +15,10 @@ use Illuminate\Support\Facades\DB;
 
 class TenantNotificationPolicyController extends Controller
 {
+    public function __construct(
+        private readonly SnapshotTenantConfig $snapshotTenantConfig,
+    ) {}
+
     public function index(Team $current_team): JsonResponse
     {
         $this->authorize('viewAny', TenantNotificationPolicy::class);
@@ -56,6 +62,14 @@ class TenantNotificationPolicyController extends Controller
         foreach ($persisted as $policy) {
             Cache::forget(CacheKeys::notificationPolicy($current_team->id, $policy->notification_type, $policy->priority));
         }
+
+        // D-18: guardar políticas de notificación también registra una versión.
+        $userId = $request->user()?->id;
+        $this->snapshotTenantConfig->execute(
+            $current_team->id,
+            $userId ? SettingUpdatedByType::User : SettingUpdatedByType::System,
+            $userId,
+        );
 
         return response()->json(['data' => $persisted]);
     }

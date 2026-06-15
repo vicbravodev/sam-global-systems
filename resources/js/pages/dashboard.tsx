@@ -385,7 +385,7 @@ function OpenIncidentsPanel({
                                 <Link
                                     href={
                                         teamSlug
-                                            ? `/${teamSlug}/incidents`
+                                            ? `/${teamSlug}/incidents/${incident.incidentId}`
                                             : '#'
                                     }
                                     className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-surface-2"
