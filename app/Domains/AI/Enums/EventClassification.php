@@ -18,4 +18,16 @@ enum EventClassification: string
             default => false,
         };
     }
+
+    public function label(): string
+    {
+        return match ($this) {
+            self::RealEvent => 'Evento real',
+            self::FalsePositive => 'Falso positivo',
+            self::Noise => 'Ruido',
+            self::Duplicate => 'Duplicado',
+            self::Unclear => 'Sin determinar',
+            self::PendingEvidence => 'Evidencia pendiente',
+        };
+    }
 }
