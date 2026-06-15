@@ -486,49 +486,55 @@ function GeneralTab({
                             Sin settings adicionales.
                         </p>
                     ) : (
-                        <table className="w-full text-left text-xs">
-                            <thead className="text-2xs text-fg-3 uppercase">
-                                <tr>
-                                    <th className="py-1">Setting</th>
-                                    <th className="py-1">Grupo</th>
-                                    <th className="py-1">Valor</th>
-                                    <th className="py-1">v</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {otherSettings.map((s) => {
-                                    const known = SETTING_LABELS[s.key];
+                        // D3: scroll horizontal contenido + ancho mínimo para que
+                        // GRUPO/VALOR no se encimen en móvil.
+                        <div className="overflow-x-auto">
+                            <table className="w-full min-w-[32rem] text-left text-xs">
+                                <thead className="text-2xs text-fg-3 uppercase">
+                                    <tr>
+                                        <th className="py-1 pr-4">Setting</th>
+                                        <th className="py-1 pr-4">Grupo</th>
+                                        <th className="py-1 pr-4">Valor</th>
+                                        <th className="py-1">v</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {otherSettings.map((s) => {
+                                        const known = SETTING_LABELS[s.key];
 
-                                    return (
-                                        <tr
-                                            key={s.id}
-                                            className="border-t border-border/50 text-fg-2"
-                                        >
-                                            <td className="py-2 pr-4">
-                                                <span className="block text-fg-1">
-                                                    {known?.label ?? s.key}
-                                                </span>
-                                                {known && (
-                                                    <span className="block text-2xs text-fg-3">
-                                                        {known.description}
+                                        return (
+                                            <tr
+                                                key={s.id}
+                                                className="border-t border-border/50 text-fg-2"
+                                            >
+                                                <td className="py-2 pr-4">
+                                                    <span className="block text-fg-1">
+                                                        {known?.label ?? s.key}
                                                     </span>
-                                                )}
-                                                <span className="block font-mono text-3xs text-fg-3">
-                                                    {s.key}
-                                                </span>
-                                            </td>
-                                            <td className="py-2">{s.group}</td>
-                                            <td className="py-2 font-mono text-2xs">
-                                                {JSON.stringify(s.value)}
-                                            </td>
-                                            <td className="py-2">
-                                                {s.version}
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
+                                                    {known && (
+                                                        <span className="block text-2xs text-fg-3">
+                                                            {known.description}
+                                                        </span>
+                                                    )}
+                                                    <span className="block font-mono text-3xs text-fg-3">
+                                                        {s.key}
+                                                    </span>
+                                                </td>
+                                                <td className="py-2 pr-4">
+                                                    {s.group}
+                                                </td>
+                                                <td className="py-2 pr-4 font-mono text-2xs">
+                                                    {JSON.stringify(s.value)}
+                                                </td>
+                                                <td className="py-2">
+                                                    {s.version}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
                     )}
                 </CardContent>
             </Card>
