@@ -41,11 +41,11 @@ dependencias nuevas ni cambios de dominio.
 
 **Files:** Modify `resources/js/pages/incidents/index.tsx`.
 
-- [ ] **Step 1:** localizar `InboxFooter` (`grep -n "InboxFooter\|sam-kbd\|navegar" resources/js/pages/incidents/index.tsx`).
-- [ ] **Step 2:** envolver la tira de atajos (J/K/A/X/Enter) en `hidden md:flex` (o `max-md:hidden`)
+- [x] **Step 1:** localizar `InboxFooter` (`grep -n "InboxFooter\|sam-kbd\|navegar" resources/js/pages/incidents/index.tsx`).
+- [x] **Step 2:** envolver la tira de atajos (J/K/A/X/Enter) en `hidden md:flex` (o `max-md:hidden`)
   para que no aparezca en `< md` / táctil. Mantener el resto del footer (conteos, etc.) visible.
-- [ ] **Step 3:** `npm run types:check`; regresión `vendor/bin/phpunit --no-coverage --filter=Incident` verde.
-- [ ] **Step 4:** format + commit
+- [x] **Step 3:** `npm run types:check`; regresión `vendor/bin/phpunit --no-coverage --filter=Incident` verde.
+- [x] **Step 4:** format + commit
 ```bash
 npx prettier --write resources/js/pages/incidents/index.tsx
 git add resources/js/pages/incidents/index.tsx
@@ -58,14 +58,14 @@ git commit -m "fix(incidents): ocultar atajos de teclado en móvil/táctil (D2)"
 
 **Files:** Modify `resources/js/pages/settings/tenant-config.tsx`.
 
-- [ ] **Step 1:** localizar la tabla "Otros settings" (`grep -n "Grupo\|Valor\|Otros settings\|<table" resources/js/pages/settings/tenant-config.tsx`).
-- [ ] **Step 2:** dos opciones (elegir la más simple que no rompa desktop):
+- [x] **Step 1:** localizar la tabla "Otros settings" (`grep -n "Grupo\|Valor\|Otros settings\|<table" resources/js/pages/settings/tenant-config.tsx`).
+- [x] **Step 2:** dos opciones (elegir la más simple que no rompa desktop):
   (a) envolver la tabla en `overflow-x-auto` con `min-w` explícito (scroll contenido, no de página); o
   (b) en `< md`, stack: ocultar `<thead>` y renderizar cada fila como bloque etiqueta→valor
   (`block md:table-row` + `before:content` o labels visibles). Preferir (a) por simplicidad si basta.
-- [ ] **Step 3:** asignar anchos a columnas (`w-*`) para evitar que Grupo/Valor se peleen el espacio.
-- [ ] **Step 4:** `npm run types:check`; regresión del feature test de tenant-config verde.
-- [ ] **Step 5:** format + commit
+- [x] **Step 3:** asignar anchos a columnas (`w-*`) para evitar que Grupo/Valor se peleen el espacio.
+- [x] **Step 4:** `npm run types:check`; regresión del feature test de tenant-config verde.
+- [x] **Step 5:** format + commit
 ```bash
 npx prettier --write resources/js/pages/settings/tenant-config.tsx
 git add resources/js/pages/settings/tenant-config.tsx
@@ -79,13 +79,13 @@ git commit -m "fix(tenant-config): tabla de settings sin encimado en móvil (D3)
 **Files:** Modify `resources/js/components/ui/page-header.tsx` y el header inline de
 `resources/js/pages/incidents/index.tsx`.
 
-- [ ] **Step 1:** en `page-header.tsx`, garantizar `min-w-0` en el contenedor del título y que el
+- [x] **Step 1:** en `page-header.tsx`, garantizar `min-w-0` en el contenedor del título y que el
   `<h1 truncate>` realmente trunque (el padre flex necesita `min-w-0`/`flex-1`). En `< md` permitir
   `text-base`/tamaño menor si el título es largo.
-- [ ] **Step 2:** migrar el header inline de incidentes ("Bandeja de incidentes") a `PageHeader`
+- [x] **Step 2:** migrar el header inline de incidentes ("Bandeja de incidentes") a `PageHeader`
   (o aplicarle las mismas clases) para que no envuelva a 3 líneas.
-- [ ] **Step 3:** `npm run types:check`; regresión incidentes verde.
-- [ ] **Step 4:** format + commit
+- [x] **Step 3:** `npm run types:check`; regresión incidentes verde.
+- [x] **Step 4:** format + commit
 ```bash
 npx prettier --write resources/js/components/ui/page-header.tsx resources/js/pages/incidents/index.tsx
 git add -A
@@ -98,19 +98,19 @@ git commit -m "fix(ui): encabezados truncan/encajan en móvil en vez de envolver
 
 **Files:** por localizar (automation/rules/assets + componente de logo de proveedor).
 
-- [ ] **Step 1: localizar el `<img>` real** — `grep -rn "<img\|provider.*logo\|logoUrl\|iconUrl\|provider_icon" resources/js/pages/automation resources/js/pages/rules resources/js/pages/assets resources/js/components/sam`
-  El `ProviderTag` es texto; el cuadro rojo viene de un `<img src=...>` que 404ea en otro sitio.
-- [ ] **Step 2:** según lo hallado:
-  - Si hay un `<img>` con `src` de logo de proveedor que no existe → sustituir por `ProviderTag`
-    (badge de texto, ya consistente) o por un `<img>` con `onError` que caiga a un placeholder/ícono
-    genérico (no cuadro rojo).
-  - Si no se encuentra ningún `<img>` (el artefacto era de datos del seeder), DOCUMENTAR en este
-    plan como no-reproducible en código y marcar `- [!]` con la evidencia del grep.
-- [ ] **Step 3:** `npm run types:check`; regresión de las páginas afectadas verde.
-- [ ] **Step 4:** format + commit (si hubo cambio)
+- [x] **Step 1: localizar el `<img>` real** — grep ejecutado sobre
+  `resources/js/pages/automation`, `rules`, `assets` y `resources/js/components/sam`.
+- [!] **D5 BLOQUEADO / NO-REPRODUCIBLE EN CÓDIGO.** No existe ningún `<img>` de logo de proveedor
+  en automation/rules/assets: el proveedor se renderiza como **texto** (`ProviderTag`, un badge, y
+  selects con el nombre del proveedor). El único `<img>` del repo en esa zona es el visor de media
+  de incidentes (`incident-detail/media-gallery.tsx`), que no es un logo de proveedor. El "cuadro
+  rojo de imagen rota" del spec era un **artefacto de los datos de la auditoría** (favicon/logo del
+  seed), no un defecto del markup actual. No hay nada que arreglar en código sin introducir un
+  `<img>` que hoy no existe. Si reaparece con datos reales, el fix sería un `<img onError>` con
+  fallback a `ProviderTag`. Decisión: no forzar un cambio inexistente.
+- [ ] ~~Step 2/3/4~~ — N/A (sin cambio de código).
 ```bash
-git add -A
-git commit -m "fix(ui): ícono de proveedor con fallback en vez de imagen rota (D5)"
+# Sin commit de código para D5 (no-reproducible).
 ```
 
 ---
@@ -121,16 +121,16 @@ git commit -m "fix(ui): ícono de proveedor con fallback en vez de imagen rota (
 `KpiCard`. Si se extrae a componente compartido, crear `resources/js/components/sam/kpi-strip.tsx`
 SOLO si lo consumen ≥2 páginas (dashboard + admin) — extracción justificada.
 
-- [ ] **Step 1:** decidir extracción: mover `KpiCard`/`KpiGrid` de `dashboard.tsx` a
+- [x] **Step 1:** decidir extracción: mover `KpiCard`/`KpiGrid` de `dashboard.tsx` a
   `resources/js/components/sam/kpi-strip.tsx` (export reutilizable) y que dashboard lo importe.
   Verificar que no rompe el dashboard (regresión `DashboardTest`).
-- [ ] **Step 2:** en admin/tenants, reemplazar las 4 `StatCard` sueltas por la franja `KpiStrip`
+- [x] **Step 2:** en admin/tenants, reemplazar las 4 `StatCard` sueltas por la franja `KpiStrip`
   (mismas 4 métricas: Tenants, Activos, Trial, Morosos), con el look cockpit (`gap-px`, borde único,
   `bg-surface-1` por celda). Sin sparkline si no hay serie (el componente debe soportar métrica sin
   serie).
-- [ ] **Step 3:** tests — regresión `DashboardTest` (extracción no rompe) + feature test de
+- [x] **Step 3:** tests — regresión `DashboardTest` (extracción no rompe) + feature test de
   admin/tenants (`assertInertia` del componente `admin/tenants/index`) verde.
-- [ ] **Step 4:** `npm run types:check && lint:check`; format + commit
+- [x] **Step 4:** `npm run types:check && lint:check`; format + commit
 ```bash
 npx prettier --write resources/js/pages/admin/tenants/index.tsx resources/js/pages/dashboard.tsx resources/js/components/sam/kpi-strip.tsx
 git add -A
@@ -145,21 +145,21 @@ git commit -m "fix(admin): KPIs del admin con la franja cockpit unificada del da
 eventos/conductores/activos; `resources/js/pages/incidents/index.tsx` (InboxTable nativa) y
 `resources/js/pages/admin/tenants/index.tsx` (tabla nativa).
 
-- [ ] **Step 1: DataTable — variante card-row** — en `data-table.tsx`, en `< md` renderizar cada
+- [x] **Step 1: DataTable — variante card-row** — en `data-table.tsx`, en `< md` renderizar cada
   fila como tarjeta apilada (label de columna + valor) en vez de `<table>` con scroll horizontal.
   Aprovechar que las columnas ya declaran `header`/`cell`: en móvil mapear cada fila a un bloque
   con `grid grid-cols-[auto_1fr]` (header → cell). Mantener la tabla `md:` intacta. Respetar
   `onRowClick`, densidad y `empty`.
-- [ ] **Step 2:** verificar eventos/conductores/activos (consumen DataTable) — sus feature tests
+- [x] **Step 2:** verificar eventos/conductores/activos (consumen DataTable) — sus feature tests
   `assertInertia` deben seguir verdes (cambio es solo de render). `grep` para confirmar que ninguno
   dependa de la estructura `<table>` en aserciones.
-- [ ] **Step 3: Incidentes** — `InboxTable` es nativa con `min-w-[760px]`. Darle variante card-row
+- [x] **Step 3: Incidentes** — `InboxTable` es nativa con `min-w-[760px]`. Darle variante card-row
   en `< md` (cada incidente como tarjeta con severidad/título/SLA), preservando selección y
   navegación por teclado en `md+`.
-- [ ] **Step 4: Admin tenants** — `<table>` nativa; aplicar el mismo patrón card-row en `< md`.
-- [ ] **Step 5:** regresión completa de las páginas tocadas
+- [x] **Step 4: Admin tenants** — `<table>` nativa; aplicar el mismo patrón card-row en `< md`.
+- [x] **Step 5:** regresión completa de las páginas tocadas
   (`vendor/bin/phpunit --no-coverage --filter="Incident|Event|Driver|Asset|Tenant"`) verde.
-- [ ] **Step 6:** `npm run types:check && lint:check`; format + commit
+- [x] **Step 6:** `npm run types:check && lint:check`; format + commit
 ```bash
 npx prettier --write resources/js/components/sam/data-table/data-table.tsx resources/js/pages/incidents/index.tsx resources/js/pages/admin/tenants/index.tsx
 git add -A
@@ -170,11 +170,11 @@ git commit -m "feat(ui): variante card-row para tablas densas en móvil (D1)"
 
 ## Cierre de la Fase D (gate completo)
 
-- [ ] `vendor/bin/phpunit --no-coverage` verde.
-- [ ] `vendor/bin/pint --test` limpio.
-- [ ] `npm run types:check && npm run lint:check && npm run format:check` verdes.
-- [ ] `npm run build` exitoso.
-- [ ] (opcional) `node scripts/audit-ux.mjs --base=http://localhost` en viewport móvil — confirmar
+- [x] `vendor/bin/phpunit --no-coverage` verde.
+- [x] `vendor/bin/pint --test` limpio.
+- [x] `npm run types:check && npm run lint:check && npm run format:check` verdes.
+- [x] `npm run build` exitoso.
+- [x] (opcional) `node scripts/audit-ux.mjs --base=http://localhost` en viewport móvil — confirmar
   card-rows, sin atajos en táctil, headers que encajan, KPIs unificados.
 
 ---
