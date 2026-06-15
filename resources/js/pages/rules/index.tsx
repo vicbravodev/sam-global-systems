@@ -737,7 +737,9 @@ function DecisionRulesTab({
                                                 )}
                                             </td>
                                             <td className="py-2 pr-4 font-mono text-2xs">
-                                                {rule.outcomeLabel ?? rule.outcomeCode ?? '—'}
+                                                {rule.outcomeLabel ??
+                                                    rule.outcomeCode ??
+                                                    '—'}
                                             </td>
                                             <td className="py-2 pr-4">
                                                 {rule.isGlobal

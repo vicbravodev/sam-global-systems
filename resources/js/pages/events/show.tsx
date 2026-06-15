@@ -228,7 +228,9 @@ export default function EventShow() {
                                     <li>
                                         Clasificación:{' '}
                                         <strong className="text-fg-1">
-                                            {evaluation.classificationLabel ?? evaluation.classification ?? '—'}
+                                            {evaluation.classificationLabel ??
+                                                evaluation.classification ??
+                                                '—'}
                                         </strong>{' '}
                                         (v{evaluation.version} ·{' '}
                                         {evaluation.mode ?? '—'})
@@ -266,7 +268,9 @@ export default function EventShow() {
                                     <li>
                                         Resultado:{' '}
                                         <strong className="text-fg-1">
-                                            {decision.outcomeLabel ?? decision.code ?? '—'}
+                                            {decision.outcomeLabel ??
+                                                decision.code ??
+                                                '—'}
                                         </strong>
                                         {decision.requiresHumanReview && (
                                             <Badge
