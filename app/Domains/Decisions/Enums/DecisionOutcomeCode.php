@@ -26,4 +26,16 @@ enum DecisionOutcomeCode: string
             default => false,
         };
     }
+
+    public function label(): string
+    {
+        return match ($this) {
+            self::Ignore => 'Ignorar',
+            self::LogOnly => 'Solo registro',
+            self::Alert => 'Alerta',
+            self::Incident => 'Incidente',
+            self::Escalate => 'Escalar',
+            self::RequireHumanReview => 'Revisión humana',
+        };
+    }
 }

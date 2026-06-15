@@ -162,8 +162,10 @@ function PageHead({
 
     return (
         <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-surface-1 px-5 py-3">
-            <div className="flex items-center gap-3">
-                <h1 className="text-md font-semibold text-fg-1">
+            {/* D4: en móvil el título y los contadores se apilan en vez de
+                envolver feo a tres líneas. */}
+            <div className="flex min-w-0 flex-col gap-x-3 gap-y-0.5 md:flex-row md:items-center">
+                <h1 className="text-md font-semibold whitespace-nowrap text-fg-1">
                     Bandeja de incidentes
                 </h1>
                 <div className="flex items-center gap-2 text-xs text-fg-3">
@@ -505,7 +507,9 @@ function InboxFooter({ count, total }: { count: number; total: number }) {
             <span className="text-2xs text-fg-3">
                 {count} de {total} incidentes
             </span>
-            <div className="flex items-center gap-2 font-mono text-3xs text-fg-3">
+            {/* D2: los atajos de teclado no aplican en táctil; se ocultan en
+                pantallas pequeñas. */}
+            <div className="hidden items-center gap-2 font-mono text-3xs text-fg-3 md:flex">
                 <span className="sam-kbd">J</span>
                 <span className="sam-kbd">K</span>
                 <span>navegar</span>

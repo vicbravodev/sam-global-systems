@@ -78,6 +78,82 @@ function toSeverity(level: string | null): Severity {
 
 // ---- Cards ----
 
+function IdentityField({
+    label,
+    children,
+}: {
+    label: string;
+    children: React.ReactNode;
+}) {
+    return (
+        <div className="flex flex-col gap-0.5">
+            <span className="text-2xs tracking-caps text-fg-3 uppercase">
+                {label}
+            </span>
+            <span className="text-sm text-fg-1">{children}</span>
+        </div>
+    );
+}
+
+// B4: tarjeta de identidad SIEMPRE presente, para que el detalle aporte aun
+// cuando el conductor recién sincronizado no tiene historial operativo.
+function IdentityCard({
+    driver,
+    teamSlug,
+}: {
+    driver: DriverDetail;
+    teamSlug: string | null;
+}) {
+    return (
+        <Card className="gap-0 overflow-hidden py-0">
+            <CardHeader className="border-b border-border px-4 py-3">
+                <CardTitle className="sam-h3 m-0 flex items-center gap-2">
+                    <User size={15} /> Identidad
+                </CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-2 gap-4 p-4 md:grid-cols-3">
+                <IdentityField label="Nombre completo">
+                    {driver.fullName}
+                </IdentityField>
+                <IdentityField label="Código de empleado">
+                    {driver.employeeCode ?? '—'}
+                </IdentityField>
+                <IdentityField label="ID externo (proveedor)">
+                    {driver.externalPrimaryId ? (
+                        <span className="font-mono">
+                            {driver.externalPrimaryId}
+                        </span>
+                    ) : (
+                        '—'
+                    )}
+                </IdentityField>
+                <IdentityField label="Primera conexión">
+                    {formatDate(driver.firstSeenAt)}
+                </IdentityField>
+                <IdentityField label="Última conexión">
+                    {formatDate(driver.lastSeenAt)}
+                </IdentityField>
+                <IdentityField label="Activo actual">
+                    {driver.currentAsset ? (
+                        <Link
+                            href={
+                                teamSlug
+                                    ? `/${teamSlug}/assets/${driver.currentAsset.id}`
+                                    : '#'
+                            }
+                            className="hover:text-primary hover:underline"
+                        >
+                            {driver.currentAsset.name}
+                        </Link>
+                    ) : (
+                        '—'
+                    )}
+                </IdentityField>
+            </CardContent>
+        </Card>
+    );
+}
+
 function RiskCard({ risk }: { risk: DriverDetail['riskProfile'] }) {
     return (
         <Card className="gap-0 overflow-hidden py-0">
@@ -528,6 +604,10 @@ export default function DriverShow() {
                         </span>
                     )}
                 </header>
+
+                {/* Identidad (B4): siempre presente, da cuerpo al detalle
+                    aunque no haya historial operativo todavía. */}
+                <IdentityCard driver={driver} teamSlug={teamSlug} />
 
                 {/* Secciones sin datos colapsadas en una sola franja (F1.4):
                     solo se pintan las cards que tienen contenido real. */}

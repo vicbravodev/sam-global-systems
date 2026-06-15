@@ -4,7 +4,9 @@ namespace Tests\Feature\Domains\Normalization;
 
 use App\Domains\Access\Enums\RoleScope;
 use App\Domains\Access\Models\Role;
+use App\Domains\AI\Enums\EventClassification;
 use App\Domains\AI\Models\AIEventEvaluation;
+use App\Domains\Decisions\Enums\DecisionOutcomeCode;
 use App\Domains\Decisions\Models\Decision;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Normalization\Enums\NormalizedEventStatus;
@@ -138,6 +140,38 @@ class EventsPageTest extends TestCase
                     ->etc())
                 ->where('incident.id', $incident->id)
                 ->has('media'),
+        );
+    }
+
+    public function test_show_exposes_humanized_spanish_labels(): void
+    {
+        $event = NormalizedEvent::factory()->create(['team_id' => $this->team->id]);
+
+        $evaluation = AIEventEvaluation::factory()->create([
+            'team_id' => $this->team->id,
+            'normalized_event_id' => $event->id,
+            'classification' => EventClassification::Unclear,
+        ]);
+
+        Decision::factory()->create([
+            'team_id' => $this->team->id,
+            'normalized_event_id' => $event->id,
+            'ai_evaluation_id' => $evaluation->id,
+            'decision_code' => DecisionOutcomeCode::RequireHumanReview->value,
+        ]);
+
+        $response = $this->actingAs($this->user)->get(
+            route('events.show', ['current_team' => $this->team->slug, 'normalizedEvent' => $event->id]),
+        );
+
+        $response->assertOk();
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->component('events/show')
+                ->where('evaluation.classification', 'unclear')
+                ->where('evaluation.classificationLabel', 'Sin determinar')
+                ->where('decision.code', 'REQUIRE_HUMAN_REVIEW')
+                ->where('decision.outcomeLabel', 'Revisión humana'),
         );
     }
 

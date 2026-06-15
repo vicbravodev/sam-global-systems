@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Decisions;
 
+use App\Domains\Decisions\Enums\DecisionOutcomeCode;
 use App\Domains\Decisions\Enums\RuleScope;
 use App\Domains\Decisions\Models\DecisionOutcome;
 use App\Domains\Decisions\Models\DecisionRule;
@@ -49,6 +50,9 @@ class RulesPageController extends Controller
                     'priority' => (int) $rule->priority,
                     'conditions' => $rule->conditions_json,
                     'outcomeCode' => $rule->outcomeOverride?->code,
+                    'outcomeLabel' => $rule->outcomeOverride?->code !== null
+                        ? (DecisionOutcomeCode::tryFrom($rule->outcomeOverride->code)?->label() ?? $rule->outcomeOverride->code)
+                        : null,
                     'outcomeId' => $rule->outcome_override !== null ? (int) $rule->outcome_override : null,
                     'stopProcessing' => (bool) $rule->stop_processing,
                     'isActive' => (bool) $rule->is_active,
@@ -79,6 +83,7 @@ class RulesPageController extends Controller
                     'id' => (int) $outcome->id,
                     'code' => $outcome->code,
                     'name' => $outcome->name,
+                    'label' => DecisionOutcomeCode::tryFrom($outcome->code)?->label() ?? $outcome->name,
                 ])
                 ->all(),
             'scopes' => fn () => array_map(fn (RuleScope $scope) => $scope->value, RuleScope::cases()),

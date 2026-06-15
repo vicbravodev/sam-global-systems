@@ -209,7 +209,7 @@ export function OpsSidebar({ navBadges, mobile = false }: OpsSidebarProps) {
                     href: `/${teamSlug}/integrations`,
                 },
                 {
-                    label: 'Notificaciones',
+                    label: 'Bandeja de notificaciones',
                     icon: Bell,
                     href: `/${teamSlug}/notifications`,
                 },
@@ -224,12 +224,10 @@ export function OpsSidebar({ navBadges, mobile = false }: OpsSidebarProps) {
                     href: `/${teamSlug}/billing`,
                 },
                 {
-                    label: 'Equipo y roles',
-                    icon: Users,
-                    href: `/${teamSlug}/settings/roles`,
-                },
-                {
-                    label: 'Configuración',
+                    // C2: una sola entrada de Ajustes con sub-secciones
+                    // (cuenta + tenant + equipo y roles) en vez de entradas
+                    // sueltas y solapadas.
+                    label: 'Ajustes',
                     icon: Settings,
                     href: `/${teamSlug}/settings/tenant-config`,
                 },

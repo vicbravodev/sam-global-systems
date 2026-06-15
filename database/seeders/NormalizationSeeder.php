@@ -27,16 +27,16 @@ class NormalizationSeeder extends Seeder
     private function seedCategories(): array
     {
         $definitions = [
-            ['code' => 'safety', 'name' => 'Safety', 'description' => 'Safety-related events involving driver or vehicle safety risks'],
-            ['code' => 'emergency', 'name' => 'Emergency', 'description' => 'Critical emergency events requiring immediate response'],
-            ['code' => 'compliance', 'name' => 'Compliance', 'description' => 'Regulatory and policy compliance violations'],
-            ['code' => 'operational', 'name' => 'Operational', 'description' => 'General operational events for fleet monitoring'],
-            ['code' => 'maintenance', 'name' => 'Maintenance', 'description' => 'Equipment and device maintenance events'],
+            ['code' => 'safety', 'name' => 'Seguridad', 'description' => 'Eventos de seguridad por riesgos del conductor o del vehículo'],
+            ['code' => 'emergency', 'name' => 'Emergencia', 'description' => 'Eventos críticos de emergencia que requieren respuesta inmediata'],
+            ['code' => 'compliance', 'name' => 'Cumplimiento', 'description' => 'Violaciones de cumplimiento normativo y de políticas'],
+            ['code' => 'operational', 'name' => 'Operativo', 'description' => 'Eventos operativos generales para el monitoreo de la flota'],
+            ['code' => 'maintenance', 'name' => 'Mantenimiento', 'description' => 'Eventos de mantenimiento de equipos y dispositivos'],
         ];
 
         $categories = [];
         foreach ($definitions as $def) {
-            $categories[$def['code']] = EventCategory::firstOrCreate(
+            $categories[$def['code']] = EventCategory::updateOrCreate(
                 ['code' => $def['code']],
                 ['name' => $def['name'], 'description' => $def['description']],
             );
@@ -82,61 +82,61 @@ class NormalizationSeeder extends Seeder
     {
         $definitions = [
             // Emergency
-            ['code' => 'panic_button', 'name' => 'Panic Button', 'category' => 'emergency', 'severity' => 'critical'],
-            ['code' => 'collision', 'name' => 'Collision', 'category' => 'emergency', 'severity' => 'critical'],
-            ['code' => 'rollover_protection', 'name' => 'Rollover Protection', 'category' => 'emergency', 'severity' => 'critical'],
+            ['code' => 'panic_button', 'name' => 'Botón de pánico', 'category' => 'emergency', 'severity' => 'critical'],
+            ['code' => 'collision', 'name' => 'Colisión', 'category' => 'emergency', 'severity' => 'critical'],
+            ['code' => 'rollover_protection', 'name' => 'Protección por vuelco', 'category' => 'emergency', 'severity' => 'critical'],
 
             // Safety
-            ['code' => 'harsh_braking', 'name' => 'Harsh Braking', 'category' => 'safety', 'severity' => 'medium'],
-            ['code' => 'speeding', 'name' => 'Speeding', 'category' => 'safety', 'severity' => 'medium'],
-            ['code' => 'severe_speeding', 'name' => 'Severe Speeding', 'category' => 'safety', 'severity' => 'high'],
-            ['code' => 'driver_fatigue', 'name' => 'Driver Fatigue', 'category' => 'safety', 'severity' => 'high'],
-            ['code' => 'driver_distraction', 'name' => 'Driver Distraction', 'category' => 'safety', 'severity' => 'high'],
-            ['code' => 'forward_collision_warning', 'name' => 'Forward Collision Warning', 'category' => 'safety', 'severity' => 'high'],
-            ['code' => 'harsh_acceleration', 'name' => 'Harsh Acceleration', 'category' => 'safety', 'severity' => 'medium'],
-            ['code' => 'harsh_turn', 'name' => 'Harsh Turn', 'category' => 'safety', 'severity' => 'medium'],
-            ['code' => 'lane_departure', 'name' => 'Lane Departure', 'category' => 'safety', 'severity' => 'medium'],
-            ['code' => 'following_distance', 'name' => 'Following Distance', 'category' => 'safety', 'severity' => 'medium'],
-            ['code' => 'near_collision', 'name' => 'Near Collision', 'category' => 'safety', 'severity' => 'high'],
-            ['code' => 'aggressive_driving', 'name' => 'Aggressive Driving', 'category' => 'safety', 'severity' => 'high'],
-            ['code' => 'rolling_stop', 'name' => 'Rolling Stop', 'category' => 'safety', 'severity' => 'medium'],
-            ['code' => 'ran_red_light', 'name' => 'Ran Red Light', 'category' => 'safety', 'severity' => 'high'],
-            ['code' => 'mobile_usage', 'name' => 'Mobile Usage', 'category' => 'safety', 'severity' => 'high'],
-            ['code' => 'yaw_control', 'name' => 'Yaw Control', 'category' => 'safety', 'severity' => 'high'],
-            ['code' => 'reversing', 'name' => 'Reversing', 'category' => 'safety', 'severity' => 'low'],
-            ['code' => 'u_turn', 'name' => 'U-Turn', 'category' => 'safety', 'severity' => 'medium'],
-            ['code' => 'did_not_yield', 'name' => 'Did Not Yield', 'category' => 'safety', 'severity' => 'high'],
-            ['code' => 'railroad_crossing_violation', 'name' => 'Railroad Crossing Violation', 'category' => 'safety', 'severity' => 'high'],
-            ['code' => 'other_violation', 'name' => 'Other Violation', 'category' => 'safety', 'severity' => 'medium'],
+            ['code' => 'harsh_braking', 'name' => 'Frenado brusco', 'category' => 'safety', 'severity' => 'medium'],
+            ['code' => 'speeding', 'name' => 'Exceso de velocidad', 'category' => 'safety', 'severity' => 'medium'],
+            ['code' => 'severe_speeding', 'name' => 'Exceso de velocidad severo', 'category' => 'safety', 'severity' => 'high'],
+            ['code' => 'driver_fatigue', 'name' => 'Fatiga del conductor', 'category' => 'safety', 'severity' => 'high'],
+            ['code' => 'driver_distraction', 'name' => 'Distracción del conductor', 'category' => 'safety', 'severity' => 'high'],
+            ['code' => 'forward_collision_warning', 'name' => 'Aviso de colisión frontal', 'category' => 'safety', 'severity' => 'high'],
+            ['code' => 'harsh_acceleration', 'name' => 'Aceleración brusca', 'category' => 'safety', 'severity' => 'medium'],
+            ['code' => 'harsh_turn', 'name' => 'Giro brusco', 'category' => 'safety', 'severity' => 'medium'],
+            ['code' => 'lane_departure', 'name' => 'Salida de carril', 'category' => 'safety', 'severity' => 'medium'],
+            ['code' => 'following_distance', 'name' => 'Distancia de seguimiento', 'category' => 'safety', 'severity' => 'medium'],
+            ['code' => 'near_collision', 'name' => 'Casi colisión', 'category' => 'safety', 'severity' => 'high'],
+            ['code' => 'aggressive_driving', 'name' => 'Conducción agresiva', 'category' => 'safety', 'severity' => 'high'],
+            ['code' => 'rolling_stop', 'name' => 'Alto incompleto', 'category' => 'safety', 'severity' => 'medium'],
+            ['code' => 'ran_red_light', 'name' => 'Se pasó el semáforo en rojo', 'category' => 'safety', 'severity' => 'high'],
+            ['code' => 'mobile_usage', 'name' => 'Uso de móvil', 'category' => 'safety', 'severity' => 'high'],
+            ['code' => 'yaw_control', 'name' => 'Control de derrape', 'category' => 'safety', 'severity' => 'high'],
+            ['code' => 'reversing', 'name' => 'Marcha atrás', 'category' => 'safety', 'severity' => 'low'],
+            ['code' => 'u_turn', 'name' => 'Vuelta en U', 'category' => 'safety', 'severity' => 'medium'],
+            ['code' => 'did_not_yield', 'name' => 'No cedió el paso', 'category' => 'safety', 'severity' => 'high'],
+            ['code' => 'railroad_crossing_violation', 'name' => 'Violación de cruce ferroviario', 'category' => 'safety', 'severity' => 'high'],
+            ['code' => 'other_violation', 'name' => 'Otra infracción', 'category' => 'safety', 'severity' => 'medium'],
 
             // Compliance
-            ['code' => 'camera_obstructed', 'name' => 'Camera Obstructed', 'category' => 'compliance', 'severity' => 'high'],
-            ['code' => 'tampering', 'name' => 'Tampering', 'category' => 'compliance', 'severity' => 'critical'],
-            ['code' => 'no_seatbelt', 'name' => 'No Seatbelt', 'category' => 'compliance', 'severity' => 'medium'],
-            ['code' => 'hos_violation', 'name' => 'HOS Violation', 'category' => 'compliance', 'severity' => 'high'],
-            ['code' => 'smoking_drinking', 'name' => 'Smoking or Drinking', 'category' => 'compliance', 'severity' => 'low'],
-            ['code' => 'policy_violation', 'name' => 'Policy Violation', 'category' => 'compliance', 'severity' => 'medium'],
-            ['code' => 'unauthorized_passenger', 'name' => 'Unauthorized Passenger', 'category' => 'compliance', 'severity' => 'medium'],
+            ['code' => 'camera_obstructed', 'name' => 'Cámara obstruida', 'category' => 'compliance', 'severity' => 'high'],
+            ['code' => 'tampering', 'name' => 'Manipulación del equipo', 'category' => 'compliance', 'severity' => 'critical'],
+            ['code' => 'no_seatbelt', 'name' => 'Sin cinturón de seguridad', 'category' => 'compliance', 'severity' => 'medium'],
+            ['code' => 'hos_violation', 'name' => 'Violación de horas de servicio', 'category' => 'compliance', 'severity' => 'high'],
+            ['code' => 'smoking_drinking', 'name' => 'Fumar o beber', 'category' => 'compliance', 'severity' => 'low'],
+            ['code' => 'policy_violation', 'name' => 'Violación de política', 'category' => 'compliance', 'severity' => 'medium'],
+            ['code' => 'unauthorized_passenger', 'name' => 'Pasajero no autorizado', 'category' => 'compliance', 'severity' => 'medium'],
 
             // Operational
-            ['code' => 'geofence_exit', 'name' => 'Geofence Exit', 'category' => 'operational', 'severity' => 'low'],
-            ['code' => 'geofence_entry', 'name' => 'Geofence Entry', 'category' => 'operational', 'severity' => 'low'],
-            ['code' => 'vehicle_idle', 'name' => 'Vehicle Idle', 'category' => 'operational', 'severity' => 'low'],
-            ['code' => 'unsafe_parking', 'name' => 'Unsafe Parking', 'category' => 'operational', 'severity' => 'low'],
-            ['code' => 'driving_context', 'name' => 'Driving Context', 'category' => 'operational', 'severity' => 'low'],
-            ['code' => 'defensive_driving', 'name' => 'Defensive Driving', 'category' => 'operational', 'severity' => 'low'],
+            ['code' => 'geofence_exit', 'name' => 'Salida de geocerca', 'category' => 'operational', 'severity' => 'low'],
+            ['code' => 'geofence_entry', 'name' => 'Entrada a geocerca', 'category' => 'operational', 'severity' => 'low'],
+            ['code' => 'vehicle_idle', 'name' => 'Vehículo en ralentí', 'category' => 'operational', 'severity' => 'low'],
+            ['code' => 'unsafe_parking', 'name' => 'Estacionamiento inseguro', 'category' => 'operational', 'severity' => 'low'],
+            ['code' => 'driving_context', 'name' => 'Contexto de conducción', 'category' => 'operational', 'severity' => 'low'],
+            ['code' => 'defensive_driving', 'name' => 'Conducción defensiva', 'category' => 'operational', 'severity' => 'low'],
 
             // Maintenance
-            ['code' => 'device_offline', 'name' => 'Device Offline', 'category' => 'maintenance', 'severity' => 'medium'],
+            ['code' => 'device_offline', 'name' => 'Dispositivo sin conexión', 'category' => 'maintenance', 'severity' => 'medium'],
 
             // Internal monitors (Roadmap V2-C2/C3)
-            ['code' => 'after_hours_movement', 'name' => 'After-Hours Movement', 'category' => 'operational', 'severity' => 'high'],
-            ['code' => 'suspicious_stop', 'name' => 'Suspicious Stop', 'category' => 'operational', 'severity' => 'high'],
+            ['code' => 'after_hours_movement', 'name' => 'Movimiento fuera de horario', 'category' => 'operational', 'severity' => 'high'],
+            ['code' => 'suspicious_stop', 'name' => 'Parada sospechosa', 'category' => 'operational', 'severity' => 'high'],
         ];
 
         $eventTypes = [];
         foreach ($definitions as $def) {
-            $eventTypes[$def['code']] = EventType::firstOrCreate(
+            $eventTypes[$def['code']] = EventType::updateOrCreate(
                 ['code' => $def['code']],
                 [
                     'name' => $def['name'],

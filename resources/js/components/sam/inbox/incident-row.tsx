@@ -323,3 +323,119 @@ export function IncidentRow({
         </tr>
     );
 }
+
+// ---- IncidentCard (D1: variante móvil de la fila) ----
+
+interface IncidentCardProps {
+    incident: MockIncident;
+    selected: boolean;
+    checked: boolean;
+    onClick: () => void;
+    onToggle: () => void;
+}
+
+export function IncidentCard({
+    incident,
+    selected,
+    checked,
+    onClick,
+    onToggle,
+}: IncidentCardProps) {
+    return (
+        <div
+            role="button"
+            tabIndex={0}
+            onClick={onClick}
+            onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                    onClick();
+                }
+            }}
+            className={cn(
+                'flex cursor-pointer flex-col gap-2 rounded-lg border border-border bg-surface-1 p-3 transition-colors outline-none hover:bg-surface-2 focus-visible:bg-surface-2',
+                selected && 'ring-1 ring-primary',
+                checked && 'bg-primary/[8%]',
+            )}
+        >
+            <div className="flex items-start gap-2">
+                <span
+                    className={cn(
+                        'mt-0.5 inline-grid shrink-0 cursor-pointer place-items-center rounded-sm border border-border-strong select-none',
+                        checked
+                            ? 'border-primary bg-primary'
+                            : 'bg-transparent',
+                    )}
+                    style={{ width: 16, height: 16 }}
+                    role="checkbox"
+                    aria-checked={checked}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onToggle();
+                    }}
+                >
+                    {checked && (
+                        <svg
+                            width="9"
+                            height="7"
+                            viewBox="0 0 9 7"
+                            fill="none"
+                            aria-hidden="true"
+                        >
+                            <path
+                                d="M1 3.5L3.5 6L8 1"
+                                stroke="white"
+                                strokeWidth="1.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            />
+                        </svg>
+                    )}
+                </span>
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <div className="flex min-w-0 items-center gap-1.5">
+                        <span className="truncate font-medium text-fg-1">
+                            {incident.title}
+                        </span>
+                        {incident.realtime && <LiveDot />}
+                    </div>
+                    <span className="font-mono text-3xs text-fg-3">
+                        {incident.id} · {incident.provider}
+                    </span>
+                </div>
+                <SeverityBadge level={incident.severity} />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-fg-3">
+                <StatusPill
+                    state={incident.status}
+                    label={incident.statusLabel}
+                />
+                <span className="font-mono">
+                    {incident.asset.split(' · ')[0]}
+                </span>
+                {incident.driver && <span>{incident.driver}</span>}
+                <span className="ml-auto flex items-center gap-2">
+                    <LiveSlaCell
+                        seconds={incident.slaSeconds}
+                        total={incident.slaTotal}
+                    />
+                    <RelativeTimeCell min={incident.ageMin} />
+                </span>
+            </div>
+
+            <div className="text-2xs text-fg-3">
+                {incident.assignee ? (
+                    <span className="flex items-center gap-1.5">
+                        <UserAvatar
+                            initials={incident.assignee.initials}
+                            size={18}
+                        />
+                        {incident.assignee.name}
+                    </span>
+                ) : (
+                    <span className="italic">Sin asignar</span>
+                )}
+            </div>
+        </div>
+    );
+}

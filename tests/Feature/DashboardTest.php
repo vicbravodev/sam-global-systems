@@ -43,6 +43,22 @@ class DashboardTest extends TestCase
         $response->assertOk();
     }
 
+    public function test_dashboard_renders_with_an_empty_usage_panel(): void
+    {
+        // B3: el panel "Uso del plan" se renderiza siempre (con empty-state)
+        // aunque no haya contadores, para que la columna llene el alto.
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+
+        $response = $this
+            ->actingAs($user)
+            ->get(route('dashboard', ['current_team' => $team->slug]));
+
+        $response->assertOk()->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('dashboard')
+            ->has('usage', 0));
+    }
+
     public function test_dashboard_renders_all_real_data_props(): void
     {
         $user = User::factory()->create();

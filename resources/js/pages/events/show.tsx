@@ -30,6 +30,7 @@ interface EventShowProps {
         id: number;
         version: number;
         classification: string | null;
+        classificationLabel: string | null;
         confidenceScore: number | null;
         riskScore: number | null;
         priorityLevel: string | null;
@@ -38,6 +39,7 @@ interface EventShowProps {
     decision: {
         id: number;
         code: string | null;
+        outcomeLabel: string | null;
         reason: string | null;
         requiresHumanReview: boolean;
         decidedAt: string | null;
@@ -226,7 +228,9 @@ export default function EventShow() {
                                     <li>
                                         Clasificación:{' '}
                                         <strong className="text-fg-1">
-                                            {evaluation.classification ?? '—'}
+                                            {evaluation.classificationLabel ??
+                                                evaluation.classification ??
+                                                '—'}
                                         </strong>{' '}
                                         (v{evaluation.version} ·{' '}
                                         {evaluation.mode ?? '—'})
@@ -264,7 +268,9 @@ export default function EventShow() {
                                     <li>
                                         Resultado:{' '}
                                         <strong className="text-fg-1">
-                                            {decision.code ?? '—'}
+                                            {decision.outcomeLabel ??
+                                                decision.code ??
+                                                '—'}
                                         </strong>
                                         {decision.requiresHumanReview && (
                                             <Badge

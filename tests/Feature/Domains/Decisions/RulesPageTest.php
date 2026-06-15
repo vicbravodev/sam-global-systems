@@ -82,6 +82,37 @@ class RulesPageTest extends TestCase
         );
     }
 
+    public function test_rule_row_and_outcomes_expose_spanish_labels(): void
+    {
+        $ruleset = RuleSet::factory()->create([
+            'team_id' => $this->team->id,
+            'is_default' => true,
+        ]);
+
+        $outcome = DecisionOutcome::firstWhere('code', 'REQUIRE_HUMAN_REVIEW');
+
+        DecisionRule::factory()->create([
+            'team_id' => $this->team->id,
+            'ruleset_id' => $ruleset->id,
+            'code' => 'panic-human-review',
+            'outcome_override' => $outcome->id,
+        ]);
+
+        $response = $this->actingAs($this->user)->get(
+            route('rules.show', ['current_team' => $this->team->slug]),
+        );
+
+        $response->assertOk();
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->component('rules/index')
+                ->where('decisionRules.0.outcomeCode', 'REQUIRE_HUMAN_REVIEW')
+                ->where('decisionRules.0.outcomeLabel', 'Revisión humana')
+                ->where('outcomes.5.code', 'REQUIRE_HUMAN_REVIEW')
+                ->where('outcomes.5.label', 'Revisión humana'),
+        );
+    }
+
     public function test_page_hides_other_tenant_rules_and_overrides(): void
     {
         $otherTeam = User::factory()->create()->currentTeam;
