@@ -258,7 +258,7 @@ aplican: feature test (`assertInertia`) por página tocada + gates de front verd
 
 ### Fase 0 — Deja de mentir / deja de atrapar (Critical)
 
-- [ ] **R0.1 Quick wins de locale e identidad** *(E2, F0.5, D-08)*: `APP_LOCALE=es`,
+- [x] **R0.1 Quick wins de locale e identidad** *(E2, F0.5, D-08)*: `APP_LOCALE=es`,
   `APP_FALLBACK_LOCALE=es`, `APP_NAME=SAM` en `.env` + `.env.example`; redirect 303 tras el PUT de
   cambio de rol. Cierre: login fallido en español, `<html lang="es">`, títulos "… - SAM", cero 405
   en consola al cambiar un rol.
@@ -266,7 +266,7 @@ aplican: feature test (`assertInertia`) por página tocada + gates de front verd
   `lg:` con persistencia, panel de detalle de incidente full-width en <768px con cierre visible y
   textarea usable, forms apilados a 1 columna. Cierre: en 390px se puede navegar, abrir/cerrar/
   comentar un incidente y crear una regla sin overflow horizontal.
-- [ ] **R0.3 Datos veraces de flota e incidentes** *(C1-a, C1-b, B5)*: `last_seen_at` por señal
+- [x] **R0.3 Datos veraces de flota e incidentes** *(C1-a, C1-b, B5)*: `last_seen_at` por señal
   real (o renombrar a "Última sincronización" + degradar estado sin señal); estado canónico único
   de incidente en bandeja/detalle/paleta/activo; filtro Estado con los estados reales y en español.
   Cierre: criterios de C1-a/C1-b y B5 (§3).
@@ -297,15 +297,15 @@ aplican: feature test (`assertInertia`) por página tocada + gates de front verd
   críticos siempre visibles en el panel (ponderar prioridad); pasada de jerarquía (KPIs compactos,
   panel de incidentes dominante). Cierre: click en INC-00040 abre `/{team}/incidents/40`; con ≥1
   crítico abierto, aparece en el panel.
-- [ ] **R1.5 Mapa y cross-links de flota** *(C-04, C-05, C-06, C-08, C-14)*: clustering/spiderfy
+- [x] **R1.5 Mapa y cross-links de flota** *(C-04, C-05, C-06, C-08, C-14)*: clustering/spiderfy
   para co-ubicados; markers enfocables con aria-label real; incidente vinculado → detalle del
   incidente; sección conductor en detalle de activo y viceversa (cuando el dato exista); estilo de
   tiles acorde al tema + skeleton hasta `load`. Cierre: criterios de C-04..C-08 (§3).
-- [ ] **R1.6 Ciclo de vida editable** *(D-09, D-10, D-11, D-12, D-18)*: workflows editables (o al
+- [x] **R1.6 Ciclo de vida editable** *(edición de steps de workflow diferida; ver nota)* *(D-09, D-10, D-11, D-12, D-18)*: workflows editables (o al
   menos eliminables); edición completa de reglas o aviso de inmutabilidad; confirmación en todo
   destructivo (patrón único); quitar política antes de guardar; cada guardado registra versión.
   Cierre: criterios de D-09..D-12/D-18 (§3).
-- [ ] **R1.7 Páginas de error SAM** *(F0.4, A11, C-12)*: página Inertia de error (403/404/500/503)
+- [x] **R1.7 Páginas de error SAM** *(verificado 2026-06-12: ya cerrado por F0.4 en `bootstrap/app.php` + `errors/error.tsx`, posterior a la auditoría)* *(F0.4, A11, C-12)*: página Inertia de error (403/404/500/503)
   con shell mínimo, español, tema de la app y CTA de regreso, cableada en `bootstrap/app.php`.
   Cierre: `/esta-ruta-no-existe`, `/incidents/999999` y `/admin/tenants` muestran la página SAM en
   el tema correcto, consola limpia.
@@ -322,12 +322,12 @@ aplican: feature test (`assertInertia`) por página tocada + gates de front verd
 - [ ] **R2.2 Auditoría legible** *(C-10, C-13)*: labels en español para acción/categoría/actor,
   Resumen con contenido real, sin FQCN visibles, agrupación del ruido de telemetría, paginador con
   aria-labels, tab y rango de fechas validado en URL. Cierre: criterio de C-10/C-13.
-- [ ] **R2.3 Empty states con voz de producto** *(C-09, F1.2 residual, F1.4, B10, B12)*: analytics
+- [x] **R2.3 Empty states con voz de producto** *(B12 quedó dentro de R1.2)* *(C-09, F1.2 residual, F1.4, B10, B12)*: analytics
   con CTA o explicación sin jerga; billing con acción de contacto; detalle de conductor colapsa
   secciones vacías y la lista puebla o elimina columnas muertas; explicar el estado "Cancelada" de
   notificaciones (o corregir la agregación). Cierre: todo empty state dice qué significa y qué
   hacer; cero nombres de jobs/clases en UI.
-- [ ] **R2.4 Seguridad de cuenta y flujos auth** *(E4, E7, E10, D-21, D-16, D-17)*: mensaje neutro
+- [x] **R2.4 Seguridad de cuenta y flujos auth** *(E4, E7, E10, D-21, D-16, D-17)*: mensaje neutro
   en forgot-password; confirm-password sin sacar del shell; limpiar passwords tras error;
   `email:rfc` con TLD en invitaciones; código de rol restringido a slug; modales de edición
   recargan estado del servidor al reabrir. Cierre: repros de E4/E7/D-16/D-17 corregidos.
@@ -340,7 +340,7 @@ aplican: feature test (`assertInertia`) por página tocada + gates de front verd
 - [ ] **R3.1 F1.1**: migrar settings de usuario/equipos al shell ops (con el menú de usuario de
   R1.1 como puerta de entrada); retirar `app-sidebar.tsx`/`app-layout.tsx` del árbol vivo; corregir
   F0.6 mientras tanto.
-- [ ] **R3.2 F1.5 + F1.6 + F3.6 + E11**: welcome con marca SAM, fuentes self-hosted (cero requests
+- [x] **R3.2 F1.5 + F1.6 + F3.6 + E11** *(verificado 2026-06-12: welcome/fuentes/OG ya cerrados post-auditoría; E11 corregido con glifo knockout `var(--background)`)*: welcome con marca SAM, fuentes self-hosted (cero requests
   a googleapis/bunny), favicon + OG, glifo del logo visible en login claro.
 - [ ] **R3.3 F3.3 + F2.4 + IDs**: sistema único de chips/badges (3 variantes), placeholder único
   por tipo de celda, formato canónico de referencia de incidente.
@@ -353,7 +353,7 @@ aplican: feature test (`assertInertia`) por página tocada + gates de front verd
 - [ ] **R4.2 Microcopy**: "1 seleccionados", voseo/tuteo, "· —" colgantes, "últimas 0", subtítulo
   de vista "Sin mapear", contador de caracteres en comentarios, "Aplicar configuración recomendada"
   con preview (D-23), warning de escalación con `[]` (D-22).
-- [ ] **R4.3 Auditoría de `/admin/*`** (F4.1): seeder/comando para `global_role=super_admin` en dev
+- [x] **R4.3 Auditoría de `/admin/*`** (F4.1): seeder/comando para `global_role=super_admin` en dev
   y repetir este protocolo sobre las 6 páginas admin.
 - [ ] **R4.4 Pendientes de re-verificación**: F0.7 con datos de SLA vivo; `/settings/security` con
   permiso de confirm-password; warning maplibre (`null` en expresión de estilo); flash de tema

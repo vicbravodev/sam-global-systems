@@ -1,7 +1,9 @@
-import { Head, router, usePage } from '@inertiajs/react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
+import { Mail, Users } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatCurrency } from '@/lib/format';
 
@@ -50,6 +52,7 @@ interface InvoiceRow {
 }
 
 interface BillingPageProps {
+    supportEmail: string | null;
     subscription: SubscriptionProp | null;
     features: FeatureRow[];
     usage: UsageRow[];
@@ -189,8 +192,15 @@ function ReceiptUploader({ invoice }: { invoice: InvoiceRow }) {
 
 export default function BillingIndex() {
     const page = usePage();
-    const { subscription, features, usage, invoices } =
+    const { supportEmail, subscription, features, usage, invoices } =
         page.props as unknown as BillingPageProps;
+    const currentTeam = page.props.currentTeam;
+
+    const mailtoHref = supportEmail
+        ? `mailto:${supportEmail}?subject=${encodeURIComponent(
+              `Facturación — ${currentTeam?.name ?? 'mi equipo'}`,
+          )}`
+        : null;
 
     return (
         <>
@@ -218,8 +228,18 @@ export default function BillingIndex() {
                         {subscription === null ? (
                             <p className="text-fg-3">
                                 Tu equipo todavía no tiene un plan activo. El
-                                equipo de SAM lo activa al confirmar tu pago;
-                                escríbenos si ya realizaste la transferencia.
+                                equipo de SAM lo activa al confirmar tu pago;{' '}
+                                {mailtoHref ? (
+                                    <a
+                                        href={mailtoHref}
+                                        className="text-primary hover:underline"
+                                    >
+                                        escríbenos
+                                    </a>
+                                ) : (
+                                    'escríbenos'
+                                )}{' '}
+                                si ya realizaste la transferencia.
                             </p>
                         ) : (
                             <div className="flex flex-wrap items-center gap-3">
@@ -252,6 +272,14 @@ export default function BillingIndex() {
                                             subscription.renewsAt,
                                         ).toLocaleDateString('es')}
                                     </span>
+                                )}
+                                {currentTeam && (
+                                    <Link
+                                        href={`/settings/teams/${currentTeam.id}`}
+                                        className="ml-auto text-xs text-primary hover:underline"
+                                    >
+                                        Datos del equipo
+                                    </Link>
                                 )}
                             </div>
                         )}
@@ -450,6 +478,50 @@ export default function BillingIndex() {
                                 </tbody>
                             </table>
                         )}
+                    </CardContent>
+                </Card>
+
+                {/* Contacto (F1.2): el pago es por transferencia bancaria,
+                    así que el camino accionable es humano, no un checkout. */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="text-sm uppercase">
+                            ¿Dudas con tu facturación?
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="flex flex-col gap-3 text-xs text-fg-2">
+                        <p>
+                            El pago de SAM es por transferencia bancaria: al
+                            cierre de cada periodo emitimos tu factura, realizas
+                            la transferencia y subes el comprobante en la tabla
+                            de arriba. Nuestro equipo confirma el pago y
+                            mantiene tu cuenta activa.
+                        </p>
+                        <p className="text-fg-3">
+                            Si algo no cuadra — montos, consumo, estado del plan
+                            o los datos bancarios para transferir — escríbenos y
+                            lo resolvemos contigo.
+                        </p>
+                        <div className="flex flex-wrap items-center gap-2">
+                            {mailtoHref && (
+                                <Button size="sm" variant="outline" asChild>
+                                    <a href={mailtoHref}>
+                                        <Mail size={13} />
+                                        Escríbenos
+                                    </a>
+                                </Button>
+                            )}
+                            {currentTeam && (
+                                <Button size="sm" variant="ghost" asChild>
+                                    <Link
+                                        href={`/settings/teams/${currentTeam.id}`}
+                                    >
+                                        <Users size={13} />
+                                        Administrar mi equipo
+                                    </Link>
+                                </Button>
+                            )}
+                        </div>
                     </CardContent>
                 </Card>
             </div>

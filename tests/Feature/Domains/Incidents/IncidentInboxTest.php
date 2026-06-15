@@ -60,6 +60,7 @@ class IncidentInboxTest extends TestCase
                             'title',
                             'severity',
                             'status',
+                            'statusLabel',
                             'provider',
                             'asset',
                             'driver',
@@ -145,6 +146,60 @@ class IncidentInboxTest extends TestCase
                 ->where('incidents.0.assignee.initials', 'MG')
                 ->where('incidents.0.slaTotal', (int) $critical->sla_seconds),
         );
+    }
+
+    public function test_status_filter_lists_real_statuses_in_spanish_and_filters_by_canonical_code(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+
+        $escalated = IncidentStatus::query()->where('code', 'escalated')->firstOrFail();
+        $open = IncidentStatus::query()->where('code', 'open')->firstOrFail();
+
+        Incident::factory()->count(3)->create([
+            'team_id' => $team->id,
+            'incident_status_id' => $escalated->id,
+        ]);
+        Incident::factory()->create([
+            'team_id' => $team->id,
+            'incident_status_id' => $open->id,
+        ]);
+
+        // B5: las opciones del filtro salen del catálogo real, etiquetadas con
+        // la MISMA cadena en español que muestran las filas.
+        $index = $this->actingAs($user)->get(
+            route('incidents.index', ['current_team' => $team->slug]),
+        );
+        $index->assertInertia(function (Assert $page) {
+            $statuses = collect($page->toArray()['props']['filterOptions']['statuses']);
+
+            $this->assertTrue(
+                $statuses->contains(fn (array $option) => $option['value'] === 'escalated'
+                    && $option['label'] === 'Escalado'),
+                'El filtro de estado debe incluir "Escalado" (valor canónico escalated)',
+            );
+            $this->assertTrue(
+                $statuses->contains(fn (array $option) => $option['value'] === 'open'
+                    && $option['label'] === 'Nuevo'),
+                'El filtro de estado debe incluir "Nuevo" (valor canónico open)',
+            );
+        });
+
+        // Filtrar por el código canónico devuelve exactamente esas filas.
+        $filtered = $this->actingAs($user)->get(
+            route('incidents.index', [
+                'current_team' => $team->slug,
+                'status' => 'escalated',
+            ]),
+        );
+        $filtered->assertInertia(function (Assert $page) {
+            $page->has('incidents', 3)->where('filters.status', 'escalated');
+
+            foreach ($page->toArray()['props']['incidents'] as $row) {
+                $this->assertSame('escalated', $row['status']);
+                $this->assertSame('Escalado', $row['statusLabel']);
+            }
+        });
     }
 
     public function test_inbox_renders_array_location_from_normalized_payload(): void

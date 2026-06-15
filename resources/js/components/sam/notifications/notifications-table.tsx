@@ -57,18 +57,34 @@ function PriorityBadge({ priority }: { priority: NotificationPriorityValue }) {
     );
 }
 
-function StatusCell({ status }: { status: NotificationStatusValue }) {
+function StatusCell({
+    status,
+    reason,
+}: {
+    status: NotificationStatusValue;
+    reason: string | null;
+}) {
     return (
-        <span
-            className={cn(
-                'text-2xs',
-                status === 'failed'
-                    ? 'font-medium text-severity-critical'
-                    : 'text-fg-2',
+        <div className="flex flex-col">
+            <span
+                className={cn(
+                    'text-2xs',
+                    status === 'failed'
+                        ? 'font-medium text-severity-critical'
+                        : 'text-fg-2',
+                )}
+            >
+                {STATUS_LABELS[status]}
+            </span>
+            {reason && (
+                <span
+                    className="line-clamp-2 text-3xs text-fg-3"
+                    title={reason}
+                >
+                    {reason}
+                </span>
             )}
-        >
-            {STATUS_LABELS[status]}
-        </span>
+        </div>
     );
 }
 
@@ -138,10 +154,13 @@ export function NotificationsTable({
             {
                 key: 'status',
                 header: 'Estado',
-                width: 'w-24',
+                width: 'w-48',
                 sortValue: (notification) => STATUS_LABELS[notification.status],
                 cell: (notification) => (
-                    <StatusCell status={notification.status} />
+                    <StatusCell
+                        status={notification.status}
+                        reason={notification.statusReason ?? null}
+                    />
                 ),
             },
             {

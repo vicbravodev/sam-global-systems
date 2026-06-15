@@ -111,6 +111,124 @@ class TenantConfigPageTest extends TestCase
 
         $this->assertNotNull($setting);
         $this->assertTrue((bool) $setting->typed_value);
+
+        // D-18: guardar settings del grupo operational (tab General) registra
+        // una versión del tenant-config. Antes no se creaba ninguna.
+        $this->assertSame(
+            1,
+            TenantConfigVersion::withoutGlobalScopes()
+                ->where('team_id', $this->team->id)
+                ->count(),
+            'Saving operational settings must create exactly one config version',
+        );
+    }
+
+    public function test_each_operational_settings_save_registers_a_new_version(): void
+    {
+        // D-18: el repro de la auditoría fueron 4 guardados que no dejaron
+        // ninguna versión; cada guardado debe sumar exactamente una fila.
+        foreach ([60, 90, 120, 180] as $i => $value) {
+            $this->actingAs($this->user)->putJson(
+                route('tenant-config.settings.update', ['current_team' => $this->team->slug]),
+                [
+                    'settings' => [
+                        [
+                            'setting_key' => 'context.live_location_staleness_seconds',
+                            'setting_group' => 'operational',
+                            'value_type' => 'number',
+                            'value' => $value,
+                        ],
+                    ],
+                ],
+            )->assertOk();
+
+            $this->assertSame(
+                $i + 1,
+                TenantConfigVersion::withoutGlobalScopes()
+                    ->where('team_id', $this->team->id)
+                    ->count(),
+            );
+        }
+    }
+
+    public function test_saving_notification_policies_registers_a_version(): void
+    {
+        // D-18: guardar políticas de notificación también deja una versión.
+        $this->actingAs($this->user)->putJson(
+            route('tenant-config.notifications.update', ['current_team' => $this->team->slug]),
+            [
+                'policies' => [
+                    [
+                        'policy_code' => 'critical_default',
+                        'allowed_channels' => ['email', 'sms'],
+                    ],
+                ],
+            ],
+        )->assertOk();
+
+        $this->assertSame(
+            1,
+            TenantConfigVersion::withoutGlobalScopes()
+                ->where('team_id', $this->team->id)
+                ->count(),
+        );
+    }
+
+    public function test_gps_staleness_setting_rejects_non_positive_values(): void
+    {
+        // D-07: el umbral de obsolescencia GPS no puede ser negativo ni cero.
+        foreach ([-5, 0, 'no-es-numero'] as $invalid) {
+            $response = $this->actingAs($this->user)->putJson(
+                route('tenant-config.settings.update', ['current_team' => $this->team->slug]),
+                [
+                    'settings' => [
+                        [
+                            'setting_key' => 'context.live_location_staleness_seconds',
+                            'setting_group' => 'operational',
+                            'value_type' => 'number',
+                            'value' => $invalid,
+                        ],
+                    ],
+                ],
+            );
+
+            $response->assertUnprocessable();
+            $response->assertJsonValidationErrors(['settings.0.value']);
+        }
+
+        $this->assertNull(
+            TenantSetting::withoutGlobalScopes()
+                ->where('team_id', $this->team->id)
+                ->where('setting_key', 'context.live_location_staleness_seconds')
+                ->first(),
+        );
+    }
+
+    public function test_gps_staleness_setting_accepts_valid_integer(): void
+    {
+        $response = $this->actingAs($this->user)->putJson(
+            route('tenant-config.settings.update', ['current_team' => $this->team->slug]),
+            [
+                'settings' => [
+                    [
+                        'setting_key' => 'context.live_location_staleness_seconds',
+                        'setting_group' => 'operational',
+                        'value_type' => 'number',
+                        'value' => 120,
+                    ],
+                ],
+            ],
+        );
+
+        $response->assertOk();
+
+        $setting = TenantSetting::withoutGlobalScopes()
+            ->where('team_id', $this->team->id)
+            ->where('setting_key', 'context.live_location_staleness_seconds')
+            ->first();
+
+        $this->assertNotNull($setting);
+        $this->assertSame(120, (int) $setting->typed_value);
     }
 
     public function test_web_ai_profile_update_persists(): void

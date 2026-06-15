@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\TenantConfig;
 
+use App\Domains\TenantConfig\Actions\SnapshotTenantConfig;
 use App\Domains\TenantConfig\Actions\UpdateTenantSetting;
 use App\Domains\TenantConfig\Enums\SettingGroup;
 use App\Domains\TenantConfig\Enums\SettingUpdatedByType;
@@ -16,6 +17,7 @@ class TenantConfigController extends Controller
 {
     public function __construct(
         private readonly UpdateTenantSetting $updateTenantSetting,
+        private readonly SnapshotTenantConfig $snapshotTenantConfig,
     ) {}
 
     public function index(Team $current_team): JsonResponse
@@ -51,6 +53,15 @@ class TenantConfigController extends Controller
                 updatedByType: $updatedByType,
                 updatedById: $userId,
             );
+        }
+
+        // D-18: cada guardado de settings registra una versión del tenant-config.
+        // El snapshot per-setting de UpdateTenantSetting solo cubre los grupos
+        // críticos (Ai/Escalation/Compliance); aquí garantizamos que cualquier
+        // batch de settings (incl. el grupo operational del tab General) deje
+        // exactamente una entrada en el historial de versiones.
+        if ($persisted !== []) {
+            $this->snapshotTenantConfig->execute($current_team->id, $updatedByType, $userId);
         }
 
         return response()->json(['data' => $persisted]);

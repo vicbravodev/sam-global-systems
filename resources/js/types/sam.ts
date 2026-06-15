@@ -18,6 +18,8 @@ export interface MockIncident {
     title: string;
     severity: Severity;
     status: IncidentStatus;
+    /** Server-rendered status string (IncidentStatusPresenter). */
+    statusLabel: string;
     provider: string;
     asset: string;
     driver: string;

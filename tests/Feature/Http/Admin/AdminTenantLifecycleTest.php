@@ -42,6 +42,53 @@ class AdminTenantLifecycleTest extends TestCase
         ]);
     }
 
+    public function test_invalid_primary_color_is_rejected(): void
+    {
+        $admin = $this->superAdmin();
+        $team = Team::factory()->create(['is_personal' => false]);
+
+        $this->actingAs($admin)
+            ->put(route('admin.tenants.update', $team), [
+                'name' => 'Whatever',
+                'primary_color' => 'rojo',
+            ])
+            ->assertSessionHasErrors('primary_color');
+    }
+
+    public function test_invalid_secondary_color_is_rejected(): void
+    {
+        $admin = $this->superAdmin();
+        $team = Team::factory()->create(['is_personal' => false]);
+
+        $this->actingAs($admin)
+            ->put(route('admin.tenants.update', $team), [
+                'name' => 'Whatever',
+                'secondary_color' => '#fff',
+            ])
+            ->assertSessionHasErrors('secondary_color');
+    }
+
+    public function test_valid_hex_colors_are_accepted(): void
+    {
+        $admin = $this->superAdmin();
+        $team = Team::factory()->create(['is_personal' => false]);
+
+        $this->actingAs($admin)
+            ->put(route('admin.tenants.update', $team), [
+                'name' => 'Whatever',
+                'primary_color' => '#2563eb',
+                'secondary_color' => '#A1B2C3',
+            ])
+            ->assertSessionHasNoErrors()
+            ->assertRedirect(route('admin.tenants.show', $team->fresh()));
+
+        $this->assertDatabaseHas('tenant_brandings', [
+            'team_id' => $team->id,
+            'primary_color' => '#2563eb',
+            'secondary_color' => '#A1B2C3',
+        ]);
+    }
+
     public function test_super_admin_soft_deletes_a_tenant(): void
     {
         $admin = $this->superAdmin();

@@ -2,6 +2,7 @@ import { Head, router } from '@inertiajs/react';
 import { Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { ConfirmDialog } from '@/components/sam/confirm-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -70,6 +71,9 @@ export default function AdminChannelsIndex({
         channelType: 'voice',
         config: {} as Record<string, string>,
     });
+    const [pendingDelete, setPendingDelete] = useState<PlatformChannel | null>(
+        null,
+    );
 
     const create = () => {
         router.post(
@@ -112,17 +116,12 @@ export default function AdminChannelsIndex({
         );
 
     const destroy = (channel: PlatformChannel) => {
-        if (
-            !window.confirm(
-                `Se eliminará el canal de plataforma «${channel.name}» para TODOS los tenants. ¿Continuar?`,
-            )
-        ) {
-            return;
-        }
-
         router.delete(`/admin/channels/${channel.id}`, {
             preserveScroll: true,
-            onSuccess: () => toast.success('Canal eliminado.'),
+            onSuccess: () => {
+                toast.success('Canal eliminado.');
+                setPendingDelete(null);
+            },
             onError: () => toast.error('No se pudo eliminar.'),
         });
     };
@@ -305,7 +304,10 @@ export default function AdminChannelsIndex({
                                             <Button
                                                 size="sm"
                                                 variant="outline"
-                                                onClick={() => destroy(channel)}
+                                                onClick={() =>
+                                                    setPendingDelete(channel)
+                                                }
+                                                aria-label={`Eliminar canal ${channel.name}`}
                                             >
                                                 <Trash2 size={13} />
                                             </Button>
@@ -317,6 +319,23 @@ export default function AdminChannelsIndex({
                     </table>
                 </div>
             </div>
+
+            <ConfirmDialog
+                open={pendingDelete !== null}
+                title="Eliminar canal de plataforma"
+                description={
+                    pendingDelete
+                        ? `Se eliminará el canal «${pendingDelete.name}» para TODOS los tenants. Esta acción no se puede deshacer.`
+                        : ''
+                }
+                confirmLabel="Eliminar canal"
+                onConfirm={() => {
+                    if (pendingDelete) {
+                        destroy(pendingDelete);
+                    }
+                }}
+                onOpenChange={(open) => !open && setPendingDelete(null)}
+            />
         </div>
     );
 }

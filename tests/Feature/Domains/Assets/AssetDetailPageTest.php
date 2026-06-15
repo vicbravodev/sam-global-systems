@@ -7,6 +7,8 @@ use App\Domains\Assets\Models\AssetDevice;
 use App\Domains\Assets\Models\AssetLocationSnapshot;
 use App\Domains\Assets\Models\AssetTelemetrySnapshot;
 use App\Domains\Assets\Models\AssetType;
+use App\Domains\Drivers\Models\Driver;
+use App\Domains\Drivers\Models\DriverAssignment;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Integrations\Models\IntegrationProvider;
 use App\Models\User;
@@ -81,7 +83,9 @@ class AssetDetailPageTest extends TestCase
                         ->where('provider', 'Samsara')
                         ->where('sourceIntegration', null)
                         ->where('firstSeenAt', $asset->first_seen_at->toIso8601String())
-                        ->where('lastSeenAt', $asset->last_seen_at->toIso8601String()),
+                        ->where('lastSeenAt', $asset->last_seen_at->toIso8601String())
+                        ->where('driver', null)
+                        ->has('lastSignalAt'),
                 )
                 ->has('telemetry')
                 ->has('locationHistory', 1)
@@ -197,6 +201,8 @@ class AssetDetailPageTest extends TestCase
                 ->has(
                     'incidents.0',
                     fn (Assert $row) => $row
+                        // The id is what powers the deep-link to
+                        // /{team}/incidents/{id} from the detail (C-06).
                         ->where('id', $linked->id)
                         ->where('title', 'Frenado brusco detectado')
                         ->where('status.code', 'open')
@@ -204,6 +210,72 @@ class AssetDetailPageTest extends TestCase
                         ->has('type')
                         ->has('openedAt'),
                 ),
+        );
+    }
+
+    public function test_detail_exposes_currently_assigned_primary_driver(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+
+        $asset = Asset::factory()->create(['team_id' => $team->id]);
+        $driver = Driver::factory()->create([
+            'team_id' => $team->id,
+            'full_name' => 'Rosa Martínez',
+            'employee_code' => 'EMP-77',
+        ]);
+        DriverAssignment::factory()->primary()->create([
+            'team_id' => $team->id,
+            'driver_id' => $driver->id,
+            'asset_id' => $asset->id,
+            'ended_at' => null,
+        ]);
+
+        $response = $this->actingAs($user)->get(route('assets.show', [
+            'current_team' => $team->slug,
+            'asset' => $asset->id,
+        ]));
+
+        $response->assertInertia(
+            fn (Assert $page) => $page->has(
+                'asset.driver',
+                fn (Assert $d) => $d
+                    ->where('id', $driver->id)
+                    ->where('name', 'Rosa Martínez')
+                    ->where('employeeCode', 'EMP-77'),
+            ),
+        );
+    }
+
+    public function test_detail_driver_is_null_without_an_active_primary_assignment(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+
+        $asset = Asset::factory()->create(['team_id' => $team->id]);
+        $driver = Driver::factory()->create(['team_id' => $team->id]);
+
+        // An ended primary assignment and an active SECONDARY one must both be
+        // ignored: only an active primary driver surfaces on the detail.
+        DriverAssignment::factory()->primary()->ended()->create([
+            'team_id' => $team->id,
+            'driver_id' => $driver->id,
+            'asset_id' => $asset->id,
+        ]);
+        DriverAssignment::factory()->secondary()->create([
+            'team_id' => $team->id,
+            'driver_id' => $driver->id,
+            'asset_id' => $asset->id,
+            'ended_at' => null,
+        ]);
+
+        $response = $this->actingAs($user)->get(route('assets.show', [
+            'current_team' => $team->slug,
+            'asset' => $asset->id,
+        ]));
+
+        $response->assertInertia(
+            fn (Assert $page) => $page->where('asset.driver', null),
         );
     }
 

@@ -106,7 +106,10 @@ function StreamCard({ incident, selected, onClick }: StreamCardProps) {
                 {/* Top row */}
                 <div className="flex flex-wrap items-center gap-1.5">
                     <SeverityBadge level={incident.severity} />
-                    <StatusPill state={incident.status} />
+                    <StatusPill
+                        state={incident.status}
+                        label={incident.statusLabel}
+                    />
                     <ProviderTag name={incident.provider} />
                     <span className="font-mono text-3xs text-fg-3">
                         {incident.id}

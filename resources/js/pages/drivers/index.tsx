@@ -346,6 +346,7 @@ export default function DriversIndex() {
                     rows={drivers}
                     onSelect={handleSelect}
                     empty={<RosterEmptyState filtered={hasActiveFilters} />}
+                    presence={pageProps.columns}
                 />
 
                 <RosterFooter

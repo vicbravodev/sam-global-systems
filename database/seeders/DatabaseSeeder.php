@@ -31,5 +31,9 @@ class DatabaseSeeder extends Seeder
         // Single dev tenant (ServiExpress JC) + panic_button→incident ruleset.
         $this->call(SamsaraTestSeeder::class);
         $this->call(SamsaraTestDecisionRulesSeeder::class);
+
+        // Marca al admin del tenant de prueba como super-admin (acceso a /admin/*).
+        // DEBE ir después de SamsaraTestSeeder, que es quien crea ese usuario.
+        $this->call(SuperAdminSeeder::class);
     }
 }

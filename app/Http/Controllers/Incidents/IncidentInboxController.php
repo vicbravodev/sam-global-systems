@@ -15,6 +15,7 @@ use App\Domains\Incidents\Models\IncidentPriority;
 use App\Domains\Incidents\Models\IncidentStatus;
 use App\Domains\Incidents\Models\IncidentType;
 use App\Domains\Incidents\Support\IncidentInboxPresenter;
+use App\Domains\Incidents\Support\IncidentStatusPresenter;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
 use App\Models\User;
@@ -180,10 +181,16 @@ class IncidentInboxController extends Controller
                 ->get(['code', 'name'])
                 ->map(fn (IncidentPriority $p) => ['value' => (string) $p->code, 'label' => (string) $p->name])
                 ->all(),
+            // Real catalog statuses, labeled with the same Spanish strings the
+            // rows render so the operator can always filter what they see (B5).
             'statuses' => IncidentStatus::query()
+                ->orderBy('sort_order')
                 ->orderBy('id')
                 ->get(['code', 'name'])
-                ->map(fn (IncidentStatus $s) => ['value' => (string) $s->code, 'label' => (string) $s->name])
+                ->map(fn (IncidentStatus $s) => [
+                    'value' => (string) $s->code,
+                    'label' => IncidentStatusPresenter::filterLabel((string) $s->code, (string) $s->name),
+                ])
                 ->all(),
             'providers' => $providers,
             'shifts' => [

@@ -76,28 +76,51 @@ export function deleteJson(
 }
 
 /**
- * Best-effort extraction of a human-readable error message from a Laravel
- * JSON error response (validation `errors` map or top-level `message`).
+ * Parsed Laravel error response: the top-level `message` plus the first
+ * message per field from the validation `errors` map, ready to paint inline
+ * next to each input (D-04).
  */
-export async function readErrorMessage(
+export interface ErrorPayload {
+    message: string | null;
+    fieldErrors: Record<string, string>;
+}
+
+/**
+ * Best-effort extraction of the full Laravel JSON error payload (validation
+ * `errors` map + top-level `message`). Consumes the response body.
+ */
+export async function readErrorPayload(
     response: Response,
-): Promise<string | null> {
+): Promise<ErrorPayload> {
     try {
         const data = (await response.json()) as {
             message?: string;
             errors?: Record<string, string[]>;
         };
 
-        if (data.errors) {
-            const first = Object.values(data.errors)[0];
+        const fieldErrors: Record<string, string> = {};
 
-            if (Array.isArray(first) && first.length > 0) {
-                return first[0];
+        for (const [field, messages] of Object.entries(data.errors ?? {})) {
+            if (Array.isArray(messages) && messages.length > 0) {
+                fieldErrors[field] = messages[0];
             }
         }
 
-        return data.message ?? null;
+        return { message: data.message ?? null, fieldErrors };
     } catch {
-        return null;
+        return { message: null, fieldErrors: {} };
     }
+}
+
+/**
+ * Best-effort extraction of a human-readable error message from a Laravel
+ * JSON error response (validation `errors` map or top-level `message`).
+ */
+export async function readErrorMessage(
+    response: Response,
+): Promise<string | null> {
+    const { message, fieldErrors } = await readErrorPayload(response);
+    const first = Object.values(fieldErrors)[0];
+
+    return first ?? message;
 }

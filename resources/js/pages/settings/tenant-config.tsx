@@ -1,6 +1,7 @@
 import { Head, router, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import InputError from '@/components/input-error';
 import { ConditionBuilder } from '@/components/sam/condition-builder';
 import type { ConditionFieldDef } from '@/components/sam/condition-builder';
 import { Badge } from '@/components/ui/badge';
@@ -20,6 +21,7 @@ import {
     postJson,
     putJson,
     readErrorMessage,
+    readErrorPayload,
 } from '@/lib/sam-fetch';
 
 // ---- Types ----
@@ -166,10 +168,16 @@ function useTeamBase(): string | null {
     return slug ? `/${slug}/settings/tenant-config` : null;
 }
 
+interface SubmitResult {
+    ok: boolean;
+    /** Primer mensaje por campo del `errors` de Laravel (D-04). */
+    fieldErrors: Record<string, string>;
+}
+
 async function submit(
     promise: Promise<Response>,
     successMessage: string,
-): Promise<boolean> {
+): Promise<SubmitResult> {
     try {
         const response = await promise;
 
@@ -177,22 +185,29 @@ async function submit(
             toast.success(successMessage);
             router.reload();
 
-            return true;
+            return { ok: true, fieldErrors: {} };
         }
 
         if (response.status === 403) {
             toast.error('No tienes permisos para editar la configuración.');
-        } else {
-            toast.error(
-                (await readErrorMessage(response)) ??
-                    'No se pudo guardar la configuración.',
-            );
+
+            return { ok: false, fieldErrors: {} };
         }
+
+        const { message, fieldErrors } = await readErrorPayload(response);
+
+        toast.error(
+            Object.values(fieldErrors)[0] ??
+                message ??
+                'No se pudo guardar la configuración.',
+        );
+
+        return { ok: false, fieldErrors };
     } catch {
         toast.error('Error de red. Vuelve a intentarlo.');
     }
 
-    return false;
+    return { ok: false, fieldErrors: {} };
 }
 
 // ---- General settings tab ----
@@ -216,15 +231,30 @@ function GeneralTab({
     const [staleness, setStaleness] = useState(
         String(byKey(LIVE_LOCATION_KEY)?.value ?? '120'),
     );
+    const [stalenessError, setStalenessError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
 
     const save = async () => {
-        if (base === null) {
+        if (base === null || saving) {
             return;
         }
 
+        // D-07: el umbral GPS debe ser un entero >= 1 — sin coerciones
+        // silenciosas a 120.
+        const parsedStaleness = Number(staleness);
+
+        if (!Number.isInteger(parsedStaleness) || parsedStaleness < 1) {
+            setStalenessError(
+                'Debe ser un número entero mayor o igual a 1 (segundos).',
+            );
+
+            return;
+        }
+
+        setStalenessError(null);
         setSaving(true);
-        await submit(
+
+        const result = await submit(
             putJson(`${base}/settings`, {
                 settings: [
                     {
@@ -243,12 +273,18 @@ function GeneralTab({
                         setting_key: LIVE_LOCATION_KEY,
                         setting_group: 'operational',
                         value_type: 'number',
-                        value: Number(staleness) || 120,
+                        value: parsedStaleness,
                     },
                 ],
             }),
             'Configuración guardada.',
         );
+
+        if (!result.ok) {
+            // El staleness viaja como settings[2] en el payload de arriba.
+            setStalenessError(result.fieldErrors['settings.2.value'] ?? null);
+        }
+
         setSaving(false);
     };
 
@@ -415,10 +451,16 @@ function GeneralTab({
                         </Label>
                         <Input
                             type="number"
+                            min={1}
                             value={staleness}
                             disabled={!canManage}
+                            aria-invalid={Boolean(stalenessError)}
                             onChange={(e) => setStaleness(e.target.value)}
                             className="w-40"
+                        />
+                        <InputError
+                            message={stalenessError ?? undefined}
+                            className="text-xs"
                         />
                     </div>
 
@@ -695,6 +737,12 @@ function NotificationsTab({
         ]);
     };
 
+    // D-12: quitar una política pendiente (aún no guardada) del estado local
+    // sin tener que recargar la página y perder el resto del borrador.
+    const removeDraft = (index: number) => {
+        setDrafts((prev) => prev.filter((_, i) => i !== index));
+    };
+
     return (
         <Card>
             <CardHeader>
@@ -775,6 +823,17 @@ function NotificationsTab({
                                 />
                                 activa
                             </label>
+                            {canManage && policy.id === 0 && (
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    className="ml-auto h-7 text-xs text-fg-3 hover:text-severity-critical"
+                                    onClick={() => removeDraft(index)}
+                                >
+                                    Quitar
+                                </Button>
+                            )}
                         </div>
                         <div className="flex flex-wrap gap-3">
                             {CHANNEL_OPTIONS.map((channel) => (
@@ -1501,6 +1560,8 @@ function ChannelsTab({
 }) {
     const base = useTeamBase();
     const [creating, setCreating] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
+    const [errors, setErrors] = useState<Record<string, string>>({});
     const [form, setForm] = useState({
         code: '',
         name: '',
@@ -1522,17 +1583,31 @@ function ChannelsTab({
                   : 'mail';
 
     const create = async () => {
-        if (base === null) {
+        // D-01: guard contra doble click.
+        if (base === null || submitting) {
             return;
         }
 
-        if (form.code === '' || form.name === '') {
-            toast.error('Código y nombre son obligatorios.');
+        const nextErrors: Record<string, string> = {};
+
+        if (form.code === '') {
+            nextErrors.code = 'El código es obligatorio.';
+        }
+
+        if (form.name === '') {
+            nextErrors.name = 'El nombre es obligatorio.';
+        }
+
+        if (Object.keys(nextErrors).length > 0) {
+            setErrors(nextErrors);
 
             return;
         }
 
-        const ok = await submit(
+        setErrors({});
+        setSubmitting(true);
+
+        const result = await submit(
             postJson(`${base}/channels`, {
                 code: form.code,
                 name: form.name,
@@ -1544,8 +1619,12 @@ function ChannelsTab({
             'Canal creado.',
         );
 
-        if (ok) {
+        setSubmitting(false);
+
+        if (result.ok) {
             setCreating(false);
+        } else {
+            setErrors(result.fieldErrors);
         }
     };
 
@@ -1648,22 +1727,42 @@ function ChannelsTab({
                 {creating && (
                     <div className="flex flex-col gap-2 rounded-md border border-border p-3">
                         <div className="flex flex-wrap gap-2">
-                            <Input
-                                placeholder="code (ej. twilio_sms)"
-                                value={form.code}
-                                onChange={(e) =>
-                                    setForm({ ...form, code: e.target.value })
-                                }
-                                className="w-48 font-mono text-xs"
-                            />
-                            <Input
-                                placeholder="Nombre"
-                                value={form.name}
-                                onChange={(e) =>
-                                    setForm({ ...form, name: e.target.value })
-                                }
-                                className="w-56 text-xs"
-                            />
+                            <div className="flex flex-col gap-1">
+                                <Input
+                                    placeholder="code (ej. twilio_sms)"
+                                    value={form.code}
+                                    aria-invalid={Boolean(errors.code)}
+                                    onChange={(e) =>
+                                        setForm({
+                                            ...form,
+                                            code: e.target.value,
+                                        })
+                                    }
+                                    className="w-48 font-mono text-xs"
+                                />
+                                <InputError
+                                    message={errors.code}
+                                    className="max-w-48 text-xs"
+                                />
+                            </div>
+                            <div className="flex flex-col gap-1">
+                                <Input
+                                    placeholder="Nombre"
+                                    value={form.name}
+                                    aria-invalid={Boolean(errors.name)}
+                                    onChange={(e) =>
+                                        setForm({
+                                            ...form,
+                                            name: e.target.value,
+                                        })
+                                    }
+                                    className="w-56 text-xs"
+                                />
+                                <InputError
+                                    message={errors.name}
+                                    className="max-w-56 text-xs"
+                                />
+                            </div>
                             <select
                                 value={form.channelType}
                                 onChange={(e) =>
@@ -1706,8 +1805,12 @@ function ChannelsTab({
                             </div>
                         ))}
                         <div>
-                            <Button size="sm" onClick={create}>
-                                Crear canal
+                            <Button
+                                size="sm"
+                                onClick={create}
+                                disabled={submitting}
+                            >
+                                {submitting ? 'Creando…' : 'Crear canal'}
                             </Button>
                         </div>
                     </div>
@@ -1853,14 +1956,17 @@ function BrandingTab({
     });
     const [saving, setSaving] = useState(false);
     const [uploading, setUploading] = useState(false);
+    const [errors, setErrors] = useState<Record<string, string>>({});
 
     const save = async () => {
-        if (base === null) {
+        if (base === null || saving) {
             return;
         }
 
+        setErrors({});
         setSaving(true);
-        await submit(
+
+        const result = await submit(
             putJson(`${base}/branding`, {
                 display_name:
                     form.display_name === '' ? null : form.display_name,
@@ -1871,6 +1977,11 @@ function BrandingTab({
             }),
             'Marca guardada.',
         );
+
+        if (!result.ok) {
+            setErrors(result.fieldErrors);
+        }
+
         setSaving(false);
     };
 
@@ -1960,9 +2071,14 @@ function BrandingTab({
                     <Input
                         value={form.display_name}
                         disabled={!canManage}
+                        aria-invalid={Boolean(errors.display_name)}
                         onChange={(e) =>
                             setForm({ ...form, display_name: e.target.value })
                         }
+                    />
+                    <InputError
+                        message={errors.display_name}
+                        className="text-xs"
                     />
                 </div>
                 <div className="flex gap-4">
@@ -1980,6 +2096,10 @@ function BrandingTab({
                             }
                             className="h-9 w-16 rounded border border-border bg-surface-1"
                         />
+                        <InputError
+                            message={errors.primary_color}
+                            className="text-xs"
+                        />
                     </div>
                     <div className="flex flex-col gap-1">
                         <Label className="text-xs">Color secundario</Label>
@@ -1995,6 +2115,10 @@ function BrandingTab({
                             }
                             className="h-9 w-16 rounded border border-border bg-surface-1"
                         />
+                        <InputError
+                            message={errors.secondary_color}
+                            className="text-xs"
+                        />
                     </div>
                 </div>
                 <div className="flex flex-col gap-1">
@@ -2002,6 +2126,7 @@ function BrandingTab({
                     <textarea
                         value={form.email_signature}
                         disabled={!canManage}
+                        aria-invalid={Boolean(errors.email_signature)}
                         onChange={(e) =>
                             setForm({
                                 ...form,
@@ -2010,6 +2135,10 @@ function BrandingTab({
                         }
                         rows={3}
                         className="rounded-md border border-border bg-surface-2 p-2 text-xs text-fg-2"
+                    />
+                    <InputError
+                        message={errors.email_signature}
+                        className="text-xs"
                     />
                 </div>
                 {canManage && (

@@ -2,15 +2,30 @@ import { Head, router, usePage } from '@inertiajs/react';
 import { Plus, Trash2, Workflow } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import InputError from '@/components/input-error';
 import { ConditionBuilder } from '@/components/sam/condition-builder';
 import type { ConditionFieldDef } from '@/components/sam/condition-builder';
+import { ConfirmDialog } from '@/components/sam/confirm-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Combobox } from '@/components/ui/combobox';
+import {
+    Dialog,
+    DialogContent,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
-import { postJson, putJson, readErrorMessage } from '@/lib/sam-fetch';
+import { Label } from '@/components/ui/label';
+import {
+    deleteJson,
+    postJson,
+    putJson,
+    readErrorPayload,
+} from '@/lib/sam-fetch';
 
 // ---- Types ----
 
@@ -100,10 +115,16 @@ function useTeamBase(): string | null {
     return slug ? `/${slug}/automation` : null;
 }
 
+interface SubmitResult {
+    ok: boolean;
+    /** Primer mensaje por campo del `errors` de Laravel (D-04). */
+    fieldErrors: Record<string, string>;
+}
+
 async function submit(
     promise: Promise<Response>,
     successMessage: string,
-): Promise<boolean> {
+): Promise<SubmitResult> {
     try {
         const response = await promise;
 
@@ -111,22 +132,29 @@ async function submit(
             toast.success(successMessage);
             router.reload();
 
-            return true;
+            return { ok: true, fieldErrors: {} };
         }
 
         if (response.status === 403) {
             toast.error('No tienes permisos para esta acción.');
-        } else {
-            toast.error(
-                (await readErrorMessage(response)) ??
-                    'No se pudo completar la acción.',
-            );
+
+            return { ok: false, fieldErrors: {} };
         }
+
+        const { message, fieldErrors } = await readErrorPayload(response);
+
+        toast.error(
+            Object.values(fieldErrors)[0] ??
+                message ??
+                'No se pudo completar la acción.',
+        );
+
+        return { ok: false, fieldErrors };
     } catch {
         toast.error('Error de red. Vuelve a intentarlo.');
     }
 
-    return false;
+    return { ok: false, fieldErrors: {} };
 }
 
 // ---- Workflows tab ----
@@ -150,6 +178,8 @@ function WorkflowBuilder({
     onCreated: () => void;
 }) {
     const base = useTeamBase();
+    const [submitting, setSubmitting] = useState(false);
+    const [errors, setErrors] = useState<Record<string, string>>({});
     const [form, setForm] = useState({
         code: '',
         name: '',
@@ -187,17 +217,32 @@ function WorkflowBuilder({
         );
 
     const create = async () => {
-        if (base === null) {
+        // D-02: guard contra doble click — no se emite un segundo POST
+        // mientras el primero sigue en vuelo.
+        if (base === null || submitting) {
             return;
         }
 
-        if (form.code === '' || form.name === '') {
-            toast.error('Código y nombre son obligatorios.');
+        const nextErrors: Record<string, string> = {};
+
+        if (form.code === '') {
+            nextErrors.code = 'El código es obligatorio.';
+        }
+
+        if (form.name === '') {
+            nextErrors.name = 'El nombre es obligatorio.';
+        }
+
+        if (Object.keys(nextErrors).length > 0) {
+            setErrors(nextErrors);
 
             return;
         }
 
-        const ok = await submit(
+        setErrors({});
+        setSubmitting(true);
+
+        const result = await submit(
             postJson(`${base}/workflows`, {
                 code: form.code,
                 name: form.name,
@@ -218,26 +263,54 @@ function WorkflowBuilder({
             'Workflow creado.',
         );
 
-        if (ok) {
+        setSubmitting(false);
+
+        if (result.ok) {
             onCreated();
+        } else {
+            setErrors(result.fieldErrors);
         }
     };
+
+    // Errores de validación sin campo visible directo (p. ej. steps_json.*)
+    // — se muestran como bloque persistente junto al botón (D-04).
+    const otherErrors = Object.entries(errors).filter(
+        ([field]) => field !== 'code' && field !== 'name',
+    );
 
     return (
         <div className="flex flex-col gap-2 rounded-md border border-border p-3">
             <div className="flex flex-wrap gap-2">
-                <Input
-                    placeholder="code (ej. critico-notifica)"
-                    value={form.code}
-                    onChange={(e) => setForm({ ...form, code: e.target.value })}
-                    className="w-56 font-mono text-xs"
-                />
-                <Input
-                    placeholder="Nombre"
-                    value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    className="w-64 text-xs"
-                />
+                <div className="flex flex-col gap-1">
+                    <Input
+                        placeholder="code (ej. critico-notifica)"
+                        value={form.code}
+                        aria-invalid={Boolean(errors.code)}
+                        onChange={(e) =>
+                            setForm({ ...form, code: e.target.value })
+                        }
+                        className="w-56 font-mono text-xs"
+                    />
+                    <InputError
+                        message={errors.code}
+                        className="max-w-56 text-xs"
+                    />
+                </div>
+                <div className="flex flex-col gap-1">
+                    <Input
+                        placeholder="Nombre"
+                        value={form.name}
+                        aria-invalid={Boolean(errors.name)}
+                        onChange={(e) =>
+                            setForm({ ...form, name: e.target.value })
+                        }
+                        className="w-64 text-xs"
+                    />
+                    <InputError
+                        message={errors.name}
+                        className="max-w-64 text-xs"
+                    />
+                </div>
                 <select
                     value={form.triggerType}
                     onChange={(e) => {
@@ -366,16 +439,141 @@ function WorkflowBuilder({
                 </div>
             ))}
 
+            {otherErrors.length > 0 && (
+                <ul className="flex flex-col gap-0.5">
+                    {otherErrors.map(([field, message]) => (
+                        <li key={field}>
+                            <InputError message={message} className="text-xs" />
+                        </li>
+                    ))}
+                </ul>
+            )}
+
             <div className="flex gap-2">
                 <Button size="sm" variant="outline" onClick={addStep}>
                     <Plus size={12} />
                     Añadir paso
                 </Button>
-                <Button size="sm" onClick={create}>
-                    Crear workflow
+                <Button size="sm" onClick={create} disabled={submitting}>
+                    {submitting ? 'Creando…' : 'Crear workflow'}
                 </Button>
             </div>
         </div>
+    );
+}
+
+// ---- Edit metadata dialog (D-09) ----
+
+function EditWorkflowDialog({
+    workflow,
+    onOpenChange,
+}: {
+    workflow: WorkflowRow | null;
+    onOpenChange: (open: boolean) => void;
+}) {
+    const base = useTeamBase();
+    const [name, setName] = useState('');
+    const [description, setDescription] = useState('');
+    const [errors, setErrors] = useState<Record<string, string>>({});
+    const [saving, setSaving] = useState(false);
+
+    // Sincroniza el form cuando se abre con un workflow distinto.
+    const [lastId, setLastId] = useState<number | null>(null);
+
+    if (workflow !== null && workflow.id !== lastId) {
+        setLastId(workflow.id);
+        setName(workflow.name);
+        setDescription(workflow.description ?? '');
+        setErrors({});
+    }
+
+    const save = async () => {
+        if (base === null || workflow === null || saving) {
+            return;
+        }
+
+        if (name.trim() === '') {
+            setErrors({ name: 'El nombre es obligatorio.' });
+
+            return;
+        }
+
+        setErrors({});
+        setSaving(true);
+
+        const result = await submit(
+            putJson(`${base}/workflows/${workflow.id}`, {
+                name,
+                description: description === '' ? null : description,
+            }),
+            'Workflow actualizado.',
+        );
+
+        setSaving(false);
+
+        if (result.ok) {
+            onOpenChange(false);
+        } else {
+            setErrors(result.fieldErrors);
+        }
+    };
+
+    return (
+        <Dialog
+            open={workflow !== null}
+            onOpenChange={(next) => {
+                if (!next && !saving) {
+                    onOpenChange(false);
+                }
+            }}
+        >
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Editar workflow</DialogTitle>
+                </DialogHeader>
+                <div className="flex flex-col gap-3">
+                    <div className="flex flex-col gap-1">
+                        <Label className="text-xs">Nombre</Label>
+                        <Input
+                            value={name}
+                            aria-invalid={Boolean(errors.name)}
+                            onChange={(e) => setName(e.target.value)}
+                        />
+                        <InputError message={errors.name} className="text-xs" />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <Label className="text-xs">Descripción</Label>
+                        <textarea
+                            value={description}
+                            onChange={(e) => setDescription(e.target.value)}
+                            rows={3}
+                            className="rounded-md border border-border bg-surface-2 p-2 text-sm text-fg-2"
+                        />
+                        <InputError
+                            message={errors.description}
+                            className="text-xs"
+                        />
+                    </div>
+                    <p className="text-2xs text-fg-3">
+                        El código del workflow ({workflow?.code}) identifica el
+                        registro y no se puede cambiar. Para editar los pasos,
+                        elimina el workflow y créalo de nuevo.
+                    </p>
+                </div>
+                <DialogFooter>
+                    <Button
+                        variant="ghost"
+                        onClick={() => onOpenChange(false)}
+                        disabled={saving}
+                    >
+                        Cancelar
+                    </Button>
+                    <Button onClick={save} disabled={saving}>
+                        {saving ? 'Guardando…' : 'Guardar'}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     );
 }
 
@@ -394,6 +592,8 @@ function WorkflowsTab({
 }) {
     const base = useTeamBase();
     const [creating, setCreating] = useState(false);
+    const [editing, setEditing] = useState<WorkflowRow | null>(null);
+    const [deleting, setDeleting] = useState<WorkflowRow | null>(null);
 
     const toggleActive = (workflow: WorkflowRow) => {
         if (base === null) {
@@ -406,6 +606,21 @@ function WorkflowsTab({
             }),
             workflow.isActive ? 'Workflow desactivado.' : 'Workflow activado.',
         );
+    };
+
+    const remove = async (workflow: WorkflowRow) => {
+        if (base === null) {
+            return;
+        }
+
+        const result = await submit(
+            deleteJson(`${base}/workflows/${workflow.id}`),
+            'Workflow eliminado.',
+        );
+
+        if (result.ok) {
+            setDeleting(null);
+        }
     };
 
     const triggerNow = (workflow: WorkflowRow) => {
@@ -507,6 +722,25 @@ function WorkflowsTab({
                                             : 'Activar'}
                                     </Button>
                                 )}
+                                {canManage && (
+                                    <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => setEditing(workflow)}
+                                    >
+                                        Editar
+                                    </Button>
+                                )}
+                                {canManage && (
+                                    <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="text-fg-3 hover:text-severity-critical"
+                                        onClick={() => setDeleting(workflow)}
+                                    >
+                                        Eliminar
+                                    </Button>
+                                )}
                             </span>
                         </CardTitle>
                     </CardHeader>
@@ -542,6 +776,27 @@ function WorkflowsTab({
                     </CardContent>
                 </Card>
             ))}
+
+            <EditWorkflowDialog
+                workflow={editing}
+                onOpenChange={(open) => !open && setEditing(null)}
+            />
+
+            <ConfirmDialog
+                open={deleting !== null}
+                title="Eliminar workflow"
+                description={
+                    deleting
+                        ? `¿Seguro que deseas eliminar el workflow "${deleting.name}"? Dejará de reaccionar a incidentes y decisiones. Esta acción no se puede deshacer.`
+                        : ''
+                }
+                onConfirm={() => {
+                    if (deleting) {
+                        return remove(deleting);
+                    }
+                }}
+                onOpenChange={(open) => !open && setDeleting(null)}
+            />
         </div>
     );
 }

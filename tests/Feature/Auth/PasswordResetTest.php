@@ -79,6 +79,33 @@ class PasswordResetTest extends TestCase
         });
     }
 
+    public function test_forgot_password_does_not_leak_whether_email_exists(): void
+    {
+        Notification::fake();
+
+        $user = User::factory()->create();
+
+        // Existing account: neutral status flash, no validation errors.
+        $existing = $this->from(route('password.request'))
+            ->post(route('password.email'), ['email' => $user->email]);
+
+        $existing->assertSessionHasNoErrors();
+        $existing->assertSessionHas('status', trans('passwords.neutral'));
+
+        // Non-existent account: identical neutral response, never an error that
+        // would reveal the email is unknown (E4 — user enumeration).
+        $missing = $this->from(route('password.request'))
+            ->post(route('password.email'), ['email' => 'nobody-'.uniqid().'@example.com']);
+
+        $missing->assertSessionHasNoErrors();
+        $missing->assertSessionHas('status', trans('passwords.neutral'));
+
+        $this->assertSame(
+            $existing->getSession()->get('status'),
+            $missing->getSession()->get('status'),
+        );
+    }
+
     public function test_password_cannot_be_reset_with_invalid_token(): void
     {
         $user = User::factory()->create();

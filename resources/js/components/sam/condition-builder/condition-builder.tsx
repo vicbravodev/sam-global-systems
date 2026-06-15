@@ -31,6 +31,12 @@ interface ConditionBuilderProps {
     fields: ConditionFieldDef[];
     value: Record<string, unknown>;
     onChange: (value: Record<string, unknown>) => void;
+    /**
+     * D-05: notifica al form padre cuando el JSON del modo avanzado deja de
+     * ser parseable (o vuelve a serlo) para que pueda bloquear el submit en
+     * vez de mandar silenciosamente el último valor válido.
+     */
+    onJsonErrorChange?: (error: string | null) => void;
     allowUnknownFields?: boolean;
     disabled?: boolean;
     className?: string;
@@ -41,6 +47,7 @@ export function ConditionBuilder({
     fields,
     value,
     onChange,
+    onJsonErrorChange,
     allowUnknownFields = false,
     disabled = false,
     className,
@@ -76,10 +83,15 @@ export function ConditionBuilder({
         setJsonError(null);
     }
 
+    const updateJsonError = (next: string | null) => {
+        setJsonError(next);
+        onJsonErrorChange?.(next);
+    };
+
     const emit = (next: Record<string, unknown>) => {
         setSynced(JSON.stringify(next));
         setJsonDraft(JSON.stringify(next, null, 2));
-        setJsonError(null);
+        updateJsonError(null);
         onChange(next);
     };
 
@@ -101,7 +113,7 @@ export function ConditionBuilder({
         try {
             parsed = JSON.parse(raw);
         } catch {
-            setJsonError('JSON inválido: revisa la sintaxis.');
+            updateJsonError('JSON inválido: revisa la sintaxis.');
 
             return;
         }
@@ -111,12 +123,12 @@ export function ConditionBuilder({
             typeof parsed !== 'object' ||
             Array.isArray(parsed)
         ) {
-            setJsonError('Las condiciones deben ser un objeto JSON.');
+            updateJsonError('Las condiciones deben ser un objeto JSON.');
 
             return;
         }
 
-        setJsonError(null);
+        updateJsonError(null);
 
         const next = parsed as Record<string, unknown>;
 

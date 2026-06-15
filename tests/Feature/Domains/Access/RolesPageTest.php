@@ -102,6 +102,37 @@ class RolesPageTest extends TestCase
         $this->assertDatabaseMissing('roles', ['code' => 'night_shift']);
     }
 
+    public function test_store_rejects_role_code_that_is_not_a_slug(): void
+    {
+        $user = $this->userWithRole('tenant_admin');
+
+        $this->actingAs($user)
+            ->from(route('access.roles.index', ['current_team' => $user->currentTeam->slug]))
+            ->post(route('access.roles.store', ['current_team' => $user->currentTeam->slug]), [
+                'name' => 'Mi Rol',
+                'code' => 'Mi Rol!',
+                'permissions' => ['incidents.view'],
+            ])
+            ->assertSessionHasErrors('code');
+
+        $this->assertDatabaseMissing('roles', ['code' => 'Mi Rol!']);
+    }
+
+    public function test_store_accepts_slug_role_code(): void
+    {
+        $user = $this->userWithRole('tenant_admin');
+
+        $this->actingAs($user)
+            ->post(route('access.roles.store', ['current_team' => $user->currentTeam->slug]), [
+                'name' => 'Mi Rol',
+                'code' => 'mi-rol',
+                'permissions' => ['incidents.view'],
+            ])
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('roles', ['code' => 'mi-rol']);
+    }
+
     public function test_update_syncs_permissions_on_custom_role(): void
     {
         $user = $this->userWithRole('tenant_admin');
