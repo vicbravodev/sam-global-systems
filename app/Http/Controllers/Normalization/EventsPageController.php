@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Normalization;
 use App\Contracts\ObjectStorage;
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\Context\Models\EventMediaContext;
+use App\Domains\Decisions\Enums\DecisionOutcomeCode;
 use App\Domains\Decisions\Models\Decision;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Normalization\Enums\NormalizedEventStatus;
@@ -196,6 +197,7 @@ class EventsPageController extends Controller
             'id' => (int) $evaluation->id,
             'version' => (int) $evaluation->evaluation_version,
             'classification' => $evaluation->classification?->value,
+            'classificationLabel' => $evaluation->classification?->label(),
             'confidenceScore' => $evaluation->confidence_score !== null ? (float) $evaluation->confidence_score : null,
             'riskScore' => $evaluation->risk_score !== null ? (float) $evaluation->risk_score : null,
             'priorityLevel' => $evaluation->priority_level?->value,
@@ -220,6 +222,9 @@ class EventsPageController extends Controller
         return [
             'id' => (int) $decision->id,
             'code' => $decision->decision_code,
+            'outcomeLabel' => $decision->decision_code !== null
+                ? (DecisionOutcomeCode::tryFrom($decision->decision_code)?->label() ?? $decision->decision_code)
+                : null,
             'reason' => $decision->decision_reason,
             'requiresHumanReview' => (bool) $decision->requires_human_review,
             'decidedAt' => $decision->decided_at?->toIso8601String(),

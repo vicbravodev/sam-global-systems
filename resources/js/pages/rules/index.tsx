@@ -31,6 +31,7 @@ interface DecisionRuleRow {
     priority: number;
     conditions: Record<string, unknown> | null;
     outcomeCode: string | null;
+    outcomeLabel: string | null;
     outcomeId: number | null;
     stopProcessing: boolean;
     isActive: boolean;
@@ -75,7 +76,7 @@ interface RulesPageProps {
         isDefault: boolean;
         isGlobal: boolean;
     }[];
-    outcomes: { id: number; code: string; name: string }[];
+    outcomes: { id: number; code: string; name: string; label: string }[];
     scopes: string[];
     mappingRules: MappingRuleRow[];
     mappingOptions: {
@@ -313,7 +314,7 @@ function RuleConditionsEditor({
                                     key={outcome.id}
                                     value={String(outcome.id)}
                                 >
-                                    {outcome.code}
+                                    {outcome.label ?? outcome.code}
                                 </option>
                             ))}
                         </select>
@@ -619,7 +620,7 @@ function DecisionRulesTab({
                                                 key={outcome.id}
                                                 value={String(outcome.id)}
                                             >
-                                                {outcome.code}
+                                                {outcome.label ?? outcome.code}
                                             </option>
                                         ))}
                                     </select>
@@ -736,7 +737,7 @@ function DecisionRulesTab({
                                                 )}
                                             </td>
                                             <td className="py-2 pr-4 font-mono text-2xs">
-                                                {rule.outcomeCode ?? '—'}
+                                                {rule.outcomeLabel ?? rule.outcomeCode ?? '—'}
                                             </td>
                                             <td className="py-2 pr-4">
                                                 {rule.isGlobal
