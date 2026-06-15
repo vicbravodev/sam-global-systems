@@ -11,6 +11,7 @@ import {
 import type { RealtimeState } from '@/components/sam/realtime-status';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { useRealtimeConnection } from '@/hooks/use-realtime-connection';
 import type { TeamBroadcastDetail } from '@/hooks/use-team-broadcasts';
 import { TEAM_BROADCAST_EVENT_NAME } from '@/hooks/use-team-broadcasts';
@@ -577,10 +578,6 @@ function IntegrationsPanel({
 }
 
 function UsagePanel({ usage }: { usage: UsageCounterRow[] }) {
-    if (usage.length === 0) {
-        return null;
-    }
-
     return (
         <Card className="gap-0 overflow-hidden py-0">
             <CardHeader className="flex flex-row items-center justify-between border-b border-border px-4 py-3">
@@ -592,54 +589,69 @@ function UsagePanel({ usage }: { usage: UsageCounterRow[] }) {
                     {usage.length === 1 ? 'medidor' : 'medidores'}
                 </span>
             </CardHeader>
-            <CardContent className="grid gap-3 p-3 sm:grid-cols-2 xl:grid-cols-4">
-                {usage.map((counter) => {
-                    const hasOverage = counter.overage > 0;
-                    const fillPct = Math.min(counter.percentUsed ?? 0, 100);
+            {usage.length === 0 ? (
+                <CardContent className="p-3">
+                    {/* B3: el panel queda presente (en vez de return null) para
+                        que la columna izquierda llene el alto y no haya hueco. */}
+                    <EmptyState
+                        icon={Gauge}
+                        title="Sin consumo medido en este periodo todavía"
+                        description="Cuando tu operación genere actividad facturable (eventos, media, llamadas de verificación), el consumo del plan aparecerá aquí."
+                    />
+                </CardContent>
+            ) : (
+                <CardContent className="grid gap-3 p-3 sm:grid-cols-2 xl:grid-cols-4">
+                    {usage.map((counter) => {
+                        const hasOverage = counter.overage > 0;
+                        const fillPct = Math.min(counter.percentUsed ?? 0, 100);
 
-                    return (
-                        <div
-                            key={counter.meterCode}
-                            className="rounded-md border border-border bg-surface-2 p-3"
-                        >
-                            <div className="truncate text-sm font-semibold">
-                                {counter.meterName}
+                        return (
+                            <div
+                                key={counter.meterCode}
+                                className="rounded-md border border-border bg-surface-2 p-3"
+                            >
+                                <div className="truncate text-sm font-semibold">
+                                    {counter.meterName}
+                                </div>
+                                <div className="mt-1 font-mono text-xl tabular-nums">
+                                    {counter.consumed.toLocaleString('es')}
+                                    <span className="text-sm text-fg-3">
+                                        {' '}
+                                        /{' '}
+                                        {counter.included.toLocaleString(
+                                            'es',
+                                        )}{' '}
+                                        {counter.unit}
+                                    </span>
+                                </div>
+                                <div className="mt-2 h-1 overflow-hidden rounded-full bg-surface-3">
+                                    <div
+                                        className={cn(
+                                            'h-full rounded-full',
+                                            hasOverage
+                                                ? 'bg-severity-high'
+                                                : 'bg-primary',
+                                        )}
+                                        style={{ width: `${fillPct}%` }}
+                                    />
+                                </div>
+                                <div className="mt-2 flex items-center justify-between font-mono text-3xs text-fg-3">
+                                    <span>
+                                        {hasOverage
+                                            ? `+${counter.overage.toLocaleString('es')} excedente`
+                                            : formatPercent(
+                                                  counter.percentUsed,
+                                              )}
+                                    </span>
+                                    {counter.periodEnd ? (
+                                        <span>renueva {counter.periodEnd}</span>
+                                    ) : null}
+                                </div>
                             </div>
-                            <div className="mt-1 font-mono text-xl tabular-nums">
-                                {counter.consumed.toLocaleString('es')}
-                                <span className="text-sm text-fg-3">
-                                    {' '}
-                                    / {counter.included.toLocaleString(
-                                        'es',
-                                    )}{' '}
-                                    {counter.unit}
-                                </span>
-                            </div>
-                            <div className="mt-2 h-1 overflow-hidden rounded-full bg-surface-3">
-                                <div
-                                    className={cn(
-                                        'h-full rounded-full',
-                                        hasOverage
-                                            ? 'bg-severity-high'
-                                            : 'bg-primary',
-                                    )}
-                                    style={{ width: `${fillPct}%` }}
-                                />
-                            </div>
-                            <div className="mt-2 flex items-center justify-between font-mono text-3xs text-fg-3">
-                                <span>
-                                    {hasOverage
-                                        ? `+${counter.overage.toLocaleString('es')} excedente`
-                                        : formatPercent(counter.percentUsed)}
-                                </span>
-                                {counter.periodEnd ? (
-                                    <span>renueva {counter.periodEnd}</span>
-                                ) : null}
-                            </div>
-                        </div>
-                    );
-                })}
-            </CardContent>
+                        );
+                    })}
+                </CardContent>
+            )}
         </Card>
     );
 }
