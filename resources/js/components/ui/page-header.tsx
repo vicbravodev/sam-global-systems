@@ -35,8 +35,10 @@ function PageHeader({
             {...props}
         >
             <div className="min-w-0">
-                <div className="flex items-center gap-2.5">
-                    <h1 className="sam-h2 truncate">{title}</h1>
+                {/* D4: min-w-0 en el contenedor flex para que truncate funcione
+                    cuando hay meta al lado en pantallas estrechas. */}
+                <div className="flex min-w-0 items-center gap-2.5">
+                    <h1 className="sam-h2 min-w-0 truncate">{title}</h1>
                     {meta ? (
                         <div className="flex shrink-0 items-center gap-1.5">
                             {meta}
