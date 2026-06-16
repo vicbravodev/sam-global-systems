@@ -51,8 +51,8 @@ class ApplyExternalResolution
                 incident: $incident,
                 entryType: TimelineEntryType::ExternallyResolved,
                 actorType: TimelineActorType::System,
-                title: 'Resolved at source',
-                description: 'The provider reported this alert as resolved at the source.',
+                title: 'Resuelto en el origen',
+                description: 'El proveedor reportó esta alerta como resuelta en el origen.',
                 payload: [
                     'normalized_event_id' => $event->id,
                     'external_resolved_at' => $resolvedAt->toIso8601String(),

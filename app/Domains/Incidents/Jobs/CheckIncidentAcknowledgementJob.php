@@ -85,8 +85,8 @@ class CheckIncidentAcknowledgementJob implements ShouldQueue
                 incident: $incident,
                 entryType: TimelineEntryType::SlaBreached,
                 actorType: TimelineActorType::System,
-                title: 'SLA breached',
-                description: "Incident not acknowledged before its SLA (escalation level {$this->level}).",
+                title: 'SLA incumplido',
+                description: "El incidente no fue atendido antes de su SLA (nivel de escalamiento {$this->level}).",
                 payload: [
                     'level' => $this->level,
                     'sla_due_at' => $incident->sla_due_at?->toIso8601String(),

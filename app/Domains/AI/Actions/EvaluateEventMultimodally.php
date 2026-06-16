@@ -78,7 +78,7 @@ class EvaluateEventMultimodally
                     'result' => MediaAssessmentResult::Unavailable,
                     'confidence_score' => 0.0,
                     'extracted_signals_json' => ['error' => $exception->getMessage()],
-                    'summary_text' => 'Multimodal agent failed: '.$exception->getMessage(),
+                    'summary_text' => 'Falló el agente multimodal: '.$exception->getMessage(),
                     'latency_ms' => null,
                     'input_tokens' => null,
                     'output_tokens' => null,

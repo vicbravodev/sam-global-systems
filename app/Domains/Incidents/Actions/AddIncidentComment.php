@@ -33,7 +33,7 @@ class AddIncidentComment
             entryType: TimelineEntryType::CommentAdded,
             actorType: TimelineActorType::User,
             actorId: $user->id,
-            title: 'Comment added',
+            title: 'Comentario agregado',
             description: $comment,
             payload: [
                 'comment_id' => $record->id,

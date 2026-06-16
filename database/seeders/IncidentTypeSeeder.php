@@ -15,21 +15,21 @@ class IncidentTypeSeeder extends Seeder
         $medium = IncidentPriority::query()->where('code', 'medium')->first();
 
         $types = [
-            ['code' => 'panic_emergency', 'name' => 'Panic Emergency', 'default_priority_id' => $critical?->id],
-            ['code' => 'collision', 'name' => 'Collision', 'default_priority_id' => $critical?->id],
-            ['code' => 'camera_obstructed', 'name' => 'Camera Obstructed', 'default_priority_id' => $medium?->id],
-            ['code' => 'route_deviation', 'name' => 'Route Deviation', 'default_priority_id' => $medium?->id],
-            ['code' => 'geofence_breach', 'name' => 'Geofence Breach', 'default_priority_id' => $high?->id],
-            ['code' => 'driver_fatigue', 'name' => 'Driver Fatigue', 'default_priority_id' => $high?->id],
-            ['code' => 'suspicious_stop', 'name' => 'Suspicious Stop', 'default_priority_id' => $medium?->id],
+            ['code' => 'panic_emergency', 'name' => 'Emergencia de pánico', 'default_priority_id' => $critical?->id],
+            ['code' => 'collision', 'name' => 'Colisión', 'default_priority_id' => $critical?->id],
+            ['code' => 'camera_obstructed', 'name' => 'Cámara obstruida', 'default_priority_id' => $medium?->id],
+            ['code' => 'route_deviation', 'name' => 'Desvío de ruta', 'default_priority_id' => $medium?->id],
+            ['code' => 'geofence_breach', 'name' => 'Violación de geocerca', 'default_priority_id' => $high?->id],
+            ['code' => 'driver_fatigue', 'name' => 'Fatiga del conductor', 'default_priority_id' => $high?->id],
+            ['code' => 'suspicious_stop', 'name' => 'Parada sospechosa', 'default_priority_id' => $medium?->id],
             // Category-level buckets: every normalized event category resolves
             // to one of these when no specific incident type matches, so an
             // incident is never mislabeled as another type by fallback.
-            ['code' => 'emergency_alert', 'name' => 'Emergency Alert', 'default_priority_id' => $critical?->id],
-            ['code' => 'safety_violation', 'name' => 'Safety Violation', 'default_priority_id' => $high?->id],
-            ['code' => 'compliance_violation', 'name' => 'Compliance Violation', 'default_priority_id' => $medium?->id],
-            ['code' => 'operational_alert', 'name' => 'Operational Alert', 'default_priority_id' => $medium?->id],
-            ['code' => 'other', 'name' => 'Other', 'default_priority_id' => $medium?->id],
+            ['code' => 'emergency_alert', 'name' => 'Alerta de emergencia', 'default_priority_id' => $critical?->id],
+            ['code' => 'safety_violation', 'name' => 'Violación de seguridad', 'default_priority_id' => $high?->id],
+            ['code' => 'compliance_violation', 'name' => 'Violación de cumplimiento', 'default_priority_id' => $medium?->id],
+            ['code' => 'operational_alert', 'name' => 'Alerta operativa', 'default_priority_id' => $medium?->id],
+            ['code' => 'other', 'name' => 'Otro', 'default_priority_id' => $medium?->id],
         ];
 
         foreach ($types as $type) {
