@@ -40,7 +40,7 @@ class ReclassifyIncident
                 entryType: TimelineEntryType::Reclassified,
                 actorType: $actorType === IncidentCreatorType::User ? TimelineActorType::User : TimelineActorType::System,
                 actorId: $actorId,
-                title: 'Incident reclassified',
+                title: 'Incidente reclasificado',
                 payload: [
                     'previous_type_id' => $previousTypeId,
                     'new_type_id' => $newType->id,

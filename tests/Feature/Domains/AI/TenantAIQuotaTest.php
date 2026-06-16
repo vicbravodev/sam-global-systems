@@ -46,6 +46,6 @@ class TenantAIQuotaTest extends TestCase
 
         $this->assertSame(EvaluationMode::RulesOnly, $evaluation->evaluation_mode);
         $this->assertSame('rules_engine:1.0', $evaluation->model_used);
-        $this->assertStringContainsString('quota', $evaluation->explanation_text);
+        $this->assertStringContainsString('Cuota', $evaluation->explanation_text);
     }
 }

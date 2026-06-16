@@ -105,7 +105,7 @@ class CreateIncidentFromEvent
                 incident: $incident,
                 entryType: TimelineEntryType::Created,
                 actorType: TimelineActorType::System,
-                title: 'Incident created',
+                title: 'Incidente creado',
                 payload: [
                     'source_type' => $sourceType->value,
                     'normalized_event_id' => $event->id,
@@ -253,18 +253,31 @@ class CreateIncidentFromEvent
         return IncidentPriority::query()->orderBy('level')->firstOrFail();
     }
 
+    /**
+     * Build the human-facing incident title. Prefer the specific normalized
+     * event-type name (already localized to Spanish in the catalog, e.g.
+     * "Exceso de velocidad") over the generic incident-type bucket name
+     * ("Safety Violation"); fall back to the bucket name only when the event
+     * has no catalogued type.
+     */
     private function buildTitle(NormalizedEvent $event, string $typeName): string
     {
-        $assetSegment = $event->asset_id !== null ? " - asset #{$event->asset_id}" : '';
+        $eventType = $event->relationLoaded('eventType')
+            ? $event->eventType
+            : $event->eventType()->first();
 
-        return $typeName.$assetSegment;
+        $label = $eventType?->name ?: $typeName;
+
+        $assetSegment = $event->asset_id !== null ? " — activo #{$event->asset_id}" : '';
+
+        return $label.$assetSegment;
     }
 
     private function buildSummary(NormalizedEvent $event): string
     {
-        $occurredAt = $event->occurred_at?->toIso8601String() ?? now()->toIso8601String();
+        $occurredAt = ($event->occurred_at ?? now())->format('d/m/Y H:i');
 
-        return "Auto-created from normalized event #{$event->id} occurred at {$occurredAt}.";
+        return "Creado automáticamente a partir del evento normalizado #{$event->id} ocurrido el {$occurredAt}.";
     }
 
     private function autoAttachEvidence(Incident $incident, NormalizedEvent $event): void
@@ -279,7 +292,7 @@ class CreateIncidentFromEvent
                 evidenceType: EvidenceType::EventSnapshot,
                 sourceType: EvidenceSourceType::EventContext,
                 sourceReferenceId: (int) $contextSnapshot->id,
-                title: 'Event context snapshot',
+                title: 'Instantánea de contexto del evento',
                 metadata: [
                     'context_version' => $contextSnapshot->context_version,
                     'snapshot_id' => $contextSnapshot->id,
@@ -298,7 +311,7 @@ class CreateIncidentFromEvent
                 evidenceType: EvidenceType::AiExplanation,
                 sourceType: EvidenceSourceType::AiEvaluation,
                 sourceReferenceId: (int) $aiEvaluation->id,
-                title: 'AI evaluation explanation',
+                title: 'Explicación de la evaluación de IA',
                 description: $aiEvaluation->explanation_text,
                 metadata: [
                     'evaluation_id' => $aiEvaluation->id,

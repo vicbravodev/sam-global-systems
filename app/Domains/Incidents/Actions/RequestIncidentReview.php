@@ -51,7 +51,7 @@ class RequestIncidentReview
                 entryType: TimelineEntryType::StatusChanged,
                 actorType: $requestedByType === IncidentCreatorType::User ? TimelineActorType::User : TimelineActorType::Automation,
                 actorId: $requestedById,
-                title: 'Human review requested',
+                title: 'Revisión humana solicitada',
                 description: $reason,
                 payload: [
                     'previous_status' => $previousStatusCode,
