@@ -150,6 +150,13 @@ MAIN="$(git worktree list --porcelain | grep -m1 '^worktree ' | cut -d' ' -f2)" 
 
 # 1. PHP: vendor no tiene traversal de directorios → symlink (rápido) o composer install.
 [ -e vendor ] || ln -s "$MAIN/vendor" vendor
+#    ⚠ El SYMLINK sirve para artisan/types/build/tests, pero ROMPE la cobertura
+#    local: el autoloader de Composer tiene rutas absolutas al checkout principal,
+#    así que las clases App\ se cargan desde MAIN y pcov (apuntando al app/ del
+#    worktree) reporta 0%. Para correr cobertura o pasar el pre-push hook hay que
+#    tener vendor REAL en el worktree: `rm -f vendor && composer install`
+#    (no toca composer.json). Alternativa puntual: `SKIP_COVERAGE=1 git push`
+#    sólo si el usuario lo autoriza (la cobertura real la valida CI igual).
 
 # 2. Env: .env gitignored.
 [ -f .env ] || cp "$MAIN/.env" .env
