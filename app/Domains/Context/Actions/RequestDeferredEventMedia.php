@@ -22,16 +22,24 @@ class RequestDeferredEventMedia
      * Register an outbound request for deferred media (video clip, snapshot,
      * driver/road camera) and queue a `FetchDeferredEventMediaJob` for the
      * `context` queue. Idempotent: if an in-flight request of the same type
-     * already exists for the same normalized event, it is reused instead of
-     * creating a duplicate.
+     * and sweep mode already exists for the same normalized event, it is reused
+     * instead of creating a duplicate.
+     *
+     * `$sweepOnly` requests never place a paid provider retrieval — they only
+     * poll the quota-free uploaded-media endpoint (panic/safety footage the
+     * dashcam already auto-uploaded). A sweep-only request never blocks a later
+     * on-demand retrieval of the same type (and vice versa), so the manual
+     * "request media" button can still escalate to a paid retrieval.
      */
     public function execute(
         NormalizedEvent $normalizedEvent,
         MediaRequestType $type,
+        bool $sweepOnly = false,
     ): EventMediaRequest {
         $existing = EventMediaRequest::withoutGlobalScopes()
             ->where('normalized_event_id', $normalizedEvent->id)
             ->where('request_type', $type)
+            ->where('sweep_only', $sweepOnly)
             ->whereIn('status', [
                 MediaRequestStatus::Pending,
                 MediaRequestStatus::Sent,
@@ -48,6 +56,7 @@ class RequestDeferredEventMedia
             'normalized_event_id' => $normalizedEvent->id,
             'provider_id' => $normalizedEvent->provider_id,
             'request_type' => $type,
+            'sweep_only' => $sweepOnly,
             'requested_at' => now(),
             'status' => MediaRequestStatus::Pending,
             'expires_at' => now()->addHours(6),

@@ -147,6 +147,20 @@ class FetchDeferredEventMediaJob implements ShouldQueue
 
         $this->sweepUploadedMedia($request, $event, $integration, $externalAssetId, $mediaAdapter, $storage, $attachImmediate, $refreshSnapshot, $tenantConfig);
 
+        // Sweep-only requests (panic/safety auto-pull) never place a paid
+        // retrieval: the dashcam already uploaded the footage, so we just keep
+        // listing it (quota-free) until it lands or the request expires.
+        if ($request->sweep_only) {
+            $this->continueSweepOnly(
+                $request,
+                $event,
+                $refreshSnapshot,
+                'Request fulfilled by the quota-free uploaded-media sweep.',
+            );
+
+            return;
+        }
+
         $metadata = $request->response_metadata_json ?? [];
 
         if (! isset($metadata['retrieval_id']) && ! isset($metadata['still_retrievals'])) {
@@ -169,7 +183,12 @@ class FetchDeferredEventMediaJob implements ShouldQueue
             }
 
             if ($this->assetReportsNoCamera($event)) {
-                $this->continueSweepOnly($request, $event, $refreshSnapshot);
+                $this->continueSweepOnly(
+                    $request,
+                    $event,
+                    $refreshSnapshot,
+                    'Asset reports no paired camera; request fulfilled by the uploaded-media sweep.',
+                );
 
                 return;
             }
@@ -543,18 +562,20 @@ class FetchDeferredEventMediaJob implements ShouldQueue
      * backed by media), otherwise it fails/expires as before.
      */
     /**
-     * Keep a request alive as a sweep-only poll: the asset reports no paired
-     * camera, so no retrieval will ever be placed, but the provider flag can
-     * be stale — re-sweep the uploaded media until evidence lands or the
-     * request's `expires_at` closes it.
+     * Keep a request alive as a sweep-only poll: no retrieval will ever be
+     * placed (either the request is explicitly sweep-only, or the asset reports
+     * no paired camera and the provider flag can be stale) — re-sweep the
+     * uploaded media until evidence lands or the request's `expires_at` closes
+     * it. Once any uploaded evidence backs the event the request completes.
      */
     private function continueSweepOnly(
         EventMediaRequest $request,
         NormalizedEvent $event,
         RefreshContextMediaSnapshot $refreshSnapshot,
+        string $fulfilledReason = 'Asset reports no paired camera; request fulfilled by the uploaded-media sweep.',
     ): void {
         if ($this->hasUploadedEvidence($event)) {
-            $this->closeWithoutNewMedia($request, $event, MediaRequestStatus::Failed, 'Asset reports no paired camera; request fulfilled by the uploaded-media sweep.');
+            $this->closeWithoutNewMedia($request, $event, MediaRequestStatus::Failed, $fulfilledReason);
             $refreshSnapshot->execute($event->id);
 
             return;

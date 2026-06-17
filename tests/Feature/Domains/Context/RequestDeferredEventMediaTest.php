@@ -70,6 +70,43 @@ class RequestDeferredEventMediaTest extends TestCase
         Bus::assertDispatchedTimes(FetchDeferredEventMediaJob::class, 1);
     }
 
+    public function test_persists_sweep_only_flag_when_requested(): void
+    {
+        Bus::fake();
+
+        $event = NormalizedEvent::factory()->create(['team_id' => $this->teamId]);
+
+        $request = app(RequestDeferredEventMedia::class)
+            ->execute($event, MediaRequestType::FetchVideoClip, sweepOnly: true);
+
+        $this->assertTrue($request->sweep_only);
+    }
+
+    public function test_sweep_only_request_does_not_block_an_on_demand_retrieval(): void
+    {
+        Bus::fake();
+
+        $event = NormalizedEvent::factory()->create(['team_id' => $this->teamId]);
+
+        // Auto panic sweep is in flight; the operator then clicks "request media"
+        // which must still place a real (non-sweep) on-demand retrieval.
+        $sweep = app(RequestDeferredEventMedia::class)
+            ->execute($event, MediaRequestType::FetchVideoClip, sweepOnly: true);
+        $retrieval = app(RequestDeferredEventMedia::class)
+            ->execute($event, MediaRequestType::FetchVideoClip);
+
+        $this->assertNotSame($sweep->id, $retrieval->id);
+        $this->assertTrue($sweep->sweep_only);
+        $this->assertFalse($retrieval->sweep_only);
+        $this->assertSame(
+            2,
+            EventMediaRequest::withoutGlobalScopes()
+                ->where('normalized_event_id', $event->id)
+                ->where('request_type', MediaRequestType::FetchVideoClip->value)
+                ->count(),
+        );
+    }
+
     public function test_creates_new_request_after_previous_was_completed(): void
     {
         Bus::fake();
