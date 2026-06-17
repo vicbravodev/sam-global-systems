@@ -777,6 +777,66 @@ class FetchDeferredEventMediaJobTest extends TestCase
         Http::assertNotSent(fn ($req) => str_contains($req->url(), 'cameras/media/retrieval'));
     }
 
+    public function test_sweep_only_request_never_places_a_retrieval_and_polls_uploads(): void
+    {
+        // Camera-equipped asset: it is the sweep_only flag (not a missing
+        // camera) that suppresses the paid retrieval here.
+        $this->makeSamsaraIntegration();
+
+        Http::fake($this->fakeNoUploadedMedia());
+
+        // The sweep-only cycle re-queues itself rather than running inline.
+        Queue::fake();
+
+        $request = $this->makeRequest(attributes: ['sweep_only' => true]);
+
+        $this->runJob($request);
+
+        $this->assertSame(MediaRequestStatus::Processing, $request->fresh()->status);
+        Queue::assertPushed(
+            FetchDeferredEventMediaJob::class,
+            fn (FetchDeferredEventMediaJob $job) => $job->eventMediaRequestId === $request->id,
+        );
+        Http::assertNotSent(fn ($req) => str_contains($req->url(), 'cameras/media/retrieval'));
+    }
+
+    public function test_sweep_only_request_completes_when_uploaded_media_lands(): void
+    {
+        $this->makeSamsaraIntegration();
+
+        $occurredAt = now()->subMinutes(2);
+
+        $event = NormalizedEvent::factory()->create([
+            'team_id' => $this->teamId,
+            'asset_id' => $this->asset->id,
+            'occurred_at' => $occurredAt,
+        ]);
+
+        Http::fake([
+            'api.samsara.com/cameras/media?*' => Http::response(['data' => ['media' => [[
+                'input' => 'dashcamForwardFacing',
+                'mediaType' => 'videoHighRes',
+                'triggerReason' => 'panicButton',
+                'startTime' => $occurredAt->copy()->subSeconds(10)->toIso8601String(),
+                'urlInfo' => ['url' => 'https://media.samsara.com/uploads/panic.mp4'],
+            ]]]]),
+            'media.samsara.com/*' => Http::response('clip-bytes', 200, ['Content-Type' => 'video/mp4']),
+        ]);
+
+        $request = $this->makeRequest($event, ['sweep_only' => true]);
+
+        $this->runJob($request);
+
+        $fresh = $request->fresh();
+        $this->assertSame(MediaRequestStatus::Completed, $fresh->status);
+        $this->assertSame('uploaded_media', $fresh->response_metadata_json['completed_via']);
+        $this->assertSame(1, $fresh->response_metadata_json['uploaded_media_downloaded']);
+
+        $this->assertSame(1, EventMediaContext::withoutGlobalScopes()->where('normalized_event_id', $event->id)->count());
+        Event::assertDispatched(EventMediaAvailable::class);
+        Http::assertNotSent(fn ($req) => str_contains($req->url(), 'cameras/media/retrieval'));
+    }
+
     public function test_failed_marks_request_failed_and_dispatches_event(): void
     {
         $request = $this->makeRequest(attributes: ['status' => MediaRequestStatus::Sent]);

@@ -10,19 +10,16 @@ use App\Domains\Context\Jobs\FetchDeferredEventMediaJob;
 use App\Domains\Normalization\Models\NormalizedEvent;
 
 /**
- * Auto-request camera footage for critical events on camera-equipped assets
- * (Roadmap B6-P3). Opt-in per tenant via the `media.auto_request_on_critical`
- * setting (default off — retrievals consume provider quota and cost), and the
- * underlying action is idempotent, so a context rebuild never double-requests.
+ * Auto-pull camera footage for critical events (Roadmap B6-P3). Opt-in per
+ * tenant via the `media.auto_request_on_critical` setting (default off), and
+ * the underlying action is idempotent, so a context rebuild never re-requests.
  *
- * Roadmap V2-A1: alongside the clip, still images spread across the tenant's
- * wider `media.still_window_minutes` window are requested too (skipped when
- * `media.still_count` is 0), so the AI sees the minutes around the event.
- *
- * Assets that report no paired dashcam still get a single clip request: the
- * provider's camera flag can be stale, and the request drives the quota-free
- * uploaded-media sweep — {@see FetchDeferredEventMediaJob} skips the actual
- * retrievals for those assets, so no rejected calls are placed.
+ * Panic/safety footage is auto-uploaded by the dashcam and surfaced only via
+ * the quota-free uploaded-media listing — never a webhook — so this opens a
+ * single *sweep-only* request: {@see FetchDeferredEventMediaJob} polls the
+ * uploaded media (clips and stills the camera already pushed) and NEVER places
+ * a paid on-demand retrieval. On-demand retrievals stay reserved for the manual
+ * "request media" action, which is what media-retrieval is actually for.
  */
 class RequestPanicMediaOnContextBuilt
 {
@@ -58,22 +55,12 @@ class RequestPanicMediaOnContextBuilt
             return;
         }
 
-        $this->requestDeferredEventMedia->execute($normalizedEvent, MediaRequestType::FetchVideoClip);
-
-        // Without a camera the stills retrievals would never be placed: the
-        // single clip request above already drives the uploaded-media sweep.
-        if (! (bool) ($snapshot->asset_snapshot_json['has_camera'] ?? false)) {
-            return;
-        }
-
-        $stillCount = (int) $this->tenantConfigResolver->resolve(
-            (int) $normalizedEvent->team_id,
-            FetchDeferredEventMediaJob::SETTING_STILL_COUNT,
-            FetchDeferredEventMediaJob::DEFAULT_STILL_COUNT,
+        // One sweep-only request is enough: the sweep lists every clip and still
+        // the dashcam uploaded for the event window, regardless of request type.
+        $this->requestDeferredEventMedia->execute(
+            $normalizedEvent,
+            MediaRequestType::FetchVideoClip,
+            sweepOnly: true,
         );
-
-        if ($stillCount > 0) {
-            $this->requestDeferredEventMedia->execute($normalizedEvent, MediaRequestType::FetchSnapshot);
-        }
     }
 }
