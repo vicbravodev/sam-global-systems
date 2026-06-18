@@ -22,6 +22,7 @@ class ProfileController extends Controller
         return Inertia::render('settings/profile', [
             'mustVerifyEmail' => $request->user() instanceof MustVerifyEmail,
             'status' => $request->session()->get('status'),
+            'phoneVerified' => $request->user()->phone_verified_at !== null,
         ]);
     }
 
@@ -34,6 +35,10 @@ class ProfileController extends Controller
 
         if ($request->user()->isDirty('email')) {
             $request->user()->email_verified_at = null;
+        }
+
+        if ($request->user()->isDirty('phone')) {
+            $request->user()->phone_verified_at = null;
         }
 
         $request->user()->save();
