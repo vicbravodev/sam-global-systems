@@ -418,7 +418,7 @@ function GeneralTab({
                                 críticos
                             </span>
                             <span className="block text-xs text-fg-3">
-                                {MEDIA_AUTO_REQUEST_KEY} — consume cuota de
+                                {MEDIA_AUTO_REQUEST_KEY}: consume cuota de
                                 retrievals del proveedor (default: apagado).
                             </span>
                         </span>
@@ -759,8 +759,8 @@ function NotificationsTab({
             <CardContent className="flex flex-col gap-4">
                 {drafts.length === 0 && (
                     <p className="text-xs text-fg-3">
-                        Sin políticas — aplican los defaults del sistema (email
-                        + web; críticos añaden sms/push).
+                        Sin políticas: aplican los defaults del sistema (email +
+                        web; críticos añaden sms/push).
                     </p>
                 )}
                 {drafts.map((policy, index) => (
@@ -993,7 +993,7 @@ function EscalationTab({
             {configs.length === 0 && (
                 <Card>
                     <CardContent className="flex items-center justify-between py-4 text-xs text-fg-3">
-                        Sin configuración de escalación — el SLA (P6) no escala
+                        Sin configuración de escalación: el SLA (P6) no escala
                         por niveles hasta definir los steps.
                         {canManage && (
                             <Button
@@ -1410,7 +1410,7 @@ function ScheduleTab({
         return (
             <Card>
                 <CardContent className="py-4 text-xs text-fg-3">
-                    Sin perfiles de horario — la asignación on-call (P5) usa el
+                    Sin perfiles de horario: la asignación on-call (P5) usa el
                     fallback (primer admin del equipo). Los perfiles se crean al
                     configurar la integración o por API.
                 </CardContent>
@@ -1838,7 +1838,7 @@ function ChannelsTab({
 
                 {channels.length === 0 ? (
                     <p className="text-xs text-fg-3">
-                        Sin canales — configura Slack, Twilio (SMS/WhatsApp) o
+                        Sin canales: configura Slack, Twilio (SMS/WhatsApp) o
                         FCM para que las notificaciones y B9 operen.
                     </p>
                 ) : (
@@ -2174,7 +2174,7 @@ function VersionsTab({ versions }: { versions: VersionRow[] }) {
             <CardContent>
                 {versions.length === 0 ? (
                     <p className="text-xs text-fg-3">
-                        Aún sin versiones — se crean automáticamente al guardar
+                        Aún sin versiones: se crean automáticamente al guardar
                         cualquier configuración.
                     </p>
                 ) : (

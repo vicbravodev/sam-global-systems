@@ -20,6 +20,7 @@ import {
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { PageHeader } from '@/components/ui/page-header';
 import {
     deleteJson,
     postJson,
@@ -967,15 +968,10 @@ export default function AutomationIndex() {
         <>
             <Head title="Automatizaciones" />
             <div className="flex flex-col gap-4 p-5">
-                <div>
-                    <h1 className="text-md font-semibold text-fg-1">
-                        Automatizaciones
-                    </h1>
-                    <p className="text-xs text-fg-3">
-                        Workflows que reaccionan a decisiones e incidentes, y el
-                        historial de acciones ejecutadas.
-                    </p>
-                </div>
+                <PageHeader
+                    title="Automatizaciones"
+                    description="Workflows que reaccionan a decisiones e incidentes, y el historial de acciones ejecutadas."
+                />
 
                 <div className="flex flex-wrap gap-1 border-b border-border">
                     {TABS.map((item) => (
