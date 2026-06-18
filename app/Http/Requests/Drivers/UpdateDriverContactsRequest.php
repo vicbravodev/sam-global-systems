@@ -3,8 +3,10 @@
 namespace App\Http\Requests\Drivers;
 
 use App\Domains\Drivers\Enums\ContactType;
+use App\Support\PhoneNumber;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class UpdateDriverContactsRequest extends FormRequest
 {
@@ -26,5 +28,22 @@ class UpdateDriverContactsRequest extends FormRequest
             'contacts.*.is_primary' => ['sometimes', 'boolean'],
             'contacts.*.is_emergency' => ['sometimes', 'boolean'],
         ];
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator) {
+            foreach ($this->input('contacts', []) as $i => $contact) {
+                $contactType = $contact['contact_type'] ?? null;
+                $value = (string) ($contact['value'] ?? '');
+
+                if ($contactType === ContactType::MobilePhone->value && ! PhoneNumber::isE164($value)) {
+                    $validator->errors()->add(
+                        "contacts.{$i}.value",
+                        'El teléfono móvil debe estar en formato internacional E.164, por ejemplo +5215555550123.',
+                    );
+                }
+            }
+        });
     }
 }

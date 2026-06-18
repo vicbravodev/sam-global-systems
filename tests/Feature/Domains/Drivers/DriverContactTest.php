@@ -151,7 +151,7 @@ class DriverContactTest extends TestCase
                 [
                     'contact_type' => 'mobile_phone',
                     'label' => 'Work Phone',
-                    'value' => '+1-555-0199',
+                    'value' => '+15550199000',
                     'is_primary' => true,
                     'is_emergency' => false,
                 ],
@@ -175,7 +175,7 @@ class DriverContactTest extends TestCase
 
         $this->assertDatabaseHas('driver_contacts', [
             'driver_id' => $driver->id,
-            'value' => '+1-555-0199',
+            'value' => '+15550199000',
             'is_primary' => true,
         ]);
     }
