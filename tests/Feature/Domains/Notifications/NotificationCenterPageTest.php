@@ -5,14 +5,20 @@ namespace Tests\Feature\Domains\Notifications;
 use App\Domains\Access\Enums\RoleScope;
 use App\Domains\Access\Models\Permission;
 use App\Domains\Access\Models\Role;
+use App\Domains\Notifications\Actions\DispatchNotification;
+use App\Domains\Notifications\Enums\ChannelType;
+use App\Domains\Notifications\Enums\DeliveryStatus;
 use App\Domains\Notifications\Enums\NotificationPriority;
 use App\Domains\Notifications\Enums\NotificationSourceType;
 use App\Domains\Notifications\Enums\NotificationStatus;
+use App\Domains\Notifications\Enums\RecipientType;
 use App\Domains\Notifications\Models\Notification;
+use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Models\NotificationDelivery;
 use App\Domains\Notifications\Models\NotificationRead;
 use App\Domains\Notifications\Models\NotificationRecipient;
 use App\Enums\TeamRole;
+use App\Http\Middleware\HandleInertiaRequests;
 use App\Models\Team;
 use App\Models\User;
 use Database\Seeders\AccessSeeder;
@@ -248,6 +254,61 @@ class NotificationCenterPageTest extends TestCase
                     'notifications.0.statusReason',
                     'No se envió: no había ningún canal de notificación activo o permitido para este aviso.',
                 ),
+        );
+    }
+
+    public function test_cancelled_with_only_skipped_deliveries_blames_missing_contact_data(): void
+    {
+        [$user, $team] = $this->createUserWithRole('notif_cancel_skip', ['notifications.view']);
+
+        // A critical SMS-only notification whose recipient has no phone: the
+        // dispatcher records a Skipped delivery and cancels the notification.
+        NotificationChannel::factory()->sms()->create([
+            'team_id' => $team->id,
+            'is_active' => true,
+            'channel_type' => ChannelType::Sms,
+        ]);
+
+        $notification = Notification::factory()->critical()->create([
+            'team_id' => $team->id,
+            'notification_type' => 'incident.critical',
+            'status' => NotificationStatus::Queued,
+            'payload_json' => [
+                'recipients' => [
+                    ['recipient_type' => RecipientType::ExternalContact->value, 'address' => 'ops@example.com'],
+                ],
+            ],
+        ]);
+
+        app(DispatchNotification::class)->execute($notification);
+
+        $this->assertSame(NotificationStatus::Cancelled, $notification->refresh()->status);
+        $this->assertTrue(
+            $notification->deliveries()
+                ->where('status', DeliveryStatus::Skipped)
+                ->exists(),
+        );
+
+        // Inertia request (X-Inertia) returns the page props as JSON without
+        // rendering the root Blade view, so no Vite manifest is required. The
+        // version header must match the middleware's asset version (null in
+        // tests, which Inertia compares as an empty string) or it 409s.
+        $version = (string) app(HandleInertiaRequests::class)->version(request());
+
+        $response = $this->actingAs($user)
+            ->withHeaders([
+                'X-Inertia' => 'true',
+                'X-Inertia-Version' => $version,
+            ])
+            ->get(route('notifications.index', ['current_team' => $team->slug]));
+
+        $response->assertOk();
+        $response->assertHeader('X-Inertia', 'true');
+        $response->assertJsonPath('component', 'notifications/index');
+        $response->assertJsonPath('props.notifications.0.status', 'cancelled');
+        $response->assertJsonPath(
+            'props.notifications.0.statusReason',
+            'No se envió: faltan datos de contacto (teléfono o email) para los canales seleccionados.',
         );
     }
 

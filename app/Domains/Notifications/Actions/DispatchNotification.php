@@ -18,6 +18,7 @@ use App\Domains\Notifications\Models\NotificationDelivery;
 use App\Domains\Notifications\Models\NotificationRecipient;
 use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class DispatchNotification
 {
@@ -222,8 +223,16 @@ class DispatchNotification
                     'error_message' => $reason,
                 ]);
             });
-        } catch (\Throwable) {
-            // best-effort audit row; never break the dispatch loop
+        } catch (\Throwable $e) {
+            // best-effort audit row; never break the dispatch loop, but log so
+            // a systemic failure (e.g. DB constraint) stays debuggable.
+            Log::warning('Failed to record skipped notification delivery', [
+                'notification_id' => $notification->id,
+                'recipient_id' => $recipient->id,
+                'channel_id' => $channel->id,
+                'reason' => $reason,
+                'exception' => $e->getMessage(),
+            ]);
         }
     }
 
