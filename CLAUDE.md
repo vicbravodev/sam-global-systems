@@ -229,6 +229,46 @@ Sirve el build de producción vía manifest, así que tras cada cambio de front 
 - **Claude NO usa** `--no-verify`, `--no-gpg-sign`, `git reset --hard`, `git checkout .`, `git clean -fd`, `git branch -D`, `git rebase -i`, ni amends a commits ya publicados, salvo petición explícita del usuario en ese turno.
 - Si un hook de pre-commit o pre-push falla, Claude arregla la causa raíz y crea un commit NUEVO; no repite el commit con `--amend` ni salta el hook (salvo `SKIP_COVERAGE=1` en pushes demostrativos si el usuario lo autoriza).
 
+### 6.2 Flujo de PRs y calidad
+
+El repo vive en GitHub bajo `vicbravodev/sam-global-systems`. La rama `main` está protegida por un **ruleset activo** — no se puede `push` directo, todo entra por PR con CI en verde. Las reglas de *quién* puede pushear/crear/mergear PRs son las de §6.1 (manda §6.1 ante cualquier duda); esta sección cubre el naming, el gate de calidad y el ruleset.
+
+**Naming de ramas** — un slug por rama, siempre desde `main` actualizada:
+
+| Tipo de cambio | Prefijo | Ejemplos |
+|---|---|---|
+| Feature (spec nuevo o endpoint) | `feat/` | `feat/spec-08-context`, `feat/incidents-api` |
+| Bug fix | `fix/` | `fix/driver-policy-viewany`, `fix/tenant-isolation-leak` |
+| Refactor sin cambio de comportamiento | `refactor/` | `refactor/extract-rate-limiter` |
+| Chore / housekeeping | `chore/` | `chore/bump-pint`, `chore/drop-dead-code` |
+| Infra / pipelines | `ci/` | `ci/cache-node-modules`, `ci/add-coverage` |
+| Docs y specs | `docs/` | `docs/update-spec-05` |
+| Tests-only | `test/` | `test/ingestion-idempotency` |
+
+No usar nombres genéricos (`updates`, `patch`, `temp`). Una rama = un cambio cohesivo. (Las ramas autogeneradas `claude/...` y la rutina `claude/night-roadmap` son la excepción operativa.)
+
+**Formato de commits** (conventional-ish, como el historial): `type: subject corto en minúsculas`, cuerpo opcional que explica el *por qué* y referencia specs tocados (`spec 05 §10`). `type` ∈ `feat | fix | chore | refactor | ci | docs | test | perf | style`. Un commit = un cambio atómico. Autoría e identidad: ver §6.1 (sin `Co-Authored-By`, sin `--amend`/`--no-verify`).
+
+**Gate local antes de push (OBLIGATORIO)** — dejar los 4 en verde; si local pasa, CI pasa:
+
+```bash
+vendor/bin/pint --dirty --format agent              # PHP style — solo archivos modificados
+php artisan test --compact                          # Suite PHPUnit completa
+npm run lint:check && npm run format:check          # ESLint + Prettier
+npm run types:check                                 # tsc --noEmit
+```
+
+Atajo equivalente: `composer ci:check` (ver [`composer.json`](composer.json) scripts). **Nota tipos generados**: `npm run types:check` depende de `resources/js/{routes,actions,wayfinder}` generados por el plugin Vite de Wayfinder; si faltan (repo recién clonado o tras `php artisan route:clear`), correr `npm run build` una vez antes del type-check.
+
+**Ruleset activo en `main`** — lo que la PR debe satisfacer antes de que GitHub permita el merge:
+
+1. **2 status checks verdes**: `Lint & Format` y `PHPUnit` (jobs de [`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
+2. **Rama del PR actualizada con `main`** (`strict` policy — si `main` avanzó, mergear `main` dentro de la rama, sin `--force`; ver §6.1).
+3. **Hilos de conversación del review resueltos.**
+4. **No force-push ni deletion de `main`** (bloqueados siempre).
+5. **0 aprobaciones requeridas** (solo-dev), pero se pueden pedir si participa alguien más.
+6. **Bypass**: solo el owner (`vicbravodev`). Claude NUNCA hace bypass ni lo sugiere.
+
 ---
 
 ## 7. Archivos de referencia rápida
