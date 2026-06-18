@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
+import { PageHeader } from '@/components/ui/page-header';
 import { postJson, readErrorMessage } from '@/lib/sam-fetch';
 
 interface OverviewProp {
@@ -330,7 +331,7 @@ function ReportsTab({
                         <EmptyState
                             icon={FileBarChart2}
                             title="Todavía no hay reportes configurados"
-                            description="Aquí verás reportes descargables con la actividad de tu operación: incidentes, flota y consumo. El equipo de SAM los configura contigo — escríbenos y los activamos para tu cuenta."
+                            description="Aquí verás reportes descargables con la actividad de tu operación: incidentes, flota y consumo. El equipo de SAM los configura contigo. Escríbenos y los activamos para tu cuenta."
                         />
                     ) : (
                         reports.map((report) => (
@@ -466,14 +467,10 @@ export default function AnalyticsIndex() {
         <>
             <Head title="Analítica" />
             <div className="flex flex-col gap-4 p-5">
-                <div>
-                    <h1 className="text-md font-semibold text-fg-1">
-                        Analítica
-                    </h1>
-                    <p className="text-xs text-fg-3">
-                        KPIs operativos del tenant y reportes descargables.
-                    </p>
-                </div>
+                <PageHeader
+                    title="Analítica"
+                    description="KPIs operativos del tenant y reportes descargables."
+                />
 
                 <div className="flex flex-wrap gap-1 border-b border-border">
                     {TABS.map((item) => (

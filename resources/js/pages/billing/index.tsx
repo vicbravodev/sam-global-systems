@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { PageHeader } from '@/components/ui/page-header';
 import { formatCurrency } from '@/lib/format';
 
 interface SubscriptionProp {
@@ -156,7 +157,7 @@ function ReceiptUploader({ invoice }: { invoice: InvoiceRow }) {
 
             if (response.ok || response.status === 201) {
                 toast.success(
-                    'Comprobante enviado — el equipo de SAM lo verificará.',
+                    'Comprobante enviado. El equipo de SAM lo verificará.',
                 );
                 router.reload({ only: ['invoices'] });
             } else if (response.status === 403) {
@@ -215,7 +216,7 @@ export default function BillingIndex() {
 
     const mailtoHref = supportEmail
         ? `mailto:${supportEmail}?subject=${encodeURIComponent(
-              `Facturación — ${currentTeam?.name ?? 'mi equipo'}`,
+              `Facturación: ${currentTeam?.name ?? 'mi equipo'}`,
           )}`
         : null;
 
@@ -223,16 +224,10 @@ export default function BillingIndex() {
         <>
             <Head title="Facturación" />
             <div className="flex flex-col gap-4 p-5">
-                <div>
-                    <h1 className="text-md font-semibold text-fg-1">
-                        Facturación
-                    </h1>
-                    <p className="text-xs text-fg-3">
-                        Plan, consumo del periodo y facturas. El pago es por
-                        transferencia bancaria — contacta a soporte para cambios
-                        de plan.
-                    </p>
-                </div>
+                <PageHeader
+                    title="Facturación"
+                    description="Plan, consumo del periodo y facturas. El pago es por transferencia bancaria. Contacta a soporte para cambios de plan."
+                />
 
                 {/* Plan — tira compacta de métricas (B1): en vez de una
                     tarjeta a todo el ancho con una sola línea de texto. */}

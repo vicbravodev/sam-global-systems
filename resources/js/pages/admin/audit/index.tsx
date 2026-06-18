@@ -1,4 +1,6 @@
 import { Head } from '@inertiajs/react';
+import { ScrollText } from 'lucide-react';
+import { EmptyState } from '@/components/ui/empty-state';
 
 interface AuditEntry {
     id: number;
@@ -48,7 +50,11 @@ export default function AdminAuditIndex({ entries }: AdminAuditIndexProps) {
 
             <div className="flex-1 overflow-y-auto p-5">
                 {entries.length === 0 ? (
-                    <p className="text-sm text-fg-3">Sin eventos.</p>
+                    <EmptyState
+                        icon={ScrollText}
+                        title="Sin eventos de auditoría"
+                        description="Las acciones de seguridad y facturación cross-tenant aparecerán aquí a medida que ocurran."
+                    />
                 ) : (
                     <div className="overflow-hidden rounded-md border border-border">
                         <table className="w-full text-sm">
