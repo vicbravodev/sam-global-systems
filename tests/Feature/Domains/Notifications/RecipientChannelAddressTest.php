@@ -2,7 +2,12 @@
 
 namespace Tests\Feature\Domains\Notifications;
 
+use App\Domains\Notifications\Actions\ResolveRecipients;
 use App\Domains\Notifications\Enums\ChannelType;
+use App\Domains\Notifications\Enums\NotificationPriority;
+use App\Domains\Notifications\Enums\NotificationStatus;
+use App\Domains\Notifications\Enums\RecipientType;
+use App\Domains\Notifications\Models\Notification;
 use App\Domains\Notifications\Models\NotificationRecipient;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -60,5 +65,53 @@ class RecipientChannelAddressTest extends TestCase
 
         $this->assertSame('someone@example.com', $recipient->addressForChannel(ChannelType::Web));
         $this->assertSame('someone@example.com', $recipient->addressForChannel(ChannelType::Push));
+    }
+
+    public function test_team_fanout_includes_user_phone(): void
+    {
+        $user = User::factory()->create(['phone' => '+5215555550144']);
+        $team = $user->currentTeam;
+        $this->actingAs($user);
+
+        $notification = Notification::factory()->create([
+            'team_id' => $team->id,
+            'notification_type' => 'manual.test',
+            'priority' => NotificationPriority::Normal,
+            'status' => NotificationStatus::Queued,
+            'payload_json' => [],
+        ]);
+
+        $descriptors = app(ResolveRecipients::class)->execute($notification);
+
+        $this->assertCount(1, $descriptors);
+        $this->assertSame($user->email, $descriptors[0]->email);
+        $this->assertSame('+5215555550144', $descriptors[0]->phone);
+    }
+
+    public function test_explicit_contact_classifies_phone_vs_email(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+        $this->actingAs($user);
+
+        $notification = Notification::factory()->create([
+            'team_id' => $team->id,
+            'notification_type' => 'manual.test',
+            'priority' => NotificationPriority::Normal,
+            'status' => NotificationStatus::Queued,
+            'payload_json' => [
+                'recipients' => [
+                    ['recipient_type' => RecipientType::ExternalContact->value, 'address' => '+5215555550155'],
+                    ['recipient_type' => RecipientType::ExternalContact->value, 'address' => 'ops@example.com'],
+                ],
+            ],
+        ]);
+
+        $descriptors = app(ResolveRecipients::class)->execute($notification);
+
+        $this->assertSame('+5215555550155', $descriptors[0]->phone);
+        $this->assertNull($descriptors[0]->email);
+        $this->assertSame('ops@example.com', $descriptors[1]->email);
+        $this->assertNull($descriptors[1]->phone);
     }
 }
