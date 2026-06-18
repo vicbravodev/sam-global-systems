@@ -26,7 +26,7 @@ class SendPhoneOtp
 
     public function execute(User $user, int $teamId): OtpResult
     {
-        $phone = (string) $user->phone;
+        $phone = trim((string) $user->phone);
 
         if (! PhoneNumber::isE164($phone)) {
             return OtpResult::failure('no_phone');

@@ -8,11 +8,13 @@ use App\Domains\Notifications\Channels\SmsNotificationDriver;
 use App\Domains\Notifications\Data\DeliveryResult;
 use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Models\NotificationChannel;
+use App\Domains\Tenancy\Events\UsageRecorded;
 use App\Models\User;
 use App\Support\OtpCacheKeys;
 use Database\Seeders\OtpMeterSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Event;
 use Mockery;
 use Tests\TestCase;
 
@@ -46,6 +48,21 @@ class PhoneVerificationTest extends TestCase
         $this->post(route('phone-verification.send'))->assertSessionHasNoErrors();
 
         $this->assertNotNull(Cache::get(OtpCacheKeys::forUser($user->id)));
+    }
+
+    public function test_send_records_otp_sms_sent_usage_event(): void
+    {
+        $this->fakeSmsSuccess();
+        Event::fake([UsageRecorded::class]);
+
+        $user = User::factory()->create(['phone' => '+5215555550123']);
+        $team = $user->currentTeam;
+        NotificationChannel::factory()->sms()->create(['team_id' => $team->id, 'is_active' => true, 'channel_type' => ChannelType::Sms]);
+        $this->actingAs($user);
+
+        $this->post(route('phone-verification.send'))->assertSessionHasNoErrors();
+
+        Event::assertDispatched(UsageRecorded::class, fn (UsageRecorded $ev) => $ev->meterCode === 'otp_sms_sent');
     }
 
     public function test_send_without_sms_channel_fails_clearly(): void

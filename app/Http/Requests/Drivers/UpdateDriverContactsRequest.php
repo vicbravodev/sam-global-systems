@@ -35,6 +35,11 @@ class UpdateDriverContactsRequest extends FormRequest
         $validator->after(function (Validator $validator) {
             foreach ($this->input('contacts', []) as $i => $contact) {
                 $contactType = $contact['contact_type'] ?? null;
+
+                if (! is_string($contact['value'] ?? null)) {
+                    continue;
+                }
+
                 $value = (string) ($contact['value'] ?? '');
 
                 if ($contactType === ContactType::MobilePhone->value && ! PhoneNumber::isE164($value)) {
