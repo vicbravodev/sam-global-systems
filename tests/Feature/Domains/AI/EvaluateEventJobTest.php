@@ -6,6 +6,7 @@ use App\Domains\AI\Actions\EvaluateEventWithAI;
 use App\Domains\AI\Jobs\EvaluateEventJob;
 use App\Domains\AI\Listeners\EvaluateOnEventContextBuilt;
 use App\Domains\AI\Models\AIEventEvaluation;
+use App\Domains\AI\Support\AIEvaluationGate;
 use App\Domains\Context\Events\EventContextBuilt;
 use App\Domains\Context\Models\EventContextSnapshot;
 use App\Domains\Context\Models\OperationalContextProfile;
@@ -40,7 +41,7 @@ class EvaluateEventJobTest extends TestCase
         ]);
         $profile = OperationalContextProfile::factory()->create(['team_id' => $user->currentTeam->id]);
 
-        (new EvaluateOnEventContextBuilt)->handle(new EventContextBuilt($snapshot, $profile));
+        app(EvaluateOnEventContextBuilt::class)->handle(new EventContextBuilt($snapshot, $profile));
 
         Bus::assertDispatched(EvaluateEventJob::class, fn (EvaluateEventJob $job) => $job->normalizedEventId === $event->id);
     }
@@ -55,7 +56,7 @@ class EvaluateEventJobTest extends TestCase
             'payload_normalized_json' => ['severity' => 'high'],
         ]);
 
-        (new EvaluateEventJob($event->id))->handle(app(EvaluateEventWithAI::class));
+        (new EvaluateEventJob($event->id))->handle(app(EvaluateEventWithAI::class), app(AIEvaluationGate::class));
 
         Event::assertDispatched(UsageRecorded::class, fn (UsageRecorded $ev) => $ev->meterCode === 'ai_calls');
         Event::assertDispatched(UsageRecorded::class, fn (UsageRecorded $ev) => $ev->meterCode === 'ai_tokens_in');
@@ -71,9 +72,10 @@ class EvaluateEventJobTest extends TestCase
         ]);
 
         $handler = app(EvaluateEventWithAI::class);
+        $gate = app(AIEvaluationGate::class);
 
-        (new EvaluateEventJob($event->id))->handle($handler);
-        (new EvaluateEventJob($event->id))->handle($handler);
+        (new EvaluateEventJob($event->id))->handle($handler, $gate);
+        (new EvaluateEventJob($event->id))->handle($handler, $gate);
 
         $count = AIEventEvaluation::withoutGlobalScopes()
             ->where('normalized_event_id', $event->id)
@@ -84,7 +86,7 @@ class EvaluateEventJobTest extends TestCase
 
     public function test_job_no_ops_when_event_missing(): void
     {
-        (new EvaluateEventJob(999999))->handle(app(EvaluateEventWithAI::class));
+        (new EvaluateEventJob(999999))->handle(app(EvaluateEventWithAI::class), app(AIEvaluationGate::class));
 
         $this->assertSame(0, AIEventEvaluation::withoutGlobalScopes()->count());
     }

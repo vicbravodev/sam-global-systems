@@ -4,6 +4,7 @@ namespace App\Domains\AI\Jobs;
 
 use App\Domains\AI\Actions\ReevaluateEventWithNewEvidence;
 use App\Domains\AI\Enums\ReevaluationTrigger;
+use App\Domains\AI\Support\AIEvaluationGate;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUniqueUntilProcessing;
@@ -48,11 +49,17 @@ class ReevaluateEventJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
         return $this->normalizedEventId.':'.$this->triggerType;
     }
 
-    public function handle(ReevaluateEventWithNewEvidence $reevaluate): void
+    public function handle(ReevaluateEventWithNewEvidence $reevaluate, AIEvaluationGate $gate): void
     {
-        $normalizedEvent = NormalizedEvent::withoutGlobalScopes()->find($this->normalizedEventId);
+        $normalizedEvent = NormalizedEvent::withoutGlobalScopes()
+            ->with('eventCategory')
+            ->find($this->normalizedEventId);
 
         if ($normalizedEvent === null) {
+            return;
+        }
+
+        if (! $gate->shouldEvaluate($normalizedEvent)) {
             return;
         }
 

@@ -21,6 +21,12 @@ use App\Domains\Context\Models\EventMediaContext;
  *
  * Re-evaluation versions are no-ops here: media already assessed under an
  * earlier version is filtered out, so a re-eval never re-bills the same asset.
+ *
+ * Scope: this only covers events that produced an `AIEventEvaluation`. Events
+ * whose category is excluded from AI evaluation (see `AIEvaluationGate` /
+ * `config('ai.skip_evaluation_categories')`, e.g. Samsara safety events) never
+ * complete an evaluation, so their media is intentionally NOT assessed — it is
+ * retained as evidence only and feeds correlation, not paid multimodal AI.
  */
 class AssessPendingMediaOnEvaluationCompleted
 {

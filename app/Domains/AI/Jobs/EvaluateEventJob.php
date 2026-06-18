@@ -4,6 +4,7 @@ namespace App\Domains\AI\Jobs;
 
 use App\Domains\AI\Actions\EvaluateEventWithAI;
 use App\Domains\AI\Models\AIEventEvaluation;
+use App\Domains\AI\Support\AIEvaluationGate;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -37,11 +38,17 @@ class EvaluateEventJob implements ShouldBeUnique, ShouldQueue
         return (string) $this->normalizedEventId;
     }
 
-    public function handle(EvaluateEventWithAI $evaluateEventWithAI): void
+    public function handle(EvaluateEventWithAI $evaluateEventWithAI, AIEvaluationGate $gate): void
     {
-        $normalizedEvent = NormalizedEvent::withoutGlobalScopes()->find($this->normalizedEventId);
+        $normalizedEvent = NormalizedEvent::withoutGlobalScopes()
+            ->with('eventCategory')
+            ->find($this->normalizedEventId);
 
         if ($normalizedEvent === null) {
+            return;
+        }
+
+        if (! $gate->shouldEvaluate($normalizedEvent)) {
             return;
         }
 
