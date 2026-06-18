@@ -111,5 +111,9 @@ class FortifyServiceProvider extends ServiceProvider
         RateLimiter::for('api', function (Request $request) {
             return Limit::perMinute(60)->by($request->route('current_team') ?: $request->ip());
         });
+
+        RateLimiter::for('otp', function (Request $request) {
+            return Limit::perMinute(5)->by((string) ($request->user()?->id ?: $request->ip()));
+        });
     }
 }
