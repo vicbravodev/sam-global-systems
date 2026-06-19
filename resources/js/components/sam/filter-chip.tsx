@@ -30,7 +30,11 @@ export function FilterChip({
             <button
                 type="button"
                 onClick={onRemove}
-                aria-label={`Quitar filtro ${label}`}
+                aria-label={
+                    value
+                        ? `Quitar filtro ${label}: ${value}`
+                        : `Quitar filtro ${label}`
+                }
                 className="grid place-items-center text-fg-3 transition-colors hover:text-fg-1"
             >
                 <X className="size-3" />

@@ -12,6 +12,7 @@ export interface SparkAreaProps {
     height?: number;
     color?: string;
     fill?: boolean;
+    'aria-label'?: string;
 }
 
 export function SparkArea({
@@ -20,6 +21,7 @@ export function SparkArea({
     height = 60,
     color = 'var(--accent)',
     fill = true,
+    'aria-label': ariaLabel,
 }: SparkAreaProps) {
     const uid = useId();
 
@@ -50,7 +52,9 @@ export function SparkArea({
             viewBox={`0 0 ${width} ${height}`}
             preserveAspectRatio="none"
             className="block"
-            aria-hidden="true"
+            role={ariaLabel ? 'img' : undefined}
+            aria-label={ariaLabel}
+            aria-hidden={ariaLabel ? undefined : true}
         >
             {fill && (
                 <>
@@ -94,6 +98,7 @@ export interface BarsProps {
     height?: number;
     color?: string;
     valueFmt?: (v: number) => string | number;
+    'aria-label'?: string;
 }
 
 export function Bars({
@@ -103,7 +108,12 @@ export function Bars({
     height = 180,
     color = 'var(--chart-1)',
     valueFmt = (v) => v,
+    'aria-label': ariaLabel,
 }: BarsProps) {
+    if (!data.length) {
+        return null;
+    }
+
     const max = Math.max(...data, 1);
     const pad = 22;
     const bw = (width - pad) / data.length;
@@ -114,6 +124,9 @@ export function Bars({
             height={height}
             viewBox={`0 0 ${width} ${height}`}
             className="block"
+            role={ariaLabel ? 'img' : undefined}
+            aria-label={ariaLabel}
+            aria-hidden={ariaLabel ? undefined : true}
         >
             {[0, 0.5, 1].map((t) => (
                 <line
@@ -127,7 +140,7 @@ export function Bars({
                 />
             ))}
             {data.map((v, i) => {
-                const h = (v / max) * (height - 30);
+                const h = Math.max(0, (v / max) * (height - 30));
                 const x = pad + i * bw + bw * 0.18;
                 const w = bw * 0.64;
                 const y = height - 20 - h;
@@ -182,6 +195,7 @@ export interface LineChartProps {
     labels?: string[];
     width?: number;
     height?: number;
+    'aria-label'?: string;
 }
 
 export function LineChart({
@@ -189,7 +203,12 @@ export function LineChart({
     labels,
     width = 520,
     height = 200,
+    'aria-label': ariaLabel,
 }: LineChartProps) {
+    if (!series.length || series.some((s) => s.data.length === 0)) {
+        return null;
+    }
+
     const all = series.flatMap((s) => s.data);
     const max = Math.max(...all, 1);
     const min = Math.min(...all, 0);
@@ -201,7 +220,10 @@ export function LineChart({
 
     const xy = (data: number[]) =>
         data.map((v, i) => {
-            const x = padL + (i / (data.length - 1)) * W;
+            const x =
+                data.length === 1
+                    ? padL + W / 2
+                    : padL + (i / (data.length - 1)) * W;
             const y = 6 + H - ((v - min) / range) * H;
 
             return [x, y] as const;
@@ -213,6 +235,9 @@ export function LineChart({
             height={height}
             viewBox={`0 0 ${width} ${height}`}
             className="block"
+            role={ariaLabel ? 'img' : undefined}
+            aria-label={ariaLabel}
+            aria-hidden={ariaLabel ? undefined : true}
         >
             {[0, 0.25, 0.5, 0.75, 1].map((t) => (
                 <g key={t}>
@@ -239,7 +264,11 @@ export function LineChart({
             {labels?.map((l, i) => (
                 <text
                     key={i}
-                    x={padL + (i / (labels.length - 1)) * W}
+                    x={
+                        labels.length === 1
+                            ? padL + W / 2
+                            : padL + (i / (labels.length - 1)) * W
+                    }
                     y={height - 4}
                     textAnchor="middle"
                     fill="var(--fg-3)"
@@ -283,6 +312,7 @@ export interface DonutProps {
     thickness?: number;
     centerLabel?: string | number;
     centerSub?: string;
+    'aria-label'?: string;
 }
 
 export function Donut({
@@ -291,6 +321,7 @@ export function Donut({
     thickness = 22,
     centerLabel,
     centerSub,
+    'aria-label': ariaLabel,
 }: DonutProps) {
     const total = segments.reduce((s, x) => s + x.value, 0) || 1;
     const r = (size - thickness) / 2;
@@ -306,7 +337,14 @@ export function Donut({
     }, []);
 
     return (
-        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <svg
+            width={size}
+            height={size}
+            viewBox={`0 0 ${size} ${size}`}
+            role={ariaLabel ? 'img' : undefined}
+            aria-label={ariaLabel}
+            aria-hidden={ariaLabel ? undefined : true}
+        >
             <circle
                 cx={cx}
                 cy={cy}
@@ -373,6 +411,7 @@ export interface GaugeProps {
     size?: number;
     color?: string;
     label?: string;
+    'aria-label'?: string;
 }
 
 export function Gauge({
@@ -381,6 +420,7 @@ export function Gauge({
     size = 120,
     color = 'var(--health-ok)',
     label,
+    'aria-label': ariaLabel,
 }: GaugeProps) {
     const r = size / 2 - 10;
     const cx = size / 2;
@@ -393,6 +433,9 @@ export function Gauge({
             width={size}
             height={size / 2 + 16}
             viewBox={`0 0 ${size} ${size / 2 + 16}`}
+            role={ariaLabel ? 'img' : undefined}
+            aria-label={ariaLabel}
+            aria-hidden={ariaLabel ? undefined : true}
         >
             <path
                 d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`}
