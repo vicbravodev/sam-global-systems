@@ -12,3 +12,4 @@ export { CommandPalette } from './command-palette';
 export * from './charts';
 export * from './kpi-strip';
 export * from './tab-bar';
+export * from './detail-resizer';
