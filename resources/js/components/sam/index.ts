@@ -9,3 +9,4 @@ export { RealtimeStatus, type RealtimeState } from './realtime-status';
 export { OpsSidebar } from './ops-sidebar';
 export { OpsTopbar } from './ops-topbar';
 export { CommandPalette } from './command-palette';
+export * from './charts';
