@@ -5,6 +5,7 @@ namespace Tests\Feature\Domains\Incidents;
 use App\Domains\Incidents\Actions\ClaimIncident;
 use App\Domains\Incidents\Actions\ReleaseIncident;
 use App\Domains\Incidents\Models\Incident;
+use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -14,12 +15,30 @@ class ClaimIncidentTest extends TestCase
 {
     use RefreshDatabase;
 
+    /**
+     * Crea un usuario miembro del team dado y lo deja como su team actual
+     * (`current_team_id`), que es lo que las acciones de claim/release
+     * comparan contra el team dueño del incidente. `User::factory()` crea
+     * su propio team personal por defecto, así que no basta con pasar
+     * `current_team_id` al `create()` — hay que unir y cambiar de team
+     * explícitamente (mismo patrón que el resto de tests de este dominio,
+     * p. ej. AssignOnCallOnIncidentCreatedTest).
+     */
+    private function memberOf(Team $team): User
+    {
+        $user = User::factory()->create();
+        $team->members()->attach($user, ['role' => TeamRole::Member->value]);
+        $user->switchTeam($team);
+
+        return $user;
+    }
+
     public function test_first_claimer_wins_and_second_is_rejected(): void
     {
         $team = Team::factory()->create();
         $incident = Incident::factory()->create(['team_id' => $team->id]);
-        $ana = User::factory()->create(['current_team_id' => $team->id]);
-        $beto = User::factory()->create(['current_team_id' => $team->id]);
+        $ana = $this->memberOf($team);
+        $beto = $this->memberOf($team);
 
         $claim = app(ClaimIncident::class);
 
@@ -34,7 +53,7 @@ class ClaimIncidentTest extends TestCase
     {
         $team = Team::factory()->create();
         $incident = Incident::factory()->create(['team_id' => $team->id]);
-        $ana = User::factory()->create(['current_team_id' => $team->id]);
+        $ana = $this->memberOf($team);
 
         $claim = app(ClaimIncident::class);
 
@@ -46,8 +65,8 @@ class ClaimIncidentTest extends TestCase
     {
         $team = Team::factory()->create();
         $incident = Incident::factory()->create(['team_id' => $team->id]);
-        $ana = User::factory()->create(['current_team_id' => $team->id]);
-        $beto = User::factory()->create(['current_team_id' => $team->id]);
+        $ana = $this->memberOf($team);
+        $beto = $this->memberOf($team);
 
         app(ClaimIncident::class)->execute($incident, $ana);
         $release = app(ReleaseIncident::class);
@@ -55,5 +74,33 @@ class ClaimIncidentTest extends TestCase
         $this->assertFalse($release->execute($incident->fresh(), $beto));
         $this->assertTrue($release->execute($incident->fresh(), $ana));
         $this->assertNull($incident->fresh()->claimed_by_user_id);
+    }
+
+    public function test_user_from_another_team_cannot_claim(): void
+    {
+        $teamA = Team::factory()->create();
+        $teamB = Team::factory()->create();
+        $incident = Incident::factory()->create(['team_id' => $teamA->id]);
+        $intruder = $this->memberOf($teamB);
+
+        $claim = app(ClaimIncident::class);
+
+        $this->assertFalse($claim->execute($incident, $intruder));
+        $this->assertNull($incident->fresh()->claimed_by_user_id);
+    }
+
+    public function test_user_from_another_team_cannot_release(): void
+    {
+        $teamA = Team::factory()->create();
+        $teamB = Team::factory()->create();
+        $incident = Incident::factory()->create(['team_id' => $teamA->id]);
+        $ana = $this->memberOf($teamA);
+        $intruder = $this->memberOf($teamB);
+
+        app(ClaimIncident::class)->execute($incident, $ana);
+        $release = app(ReleaseIncident::class);
+
+        $this->assertFalse($release->execute($incident->fresh(), $intruder));
+        $this->assertSame($ana->id, $incident->fresh()->claimed_by_user_id);
     }
 }

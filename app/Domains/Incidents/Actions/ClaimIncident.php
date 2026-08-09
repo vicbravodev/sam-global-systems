@@ -24,6 +24,10 @@ class ClaimIncident
                 return false;
             }
 
+            if ($locked->team_id !== $user->current_team_id) {
+                return false;
+            }
+
             if ($locked->claimed_by_user_id !== null && $locked->claimed_by_user_id !== $user->id) {
                 return false;
             }

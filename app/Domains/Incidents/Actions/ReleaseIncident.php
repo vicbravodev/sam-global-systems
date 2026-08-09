@@ -19,7 +19,15 @@ class ReleaseIncident
                 ->lockForUpdate()
                 ->first();
 
-            if ($locked === null || $locked->claimed_by_user_id !== $user->id) {
+            if ($locked === null) {
+                return false;
+            }
+
+            if ($locked->team_id !== $user->current_team_id) {
+                return false;
+            }
+
+            if ($locked->claimed_by_user_id !== $user->id) {
                 return false;
             }
 
