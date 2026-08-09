@@ -8,6 +8,7 @@ use App\Domains\Incidents\Actions\StartIncidentCallVerification;
 use App\Domains\Incidents\Enums\CallVerificationStatus;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentCallVerification;
+use App\Domains\Incidents\Support\IncidentSuppression;
 use App\Domains\Incidents\Support\VerificationCallTwiml;
 use App\Domains\Notifications\Channels\TwilioVoiceCaller;
 use App\Domains\Notifications\Enums\ChannelType;
@@ -63,6 +64,12 @@ class PlaceVerificationCallJob implements ShouldQueue
                 'metadata_json' => ['failure_reason' => 'incident_terminal'],
             ])->save();
 
+            return;
+        }
+
+        // Somebody already claimed it or acknowledged it: a human is on it,
+        // no need to keep calling.
+        if (IncidentSuppression::isUnderHumanControl($incident)) {
             return;
         }
 

@@ -6,6 +6,7 @@ use App\Domains\Automation\Enums\ActionExecutionSourceType;
 use App\Domains\Automation\Enums\WorkflowTriggerType;
 use App\Domains\Automation\Services\TriggerEscalationWorkflow;
 use App\Domains\Incidents\Events\IncidentStatusChanged;
+use App\Domains\Incidents\Support\IncidentSuppression;
 
 class TriggerAutomationOnIncidentEscalated
 {
@@ -18,6 +19,12 @@ class TriggerAutomationOnIncidentEscalated
         $incident = $event->incident;
 
         if ($incident->team_id === null) {
+            return;
+        }
+
+        // Somebody already claimed it or acknowledged it: a human is on it,
+        // the automation stays quiet.
+        if (IncidentSuppression::isUnderHumanControl($incident)) {
             return;
         }
 
