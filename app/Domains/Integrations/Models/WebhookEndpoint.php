@@ -58,6 +58,7 @@ class WebhookEndpoint extends Model
     {
         return [
             'last_received_at' => 'datetime',
+            'secret' => 'encrypted',
         ];
     }
 
