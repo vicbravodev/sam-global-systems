@@ -4,12 +4,12 @@ namespace App\Domains\Decisions\Jobs;
 
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\Decisions\Actions\EvaluateDecisionRules;
+use App\Support\JobFailureReporter;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Log;
 
 class ReevaluateDecisionJob implements ShouldQueue
 {
@@ -38,9 +38,8 @@ class ReevaluateDecisionJob implements ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
-        Log::warning('ReevaluateDecisionJob failed', [
+        JobFailureReporter::report(static::class, $exception, [
             'ai_evaluation_id' => $this->aiEvaluationId,
-            'error' => $exception->getMessage(),
         ]);
     }
 }

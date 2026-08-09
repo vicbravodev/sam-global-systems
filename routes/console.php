@@ -18,6 +18,8 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
+Schedule::command('horizon:snapshot')->everyFiveMinutes()->onOneServer();
+
 Schedule::job(new AggregateUsageJob)->dailyAt('02:00')->onOneServer();
 Schedule::job(new CalculateDailyKPIsJob)->dailyAt('03:00')->onOneServer();
 Schedule::job(new BuildAnalyticsSnapshotJob)->dailyAt('04:00')->onOneServer();

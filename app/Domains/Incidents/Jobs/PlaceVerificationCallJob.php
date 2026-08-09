@@ -14,6 +14,7 @@ use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
+use App\Support\JobFailureReporter;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -163,9 +164,8 @@ class PlaceVerificationCallJob implements ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
-        Log::warning('PlaceVerificationCallJob failed', [
+        JobFailureReporter::report(static::class, $exception, [
             'verification_id' => $this->verificationId,
-            'error' => $exception->getMessage(),
         ]);
     }
 }

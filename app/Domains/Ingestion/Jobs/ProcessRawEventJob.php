@@ -6,6 +6,7 @@ use App\Domains\Ingestion\Actions\DetectDuplicateEvent;
 use App\Domains\Ingestion\Events\RawEventFailed;
 use App\Domains\Ingestion\Events\RawEventProcessed;
 use App\Domains\Ingestion\Models\RawEvent;
+use App\Support\JobFailureReporter;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -46,6 +47,10 @@ class ProcessRawEventJob implements ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
+        JobFailureReporter::report(static::class, $exception, [
+            'raw_event_id' => $this->rawEventId,
+        ]);
+
         $rawEvent = RawEvent::withoutGlobalScopes()->find($this->rawEventId);
 
         if ($rawEvent) {
