@@ -3,6 +3,7 @@
 namespace App\Domains\Notifications\Actions;
 
 use App\Contracts\Notifications\ChannelDriverRegistry;
+use App\Domains\Notifications\Data\RecipientDescriptor;
 use App\Domains\Notifications\Data\RenderedNotification;
 use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Enums\DeliveryStatus;
@@ -42,30 +43,27 @@ class DispatchNotification
             return $notification;
         }
 
+        $recipientsExisted = NotificationRecipient::withoutGlobalScopes()
+            ->where('notification_id', $notification->id)
+            ->exists();
+
         $recipients = [];
 
         foreach ($descriptors as $descriptor) {
-            $recipients[] = NotificationRecipient::query()->create([
-                'notification_id' => $notification->id,
-                'team_id' => $notification->team_id,
-                'recipient_type' => $descriptor->recipientType,
-                'recipient_reference_id' => $descriptor->referenceId,
-                'name' => $descriptor->name,
-                'address' => $descriptor->address,
-                'email' => $descriptor->email,
-                'phone' => $descriptor->phone,
-                'channel_preference' => $descriptor->channelPreference,
-                'role' => $descriptor->role,
-                'metadata_json' => $descriptor->metadata,
-            ]);
+            $recipients[] = $this->firstOrCreateRecipient($notification, $descriptor);
         }
 
-        NotificationCreated::dispatch(
-            $notification->team_id,
-            $notification->id,
-            $notification->notification_type,
-            count($recipients),
-        );
+        // Only the genuine first fan-out announces the notification; a retried
+        // SendNotificationJob ($tries = 3) re-enters here with recipients already
+        // persisted and must not re-emit NotificationCreated.
+        if (! $recipientsExisted) {
+            NotificationCreated::dispatch(
+                $notification->team_id,
+                $notification->id,
+                $notification->notification_type,
+                count($recipients),
+            );
+        }
 
         $deliveredCount = 0;
         $failedCount = 0;
@@ -234,6 +232,52 @@ class DispatchNotification
                 'exception' => $e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * Recipients are created idempotently keyed on a stable per-notification
+     * identity (type + reference + address). A retried SendNotificationJob
+     * ($tries = 3) therefore reuses the same NotificationRecipient rows, which
+     * is what lets the delivery dedup ({@see createDeliveryOrSkip}, unique on
+     * notification_id + recipient_id + channel_id) hold across retries and
+     * stops duplicate real sends of emergency alerts.
+     *
+     * `email` / `phone` are per-channel destinations resolved alongside the
+     * recipient; they are written on creation but stay out of the identity key,
+     * which stays anchored on the descriptor's stable `address`.
+     */
+    private function firstOrCreateRecipient(
+        Notification $notification,
+        RecipientDescriptor $descriptor,
+    ): NotificationRecipient {
+        $existing = NotificationRecipient::withoutGlobalScopes()
+            ->where('notification_id', $notification->id)
+            ->where('recipient_type', $descriptor->recipientType->value)
+            ->where('address', $descriptor->address)
+            ->when(
+                $descriptor->referenceId === null,
+                fn ($query) => $query->whereNull('recipient_reference_id'),
+                fn ($query) => $query->where('recipient_reference_id', $descriptor->referenceId),
+            )
+            ->first();
+
+        if ($existing !== null) {
+            return $existing;
+        }
+
+        return NotificationRecipient::query()->create([
+            'notification_id' => $notification->id,
+            'team_id' => $notification->team_id,
+            'recipient_type' => $descriptor->recipientType,
+            'recipient_reference_id' => $descriptor->referenceId,
+            'name' => $descriptor->name,
+            'address' => $descriptor->address,
+            'email' => $descriptor->email,
+            'phone' => $descriptor->phone,
+            'channel_preference' => $descriptor->channelPreference,
+            'role' => $descriptor->role,
+            'metadata_json' => $descriptor->metadata,
+        ]);
     }
 
     private function createDeliveryOrSkip(
