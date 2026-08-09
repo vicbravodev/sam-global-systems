@@ -30,4 +30,28 @@ class WebhookSecretEncryptionTest extends TestCase
 
         $this->assertSame('abc123', $endpoint->fresh()->secret);
     }
+
+    public function test_command_encrypts_legacy_plaintext_rows(): void
+    {
+        $endpoint = WebhookEndpoint::factory()->create(['secret' => 'legacy-plano']);
+
+        // Simulate legacy row: overwrite the encrypted value with plaintext by bypassing the cast
+        DB::table('webhook_endpoints')
+            ->where('id', $endpoint->id)
+            ->update(['secret' => 'legacy-plano']);
+
+        // Verify the raw value in DB is now plaintext
+        $rawBefore = DB::table('webhook_endpoints')->where('id', $endpoint->id)->value('secret');
+        $this->assertSame('legacy-plano', $rawBefore, 'Setup failed: secret not plaintext in DB');
+
+        // Run the encryption command
+        $this->artisan('webhooks:encrypt-secrets')->assertSuccessful();
+
+        // Verify raw value is now encrypted (not equal to plaintext)
+        $rawAfter = DB::table('webhook_endpoints')->where('id', $endpoint->id)->value('secret');
+        $this->assertNotSame('legacy-plano', $rawAfter, 'Secret was not encrypted');
+
+        // Verify transparent decryption still works
+        $this->assertSame('legacy-plano', $endpoint->fresh()->secret, 'Decryption failed');
+    }
 }
