@@ -2,7 +2,11 @@
 
 namespace Tests\Feature\Domains\Notifications;
 
+use App\Contracts\Notifications\ChannelDriverRegistry;
+use App\Contracts\Notifications\NotificationDriver;
 use App\Domains\Notifications\Actions\DispatchNotification;
+use App\Domains\Notifications\Data\DeliveryResult;
+use App\Domains\Notifications\Data\RenderedNotification;
 use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Enums\DeliveryStatus;
 use App\Domains\Notifications\Enums\NotificationPriority;
@@ -135,6 +139,142 @@ class DispatchNotificationTest extends TestCase
             ->count();
 
         $this->assertSame(1, $count);
+    }
+
+    public function test_re_dispatching_same_notification_is_idempotent_and_does_not_resend(): void
+    {
+        Mail::fake();
+
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+        $this->actingAs($user);
+
+        NotificationChannel::factory()->email()->create([
+            'team_id' => $team->id,
+            'is_active' => true,
+        ]);
+
+        $notification = Notification::factory()->create([
+            'team_id' => $team->id,
+            'notification_type' => 'manual.test',
+            'priority' => NotificationPriority::Normal,
+            'status' => NotificationStatus::Queued,
+            'payload_json' => [
+                'recipients' => [
+                    ['recipient_type' => RecipientType::ExternalContact->value, 'address' => 'ops@example.com'],
+                ],
+            ],
+        ]);
+
+        $dispatch = app(DispatchNotification::class);
+
+        // Reproduces SendNotificationJob being retried ($tries = 3): the same
+        // notification is fanned out twice. The retry must not duplicate
+        // recipients/deliveries nor re-send the real message.
+        $dispatch->execute($notification);
+        $dispatch->execute($notification);
+
+        $this->assertSame(
+            1,
+            NotificationRecipient::withoutGlobalScopes()->where('notification_id', $notification->id)->count(),
+        );
+        $this->assertSame(
+            1,
+            NotificationDelivery::withoutGlobalScopes()->where('notification_id', $notification->id)->count(),
+        );
+
+        Mail::assertSent(GenericNotificationMail::class, 1);
+    }
+
+    public function test_retry_after_mid_loop_failure_does_not_resend_already_delivered(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+        $this->actingAs($user);
+
+        NotificationChannel::factory()->email()->create([
+            'team_id' => $team->id,
+            'is_active' => true,
+        ]);
+
+        // Driver that records every send and crashes on the second one,
+        // reproducing a failure mid fan-out (the real failure mode is post-send
+        // bookkeeping — RecordDeliveryAttempt / RecordUsageEvent — throwing or
+        // hitting the job timeout after the provider call already went out).
+        $driver = new class implements NotificationDriver
+        {
+            /** @var array<int, string> */
+            public array $sends = [];
+
+            public int $calls = 0;
+
+            public function send(RenderedNotification $notification, NotificationChannel $channel): DeliveryResult
+            {
+                $this->calls++;
+                $this->sends[] = $notification->address;
+
+                if ($this->calls === 2) {
+                    throw new \RuntimeException('simulated mid-loop crash');
+                }
+
+                return DeliveryResult::success(providerMessageId: 'fake-'.$this->calls);
+            }
+        };
+
+        $this->app->instance(ChannelDriverRegistry::class, new class($driver) implements ChannelDriverRegistry
+        {
+            public function __construct(private NotificationDriver $driver) {}
+
+            public function driverFor(ChannelType $channelType): NotificationDriver
+            {
+                return $this->driver;
+            }
+        });
+
+        $notification = Notification::factory()->create([
+            'team_id' => $team->id,
+            'notification_type' => 'manual.test',
+            'priority' => NotificationPriority::Normal,
+            'status' => NotificationStatus::Queued,
+            'payload_json' => [
+                'recipients' => [
+                    ['recipient_type' => RecipientType::ExternalContact->value, 'address' => 'first@example.com'],
+                    ['recipient_type' => RecipientType::ExternalContact->value, 'address' => 'second@example.com'],
+                ],
+            ],
+        ]);
+
+        $dispatch = app(DispatchNotification::class);
+
+        // First pass crashes after delivering to first@example.com.
+        try {
+            $dispatch->execute($notification);
+            $this->fail('Expected the first pass to throw mid-loop.');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('simulated mid-loop crash', $e->getMessage());
+        }
+
+        // Retry must reuse the existing recipients/deliveries and never re-send
+        // the message that already went out to first@example.com.
+        $dispatch->execute($notification);
+
+        $sendCounts = array_count_values($driver->sends);
+
+        $this->assertSame(
+            1,
+            $sendCounts['first@example.com'] ?? 0,
+            'Already-delivered recipient must not be re-sent on retry.',
+        );
+        $this->assertSame(
+            2,
+            NotificationRecipient::withoutGlobalScopes()->where('notification_id', $notification->id)->count(),
+            'Retry must reuse recipients, not duplicate them.',
+        );
+        $this->assertSame(
+            2,
+            NotificationDelivery::withoutGlobalScopes()->where('notification_id', $notification->id)->count(),
+            'Retry must not create duplicate deliveries.',
+        );
     }
 
     public function test_critical_notification_uses_multiple_channels(): void
