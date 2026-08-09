@@ -2,6 +2,7 @@
 
 namespace App\Domains\Drivers\Models;
 
+use App\Concerns\BelongsToTenant;
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Drivers\Enums\AssignmentSource;
 use App\Domains\Drivers\Enums\AssignmentType;
@@ -14,7 +15,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class DriverAssignment extends Model
 {
     /** @use HasFactory<DriverAssignmentFactory> */
-    use HasFactory;
+    use BelongsToTenant, HasFactory;
 
     protected $fillable = [
         'team_id',
