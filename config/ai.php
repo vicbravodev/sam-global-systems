@@ -181,4 +181,20 @@ return [
         'media_debounce_seconds' => (int) env('AI_REEVALUATION_MEDIA_DEBOUNCE_SECONDS', 60),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Categories Excluded From AI Evaluation
+    |--------------------------------------------------------------------------
+    |
+    | Event categories whose classification already comes authoritatively from
+    | the provider (Samsara safety events: harsh braking, speeding, distraction,
+    | drowsy, mobile usage…). Running the AI pipeline on them is redundant and
+    | paid, so they skip evaluation entirely — but they are still persisted and
+    | feed correlation for high-value incidents (panic, jamming). Resolved by
+    | `App\Domains\AI\Support\AIEvaluationGate`.
+    |
+    */
+
+    'skip_evaluation_categories' => ['safety'],
+
 ];

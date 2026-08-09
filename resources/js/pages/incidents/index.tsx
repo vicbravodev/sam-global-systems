@@ -24,6 +24,8 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { EmptyState } from '@/components/ui/empty-state';
+import { PageHeader } from '@/components/ui/page-header';
 import {
     Tooltip,
     TooltipContent,
@@ -161,13 +163,9 @@ function PageHead({
     ];
 
     return (
-        <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-surface-1 px-5 py-3">
-            {/* D4: en móvil el título y los contadores se apilan en vez de
-                envolver feo a tres líneas. */}
-            <div className="flex min-w-0 flex-col gap-x-3 gap-y-0.5 md:flex-row md:items-center">
-                <h1 className="text-md font-semibold whitespace-nowrap text-fg-1">
-                    Bandeja de incidentes
-                </h1>
+        <PageHeader
+            title="Bandeja de incidentes"
+            meta={
                 <div className="flex items-center gap-2 text-xs text-fg-3">
                     <span>
                         <span className="font-medium text-fg-1">
@@ -187,75 +185,77 @@ function PageHead({
                         críticos
                     </span>
                 </div>
-            </div>
+            }
+            actions={
+                <>
+                    {/* Layout switcher */}
+                    <div className="flex items-center gap-0.5 rounded-md border border-border bg-surface-2 p-0.5">
+                        {layouts.map((l) => (
+                            <button
+                                key={l.value}
+                                type="button"
+                                onClick={() => setLayout(l.value)}
+                                className={cn(
+                                    'inline-flex items-center gap-1 rounded-sm px-2 py-1 text-2xs font-medium transition-colors',
+                                    layout === l.value
+                                        ? 'bg-surface-1 text-fg-1 shadow-sm'
+                                        : 'text-fg-3 hover:text-fg-2',
+                                )}
+                                title={l.label}
+                            >
+                                {l.icon}
+                            </button>
+                        ))}
+                    </div>
 
-            <div className="flex items-center gap-2">
-                {/* Layout switcher */}
-                <div className="flex items-center gap-0.5 rounded-md border border-border bg-surface-2 p-0.5">
-                    {layouts.map((l) => (
-                        <button
-                            key={l.value}
-                            type="button"
-                            onClick={() => setLayout(l.value)}
-                            className={cn(
-                                'inline-flex items-center gap-1 rounded-sm px-2 py-1 text-2xs font-medium transition-colors',
-                                layout === l.value
-                                    ? 'bg-surface-1 text-fg-1 shadow-sm'
-                                    : 'text-fg-3 hover:text-fg-2',
-                            )}
-                            title={l.label}
-                        >
-                            {l.icon}
-                        </button>
-                    ))}
-                </div>
-
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={onRefresh}
-                    disabled={refreshing}
-                >
-                    <RefreshCw
-                        size={13}
-                        className={cn(refreshing && 'animate-spin')}
-                    />
-                    Refrescar
-                </Button>
-
-                {criticalCount === 0 ? (
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <span tabIndex={0}>
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    disabled
-                                    className="pointer-events-none"
-                                >
-                                    Asignarme crítico más viejo
-                                </Button>
-                            </span>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom">
-                            No hay incidentes críticos abiertos ahora mismo.
-                        </TooltipContent>
-                    </Tooltip>
-                ) : (
                     <Button
-                        variant="outline"
+                        variant="ghost"
                         size="sm"
-                        onClick={onAssignOldestCritical}
-                        disabled={assigningOldest}
+                        onClick={onRefresh}
+                        disabled={refreshing}
                     >
-                        {assigningOldest ? (
-                            <Loader2 size={13} className="animate-spin" />
-                        ) : null}
-                        Asignarme crítico más viejo
+                        <RefreshCw
+                            size={13}
+                            className={cn(refreshing && 'animate-spin')}
+                        />
+                        Refrescar
                     </Button>
-                )}
-            </div>
-        </header>
+
+                    {criticalCount === 0 ? (
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <span tabIndex={0}>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        disabled
+                                        className="pointer-events-none"
+                                    >
+                                        Asignarme crítico más viejo
+                                    </Button>
+                                </span>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom">
+                                No hay incidentes críticos abiertos ahora mismo.
+                            </TooltipContent>
+                        </Tooltip>
+                    ) : (
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={onAssignOldestCritical}
+                            disabled={assigningOldest}
+                        >
+                            {assigningOldest ? (
+                                <Loader2 size={13} className="animate-spin" />
+                            ) : null}
+                            Asignarme crítico más viejo
+                        </Button>
+                    )}
+                </>
+            }
+            className="shrink-0 border-b border-border bg-background px-5 py-3"
+        />
     );
 }
 
@@ -292,15 +292,15 @@ function TabBar({
     openIncidents,
 }: TabBarProps) {
     return (
-        <div className="flex shrink-0 items-center justify-between border-b border-border bg-surface-1 px-5">
-            <nav className="flex items-center gap-0">
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-surface-1 px-5">
+            <nav className="scrollbar-none flex min-w-0 flex-1 items-center gap-0 overflow-x-auto">
                 {TABS.map((t) => (
                     <button
                         key={t.value}
                         type="button"
                         onClick={() => setTab(t.value)}
                         className={cn(
-                            '-mb-px border-b-2 px-3.5 py-2.5 text-xs font-medium transition-colors',
+                            '-mb-px shrink-0 border-b-2 px-3.5 py-2.5 text-xs font-medium whitespace-nowrap transition-colors',
                             tab === t.value
                                 ? 'border-primary text-fg-1'
                                 : 'border-transparent text-fg-3 hover:text-fg-2',
@@ -317,7 +317,7 @@ function TabBar({
             </nav>
 
             {/* Density */}
-            <div className="flex items-center gap-1 py-1.5">
+            <div className="flex shrink-0 items-center gap-1 py-1.5">
                 {DENSITY_OPTS.map((d) => (
                     <button
                         key={d.value}
@@ -363,7 +363,7 @@ function FilterDropdown({
                 <button
                     type="button"
                     className={cn(
-                        'flex items-center gap-1 rounded-sm border px-2.5 py-1.5 text-2xs transition-colors',
+                        'flex shrink-0 items-center gap-1 rounded-sm border px-2.5 py-1.5 text-2xs whitespace-nowrap transition-colors',
                         active
                             ? 'border-primary/40 bg-primary/10 text-primary'
                             : 'border-border bg-surface-1 text-fg-2 hover:border-border-strong',
@@ -440,8 +440,8 @@ function FilterBar({ filters, options, onApply }: FilterBarProps) {
         filters.shift !== null;
 
     return (
-        <div className="flex shrink-0 items-center gap-2 border-b border-border bg-background px-5 py-2">
-            <div className="mr-1 flex items-center gap-1.5 rounded-md border border-border bg-surface-1 px-2.5 py-1.5 text-xs text-fg-3">
+        <div className="scrollbar-none flex shrink-0 items-center gap-2 overflow-x-auto border-b border-border bg-background px-5 py-2">
+            <div className="mr-1 flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-surface-1 px-2.5 py-1.5 text-xs text-fg-3">
                 <Search size={12} />
                 <input
                     type="text"
@@ -489,7 +489,7 @@ function FilterBar({ filters, options, onApply }: FilterBarProps) {
                             shift: null,
                         })
                     }
-                    className="flex items-center gap-1 rounded-sm border border-dashed border-border px-2.5 py-1.5 text-2xs text-fg-3 transition-colors hover:border-border-strong"
+                    className="flex shrink-0 items-center gap-1 rounded-sm border border-dashed border-border px-2.5 py-1.5 text-2xs whitespace-nowrap text-fg-3 transition-colors hover:border-border-strong"
                 >
                     <X size={11} />
                     Limpiar
@@ -525,21 +525,6 @@ function InboxFooter({ count, total }: { count: number; total: number }) {
 }
 
 // ---- Empty state ----
-
-function InboxEmptyState() {
-    return (
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-6 py-16 text-center">
-            <div className="inline-grid size-12 place-items-center rounded-full border border-border bg-surface-2 text-fg-3">
-                <Inbox size={22} strokeWidth={1.5} />
-            </div>
-            <h2 className="text-md font-semibold text-fg-1">Sin incidentes</h2>
-            <p className="max-w-sm text-xs leading-normal text-fg-3">
-                Cuando el pipeline genere incidentes para tu equipo aparecerán
-                aquí en tiempo real.
-            </p>
-        </div>
-    );
-}
 
 // ---- Detail placeholder (shown while the panel payload loads) ----
 
@@ -1064,7 +1049,7 @@ export default function IncidentsIndex() {
                 className={cn(
                     'flex min-h-0 flex-1 overflow-hidden',
                     selectedId !== null
-                        ? 'grid grid-cols-[1fr_minmax(520px,700px)]'
+                        ? 'md:grid md:grid-cols-[1fr_minmax(520px,700px)]'
                         : '',
                 )}
             >
@@ -1109,7 +1094,12 @@ export default function IncidentsIndex() {
                     />
 
                     {!hasIncidents ? (
-                        <InboxEmptyState />
+                        <EmptyState
+                            className="min-h-0 flex-1"
+                            icon={Inbox}
+                            title="Sin incidentes"
+                            description="Cuando el pipeline genere incidentes para tu equipo aparecerán aquí en tiempo real."
+                        />
                     ) : (
                         <>
                             {layout === 'table' && (
@@ -1150,25 +1140,28 @@ export default function IncidentsIndex() {
                     <InboxFooter count={rows.length} total={incidents.length} />
                 </div>
 
-                {/* DETAIL PANEL */}
-                {selectedId !== null &&
-                    (selectedDetail ? (
-                        <IncidentDetailPanel
-                            incident={selectedDetail}
-                            onClose={() => setSelectedId(null)}
-                            onMutated={handlePanelMutated}
-                            detailHref={
-                                teamSlug
-                                    ? `/${teamSlug}/incidents/${selectedDetail.incidentId}`
-                                    : undefined
-                            }
-                        />
-                    ) : (
-                        <DetailPlaceholder
-                            loading={detailLoading}
-                            onClose={() => setSelectedId(null)}
-                        />
-                    ))}
+                {/* DETAIL PANEL — side column on md+, full-screen overlay on mobile */}
+                {selectedId !== null && (
+                    <div className="max-md:fixed max-md:inset-0 max-md:z-40 max-md:grid max-md:bg-background md:contents">
+                        {selectedDetail ? (
+                            <IncidentDetailPanel
+                                incident={selectedDetail}
+                                onClose={() => setSelectedId(null)}
+                                onMutated={handlePanelMutated}
+                                detailHref={
+                                    teamSlug
+                                        ? `/${teamSlug}/incidents/${selectedDetail.incidentId}`
+                                        : undefined
+                                }
+                            />
+                        ) : (
+                            <DetailPlaceholder
+                                loading={detailLoading}
+                                onClose={() => setSelectedId(null)}
+                            />
+                        )}
+                    </div>
+                )}
             </div>
         </>
     );

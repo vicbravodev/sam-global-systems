@@ -227,7 +227,7 @@ export default function AssetsMap() {
                     {markers.length === 0 && (
                         <div className="pointer-events-none absolute inset-x-0 top-4 z-10 flex justify-center">
                             <span className="rounded-md border border-border bg-surface-1/95 px-3 py-1.5 text-xs text-fg-2 shadow-sm">
-                                Sin activos posicionados todavía — aparecerán
+                                Sin activos posicionados todavía: aparecerán
                                 aquí cuando la sincronización registre
                                 ubicaciones.
                             </span>

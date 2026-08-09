@@ -103,10 +103,13 @@ class SdkEventEvaluationAgent implements EventEvaluationAgent
         // wrapper is one-shot, so we materialize a placeholder row for the
         // FK to point at; tests in environments without the SDK migration
         // simply skip this step.
+        //
+        // No owner column is written: the row has no participant, and since
+        // laravel/ai v0.10 the SDK identifies owners through the polymorphic
+        // `participant_type` / `participant_id` pair rather than `user_id`.
         if (Schema::hasTable('agent_conversations')) {
             DB::table('agent_conversations')->insertOrIgnore([
                 'id' => $conversationId,
-                'user_id' => null,
                 'title' => 'event_evaluation:'.$context->normalizedEventId,
                 'created_at' => now(),
                 'updated_at' => now(),

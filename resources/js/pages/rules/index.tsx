@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { PageHeader } from '@/components/ui/page-header';
 import {
     deleteJson,
     postJson,
@@ -1302,7 +1303,7 @@ function OverridesTab({
 
                 {overrides.length === 0 ? (
                     <p className="text-xs text-fg-3">
-                        Sin overrides — las reglas base aplican tal cual.
+                        Sin overrides: las reglas base aplican tal cual.
                     </p>
                 ) : (
                     <table className="w-full text-left text-xs">
@@ -1389,13 +1390,10 @@ export default function RulesIndex() {
         <>
             <Head title="Reglas" />
             <div className="flex flex-col gap-4 p-5">
-                <div>
-                    <h1 className="text-md font-semibold text-fg-1">Reglas</h1>
-                    <p className="text-xs text-fg-3">
-                        Motor de decisiones, mapeo de eventos del proveedor y
-                        overrides del tenant.
-                    </p>
-                </div>
+                <PageHeader
+                    title="Reglas"
+                    description="Motor de decisiones, mapeo de eventos del proveedor y overrides del tenant."
+                />
 
                 <div className="flex flex-wrap gap-1 border-b border-border">
                     {TABS.map((item) => (

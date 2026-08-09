@@ -27,7 +27,6 @@ class AIConversationLinkFactory extends Factory
                 if (Schema::hasTable('agent_conversations')) {
                     DB::table('agent_conversations')->insert([
                         'id' => $id,
-                        'user_id' => null,
                         'title' => 'factory-conversation',
                         'created_at' => now(),
                         'updated_at' => now(),

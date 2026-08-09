@@ -14,7 +14,6 @@ import { useCallback, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { ProviderTag } from '@/components/sam/provider-tag';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
     Dialog,
     DialogContent,
@@ -30,8 +29,10 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { PageHeader } from '@/components/ui/page-header';
 import {
     Select,
     SelectContent,
@@ -816,44 +817,41 @@ export default function IntegrationsIndex() {
         <div className="flex h-full flex-col overflow-hidden">
             <Head title="Integraciones" />
 
-            <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-surface-1 px-5 py-3">
-                <div className="flex items-center gap-3">
-                    <h1 className="sam-h2 m-0">Integraciones</h1>
+            <PageHeader
+                title="Integraciones"
+                meta={
                     <span className="sam-meta">
                         {integrations.length} conectadas · {alertCount} con
                         alertas
                     </span>
-                </div>
-                {canManage ? (
-                    <Button size="sm" onClick={() => setConnectOpen(true)}>
-                        <Plus size={14} /> Conectar integración
-                    </Button>
-                ) : null}
-            </header>
+                }
+                actions={
+                    canManage ? (
+                        <Button size="sm" onClick={() => setConnectOpen(true)}>
+                            <Plus size={14} /> Conectar integración
+                        </Button>
+                    ) : null
+                }
+                className="shrink-0 border-b border-border bg-background px-5 py-3"
+            />
 
             <div className="flex-1 overflow-y-auto p-5">
                 {integrations.length === 0 ? (
-                    <Card className="border-dashed">
-                        <CardHeader>
-                            <CardTitle className="sam-h3 flex items-center gap-2">
-                                <Plug size={16} /> Sin integraciones
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent className="text-sm text-fg-3">
-                            Conecta tu primer proveedor (Samsara, Motive, …)
-                            para empezar a recibir eventos de tu flota.
-                            {canManage ? (
-                                <div className="mt-3">
-                                    <Button
-                                        size="sm"
-                                        onClick={() => setConnectOpen(true)}
-                                    >
-                                        <Plus size={14} /> Conectar integración
-                                    </Button>
-                                </div>
-                            ) : null}
-                        </CardContent>
-                    </Card>
+                    <EmptyState
+                        icon={Plug}
+                        title="Sin integraciones"
+                        description="Conecta tu primer proveedor (Samsara, Motive, …) para empezar a recibir eventos de tu flota."
+                        action={
+                            canManage ? (
+                                <Button
+                                    size="sm"
+                                    onClick={() => setConnectOpen(true)}
+                                >
+                                    <Plus size={14} /> Conectar integración
+                                </Button>
+                            ) : null
+                        }
+                    />
                 ) : (
                     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                         {integrations.map((integration) => (

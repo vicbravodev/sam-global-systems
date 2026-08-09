@@ -269,4 +269,40 @@ class StoreRawEventTest extends TestCase
             'When no externalEventId is provided, deduplication_key should fall back to the payload checksum',
         );
     }
+
+    public function test_unparseable_timestamp_is_persisted_with_null_occurred_at(): void
+    {
+        Event::fake([RawEventReceived::class]);
+
+        [, $team, $provider] = $this->createTeamSetup();
+
+        $action = app(StoreRawEvent::class);
+        $rawEvent = $action->execute(
+            payload: [
+                'eventType' => 'AlertIncident',
+                'eventId' => 'evt-bad-time',
+                'eventTime' => 'not-a-real-timestamp',
+            ],
+            sourceType: 'webhook',
+            teamId: $team->id,
+            providerId: $provider->id,
+            externalEventId: 'evt-bad-time',
+        );
+
+        $this->assertNotNull(
+            $rawEvent->id,
+            'An unparseable timestamp must never drop the inbound event — it still has to be persisted',
+        );
+
+        $this->assertNull(
+            $rawEvent->occurred_at,
+            'When the payload timestamp cannot be parsed, occurred_at should degrade to null instead of throwing',
+        );
+
+        $this->assertEquals(
+            'AlertIncident',
+            $rawEvent->event_type_raw,
+            'A bad timestamp should not prevent the rest of the payload from being extracted',
+        );
+    }
 }

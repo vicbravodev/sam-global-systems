@@ -144,9 +144,9 @@ export default function AdminChannelsIndex({
             <div className="flex-1 overflow-y-auto p-5">
                 <div className="mb-5 flex flex-col gap-3 rounded-md border border-border bg-surface-1 p-4">
                     <span className="sam-meta">
-                        Crear canal de plataforma — los tenants lo reciben
-                        activo y solo pueden encenderlo/apagarlo; las
-                        credenciales viven aquí.
+                        Crear canal de plataforma: los tenants lo reciben activo
+                        y solo pueden encenderlo/apagarlo; las credenciales
+                        viven aquí.
                     </span>
                     <div className="flex flex-wrap items-end gap-2">
                         <div className="flex flex-col gap-1">
