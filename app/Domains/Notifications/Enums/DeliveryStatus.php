@@ -12,9 +12,10 @@ enum DeliveryStatus: string
     case Bounced = 'bounced';
     case Retrying = 'retrying';
     case Cancelled = 'cancelled';
+    case Skipped = 'skipped';
 
     public function isTerminal(): bool
     {
-        return in_array($this, [self::Delivered, self::Failed, self::Bounced, self::Cancelled], true);
+        return in_array($this, [self::Delivered, self::Failed, self::Bounced, self::Cancelled, self::Skipped], true);
     }
 }

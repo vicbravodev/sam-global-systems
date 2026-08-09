@@ -12,6 +12,8 @@ class RecipientDescriptor
     public function __construct(
         public readonly RecipientType $recipientType,
         public readonly string $address,
+        public readonly ?string $email = null,
+        public readonly ?string $phone = null,
         public readonly ?string $name = null,
         public readonly ?string $referenceId = null,
         public readonly ?string $channelPreference = null,

@@ -10,6 +10,13 @@ class ProfileUpdateRequest extends FormRequest
 {
     use ProfileValidationRules;
 
+    protected function prepareForValidation(): void
+    {
+        if (is_string($this->input('phone'))) {
+            $this->merge(['phone' => trim($this->input('phone'))]);
+        }
+    }
+
     /**
      * Get the validation rules that apply to the request.
      *

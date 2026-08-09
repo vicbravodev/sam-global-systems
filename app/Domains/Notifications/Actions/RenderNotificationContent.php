@@ -17,6 +17,7 @@ class RenderNotificationContent
         NotificationRecipient $recipient,
         ChannelType $channelType,
         ?NotificationTemplate $template = null,
+        ?string $addressOverride = null,
     ): RenderedNotification {
         $variables = $notification->payload_json ?? [];
 
@@ -32,7 +33,7 @@ class RenderNotificationContent
 
         return new RenderedNotification(
             channelType: $channelType,
-            address: $recipient->address,
+            address: $addressOverride ?? $recipient->address,
             subject: $subject,
             body: $body,
             variables: $variables,

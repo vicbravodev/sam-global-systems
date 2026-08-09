@@ -19,6 +19,7 @@ use App\Domains\Notifications\Models\NotificationDelivery;
 use App\Domains\Notifications\Models\NotificationRecipient;
 use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class DispatchNotification
 {
@@ -72,6 +73,19 @@ class DispatchNotification
             $channels = $this->selectChannels->execute($notification, $recipient);
 
             foreach ($channels as $channel) {
+                $targetAddress = $recipient->addressForChannel($channel->channel_type);
+
+                if ($targetAddress === null || $targetAddress === '') {
+                    $this->recordSkippedDelivery(
+                        $notification,
+                        $recipient,
+                        $channel,
+                        "no {$channel->channel_type->value} address (missing phone/email) for recipient",
+                    );
+
+                    continue;
+                }
+
                 $totalAttempts++;
 
                 $delivery = $this->createDeliveryOrSkip($notification, $recipient, $channel);
@@ -80,7 +94,7 @@ class DispatchNotification
                     continue;
                 }
 
-                $rendered = $this->render->execute($notification, $recipient, $channel->channel_type);
+                $rendered = $this->render->execute($notification, $recipient, $channel->channel_type, null, $targetAddress);
                 $rendered = $this->appendReplyInstructions($notification, $recipient, $rendered);
 
                 $driver = $this->drivers->driverFor($channel->channel_type);
@@ -89,6 +103,7 @@ class DispatchNotification
                     'status' => DeliveryStatus::Sending,
                     'sent_at' => now(),
                     'payload_json' => [
+                        'address' => $rendered->address,
                         'subject' => $rendered->subject,
                         'body' => $rendered->body,
                     ],
@@ -178,6 +193,47 @@ class DispatchNotification
         );
     }
 
+    private function recordSkippedDelivery(
+        Notification $notification,
+        NotificationRecipient $recipient,
+        NotificationChannel $channel,
+        string $reason,
+    ): void {
+        try {
+            DB::transaction(function () use ($notification, $recipient, $channel, $reason) {
+                $existing = NotificationDelivery::withoutGlobalScopes()
+                    ->where('notification_id', $notification->id)
+                    ->where('recipient_id', $recipient->id)
+                    ->where('channel_id', $channel->id)
+                    ->first();
+
+                if ($existing) {
+                    return;
+                }
+
+                NotificationDelivery::query()->create([
+                    'notification_id' => $notification->id,
+                    'recipient_id' => $recipient->id,
+                    'channel_id' => $channel->id,
+                    'team_id' => $notification->team_id,
+                    'status' => DeliveryStatus::Skipped,
+                    'attempt_number' => 0,
+                    'error_message' => $reason,
+                ]);
+            });
+        } catch (\Throwable $e) {
+            // best-effort audit row; never break the dispatch loop, but log so
+            // a systemic failure (e.g. DB constraint) stays debuggable.
+            Log::warning('Failed to record skipped notification delivery', [
+                'notification_id' => $notification->id,
+                'recipient_id' => $recipient->id,
+                'channel_id' => $channel->id,
+                'reason' => $reason,
+                'exception' => $e->getMessage(),
+            ]);
+        }
+    }
+
     /**
      * Recipients are created idempotently keyed on a stable per-notification
      * identity (type + reference + address). A retried SendNotificationJob
@@ -185,6 +241,10 @@ class DispatchNotification
      * is what lets the delivery dedup ({@see createDeliveryOrSkip}, unique on
      * notification_id + recipient_id + channel_id) hold across retries and
      * stops duplicate real sends of emergency alerts.
+     *
+     * `email` / `phone` are per-channel destinations resolved alongside the
+     * recipient; they are written on creation but stay out of the identity key,
+     * which stays anchored on the descriptor's stable `address`.
      */
     private function firstOrCreateRecipient(
         Notification $notification,
@@ -212,6 +272,8 @@ class DispatchNotification
             'recipient_reference_id' => $descriptor->referenceId,
             'name' => $descriptor->name,
             'address' => $descriptor->address,
+            'email' => $descriptor->email,
+            'phone' => $descriptor->phone,
             'channel_preference' => $descriptor->channelPreference,
             'role' => $descriptor->role,
             'metadata_json' => $descriptor->metadata,

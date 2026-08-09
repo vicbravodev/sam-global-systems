@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Settings\NotificationPreferencesController;
+use App\Http\Controllers\Settings\PhoneVerificationController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\SecurityController;
 use App\Http\Controllers\Teams\TeamController;
@@ -14,6 +15,13 @@ Route::middleware(['auth'])->group(function () {
 
     Route::get('settings/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('settings/profile', [ProfileController::class, 'update'])->name('profile.update');
+
+    Route::post('settings/phone/verification', [PhoneVerificationController::class, 'send'])
+        ->middleware('throttle:otp')
+        ->name('phone-verification.send');
+    Route::patch('settings/phone/verification', [PhoneVerificationController::class, 'verify'])
+        ->middleware('throttle:otp')
+        ->name('phone-verification.verify');
 });
 
 Route::middleware(['auth', 'verified'])->group(function () {

@@ -3,6 +3,7 @@
 namespace App\Domains\Notifications\Models;
 
 use App\Concerns\BelongsToTenant;
+use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Enums\RecipientType;
 use Database\Factories\Domains\Notifications\NotificationRecipientFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -24,10 +25,26 @@ class NotificationRecipient extends Model
         'recipient_reference_id',
         'name',
         'address',
+        'email',
+        'phone',
         'channel_preference',
         'role',
         'metadata_json',
     ];
+
+    /**
+     * The destination to use for a given channel: telephony channels need a
+     * phone, mail needs an email (falling back to the legacy address), and
+     * everything else keeps using the legacy address.
+     */
+    public function addressForChannel(ChannelType $channelType): ?string
+    {
+        return match ($channelType) {
+            ChannelType::Sms, ChannelType::Voice, ChannelType::Whatsapp => $this->phone ?: null,
+            ChannelType::Email => $this->email ?: $this->address ?: null,
+            default => $this->address ?: null,
+        };
+    }
 
     /**
      * @return BelongsTo<Notification, $this>
