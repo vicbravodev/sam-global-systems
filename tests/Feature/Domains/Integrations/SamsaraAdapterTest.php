@@ -112,6 +112,47 @@ class SamsaraAdapterTest extends TestCase
         $this->assertSame([], $result['events']);
     }
 
+    public function test_sync_reports_the_gateway_and_camera_installed_on_each_vehicle(): void
+    {
+        Http::fake([
+            'api.samsara.com/fleet/vehicles*' => Http::response([
+                'data' => [
+                    [
+                        'id' => '100',
+                        'name' => 'Truck 1',
+                        'gateway' => ['model' => 'VG34', 'serial' => 'GHWJPVPM8J'],
+                        'cameraSerial' => 'CM-123',
+                    ],
+                    // Gateway serial only at the root (older payload shape).
+                    ['id' => '101', 'name' => 'Truck 2', 'serial' => 'G9WR4JKTJZ'],
+                    // No hardware reported at all.
+                    ['id' => '102', 'name' => 'Truck 3'],
+                ],
+                'pagination' => ['hasNextPage' => false],
+            ], 200),
+            'api.samsara.com/fleet/drivers*' => Http::response([
+                'data' => [],
+                'pagination' => ['hasNextPage' => false],
+            ], 200),
+        ]);
+
+        $assets = app(SamsaraAdapter::class)->sync($this->makeIntegration(), 'full')['assets'];
+
+        $this->assertSame([
+            ['device_type' => 'gateway', 'external_device_id' => 'GHWJPVPM8J', 'metadata' => ['model' => 'VG34']],
+            ['device_type' => 'camera', 'external_device_id' => 'CM-123', 'metadata' => []],
+        ], $assets[0]['devices']);
+
+        $this->assertSame([
+            ['device_type' => 'gateway', 'external_device_id' => 'G9WR4JKTJZ', 'metadata' => []],
+        ], $assets[1]['devices']);
+
+        // Reported as an empty list, never omitted: the sync must be able to tell
+        // "this vehicle has no hardware" apart from "devices were not reported",
+        // since only the former may detach an existing device.
+        $this->assertSame([], $assets[2]['devices']);
+    }
+
     public function test_validate_webhook_signature_accepts_v1_and_raw_forms(): void
     {
         $adapter = app(SamsaraAdapter::class);

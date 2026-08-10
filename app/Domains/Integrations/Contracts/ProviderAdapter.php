@@ -32,6 +32,20 @@ interface ProviderAdapter
     public function fetchAssetLocations(TenantIntegration $integration): array;
 
     /**
+     * Fetch the latest telemetry reading per asset (fuel, odometer, ignition,
+     * battery, temperature — whatever the provider exposes).
+     *
+     * Each reading carries a `type` from the Assets domain's telemetry
+     * vocabulary, a provider-agnostic `{value, unit}` payload with units already
+     * converted for display, and the moment the device measured it. Assets with
+     * no usable reading are omitted rather than returned with an empty list, so
+     * callers can persist whatever comes back without filtering.
+     *
+     * @return array<int, array{external_id: string, readings: array<int, array{type: string, data: array<string, mixed>, recorded_at: string|null}>}>
+     */
+    public function fetchAssetTelemetry(TenantIntegration $integration): array;
+
+    /**
      * Fetch the current position of a single asset directly from the provider.
      *
      * Used for on-demand refreshes (e.g. a critical event whose latest known

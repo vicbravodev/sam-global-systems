@@ -124,6 +124,170 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
     }
 
     /**
+     * Stat types pulled for telemetry, mapped to the telemetry vocabulary the
+     * Assets domain stores. All of them live under the same "Read Vehicle
+     * Statistics" scope already required for the GPS poll.
+     *
+     * @var array<string, string>
+     */
+    private const TELEMETRY_STAT_TYPES = [
+        'engineStates' => 'ignition',
+        'fuelPercents' => 'fuel',
+        'obdOdometerMeters' => 'odometer',
+        'batteryMilliVolts' => 'battery',
+        'ambientAirTemperatureMilliC' => 'temperature',
+    ];
+
+    /**
+     * Fetch the latest telemetry reading per vehicle.
+     *
+     * One `/fleet/vehicles/stats` call covers every type at once (the endpoint
+     * returns the most recent value per requested stat), so the whole fleet's
+     * telemetry costs a single paginated request. Vehicles whose gateway reports
+     * none of the requested stats are omitted rather than returned empty.
+     *
+     * Speed is deliberately absent: it already rides along with the GPS reading
+     * on the location snapshot, and duplicating it here would store the same
+     * measurement in two tables.
+     *
+     * @return array<int, array{external_id: string, readings: array<int, array{type: string, data: array<string, mixed>, recorded_at: string|null}>}>
+     */
+    public function fetchAssetTelemetry(TenantIntegration $integration): array
+    {
+        $token = $this->resolveToken($integration);
+
+        if ($token === null) {
+            return [];
+        }
+
+        $records = [];
+        $cursor = null;
+        $pages = 0;
+
+        do {
+            $query = ['types' => implode(',', array_keys(self::TELEMETRY_STAT_TYPES))];
+
+            if ($cursor !== null) {
+                $query['after'] = $cursor;
+            }
+
+            $response = $this->client($token)->get('/fleet/vehicles/stats', $query);
+
+            if (! $response->successful()) {
+                break;
+            }
+
+            foreach ((array) $response->json('data', []) as $record) {
+                $mapped = $this->mapVehicleTelemetry((array) $record);
+
+                if ($mapped !== null) {
+                    $records[] = $mapped;
+                }
+            }
+
+            $cursor = $response->json('pagination.endCursor');
+            $hasNext = (bool) $response->json('pagination.hasNextPage', false);
+            $pages++;
+        } while ($hasNext && $cursor && $pages < self::MAX_PAGES);
+
+        return $records;
+    }
+
+    /**
+     * @param  array<string, mixed>  $record
+     * @return array{external_id: string, readings: array<int, array{type: string, data: array<string, mixed>, recorded_at: string|null}>}|null
+     */
+    private function mapVehicleTelemetry(array $record): ?array
+    {
+        $readings = [];
+
+        foreach (self::TELEMETRY_STAT_TYPES as $statType => $telemetryType) {
+            $stat = $this->latestStat(Arr::get($record, $statType));
+
+            if ($stat === null) {
+                continue;
+            }
+
+            $data = $this->mapStatValue($statType, $stat['value']);
+
+            if ($data === null) {
+                continue;
+            }
+
+            $readings[] = [
+                'type' => $telemetryType,
+                'data' => $data,
+                'recorded_at' => $stat['time'],
+            ];
+        }
+
+        return $readings === []
+            ? null
+            : ['external_id' => (string) Arr::get($record, 'id'), 'readings' => $readings];
+    }
+
+    /**
+     * Normalize a stat field to `{value, time}`. Snapshot requests return one
+     * object per type; the history/feed shapes return a list, in which case the
+     * most recent entry wins (same handling as the GPS mapping).
+     *
+     * A reading without a measurement time is dropped: `time` is required on
+     * every stat Samsara returns, and without it the caller would have to stamp
+     * the reading with the poll time, appending a duplicate row on every tick
+     * instead of recognising the reading it already stored.
+     *
+     * @return array{value: mixed, time: string}|null
+     */
+    private function latestStat(mixed $stat): ?array
+    {
+        if (is_array($stat) && array_is_list($stat)) {
+            $stat = end($stat) ?: null;
+        }
+
+        if (! is_array($stat) || ! array_key_exists('value', $stat) || $stat['value'] === null) {
+            return null;
+        }
+
+        $time = Arr::get($stat, 'time');
+
+        if (! is_string($time) || $time === '') {
+            return null;
+        }
+
+        return ['value' => $stat['value'], 'time' => $time];
+    }
+
+    /**
+     * Convert a raw Samsara stat into the stored `{value, unit}` shape.
+     *
+     * Units are display-ready: the asset detail panel prints "{value} {unit}"
+     * verbatim. Samsara reports in milli-units and meters, which nobody wants to
+     * read, so they are converted here rather than at render time.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function mapStatValue(string $statType, mixed $value): ?array
+    {
+        if ($statType === 'engineStates') {
+            return is_string($value) && $value !== ''
+                ? ['value' => strtolower($value)]
+                : null;
+        }
+
+        if (! is_numeric($value)) {
+            return null;
+        }
+
+        return match ($statType) {
+            'fuelPercents' => ['value' => (float) $value, 'unit' => '%'],
+            'obdOdometerMeters' => ['value' => round((float) $value / 1000, 1), 'unit' => 'km'],
+            'batteryMilliVolts' => ['value' => round((float) $value / 1000, 2), 'unit' => 'V'],
+            'ambientAirTemperatureMilliC' => ['value' => round((float) $value / 1000, 1), 'unit' => '°C'],
+            default => null,
+        };
+    }
+
+    /**
      * Fetch the live position of a single vehicle.
      *
      * Uses `GET /fleet/vehicles/locations?vehicleIds={id}` with a short timeout:
@@ -575,6 +739,11 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
             'name' => Arr::get($vehicle, 'name'),
             'vin' => Arr::get($vehicle, 'vin'),
             'license_plate' => Arr::get($vehicle, 'licensePlate'),
+            // The hardware actually installed on the vehicle, keyed by serial so
+            // the sync can reconcile it across ticks. Always present (possibly
+            // empty) — an omitted key means "not reported" to the sync, which
+            // then leaves existing devices alone.
+            'devices' => $this->mapVehicleDevices($vehicle, $cameraSerial),
             // `has_camera` gates the panic-media auto-request listener and the
             // context signals — a vehicle with a paired CM dashcam reports its
             // serial here.
@@ -588,6 +757,44 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
             ], fn ($value) => $value !== null && $value !== ''),
             'raw' => $vehicle,
         ];
+    }
+
+    /**
+     * Devices installed on a vehicle: the telematics gateway and, when the
+     * vehicle is camera-equipped, the dashcam.
+     *
+     * Samsara reports the gateway serial both nested under `gateway` (with its
+     * model) and duplicated at the root as `serial`; the nested form wins and the
+     * root is the fallback for older payloads.
+     *
+     * @param  array<string, mixed>  $vehicle
+     * @return array<int, array{device_type: string, external_device_id: string, metadata: array<string, mixed>}>
+     */
+    private function mapVehicleDevices(array $vehicle, ?string $cameraSerial): array
+    {
+        $devices = [];
+
+        $gatewaySerial = Arr::get($vehicle, 'gateway.serial') ?? Arr::get($vehicle, 'serial');
+
+        if (is_string($gatewaySerial) && $gatewaySerial !== '') {
+            $devices[] = [
+                'device_type' => 'gateway',
+                'external_device_id' => $gatewaySerial,
+                'metadata' => array_filter([
+                    'model' => Arr::get($vehicle, 'gateway.model'),
+                ], fn ($value) => $value !== null && $value !== ''),
+            ];
+        }
+
+        if (is_string($cameraSerial) && $cameraSerial !== '') {
+            $devices[] = [
+                'device_type' => 'camera',
+                'external_device_id' => $cameraSerial,
+                'metadata' => [],
+            ];
+        }
+
+        return $devices;
     }
 
     /**

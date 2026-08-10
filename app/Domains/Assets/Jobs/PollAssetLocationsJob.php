@@ -4,7 +4,9 @@ namespace App\Domains\Assets\Jobs;
 
 use App\Domains\Assets\Actions\ResolveAssetFromExternalId;
 use App\Domains\Assets\Actions\UpdateAssetLocationSnapshot;
+use App\Domains\Assets\Actions\UpdateAssetTelemetrySnapshot;
 use App\Domains\Assets\Enums\LocationSource;
+use App\Domains\Assets\Enums\TelemetryType;
 use App\Domains\Integrations\Contracts\ProviderAdapter;
 use App\Domains\Integrations\Models\TenantIntegration;
 use Illuminate\Bus\Queueable;
@@ -16,9 +18,15 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Carbon;
 
 /**
- * Poll the latest asset positions for a single integration and persist them as
- * location snapshots. Unknown assets (no external reference yet) are skipped —
- * the catalog sync creates them and the next poll picks up their location.
+ * Poll the provider's latest stats for a single integration and persist them as
+ * location and telemetry snapshots. Unknown assets (no external reference yet)
+ * are skipped — the catalog sync creates them and the next poll picks them up.
+ *
+ * Both signals come from the same per-vehicle stats snapshot, so they are polled
+ * together on one cadence: telemetry (fuel, odometer, ignition, battery,
+ * temperature) is the only fleet-wide source there is, since provider events
+ * carry no such readings. Tenants that do not want it can opt out with
+ * `config_json.sync.poll_telemetry = false`.
  *
  * Unique per integration so overlapping ticks never double-poll the provider.
  */
@@ -43,6 +51,7 @@ class PollAssetLocationsJob implements ShouldBeUnique, ShouldQueue
         ProviderAdapter $providerAdapter,
         ResolveAssetFromExternalId $resolveAsset,
         UpdateAssetLocationSnapshot $updateLocation,
+        UpdateAssetTelemetrySnapshot $updateTelemetry,
     ): void {
         $locations = $providerAdapter->fetchAssetLocations($this->integration);
 
@@ -75,7 +84,55 @@ class PollAssetLocationsJob implements ShouldBeUnique, ShouldQueue
             );
         }
 
+        if ($this->telemetryEnabled()) {
+            $this->pollTelemetry($providerAdapter, $resolveAsset, $updateTelemetry);
+        }
+
         $this->integration->update(['last_location_poll_at' => now()]);
+    }
+
+    private function telemetryEnabled(): bool
+    {
+        return ($this->integration->config_json['sync']['poll_telemetry'] ?? true) !== false;
+    }
+
+    private function pollTelemetry(
+        ProviderAdapter $providerAdapter,
+        ResolveAssetFromExternalId $resolveAsset,
+        UpdateAssetTelemetrySnapshot $updateTelemetry,
+    ): void {
+        foreach ($providerAdapter->fetchAssetTelemetry($this->integration) as $record) {
+            $externalId = $record['external_id'] ?? null;
+
+            if ($externalId === null || $externalId === '') {
+                continue;
+            }
+
+            $asset = $resolveAsset->execute($this->integration->provider_id, (string) $externalId);
+
+            if ($asset === null) {
+                continue;
+            }
+
+            foreach ($record['readings'] ?? [] as $reading) {
+                $type = TelemetryType::tryFrom((string) ($reading['type'] ?? ''));
+
+                // A provider reporting a metric this build has no telemetry type
+                // for is skipped rather than stored under a bogus type.
+                if ($type === null) {
+                    continue;
+                }
+
+                $updateTelemetry->execute(
+                    asset: $asset,
+                    type: $type,
+                    data: $reading['data'] ?? [],
+                    recordedAt: isset($reading['recorded_at']) && $reading['recorded_at'] !== null
+                        ? Carbon::parse($reading['recorded_at'])
+                        : null,
+                );
+            }
+        }
     }
 
     public function failed(\Throwable $exception): void
