@@ -1,5 +1,5 @@
 import { Link } from '@inertiajs/react';
-import { ExternalLink, Maximize2, MapPin, Truck, User } from 'lucide-react';
+import { Maximize2, MapPin, Truck, User } from 'lucide-react';
 import { SeverityBadge, StatusPill, ProviderTag } from '@/components/sam';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -98,13 +98,6 @@ export function DetailHeader({
                     <span className="font-mono text-2xs text-fg-3">
                         {incident.id}
                     </span>
-                    <button
-                        type="button"
-                        className="cursor-pointer border-none bg-transparent p-0 text-fg-3 hover:text-fg-1"
-                        aria-label="Ver en proveedor"
-                    >
-                        <ExternalLink size={12} />
-                    </button>
                 </div>
 
                 <h2 className="mb-1.5 text-xl leading-tight font-semibold text-fg-1">
@@ -155,10 +148,6 @@ export function DetailHeader({
                         </Link>
                     </Button>
                 )}
-                <Button size="sm" variant="outline">
-                    <ExternalLink size={12} />
-                    Ver en {incident.provider}
-                </Button>
                 <Button size="sm" variant="ghost" onClick={onClose}>
                     Cerrar detalle
                 </Button>
