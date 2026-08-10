@@ -10,6 +10,9 @@ interface InboxTableProps {
     onToggle: (id: string) => void;
     onSelectAll: () => void;
     allChecked: boolean;
+    currentUserId: number | null;
+    claimPendingId: number | null;
+    onClaimToggle: (incident: MockIncident) => void;
 }
 
 export function InboxTable({
@@ -21,6 +24,9 @@ export function InboxTable({
     onToggle,
     onSelectAll,
     allChecked,
+    currentUserId,
+    claimPendingId,
+    onClaimToggle,
 }: InboxTableProps) {
     return (
         <div className="min-h-0 flex-1 overflow-auto">
@@ -33,8 +39,11 @@ export function InboxTable({
                         incident={incident}
                         selected={selectedId === incident.id}
                         checked={selectedSet.has(incident.id)}
+                        currentUserId={currentUserId}
+                        claimBusy={claimPendingId === incident.incidentId}
                         onClick={() => onSelect(incident.id)}
                         onToggle={() => onToggle(incident.id)}
+                        onClaimToggle={() => onClaimToggle(incident)}
                     />
                 ))}
             </div>
@@ -75,6 +84,7 @@ export function InboxTable({
                             Conductor
                         </th>
                         <th className="w-40 px-2.5 py-2 text-left">Asignado</th>
+                        <th className="w-28 px-2.5 py-2 text-left">Toma</th>
                         <th className="w-28 px-2.5 py-2 text-left">Estado</th>
                         <th className="w-24 px-2.5 py-2 text-left">SLA</th>
                         <th className="w-20 px-2.5 py-2 text-left">Edad</th>
@@ -88,8 +98,11 @@ export function InboxTable({
                             selected={selectedId === incident.id}
                             checked={selectedSet.has(incident.id)}
                             density={density}
+                            currentUserId={currentUserId}
+                            claimBusy={claimPendingId === incident.incidentId}
                             onClick={() => onSelect(incident.id)}
                             onToggle={() => onToggle(incident.id)}
+                            onClaimToggle={() => onClaimToggle(incident)}
                         />
                     ))}
                 </tbody>

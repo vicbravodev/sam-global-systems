@@ -78,9 +78,10 @@ public function claim(Request $request, Team $current_team, Incident $incident, 
 
 - `claimedBy: { id, name, initials } | null` — misma forma que `assignee`, reutilizando `MockAssignee`.
 - `claimedAt: string | null` (ISO 8601).
-- `claimedByMe: boolean` — derivado en el servidor comparando con el usuario autenticado, para que el front no tenga que conocer el id propio.
 
-Requiere: una relación `claimedBy(): BelongsTo` en `Incident` (hoy no existe), y meter `claimed_by_user_id` en la colección que `IncidentInboxController::index()` pasa a `resolveUsers()`, de modo que el nombre del que tomó se resuelva **en la misma consulta** que ya resuelve los asignados — sin N+1 ni consulta extra.
+Requiere meter `claimed_by_user_id` en la colección que `IncidentInboxController::index()` (y `show()`) pasa a `resolveUsers()`, de modo que el nombre del que tomó se resuelva **en la misma consulta** que ya resuelve los asignados — sin N+1 ni consulta extra.
+
+**Corrección durante la implementación:** el diseño inicial preveía un tercer campo `claimedByMe` derivado en el servidor, y una relación `claimedBy(): BelongsTo` en `Incident`. Ninguno hizo falta. Inertia ya comparte `auth.user` en todas las páginas y el contexto de acciones ya expone `currentUserId`, así que el front compara `claimedBy.id === currentUserId` sin ayuda del servidor; y el presenter resuelve el nombre desde la colección `$users` ya cargada, sin necesidad de relación Eloquent. Se evitan así un campo redundante en el payload y un parámetro extra atravesando `toRow`/`toDetail` y todos sus llamadores.
 
 `toDetail()` hace spread de `toRow()`, así que hereda las tres claves sin cambios.
 

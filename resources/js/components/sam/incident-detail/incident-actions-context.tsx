@@ -49,6 +49,8 @@ export interface IncidentActionsValue {
     reopen: () => Promise<boolean>;
     reclassify: (typeId: number, priorityId: number | null) => Promise<boolean>;
     acknowledge: () => Promise<boolean>;
+    claim: () => Promise<boolean>;
+    release: () => Promise<boolean>;
     escalate: (reason?: string) => Promise<boolean>;
     discard: (summary?: string) => Promise<boolean>;
     confirmAi: () => Promise<boolean>;
@@ -120,6 +122,15 @@ export function IncidentActionsProvider({
 
                 if (response.status === 403) {
                     toast.error('No tienes permisos para esta acción.');
+                } else if (response.status === 409) {
+                    // Colisión de toma humana: el servidor explica quién ganó.
+                    // Se refresca igualmente para que la vista deje de mostrar
+                    // el incidente como libre.
+                    toast.error(
+                        (await readErrorMessage(response)) ??
+                            'Otro monitorista se adelantó.',
+                    );
+                    onMutated();
                 } else {
                     const message = await readErrorMessage(response);
                     toast.error(message ?? 'No se pudo completar la acción.');
@@ -212,6 +223,20 @@ export function IncidentActionsProvider({
                     base ? `${base}/acknowledge` : null,
                     {},
                     'Incidente atendido (ACK).',
+                ),
+            claim: () =>
+                run(
+                    'claim',
+                    base ? `${base}/claim` : null,
+                    {},
+                    'Incidente tomado.',
+                ),
+            release: () =>
+                run(
+                    'release',
+                    base ? `${base}/release` : null,
+                    {},
+                    'Incidente liberado.',
                 ),
             escalate: (reason) =>
                 run(

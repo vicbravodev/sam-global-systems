@@ -24,6 +24,9 @@ export interface MockIncident {
     asset: string;
     driver: string;
     assignee: MockAssignee | null;
+    /** Monitorista que tiene tomado el incidente (toma humana), si alguno. */
+    claimedBy: MockAssignee | null;
+    claimedAt: string | null;
     slaSeconds: number;
     slaTotal: number;
     ageMin: number;
