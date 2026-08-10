@@ -3,12 +3,10 @@
 namespace App\Domains\Notifications;
 
 use App\Contracts\Notifications\ChannelDriverRegistry as ChannelDriverRegistryContract;
-use App\Domains\Automation\Events\ActionExecuted;
 use App\Domains\Incidents\Events\IncidentClosed;
 use App\Domains\Incidents\Events\IncidentCreated;
 use App\Domains\Incidents\Events\IncidentStatusChanged;
 use App\Domains\Notifications\Channels\ChannelDriverRegistry;
-use App\Domains\Notifications\Listeners\NotifyOnActionExecuted;
 use App\Domains\Notifications\Listeners\NotifyOnIncidentCreated;
 use App\Domains\Notifications\Listeners\NotifyOnIncidentStatusChanged;
 use App\Domains\Notifications\Models\Notification;
@@ -43,6 +41,9 @@ class NotificationsServiceProvider extends ServiceProvider
         Event::listen(IncidentCreated::class, NotifyOnIncidentCreated::class);
         Event::listen(IncidentStatusChanged::class, NotifyOnIncidentStatusChanged::class);
         Event::listen(IncidentClosed::class, NotifyOnIncidentStatusChanged::class);
-        Event::listen(ActionExecuted::class, NotifyOnActionExecuted::class);
+
+        // NotifyOnActionExecuted no se registra: las acciones de tipo envío ya
+        // notifican por sí mismas, y un segundo aviso sin destinatarios explícitos
+        // termina en fan-out a todo el equipo.
     }
 }

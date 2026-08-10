@@ -10,7 +10,6 @@ use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentPriority;
 use App\Domains\Notifications\Enums\NotificationPriority;
 use App\Domains\Notifications\Enums\NotificationSourceType;
-use App\Domains\Notifications\Enums\NotificationTriggeredByType;
 use App\Domains\Notifications\Models\Notification;
 use App\Models\User;
 use Database\Seeders\IncidentsSeeder;
@@ -55,7 +54,14 @@ class CrossDomainListenersTest extends TestCase
         $this->assertSame((string) $incident->id, $notification->source_reference_id);
     }
 
-    public function test_action_executed_listener_only_acts_on_send_actions(): void
+    /**
+     * NotifyOnActionExecuted is no longer registered against ActionExecuted (see
+     * NotificationsServiceProvider): a send action already notifies its recipients by
+     * itself, so a second Notifications-domain listener reacting to the same event used
+     * to fan out an extra notice to the whole team. This previously asserted the
+     * opposite (that a `send_*` action produced a Notification row) — that was the bug.
+     */
+    public function test_action_executed_never_creates_a_notification(): void
     {
         Bus::fake();
 
@@ -70,8 +76,6 @@ class CrossDomainListenersTest extends TestCase
         ]);
         ActionExecuted::dispatch($rollback);
 
-        $this->assertSame(0, Notification::withoutGlobalScopes()->where('team_id', $team->id)->count());
-
         $send = ActionExecution::factory()->create([
             'team_id' => $team->id,
             'action_type' => ActionType::SendEmail,
@@ -82,14 +86,7 @@ class CrossDomainListenersTest extends TestCase
         ]);
         ActionExecuted::dispatch($send);
 
-        $notification = Notification::withoutGlobalScopes()
-            ->where('team_id', $team->id)
-            ->where('event_key', "action_execution:{$send->id}")
-            ->first();
-
-        $this->assertNotNull($notification);
-        $this->assertSame(NotificationTriggeredByType::Automation, $notification->triggered_by_type);
-        $this->assertSame('Hello from automation', $notification->subject);
+        $this->assertSame(0, Notification::withoutGlobalScopes()->where('team_id', $team->id)->count());
     }
 
     public function test_listener_idempotent_when_dispatched_twice(): void
