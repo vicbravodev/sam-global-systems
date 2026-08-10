@@ -71,7 +71,10 @@ class IncidentInboxController extends Controller
         $users = $this->resolveUsers(
             $incidents->map(fn (Incident $incident) => $incident->currentAssignment)
                 ->filter(fn ($assignment) => $assignment?->assigned_to_type === AssigneeType::User)
-                ->map(fn ($assignment) => (int) $assignment->assigned_to_id),
+                ->map(fn ($assignment) => (int) $assignment->assigned_to_id)
+                // Los que tienen tomado un incidente se resuelven en la misma
+                // consulta que los asignados: la bandeja pinta ambos nombres.
+                ->concat($incidents->map(fn (Incident $incident) => $incident->claimed_by_user_id)),
         );
 
         return Inertia::render('incidents/index', [
@@ -271,7 +274,8 @@ class IncidentInboxController extends Controller
             ->concat($incident->comments->map(fn ($comment) => (int) $comment->user_id))
             ->concat($incident->timeline
                 ->filter(fn ($entry) => $entry->actor_type === TimelineActorType::User)
-                ->map(fn ($entry) => (int) $entry->actor_id));
+                ->map(fn ($entry) => (int) $entry->actor_id))
+            ->push($incident->claimed_by_user_id);
 
         $users = $this->resolveUsers($userIds);
 

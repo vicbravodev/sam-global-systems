@@ -2,14 +2,19 @@
 
 namespace App\Domains\Incidents\Actions;
 
+use App\Domains\Incidents\Enums\TimelineActorType;
+use App\Domains\Incidents\Enums\TimelineEntryType;
 use App\Domains\Incidents\Jobs\CheckIncidentAcknowledgementJob;
 use App\Domains\Incidents\Models\Incident;
+use App\Domains\Incidents\Support\IncidentUpdatedBroadcast;
 use App\Models\User;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\DB;
 
 class ReleaseIncident
 {
+    public function __construct(private readonly AppendTimelineEntry $appendTimelineEntry) {}
+
     /**
      * Suelta el incidente. Sólo lo consigue quien lo tenía tomado.
      */
@@ -40,6 +45,14 @@ class ReleaseIncident
                 'claimed_at' => null,
             ])->save();
 
+            $this->appendTimelineEntry->execute(
+                incident: $locked,
+                entryType: TimelineEntryType::Released,
+                actorType: TimelineActorType::User,
+                actorId: $user->id,
+                title: "Incidente soltado por {$user->name}",
+            );
+
             // A claim-por-error released without ever being acknowledged must
             // not leave the incident unwatched forever: re-arm the SLA
             // watchdog at level 0, same as at incident creation.
@@ -57,6 +70,11 @@ class ReleaseIncident
         if ($released && $rearmDueAt instanceof CarbonInterface) {
             CheckIncidentAcknowledgementJob::dispatch($incident->id)
                 ->delay($rearmDueAt->isFuture() ? $rearmDueAt : null);
+        }
+
+        // Igual que en ClaimIncident: sólo se anuncia una liberación real.
+        if ($released) {
+            broadcast(IncidentUpdatedBroadcast::fromModel($incident->fresh()));
         }
 
         return $released;

@@ -608,6 +608,8 @@ export default function IncidentsIndex() {
     const [filters, setFilters] = useState<InboxFilters>(serverFilters);
     const [bulkPending, setBulkPending] = useState<string | null>(null);
     const [assigningOldest, setAssigningOldest] = useState(false);
+    /** Incidente cuya toma/liberación está en vuelo, para bloquear su botón. */
+    const [claimPendingId, setClaimPendingId] = useState<number | null>(null);
 
     // Re-sync local filter state if the server echoes a different set
     // (e.g. after a browser back/forward navigation).
@@ -882,6 +884,51 @@ export default function IncidentsIndex() {
         }
     };
 
+    /**
+     * Toma/suelta desde la fila. El 409 no es un error del usuario sino una
+     * carrera perdida: se avisa con el mensaje del servidor y se refresca para
+     * que la fila pase a mostrar quién ganó.
+     */
+    const toggleClaim = async (incident: MockIncident) => {
+        if (teamSlug === null) {
+            return;
+        }
+
+        const mine =
+            incident.claimedBy !== null &&
+            incident.claimedBy.id === currentUserId;
+        const action = mine ? 'release' : 'claim';
+
+        setClaimPendingId(incident.incidentId);
+
+        try {
+            const response = await postJson(
+                `/${teamSlug}/incidents/${incident.incidentId}/${action}`,
+                {},
+            );
+
+            if (response.ok) {
+                toast.success(
+                    mine
+                        ? `Soltaste ${incident.id}.`
+                        : `Tomaste ${incident.id}.`,
+                );
+                router.reload({ only: ['incidents'] });
+            } else {
+                const message = await readErrorMessage(response);
+                toast.error(message ?? 'No se pudo completar la acción.');
+
+                if (response.status === 409) {
+                    router.reload({ only: ['incidents'] });
+                }
+            }
+        } catch {
+            toast.error('Error de red. Vuelve a intentarlo.');
+        } finally {
+            setClaimPendingId(null);
+        }
+    };
+
     const handleToggle = (id: string) => {
         setSelectedSet((prev) => {
             const next = new Set(prev);
@@ -1115,6 +1162,9 @@ export default function IncidentsIndex() {
                                         rows.length > 0 &&
                                         selectedSet.size === rows.length
                                     }
+                                    currentUserId={currentUserId}
+                                    claimPendingId={claimPendingId}
+                                    onClaimToggle={toggleClaim}
                                 />
                             )}
                             {layout === 'grouped' && (
@@ -1125,6 +1175,9 @@ export default function IncidentsIndex() {
                                     density={density}
                                     onSelect={handleSelect}
                                     onToggle={handleToggle}
+                                    currentUserId={currentUserId}
+                                    claimPendingId={claimPendingId}
+                                    onClaimToggle={toggleClaim}
                                 />
                             )}
                             {layout === 'stream' && (

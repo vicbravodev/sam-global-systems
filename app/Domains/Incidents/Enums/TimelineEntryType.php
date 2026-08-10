@@ -10,6 +10,8 @@ enum TimelineEntryType: string
     case Assigned = 'assigned';
     case Escalated = 'escalated';
     case Acknowledged = 'acknowledged';
+    case Claimed = 'claimed';
+    case Released = 'released';
     case SlaBreached = 'sla_breached';
     case CommentAdded = 'comment_added';
     case EvidenceAdded = 'evidence_added';

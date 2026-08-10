@@ -4,12 +4,17 @@ namespace Tests\Feature\Domains\Incidents;
 
 use App\Domains\Incidents\Actions\ClaimIncident;
 use App\Domains\Incidents\Actions\ReleaseIncident;
+use App\Domains\Incidents\Enums\TimelineActorType;
+use App\Domains\Incidents\Enums\TimelineEntryType;
 use App\Domains\Incidents\Jobs\CheckIncidentAcknowledgementJob;
 use App\Domains\Incidents\Models\Incident;
+use App\Domains\Incidents\Models\IncidentTimeline;
+use App\Domains\Incidents\Support\IncidentUpdatedBroadcast;
 use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
@@ -149,5 +154,85 @@ class ClaimIncidentTest extends TestCase
         $this->assertTrue($released);
 
         Queue::assertNotPushed(CheckIncidentAcknowledgementJob::class);
+    }
+
+    public function test_claim_records_a_timeline_entry_and_broadcasts(): void
+    {
+        Event::fake([IncidentUpdatedBroadcast::class]);
+
+        $team = Team::factory()->create();
+        $incident = Incident::factory()->create(['team_id' => $team->id]);
+        $ana = $this->memberOf($team);
+
+        $this->assertTrue(app(ClaimIncident::class)->execute($incident, $ana));
+
+        $entry = IncidentTimeline::query()
+            ->where('incident_id', $incident->id)
+            ->where('entry_type', TimelineEntryType::Claimed)
+            ->sole();
+
+        $this->assertSame(TimelineActorType::User, $entry->actor_type);
+        $this->assertSame($ana->id, $entry->actor_id);
+
+        Event::assertDispatched(
+            IncidentUpdatedBroadcast::class,
+            fn (IncidentUpdatedBroadcast $event): bool => $event->incidentId === $incident->id,
+        );
+    }
+
+    public function test_release_records_a_timeline_entry_and_broadcasts(): void
+    {
+        $team = Team::factory()->create();
+        $incident = Incident::factory()->create(['team_id' => $team->id]);
+        $ana = $this->memberOf($team);
+
+        app(ClaimIncident::class)->execute($incident, $ana);
+
+        // Faked only now, so the claim's own broadcast/entry above does not
+        // pollute the assertions about the release.
+        Event::fake([IncidentUpdatedBroadcast::class]);
+
+        $this->assertTrue(app(ReleaseIncident::class)->execute($incident->fresh(), $ana));
+
+        $entry = IncidentTimeline::query()
+            ->where('incident_id', $incident->id)
+            ->where('entry_type', TimelineEntryType::Released)
+            ->sole();
+
+        $this->assertSame($ana->id, $entry->actor_id);
+
+        Event::assertDispatched(
+            IncidentUpdatedBroadcast::class,
+            fn (IncidentUpdatedBroadcast $event): bool => $event->incidentId === $incident->id,
+        );
+    }
+
+    /**
+     * Una toma perdida en carrera no debe dejar rastro: ni entrada de
+     * timeline ni broadcast. De lo contrario el segundo monitorista vería
+     * su propio nombre en la historia de un incidente que nunca tuvo.
+     */
+    public function test_a_lost_claim_race_leaves_no_timeline_entry_and_no_broadcast(): void
+    {
+        $team = Team::factory()->create();
+        $incident = Incident::factory()->create(['team_id' => $team->id]);
+        $ana = $this->memberOf($team);
+        $beto = $this->memberOf($team);
+
+        app(ClaimIncident::class)->execute($incident, $ana);
+
+        Event::fake([IncidentUpdatedBroadcast::class]);
+
+        $this->assertFalse(app(ClaimIncident::class)->execute($incident->fresh(), $beto));
+
+        $this->assertSame(
+            0,
+            IncidentTimeline::query()
+                ->where('incident_id', $incident->id)
+                ->where('actor_id', $beto->id)
+                ->count(),
+        );
+
+        Event::assertNotDispatched(IncidentUpdatedBroadcast::class);
     }
 }

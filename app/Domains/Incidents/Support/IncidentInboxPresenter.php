@@ -54,6 +54,8 @@ class IncidentInboxPresenter
             'asset' => $this->asset($incident),
             'driver' => $this->driver($incident),
             'assignee' => $this->assignee($incident, $users),
+            'claimedBy' => $this->claimedBy($incident, $users),
+            'claimedAt' => $incident->claimed_at?->toIso8601String(),
             'slaSeconds' => $this->slaSeconds($incident, $now),
             'slaTotal' => $this->slaTotal($incident),
             'ageMin' => $this->ageMin($incident, $now),
@@ -169,6 +171,29 @@ class IncidentInboxPresenter
      * @param  Collection<int, User>  $users
      * @return array{id: int, name: string, initials: string}|null
      */
+    /**
+     * Quién tiene tomado el incidente, con la misma forma que `assignee` para
+     * que la bandeja pueda reutilizar el avatar de iniciales. El usuario sale
+     * de la colección ya resuelta: no dispara consulta por fila.
+     *
+     * @param  Collection<int, User>  $users
+     * @return array<string, mixed>|null
+     */
+    private function claimedBy(Incident $incident, Collection $users): ?array
+    {
+        if ($incident->claimed_by_user_id === null) {
+            return null;
+        }
+
+        $name = (string) ($users->get((int) $incident->claimed_by_user_id)?->name ?? 'Usuario');
+
+        return [
+            'id' => (int) $incident->claimed_by_user_id,
+            'name' => $name,
+            'initials' => $this->initials($name),
+        ];
+    }
+
     private function assignee(Incident $incident, Collection $users): ?array
     {
         $assignment = $this->activeAssignment($incident);

@@ -1,3 +1,4 @@
+import { Hand, Loader2 } from 'lucide-react';
 import { SeverityBadge, StatusPill } from '@/components/sam';
 import { cn } from '@/lib/utils';
 import type { InboxDensity, MockIncident } from '@/types/sam';
@@ -97,6 +98,67 @@ function LiveDot() {
     );
 }
 
+// ---- ClaimControl ----
+
+/**
+ * Toma humana desde la propia fila: el monitorista ve de un vistazo quién
+ * tiene cada incidente sin abrirlo. Cuando lo tiene otro no hay botón — sólo
+ * sus iniciales — porque soltarlo es potestad de quien lo tomó.
+ */
+function ClaimControl({
+    incident,
+    currentUserId,
+    onClaimToggle,
+    busy,
+}: {
+    incident: MockIncident;
+    currentUserId: number | null;
+    onClaimToggle: () => void;
+    busy: boolean;
+}) {
+    const claimedByMe =
+        incident.claimedBy !== null && incident.claimedBy.id === currentUserId;
+
+    if (incident.claimedBy !== null && !claimedByMe) {
+        return (
+            <div
+                className="flex min-w-0 items-center gap-1.5"
+                title={`Tomado por ${incident.claimedBy.name}`}
+            >
+                <UserAvatar initials={incident.claimedBy.initials} size={20} />
+                <span className="truncate text-3xs text-fg-3">
+                    {incident.claimedBy.name}
+                </span>
+            </div>
+        );
+    }
+
+    return (
+        <button
+            type="button"
+            disabled={busy}
+            onClick={(e) => {
+                e.stopPropagation();
+                onClaimToggle();
+            }}
+            className={cn(
+                'inline-flex cursor-pointer items-center gap-1 rounded-sm border px-1.5 py-1 text-3xs font-semibold tracking-label whitespace-nowrap',
+                'disabled:cursor-not-allowed disabled:opacity-40',
+                claimedByMe
+                    ? 'border-primary/40 bg-primary/15 text-primary'
+                    : 'border-border bg-surface-3 text-fg-2 hover:text-fg-1',
+            )}
+        >
+            {busy ? (
+                <Loader2 size={11} className="animate-spin" />
+            ) : (
+                <Hand size={11} />
+            )}
+            {claimedByMe ? 'Soltar' : 'Tomar'}
+        </button>
+    );
+}
+
 // ---- IncidentRow ----
 
 interface IncidentRowProps {
@@ -104,8 +166,11 @@ interface IncidentRowProps {
     selected: boolean;
     checked: boolean;
     density: InboxDensity;
+    currentUserId: number | null;
+    claimBusy: boolean;
     onClick: () => void;
     onToggle: () => void;
+    onClaimToggle: () => void;
 }
 
 const DENSITY_H: Record<InboxDensity, string> = {
@@ -119,8 +184,11 @@ export function IncidentRow({
     selected,
     checked,
     density,
+    currentUserId,
+    claimBusy,
     onClick,
     onToggle,
+    onClaimToggle,
 }: IncidentRowProps) {
     const isCompact = density === 'compact';
 
@@ -285,6 +353,21 @@ export function IncidentRow({
                 )}
             </td>
 
+            {/* Claim */}
+            <td
+                className={cn(
+                    'w-28 border-b border-border px-2.5 align-middle text-xs',
+                    cellH,
+                )}
+            >
+                <ClaimControl
+                    incident={incident}
+                    currentUserId={currentUserId}
+                    onClaimToggle={onClaimToggle}
+                    busy={claimBusy}
+                />
+            </td>
+
             {/* Status */}
             <td
                 className={cn(
@@ -330,16 +413,22 @@ interface IncidentCardProps {
     incident: MockIncident;
     selected: boolean;
     checked: boolean;
+    currentUserId: number | null;
+    claimBusy: boolean;
     onClick: () => void;
     onToggle: () => void;
+    onClaimToggle: () => void;
 }
 
 export function IncidentCard({
     incident,
     selected,
     checked,
+    currentUserId,
+    claimBusy,
     onClick,
     onToggle,
+    onClaimToggle,
 }: IncidentCardProps) {
     return (
         <div
@@ -423,18 +512,26 @@ export function IncidentCard({
                 </span>
             </div>
 
-            <div className="text-2xs text-fg-3">
+            <div className="flex items-center justify-between gap-2 text-2xs text-fg-3">
                 {incident.assignee ? (
-                    <span className="flex items-center gap-1.5">
+                    <span className="flex min-w-0 items-center gap-1.5">
                         <UserAvatar
                             initials={incident.assignee.initials}
                             size={18}
                         />
-                        {incident.assignee.name}
+                        <span className="truncate">
+                            {incident.assignee.name}
+                        </span>
                     </span>
                 ) : (
                     <span className="italic">Sin asignar</span>
                 )}
+                <ClaimControl
+                    incident={incident}
+                    currentUserId={currentUserId}
+                    onClaimToggle={onClaimToggle}
+                    busy={claimBusy}
+                />
             </div>
         </div>
     );

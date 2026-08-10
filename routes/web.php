@@ -141,6 +141,8 @@ Route::prefix('{current_team}')
         Route::post('incidents/{incident}/reclassify', [IncidentController::class, 'reclassify'])->name('incidents.reclassify');
         Route::post('incidents/{incident}/reopen', [IncidentController::class, 'reopen'])->name('incidents.reopen');
         Route::post('incidents/{incident}/acknowledge', [IncidentController::class, 'acknowledge'])->name('incidents.acknowledge');
+        Route::post('incidents/{incident}/claim', [IncidentController::class, 'claim'])->name('incidents.claim');
+        Route::post('incidents/{incident}/release', [IncidentController::class, 'release'])->name('incidents.release');
         Route::post('incidents/{incident}/media/request', [IncidentMediaRequestController::class, 'store'])->name('incidents.media.request');
         Route::post('incidents/{incident}/escalate', [IncidentController::class, 'escalate'])->name('incidents.escalate');
         Route::post('ai/evaluations/{evaluation}/reevaluate', [AIEvaluationController::class, 'reevaluate'])->name('ai.evaluations.reevaluate');

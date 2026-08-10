@@ -57,6 +57,9 @@ interface InboxGroupedProps {
     density: InboxDensity;
     onSelect: (id: string) => void;
     onToggle: (id: string) => void;
+    currentUserId: number | null;
+    claimPendingId: number | null;
+    onClaimToggle: (incident: MockIncident) => void;
 }
 
 export function InboxGrouped({
@@ -66,6 +69,9 @@ export function InboxGrouped({
     density,
     onSelect,
     onToggle,
+    currentUserId,
+    claimPendingId,
+    onClaimToggle,
 }: InboxGroupedProps) {
     const groups = SEVERITY_ORDER.map((sev) => ({
         severity: sev,
@@ -115,8 +121,16 @@ export function InboxGrouped({
                                         selected={selectedId === incident.id}
                                         checked={selectedSet.has(incident.id)}
                                         density={density}
+                                        currentUserId={currentUserId}
+                                        claimBusy={
+                                            claimPendingId ===
+                                            incident.incidentId
+                                        }
                                         onClick={() => onSelect(incident.id)}
                                         onToggle={() => onToggle(incident.id)}
+                                        onClaimToggle={() =>
+                                            onClaimToggle(incident)
+                                        }
                                     />
                                 ))}
                             </tbody>

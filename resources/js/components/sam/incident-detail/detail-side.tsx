@@ -1,4 +1,11 @@
-import { Check, Loader2, RefreshCw, TriangleAlert, X } from 'lucide-react';
+import {
+    Check,
+    Hand,
+    Loader2,
+    RefreshCw,
+    TriangleAlert,
+    X,
+} from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
@@ -266,9 +273,21 @@ interface DetailSideProps {
 
 export function DetailSide({ incident }: DetailSideProps) {
     const ctx = incident.operationalContext;
-    const { reopen, acknowledge, escalate, discard, pending } =
-        useIncidentActions();
+    const {
+        reopen,
+        acknowledge,
+        claim,
+        release,
+        escalate,
+        discard,
+        pending,
+        currentUserId,
+    } = useIncidentActions();
     const [resolveOpen, setResolveOpen] = useState(false);
+
+    const claimedByMe =
+        incident.claimedBy !== null && incident.claimedBy.id === currentUserId;
+    const claimedByOther = incident.claimedBy !== null && !claimedByMe;
 
     const isTerminal = ['resolved', 'closed', 'discarded'].includes(
         incident.status,
@@ -360,6 +379,35 @@ export function DetailSide({ incident }: DetailSideProps) {
                         )}
                         Atender (ACK)
                     </button>
+                    {claimedByOther ? (
+                        <span
+                            className="inline-flex items-center gap-1.5 py-1 text-xs font-medium text-fg-3"
+                            title={`Tomado por ${incident.claimedBy?.name}`}
+                        >
+                            <Hand size={12} />
+                            Tomado por {incident.claimedBy?.name}
+                        </span>
+                    ) : (
+                        <button
+                            type="button"
+                            onClick={() =>
+                                void (claimedByMe ? release() : claim())
+                            }
+                            disabled={
+                                isTerminal ||
+                                pending === 'claim' ||
+                                pending === 'release'
+                            }
+                            className="inline-flex cursor-pointer items-center gap-1.5 border-none bg-transparent py-1 text-xs font-medium text-fg-2 hover:text-fg-1 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                            {pending === 'claim' || pending === 'release' ? (
+                                <Loader2 size={12} className="animate-spin" />
+                            ) : (
+                                <Hand size={12} />
+                            )}
+                            {claimedByMe ? 'Soltar' : 'Tomar'}
+                        </button>
+                    )}
                     <button
                         type="button"
                         onClick={() => void escalate()}
