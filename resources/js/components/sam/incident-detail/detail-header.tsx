@@ -1,6 +1,11 @@
 import { Link } from '@inertiajs/react';
 import { Maximize2, MapPin, Truck, User } from 'lucide-react';
-import { SeverityBadge, StatusPill, ProviderTag } from '@/components/sam';
+import {
+    RelativeTime,
+    SeverityBadge,
+    StatusPill,
+    ProviderTag,
+} from '@/components/sam';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { IncidentDetail } from '@/types/sam';
@@ -130,7 +135,11 @@ export function DetailHeader({
                         {incident.location}
                     </span>
                     <span className="text-fg-3">
-                        Creado hace {incident.ageMin} min
+                        Creado{' '}
+                        <RelativeTime
+                            minutes={incident.ageMin}
+                            className="text-xs text-fg-3"
+                        />
                     </span>
                 </div>
             </div>

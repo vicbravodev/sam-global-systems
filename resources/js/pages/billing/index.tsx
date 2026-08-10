@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageHeader } from '@/components/ui/page-header';
-import { formatCurrency } from '@/lib/format';
+import { formatCurrency, formatDate } from '@/lib/format';
 
 interface SubscriptionProp {
     planName: string | null;
@@ -120,8 +120,7 @@ function ReceiptUploader({ invoice }: { invoice: InvoiceRow }) {
         return (
             <span className="text-2xs text-severity-low">
                 Pagada
-                {invoice.paidAt &&
-                    ` el ${new Date(invoice.paidAt).toLocaleDateString('es')}`}
+                {invoice.paidAt && ` el ${formatDate(invoice.paidAt)}`}
             </span>
         );
     }
@@ -298,11 +297,7 @@ export default function BillingIndex() {
                             </MetricCell>
                             <MetricCell label="Próxima renovación">
                                 <span className="text-base font-semibold text-fg-1">
-                                    {subscription.renewsAt
-                                        ? new Date(
-                                              subscription.renewsAt,
-                                          ).toLocaleDateString('es')
-                                        : '—'}
+                                    {formatDate(subscription.renewsAt)}
                                 </span>
                             </MetricCell>
                         </div>
@@ -453,17 +448,11 @@ export default function BillingIndex() {
                                             className="border-t border-border/50 text-fg-2"
                                         >
                                             <td className="py-2 pr-4 whitespace-nowrap">
-                                                {invoice.periodStart
-                                                    ? new Date(
-                                                          invoice.periodStart,
-                                                      ).toLocaleDateString('es')
-                                                    : '—'}
+                                                {formatDate(
+                                                    invoice.periodStart,
+                                                )}
                                                 {' — '}
-                                                {invoice.periodEnd
-                                                    ? new Date(
-                                                          invoice.periodEnd,
-                                                      ).toLocaleDateString('es')
-                                                    : '—'}
+                                                {formatDate(invoice.periodEnd)}
                                             </td>
                                             <td className="py-2 pr-4 tabular-nums">
                                                 {money(

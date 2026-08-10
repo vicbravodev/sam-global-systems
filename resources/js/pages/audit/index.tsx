@@ -14,6 +14,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { formatDateTime } from '@/lib/format';
 
 // Sentinel para representar "sin filtro" en los <Select> del DS: Radix no
 // permite SelectItem con value="", así que el filtro vacío (todas/todos) se
@@ -88,9 +89,7 @@ const LOG_COLUMNS: DataTableColumn<AuditLogRow>[] = [
             log.occurredAt ? Date.parse(log.occurredAt) : null,
         cell: (log) => (
             <span className="font-mono text-2xs whitespace-nowrap text-fg-2">
-                {log.occurredAt
-                    ? new Date(log.occurredAt).toLocaleString('es')
-                    : '—'}
+                {formatDateTime(log.occurredAt)}
             </span>
         ),
     },
@@ -144,9 +143,7 @@ const EVENT_COLUMNS: DataTableColumn<DomainEventRow>[] = [
             event.occurredAt ? Date.parse(event.occurredAt) : null,
         cell: (event) => (
             <span className="font-mono text-2xs whitespace-nowrap text-fg-2">
-                {event.occurredAt
-                    ? new Date(event.occurredAt).toLocaleString('es')
-                    : '—'}
+                {formatDateTime(event.occurredAt)}
             </span>
         ),
     },

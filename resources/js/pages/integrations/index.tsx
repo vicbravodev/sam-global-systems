@@ -40,6 +40,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { formatDateTime } from '@/lib/format';
 import {
     deleteJson,
     postJson,
@@ -73,25 +74,6 @@ interface IntegrationsIndexProps {
     integrations: IntegrationRow[];
     providers: IntegrationProviderOption[];
     authTypes: AuthTypeOption[];
-}
-
-function formatDateTime(iso: string | null): string {
-    if (!iso) {
-        return '—';
-    }
-
-    const date = new Date(iso);
-
-    if (Number.isNaN(date.getTime())) {
-        return '—';
-    }
-
-    return date.toLocaleString('es', {
-        day: '2-digit',
-        month: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-    });
 }
 
 // ---- Webhook URL copy field ----

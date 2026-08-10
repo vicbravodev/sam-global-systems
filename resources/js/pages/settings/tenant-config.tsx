@@ -23,6 +23,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { formatDateTime } from '@/lib/format';
 import {
     deleteJson,
     postJson,
@@ -2242,12 +2243,8 @@ function VersionsTab({ versions }: { versions: VersionRow[] }) {
                                     v{version.version}
                                 </span>
                                 <span className="text-fg-3">
-                                    {version.createdAt
-                                        ? new Date(
-                                              version.createdAt,
-                                          ).toLocaleString('es')
-                                        : '—'}{' '}
-                                    · {version.createdByType ?? '—'}
+                                    {formatDateTime(version.createdAt)} ·{' '}
+                                    {version.createdByType ?? '—'}
                                 </span>
                                 <Button
                                     size="sm"

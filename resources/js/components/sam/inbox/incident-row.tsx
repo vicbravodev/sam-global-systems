@@ -1,5 +1,5 @@
 import { Hand, Loader2 } from 'lucide-react';
-import { SeverityBadge, StatusPill } from '@/components/sam';
+import { RelativeTime, SeverityBadge, StatusPill } from '@/components/sam';
 import { cn } from '@/lib/utils';
 import type { InboxDensity, MockIncident } from '@/types/sam';
 import { useLiveSla } from './use-live-sla';
@@ -64,25 +64,6 @@ function LiveSlaCell({ seconds, total }: { seconds: number; total: number }) {
                 </span>
             )}
             {label}
-        </span>
-    );
-}
-
-// ---- RelativeTime ----
-
-function RelativeTimeCell({ min }: { min: number }) {
-    const text =
-        min < 1
-            ? 'ahora'
-            : min < 60
-              ? `${min} min`
-              : min < 1440
-                ? `${Math.floor(min / 60)} h`
-                : `${Math.floor(min / 1440)} d`;
-
-    return (
-        <span className="font-mono text-2xs text-fg-3 tabular-nums">
-            {text}
         </span>
     );
 }
@@ -401,7 +382,7 @@ export function IncidentRow({
                     cellH,
                 )}
             >
-                <RelativeTimeCell min={incident.ageMin} />
+                <RelativeTime minutes={incident.ageMin} />
             </td>
         </tr>
     );
@@ -508,7 +489,7 @@ export function IncidentCard({
                         seconds={incident.slaSeconds}
                         total={incident.slaTotal}
                     />
-                    <RelativeTimeCell min={incident.ageMin} />
+                    <RelativeTime minutes={incident.ageMin} />
                 </span>
             </div>
 

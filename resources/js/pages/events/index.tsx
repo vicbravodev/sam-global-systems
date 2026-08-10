@@ -14,6 +14,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { formatDateTime } from '@/lib/format';
 
 // Sentinel para representar "sin filtro" en los <Select> del DS: Radix no
 // permite SelectItem con value="", así que el filtro vacío (todos) se
@@ -94,9 +95,7 @@ const COLUMNS: DataTableColumn<EventRow>[] = [
             event.occurredAt ? Date.parse(event.occurredAt) : null,
         cell: (event) => (
             <span className="font-mono text-2xs whitespace-nowrap text-fg-2">
-                {event.occurredAt
-                    ? new Date(event.occurredAt).toLocaleString('es')
-                    : '—'}
+                {formatDateTime(event.occurredAt)}
             </span>
         ),
     },

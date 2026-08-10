@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { formatDateTime } from '@/lib/format';
 
 interface EventDetail {
     id: number;
@@ -186,12 +187,8 @@ export default function EventShow() {
                                 `Evento #${event.id}`}
                         </h1>
                         <p className="text-xs text-fg-3">
-                            {event.occurredAt
-                                ? new Date(event.occurredAt).toLocaleString(
-                                      'es',
-                                  )
-                                : '—'}{' '}
-                            · {event.asset ?? 'Sin activo'} ·{' '}
+                            {formatDateTime(event.occurredAt)} ·{' '}
+                            {event.asset ?? 'Sin activo'} ·{' '}
                             {event.driver ?? 'Sin conductor'} ·{' '}
                             {event.provider ?? '—'}
                         </p>
@@ -286,9 +283,7 @@ export default function EventShow() {
                                     </li>
                                     <li className="font-mono text-2xs text-fg-3">
                                         {decision.decidedAt
-                                            ? new Date(
-                                                  decision.decidedAt,
-                                              ).toLocaleString('es')
+                                            ? formatDateTime(decision.decidedAt)
                                             : ''}
                                     </li>
                                 </ul>

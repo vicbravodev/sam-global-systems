@@ -28,6 +28,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { formatDateTime } from '@/lib/format';
 import {
     deleteJson,
     postJson,
@@ -970,11 +971,7 @@ function ExecutionsTab({
                                         {execution.errorMessage ?? '—'}
                                     </td>
                                     <td className="py-2 pr-4 font-mono text-2xs whitespace-nowrap">
-                                        {execution.executedAt
-                                            ? new Date(
-                                                  execution.executedAt,
-                                              ).toLocaleString('es')
-                                            : '—'}
+                                        {formatDateTime(execution.executedAt)}
                                     </td>
                                     <td className="py-2 text-right whitespace-nowrap">
                                         {canManage &&

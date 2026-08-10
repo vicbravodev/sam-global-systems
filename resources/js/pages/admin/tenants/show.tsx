@@ -21,6 +21,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { formatDate } from '@/lib/format';
 import { store as impersonateStore } from '@/routes/admin/impersonate';
 import { index as adminTenantsIndex } from '@/routes/admin/tenants';
 
@@ -113,22 +114,6 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 const OPERATIONAL = ['active', 'trialing', 'past_due'];
-
-function formatDate(iso: string | null): string {
-    if (!iso) {
-        return '—';
-    }
-
-    const date = new Date(iso);
-
-    return Number.isNaN(date.getTime())
-        ? '—'
-        : date.toLocaleDateString('es', {
-              day: '2-digit',
-              month: '2-digit',
-              year: 'numeric',
-          });
-}
 
 function Panel({
     title,
