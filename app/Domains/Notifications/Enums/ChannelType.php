@@ -2,7 +2,9 @@
 
 namespace App\Domains\Notifications\Enums;
 
-enum ChannelType: string
+use App\Contracts\HasLabel;
+
+enum ChannelType: string implements HasLabel
 {
     case Email = 'email';
     case Sms = 'sms';
@@ -12,4 +14,18 @@ enum ChannelType: string
     case Slack = 'slack';
     case Webhook = 'webhook';
     case Voice = 'voice';
+
+    public function label(): string
+    {
+        return match ($this) {
+            self::Email => 'Correo',
+            self::Sms => 'SMS',
+            self::Push => 'Push',
+            self::Whatsapp => 'WhatsApp',
+            self::Web => 'Web',
+            self::Slack => 'Slack',
+            self::Webhook => 'Webhook',
+            self::Voice => 'Voz',
+        };
+    }
 }
