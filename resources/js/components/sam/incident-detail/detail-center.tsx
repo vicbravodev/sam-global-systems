@@ -427,48 +427,55 @@ function CommentComposer() {
     };
 
     return (
-        <div
-            className="mt-2.5 grid items-center gap-2 rounded-md border border-border bg-surface-1 p-2"
-            style={{ gridTemplateColumns: 'auto 1fr auto auto' }}
-        >
-            <UserAvatar initials={myInitials} size={24} />
-            <input
-                type="text"
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-                onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        void submit();
+        <div className="mt-2.5 flex flex-wrap items-center gap-2 rounded-md border border-border bg-surface-1 p-2">
+            {/* Avatar + input share a shrinkable group so they never force
+                the select/button group to overflow; if the container is too
+                narrow for everything on one line, the select/button group
+                wraps to its own row instead of getting clipped. */}
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+                <UserAvatar initials={myInitials} size={24} />
+                <input
+                    type="text"
+                    value={comment}
+                    onChange={(e) => setComment(e.target.value)}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            void submit();
+                        }
+                    }}
+                    placeholder="Escribe un comentario…"
+                    className="min-w-0 flex-1 border-none bg-transparent text-sm text-fg-1 outline-none placeholder:text-fg-3"
+                />
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+                <Select
+                    value={visibility}
+                    onValueChange={(value) =>
+                        setVisibility(value as CommentVisibilityUi)
                     }
-                }}
-                placeholder="Escribe un comentario…"
-                className="min-w-0 border-none bg-transparent text-sm text-fg-1 outline-none placeholder:text-fg-3"
-            />
-            <Select
-                value={visibility}
-                onValueChange={(value) =>
-                    setVisibility(value as CommentVisibilityUi)
-                }
-            >
-                <SelectTrigger className="h-9">
-                    <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                    <SelectItem value="internal">Interno</SelectItem>
-                    <SelectItem value="tenant">Tenant</SelectItem>
-                    <SelectItem value="audit">Auditoría</SelectItem>
-                </SelectContent>
-            </Select>
-            <Button
-                size="sm"
-                variant="default"
-                onClick={() => void submit()}
-                disabled={busy || comment.trim() === ''}
-            >
-                {busy ? <Loader2 size={12} className="animate-spin" /> : null}
-                Comentar
-            </Button>
+                >
+                    <SelectTrigger className="h-9">
+                        <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="internal">Interno</SelectItem>
+                        <SelectItem value="tenant">Tenant</SelectItem>
+                        <SelectItem value="audit">Auditoría</SelectItem>
+                    </SelectContent>
+                </Select>
+                <Button
+                    size="sm"
+                    variant="default"
+                    onClick={() => void submit()}
+                    disabled={busy || comment.trim() === ''}
+                >
+                    {busy ? (
+                        <Loader2 size={12} className="animate-spin" />
+                    ) : null}
+                    Comentar
+                </Button>
+            </div>
         </div>
     );
 }
@@ -481,7 +488,7 @@ interface DetailCenterProps {
 
 export function DetailCenter({ incident }: DetailCenterProps) {
     return (
-        <div className="flex flex-col gap-5">
+        <div className="flex min-w-0 flex-col gap-5">
             {/* Description */}
             <section>
                 <h3 className="mb-2 text-3xs font-semibold tracking-caps text-fg-3 uppercase">

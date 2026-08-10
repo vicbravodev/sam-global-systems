@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import { DetailResizer } from '@/components/sam/detail-resizer';
 import { InboxGrouped } from '@/components/sam/inbox/inbox-grouped';
 import { InboxStream } from '@/components/sam/inbox/inbox-stream';
 import { InboxTable } from '@/components/sam/inbox/inbox-table';
@@ -1096,7 +1097,7 @@ export default function IncidentsIndex() {
                 className={cn(
                     'flex min-h-0 flex-1 overflow-hidden',
                     selectedId !== null
-                        ? 'md:grid md:grid-cols-[1fr_minmax(520px,700px)]'
+                        ? 'has-detail md:grid md:grid-cols-[1fr_minmax(520px,700px)]'
                         : '',
                 )}
             >
@@ -1200,9 +1201,19 @@ export default function IncidentsIndex() {
                     <InboxFooter count={rows.length} total={incidents.length} />
                 </div>
 
-                {/* DETAIL PANEL — side column on md+, full-screen overlay on mobile */}
+                {/* DETAIL PANEL — side column on md+, full-screen overlay on
+                    mobile. `grid` (not `flex`) so the single child stretches
+                    to fill both axes by default, matching what the previous
+                    `md:contents` trick gave for free. DetailResizer needs a
+                    real box (not `display: contents`) as its parent to read
+                    a meaningful width, hence the change. */}
                 {selectedId !== null && (
-                    <div className="max-md:fixed max-md:inset-0 max-md:z-40 max-md:grid max-md:bg-background md:contents">
+                    <div className="relative grid min-h-0 min-w-0 overflow-hidden max-md:fixed max-md:inset-0 max-md:z-40 max-md:bg-background">
+                        <DetailResizer
+                            min={420}
+                            defaultWidth={700}
+                            className="max-md:hidden"
+                        />
                         {selectedDetail ? (
                             <IncidentDetailPanel
                                 incident={selectedDetail}

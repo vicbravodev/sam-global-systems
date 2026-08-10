@@ -21,26 +21,31 @@ export function IncidentDetailPanel({
 }: IncidentDetailPanelProps) {
     return (
         <IncidentActionsProvider incident={incident} onMutated={onMutated}>
-            <div className="flex min-w-0 flex-col overflow-hidden border-l border-border bg-background">
+            <div className="@container flex min-w-0 flex-col overflow-hidden border-l border-border bg-background">
                 <DetailHeader
                     incident={incident}
                     onClose={onClose}
                     detailHref={detailHref}
                 />
 
-                <div className="grid min-h-0 flex-1 [grid-template-columns:minmax(220px,1fr)_minmax(0,1.5fr)_minmax(260px,1fr)] overflow-x-hidden overflow-y-auto max-[1280px]:[grid-template-columns:1fr]">
+                {/* Container query (not viewport): this panel is embedded as a
+                    520-700px preview in the inbox, where it must collapse to
+                    1 column regardless of the outer window width. The
+                    full-page detail view has its own grid and doesn't use
+                    this component. */}
+                <div className="grid min-h-0 flex-1 [grid-template-columns:minmax(220px,1fr)_minmax(0,1.5fr)_minmax(260px,1fr)] overflow-x-hidden overflow-y-auto @max-4xl:[grid-template-columns:1fr]">
                     {/* Col 1: Timeline */}
-                    <div className="overflow-y-auto border-r border-border p-4">
+                    <div className="min-w-0 overflow-y-auto border-r border-border p-4">
                         <DetailTimeline incident={incident} />
                     </div>
 
                     {/* Col 2: Center */}
-                    <div className="overflow-y-auto border-r border-border p-4">
+                    <div className="min-w-0 overflow-y-auto border-r border-border p-4">
                         <DetailCenter incident={incident} />
                     </div>
 
                     {/* Col 3: Side */}
-                    <div className="overflow-y-auto p-4">
+                    <div className="min-w-0 overflow-y-auto p-4">
                         <DetailSide incident={incident} />
                     </div>
                 </div>
