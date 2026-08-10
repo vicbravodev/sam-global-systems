@@ -1,5 +1,6 @@
 import { Head, useForm, usePage } from '@inertiajs/react';
 import { useMemo } from 'react';
+import type { FormEvent } from 'react';
 import { toast } from 'sonner';
 import { update } from '@/actions/App/Http/Controllers/TenantConfig/IncidentSlaController';
 import InputError from '@/components/input-error';
@@ -59,7 +60,7 @@ export default function TenantConfigSlas() {
         form.setData('slas', next);
     };
 
-    const submit = (event: React.FormEvent) => {
+    const submit = (event: FormEvent) => {
         event.preventDefault();
 
         if (!currentTeam?.slug) {
@@ -108,7 +109,7 @@ export default function TenantConfigSlas() {
                                         <Input
                                             id={`sla-${priority.id}`}
                                             type="number"
-                                            min={0}
+                                            min={1}
                                             max={1440}
                                             step={1}
                                             className="w-28"
