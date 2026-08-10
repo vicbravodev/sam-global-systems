@@ -86,7 +86,10 @@ class RulesPageController extends Controller
                     'label' => DecisionOutcomeCode::tryFrom($outcome->code)?->label() ?? $outcome->name,
                 ])
                 ->all(),
-            'scopes' => fn () => array_map(fn (RuleScope $scope) => $scope->value, RuleScope::cases()),
+            'scopes' => fn () => array_map(
+                fn (RuleScope $scope) => ['value' => $scope->value, 'label' => $scope->label()],
+                RuleScope::cases(),
+            ),
             'conditionFields' => fn () => DecisionConditionCatalog::fields(),
             'mappingRules' => fn () => EventMappingRule::query()
                 ->with(['provider', 'mappedEventType', 'mappedSeverity'])

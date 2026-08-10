@@ -77,6 +77,7 @@ class RulesPageTest extends TestCase
                 ->has('mappingOptions.providers')
                 ->has('overrides', 1)
                 ->has('overrideTypes')
+                ->where('scopes.0', ['value' => 'global', 'label' => 'Global'])
                 ->where('canManageDecisionRules', true)
                 ->where('canManageOverrides', true),
         );
