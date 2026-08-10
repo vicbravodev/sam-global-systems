@@ -10,6 +10,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Team;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -21,6 +22,31 @@ use Inertia\Response;
 class AuditPageController extends Controller
 {
     private const PER_PAGE = 50;
+
+    /**
+     * Human-readable labels for entity types, keyed by either the FQCN's
+     * class basename or the raw (short) entity_type string. Falls back to
+     * Str::headline() for anything not listed here.
+     *
+     * @var array<string, string>
+     */
+    private const ENTITY_LABELS = [
+        'NormalizedEvent' => 'Evento normalizado',
+        'RawEvent' => 'Evento crudo',
+        'AIEventEvaluation' => 'Evaluación IA',
+        'EventContextSnapshot' => 'Contexto de evento',
+        'UsageRecorded' => 'Uso registrado',
+        'Incident' => 'Incidente',
+        'Decision' => 'Decisión',
+        'User' => 'Usuario',
+        'Team' => 'Tenant',
+        'Subscription' => 'Suscripción',
+        'NotificationChannel' => 'Canal de notificación',
+        'InvoiceSnapshot' => 'Factura',
+        'incident' => 'Incidente',
+        'notification_channel' => 'Canal de notificación',
+        'invoice_snapshot' => 'Factura',
+    ];
 
     public function show(Request $request, Team $current_team): Response
     {
@@ -81,6 +107,7 @@ class AuditPageController extends Controller
                     'actorId' => $log->actor_id !== null ? (int) $log->actor_id : null,
                     'entityType' => $log->entity_type,
                     'entityId' => $log->entity_id !== null ? (int) $log->entity_id : null,
+                    'entityLabel' => $this->entityLabel($log->entity_type),
                     'summary' => $log->summary,
                     'occurredAt' => $log->occurred_at?->toIso8601String(),
                 ])
@@ -112,5 +139,16 @@ class AuditPageController extends Controller
                 ])
                 ->all(),
         ]);
+    }
+
+    private function entityLabel(?string $type): ?string
+    {
+        if ($type === null) {
+            return null;
+        }
+
+        $base = class_basename($type);
+
+        return self::ENTITY_LABELS[$base] ?? self::ENTITY_LABELS[$type] ?? Str::headline($base);
     }
 }
