@@ -5,8 +5,9 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
-import { formatCurrency } from '@/lib/format';
+import { formatCurrency, formatDate } from '@/lib/format';
 
 interface SubscriptionProp {
     planName: string | null;
@@ -120,8 +121,7 @@ function ReceiptUploader({ invoice }: { invoice: InvoiceRow }) {
         return (
             <span className="text-2xs text-severity-low">
                 Pagada
-                {invoice.paidAt &&
-                    ` el ${new Date(invoice.paidAt).toLocaleDateString('es')}`}
+                {invoice.paidAt && ` el ${formatDate(invoice.paidAt)}`}
             </span>
         );
     }
@@ -298,11 +298,7 @@ export default function BillingIndex() {
                             </MetricCell>
                             <MetricCell label="Próxima renovación">
                                 <span className="text-base font-semibold text-fg-1">
-                                    {subscription.renewsAt
-                                        ? new Date(
-                                              subscription.renewsAt,
-                                          ).toLocaleDateString('es')
-                                        : '—'}
+                                    {formatDate(subscription.renewsAt)}
                                 </span>
                             </MetricCell>
                         </div>
@@ -453,17 +449,11 @@ export default function BillingIndex() {
                                             className="border-t border-border/50 text-fg-2"
                                         >
                                             <td className="py-2 pr-4 whitespace-nowrap">
-                                                {invoice.periodStart
-                                                    ? new Date(
-                                                          invoice.periodStart,
-                                                      ).toLocaleDateString('es')
-                                                    : '—'}
+                                                {formatDate(
+                                                    invoice.periodStart,
+                                                )}
                                                 {' — '}
-                                                {invoice.periodEnd
-                                                    ? new Date(
-                                                          invoice.periodEnd,
-                                                      ).toLocaleDateString('es')
-                                                    : '—'}
+                                                {formatDate(invoice.periodEnd)}
                                             </td>
                                             <td className="py-2 pr-4 tabular-nums">
                                                 {money(
@@ -508,12 +498,20 @@ export default function BillingIndex() {
                     bancaria, así que el camino accionable es humano, no un
                     checkout. Franja delgada al pie, no una Card a todo el alto. */}
                 <div className="flex flex-col gap-3 rounded-lg border border-border bg-surface-1 px-4 py-3 text-xs text-fg-2 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="text-fg-3">
-                        El pago es por transferencia: emitimos tu factura, subes
-                        el comprobante arriba y SAM confirma el pago. ¿Algo no
-                        cuadra con montos, consumo o datos bancarios?
-                        Escríbenos.
-                    </p>
+                    {invoices.length > 0 ? (
+                        <p className="text-fg-3">
+                            El pago es por transferencia: emitimos tu factura,
+                            subes el comprobante arriba y SAM confirma el pago.
+                            ¿Algo no cuadra con montos, consumo o datos
+                            bancarios? Escríbenos.
+                        </p>
+                    ) : (
+                        <EmptyState
+                            className="min-h-0 items-start gap-0.5 px-0 py-0 text-left"
+                            title="Todavía no hay facturas"
+                            description="Cuando SAM emita tu primera factura aparecerá aquí con su botón para subir el comprobante de transferencia."
+                        />
+                    )}
                     <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
                         {mailtoHref && (
                             <Button size="sm" variant="outline" asChild>

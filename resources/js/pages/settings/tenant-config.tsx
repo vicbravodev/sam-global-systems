@@ -1,4 +1,5 @@
 import { Head, Link, router, usePage } from '@inertiajs/react';
+import { Radio, SlidersHorizontal } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import InputError from '@/components/input-error';
@@ -14,8 +15,17 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import { formatDateTime } from '@/lib/format';
 import {
     deleteJson,
     postJson,
@@ -403,8 +413,12 @@ function GeneralTab({
                     </CardTitle>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-4 text-sm">
-                    <label className="flex items-start gap-2">
+                    <label
+                        htmlFor="tc-auto-request"
+                        className="flex items-start gap-2"
+                    >
                         <input
+                            id="tc-auto-request"
                             type="checkbox"
                             checked={autoRequest}
                             disabled={!canManage}
@@ -430,19 +444,23 @@ function GeneralTab({
                         <Label className="text-xs">
                             Resolución externa de pánico
                         </Label>
-                        <select
+                        <Select
                             value={panicMode}
                             disabled={!canManage}
-                            onChange={(e) => setPanicMode(e.target.value)}
-                            className="w-64 rounded-md border border-border bg-surface-1 px-2 py-1.5 text-sm"
+                            onValueChange={setPanicMode}
                         >
-                            <option value="annotate">
-                                Solo anotar (annotate)
-                            </option>
-                            <option value="close">
-                                Cerrar incidente (close)
-                            </option>
-                        </select>
+                            <SelectTrigger className="h-9 w-64">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="annotate">
+                                    Solo anotar (annotate)
+                                </SelectItem>
+                                <SelectItem value="close">
+                                    Cerrar incidente (close)
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
                         <span className="block font-mono text-3xs text-fg-3">
                             {PANIC_AUTO_CLOSE_KEY}
                         </span>
@@ -488,9 +506,12 @@ function GeneralTab({
                 </CardHeader>
                 <CardContent>
                     {otherSettings.length === 0 ? (
-                        <p className="text-xs text-fg-3">
-                            Sin ajustes adicionales.
-                        </p>
+                        <EmptyState
+                            className="min-h-0 gap-0.5 px-0 py-4"
+                            icon={SlidersHorizontal}
+                            title="Sin ajustes adicionales"
+                            description="Aquí aparecerán los ajustes que no tienen un control dedicado en esta página."
+                        />
                     ) : (
                         // D3: scroll horizontal contenido + ancho mínimo para que
                         // GRUPO/VALOR no se encimen en móvil.
@@ -638,18 +659,25 @@ function AiTab({
                 {selects.map((select) => (
                     <div key={select.key} className="flex flex-col gap-1">
                         <Label className="text-xs">{select.label}</Label>
-                        <select
+                        <Select
                             value={form[select.key]}
                             disabled={!canManage}
-                            onChange={(e) => set(select.key, e.target.value)}
-                            className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-sm"
+                            onValueChange={(value) => set(select.key, value)}
                         >
-                            {select.options.map((option) => (
-                                <option key={option.value} value={option.value}>
-                                    {option.label}
-                                </option>
-                            ))}
-                        </select>
+                            <SelectTrigger className="h-9">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {select.options.map((option) => (
+                                    <SelectItem
+                                        key={option.value}
+                                        value={option.value}
+                                    >
+                                        {option.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
                     </div>
                 ))}
                 {canManage && (
@@ -808,8 +836,12 @@ function NotificationsTab({
                                 }
                                 className="w-56 text-xs"
                             />
-                            <label className="flex items-center gap-1 text-xs text-fg-2">
+                            <label
+                                htmlFor={`tc-policy-active-${index}`}
+                                className="flex items-center gap-1 text-xs text-fg-2"
+                            >
                                 <input
+                                    id={`tc-policy-active-${index}`}
                                     type="checkbox"
                                     checked={policy.isActive}
                                     disabled={!canManage}
@@ -845,9 +877,11 @@ function NotificationsTab({
                             {CHANNEL_OPTIONS.map((channel) => (
                                 <label
                                     key={channel}
+                                    htmlFor={`tc-policy-${index}-channel-${channel}`}
                                     className="flex items-center gap-1 text-xs text-fg-2"
                                 >
                                     <input
+                                        id={`tc-policy-${index}-channel-${channel}`}
                                         type="checkbox"
                                         checked={policy.allowedChannels.includes(
                                             channel,
@@ -1145,9 +1179,13 @@ function EscalationStepsEditor({
                     <span className="w-5 text-center font-mono text-2xs text-fg-3">
                         {index + 1}
                     </span>
-                    <label className="flex items-center gap-1.5 text-xs text-fg-2">
+                    <label
+                        htmlFor={`esc-step-${step.id}-delay`}
+                        className="flex items-center gap-1.5 text-xs text-fg-2"
+                    >
                         Esperar
                         <Input
+                            id={`esc-step-${step.id}-delay`}
                             type="number"
                             min="0"
                             value={step.delayMinutes}
@@ -1222,9 +1260,13 @@ function EscalationStepsEditor({
                         disabled={disabled}
                         className="h-8 w-64 text-xs"
                     />
-                    <label className="flex items-center gap-1.5 text-xs text-fg-2">
+                    <label
+                        htmlFor={`esc-step-${step.id}-attempts`}
+                        className="flex items-center gap-1.5 text-xs text-fg-2"
+                    >
                         Intentos
                         <Input
+                            id={`esc-step-${step.id}-attempts`}
                             type="number"
                             min="1"
                             value={step.attempts}
@@ -1724,7 +1766,7 @@ function ChannelsTab({
             <CardHeader>
                 <CardTitle className="flex items-center justify-between text-sm uppercase">
                     Canales de notificación ({channels.length})
-                    {canManage && (
+                    {canManage && (channels.length > 0 || creating) && (
                         <Button
                             size="sm"
                             variant={creating ? 'ghost' : 'outline'}
@@ -1775,23 +1817,30 @@ function ChannelsTab({
                                     className="max-w-56 text-xs"
                                 />
                             </div>
-                            <select
+                            <Select
                                 value={form.channelType}
-                                onChange={(e) =>
+                                onValueChange={(value) =>
                                     setForm({
                                         ...form,
-                                        channelType: e.target.value,
+                                        channelType: value,
                                         config: {},
                                     })
                                 }
-                                className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-xs"
                             >
-                                {channelTypes.map((type) => (
-                                    <option key={type.value} value={type.value}>
-                                        {type.label}
-                                    </option>
-                                ))}
-                            </select>
+                                <SelectTrigger className="h-9">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {channelTypes.map((type) => (
+                                        <SelectItem
+                                            key={type.value}
+                                            value={type.value}
+                                        >
+                                            {type.label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                         </div>
                         {fields.map((field) => (
                             <div
@@ -1843,11 +1892,23 @@ function ChannelsTab({
                 )}
 
                 {channels.length === 0 ? (
-                    <p className="text-xs text-fg-3">
-                        Sin canales: configura Slack, Twilio (SMS/WhatsApp) o
-                        FCM para que las notificaciones y las llamadas de
-                        verificación operen.
-                    </p>
+                    <EmptyState
+                        className="min-h-0 gap-0.5 px-0 py-4"
+                        icon={Radio}
+                        title="Sin canales configurados"
+                        description="Configura Slack, Twilio (SMS/WhatsApp) o FCM para que las notificaciones y las llamadas de verificación operen."
+                        action={
+                            canManage && !creating ? (
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => setCreating(true)}
+                                >
+                                    Nuevo canal
+                                </Button>
+                            ) : undefined
+                        }
+                    />
                 ) : (
                     <ul className="flex flex-col gap-2">
                         {channels.map((channel) => (
@@ -2060,9 +2121,13 @@ function BrandingTab({
                         </div>
                     )}
                     {canManage && (
-                        <label className="cursor-pointer text-xs text-fg-2 underline">
+                        <label
+                            htmlFor="tc-logo-upload"
+                            className="cursor-pointer text-xs text-fg-2 underline"
+                        >
                             {uploading ? 'Subiendo…' : 'Subir logo'}
                             <input
+                                id="tc-logo-upload"
                                 type="file"
                                 accept="image/*"
                                 className="hidden"
@@ -2195,12 +2260,8 @@ function VersionsTab({ versions }: { versions: VersionRow[] }) {
                                     v{version.version}
                                 </span>
                                 <span className="text-fg-3">
-                                    {version.createdAt
-                                        ? new Date(
-                                              version.createdAt,
-                                          ).toLocaleString('es')
-                                        : '—'}{' '}
-                                    · {version.createdByType ?? '—'}
+                                    {formatDateTime(version.createdAt)} ·{' '}
+                                    {version.createdByType ?? '—'}
                                 </span>
                                 <Button
                                     size="sm"

@@ -1147,6 +1147,13 @@ export default function IncidentsIndex() {
                             title="Sin incidentes"
                             description="Cuando el pipeline genere incidentes para tu equipo aparecerán aquí en tiempo real."
                         />
+                    ) : rows.length === 0 ? (
+                        <EmptyState
+                            className="min-h-0 flex-1"
+                            icon={Inbox}
+                            title="Nada en esta pestaña"
+                            description="No hay incidentes que coincidan con la pestaña o los filtros activos. Cambia de pestaña o limpia los filtros."
+                        />
                     ) : (
                         <>
                             {layout === 'table' && (

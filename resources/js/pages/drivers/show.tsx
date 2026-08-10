@@ -13,6 +13,7 @@ import { SeverityBadge } from '@/components/sam/severity-badge';
 import type { Severity } from '@/components/sam/severity-badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { formatDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type {
     DriverAssignmentEntry,
@@ -53,18 +54,6 @@ const ASSIGNMENT_TYPE_LABELS: Record<string, string> = {
 
 function minutesSince(iso: string): number {
     return Math.max(0, Math.floor((Date.now() - Date.parse(iso)) / 60000));
-}
-
-function formatDate(iso: string | null): string {
-    if (iso === null) {
-        return '—';
-    }
-
-    return new Date(iso).toLocaleDateString('es', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-    });
 }
 
 function toSeverity(level: string | null): Severity {
@@ -375,7 +364,7 @@ function AssignmentsCard({
                             <thead>
                                 <tr className="sticky top-0 z-10 border-b border-border bg-surface-3 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
                                     <th className="px-4 py-2 text-left">
-                                        Asset
+                                        Activo
                                     </th>
                                     <th className="w-44 px-2.5 py-2 text-left">
                                         Tipo

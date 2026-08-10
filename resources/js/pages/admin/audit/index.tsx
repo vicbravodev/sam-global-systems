@@ -1,6 +1,7 @@
 import { Head } from '@inertiajs/react';
 import { ScrollText } from 'lucide-react';
 import { EmptyState } from '@/components/ui/empty-state';
+import { formatDateTime } from '@/lib/format';
 
 interface AuditEntry {
     id: number;
@@ -14,24 +15,6 @@ interface AuditEntry {
 
 interface AdminAuditIndexProps {
     entries: AuditEntry[];
-}
-
-function formatDateTime(iso: string | null): string {
-    if (!iso) {
-        return '—';
-    }
-
-    const date = new Date(iso);
-
-    return Number.isNaN(date.getTime())
-        ? '—'
-        : date.toLocaleString('es', {
-              day: '2-digit',
-              month: '2-digit',
-              year: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit',
-          });
 }
 
 export default function AdminAuditIndex({ entries }: AdminAuditIndexProps) {

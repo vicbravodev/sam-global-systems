@@ -103,9 +103,11 @@ function PreferenceRow({
                 {channelOptions.map((option) => (
                     <label
                         key={option.value}
+                        htmlFor={`pref-${type}-channel-${option.value}`}
                         className="flex cursor-pointer items-center gap-2 text-xs"
                     >
                         <Checkbox
+                            id={`pref-${type}-channel-${option.value}`}
                             checked={channels.includes(option.value)}
                             onCheckedChange={() => toggleChannel(option.value)}
                         />
@@ -115,12 +117,14 @@ function PreferenceRow({
             </div>
 
             <label
+                htmlFor={`pref-${type}-muted`}
                 className={cn(
                     'mt-3 flex w-fit cursor-pointer items-center gap-2 text-xs',
                     muted && 'text-muted-foreground',
                 )}
             >
                 <Checkbox
+                    id={`pref-${type}-muted`}
                     checked={muted}
                     onCheckedChange={(checked) => setMuted(checked === true)}
                 />

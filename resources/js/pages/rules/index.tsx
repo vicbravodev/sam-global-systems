@@ -1,4 +1,5 @@
 import { Head, router, usePage } from '@inertiajs/react';
+import { ArrowRightLeft, Scale } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import InputError from '@/components/input-error';
@@ -10,10 +11,23 @@ import type { ConditionFieldDef } from '@/components/sam/condition-builder';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PageHeader } from '@/components/ui/page-header';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { postJson, putJson, readErrorPayload } from '@/lib/sam-fetch';
+
+// Sentinel para representar "sin selección" en los <Select> del DS: Radix
+// no permite SelectItem con value="", así que un value vacío real (ninguno
+// / default) se traduce a/desde este string en el handler.
+const NONE_OPTION = '__none__';
 
 // ---- Types ----
 
@@ -252,10 +266,14 @@ function RuleConditionsEditor({
             {canEdit ? (
                 <div className="flex flex-wrap gap-2">
                     <div className="flex flex-col gap-1">
-                        <Label className="text-2xs text-fg-3 uppercase">
+                        <Label
+                            htmlFor={`rule-${rule.id}-code`}
+                            className="text-2xs text-fg-3 uppercase"
+                        >
                             Código (no editable)
                         </Label>
                         <Input
+                            id={`rule-${rule.id}-code`}
                             value={rule.code}
                             disabled
                             title="El código identifica la regla y no se puede cambiar."
@@ -263,10 +281,14 @@ function RuleConditionsEditor({
                         />
                     </div>
                     <div className="flex flex-col gap-1">
-                        <Label className="text-2xs text-fg-3 uppercase">
+                        <Label
+                            htmlFor={`rule-${rule.id}-name`}
+                            className="text-2xs text-fg-3 uppercase"
+                        >
                             Nombre
                         </Label>
                         <Input
+                            id={`rule-${rule.id}-name`}
                             value={meta.name}
                             aria-invalid={Boolean(errors.name)}
                             onChange={(e) =>
@@ -280,10 +302,14 @@ function RuleConditionsEditor({
                         />
                     </div>
                     <div className="flex flex-col gap-1">
-                        <Label className="text-2xs text-fg-3 uppercase">
+                        <Label
+                            htmlFor={`rule-${rule.id}-priority`}
+                            className="text-2xs text-fg-3 uppercase"
+                        >
                             Prioridad
                         </Label>
                         <Input
+                            id={`rule-${rule.id}-priority`}
                             type="number"
                             value={meta.priority}
                             aria-invalid={Boolean(errors.priority)}
@@ -298,36 +324,60 @@ function RuleConditionsEditor({
                         />
                     </div>
                     <div className="flex flex-col gap-1">
-                        <Label className="text-2xs text-fg-3 uppercase">
+                        <Label
+                            htmlFor={`rule-${rule.id}-outcome`}
+                            className="text-2xs text-fg-3 uppercase"
+                        >
                             Outcome
                         </Label>
-                        <select
-                            value={meta.outcomeId}
-                            onChange={(e) =>
-                                setMeta({ ...meta, outcomeId: e.target.value })
+                        <Select
+                            value={
+                                meta.outcomeId === ''
+                                    ? NONE_OPTION
+                                    : meta.outcomeId
                             }
-                            className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-xs"
+                            onValueChange={(value) =>
+                                setMeta({
+                                    ...meta,
+                                    outcomeId:
+                                        value === NONE_OPTION ? '' : value,
+                                })
+                            }
                         >
-                            <option value="">Outcome: ninguno</option>
-                            {outcomes.map((outcome) => (
-                                <option
-                                    key={outcome.id}
-                                    value={String(outcome.id)}
-                                >
-                                    {outcome.label ?? outcome.code}
-                                </option>
-                            ))}
-                        </select>
+                            <SelectTrigger
+                                id={`rule-${rule.id}-outcome`}
+                                className="h-9"
+                            >
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value={NONE_OPTION}>
+                                    Outcome: ninguno
+                                </SelectItem>
+                                {outcomes.map((outcome) => (
+                                    <SelectItem
+                                        key={outcome.id}
+                                        value={String(outcome.id)}
+                                    >
+                                        {outcome.label ?? outcome.code}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
                         <InputError
                             message={errors.outcome_override}
                             className="text-xs"
                         />
                     </div>
                     <div className="flex w-full flex-col gap-1">
-                        <Label className="text-2xs text-fg-3 uppercase">
+                        <Label
+                            htmlFor={`rule-${rule.id}-description`}
+                            className="text-2xs text-fg-3 uppercase"
+                        >
                             Descripción
                         </Label>
                         <Input
+                            id={`rule-${rule.id}-description`}
                             value={meta.description}
                             onChange={(e) =>
                                 setMeta({
@@ -345,7 +395,7 @@ function RuleConditionsEditor({
                     del tenant para ajustar su comportamiento.
                 </p>
             )}
-            <Label className="text-2xs text-fg-3 uppercase">Condiciones</Label>
+            <span className="text-2xs text-fg-3 uppercase">Condiciones</span>
             <ConditionBuilder
                 variant="tree"
                 fields={fields}
@@ -509,7 +559,7 @@ function DecisionRulesTab({
                 <CardHeader>
                     <CardTitle className="flex items-center justify-between text-sm uppercase">
                         Reglas de decisión ({rules.length})
-                        {canManage && (
+                        {canManage && (rules.length > 0 || creating) && (
                             <Button
                                 size="sm"
                                 variant={creating ? 'ghost' : 'outline'}
@@ -525,7 +575,14 @@ function DecisionRulesTab({
                         <div className="mb-4 flex flex-col gap-2 rounded-md border border-border p-3">
                             <div className="flex flex-wrap gap-2">
                                 <div className="flex flex-col gap-1">
+                                    <Label
+                                        htmlFor="rule-new-code"
+                                        className="text-2xs text-fg-3 uppercase"
+                                    >
+                                        Código
+                                    </Label>
                                     <Input
+                                        id="rule-new-code"
                                         placeholder="code (ej. panic-vip)"
                                         value={form.code}
                                         aria-invalid={Boolean(errors.code)}
@@ -543,7 +600,14 @@ function DecisionRulesTab({
                                     />
                                 </div>
                                 <div className="flex flex-col gap-1">
+                                    <Label
+                                        htmlFor="rule-new-name"
+                                        className="text-2xs text-fg-3 uppercase"
+                                    >
+                                        Nombre
+                                    </Label>
                                     <Input
+                                        id="rule-new-name"
                                         placeholder="Nombre"
                                         value={form.name}
                                         aria-invalid={Boolean(errors.name)}
@@ -561,32 +625,52 @@ function DecisionRulesTab({
                                     />
                                 </div>
                                 <div className="flex flex-col gap-1">
-                                    <select
+                                    <Label
+                                        htmlFor="rule-new-scope"
+                                        className="text-2xs text-fg-3 uppercase"
+                                    >
+                                        Ámbito
+                                    </Label>
+                                    <Select
                                         value={form.scope}
-                                        onChange={(e) =>
+                                        onValueChange={(value) =>
                                             setForm({
                                                 ...form,
-                                                scope: e.target.value,
+                                                scope: value,
                                             })
                                         }
-                                        className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-xs"
                                     >
-                                        {scopes.map((scope) => (
-                                            <option
-                                                key={scope.value}
-                                                value={scope.value}
-                                            >
-                                                {scope.label}
-                                            </option>
-                                        ))}
-                                    </select>
+                                        <SelectTrigger
+                                            id="rule-new-scope"
+                                            className="h-9"
+                                        >
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {scopes.map((scope) => (
+                                                <SelectItem
+                                                    key={scope.value}
+                                                    value={scope.value}
+                                                >
+                                                    {scope.label}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
                                     <InputError
                                         message={errors.scope}
                                         className="text-xs"
                                     />
                                 </div>
                                 <div className="flex flex-col gap-1">
+                                    <Label
+                                        htmlFor="rule-new-priority"
+                                        className="text-2xs text-fg-3 uppercase"
+                                    >
+                                        Prioridad
+                                    </Label>
                                     <Input
+                                        id="rule-new-priority"
                                         type="number"
                                         placeholder="prioridad"
                                         value={form.priority}
@@ -605,35 +689,60 @@ function DecisionRulesTab({
                                     />
                                 </div>
                                 <div className="flex flex-col gap-1">
-                                    <select
-                                        value={form.outcomeId}
-                                        onChange={(e) =>
+                                    <Label
+                                        htmlFor="rule-new-outcome"
+                                        className="text-2xs text-fg-3 uppercase"
+                                    >
+                                        Outcome
+                                    </Label>
+                                    <Select
+                                        value={
+                                            form.outcomeId === ''
+                                                ? NONE_OPTION
+                                                : form.outcomeId
+                                        }
+                                        onValueChange={(value) =>
                                             setForm({
                                                 ...form,
-                                                outcomeId: e.target.value,
+                                                outcomeId:
+                                                    value === NONE_OPTION
+                                                        ? ''
+                                                        : value,
                                             })
                                         }
-                                        className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-xs"
                                     >
-                                        <option value="">
-                                            Outcome: ninguno
-                                        </option>
-                                        {outcomes.map((outcome) => (
-                                            <option
-                                                key={outcome.id}
-                                                value={String(outcome.id)}
-                                            >
-                                                {outcome.label ?? outcome.code}
-                                            </option>
-                                        ))}
-                                    </select>
+                                        <SelectTrigger
+                                            id="rule-new-outcome"
+                                            className="h-9"
+                                        >
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value={NONE_OPTION}>
+                                                Outcome: ninguno
+                                            </SelectItem>
+                                            {outcomes.map((outcome) => (
+                                                <SelectItem
+                                                    key={outcome.id}
+                                                    value={String(outcome.id)}
+                                                >
+                                                    {outcome.label ??
+                                                        outcome.code}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
                                     <InputError
                                         message={errors.outcome_override}
                                         className="text-xs"
                                     />
                                 </div>
-                                <label className="flex items-center gap-1 text-xs text-fg-2">
+                                <label
+                                    htmlFor="rule-new-stop"
+                                    className="flex items-center gap-1 text-xs text-fg-2"
+                                >
                                     <input
+                                        id="rule-new-stop"
                                         type="checkbox"
                                         checked={form.stopProcessing}
                                         onChange={(e) =>
@@ -647,7 +756,9 @@ function DecisionRulesTab({
                                     stop
                                 </label>
                             </div>
-                            <Label className="text-xs">Condiciones</Label>
+                            <span className="text-xs text-fg-3">
+                                Condiciones
+                            </span>
                             <ConditionBuilder
                                 variant="tree"
                                 fields={conditionFields}
@@ -692,9 +803,22 @@ function DecisionRulesTab({
                     )}
 
                     {rules.length === 0 ? (
-                        <p className="text-xs text-fg-3">
-                            Sin reglas de decisión.
-                        </p>
+                        <EmptyState
+                            icon={Scale}
+                            title="Todavía no hay reglas de decisión"
+                            description="Las reglas de decisión definen qué outcome aplica según las condiciones de un evento. Créalas para automatizar la clasificación."
+                            action={
+                                canManage && !creating ? (
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => setCreating(true)}
+                                    >
+                                        Nueva regla
+                                    </Button>
+                                ) : undefined
+                            }
+                        />
                     ) : (
                         <table className="w-full text-left text-xs">
                             <thead className="text-2xs text-fg-3 uppercase">
@@ -888,7 +1012,7 @@ function MappingRulesTab({
             <CardHeader>
                 <CardTitle className="flex items-center justify-between text-sm uppercase">
                     Reglas de mapeo ({rules.length})
-                    {canManage && (
+                    {canManage && (rules.length > 0 || creating) && (
                         <Button
                             size="sm"
                             variant={creating ? 'ghost' : 'outline'}
@@ -902,21 +1026,31 @@ function MappingRulesTab({
             <CardContent>
                 {creating && (
                     <div className="mb-4 flex flex-wrap items-center gap-2 rounded-md border border-border p-3">
-                        <select
+                        <Select
                             value={form.providerId}
-                            onChange={(e) =>
-                                setForm({ ...form, providerId: e.target.value })
+                            onValueChange={(value) =>
+                                setForm({ ...form, providerId: value })
                             }
-                            className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-xs"
                         >
-                            <option value="">Proveedor…</option>
-                            {options.providers.map((option) => (
-                                <option key={option.value} value={option.value}>
-                                    {option.label}
-                                </option>
-                            ))}
-                        </select>
+                            <SelectTrigger
+                                aria-label="Proveedor"
+                                className="h-9"
+                            >
+                                <SelectValue placeholder="Proveedor…" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {options.providers.map((option) => (
+                                    <SelectItem
+                                        key={option.value}
+                                        value={option.value}
+                                    >
+                                        {option.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
                         <Input
+                            aria-label="Evento externo del proveedor"
                             placeholder="evento externo (behaviorLabel)"
                             value={form.externalEventType}
                             onChange={(e) =>
@@ -928,39 +1062,69 @@ function MappingRulesTab({
                             className="w-60 font-mono text-xs"
                         />
                         <span className="text-fg-3">→</span>
-                        <select
+                        <Select
                             value={form.eventTypeId}
-                            onChange={(e) =>
+                            onValueChange={(value) =>
                                 setForm({
                                     ...form,
-                                    eventTypeId: e.target.value,
+                                    eventTypeId: value,
                                 })
                             }
-                            className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-xs"
                         >
-                            <option value="">Tipo de evento…</option>
-                            {options.eventTypes.map((option) => (
-                                <option key={option.value} value={option.value}>
-                                    {option.label}
-                                </option>
-                            ))}
-                        </select>
-                        <select
-                            value={form.severityId}
-                            onChange={(e) =>
-                                setForm({ ...form, severityId: e.target.value })
+                            <SelectTrigger
+                                aria-label="Tipo de evento"
+                                className="h-9"
+                            >
+                                <SelectValue placeholder="Tipo de evento…" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {options.eventTypes.map((option) => (
+                                    <SelectItem
+                                        key={option.value}
+                                        value={option.value}
+                                    >
+                                        {option.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <Select
+                            value={
+                                form.severityId === ''
+                                    ? NONE_OPTION
+                                    : form.severityId
                             }
-                            className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-xs"
+                            onValueChange={(value) =>
+                                setForm({
+                                    ...form,
+                                    severityId:
+                                        value === NONE_OPTION ? '' : value,
+                                })
+                            }
                         >
-                            <option value="">Severidad: default</option>
-                            {options.severities.map((option) => (
-                                <option key={option.value} value={option.value}>
-                                    {option.label}
-                                </option>
-                            ))}
-                        </select>
+                            <SelectTrigger
+                                aria-label="Severidad"
+                                className="h-9"
+                            >
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value={NONE_OPTION}>
+                                    Severidad: default
+                                </SelectItem>
+                                {options.severities.map((option) => (
+                                    <SelectItem
+                                        key={option.value}
+                                        value={option.value}
+                                    >
+                                        {option.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
                         <Input
                             type="number"
+                            aria-label="Prioridad"
                             value={form.priority}
                             onChange={(e) =>
                                 setForm({ ...form, priority: e.target.value })
@@ -968,9 +1132,9 @@ function MappingRulesTab({
                             className="w-24 text-xs"
                         />
                         <div className="w-full">
-                            <Label className="mb-2 block text-xs">
+                            <span className="mb-2 block text-xs text-fg-3">
                                 Condiciones sobre el payload (opcional)
-                            </Label>
+                            </span>
                             <ConditionBuilder
                                 variant="flat-equality"
                                 fields={[]}
@@ -1015,7 +1179,22 @@ function MappingRulesTab({
                 )}
 
                 {rules.length === 0 ? (
-                    <p className="text-xs text-fg-3">Sin reglas de mapeo.</p>
+                    <EmptyState
+                        icon={ArrowRightLeft}
+                        title="Todavía no hay reglas de mapeo"
+                        description="Las reglas de mapeo traducen eventos externos del proveedor a los tipos y severidades de SAM. Créalas para clasificar automáticamente."
+                        action={
+                            canManage && !creating ? (
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => setCreating(true)}
+                                >
+                                    Nueva regla
+                                </Button>
+                            ) : undefined
+                        }
+                    />
                 ) : (
                     <table className="w-full text-left text-xs">
                         <thead className="text-2xs text-fg-3 uppercase">

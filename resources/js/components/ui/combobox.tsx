@@ -34,6 +34,7 @@ interface ComboboxProps {
     className?: string;
     id?: string;
     'aria-invalid'?: boolean;
+    'aria-label'?: string;
 }
 
 function Combobox({
@@ -78,6 +79,7 @@ function Combobox({
                 <ComboboxInput
                     id={id}
                     aria-invalid={props['aria-invalid']}
+                    aria-label={props['aria-label']}
                     className={cn(
                         'border-input placeholder:text-muted-foreground flex h-9 w-full rounded-md border bg-transparent px-3 py-1 pr-8 text-base shadow-xs transition-[color,box-shadow] outline-none md:text-sm',
                         'focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]',

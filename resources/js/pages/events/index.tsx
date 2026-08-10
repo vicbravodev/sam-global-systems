@@ -7,6 +7,19 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import { formatDateTime } from '@/lib/format';
+
+// Sentinel para representar "sin filtro" en los <Select> del DS: Radix no
+// permite SelectItem con value="", así que el filtro vacío (todos) se
+// traduce a/desde este string en el handler.
+const ALL_OPTION = '__all__';
 
 export interface EventRow {
     id: number;
@@ -82,9 +95,7 @@ const COLUMNS: DataTableColumn<EventRow>[] = [
             event.occurredAt ? Date.parse(event.occurredAt) : null,
         cell: (event) => (
             <span className="font-mono text-2xs whitespace-nowrap text-fg-2">
-                {event.occurredAt
-                    ? new Date(event.occurredAt).toLocaleString('es')
-                    : '—'}
+                {formatDateTime(event.occurredAt)}
             </span>
         ),
     },
@@ -168,21 +179,24 @@ function FilterSelect({
     onChange: (value: string | null) => void;
 }) {
     return (
-        <select
-            aria-label={label}
-            value={value ?? ''}
-            onChange={(event) =>
-                onChange(event.target.value === '' ? null : event.target.value)
+        <Select
+            value={value ?? ALL_OPTION}
+            onValueChange={(next) =>
+                onChange(next === ALL_OPTION ? null : next)
             }
-            className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-xs text-fg-2"
         >
-            <option value="">{label}: todos</option>
-            {options.map((option) => (
-                <option key={option.value} value={option.value}>
-                    {option.label}
-                </option>
-            ))}
-        </select>
+            <SelectTrigger aria-label={label} className="h-9">
+                <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+                <SelectItem value={ALL_OPTION}>{label}: todos</SelectItem>
+                {options.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                    </SelectItem>
+                ))}
+            </SelectContent>
+        </Select>
     );
 }
 

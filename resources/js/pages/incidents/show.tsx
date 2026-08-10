@@ -12,6 +12,7 @@ import type { Severity } from '@/components/sam/severity-badge';
 import { Badge } from '@/components/ui/badge';
 import { TEAM_BROADCAST_EVENT_NAME } from '@/hooks/use-team-broadcasts';
 import type { TeamBroadcastDetail } from '@/hooks/use-team-broadcasts';
+import { formatDateTime } from '@/lib/format';
 import type { IncidentShowProps, PriorIncidentSummary } from '@/types/sam';
 
 const RELOAD_DEBOUNCE_MS = 1500;
@@ -97,7 +98,7 @@ function PriorIncidentsCard({
                             <div className="mt-0.5 text-2xs text-fg-3">
                                 {prior.status ?? '—'}
                                 {prior.openedAt &&
-                                    ` · ${new Date(prior.openedAt).toLocaleString('es')}`}
+                                    ` · ${formatDateTime(prior.openedAt)}`}
                             </div>
                         </li>
                     ))}

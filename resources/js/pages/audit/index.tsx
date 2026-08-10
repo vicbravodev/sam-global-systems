@@ -7,6 +7,19 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import { formatDateTime } from '@/lib/format';
+
+// Sentinel para representar "sin filtro" en los <Select> del DS: Radix no
+// permite SelectItem con value="", así que el filtro vacío (todas/todos) se
+// traduce a/desde este string en el handler.
+const ALL_OPTION = '__all__';
 
 interface AuditLogRow {
     id: number;
@@ -76,9 +89,7 @@ const LOG_COLUMNS: DataTableColumn<AuditLogRow>[] = [
             log.occurredAt ? Date.parse(log.occurredAt) : null,
         cell: (log) => (
             <span className="font-mono text-2xs whitespace-nowrap text-fg-2">
-                {log.occurredAt
-                    ? new Date(log.occurredAt).toLocaleString('es')
-                    : '—'}
+                {formatDateTime(log.occurredAt)}
             </span>
         ),
     },
@@ -132,9 +143,7 @@ const EVENT_COLUMNS: DataTableColumn<DomainEventRow>[] = [
             event.occurredAt ? Date.parse(event.occurredAt) : null,
         cell: (event) => (
             <span className="font-mono text-2xs whitespace-nowrap text-fg-2">
-                {event.occurredAt
-                    ? new Date(event.occurredAt).toLocaleString('es')
-                    : '—'}
+                {formatDateTime(event.occurredAt)}
             </span>
         ),
     },
@@ -266,48 +275,65 @@ export default function AuditIndex() {
                                     className="w-48 border-none bg-transparent text-xs text-fg-1 outline-none"
                                 />
                             </div>
-                            <select
-                                aria-label="Categoría"
-                                value={filters.category ?? ''}
-                                onChange={(event) =>
+                            <Select
+                                value={filters.category ?? ALL_OPTION}
+                                onValueChange={(value) =>
                                     applyFilters({
                                         ...filters,
                                         category:
-                                            event.target.value === ''
-                                                ? null
-                                                : event.target.value,
+                                            value === ALL_OPTION ? null : value,
                                     })
                                 }
-                                className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-xs text-fg-2"
                             >
-                                <option value="">Categoría: todas</option>
-                                {filterOptions.categories.map((category) => (
-                                    <option key={category} value={category}>
-                                        {category}
-                                    </option>
-                                ))}
-                            </select>
-                            <select
-                                aria-label="Actor"
-                                value={filters.actor_type ?? ''}
-                                onChange={(event) =>
+                                <SelectTrigger
+                                    aria-label="Categoría"
+                                    className="h-9"
+                                >
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value={ALL_OPTION}>
+                                        Categoría: todas
+                                    </SelectItem>
+                                    {filterOptions.categories.map(
+                                        (category) => (
+                                            <SelectItem
+                                                key={category}
+                                                value={category}
+                                            >
+                                                {category}
+                                            </SelectItem>
+                                        ),
+                                    )}
+                                </SelectContent>
+                            </Select>
+                            <Select
+                                value={filters.actor_type ?? ALL_OPTION}
+                                onValueChange={(value) =>
                                     applyFilters({
                                         ...filters,
                                         actor_type:
-                                            event.target.value === ''
-                                                ? null
-                                                : event.target.value,
+                                            value === ALL_OPTION ? null : value,
                                     })
                                 }
-                                className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-xs text-fg-2"
                             >
-                                <option value="">Actor: todos</option>
-                                {filterOptions.actorTypes.map((actor) => (
-                                    <option key={actor} value={actor}>
-                                        {actor}
-                                    </option>
-                                ))}
-                            </select>
+                                <SelectTrigger
+                                    aria-label="Actor"
+                                    className="h-9"
+                                >
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value={ALL_OPTION}>
+                                        Actor: todos
+                                    </SelectItem>
+                                    {filterOptions.actorTypes.map((actor) => (
+                                        <SelectItem key={actor} value={actor}>
+                                            {actor}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                             <input
                                 type="date"
                                 aria-label="Desde"

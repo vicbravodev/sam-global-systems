@@ -1,6 +1,12 @@
 import { Link } from '@inertiajs/react';
 import { Maximize2, MapPin, Truck, User } from 'lucide-react';
-import { SeverityBadge, StatusPill, ProviderTag } from '@/components/sam';
+import {
+    RelativeTime,
+    SeverityBadge,
+    StatusPill,
+    ProviderTag,
+    TERMINAL_STATUSES,
+} from '@/components/sam';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { IncidentDetail } from '@/types/sam';
@@ -13,7 +19,16 @@ interface BigSlaDisplayProps {
 }
 
 function BigSlaDisplay({ incident }: BigSlaDisplayProps) {
+    // Hook siempre se llama (reglas de hooks); el early-return terminal va
+    // DESPUÉS, descartando el valor.
     const live = useLiveSla(incident.slaSeconds);
+
+    if (TERMINAL_STATUSES.includes(incident.status)) {
+        // Terminal: sin SLA vivo. El StatusPill del header ya comunica el
+        // estado — no duplicamos con un bloque "VENCIDO" en rojo.
+        return null;
+    }
+
     const consumed = incident.slaTotal > 0 ? 1 - live / incident.slaTotal : 1;
     const expired = live <= 0;
     const critical = expired || consumed >= 0.95;
@@ -130,7 +145,11 @@ export function DetailHeader({
                         {incident.location}
                     </span>
                     <span className="text-fg-3">
-                        Creado hace {incident.ageMin} min
+                        Creado{' '}
+                        <RelativeTime
+                            minutes={incident.ageMin}
+                            className="text-xs text-fg-3"
+                        />
                     </span>
                 </div>
             </div>
