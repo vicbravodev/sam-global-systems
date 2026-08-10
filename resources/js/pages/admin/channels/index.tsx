@@ -19,7 +19,7 @@ interface PlatformChannel {
 
 interface AdminChannelsIndexProps {
     channels: PlatformChannel[];
-    channelTypes: string[];
+    channelTypes: { value: string; label: string }[];
 }
 
 const CONFIG_FIELDS: Record<string, { key: string; label: string }[]> = {
@@ -185,8 +185,8 @@ export default function AdminChannelsIndex({
                                 className="h-9 w-36 rounded-md border border-border bg-surface-1 px-2 text-sm"
                             >
                                 {channelTypes.map((type) => (
-                                    <option key={type} value={type}>
-                                        {type}
+                                    <option key={type.value} value={type.value}>
+                                        {type.label}
                                     </option>
                                 ))}
                             </select>

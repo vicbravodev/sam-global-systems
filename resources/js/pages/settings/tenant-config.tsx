@@ -109,7 +109,7 @@ interface TenantConfigProps {
     // Sólo se ofrecen las opciones del campo realmente vivo (automation_level);
     // ver el comentario en AiTab para el resto de la historia.
     aiProfileOptions: {
-        automationLevels: string[];
+        automationLevels: { value: string; label: string }[];
     };
     notificationPolicies: NotificationPolicyRow[];
     escalationConfigs: EscalationConfigRow[];
@@ -122,7 +122,7 @@ interface TenantConfigProps {
     versions: VersionRow[];
     channels: ChannelRow[];
     branding: BrandingProp;
-    channelTypes: string[];
+    channelTypes: { value: string; label: string }[];
     canManageChannels: boolean;
     canManage: boolean;
 }
@@ -574,7 +574,7 @@ function AiTab({
     const selects: {
         key: keyof typeof form;
         label: string;
-        options: string[];
+        options: { value: string; label: string }[];
     }[] = [
         {
             key: 'automation_level',
@@ -638,8 +638,8 @@ function AiTab({
                             className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-sm"
                         >
                             {select.options.map((option) => (
-                                <option key={option} value={option}>
-                                    {option}
+                                <option key={option.value} value={option.value}>
+                                    {option.label}
                                 </option>
                             ))}
                         </select>
@@ -925,7 +925,7 @@ function EscalationTab({
 }: {
     configs: EscalationConfigRow[];
     conditionFields: ConditionFieldDef[];
-    channelTypes: string[];
+    channelTypes: { value: string; label: string }[];
     recipientOptions: TenantConfigProps['recipientOptions'];
     canManage: boolean;
 }) {
@@ -1103,7 +1103,7 @@ function EscalationStepsEditor({
     onChange,
 }: {
     steps: EscalationStepDraft[];
-    channelTypes: string[];
+    channelTypes: { value: string; label: string }[];
     recipientOptions: TenantConfigProps['recipientOptions'];
     disabled: boolean;
     onChange: (steps: EscalationStepDraft[]) => void;
@@ -1157,11 +1157,13 @@ function EscalationStepsEditor({
                     </label>
                     <div className="flex flex-wrap items-center gap-1">
                         {channelTypes.map((channel) => {
-                            const active = step.channels.includes(channel);
+                            const active = step.channels.includes(
+                                channel.value,
+                            );
 
                             return (
                                 <button
-                                    key={channel}
+                                    key={channel.value}
                                     type="button"
                                     disabled={disabled}
                                     onClick={() =>
@@ -1169,9 +1171,13 @@ function EscalationStepsEditor({
                                             ...step,
                                             channels: active
                                                 ? step.channels.filter(
-                                                      (c) => c !== channel,
+                                                      (c) =>
+                                                          c !== channel.value,
                                                   )
-                                                : [...step.channels, channel],
+                                                : [
+                                                      ...step.channels,
+                                                      channel.value,
+                                                  ],
                                         })
                                     }
                                     aria-pressed={active}
@@ -1181,7 +1187,7 @@ function EscalationStepsEditor({
                                             : 'border-border text-fg-3 hover:text-fg-1'
                                     }`}
                                 >
-                                    {channel}
+                                    {channel.label}
                                 </button>
                             );
                         })}
@@ -1280,7 +1286,7 @@ function EscalationCard({
 }: {
     config: EscalationConfigRow;
     conditionFields: ConditionFieldDef[];
-    channelTypes: string[];
+    channelTypes: { value: string; label: string }[];
     recipientOptions: TenantConfigProps['recipientOptions'];
     canManage: boolean;
     saving: boolean;
@@ -1554,7 +1560,7 @@ function ChannelsTab({
     canManage,
 }: {
     channels: ChannelRow[];
-    channelTypes: string[];
+    channelTypes: { value: string; label: string }[];
     canManage: boolean;
 }) {
     const base = useTeamBase();
@@ -1774,8 +1780,8 @@ function ChannelsTab({
                                 className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-xs"
                             >
                                 {channelTypes.map((type) => (
-                                    <option key={type} value={type}>
-                                        {type}
+                                    <option key={type.value} value={type.value}>
+                                        {type.label}
                                     </option>
                                 ))}
                             </select>

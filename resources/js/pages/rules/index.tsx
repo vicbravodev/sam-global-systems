@@ -72,7 +72,7 @@ interface RulesPageProps {
         isGlobal: boolean;
     }[];
     outcomes: { id: number; code: string; name: string; label: string }[];
-    scopes: string[];
+    scopes: Option[];
     mappingRules: MappingRuleRow[];
     mappingOptions: {
         providers: Option[];
@@ -392,7 +392,7 @@ function DecisionRulesTab({
     rules: DecisionRuleRow[];
     rulesets: RulesPageProps['rulesets'];
     outcomes: RulesPageProps['outcomes'];
-    scopes: string[];
+    scopes: RulesPageProps['scopes'];
     conditionFields: ConditionFieldDef[];
     canManage: boolean;
 }) {
@@ -572,8 +572,11 @@ function DecisionRulesTab({
                                         className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-xs"
                                     >
                                         {scopes.map((scope) => (
-                                            <option key={scope} value={scope}>
-                                                {scope}
+                                            <option
+                                                key={scope.value}
+                                                value={scope.value}
+                                            >
+                                                {scope.label}
                                             </option>
                                         ))}
                                     </select>
