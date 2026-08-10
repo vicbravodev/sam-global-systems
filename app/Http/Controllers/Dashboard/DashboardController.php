@@ -149,6 +149,15 @@ class DashboardController extends Controller
         }
 
         $remaining = $critical->map(function (Incident $incident) use ($now): int {
+            // `sla_due_at` is the vigilance actually scheduled at creation
+            // time (possibly a tenant override) — deriving remaining time
+            // straight from it keeps this KPI in sync with the real
+            // watchdog instead of re-reading the (possibly overridden)
+            // catalog value.
+            if ($incident->sla_due_at !== null) {
+                return $incident->sla_due_at->getTimestamp() - $now->getTimestamp();
+            }
+
             $budget = (int) (($incident->priority?->sla_seconds
                 ?? $incident->relatedEvent?->eventSeverity?->response_sla_seconds)
                 ?: 1800);
