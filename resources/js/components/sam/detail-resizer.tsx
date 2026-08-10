@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { cn } from '@/lib/utils';
 
 export interface DetailResizerProps {
     /** Min detail-pane width in px. */
@@ -9,6 +10,8 @@ export interface DetailResizerProps {
     defaultWidth?: number;
     /** localStorage key for persisting the chosen width. */
     storageKey?: string;
+    /** Extra classes merged onto the handle (e.g. to hide it on mobile). */
+    className?: string;
 }
 
 /**
@@ -24,6 +27,7 @@ export function DetailResizer({
     max = 980,
     defaultWidth = 600,
     storageKey = 'sam-detail-w',
+    className,
 }: DetailResizerProps) {
     const ref = useRef<HTMLDivElement>(null);
 
@@ -166,7 +170,10 @@ export function DetailResizer({
             aria-valuemax={max}
             aria-valuenow={width}
             title="Arrastrar para redimensionar · doble clic para restablecer"
-            className="absolute top-0 left-0 z-40 h-full w-2.5 -translate-x-1/2 cursor-col-resize touch-none before:absolute before:top-0 before:left-1/2 before:h-full before:w-px before:-translate-x-1/2 before:bg-border hover:before:w-[3px] hover:before:bg-primary motion-safe:before:transition-[background,width] motion-safe:before:duration-[--motion-fast] [&.dragging]:before:w-[3px] [&.dragging]:before:bg-primary"
+            className={cn(
+                'absolute top-0 left-0 z-40 h-full w-2.5 -translate-x-1/2 cursor-col-resize touch-none before:absolute before:top-0 before:left-1/2 before:h-full before:w-px before:-translate-x-1/2 before:bg-border hover:before:w-[3px] hover:before:bg-primary motion-safe:before:transition-[background,width] motion-safe:before:duration-[--motion-fast] [&.dragging]:before:w-[3px] [&.dragging]:before:bg-primary',
+                className,
+            )}
         />
     );
 }

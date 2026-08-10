@@ -95,12 +95,7 @@ export function DetailHeader({
     detailHref,
 }: DetailHeaderProps) {
     return (
-        <div
-            className="grid shrink-0 items-start gap-3 border-b border-border bg-surface-1 p-[14px_18px]"
-            style={{
-                gridTemplateColumns: 'minmax(0,1fr) auto auto',
-            }}
-        >
+        <div className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-3 border-b border-border bg-surface-1 p-[14px_18px] @max-4xl:grid-cols-1">
             {/* Col 1: info */}
             <div className="min-w-0">
                 <div className="mb-1 flex flex-wrap items-center gap-1.5">
@@ -154,22 +149,26 @@ export function DetailHeader({
                 </div>
             </div>
 
-            {/* Col 2: SLA big */}
-            <BigSlaDisplay incident={incident} />
+            {/* Col 2: SLA + actions — grouped so that in the 1-column
+                (narrow container) layout they land in a single wrapping row
+                below the info block, instead of each stacking on its own
+                row. */}
+            <div className="flex flex-wrap items-start gap-3">
+                <BigSlaDisplay incident={incident} />
 
-            {/* Col 3: actions */}
-            <div className="flex flex-col gap-1.5">
-                {detailHref && (
-                    <Button size="sm" variant="default" asChild>
-                        <Link href={detailHref}>
-                            <Maximize2 size={12} />
-                            Abrir detalle
-                        </Link>
+                <div className="flex flex-col gap-1.5">
+                    {detailHref && (
+                        <Button size="sm" variant="default" asChild>
+                            <Link href={detailHref}>
+                                <Maximize2 size={12} />
+                                Abrir detalle
+                            </Link>
+                        </Button>
+                    )}
+                    <Button size="sm" variant="ghost" onClick={onClose}>
+                        Cerrar detalle
                     </Button>
-                )}
-                <Button size="sm" variant="ghost" onClick={onClose}>
-                    Cerrar detalle
-                </Button>
+                </div>
             </div>
         </div>
     );
