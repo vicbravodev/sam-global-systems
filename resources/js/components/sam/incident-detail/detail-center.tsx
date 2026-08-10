@@ -18,11 +18,23 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { useInitials } from '@/hooks/use-initials';
 import { cn } from '@/lib/utils';
 import type { AiDecision, IncidentDetail } from '@/types/sam';
 import { useIncidentActions } from './incident-actions-context';
 import type { CommentVisibilityUi } from './incident-actions-context';
+
+// Sentinel para representar "sin selección" en los <Select> del DS: Radix
+// no permite SelectItem con value="", así que un value vacío real
+// (sin cambio) se traduce a/desde este string en el handler.
+const NONE_OPTION = '__none__';
 
 // ---- AI Decision label ----
 
@@ -125,33 +137,43 @@ function ReclassifyDialog({
                 <div className="flex flex-col gap-3">
                     <label className="flex flex-col gap-1 text-xs text-fg-2">
                         Tipo
-                        <select
-                            value={typeId}
-                            onChange={(e) => setTypeId(e.target.value)}
-                            className="rounded-md border border-border bg-surface-1 px-2.5 py-1.5 text-sm text-fg-1 outline-none"
-                        >
-                            <option value="">Selecciona un tipo…</option>
-                            {reclassifyOptions.types.map((t) => (
-                                <option key={t.id} value={t.id}>
-                                    {t.name}
-                                </option>
-                            ))}
-                        </select>
+                        <Select value={typeId} onValueChange={setTypeId}>
+                            <SelectTrigger className="h-9">
+                                <SelectValue placeholder="Selecciona un tipo…" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {reclassifyOptions.types.map((t) => (
+                                    <SelectItem key={t.id} value={String(t.id)}>
+                                        {t.name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
                     </label>
                     <label className="flex flex-col gap-1 text-xs text-fg-2">
                         Prioridad (opcional)
-                        <select
-                            value={priorityId}
-                            onChange={(e) => setPriorityId(e.target.value)}
-                            className="rounded-md border border-border bg-surface-1 px-2.5 py-1.5 text-sm text-fg-1 outline-none"
+                        <Select
+                            value={priorityId === '' ? NONE_OPTION : priorityId}
+                            onValueChange={(value) =>
+                                setPriorityId(
+                                    value === NONE_OPTION ? '' : value,
+                                )
+                            }
                         >
-                            <option value="">Sin cambio</option>
-                            {reclassifyOptions.priorities.map((p) => (
-                                <option key={p.id} value={p.id}>
-                                    {p.name}
-                                </option>
-                            ))}
-                        </select>
+                            <SelectTrigger className="h-9">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value={NONE_OPTION}>
+                                    Sin cambio
+                                </SelectItem>
+                                {reclassifyOptions.priorities.map((p) => (
+                                    <SelectItem key={p.id} value={String(p.id)}>
+                                        {p.name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
                     </label>
                 </div>
                 <DialogFooter>
@@ -423,17 +445,21 @@ function CommentComposer() {
                 placeholder="Escribí un comentario…"
                 className="min-w-0 border-none bg-transparent text-sm text-fg-1 outline-none placeholder:text-fg-3"
             />
-            <select
+            <Select
                 value={visibility}
-                onChange={(e) =>
-                    setVisibility(e.target.value as CommentVisibilityUi)
+                onValueChange={(value) =>
+                    setVisibility(value as CommentVisibilityUi)
                 }
-                className="cursor-pointer border-none bg-transparent text-xs text-fg-2 outline-none"
             >
-                <option value="internal">Interno</option>
-                <option value="tenant">Tenant</option>
-                <option value="audit">Auditoría</option>
-            </select>
+                <SelectTrigger className="h-9">
+                    <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem value="internal">Interno</SelectItem>
+                    <SelectItem value="tenant">Tenant</SelectItem>
+                    <SelectItem value="audit">Auditoría</SelectItem>
+                </SelectContent>
+            </Select>
             <Button
                 size="sm"
                 variant="default"

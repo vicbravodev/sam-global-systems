@@ -23,6 +23,13 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { useInitials } from '@/hooks/use-initials';
 import { cn } from '@/lib/utils';
 import type { IncidentDetail } from '@/types/sam';
@@ -218,17 +225,18 @@ function ResolveDialog({
                 <div className="flex flex-col gap-3">
                     <label className="flex flex-col gap-1 text-xs text-fg-2">
                         Código de resolución
-                        <select
-                            value={code}
-                            onChange={(e) => setCode(e.target.value)}
-                            className="rounded-md border border-border bg-surface-1 px-2.5 py-1.5 text-sm text-fg-1 outline-none"
-                        >
-                            {RESOLUTION_OPTIONS.map((o) => (
-                                <option key={o.value} value={o.value}>
-                                    {o.label}
-                                </option>
-                            ))}
-                        </select>
+                        <Select value={code} onValueChange={setCode}>
+                            <SelectTrigger className="h-9">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {RESOLUTION_OPTIONS.map((o) => (
+                                    <SelectItem key={o.value} value={o.value}>
+                                        {o.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
                     </label>
                     <label className="flex flex-col gap-1 text-xs text-fg-2">
                         Resumen

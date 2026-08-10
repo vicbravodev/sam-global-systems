@@ -17,6 +17,13 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import {
     deleteJson,
     postJson,
     putJson,
@@ -430,19 +437,23 @@ function GeneralTab({
                         <Label className="text-xs">
                             Resolución externa de pánico
                         </Label>
-                        <select
+                        <Select
                             value={panicMode}
                             disabled={!canManage}
-                            onChange={(e) => setPanicMode(e.target.value)}
-                            className="w-64 rounded-md border border-border bg-surface-1 px-2 py-1.5 text-sm"
+                            onValueChange={setPanicMode}
                         >
-                            <option value="annotate">
-                                Solo anotar (annotate)
-                            </option>
-                            <option value="close">
-                                Cerrar incidente (close)
-                            </option>
-                        </select>
+                            <SelectTrigger className="h-9 w-64">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="annotate">
+                                    Solo anotar (annotate)
+                                </SelectItem>
+                                <SelectItem value="close">
+                                    Cerrar incidente (close)
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
                         <span className="block font-mono text-3xs text-fg-3">
                             {PANIC_AUTO_CLOSE_KEY}
                         </span>
@@ -638,18 +649,25 @@ function AiTab({
                 {selects.map((select) => (
                     <div key={select.key} className="flex flex-col gap-1">
                         <Label className="text-xs">{select.label}</Label>
-                        <select
+                        <Select
                             value={form[select.key]}
                             disabled={!canManage}
-                            onChange={(e) => set(select.key, e.target.value)}
-                            className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-sm"
+                            onValueChange={(value) => set(select.key, value)}
                         >
-                            {select.options.map((option) => (
-                                <option key={option.value} value={option.value}>
-                                    {option.label}
-                                </option>
-                            ))}
-                        </select>
+                            <SelectTrigger className="h-9">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {select.options.map((option) => (
+                                    <SelectItem
+                                        key={option.value}
+                                        value={option.value}
+                                    >
+                                        {option.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
                     </div>
                 ))}
                 {canManage && (
@@ -1775,23 +1793,30 @@ function ChannelsTab({
                                     className="max-w-56 text-xs"
                                 />
                             </div>
-                            <select
+                            <Select
                                 value={form.channelType}
-                                onChange={(e) =>
+                                onValueChange={(value) =>
                                     setForm({
                                         ...form,
-                                        channelType: e.target.value,
+                                        channelType: value,
                                         config: {},
                                     })
                                 }
-                                className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-xs"
                             >
-                                {channelTypes.map((type) => (
-                                    <option key={type.value} value={type.value}>
-                                        {type.label}
-                                    </option>
-                                ))}
-                            </select>
+                                <SelectTrigger className="h-9">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {channelTypes.map((type) => (
+                                        <SelectItem
+                                            key={type.value}
+                                            value={type.value}
+                                        >
+                                            {type.label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                         </div>
                         {fields.map((field) => (
                             <div

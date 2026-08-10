@@ -22,6 +22,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PageHeader } from '@/components/ui/page-header';
 import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import {
     deleteJson,
     postJson,
     putJson,
@@ -320,20 +327,27 @@ function WorkflowBuilder({
                         className="max-w-64 text-xs"
                     />
                 </div>
-                <select
+                <Select
                     value={form.triggerType}
-                    onChange={(e) => {
-                        setForm({ ...form, triggerType: e.target.value });
+                    onValueChange={(value) => {
+                        setForm({ ...form, triggerType: value });
                         setConditions({});
                     }}
-                    className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-xs"
                 >
-                    {options.triggerTypes.map((trigger) => (
-                        <option key={trigger.value} value={trigger.value}>
-                            {trigger.label}
-                        </option>
-                    ))}
-                </select>
+                    <SelectTrigger className="h-9">
+                        <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {options.triggerTypes.map((trigger) => (
+                            <SelectItem
+                                key={trigger.value}
+                                value={trigger.value}
+                            >
+                                {trigger.label}
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
             </div>
 
             <span className="text-2xs text-fg-3 uppercase">
@@ -356,32 +370,46 @@ function WorkflowBuilder({
                     <span className="w-5 text-center font-mono text-2xs text-fg-3">
                         {index + 1}
                     </span>
-                    <select
+                    <Select
                         value={step.action_type}
-                        onChange={(e) =>
-                            setStep(index, 'action_type', e.target.value)
+                        onValueChange={(value) =>
+                            setStep(index, 'action_type', value)
                         }
-                        className="rounded-md border border-border bg-surface-2 px-2 py-1 text-xs"
                     >
-                        {options.actionTypes.map((action) => (
-                            <option key={action.value} value={action.value}>
-                                {action.label}
-                            </option>
-                        ))}
-                    </select>
-                    <select
+                        <SelectTrigger className="h-9">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {options.actionTypes.map((action) => (
+                                <SelectItem
+                                    key={action.value}
+                                    value={action.value}
+                                >
+                                    {action.label}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <Select
                         value={step.target_type}
-                        onChange={(e) =>
-                            setStep(index, 'target_type', e.target.value)
+                        onValueChange={(value) =>
+                            setStep(index, 'target_type', value)
                         }
-                        className="rounded-md border border-border bg-surface-2 px-2 py-1 text-xs"
                     >
-                        {TARGET_TYPES.map((target) => (
-                            <option key={target.value} value={target.value}>
-                                {target.label}
-                            </option>
-                        ))}
-                    </select>
+                        <SelectTrigger className="h-9">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {TARGET_TYPES.map((target) => (
+                                <SelectItem
+                                    key={target.value}
+                                    value={target.value}
+                                >
+                                    {target.label}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
                     {step.target_type === 'user' ? (
                         <Combobox
                             options={teamTargets.users}
