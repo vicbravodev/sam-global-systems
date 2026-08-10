@@ -53,14 +53,15 @@ class EvaluateEventMultimodallyTest extends TestCase
             'normalized_event_id' => $event->id,
             'media_type' => MediaType::Snapshot,
         ]);
-        $clip = EventMediaContext::factory()->videoClip()->create([
+        $image = EventMediaContext::factory()->create([
             'team_id' => $team->id,
             'normalized_event_id' => $event->id,
+            'media_type' => MediaType::Image,
         ]);
 
         $assessments = app(EvaluateEventMultimodally::class)->execute(
             $evaluation->fresh(),
-            collect([$snapshot, $clip]),
+            collect([$snapshot, $image]),
         );
 
         $this->assertCount(2, $assessments);
@@ -69,8 +70,8 @@ class EvaluateEventMultimodallyTest extends TestCase
         $snapshotAssessment = AIMediaAssessment::where('event_media_context_id', $snapshot->id)->first();
         $this->assertSame(MediaAssessmentType::VisualValidation, $snapshotAssessment->assessment_type);
 
-        $clipAssessment = AIMediaAssessment::where('event_media_context_id', $clip->id)->first();
-        $this->assertSame(MediaAssessmentType::ClipReview, $clipAssessment->assessment_type);
+        $imageAssessment = AIMediaAssessment::where('event_media_context_id', $image->id)->first();
+        $this->assertSame(MediaAssessmentType::VisualValidation, $imageAssessment->assessment_type);
 
         $this->assertSame(EvaluationMode::Multimodal, $evaluation->fresh()->evaluation_mode);
         $this->assertSame(2, AIInferenceLog::where('evaluation_id', $evaluation->id)->value('media_assets_count'));
