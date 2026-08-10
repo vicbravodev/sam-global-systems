@@ -6,6 +6,7 @@ use App\Domains\AI\Events\AIEvaluationCompleted;
 use App\Domains\AI\Jobs\EvaluateEventMediaJob;
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\AI\Models\AIMediaAssessment;
+use App\Domains\Context\Enums\MediaType;
 use App\Domains\Context\Models\EventMediaContext;
 
 /**
@@ -27,6 +28,11 @@ use App\Domains\Context\Models\EventMediaContext;
  * `config('ai.skip_evaluation_categories')`, e.g. Samsara safety events) never
  * complete an evaluation, so their media is intentionally NOT assessed — it is
  * retained as evidence only and feeds correlation, not paid multimodal AI.
+ *
+ * "Pending" is also type-aware: video/audio never get an `ai_media_assessments`
+ * row (see `EvaluateEventMultimodally`, image-only policy), so without this
+ * filter they'd stay "pending" forever and get re-dispatched as a no-op job on
+ * every future `AIEvaluationCompleted` for the same event.
  */
 class AssessPendingMediaOnEvaluationCompleted
 {
@@ -53,6 +59,9 @@ class AssessPendingMediaOnEvaluationCompleted
         $pendingMediaIds = EventMediaContext::withoutGlobalScopes()
             ->where('normalized_event_id', $eventId)
             ->when($assessedMediaIds !== [], fn ($query) => $query->whereNotIn('id', $assessedMediaIds))
+            // Mismo filtro que EvaluateEventMultimodally — mantener en sincronía.
+            ->where(fn ($query) => $query->whereIn('media_type', [MediaType::Image, MediaType::Snapshot])
+                ->orWhereNull('media_type'))
             ->pluck('id')
             ->all();
 
