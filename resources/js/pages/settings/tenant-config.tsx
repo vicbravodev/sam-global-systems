@@ -417,16 +417,18 @@ function GeneralTab({
                                 críticos
                             </span>
                             <span className="block text-xs text-fg-3">
-                                {MEDIA_AUTO_REQUEST_KEY}: consume cuota de
-                                retrievals del proveedor (default: apagado).
+                                Consume cuota de retrievals del proveedor
+                                (apagado por defecto).
+                            </span>
+                            <span className="block font-mono text-3xs text-fg-3">
+                                {MEDIA_AUTO_REQUEST_KEY}
                             </span>
                         </span>
                     </label>
 
                     <div className="flex flex-col gap-1">
                         <Label className="text-xs">
-                            Resolución externa de pánico ({PANIC_AUTO_CLOSE_KEY}
-                            )
+                            Resolución externa de pánico
                         </Label>
                         <select
                             value={panicMode}
@@ -441,12 +443,14 @@ function GeneralTab({
                                 Cerrar incidente (close)
                             </option>
                         </select>
+                        <span className="block font-mono text-3xs text-fg-3">
+                            {PANIC_AUTO_CLOSE_KEY}
+                        </span>
                     </div>
 
                     <div className="flex flex-col gap-1">
                         <Label className="text-xs">
-                            GPS fresco: umbral de obsolescencia en segundos (
-                            {LIVE_LOCATION_KEY})
+                            GPS fresco: umbral de obsolescencia en segundos
                         </Label>
                         <Input
                             type="number"
@@ -461,6 +465,9 @@ function GeneralTab({
                             message={stalenessError ?? undefined}
                             className="text-xs"
                         />
+                        <span className="block font-mono text-3xs text-fg-3">
+                            {LIVE_LOCATION_KEY}
+                        </span>
                     </div>
 
                     {canManage && (
@@ -476,13 +483,13 @@ function GeneralTab({
             <Card>
                 <CardHeader>
                     <CardTitle className="text-sm uppercase">
-                        Otros settings ({otherSettings.length})
+                        Otros ajustes ({otherSettings.length})
                     </CardTitle>
                 </CardHeader>
                 <CardContent>
                     {otherSettings.length === 0 ? (
                         <p className="text-xs text-fg-3">
-                            Sin settings adicionales.
+                            Sin ajustes adicionales.
                         </p>
                     ) : (
                         // D3: scroll horizontal contenido + ancho mínimo para que
@@ -986,8 +993,8 @@ function EscalationTab({
             {configs.length === 0 && (
                 <Card>
                     <CardContent className="flex items-center justify-between py-4 text-xs text-fg-3">
-                        Sin configuración de escalación: el SLA (P6) no escala
-                        por niveles hasta definir los steps.
+                        Sin configuración de escalación: el SLA no escala por
+                        niveles hasta que definas los pasos.
                         {canManage && (
                             <Button
                                 size="sm"
@@ -1409,8 +1416,8 @@ function ScheduleTab({
         return (
             <Card>
                 <CardContent className="py-4 text-xs text-fg-3">
-                    Sin perfiles de horario: la asignación on-call (P5) usa el
-                    fallback (primer admin del equipo). Los perfiles se crean al
+                    Sin perfiles de horario: la asignación on-call usa el
+                    respaldo (primer admin del equipo). Los perfiles se crean al
                     configurar la integración o por API.
                 </CardContent>
             </Card>
@@ -1499,7 +1506,7 @@ function ScheduleCard({
                     />
                 </div>
                 <JsonField
-                    label="Shift rules (turnos on-call que usa P5)"
+                    label="Reglas de turno (JSON)"
                     value={rawShifts}
                     onChange={setRawShifts}
                     disabled={!canManage}
@@ -1838,7 +1845,8 @@ function ChannelsTab({
                 {channels.length === 0 ? (
                     <p className="text-xs text-fg-3">
                         Sin canales: configura Slack, Twilio (SMS/WhatsApp) o
-                        FCM para que las notificaciones y B9 operen.
+                        FCM para que las notificaciones y las llamadas de
+                        verificación operen.
                     </p>
                 ) : (
                     <ul className="flex flex-col gap-2">
