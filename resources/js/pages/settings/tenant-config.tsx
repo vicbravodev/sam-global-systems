@@ -1,4 +1,5 @@
 import { Head, Link, router, usePage } from '@inertiajs/react';
+import { Radio, SlidersHorizontal } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import InputError from '@/components/input-error';
@@ -14,6 +15,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -504,9 +506,12 @@ function GeneralTab({
                 </CardHeader>
                 <CardContent>
                     {otherSettings.length === 0 ? (
-                        <p className="text-xs text-fg-3">
-                            Sin ajustes adicionales.
-                        </p>
+                        <EmptyState
+                            className="min-h-0 gap-0.5 px-0 py-4"
+                            icon={SlidersHorizontal}
+                            title="Sin ajustes adicionales"
+                            description="Aquí aparecerán los settings que no tienen un control dedicado en esta página."
+                        />
                     ) : (
                         // D3: scroll horizontal contenido + ancho mínimo para que
                         // GRUPO/VALOR no se encimen en móvil.
@@ -1887,11 +1892,23 @@ function ChannelsTab({
                 )}
 
                 {channels.length === 0 ? (
-                    <p className="text-xs text-fg-3">
-                        Sin canales: configura Slack, Twilio (SMS/WhatsApp) o
-                        FCM para que las notificaciones y las llamadas de
-                        verificación operen.
-                    </p>
+                    <EmptyState
+                        className="min-h-0 gap-0.5 px-0 py-4"
+                        icon={Radio}
+                        title="Sin canales configurados"
+                        description="Configura Slack, Twilio (SMS/WhatsApp) o FCM para que las notificaciones y las llamadas de verificación operen."
+                        action={
+                            canManage && !creating ? (
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => setCreating(true)}
+                                >
+                                    Nuevo canal
+                                </Button>
+                            ) : undefined
+                        }
+                    />
                 ) : (
                     <ul className="flex flex-col gap-2">
                         {channels.map((channel) => (

@@ -1,4 +1,5 @@
 import { Head, router, usePage } from '@inertiajs/react';
+import { ArrowRightLeft, Scale } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import InputError from '@/components/input-error';
@@ -10,6 +11,7 @@ import type { ConditionFieldDef } from '@/components/sam/condition-builder';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PageHeader } from '@/components/ui/page-header';
@@ -801,9 +803,22 @@ function DecisionRulesTab({
                     )}
 
                     {rules.length === 0 ? (
-                        <p className="text-xs text-fg-3">
-                            Sin reglas de decisión.
-                        </p>
+                        <EmptyState
+                            icon={Scale}
+                            title="Todavía no hay reglas de decisión"
+                            description="Las reglas de decisión definen qué outcome aplica según las condiciones de un evento. Créalas para automatizar la clasificación."
+                            action={
+                                canManage && !creating ? (
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => setCreating(true)}
+                                    >
+                                        Nueva regla
+                                    </Button>
+                                ) : undefined
+                            }
+                        />
                     ) : (
                         <table className="w-full text-left text-xs">
                             <thead className="text-2xs text-fg-3 uppercase">
@@ -1164,7 +1179,22 @@ function MappingRulesTab({
                 )}
 
                 {rules.length === 0 ? (
-                    <p className="text-xs text-fg-3">Sin reglas de mapeo.</p>
+                    <EmptyState
+                        icon={ArrowRightLeft}
+                        title="Todavía no hay reglas de mapeo"
+                        description="Las reglas de mapeo traducen eventos externos del proveedor a los tipos y severidades de SAM. Créalas para clasificar automáticamente."
+                        action={
+                            canManage && !creating ? (
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => setCreating(true)}
+                                >
+                                    Nueva regla
+                                </Button>
+                            ) : undefined
+                        }
+                    />
                 ) : (
                     <table className="w-full text-left text-xs">
                         <thead className="text-2xs text-fg-3 uppercase">
