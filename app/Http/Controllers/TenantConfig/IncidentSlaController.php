@@ -41,7 +41,7 @@ class IncidentSlaController extends Controller
             ])
             ->all();
 
-        return Inertia::render('tenant-config/slas', [
+        return Inertia::render('settings/tenant-config/slas', [
             'priorities' => $priorities,
         ]);
     }

@@ -50,7 +50,7 @@ class IncidentSlaControllerTest extends TestCase
             ->get(route('tenant-config.slas.index', ['current_team' => $team->slug]))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
-                ->component('tenant-config/slas')
+                ->component('settings/tenant-config/slas')
                 ->has('priorities', 1));
     }
 

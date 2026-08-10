@@ -2,8 +2,10 @@
 
 namespace App\Domains\Incidents\Actions;
 
+use App\Domains\Incidents\Jobs\CheckIncidentAcknowledgementJob;
 use App\Domains\Incidents\Models\Incident;
 use App\Models\User;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\DB;
 
 class ReleaseIncident
@@ -13,7 +15,9 @@ class ReleaseIncident
      */
     public function execute(Incident $incident, User $user): bool
     {
-        return DB::transaction(function () use ($incident, $user) {
+        $rearmDueAt = null;
+
+        $released = DB::transaction(function () use ($incident, $user, &$rearmDueAt) {
             $locked = Incident::query()
                 ->whereKey($incident->getKey())
                 ->lockForUpdate()
@@ -36,7 +40,25 @@ class ReleaseIncident
                 'claimed_at' => null,
             ])->save();
 
+            // A claim-por-error released without ever being acknowledged must
+            // not leave the incident unwatched forever: re-arm the SLA
+            // watchdog at level 0, same as at incident creation.
+            if ($locked->acknowledged_at === null && ! $locked->isTerminal() && $locked->sla_due_at !== null) {
+                $rearmDueAt = $locked->sla_due_at;
+            }
+
             return true;
         });
+
+        // Dispatched after the transaction above has already resolved (not
+        // chained with ->afterCommit(): the release is committed by now, and
+        // deferring further would only wait on whatever transaction the
+        // caller happens to be inside — never in this action's own).
+        if ($released && $rearmDueAt instanceof CarbonInterface) {
+            CheckIncidentAcknowledgementJob::dispatch($incident->id)
+                ->delay($rearmDueAt->isFuture() ? $rearmDueAt : null);
+        }
+
+        return $released;
     }
 }

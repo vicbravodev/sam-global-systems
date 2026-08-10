@@ -1858,10 +1858,11 @@ Verificaciones manuales antes de abrir a clientes:
 
 - [ ] Un webhook de prueba con firma válida sigue entrando (confirma que el cifrado del secreto no rompió la validación).
 - [ ] Un evento de tipo desconocido aparece como `unmapped` en la bandeja, no como pánico.
-- [ ] Dos operadores intentan tomar el mismo incidente: uno lo consigue, el otro recibe la negativa.
+- [ ] Dos operadores intentan tomar el mismo incidente: uno lo consigue, el otro recibe la negativa (vía tinker: ClaimIncident/ReleaseIncident — la UI de toma llega en semana 2).
 - [ ] Un incidente tomado no recibe llamada de verificación ni escalación.
 - [ ] Cambiar el SLA de "crítica" a 3 minutos para un tenant y confirmar que otro tenant sigue en 5.
 - [ ] `php artisan horizon:snapshot` produce métricas visibles en el panel de Horizon.
+- [ ] **Sin rollback tras `webhooks:encrypt-secrets`:** una vez corrido, el rollback de la migración widen-secret (`2026_08_09_090000_widen_webhook_endpoints_secret_column.php`, `text('secret')` → `string('secret', 255)`) ya no es viable — los valores cifrados con `Crypt::encryptString()` ocupan ~316 caracteres y no caben de vuelta en un `VARCHAR(255)` de Postgres. Si hace falta revertir el despliegue, no bajar esa migración; restaurar desde respaldo en su lugar.
 
 ---
 
