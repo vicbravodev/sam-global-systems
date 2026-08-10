@@ -2,12 +2,14 @@
 
 use App\Domains\Analytics\Jobs\BuildAnalyticsSnapshotJob;
 use App\Domains\Analytics\Jobs\CalculateDailyKPIsJob;
+use App\Domains\Analytics\Jobs\ExpireOldReportsJob;
 use App\Domains\Assets\Jobs\DetectAfterHoursMovementJob;
 use App\Domains\Assets\Jobs\DetectOfflineAssetsJob;
 use App\Domains\Assets\Jobs\DetectUnauthorizedStopJob;
 use App\Domains\Assets\Jobs\PollAllAssetLocationsJob;
 use App\Domains\Drivers\Jobs\RecalculateDriverRiskProfilesJob;
 use App\Domains\Ingestion\Jobs\PollSamsaraSafetyEventsJob;
+use App\Domains\Ingestion\Jobs\PruneDeduplicationKeysJob;
 use App\Domains\Integrations\Jobs\SyncDueIntegrationsJob;
 use App\Domains\Tenancy\Jobs\AggregateUsageJob;
 use Illuminate\Foundation\Inspiring;
@@ -22,6 +24,18 @@ Schedule::command('horizon:snapshot')->everyFiveMinutes()->onOneServer();
 
 Schedule::job(new AggregateUsageJob)->dailyAt('02:00')->onOneServer();
 Schedule::job(new CalculateDailyKPIsJob)->dailyAt('03:00')->onOneServer();
+
+// Deduplication keys expire after 24h but nothing removed the rows: the table
+// grew unbounded with every ingested event. Daily purge keeps it bounded.
+Schedule::job(new PruneDeduplicationKeysJob)->dailyAt('03:15')->onOneServer();
+
+// ExpireOldReports (spec 15) is a per-tenant Action, not a console command:
+// this job fans it out across every team with an active/trialing/past-due
+// subscription, same pattern as CalculateDailyKPIsJob/BuildAnalyticsSnapshotJob.
+// Without this, report retention policy was written but never enforced —
+// expired report files never got deleted from storage.
+Schedule::job(new ExpireOldReportsJob)->dailyAt('03:30')->onOneServer();
+
 Schedule::job(new BuildAnalyticsSnapshotJob)->dailyAt('04:00')->onOneServer();
 
 // Daily driver risk recalculation (Roadmap V2-D1): aggregates safety events
