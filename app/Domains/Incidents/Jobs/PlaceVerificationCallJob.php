@@ -36,6 +36,15 @@ class PlaceVerificationCallJob implements ShouldQueue
 
     public const string USAGE_METER_CODE = 'voice_calls';
 
+    /**
+     * Distinguishable `metadata_json.failure_reason` used when a verification
+     * is closed by {@see IncidentSuppression} instead of a real call outcome.
+     * `StartIncidentCallVerification` reads this to tell "the incident got
+     * claimed mid-flight" apart from a genuinely concluded chain, so a fresh
+     * start after the incident is released is not blocked forever.
+     */
+    public const string SUPPRESSED_FAILURE_REASON = 'suppressed_human_control';
+
     public int $tries = 1;
 
     public function __construct(
@@ -68,8 +77,16 @@ class PlaceVerificationCallJob implements ShouldQueue
         }
 
         // Somebody already claimed it or acknowledged it: a human is on it,
-        // no need to keep calling.
+        // no need to keep calling. Close the attempt terminally — leaving it
+        // Pending would make StartIncidentCallVerification treat it as
+        // in-flight forever and refuse to start a new chain once the
+        // incident is released.
         if (IncidentSuppression::isUnderHumanControl($incident)) {
+            $verification->forceFill([
+                'status' => CallVerificationStatus::Failed,
+                'metadata_json' => ['failure_reason' => self::SUPPRESSED_FAILURE_REASON],
+            ])->save();
+
             return;
         }
 
