@@ -287,7 +287,7 @@ class DashboardController extends Controller
             'id' => (int) $event->id,
             'ts' => $event->occurred_at?->format('H:i:s') ?? '—',
             'provider' => (string) ($event->provider?->name ?? '—'),
-            'type' => (string) ($event->eventType?->code ?? '—'),
+            'type' => (string) ($event->eventType?->name ?? $event->eventType?->code ?? '—'),
             'asset' => (string) ($event->asset?->code ?? $event->asset?->name ?? '—'),
             'decision' => $this->decisionChip($decision),
             'severity' => $this->severityKey($event),
