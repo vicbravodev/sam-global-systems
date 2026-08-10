@@ -99,7 +99,10 @@ class TenantConfigPageController extends Controller
             // risk_tolerance / false_positive_tolerance / media_strategy
             // sólo alimentaban los <select> retirados (Tarea 12).
             'aiProfileOptions' => fn (): array => [
-                'automationLevels' => array_map(fn (AutomationLevel $case) => $case->value, AutomationLevel::cases()),
+                'automationLevels' => array_map(
+                    fn (AutomationLevel $case) => ['value' => $case->value, 'label' => $case->label()],
+                    AutomationLevel::cases(),
+                ),
             ],
             'notificationPolicies' => fn () => TenantNotificationPolicy::withoutGlobalScopes()
                 ->where('team_id', $current_team->id)
@@ -202,7 +205,7 @@ class TenantConfigPageController extends Controller
                     ->all();
             },
             'channelTypes' => fn () => array_map(
-                fn (ChannelType $type) => $type->value,
+                fn (ChannelType $type) => ['value' => $type->value, 'label' => $type->label()],
                 ChannelType::cases(),
             ),
             'branding' => function () use ($current_team): array {

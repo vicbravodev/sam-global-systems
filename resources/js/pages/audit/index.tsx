@@ -16,7 +16,7 @@ interface AuditLogRow {
     actorId: number | null;
     entityType: string | null;
     entityId: number | null;
-    summary: string | null;
+    entityLabel: string | null;
     occurredAt: string | null;
 }
 
@@ -114,22 +114,11 @@ const LOG_COLUMNS: DataTableColumn<AuditLogRow>[] = [
     {
         key: 'entity',
         header: 'Entidad',
+        sortValue: (log) => log.entityLabel,
         cell: (log) => (
-            <span className="font-mono text-2xs text-fg-2">
-                {log.entityType ?? '—'}
+            <span className="text-xs text-fg-2">
+                {log.entityLabel ?? '—'}
                 {log.entityId !== null && ` #${log.entityId}`}
-            </span>
-        ),
-    },
-    {
-        key: 'summary',
-        header: 'Resumen',
-        cell: (log) => (
-            <span
-                className="block max-w-80 truncate text-xs text-fg-2"
-                title={log.summary ?? ''}
-            >
-                {log.summary ?? '—'}
             </span>
         ),
     },

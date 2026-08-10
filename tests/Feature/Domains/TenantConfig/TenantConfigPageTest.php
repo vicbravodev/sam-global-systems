@@ -66,6 +66,8 @@ class TenantConfigPageTest extends TestCase
                 // risk_tolerance/false_positive_tolerance/media_strategy no
                 // tienen control en la UI y dejaron de mandarse.
                 ->has('aiProfileOptions.automationLevels')
+                ->where('aiProfileOptions.automationLevels.0', ['value' => 'conservative', 'label' => 'Conservador'])
+                ->where('channelTypes.0', ['value' => 'email', 'label' => 'Correo'])
                 ->has('notificationPolicies', 1)
                 ->has('escalationConfigs', 1)
                 ->has('escalationConditionFields', 2)

@@ -1,8 +1,6 @@
-import { usePage } from '@inertiajs/react';
+import { Link, usePage } from '@inertiajs/react';
 import { Bell, ChevronRight, Menu, Moon, Search, Sun } from 'lucide-react';
-import { useState } from 'react';
-import { RealtimeStatus } from '@/components/sam/realtime-status';
-import type { RealtimeState } from '@/components/sam/realtime-status';
+import { RealtimeStatusIndicator } from '@/components/realtime-status-indicator';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -27,15 +25,11 @@ export function OpsTopbar({
 }: OpsTopbarProps) {
     const page = usePage();
     const user = page.props.auth.user;
+    const currentTeam = page.props.currentTeam;
     const { appearance, updateAppearance } = useAppearance();
     const isDark = appearance === 'dark';
-    const [realtimeState, setRealtimeState] = useState<RealtimeState>('ok');
     const getInitials = useInitials();
     const userInitials = getInitials(user.name);
-
-    const toggleRealtime = () => {
-        setRealtimeState((prev) => (prev === 'ok' ? 'down' : 'ok'));
-    };
 
     return (
         <header className="flex h-[52px] shrink-0 items-center gap-2.5 border-b border-border bg-background px-3 sm:px-4">
@@ -113,24 +107,20 @@ export function OpsTopbar({
             </button>
 
             {/* Realtime status */}
-            <button
-                type="button"
-                className="cursor-pointer border-none bg-transparent p-0"
-                onClick={toggleRealtime}
-                aria-label="Estado de conexión en tiempo real"
-            >
-                <RealtimeStatus state={realtimeState} />
-            </button>
+            <div title="Estado de la conexión en tiempo real">
+                <RealtimeStatusIndicator />
+            </div>
 
             {/* Notification bell */}
-            <button
-                type="button"
-                className="relative grid h-[30px] w-[30px] cursor-pointer place-items-center rounded-md border border-transparent bg-transparent text-fg-2 transition-colors duration-100 hover:bg-surface-2 hover:text-fg-1"
-                aria-label="Notificaciones"
-            >
-                <Bell className="size-4" />
-                <span className="absolute top-1 right-1.5 h-1.5 w-1.5 rounded-full border-[1.5px] border-background bg-severity-critical" />
-            </button>
+            {currentTeam?.slug && (
+                <Link
+                    href={`/${currentTeam.slug}/notifications`}
+                    className="relative grid h-[30px] w-[30px] cursor-pointer place-items-center rounded-md border border-transparent bg-transparent text-fg-2 transition-colors duration-100 hover:bg-surface-2 hover:text-fg-1"
+                    aria-label="Notificaciones"
+                >
+                    <Bell className="size-4" />
+                </Link>
+            )}
 
             {/* Theme toggle */}
             <button
@@ -165,9 +155,11 @@ export function OpsTopbar({
                             <div className="max-w-[100px] truncate text-xs font-semibold text-fg-1">
                                 {user.name}
                             </div>
-                            <div className="mt-0.5 font-mono text-3xs text-fg-3">
-                                Supervisor
-                            </div>
+                            {currentTeam?.roleLabel && (
+                                <div className="mt-0.5 font-mono text-3xs text-fg-3">
+                                    {currentTeam.roleLabel}
+                                </div>
+                            )}
                         </div>
                     </button>
                 </DropdownMenuTrigger>

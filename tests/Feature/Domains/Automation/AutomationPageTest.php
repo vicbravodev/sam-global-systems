@@ -75,6 +75,8 @@ class AutomationPageTest extends TestCase
                 ->where('executions.0.status', 'failed')
                 ->has('options.actionTypes')
                 ->has('options.triggerTypes')
+                ->where('options.actionTypes.0', ['value' => 'send_email', 'label' => 'Enviar correo'])
+                ->where('options.triggerTypes.0', ['value' => 'decision_outcome', 'label' => 'Resultado de decisión'])
                 ->has('triggerConditionFields.decision_outcome', 3)
                 ->has('triggerConditionFields.incident_created', 2)
                 ->where('triggerConditionFields.incident_created.0.key', 'incident_type')

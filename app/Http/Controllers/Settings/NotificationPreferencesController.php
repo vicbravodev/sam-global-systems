@@ -56,7 +56,7 @@ class NotificationPreferencesController extends Controller
             'channelOptions' => array_map(
                 fn (ChannelType $type) => [
                     'value' => $type->value,
-                    'label' => ucfirst($type->value),
+                    'label' => $type->label(),
                 ],
                 ChannelType::cases(),
             ),

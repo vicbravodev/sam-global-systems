@@ -5,9 +5,12 @@ namespace Tests\Feature\Domains\Notifications;
 use App\Domains\Automation\Enums\ActionType;
 use App\Domains\Automation\Events\ActionExecuted;
 use App\Domains\Automation\Models\ActionExecution;
+use App\Domains\Incidents\Events\IncidentClosed;
 use App\Domains\Incidents\Events\IncidentCreated;
+use App\Domains\Incidents\Events\IncidentStatusChanged;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentPriority;
+use App\Domains\Incidents\Support\IncidentStatusPresenter;
 use App\Domains\Notifications\Enums\NotificationPriority;
 use App\Domains\Notifications\Enums\NotificationSourceType;
 use App\Domains\Notifications\Models\Notification;
@@ -52,6 +55,58 @@ class CrossDomainListenersTest extends TestCase
         $this->assertSame(NotificationPriority::High, $notification->priority);
         $this->assertSame(NotificationSourceType::Incident, $notification->source_type);
         $this->assertSame((string) $incident->id, $notification->source_reference_id);
+        $this->assertSame('Nuevo incidente creado', $notification->subject);
+        $this->assertSame('Se ha reportado un nuevo incidente en tu equipo.', $notification->body_preview);
+    }
+
+    public function test_incident_status_changed_listener_creates_notification_in_spanish(): void
+    {
+        Bus::fake();
+
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+        $this->actingAs($user);
+
+        $incident = $this->incidentWithSeverity($team->id, 'high');
+
+        IncidentStatusChanged::dispatch($incident, 'open', 'in_review');
+
+        $notification = Notification::withoutGlobalScopes()
+            ->where('team_id', $team->id)
+            ->where('event_key', "incident_status:{$incident->id}:in_review")
+            ->first();
+
+        $this->assertNotNull($notification);
+        $this->assertSame('Estado del incidente actualizado', $notification->subject);
+        $this->assertSame(
+            "El incidente #{$incident->id} pasó a ".IncidentStatusPresenter::label('in_review').'.',
+            $notification->body_preview,
+        );
+    }
+
+    public function test_incident_closed_listener_creates_notification_in_spanish(): void
+    {
+        Bus::fake();
+
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+        $this->actingAs($user);
+
+        $incident = $this->incidentWithSeverity($team->id, 'high');
+
+        IncidentClosed::dispatch($incident);
+
+        $notification = Notification::withoutGlobalScopes()
+            ->where('team_id', $team->id)
+            ->where('event_key', "incident_status:{$incident->id}:closed")
+            ->first();
+
+        $this->assertNotNull($notification);
+        $this->assertSame('Estado del incidente actualizado', $notification->subject);
+        $this->assertSame(
+            "El incidente #{$incident->id} pasó a ".IncidentStatusPresenter::label('closed').'.',
+            $notification->body_preview,
+        );
     }
 
     /**

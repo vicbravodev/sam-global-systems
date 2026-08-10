@@ -485,10 +485,9 @@ export function DetailCenter({ incident }: DetailCenterProps) {
                             const Icon = EVIDENCE_ICON[ev.type];
 
                             return (
-                                <button
+                                <div
                                     key={idx}
-                                    type="button"
-                                    className="flex aspect-video flex-col items-center justify-center gap-1 rounded-sm border border-border bg-surface-2 text-fg-3 transition-colors hover:border-border-strong"
+                                    className="flex aspect-video flex-col items-center justify-center gap-1 rounded-sm border border-border bg-surface-2 text-fg-3"
                                 >
                                     <Icon
                                         size={22}
@@ -501,7 +500,7 @@ export function DetailCenter({ incident }: DetailCenterProps) {
                                     <span className="font-mono text-3xs text-fg-3">
                                         {ev.sub}
                                     </span>
-                                </button>
+                                </div>
                             );
                         })}
                     </div>

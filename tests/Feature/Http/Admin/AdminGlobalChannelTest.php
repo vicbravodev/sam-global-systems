@@ -39,7 +39,8 @@ class AdminGlobalChannelTest extends TestCase
                 ->component('admin/channels/index')
                 ->has('channels', 1)
                 ->where('channels.0.id', $global->id)
-                ->where('channels.0.channelType', 'voice'),
+                ->where('channels.0.channelType', 'voice')
+                ->where('channelTypes.0', ['value' => 'email', 'label' => 'Correo']),
         );
     }
 

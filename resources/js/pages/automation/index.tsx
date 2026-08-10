@@ -71,8 +71,8 @@ interface AutomationPageProps {
     workflows: WorkflowRow[];
     executions: ExecutionRow[];
     options: {
-        actionTypes: string[];
-        triggerTypes: string[];
+        actionTypes: { value: string; label: string }[];
+        triggerTypes: { value: string; label: string }[];
         statuses: string[];
     };
     triggerConditionFields: Record<string, ConditionFieldDef[]>;
@@ -89,6 +89,14 @@ const TABS = [
 ] as const;
 
 type TabKey = (typeof TABS)[number]['key'];
+
+const TARGET_TYPES = [
+    { value: 'role', label: 'Rol' },
+    { value: 'user', label: 'Usuario' },
+    { value: 'email', label: 'Correo' },
+    { value: 'phone', label: 'Teléfono' },
+    { value: 'url', label: 'URL' },
+] as const;
 
 const STATUS_COLOR: Record<string, string> = {
     completed: 'text-severity-low',
@@ -321,8 +329,8 @@ function WorkflowBuilder({
                     className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-xs"
                 >
                     {options.triggerTypes.map((trigger) => (
-                        <option key={trigger} value={trigger}>
-                            trigger: {trigger}
+                        <option key={trigger.value} value={trigger.value}>
+                            {trigger.label}
                         </option>
                     ))}
                 </select>
@@ -356,8 +364,8 @@ function WorkflowBuilder({
                         className="rounded-md border border-border bg-surface-2 px-2 py-1 text-xs"
                     >
                         {options.actionTypes.map((action) => (
-                            <option key={action} value={action}>
-                                {action}
+                            <option key={action.value} value={action.value}>
+                                {action.label}
                             </option>
                         ))}
                     </select>
@@ -368,13 +376,11 @@ function WorkflowBuilder({
                         }
                         className="rounded-md border border-border bg-surface-2 px-2 py-1 text-xs"
                     >
-                        {['role', 'user', 'email', 'phone', 'url'].map(
-                            (target) => (
-                                <option key={target} value={target}>
-                                    {target}
-                                </option>
-                            ),
-                        )}
+                        {TARGET_TYPES.map((target) => (
+                            <option key={target.value} value={target.value}>
+                                {target.label}
+                            </option>
+                        ))}
                     </select>
                     {step.target_type === 'user' ? (
                         <Combobox

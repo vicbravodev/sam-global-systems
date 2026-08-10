@@ -4,6 +4,7 @@ namespace App\Domains\Notifications\Listeners;
 
 use App\Domains\Incidents\Events\IncidentClosed;
 use App\Domains\Incidents\Events\IncidentStatusChanged;
+use App\Domains\Incidents\Support\IncidentStatusPresenter;
 use App\Domains\Notifications\Actions\SendNotification;
 use App\Domains\Notifications\Enums\NotificationPriority;
 use App\Domains\Notifications\Enums\NotificationSourceType;
@@ -38,8 +39,8 @@ class NotifyOnIncidentStatusChanged
                 'incident_id' => $incident->id,
                 'new_status' => $newStatus,
             ],
-            subject: 'Incident status updated',
-            bodyPreview: "Incident #{$incident->id} is now {$newStatus}.",
+            subject: 'Estado del incidente actualizado',
+            bodyPreview: "El incidente #{$incident->id} pasó a ".IncidentStatusPresenter::label($newStatus).'.',
         );
     }
 }
