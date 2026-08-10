@@ -553,18 +553,18 @@ function AiTab({
     canManage: boolean;
 }) {
     const base = useTeamBase();
+    // risk_tolerance / false_positive_tolerance / media_strategy ya no tienen
+    // control en esta UI (ver comentario más abajo) y dejaron de mandarse en
+    // el payload de guardado. UpdateTenantAIProfileRequest los relajó de
+    // `required` a `sometimes`, y el controlador conserva el valor
+    // persistido actual cuando faltan — así que ya no hace falta re-enviar
+    // un snapshot capturado al montar el formulario (que podía pisar un
+    // cambio hecho por otra vía mientras la pestaña seguía abierta).
     const [form, setForm] = useState({
         profile_code: profile.profileCode ?? 'custom',
         name: profile.name ?? 'Perfil del tenant',
         description: profile.description ?? '',
-        // risk_tolerance / false_positive_tolerance / media_strategy ya no
-        // tienen control en esta UI (ver comentario más abajo), pero
-        // UpdateTenantAIProfileRequest los sigue exigiendo como `required`;
-        // se re-envían tal cual llegaron para no romper "Guardar perfil".
-        risk_tolerance: profile.riskTolerance ?? 'medium',
-        false_positive_tolerance: profile.falsePositiveTolerance ?? 'medium',
         automation_level: profile.automationLevel ?? 'assisted',
-        media_strategy: profile.mediaStrategy ?? 'optional',
     });
     const [saving, setSaving] = useState(false);
 

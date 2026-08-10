@@ -25,10 +25,16 @@ class UpdateTenantAIProfileRequest extends FormRequest
             'profile_code' => ['required', 'string', 'max:255'],
             'name' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:2000'],
-            'risk_tolerance' => ['required', 'string', Rule::enum(RiskTolerance::class)],
-            'false_positive_tolerance' => ['required', 'string', Rule::enum(FalsePositiveTolerance::class)],
+            // Tarea 12 (corrección post-revisión): risk_tolerance /
+            // false_positive_tolerance / media_strategy ya no tienen control
+            // en la UI (settings/tenant-config.tsx), así que el form dejó de
+            // mandarlos. `sometimes` en vez de `required` para no romper el
+            // guardado; TenantAIProfileController::update conserva el valor
+            // persistido actual cuando la clave falta.
+            'risk_tolerance' => ['sometimes', 'string', Rule::enum(RiskTolerance::class)],
+            'false_positive_tolerance' => ['sometimes', 'string', Rule::enum(FalsePositiveTolerance::class)],
             'automation_level' => ['required', 'string', Rule::enum(AutomationLevel::class)],
-            'media_strategy' => ['required', 'string', Rule::enum(MediaStrategy::class)],
+            'media_strategy' => ['sometimes', 'string', Rule::enum(MediaStrategy::class)],
             'prompt_overrides' => ['nullable', 'array'],
             'human_review_policy' => ['nullable', 'array'],
         ];
