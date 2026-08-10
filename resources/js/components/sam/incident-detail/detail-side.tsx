@@ -7,6 +7,7 @@ import {
     X,
 } from 'lucide-react';
 import { useState } from 'react';
+import { TERMINAL_STATUSES } from '@/components/sam';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -297,9 +298,7 @@ export function DetailSide({ incident }: DetailSideProps) {
         incident.claimedBy !== null && incident.claimedBy.id === currentUserId;
     const claimedByOther = incident.claimedBy !== null && !claimedByMe;
 
-    const isTerminal = ['resolved', 'closed', 'discarded'].includes(
-        incident.status,
-    );
+    const isTerminal = TERMINAL_STATUSES.includes(incident.status);
 
     return (
         <div className="flex flex-col gap-5">

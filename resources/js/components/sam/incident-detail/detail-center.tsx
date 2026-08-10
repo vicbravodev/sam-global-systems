@@ -442,7 +442,7 @@ function CommentComposer() {
                         void submit();
                     }
                 }}
-                placeholder="Escribí un comentario…"
+                placeholder="Escribe un comentario…"
                 className="min-w-0 border-none bg-transparent text-sm text-fg-1 outline-none placeholder:text-fg-3"
             />
             <Select

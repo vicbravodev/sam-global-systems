@@ -510,7 +510,7 @@ function GeneralTab({
                             className="min-h-0 gap-0.5 px-0 py-4"
                             icon={SlidersHorizontal}
                             title="Sin ajustes adicionales"
-                            description="Aquí aparecerán los settings que no tienen un control dedicado en esta página."
+                            description="Aquí aparecerán los ajustes que no tienen un control dedicado en esta página."
                         />
                     ) : (
                         // D3: scroll horizontal contenido + ancho mínimo para que

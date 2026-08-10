@@ -120,6 +120,17 @@ function manualReference(): string {
     return `manual-${Date.now()}`;
 }
 
+function labelFor(
+    options: { value: string; label: string }[],
+    value: string | null,
+): string {
+    if (value === null) {
+        return '—';
+    }
+
+    return options.find((o) => o.value === value)?.label ?? value;
+}
+
 function useTeamBase(): string | null {
     const page = usePage();
     const slug =
@@ -483,7 +494,7 @@ function WorkflowBuilder({
                     )}
                     <Input
                         type="number"
-                        title="delay en segundos"
+                        title="retraso en segundos"
                         aria-label="Retraso en segundos"
                         value={step.delay_seconds}
                         onChange={(e) =>
@@ -764,7 +775,10 @@ function WorkflowsTab({
                         <CardTitle className="flex flex-wrap items-center gap-2 text-base">
                             {workflow.name}
                             <Badge variant="outline" className="text-fg-3">
-                                {workflow.triggerType}
+                                {labelFor(
+                                    options.triggerTypes,
+                                    workflow.triggerType,
+                                )}
                             </Badge>
                             <Badge
                                 variant="outline"
@@ -835,7 +849,12 @@ function WorkflowsTab({
                                         variant="outline"
                                         className="font-mono text-3xs"
                                     >
-                                        {String(step.action_type ?? '—')}
+                                        {step.action_type
+                                            ? labelFor(
+                                                  options.actionTypes,
+                                                  step.action_type,
+                                              )
+                                            : '—'}
                                     </Badge>
                                     <span className="text-fg-3">→</span>
                                     {String(step.target_type ?? '')}{' '}
