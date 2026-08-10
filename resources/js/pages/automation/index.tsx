@@ -298,7 +298,14 @@ function WorkflowBuilder({
         <div className="flex flex-col gap-2 rounded-md border border-border p-3">
             <div className="flex flex-wrap gap-2">
                 <div className="flex flex-col gap-1">
+                    <Label
+                        htmlFor="wf-code"
+                        className="text-2xs text-fg-3 uppercase"
+                    >
+                        Código
+                    </Label>
                     <Input
+                        id="wf-code"
                         placeholder="code (ej. critico-notifica)"
                         value={form.code}
                         aria-invalid={Boolean(errors.code)}
@@ -313,7 +320,14 @@ function WorkflowBuilder({
                     />
                 </div>
                 <div className="flex flex-col gap-1">
+                    <Label
+                        htmlFor="wf-name"
+                        className="text-2xs text-fg-3 uppercase"
+                    >
+                        Nombre
+                    </Label>
                     <Input
+                        id="wf-name"
                         placeholder="Nombre"
                         value={form.name}
                         aria-invalid={Boolean(errors.name)}
@@ -327,27 +341,35 @@ function WorkflowBuilder({
                         className="max-w-64 text-xs"
                     />
                 </div>
-                <Select
-                    value={form.triggerType}
-                    onValueChange={(value) => {
-                        setForm({ ...form, triggerType: value });
-                        setConditions({});
-                    }}
-                >
-                    <SelectTrigger className="h-9">
-                        <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {options.triggerTypes.map((trigger) => (
-                            <SelectItem
-                                key={trigger.value}
-                                value={trigger.value}
-                            >
-                                {trigger.label}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
+                <div className="flex flex-col gap-1">
+                    <Label
+                        htmlFor="wf-trigger-type"
+                        className="text-2xs text-fg-3 uppercase"
+                    >
+                        Disparador
+                    </Label>
+                    <Select
+                        value={form.triggerType}
+                        onValueChange={(value) => {
+                            setForm({ ...form, triggerType: value });
+                            setConditions({});
+                        }}
+                    >
+                        <SelectTrigger id="wf-trigger-type" className="h-9">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {options.triggerTypes.map((trigger) => (
+                                <SelectItem
+                                    key={trigger.value}
+                                    value={trigger.value}
+                                >
+                                    {trigger.label}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
             </div>
 
             <span className="text-2xs text-fg-3 uppercase">
@@ -376,7 +398,7 @@ function WorkflowBuilder({
                             setStep(index, 'action_type', value)
                         }
                     >
-                        <SelectTrigger className="h-9">
+                        <SelectTrigger aria-label="Acción" className="h-9">
                             <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -396,7 +418,10 @@ function WorkflowBuilder({
                             setStep(index, 'target_type', value)
                         }
                     >
-                        <SelectTrigger className="h-9">
+                        <SelectTrigger
+                            aria-label="Tipo de destino"
+                            className="h-9"
+                        >
                             <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -412,6 +437,7 @@ function WorkflowBuilder({
                     </Select>
                     {step.target_type === 'user' ? (
                         <Combobox
+                            aria-label="Destino"
                             options={teamTargets.users}
                             value={
                                 step.target_reference === ''
@@ -426,6 +452,7 @@ function WorkflowBuilder({
                         />
                     ) : step.target_type === 'role' ? (
                         <Combobox
+                            aria-label="Destino"
                             options={teamTargets.roles}
                             value={
                                 step.target_reference === ''
@@ -440,6 +467,7 @@ function WorkflowBuilder({
                         />
                     ) : (
                         <Input
+                            aria-label="Destino"
                             placeholder="destino (email, tel, url…)"
                             value={step.target_reference}
                             onChange={(e) =>
@@ -455,6 +483,7 @@ function WorkflowBuilder({
                     <Input
                         type="number"
                         title="delay en segundos"
+                        aria-label="Retraso en segundos"
                         value={step.delay_seconds}
                         onChange={(e) =>
                             setStep(index, 'delay_seconds', e.target.value)
@@ -568,8 +597,11 @@ function EditWorkflowDialog({
                 </DialogHeader>
                 <div className="flex flex-col gap-3">
                     <div className="flex flex-col gap-1">
-                        <Label className="text-xs">Nombre</Label>
+                        <Label htmlFor="wf-edit-name" className="text-xs">
+                            Nombre
+                        </Label>
                         <Input
+                            id="wf-edit-name"
                             value={name}
                             aria-invalid={Boolean(errors.name)}
                             onChange={(e) => setName(e.target.value)}
@@ -577,8 +609,14 @@ function EditWorkflowDialog({
                         <InputError message={errors.name} className="text-xs" />
                     </div>
                     <div className="flex flex-col gap-1">
-                        <Label className="text-xs">Descripción</Label>
+                        <Label
+                            htmlFor="wf-edit-description"
+                            className="text-xs"
+                        >
+                            Descripción
+                        </Label>
                         <textarea
+                            id="wf-edit-description"
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
                             rows={3}

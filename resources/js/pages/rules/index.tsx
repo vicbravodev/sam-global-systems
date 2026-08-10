@@ -264,10 +264,14 @@ function RuleConditionsEditor({
             {canEdit ? (
                 <div className="flex flex-wrap gap-2">
                     <div className="flex flex-col gap-1">
-                        <Label className="text-2xs text-fg-3 uppercase">
+                        <Label
+                            htmlFor={`rule-${rule.id}-code`}
+                            className="text-2xs text-fg-3 uppercase"
+                        >
                             Código (no editable)
                         </Label>
                         <Input
+                            id={`rule-${rule.id}-code`}
                             value={rule.code}
                             disabled
                             title="El código identifica la regla y no se puede cambiar."
@@ -275,10 +279,14 @@ function RuleConditionsEditor({
                         />
                     </div>
                     <div className="flex flex-col gap-1">
-                        <Label className="text-2xs text-fg-3 uppercase">
+                        <Label
+                            htmlFor={`rule-${rule.id}-name`}
+                            className="text-2xs text-fg-3 uppercase"
+                        >
                             Nombre
                         </Label>
                         <Input
+                            id={`rule-${rule.id}-name`}
                             value={meta.name}
                             aria-invalid={Boolean(errors.name)}
                             onChange={(e) =>
@@ -292,10 +300,14 @@ function RuleConditionsEditor({
                         />
                     </div>
                     <div className="flex flex-col gap-1">
-                        <Label className="text-2xs text-fg-3 uppercase">
+                        <Label
+                            htmlFor={`rule-${rule.id}-priority`}
+                            className="text-2xs text-fg-3 uppercase"
+                        >
                             Prioridad
                         </Label>
                         <Input
+                            id={`rule-${rule.id}-priority`}
                             type="number"
                             value={meta.priority}
                             aria-invalid={Boolean(errors.priority)}
@@ -310,7 +322,10 @@ function RuleConditionsEditor({
                         />
                     </div>
                     <div className="flex flex-col gap-1">
-                        <Label className="text-2xs text-fg-3 uppercase">
+                        <Label
+                            htmlFor={`rule-${rule.id}-outcome`}
+                            className="text-2xs text-fg-3 uppercase"
+                        >
                             Outcome
                         </Label>
                         <Select
@@ -327,7 +342,10 @@ function RuleConditionsEditor({
                                 })
                             }
                         >
-                            <SelectTrigger className="h-9">
+                            <SelectTrigger
+                                id={`rule-${rule.id}-outcome`}
+                                className="h-9"
+                            >
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -350,10 +368,14 @@ function RuleConditionsEditor({
                         />
                     </div>
                     <div className="flex w-full flex-col gap-1">
-                        <Label className="text-2xs text-fg-3 uppercase">
+                        <Label
+                            htmlFor={`rule-${rule.id}-description`}
+                            className="text-2xs text-fg-3 uppercase"
+                        >
                             Descripción
                         </Label>
                         <Input
+                            id={`rule-${rule.id}-description`}
                             value={meta.description}
                             onChange={(e) =>
                                 setMeta({
@@ -371,7 +393,7 @@ function RuleConditionsEditor({
                     del tenant para ajustar su comportamiento.
                 </p>
             )}
-            <Label className="text-2xs text-fg-3 uppercase">Condiciones</Label>
+            <span className="text-2xs text-fg-3 uppercase">Condiciones</span>
             <ConditionBuilder
                 variant="tree"
                 fields={fields}
@@ -551,7 +573,14 @@ function DecisionRulesTab({
                         <div className="mb-4 flex flex-col gap-2 rounded-md border border-border p-3">
                             <div className="flex flex-wrap gap-2">
                                 <div className="flex flex-col gap-1">
+                                    <Label
+                                        htmlFor="rule-new-code"
+                                        className="text-2xs text-fg-3 uppercase"
+                                    >
+                                        Código
+                                    </Label>
                                     <Input
+                                        id="rule-new-code"
                                         placeholder="code (ej. panic-vip)"
                                         value={form.code}
                                         aria-invalid={Boolean(errors.code)}
@@ -569,7 +598,14 @@ function DecisionRulesTab({
                                     />
                                 </div>
                                 <div className="flex flex-col gap-1">
+                                    <Label
+                                        htmlFor="rule-new-name"
+                                        className="text-2xs text-fg-3 uppercase"
+                                    >
+                                        Nombre
+                                    </Label>
                                     <Input
+                                        id="rule-new-name"
                                         placeholder="Nombre"
                                         value={form.name}
                                         aria-invalid={Boolean(errors.name)}
@@ -587,6 +623,12 @@ function DecisionRulesTab({
                                     />
                                 </div>
                                 <div className="flex flex-col gap-1">
+                                    <Label
+                                        htmlFor="rule-new-scope"
+                                        className="text-2xs text-fg-3 uppercase"
+                                    >
+                                        Ámbito
+                                    </Label>
                                     <Select
                                         value={form.scope}
                                         onValueChange={(value) =>
@@ -596,7 +638,10 @@ function DecisionRulesTab({
                                             })
                                         }
                                     >
-                                        <SelectTrigger className="h-9">
+                                        <SelectTrigger
+                                            id="rule-new-scope"
+                                            className="h-9"
+                                        >
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
@@ -616,7 +661,14 @@ function DecisionRulesTab({
                                     />
                                 </div>
                                 <div className="flex flex-col gap-1">
+                                    <Label
+                                        htmlFor="rule-new-priority"
+                                        className="text-2xs text-fg-3 uppercase"
+                                    >
+                                        Prioridad
+                                    </Label>
                                     <Input
+                                        id="rule-new-priority"
                                         type="number"
                                         placeholder="prioridad"
                                         value={form.priority}
@@ -635,6 +687,12 @@ function DecisionRulesTab({
                                     />
                                 </div>
                                 <div className="flex flex-col gap-1">
+                                    <Label
+                                        htmlFor="rule-new-outcome"
+                                        className="text-2xs text-fg-3 uppercase"
+                                    >
+                                        Outcome
+                                    </Label>
                                     <Select
                                         value={
                                             form.outcomeId === ''
@@ -651,7 +709,10 @@ function DecisionRulesTab({
                                             })
                                         }
                                     >
-                                        <SelectTrigger className="h-9">
+                                        <SelectTrigger
+                                            id="rule-new-outcome"
+                                            className="h-9"
+                                        >
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
@@ -674,8 +735,12 @@ function DecisionRulesTab({
                                         className="text-xs"
                                     />
                                 </div>
-                                <label className="flex items-center gap-1 text-xs text-fg-2">
+                                <label
+                                    htmlFor="rule-new-stop"
+                                    className="flex items-center gap-1 text-xs text-fg-2"
+                                >
                                     <input
+                                        id="rule-new-stop"
                                         type="checkbox"
                                         checked={form.stopProcessing}
                                         onChange={(e) =>
@@ -689,7 +754,9 @@ function DecisionRulesTab({
                                     stop
                                 </label>
                             </div>
-                            <Label className="text-xs">Condiciones</Label>
+                            <span className="text-xs text-fg-3">
+                                Condiciones
+                            </span>
                             <ConditionBuilder
                                 variant="tree"
                                 fields={conditionFields}
@@ -950,7 +1017,10 @@ function MappingRulesTab({
                                 setForm({ ...form, providerId: value })
                             }
                         >
-                            <SelectTrigger className="h-9">
+                            <SelectTrigger
+                                aria-label="Proveedor"
+                                className="h-9"
+                            >
                                 <SelectValue placeholder="Proveedor…" />
                             </SelectTrigger>
                             <SelectContent>
@@ -965,6 +1035,7 @@ function MappingRulesTab({
                             </SelectContent>
                         </Select>
                         <Input
+                            aria-label="Evento externo del proveedor"
                             placeholder="evento externo (behaviorLabel)"
                             value={form.externalEventType}
                             onChange={(e) =>
@@ -985,7 +1056,10 @@ function MappingRulesTab({
                                 })
                             }
                         >
-                            <SelectTrigger className="h-9">
+                            <SelectTrigger
+                                aria-label="Tipo de evento"
+                                className="h-9"
+                            >
                                 <SelectValue placeholder="Tipo de evento…" />
                             </SelectTrigger>
                             <SelectContent>
@@ -1013,7 +1087,10 @@ function MappingRulesTab({
                                 })
                             }
                         >
-                            <SelectTrigger className="h-9">
+                            <SelectTrigger
+                                aria-label="Severidad"
+                                className="h-9"
+                            >
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -1032,6 +1109,7 @@ function MappingRulesTab({
                         </Select>
                         <Input
                             type="number"
+                            aria-label="Prioridad"
                             value={form.priority}
                             onChange={(e) =>
                                 setForm({ ...form, priority: e.target.value })
@@ -1039,9 +1117,9 @@ function MappingRulesTab({
                             className="w-24 text-xs"
                         />
                         <div className="w-full">
-                            <Label className="mb-2 block text-xs">
+                            <span className="mb-2 block text-xs text-fg-3">
                                 Condiciones sobre el payload (opcional)
-                            </Label>
+                            </span>
                             <ConditionBuilder
                                 variant="flat-equality"
                                 fields={[]}

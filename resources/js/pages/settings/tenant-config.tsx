@@ -410,8 +410,12 @@ function GeneralTab({
                     </CardTitle>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-4 text-sm">
-                    <label className="flex items-start gap-2">
+                    <label
+                        htmlFor="tc-auto-request"
+                        className="flex items-start gap-2"
+                    >
                         <input
+                            id="tc-auto-request"
                             type="checkbox"
                             checked={autoRequest}
                             disabled={!canManage}
@@ -826,8 +830,12 @@ function NotificationsTab({
                                 }
                                 className="w-56 text-xs"
                             />
-                            <label className="flex items-center gap-1 text-xs text-fg-2">
+                            <label
+                                htmlFor={`tc-policy-active-${index}`}
+                                className="flex items-center gap-1 text-xs text-fg-2"
+                            >
                                 <input
+                                    id={`tc-policy-active-${index}`}
                                     type="checkbox"
                                     checked={policy.isActive}
                                     disabled={!canManage}
@@ -863,9 +871,11 @@ function NotificationsTab({
                             {CHANNEL_OPTIONS.map((channel) => (
                                 <label
                                     key={channel}
+                                    htmlFor={`tc-policy-${index}-channel-${channel}`}
                                     className="flex items-center gap-1 text-xs text-fg-2"
                                 >
                                     <input
+                                        id={`tc-policy-${index}-channel-${channel}`}
                                         type="checkbox"
                                         checked={policy.allowedChannels.includes(
                                             channel,
@@ -1163,9 +1173,13 @@ function EscalationStepsEditor({
                     <span className="w-5 text-center font-mono text-2xs text-fg-3">
                         {index + 1}
                     </span>
-                    <label className="flex items-center gap-1.5 text-xs text-fg-2">
+                    <label
+                        htmlFor={`esc-step-${step.id}-delay`}
+                        className="flex items-center gap-1.5 text-xs text-fg-2"
+                    >
                         Esperar
                         <Input
+                            id={`esc-step-${step.id}-delay`}
                             type="number"
                             min="0"
                             value={step.delayMinutes}
@@ -1240,9 +1254,13 @@ function EscalationStepsEditor({
                         disabled={disabled}
                         className="h-8 w-64 text-xs"
                     />
-                    <label className="flex items-center gap-1.5 text-xs text-fg-2">
+                    <label
+                        htmlFor={`esc-step-${step.id}-attempts`}
+                        className="flex items-center gap-1.5 text-xs text-fg-2"
+                    >
                         Intentos
                         <Input
+                            id={`esc-step-${step.id}-attempts`}
                             type="number"
                             min="1"
                             value={step.attempts}
@@ -2085,9 +2103,13 @@ function BrandingTab({
                         </div>
                     )}
                     {canManage && (
-                        <label className="cursor-pointer text-xs text-fg-2 underline">
+                        <label
+                            htmlFor="tc-logo-upload"
+                            className="cursor-pointer text-xs text-fg-2 underline"
+                        >
                             {uploading ? 'Subiendo…' : 'Subir logo'}
                             <input
+                                id="tc-logo-upload"
                                 type="file"
                                 accept="image/*"
                                 className="hidden"
