@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Domains\Incidents;
 
+use App\Domains\Incidents\Actions\ClaimIncident;
 use App\Domains\Incidents\Enums\IncidentStatusCode;
 use App\Domains\Incidents\Enums\TimelineEntryType;
 use App\Domains\Incidents\Events\IncidentStatusChanged;
@@ -9,6 +10,7 @@ use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentPriority;
 use App\Domains\Incidents\Models\IncidentStatus;
 use App\Domains\Incidents\Models\IncidentType;
+use App\Enums\TeamRole;
 use App\Models\User;
 use Database\Seeders\AccessSeeder;
 use Database\Seeders\IncidentsSeeder;
@@ -238,6 +240,127 @@ class IncidentInboxActionsTest extends TestCase
         );
 
         $response->assertStatus(403);
+    }
+
+    public function test_claim_web_route_takes_the_incident(): void
+    {
+        $user = User::factory()->create();
+        $incident = $this->openIncidentFor($user);
+
+        $response = $this->actingAs($user)->postJson(
+            route('incidents.claim', [
+                'current_team' => $user->currentTeam->slug,
+                'incident' => $incident->id,
+            ]),
+        );
+
+        $response->assertStatus(200);
+        $this->assertDatabaseHas('incidents', [
+            'id' => $incident->id,
+            'claimed_by_user_id' => $user->id,
+        ]);
+    }
+
+    /**
+     * Perder la carrera no es ni un 403 ni un 422: el incidente existe y el
+     * usuario tiene permiso, simplemente llegó tarde. 409 permite a la
+     * bandeja distinguir ese caso y mostrar quién lo tiene.
+     */
+    public function test_claiming_an_incident_already_taken_returns_conflict(): void
+    {
+        $ana = User::factory()->create();
+        $incident = $this->openIncidentFor($ana);
+
+        $beto = User::factory()->create();
+        $ana->currentTeam->members()->attach($beto, ['role' => TeamRole::Admin->value]);
+        $beto->switchTeam($ana->currentTeam);
+
+        app(ClaimIncident::class)->execute($incident, $ana);
+
+        $response = $this->actingAs($beto)->postJson(
+            route('incidents.claim', [
+                'current_team' => $beto->currentTeam->slug,
+                'incident' => $incident->id,
+            ]),
+        );
+
+        $response->assertStatus(409);
+        $this->assertSame($ana->id, $incident->fresh()->claimed_by_user_id);
+    }
+
+    public function test_release_web_route_frees_the_incident(): void
+    {
+        $user = User::factory()->create();
+        $incident = $this->openIncidentFor($user);
+
+        app(ClaimIncident::class)->execute($incident, $user);
+
+        $response = $this->actingAs($user)->postJson(
+            route('incidents.release', [
+                'current_team' => $user->currentTeam->slug,
+                'incident' => $incident->id,
+            ]),
+        );
+
+        $response->assertStatus(200);
+        $this->assertNull($incident->fresh()->claimed_by_user_id);
+    }
+
+    public function test_releasing_an_incident_held_by_someone_else_returns_conflict(): void
+    {
+        $ana = User::factory()->create();
+        $incident = $this->openIncidentFor($ana);
+
+        $beto = User::factory()->create();
+        $ana->currentTeam->members()->attach($beto, ['role' => TeamRole::Admin->value]);
+        $beto->switchTeam($ana->currentTeam);
+
+        app(ClaimIncident::class)->execute($incident, $ana);
+
+        $response = $this->actingAs($beto)->postJson(
+            route('incidents.release', [
+                'current_team' => $beto->currentTeam->slug,
+                'incident' => $incident->id,
+            ]),
+        );
+
+        $response->assertStatus(409);
+        $this->assertSame($ana->id, $incident->fresh()->claimed_by_user_id);
+    }
+
+    public function test_claim_of_a_terminal_incident_is_forbidden_by_policy(): void
+    {
+        $user = User::factory()->create();
+        $closed = IncidentStatus::query()->where('code', IncidentStatusCode::Closed->value)->first();
+        $incident = Incident::factory()->create([
+            'team_id' => $user->currentTeam->id,
+            'incident_status_id' => $closed->id,
+        ]);
+
+        $response = $this->actingAs($user)->postJson(
+            route('incidents.claim', [
+                'current_team' => $user->currentTeam->slug,
+                'incident' => $incident->id,
+            ]),
+        );
+
+        $response->assertStatus(403);
+    }
+
+    public function test_claim_is_tenant_isolated(): void
+    {
+        $user = User::factory()->create();
+        $other = User::factory()->create();
+        $foreign = Incident::factory()->create(['team_id' => $other->currentTeam->id]);
+
+        $response = $this->actingAs($user)->postJson(
+            route('incidents.claim', [
+                'current_team' => $user->currentTeam->slug,
+                'incident' => $foreign->id,
+            ]),
+        );
+
+        $response->assertStatus(404);
     }
 
     public function test_actions_are_tenant_isolated(): void
