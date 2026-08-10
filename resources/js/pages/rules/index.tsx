@@ -559,7 +559,7 @@ function DecisionRulesTab({
                 <CardHeader>
                     <CardTitle className="flex items-center justify-between text-sm uppercase">
                         Reglas de decisión ({rules.length})
-                        {canManage && (
+                        {canManage && (rules.length > 0 || creating) && (
                             <Button
                                 size="sm"
                                 variant={creating ? 'ghost' : 'outline'}
@@ -1012,7 +1012,7 @@ function MappingRulesTab({
             <CardHeader>
                 <CardTitle className="flex items-center justify-between text-sm uppercase">
                     Reglas de mapeo ({rules.length})
-                    {canManage && (
+                    {canManage && (rules.length > 0 || creating) && (
                         <Button
                             size="sm"
                             variant={creating ? 'ghost' : 'outline'}

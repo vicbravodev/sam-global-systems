@@ -1766,7 +1766,7 @@ function ChannelsTab({
             <CardHeader>
                 <CardTitle className="flex items-center justify-between text-sm uppercase">
                     Canales de notificación ({channels.length})
-                    {canManage && (
+                    {canManage && (channels.length > 0 || creating) && (
                         <Button
                             size="sm"
                             variant={creating ? 'ghost' : 'outline'}
