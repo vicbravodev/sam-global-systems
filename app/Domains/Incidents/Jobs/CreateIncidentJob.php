@@ -4,13 +4,13 @@ namespace App\Domains\Incidents\Jobs;
 
 use App\Domains\Incidents\Actions\CreateIncidentFromEvent;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Support\JobFailureReporter;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Log;
 
 class CreateIncidentJob implements ShouldBeUnique, ShouldQueue
 {
@@ -52,9 +52,8 @@ class CreateIncidentJob implements ShouldBeUnique, ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
-        Log::warning('CreateIncidentJob failed', [
+        JobFailureReporter::report(static::class, $exception, [
             'normalized_event_id' => $this->normalizedEventId,
-            'error' => $exception->getMessage(),
         ]);
     }
 }

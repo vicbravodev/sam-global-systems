@@ -5,6 +5,7 @@ namespace App\Domains\Ingestion\Jobs;
 use App\Domains\Ingestion\Actions\IngestSafetyEvent;
 use App\Domains\Integrations\Contracts\ProviderAdapter;
 use App\Domains\Integrations\Models\TenantIntegration;
+use App\Support\JobFailureReporter;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -70,6 +71,10 @@ class PollSafetyEventsJob implements ShouldBeUnique, ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
+        JobFailureReporter::report(static::class, $exception, [
+            'integration_id' => $this->integration->id,
+        ]);
+
         $this->integration->update([
             'last_error_at' => now(),
             'last_error_message' => $exception->getMessage(),

@@ -22,6 +22,7 @@ use App\Domains\Incidents\Models\IncidentType;
 use App\Domains\Incidents\Support\IncidentCreatedBroadcast;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\Tenancy\Actions\RecordUsageEvent;
+use App\Domains\TenantConfig\Actions\ResolveIncidentSla;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -33,6 +34,7 @@ class CreateIncidentFromEvent
         private readonly AddIncidentEvidence $addIncidentEvidence,
         private readonly RecordUsageEvent $recordUsageEvent,
         private readonly ApplyExternalResolution $applyExternalResolution,
+        private readonly ResolveIncidentSla $resolveIncidentSla,
     ) {}
 
     /**
@@ -70,8 +72,9 @@ class CreateIncidentFromEvent
             $summary = $context['summary'] ?? $this->buildSummary($event);
 
             $openedAt = Carbon::instance($event->occurred_at ?? now());
-            $slaDueAt = $priority->sla_seconds !== null
-                ? $openedAt->copy()->addSeconds((int) $priority->sla_seconds)
+            $slaSeconds = $this->resolveIncidentSla->execute($teamId, $priority->id);
+            $slaDueAt = $slaSeconds !== null
+                ? $openedAt->copy()->addSeconds($slaSeconds)
                 : null;
 
             $incident = Incident::query()->create([

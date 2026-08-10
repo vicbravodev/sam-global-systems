@@ -60,7 +60,7 @@ class NormalizationSeederTest extends TestCase
             'geofence_exit', 'geofence_entry', 'vehicle_idle', 'unsafe_parking',
             'device_offline', 'after_hours_movement', 'suspicious_stop',
             'did_not_yield', 'railroad_crossing_violation', 'other_violation',
-            'policy_violation', 'unauthorized_passenger', 'driving_context', 'defensive_driving',
+            'policy_violation', 'unauthorized_passenger', 'driving_context', 'defensive_driving', 'unmapped',
         ];
 
         foreach ($expectedEventTypes as $code) {

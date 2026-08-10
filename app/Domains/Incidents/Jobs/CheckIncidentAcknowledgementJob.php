@@ -9,6 +9,7 @@ use App\Domains\Incidents\Enums\IncidentStatusCode;
 use App\Domains\Incidents\Enums\TimelineActorType;
 use App\Domains\Incidents\Enums\TimelineEntryType;
 use App\Domains\Incidents\Models\Incident;
+use App\Domains\Incidents\Support\IncidentSuppression;
 use App\Domains\Notifications\Actions\SendNotification;
 use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Enums\NotificationPriority;
@@ -67,6 +68,11 @@ class CheckIncidentAcknowledgementJob implements ShouldQueue
 
         // Acknowledged or closed in time: the chain ends silently.
         if ($incident->acknowledged_at !== null || $incident->isTerminal()) {
+            return;
+        }
+
+        // Somebody already claimed it: a human is on it, the watchdog stays quiet.
+        if (IncidentSuppression::isUnderHumanControl($incident)) {
             return;
         }
 

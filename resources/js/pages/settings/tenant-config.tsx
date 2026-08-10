@@ -1,4 +1,4 @@
-import { Head, router, usePage } from '@inertiajs/react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import InputError from '@/components/input-error';
@@ -106,11 +106,10 @@ interface VersionRow {
 interface TenantConfigProps {
     settings: SettingRow[];
     aiProfile: AiProfile;
+    // Sólo se ofrecen las opciones del campo realmente vivo (automation_level);
+    // ver el comentario en AiTab para el resto de la historia.
     aiProfileOptions: {
-        riskTolerances: string[];
-        falsePositiveTolerances: string[];
         automationLevels: string[];
-        mediaStrategies: string[];
     };
     notificationPolicies: NotificationPolicyRow[];
     escalationConfigs: EscalationConfigRow[];
@@ -554,14 +553,18 @@ function AiTab({
     canManage: boolean;
 }) {
     const base = useTeamBase();
+    // risk_tolerance / false_positive_tolerance / media_strategy ya no tienen
+    // control en esta UI (ver comentario más abajo) y dejaron de mandarse en
+    // el payload de guardado. UpdateTenantAIProfileRequest los relajó de
+    // `required` a `sometimes`, y el controlador conserva el valor
+    // persistido actual cuando faltan — así que ya no hace falta re-enviar
+    // un snapshot capturado al montar el formulario (que podía pisar un
+    // cambio hecho por otra vía mientras la pestaña seguía abierta).
     const [form, setForm] = useState({
         profile_code: profile.profileCode ?? 'custom',
         name: profile.name ?? 'Perfil del tenant',
         description: profile.description ?? '',
-        risk_tolerance: profile.riskTolerance ?? 'medium',
-        false_positive_tolerance: profile.falsePositiveTolerance ?? 'medium',
         automation_level: profile.automationLevel ?? 'assisted',
-        media_strategy: profile.mediaStrategy ?? 'optional',
     });
     const [saving, setSaving] = useState(false);
 
@@ -574,24 +577,9 @@ function AiTab({
         options: string[];
     }[] = [
         {
-            key: 'risk_tolerance',
-            label: 'Tolerancia al riesgo',
-            options: options.riskTolerances,
-        },
-        {
-            key: 'false_positive_tolerance',
-            label: 'Tolerancia a falsos positivos',
-            options: options.falsePositiveTolerances,
-        },
-        {
             key: 'automation_level',
             label: 'Nivel de automatización',
             options: options.automationLevels,
-        },
-        {
-            key: 'media_strategy',
-            label: 'Estrategia de media',
-            options: options.mediaStrategies,
         },
     ];
 
@@ -635,6 +623,11 @@ function AiTab({
                         onChange={(e) => set('description', e.target.value)}
                     />
                 </div>
+                {/*
+                  Sólo se expone automation_level: es el único campo de TenantAIProfile que
+                  hoy llega al pipeline (ver app/Domains/AI/Data/TenantAIProfileData.php).
+                  Los demás se retiraron de la UI hasta que exista consumidor real.
+                */}
                 {selects.map((select) => (
                     <div key={select.key} className="flex flex-col gap-1">
                         <Label className="text-xs">{select.label}</Label>
@@ -2231,6 +2224,7 @@ export default function TenantConfigPage() {
     const page = usePage();
     const props = page.props as unknown as TenantConfigProps;
     const [tab, setTab] = useState<TabKey>('general');
+    const base = useTeamBase();
 
     return (
         <>
@@ -2261,6 +2255,14 @@ export default function TenantConfigPage() {
                             {item.label}
                         </button>
                     ))}
+                    {base && (
+                        <Link
+                            href={`${base}/slas`}
+                            className="px-3 py-2 text-sm text-fg-3 transition-colors hover:text-fg-1"
+                        >
+                            Tiempos de respuesta
+                        </Link>
+                    )}
                 </div>
 
                 {tab === 'general' && (

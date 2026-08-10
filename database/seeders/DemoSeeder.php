@@ -169,6 +169,7 @@ class DemoSeeder extends Seeder
             ['code' => 'camera_obstructed', 'name' => 'Camera Obstructed', 'category' => 'compliance', 'severity' => 'high'],
             ['code' => 'geofence_exit', 'name' => 'Geofence Exit', 'category' => 'operational', 'severity' => 'low'],
             ['code' => 'vehicle_idle', 'name' => 'Vehicle Idle', 'category' => 'operational', 'severity' => 'low'],
+            ['code' => 'unmapped', 'name' => 'Unmapped', 'category' => 'operational', 'severity' => 'low'],
         ];
 
         foreach ($types as $def) {

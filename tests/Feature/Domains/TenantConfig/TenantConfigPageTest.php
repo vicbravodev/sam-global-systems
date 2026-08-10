@@ -62,7 +62,10 @@ class TenantConfigPageTest extends TestCase
                 ->has('settings', 1)
                 ->where('settings.0.key', 'media.auto_request_on_critical')
                 ->has('aiProfile')
-                ->has('aiProfileOptions.riskTolerances')
+                // Tarea 12: sólo se manda el catálogo de automation_level;
+                // risk_tolerance/false_positive_tolerance/media_strategy no
+                // tienen control en la UI y dejaron de mandarse.
+                ->has('aiProfileOptions.automationLevels')
                 ->has('notificationPolicies', 1)
                 ->has('escalationConfigs', 1)
                 ->has('escalationConditionFields', 2)

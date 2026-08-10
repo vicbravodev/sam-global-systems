@@ -196,6 +196,15 @@ class IncidentInboxPresenter
 
     private function slaTotal(Incident $incident): int
     {
+        // `sla_due_at` is the vigilance actually scheduled at creation time
+        // (possibly a tenant override via ResolveIncidentSla) — prefer it
+        // over re-deriving from the catalog so the countdown never drifts
+        // from the watchdog. Only incidents predating this column, or with
+        // no SLA at all, fall back to the catalog chain.
+        if ($incident->sla_due_at !== null && $incident->opened_at !== null) {
+            return (int) $incident->opened_at->diffInSeconds($incident->sla_due_at);
+        }
+
         $seconds = $incident->priority?->sla_seconds
             ?? $incident->relatedEvent?->eventSeverity?->response_sla_seconds;
 

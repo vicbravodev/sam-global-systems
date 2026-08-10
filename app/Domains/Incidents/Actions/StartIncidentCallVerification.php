@@ -48,9 +48,18 @@ class StartIncidentCallVerification
             ->first();
 
         if ($existing !== null && $attempt === 1) {
-            // A fresh start never duplicates a chain that is already running
-            // or already produced an outcome.
-            return $existing->status->isInFlight() ? $existing : null;
+            if ($this->wasSuppressedByHumanControl($existing)) {
+                // The previous chain never produced a real outcome — it was
+                // closed only because a human had claimed/acknowledged the
+                // incident (Roadmap producción semana 1, Task 5). Once the
+                // incident is released, a fresh start restarts the chain as
+                // the next attempt instead of staying blocked forever.
+                $attempt = $existing->attempt + 1;
+            } else {
+                // A fresh start never duplicates a chain that is already
+                // running or already produced an outcome.
+                return $existing->status->isInFlight() ? $existing : null;
+            }
         }
 
         if ($existing !== null && $existing->attempt >= $attempt) {
@@ -122,5 +131,11 @@ class StartIncidentCallVerification
     private function isPhone(mixed $contact): bool
     {
         return is_string($contact) && preg_match('/^\+[0-9]{8,15}$/', trim($contact)) === 1;
+    }
+
+    private function wasSuppressedByHumanControl(IncidentCallVerification $verification): bool
+    {
+        return $verification->status === CallVerificationStatus::Failed
+            && ($verification->metadata_json['failure_reason'] ?? null) === PlaceVerificationCallJob::SUPPRESSED_FAILURE_REASON;
     }
 }

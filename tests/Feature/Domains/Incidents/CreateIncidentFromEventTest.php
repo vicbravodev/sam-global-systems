@@ -18,11 +18,13 @@ use App\Domains\Incidents\Events\IncidentCreated;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentEventLink;
 use App\Domains\Incidents\Models\IncidentEvidence;
+use App\Domains\Incidents\Models\IncidentPriority;
 use App\Domains\Incidents\Models\IncidentTimeline;
 use App\Domains\Normalization\Models\EventCategory;
 use App\Domains\Normalization\Models\EventType;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\Tenancy\Models\UsageEvent;
+use App\Domains\TenantConfig\Models\TenantIncidentSla;
 use App\Models\Team;
 use App\Models\User;
 use Database\Seeders\IncidentsSeeder;
@@ -234,6 +236,59 @@ class CreateIncidentFromEventTest extends TestCase
         $incident = app(CreateIncidentFromEvent::class)->execute($event);
 
         $this->assertSame('panic_emergency', $incident->type->code);
+    }
+
+    public function test_sla_due_at_uses_tenant_override_when_present(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+
+        $critical = IncidentPriority::query()->where('code', 'critical')->firstOrFail();
+
+        TenantIncidentSla::factory()->create([
+            'team_id' => $team->id,
+            'incident_priority_id' => $critical->id,
+            'sla_seconds' => 120,
+        ]);
+
+        $occurredAt = now();
+        $event = NormalizedEvent::factory()->create([
+            'team_id' => $team->id,
+            'occurred_at' => $occurredAt,
+        ]);
+
+        $incident = app(CreateIncidentFromEvent::class)->execute($event, [
+            'priority_code' => 'critical',
+        ]);
+
+        $this->assertNotNull($incident->sla_due_at);
+        $this->assertSame(
+            $occurredAt->copy()->addSeconds(120)->toIso8601String(),
+            $incident->sla_due_at->toIso8601String(),
+        );
+    }
+
+    public function test_sla_due_at_falls_back_to_priority_catalog(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+
+        // Catalog default for `critical` (IncidentPrioritySeeder): sla_seconds = 300.
+        $occurredAt = now();
+        $event = NormalizedEvent::factory()->create([
+            'team_id' => $team->id,
+            'occurred_at' => $occurredAt,
+        ]);
+
+        $incident = app(CreateIncidentFromEvent::class)->execute($event, [
+            'priority_code' => 'critical',
+        ]);
+
+        $this->assertNotNull($incident->sla_due_at);
+        $this->assertSame(
+            $occurredAt->copy()->addSeconds(300)->toIso8601String(),
+            $incident->sla_due_at->toIso8601String(),
+        );
     }
 
     public function test_unknown_event_type_resolves_to_the_generic_other_type(): void

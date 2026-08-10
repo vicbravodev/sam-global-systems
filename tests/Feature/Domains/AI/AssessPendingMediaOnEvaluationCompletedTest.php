@@ -7,6 +7,7 @@ use App\Domains\AI\Jobs\EvaluateEventMediaJob;
 use App\Domains\AI\Listeners\AssessPendingMediaOnEvaluationCompleted;
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\AI\Models\AIMediaAssessment;
+use App\Domains\Context\Enums\MediaType;
 use App\Domains\Context\Models\EventMediaContext;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Models\User;
@@ -101,6 +102,29 @@ class AssessPendingMediaOnEvaluationCompletedTest extends TestCase
         $event = NormalizedEvent::factory()->create(['team_id' => $this->teamId]);
 
         $this->handle($this->evaluationForEvent($event));
+
+        Bus::assertNotDispatched(EvaluateEventMediaJob::class);
+    }
+
+    public function test_sweep_ignores_video_and_audio_media(): void
+    {
+        Bus::fake();
+
+        $event = NormalizedEvent::factory()->create(['team_id' => $this->teamId]);
+
+        EventMediaContext::factory()->create([
+            'team_id' => $this->teamId,
+            'normalized_event_id' => $event->id,
+            'media_type' => MediaType::Video,
+        ]);
+        EventMediaContext::factory()->audio()->create([
+            'team_id' => $this->teamId,
+            'normalized_event_id' => $event->id,
+        ]);
+
+        $evaluation = $this->evaluationForEvent($event);
+
+        $this->handle($evaluation);
 
         Bus::assertNotDispatched(EvaluateEventMediaJob::class);
     }
