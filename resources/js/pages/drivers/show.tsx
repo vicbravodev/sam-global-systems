@@ -364,7 +364,7 @@ function AssignmentsCard({
                             <thead>
                                 <tr className="sticky top-0 z-10 border-b border-border bg-surface-3 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
                                     <th className="px-4 py-2 text-left">
-                                        Asset
+                                        Activo
                                     </th>
                                     <th className="w-44 px-2.5 py-2 text-left">
                                         Tipo

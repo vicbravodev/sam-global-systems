@@ -92,7 +92,7 @@ interface AutomationPageProps {
 }
 
 const TABS = [
-    { key: 'workflows', label: 'Workflows' },
+    { key: 'workflows', label: 'Automatizaciones' },
     { key: 'executions', label: 'Ejecuciones' },
 ] as const;
 
@@ -277,7 +277,7 @@ function WorkflowBuilder({
                 })),
                 is_active: true,
             }),
-            'Workflow creado.',
+            'Automatización creada.',
         );
 
         setSubmitting(false);
@@ -520,7 +520,7 @@ function WorkflowBuilder({
                     Añadir paso
                 </Button>
                 <Button size="sm" onClick={create} disabled={submitting}>
-                    {submitting ? 'Creando…' : 'Crear workflow'}
+                    {submitting ? 'Creando…' : 'Crear automatización'}
                 </Button>
             </div>
         </div>
@@ -571,7 +571,7 @@ function EditWorkflowDialog({
                 name,
                 description: description === '' ? null : description,
             }),
-            'Workflow actualizado.',
+            'Automatización actualizada.',
         );
 
         setSaving(false);
@@ -594,7 +594,7 @@ function EditWorkflowDialog({
         >
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Editar workflow</DialogTitle>
+                    <DialogTitle>Editar automatización</DialogTitle>
                 </DialogHeader>
                 <div className="flex flex-col gap-3">
                     <div className="flex flex-col gap-1">
@@ -629,9 +629,10 @@ function EditWorkflowDialog({
                         />
                     </div>
                     <p className="text-2xs text-fg-3">
-                        El código del workflow ({workflow?.code}) identifica el
-                        registro y no se puede cambiar. Para editar los pasos,
-                        elimina el workflow y créalo de nuevo.
+                        El código de la automatización ({workflow?.code})
+                        identifica el registro y no se puede cambiar. Para
+                        editar los pasos, elimina la automatización y créala de
+                        nuevo.
                     </p>
                 </div>
                 <DialogFooter>
@@ -678,7 +679,9 @@ function WorkflowsTab({
             putJson(`${base}/workflows/${workflow.id}`, {
                 is_active: !workflow.isActive,
             }),
-            workflow.isActive ? 'Workflow desactivado.' : 'Workflow activado.',
+            workflow.isActive
+                ? 'Automatización desactivada.'
+                : 'Automatización activada.',
         );
     };
 
@@ -689,7 +692,7 @@ function WorkflowsTab({
 
         const result = await submit(
             deleteJson(`${base}/workflows/${workflow.id}`),
-            'Workflow eliminado.',
+            'Automatización eliminada.',
         );
 
         if (result.ok) {
@@ -706,7 +709,7 @@ function WorkflowsTab({
             postJson(`${base}/workflows/${workflow.id}/trigger`, {
                 source_reference_id: manualReference(),
             }),
-            'Workflow disparado.',
+            'Automatización disparada.',
         );
     };
 
@@ -719,7 +722,7 @@ function WorkflowsTab({
                         variant={creating ? 'ghost' : 'outline'}
                         onClick={() => setCreating(!creating)}
                     >
-                        {creating ? 'Cancelar' : 'Nuevo workflow'}
+                        {creating ? 'Cancelar' : 'Nueva automatización'}
                     </Button>
                 )}
             </div>
@@ -739,14 +742,14 @@ function WorkflowsTab({
                         <EmptyState
                             icon={Workflow}
                             title="Todavía no hay automatizaciones"
-                            description="Un workflow reacciona solo: cuando se crea o escala un incidente puede notificar al equipo, pedir media o ejecutar acciones sin que nadie lo toque."
+                            description="Una automatización reacciona sola: cuando se crea o escala un incidente puede notificar al equipo, pedir media o ejecutar acciones sin que nadie lo toque."
                             action={
                                 canManage ? (
                                     <Button
                                         size="sm"
                                         onClick={() => setCreating(true)}
                                     >
-                                        Nuevo workflow
+                                        Nueva automatización
                                     </Button>
                                 ) : undefined
                             }
@@ -858,10 +861,10 @@ function WorkflowsTab({
 
             <ConfirmDialog
                 open={deleting !== null}
-                title="Eliminar workflow"
+                title="Eliminar automatización"
                 description={
                     deleting
-                        ? `¿Seguro que deseas eliminar el workflow "${deleting.name}"? Dejará de reaccionar a incidentes y decisiones. Esta acción no se puede deshacer.`
+                        ? `¿Seguro que deseas eliminar la automatización "${deleting.name}"? Dejará de reaccionar a incidentes y decisiones. Esta acción no se puede deshacer.`
                         : ''
                 }
                 onConfirm={() => {
@@ -1039,7 +1042,7 @@ export default function AutomationIndex() {
             <div className="flex flex-col gap-4 p-5">
                 <PageHeader
                     title="Automatizaciones"
-                    description="Workflows que reaccionan a decisiones e incidentes, y el historial de acciones ejecutadas."
+                    description="Automatizaciones que reaccionan a decisiones e incidentes, y el historial de acciones ejecutadas."
                 />
 
                 <div className="flex flex-wrap gap-1 border-b border-border">
