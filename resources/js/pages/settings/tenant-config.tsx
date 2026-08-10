@@ -106,11 +106,10 @@ interface VersionRow {
 interface TenantConfigProps {
     settings: SettingRow[];
     aiProfile: AiProfile;
+    // Sólo se ofrecen las opciones del campo realmente vivo (automation_level);
+    // ver el comentario en AiTab para el resto de la historia.
     aiProfileOptions: {
-        riskTolerances: string[];
-        falsePositiveTolerances: string[];
         automationLevels: string[];
-        mediaStrategies: string[];
     };
     notificationPolicies: NotificationPolicyRow[];
     escalationConfigs: EscalationConfigRow[];
@@ -558,6 +557,10 @@ function AiTab({
         profile_code: profile.profileCode ?? 'custom',
         name: profile.name ?? 'Perfil del tenant',
         description: profile.description ?? '',
+        // risk_tolerance / false_positive_tolerance / media_strategy ya no
+        // tienen control en esta UI (ver comentario más abajo), pero
+        // UpdateTenantAIProfileRequest los sigue exigiendo como `required`;
+        // se re-envían tal cual llegaron para no romper "Guardar perfil".
         risk_tolerance: profile.riskTolerance ?? 'medium',
         false_positive_tolerance: profile.falsePositiveTolerance ?? 'medium',
         automation_level: profile.automationLevel ?? 'assisted',
@@ -574,24 +577,9 @@ function AiTab({
         options: string[];
     }[] = [
         {
-            key: 'risk_tolerance',
-            label: 'Tolerancia al riesgo',
-            options: options.riskTolerances,
-        },
-        {
-            key: 'false_positive_tolerance',
-            label: 'Tolerancia a falsos positivos',
-            options: options.falsePositiveTolerances,
-        },
-        {
             key: 'automation_level',
             label: 'Nivel de automatización',
             options: options.automationLevels,
-        },
-        {
-            key: 'media_strategy',
-            label: 'Estrategia de media',
-            options: options.mediaStrategies,
         },
     ];
 
@@ -635,6 +623,11 @@ function AiTab({
                         onChange={(e) => set('description', e.target.value)}
                     />
                 </div>
+                {/*
+                  Sólo se expone automation_level: es el único campo de TenantAIProfile que
+                  hoy llega al pipeline (ver app/Domains/AI/Data/TenantAIProfileData.php).
+                  Los demás se retiraron de la UI hasta que exista consumidor real.
+                */}
                 {selects.map((select) => (
                     <div key={select.key} className="flex flex-col gap-1">
                         <Label className="text-xs">{select.label}</Label>

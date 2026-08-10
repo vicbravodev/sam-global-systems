@@ -7,19 +7,13 @@ import {
     RuleTestPanel,
 } from '@/components/sam/condition-builder';
 import type { ConditionFieldDef } from '@/components/sam/condition-builder';
-import { ConfirmDialog } from '@/components/sam/confirm-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PageHeader } from '@/components/ui/page-header';
-import {
-    deleteJson,
-    postJson,
-    putJson,
-    readErrorPayload,
-} from '@/lib/sam-fetch';
+import { postJson, putJson, readErrorPayload } from '@/lib/sam-fetch';
 
 // ---- Types ----
 
@@ -93,10 +87,15 @@ interface RulesPageProps {
     canManageOverrides: boolean;
 }
 
+// Tarea 12: la pestaña "Overrides del tenant" se retiró de la navegación —
+// se guardan (TenantRuleOverride) pero nada invoca
+// TenantRuleOverrideApplier al evaluar reglas (ver
+// app/Domains/TenantConfig/Actions/ApplyTenantRuleOverrides.php). El
+// controlador, las rutas y los datos se quedan para cuando exista
+// consumidor real.
 const TABS = [
     { key: 'decision', label: 'Reglas de decisión' },
     { key: 'mapping', label: 'Mapeo de eventos' },
-    { key: 'overrides', label: 'Overrides del tenant' },
 ] as const;
 
 type TabKey = (typeof TABS)[number]['key'];
@@ -1084,301 +1083,6 @@ function MappingRulesTab({
     );
 }
 
-// ---- Overrides tab ----
-
-function OverridesTab({
-    overrides,
-    overrideTypes,
-    decisionRuleCodes,
-    canManage,
-}: {
-    overrides: OverrideRow[];
-    overrideTypes: string[];
-    decisionRuleCodes: string[];
-    canManage: boolean;
-}) {
-    const base = useTeamBase();
-    const [creating, setCreating] = useState(false);
-    const [submitting, setSubmitting] = useState(false);
-    const [errors, setErrors] = useState<Record<string, string>>({});
-    const [deleting, setDeleting] = useState<OverrideRow | null>(null);
-    const [form, setForm] = useState({
-        baseRuleCode: '',
-        overrideType: 'force_human_review',
-        config: '{}',
-        reason: '',
-    });
-
-    const create = async () => {
-        // D-01: guard contra doble click.
-        if (base === null || submitting) {
-            return;
-        }
-
-        const nextErrors: Record<string, string> = {};
-        let config: Record<string, unknown> | null = null;
-
-        // D-05: JSON inválido bloquea el submit con error inline.
-        try {
-            const parsed = JSON.parse(form.config) as unknown;
-
-            if (
-                parsed === null ||
-                typeof parsed !== 'object' ||
-                Array.isArray(parsed)
-            ) {
-                nextErrors.override_config =
-                    'La configuración debe ser un objeto JSON.';
-            } else {
-                config = parsed as Record<string, unknown>;
-            }
-        } catch {
-            nextErrors.override_config =
-                'JSON inválido: revisa la sintaxis de la configuración.';
-        }
-
-        if (form.baseRuleCode === '') {
-            nextErrors.base_rule_code = 'Indica el código de la regla base.';
-        }
-
-        if (config === null || Object.keys(nextErrors).length > 0) {
-            setErrors(nextErrors);
-
-            return;
-        }
-
-        setErrors({});
-        setSubmitting(true);
-
-        const result = await submit(
-            postJson(`${base}/overrides`, {
-                base_rule_code: form.baseRuleCode,
-                override_type: form.overrideType,
-                override_config: config,
-                reason: form.reason === '' ? null : form.reason,
-                is_active: true,
-            }),
-            'Override creado.',
-        );
-
-        setSubmitting(false);
-
-        if (result.ok) {
-            setCreating(false);
-        } else {
-            setErrors(result.fieldErrors);
-        }
-    };
-
-    // D-11: eliminar un override ahora exige confirmación (mismo patrón que
-    // roles), igual que el resto de acciones destructivas.
-    const remove = async (override: OverrideRow) => {
-        if (base === null) {
-            return;
-        }
-
-        const result = await submit(
-            deleteJson(`${base}/overrides/${override.id}`),
-            'Override eliminado.',
-        );
-
-        if (result.ok) {
-            setDeleting(null);
-        }
-    };
-
-    return (
-        <Card>
-            <CardHeader>
-                <CardTitle className="flex items-center justify-between text-sm uppercase">
-                    Overrides del tenant ({overrides.length})
-                    {canManage && (
-                        <Button
-                            size="sm"
-                            variant={creating ? 'ghost' : 'outline'}
-                            onClick={() => setCreating(!creating)}
-                        >
-                            {creating ? 'Cancelar' : 'Nuevo override'}
-                        </Button>
-                    )}
-                </CardTitle>
-            </CardHeader>
-            <CardContent>
-                {creating && (
-                    <div className="mb-4 flex flex-col gap-2 rounded-md border border-border p-3">
-                        <div className="flex flex-wrap gap-2">
-                            <div className="flex flex-col gap-1">
-                                <Input
-                                    placeholder="código de regla base"
-                                    list="rule-codes"
-                                    value={form.baseRuleCode}
-                                    aria-invalid={Boolean(
-                                        errors.base_rule_code,
-                                    )}
-                                    onChange={(e) =>
-                                        setForm({
-                                            ...form,
-                                            baseRuleCode: e.target.value,
-                                        })
-                                    }
-                                    className="w-64 font-mono text-xs"
-                                />
-                                <InputError
-                                    message={errors.base_rule_code}
-                                    className="max-w-64 text-xs"
-                                />
-                            </div>
-                            <datalist id="rule-codes">
-                                {decisionRuleCodes.map((code) => (
-                                    <option key={code} value={code} />
-                                ))}
-                            </datalist>
-                            <div className="flex flex-col gap-1">
-                                <select
-                                    value={form.overrideType}
-                                    onChange={(e) =>
-                                        setForm({
-                                            ...form,
-                                            overrideType: e.target.value,
-                                        })
-                                    }
-                                    className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-xs"
-                                >
-                                    {overrideTypes.map((type) => (
-                                        <option key={type} value={type}>
-                                            {type}
-                                        </option>
-                                    ))}
-                                </select>
-                                <InputError
-                                    message={errors.override_type}
-                                    className="text-xs"
-                                />
-                            </div>
-                            <div className="flex flex-col gap-1">
-                                <Input
-                                    placeholder="motivo (opcional)"
-                                    value={form.reason}
-                                    aria-invalid={Boolean(errors.reason)}
-                                    onChange={(e) =>
-                                        setForm({
-                                            ...form,
-                                            reason: e.target.value,
-                                        })
-                                    }
-                                    className="w-72 text-xs"
-                                />
-                                <InputError
-                                    message={errors.reason}
-                                    className="max-w-72 text-xs"
-                                />
-                            </div>
-                        </div>
-                        <Label className="text-xs">Configuración (JSON)</Label>
-                        <textarea
-                            value={form.config}
-                            aria-invalid={Boolean(errors.override_config)}
-                            onChange={(e) =>
-                                setForm({ ...form, config: e.target.value })
-                            }
-                            rows={4}
-                            spellCheck={false}
-                            className="rounded-md border border-border bg-surface-2 p-2 font-mono text-2xs text-fg-2"
-                        />
-                        <InputError
-                            message={errors.override_config}
-                            className="text-xs"
-                        />
-                        <div>
-                            <Button
-                                size="sm"
-                                onClick={create}
-                                disabled={submitting}
-                            >
-                                {submitting ? 'Creando…' : 'Crear override'}
-                            </Button>
-                        </div>
-                    </div>
-                )}
-
-                {overrides.length === 0 ? (
-                    <p className="text-xs text-fg-3">
-                        Sin overrides: las reglas base aplican tal cual.
-                    </p>
-                ) : (
-                    <table className="w-full text-left text-xs">
-                        <thead className="text-2xs text-fg-3 uppercase">
-                            <tr>
-                                <th className="py-1.5 pr-4">Regla base</th>
-                                <th className="py-1.5 pr-4">Tipo</th>
-                                <th className="py-1.5 pr-4">Config</th>
-                                <th className="py-1.5 pr-4">Motivo</th>
-                                <th className="py-1.5 pr-4">Estado</th>
-                                <th className="py-1.5 pr-4" />
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {overrides.map((override) => (
-                                <tr
-                                    key={override.id}
-                                    className="border-t border-border/50 text-fg-2"
-                                >
-                                    <td className="py-2 pr-4 font-mono text-2xs">
-                                        {override.baseRuleCode}
-                                    </td>
-                                    <td className="py-2 pr-4">
-                                        {override.overrideType}
-                                    </td>
-                                    <td className="py-2 pr-4 font-mono text-2xs">
-                                        {JSON.stringify(override.config)}
-                                    </td>
-                                    <td className="py-2 pr-4">
-                                        {override.reason ?? '—'}
-                                    </td>
-                                    <td className="py-2 pr-4">
-                                        <ActiveBadge
-                                            active={override.isActive}
-                                        />
-                                    </td>
-                                    <td className="py-2 text-right">
-                                        {canManage && (
-                                            <Button
-                                                size="sm"
-                                                variant="ghost"
-                                                onClick={() =>
-                                                    setDeleting(override)
-                                                }
-                                            >
-                                                Eliminar
-                                            </Button>
-                                        )}
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                )}
-
-                <ConfirmDialog
-                    open={deleting !== null}
-                    title="Eliminar override"
-                    description={
-                        deleting
-                            ? `¿Seguro que deseas eliminar el override de la regla "${deleting.baseRuleCode}"? La regla base volverá a aplicarse tal cual.`
-                            : ''
-                    }
-                    onConfirm={() => {
-                        if (deleting) {
-                            return remove(deleting);
-                        }
-                    }}
-                    onOpenChange={(open) => !open && setDeleting(null)}
-                />
-            </CardContent>
-        </Card>
-    );
-}
-
 // ---- Page ----
 
 export default function RulesIndex() {
@@ -1392,7 +1096,7 @@ export default function RulesIndex() {
             <div className="flex flex-col gap-4 p-5">
                 <PageHeader
                     title="Reglas"
-                    description="Motor de decisiones, mapeo de eventos del proveedor y overrides del tenant."
+                    description="Motor de decisiones y mapeo de eventos del proveedor."
                 />
 
                 <div className="flex flex-wrap gap-1 border-b border-border">
@@ -1427,16 +1131,6 @@ export default function RulesIndex() {
                         rules={props.mappingRules}
                         options={props.mappingOptions}
                         canManage={props.canManageDecisionRules}
-                    />
-                )}
-                {tab === 'overrides' && (
-                    <OverridesTab
-                        overrides={props.overrides}
-                        overrideTypes={props.overrideTypes}
-                        decisionRuleCodes={props.decisionRules.map(
-                            (rule) => rule.code,
-                        )}
-                        canManage={props.canManageOverrides}
                     />
                 )}
             </div>

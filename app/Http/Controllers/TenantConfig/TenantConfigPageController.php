@@ -11,9 +11,6 @@ use App\Domains\Tenancy\Models\TenantBranding;
 use App\Domains\TenantConfig\Actions\ApplyDefaultTenantConfig;
 use App\Domains\TenantConfig\Actions\ResolveTenantAIProfile;
 use App\Domains\TenantConfig\Enums\AutomationLevel;
-use App\Domains\TenantConfig\Enums\FalsePositiveTolerance;
-use App\Domains\TenantConfig\Enums\MediaStrategy;
-use App\Domains\TenantConfig\Enums\RiskTolerance;
 use App\Domains\TenantConfig\Models\TenantAIProfile;
 use App\Domains\TenantConfig\Models\TenantConfigVersion;
 use App\Domains\TenantConfig\Models\TenantEscalationConfig;
@@ -96,11 +93,13 @@ class TenantConfigPageController extends Controller
                     'mediaStrategy' => $resolved->mediaStrategy->value,
                 ];
             },
+            // Sólo se manda el catálogo de automation_level: es el único
+            // campo de TenantAIProfile con control real en la UI (ver
+            // AiTab en settings/tenant-config.tsx). Los catálogos de
+            // risk_tolerance / false_positive_tolerance / media_strategy
+            // sólo alimentaban los <select> retirados (Tarea 12).
             'aiProfileOptions' => fn (): array => [
-                'riskTolerances' => array_map(fn (RiskTolerance $case) => $case->value, RiskTolerance::cases()),
-                'falsePositiveTolerances' => array_map(fn (FalsePositiveTolerance $case) => $case->value, FalsePositiveTolerance::cases()),
                 'automationLevels' => array_map(fn (AutomationLevel $case) => $case->value, AutomationLevel::cases()),
-                'mediaStrategies' => array_map(fn (MediaStrategy $case) => $case->value, MediaStrategy::cases()),
             ],
             'notificationPolicies' => fn () => TenantNotificationPolicy::withoutGlobalScopes()
                 ->where('team_id', $current_team->id)
