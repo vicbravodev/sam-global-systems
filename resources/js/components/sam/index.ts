@@ -1,5 +1,9 @@
 export { SeverityBadge, type Severity } from './severity-badge';
-export { StatusPill, type IncidentStatus } from './status-pill';
+export {
+    StatusPill,
+    TERMINAL_STATUSES,
+    type IncidentStatus,
+} from './status-pill';
 export { MetaChip } from './meta-chip';
 export { ProviderTag } from './provider-tag';
 export { ConfidenceBar } from './confidence-bar';

@@ -5,6 +5,7 @@ import {
     SeverityBadge,
     StatusPill,
     ProviderTag,
+    TERMINAL_STATUSES,
 } from '@/components/sam';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -18,7 +19,16 @@ interface BigSlaDisplayProps {
 }
 
 function BigSlaDisplay({ incident }: BigSlaDisplayProps) {
+    // Hook siempre se llama (reglas de hooks); el early-return terminal va
+    // DESPUÉS, descartando el valor.
     const live = useLiveSla(incident.slaSeconds);
+
+    if (TERMINAL_STATUSES.includes(incident.status)) {
+        // Terminal: sin SLA vivo. El StatusPill del header ya comunica el
+        // estado — no duplicamos con un bloque "VENCIDO" en rojo.
+        return null;
+    }
+
     const consumed = incident.slaTotal > 0 ? 1 - live / incident.slaTotal : 1;
     const expired = live <= 0;
     const critical = expired || consumed >= 0.95;

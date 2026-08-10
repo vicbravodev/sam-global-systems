@@ -1,4 +1,4 @@
-import { SeverityBadge } from '@/components/sam';
+import { SeverityBadge, TERMINAL_STATUSES } from '@/components/sam';
 import type { Severity } from '@/components/sam';
 import { cn } from '@/lib/utils';
 import type { InboxDensity, MockIncident } from '@/types/sam';
@@ -81,10 +81,23 @@ export function InboxGrouped({
     return (
         <div className="min-h-0 flex-1 overflow-auto">
             {groups.map(({ severity, items }) => {
-                const minSla = items.reduce(
-                    (min, r) => (r.slaSeconds < min.slaSeconds ? r : min),
-                    items[0],
+                // "SLA mín" es un resumen del grupo: si se calculara sobre
+                // TODOS los items (la pestaña "Todos" mezcla estados),
+                // un incidente terminal con slaSeconds obsoleto/cero podría
+                // ganar el mínimo y mostrar "VENCIDO" aunque el resto del
+                // grupo siga con SLA vivo. Se calcula sólo sobre incidentes
+                // no terminales; si no queda ninguno, se omite el resumen.
+                const liveItems = items.filter(
+                    (r) => !TERMINAL_STATUSES.includes(r.status),
                 );
+                const minSla =
+                    liveItems.length > 0
+                        ? liveItems.reduce(
+                              (min, r) =>
+                                  r.slaSeconds < min.slaSeconds ? r : min,
+                              liveItems[0],
+                          )
+                        : null;
 
                 return (
                     <div key={severity}>
@@ -102,13 +115,15 @@ export function InboxGrouped({
                                     ? 'incidente'
                                     : 'incidentes'}
                             </span>
-                            <span className="ml-auto flex items-center gap-1 text-2xs text-fg-3">
-                                SLA mín:
-                                <MinSlaCell
-                                    seconds={minSla.slaSeconds}
-                                    total={minSla.slaTotal}
-                                />
-                            </span>
+                            {minSla && (
+                                <span className="ml-auto flex items-center gap-1 text-2xs text-fg-3">
+                                    SLA mín:
+                                    <MinSlaCell
+                                        seconds={minSla.slaSeconds}
+                                        total={minSla.slaTotal}
+                                    />
+                                </span>
+                            )}
                         </div>
 
                         {/* Sub-table */}

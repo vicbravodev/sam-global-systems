@@ -1,7 +1,13 @@
 import { Hand, Loader2 } from 'lucide-react';
-import { RelativeTime, SeverityBadge, StatusPill } from '@/components/sam';
+import {
+    RelativeTime,
+    SeverityBadge,
+    StatusPill,
+    TERMINAL_STATUSES,
+} from '@/components/sam';
+import type { IncidentStatus } from '@/components/sam';
 import { cn } from '@/lib/utils';
-import type { InboxDensity, MockIncident } from '@/types/sam';
+import type { InboxDensity, MockAssignee, MockIncident } from '@/types/sam';
 import { useLiveSla } from './use-live-sla';
 
 // ---- UserAvatar ----
@@ -36,8 +42,24 @@ function UserAvatar({
 
 // ---- LiveSlaCell ----
 
-function LiveSlaCell({ seconds, total }: { seconds: number; total: number }) {
+function LiveSlaCell({
+    seconds,
+    total,
+    status,
+}: {
+    seconds: number;
+    total: number;
+    status: IncidentStatus;
+}) {
+    // Hook siempre se llama (reglas de hooks); el early-return terminal va
+    // DESPUÉS, descartando el valor — un incidente terminal no tiene SLA
+    // vivo y no debe mostrar countdown ni "VENCIDO".
     const live = useLiveSla(seconds);
+
+    if (TERMINAL_STATUSES.includes(status)) {
+        return <span className="font-mono text-xs text-fg-3">—</span>;
+    }
+
     const consumed = total > 0 ? 1 - live / total : 1;
     const expired = live <= 0;
     const critical = expired || consumed >= 0.95;
@@ -79,12 +101,29 @@ function LiveDot() {
     );
 }
 
+// ---- ClaimedBadge ----
+
+/** Insignia de sólo lectura: quién tiene tomado el incidente, sin botón. */
+function ClaimedBadge({ assignee }: { assignee: MockAssignee }) {
+    return (
+        <div
+            className="flex min-w-0 items-center gap-1.5"
+            title={`Tomado por ${assignee.name}`}
+        >
+            <UserAvatar initials={assignee.initials} size={20} />
+            <span className="truncate text-3xs text-fg-3">{assignee.name}</span>
+        </div>
+    );
+}
+
 // ---- ClaimControl ----
 
 /**
  * Toma humana desde la propia fila: el monitorista ve de un vistazo quién
  * tiene cada incidente sin abrirlo. Cuando lo tiene otro no hay botón — sólo
- * sus iniciales — porque soltarlo es potestad de quien lo tomó.
+ * sus iniciales — porque soltarlo es potestad de quien lo tomó. Un
+ * incidente terminal nunca admite toma: si alguien lo tuvo tomado se
+ * conserva la insignia informativa, pero el botón Tomar/Soltar desaparece.
  */
 function ClaimControl({
     incident,
@@ -100,18 +139,14 @@ function ClaimControl({
     const claimedByMe =
         incident.claimedBy !== null && incident.claimedBy.id === currentUserId;
 
+    if (TERMINAL_STATUSES.includes(incident.status)) {
+        return incident.claimedBy ? (
+            <ClaimedBadge assignee={incident.claimedBy} />
+        ) : null;
+    }
+
     if (incident.claimedBy !== null && !claimedByMe) {
-        return (
-            <div
-                className="flex min-w-0 items-center gap-1.5"
-                title={`Tomado por ${incident.claimedBy.name}`}
-            >
-                <UserAvatar initials={incident.claimedBy.initials} size={20} />
-                <span className="truncate text-3xs text-fg-3">
-                    {incident.claimedBy.name}
-                </span>
-            </div>
-        );
+        return <ClaimedBadge assignee={incident.claimedBy} />;
     }
 
     return (
@@ -372,6 +407,7 @@ export function IncidentRow({
                 <LiveSlaCell
                     seconds={incident.slaSeconds}
                     total={incident.slaTotal}
+                    status={incident.status}
                 />
             </td>
 
@@ -488,6 +524,7 @@ export function IncidentCard({
                     <LiveSlaCell
                         seconds={incident.slaSeconds}
                         total={incident.slaTotal}
+                        status={incident.status}
                     />
                     <RelativeTime minutes={incident.ageMin} />
                 </span>
