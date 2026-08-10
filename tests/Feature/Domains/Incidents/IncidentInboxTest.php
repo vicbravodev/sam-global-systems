@@ -5,6 +5,7 @@ namespace Tests\Feature\Domains\Incidents;
 use App\Domains\AI\Enums\EvaluationPriority;
 use App\Domains\AI\Enums\EventClassification;
 use App\Domains\AI\Models\AIEventEvaluation;
+use App\Domains\Incidents\Actions\ClaimIncident;
 use App\Domains\Incidents\Enums\AssigneeType;
 use App\Domains\Incidents\Enums\CommentVisibility;
 use App\Domains\Incidents\Enums\EvidenceType;
@@ -33,6 +34,54 @@ class IncidentInboxTest extends TestCase
         parent::setUp();
         $this->seed(AccessSeeder::class);
         $this->seed(IncidentsSeeder::class);
+    }
+
+    /**
+     * La bandeja tiene que poder pintar quién tiene tomado cada incidente sin
+     * abrirlo, así que la fila lleva el estado de toma resuelto (nombre
+     * incluido) en la misma consulta que ya resuelve los asignados.
+     */
+    public function test_inbox_row_carries_claim_state(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+
+        $claimed = Incident::factory()->create(['team_id' => $team->id]);
+        app(ClaimIncident::class)->execute($claimed, $user);
+
+        $response = $this->actingAs($user)->get(
+            route('incidents.index', ['current_team' => $team->slug]),
+        );
+
+        $response->assertOk();
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->component('incidents/index')
+                ->where('incidents.0.claimedBy.id', $user->id)
+                ->where('incidents.0.claimedBy.name', $user->name)
+                ->has('incidents.0.claimedBy.initials')
+                ->has('incidents.0.claimedAt'),
+        );
+    }
+
+    public function test_inbox_row_reports_no_claim_when_unclaimed(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+
+        Incident::factory()->create(['team_id' => $team->id]);
+
+        $response = $this->actingAs($user)->get(
+            route('incidents.index', ['current_team' => $team->slug]),
+        );
+
+        $response->assertOk();
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->component('incidents/index')
+                ->where('incidents.0.claimedBy', null)
+                ->where('incidents.0.claimedAt', null),
+        );
     }
 
     public function test_inbox_renders_inertia_page_with_incident_rows(): void
@@ -65,6 +114,8 @@ class IncidentInboxTest extends TestCase
                             'asset',
                             'driver',
                             'assignee',
+                            'claimedBy',
+                            'claimedAt',
                             'slaSeconds',
                             'slaTotal',
                             'ageMin',
