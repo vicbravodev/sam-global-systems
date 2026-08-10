@@ -1,4 +1,4 @@
-import { Head, router, usePage } from '@inertiajs/react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import InputError from '@/components/input-error';
@@ -2231,6 +2231,7 @@ export default function TenantConfigPage() {
     const page = usePage();
     const props = page.props as unknown as TenantConfigProps;
     const [tab, setTab] = useState<TabKey>('general');
+    const base = useTeamBase();
 
     return (
         <>
@@ -2261,6 +2262,14 @@ export default function TenantConfigPage() {
                             {item.label}
                         </button>
                     ))}
+                    {base && (
+                        <Link
+                            href={`${base}/slas`}
+                            className="px-3 py-2 text-sm text-fg-3 transition-colors hover:text-fg-1"
+                        >
+                            Tiempos de respuesta
+                        </Link>
+                    )}
                 </div>
 
                 {tab === 'general' && (
