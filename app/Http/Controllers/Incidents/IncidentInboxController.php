@@ -436,7 +436,10 @@ class IncidentInboxController extends Controller
      */
     private function resolveUsers(Collection $ids): Collection
     {
-        $ids = $ids->filter()->unique()->values();
+        // $ids puede llegar como Eloquent Collection "impura" (p. ej. tras
+        // concat() sobre una EloquentCollection vacía): forzar a base
+        // Collection evita que unique() invoque getKey() sobre enteros.
+        $ids = $ids->toBase()->filter()->unique()->values();
 
         if ($ids->isEmpty()) {
             return collect();
