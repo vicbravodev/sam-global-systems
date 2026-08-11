@@ -54,6 +54,18 @@ class SafetyEventSkipsAIEvaluationTest extends TestCase
         Bus::assertNotDispatched(EvaluateEventJob::class);
     }
 
+    public function test_listener_skips_dispatch_for_maintenance_category_event(): void
+    {
+        Bus::fake();
+
+        $event = $this->eventWithCategory('maintenance');
+        [$snapshot, $profile] = $this->contextFor($event);
+
+        app(EvaluateOnEventContextBuilt::class)->handle(new EventContextBuilt($snapshot, $profile));
+
+        Bus::assertNotDispatched(EvaluateEventJob::class);
+    }
+
     public function test_listener_dispatches_for_emergency_category_event(): void
     {
         Bus::fake();

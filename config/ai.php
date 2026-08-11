@@ -188,13 +188,16 @@ return [
     |
     | Event categories whose classification already comes authoritatively from
     | the provider (Samsara safety events: harsh braking, speeding, distraction,
-    | drowsy, mobile usage…). Running the AI pipeline on them is redundant and
-    | paid, so they skip evaluation entirely — but they are still persisted and
-    | feed correlation for high-value incidents (panic, jamming). Resolved by
+    | drowsy, mobile usage…), or whose volume makes per-event AI analysis
+    | wasteful (maintenance: the offline-asset watchdog emits one device_offline
+    | per silent asset, so a fleet-wide outage floods hundreds of events and
+    | can exhaust the tenant's monthly token quota, starving critical events
+    | like panic). Skipped events are still persisted and feed correlation for
+    | high-value incidents (panic, jamming). Resolved by
     | `App\Domains\AI\Support\AIEvaluationGate`.
     |
     */
 
-    'skip_evaluation_categories' => ['safety'],
+    'skip_evaluation_categories' => ['safety', 'maintenance'],
 
 ];
