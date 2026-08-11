@@ -71,7 +71,8 @@ class SdkMediaAssessmentAgent implements MediaAssessmentAgent
             return [];
         }
 
-        $disk = Storage::disk(config('filesystems.default'));
+        $diskName = $this->resolveDiskName();
+        $disk = Storage::disk($diskName);
 
         if (! $disk->exists($input->storagePath)) {
             return [];
@@ -80,9 +81,22 @@ class SdkMediaAssessmentAgent implements MediaAssessmentAgent
         $mime = strtolower((string) $input->mimeType);
 
         return match (true) {
-            str_starts_with($mime, 'image/') => [Image::fromStorage($input->storagePath)],
-            default => [Document::fromStorage($input->storagePath)],
+            str_starts_with($mime, 'image/') => [Image::fromStorage($input->storagePath, $diskName)],
+            default => [Document::fromStorage($input->storagePath, $diskName)],
         };
+    }
+
+    /**
+     * Event media is persisted through the `ObjectStorage` contract, which
+     * writes to the `rustfs` disk whenever it's configured (see
+     * `RustFsObjectStorage`) — not `filesystems.default`. Checking/attaching
+     * against the wrong disk silently finds nothing, so the SDK sends the
+     * prompt with zero attachments and the model correctly (but uselessly)
+     * reports the media as unavailable.
+     */
+    private function resolveDiskName(): string
+    {
+        return config('filesystems.disks.rustfs') !== null ? 'rustfs' : (string) config('filesystems.default');
     }
 
     /**
