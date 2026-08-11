@@ -21,8 +21,11 @@ use Illuminate\Queue\SerializesModels;
 /**
  * Offline-asset watchdog (Roadmap V2-C1): an asset that stops reporting for
  * longer than its threshold raises a `device_offline` internal event that
- * runs the FULL pipeline (normalization → context → AI → decision →
- * incident/notification) — silence can be theft, jamming or a yanked device.
+ * runs the ingestion pipeline (normalization → context) and feeds panic/
+ * jamming correlation — silence can be theft, jamming or a yanked device.
+ * Its `maintenance` category is excluded from AI evaluation (see
+ * `config('ai.skip_evaluation_categories')`): a fleet-wide outage floods one
+ * event per asset and would exhaust the tenant's monthly AI token quota.
  *
  * Anti-spam: the episode is keyed by the asset's frozen `last_seen_at`
  * (`offline:{asset}:{ts}`) — one event per silence episode, however many
