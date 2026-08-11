@@ -84,6 +84,42 @@ class IncidentInboxTest extends TestCase
         );
     }
 
+    /**
+     * Regression: cuando el único incidente de la página está reclamado
+     * (claimed_by_user_id) pero su currentAssignment es de tipo Team (no
+     * User), la cadena map/filter/concat sobre la EloquentCollection de
+     * incidentes degradaba a una EloquentCollection "impura" que mezclaba
+     * el entero de claimed_by_user_id con modelos; unique() invocaba
+     * getKey() sobre ese int y explotaba con un 500.
+     */
+    public function test_inbox_loads_when_claimed_incident_has_a_non_user_assignee(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+
+        $incident = Incident::factory()->create([
+            'team_id' => $team->id,
+            'claimed_by_user_id' => $user->id,
+        ]);
+        IncidentAssignment::factory()->create([
+            'incident_id' => $incident->id,
+            'assigned_to_type' => AssigneeType::Team,
+            'assigned_to_id' => $team->id,
+        ]);
+
+        $response = $this->actingAs($user)->get(
+            route('incidents.index', ['current_team' => $team->slug]),
+        );
+
+        $response->assertOk();
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->component('incidents/index')
+                ->has('incidents', 1)
+                ->where('incidents.0.claimedBy.id', $user->id),
+        );
+    }
+
     public function test_inbox_renders_inertia_page_with_incident_rows(): void
     {
         $user = User::factory()->create();
