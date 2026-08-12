@@ -162,23 +162,32 @@ export type TimelineEntryType =
     | 'user'
     | 'critical'
     | 'assign'
-    | 'comment';
+    | 'comment'
+    | 'media'
+    | 'sla'
+    | 'resolved';
 
 export interface IncidentTimelineEntry {
     type: TimelineEntryType;
+    /** Valor crudo del enum de backend (p.ej. `media_assessed`). */
+    entryType: string | null;
     actor: string;
     text: string;
     ts: string;
-    sub?: string;
+    tsIso: string | null;
+    sub?: string | null;
+    /** Solo entradas `media_assessed`: veredicto crudo + confianza. */
+    meta?: { result: string | null; confidence: number | null } | null;
 }
 
 // ---- Related incident link ----
 
 export interface RelatedIncidentLink {
     ts: string;
+    eventId: number;
     eventType: string;
     asset: string;
-    decision: AiDecision;
+    relationType: string | null;
     severity: Severity | null;
 }
 
@@ -198,6 +207,38 @@ export interface IncidentEvidenceItem {
     label: string;
     sub: string;
     type: 'chart' | 'video' | 'map' | 'payload';
+    fileUrl: string | null;
+}
+
+// ---- Resolution ----
+
+export interface IncidentResolutionInfo {
+    code: string | null;
+    summary: string | null;
+    rootCause: string | null;
+    resolvedAt: string | null;
+}
+
+// ---- Aggregated visual verdict (mediaSummary) ----
+
+export interface IncidentMediaThumbnail {
+    id: number;
+    url: string | null;
+    mediaType: string | null;
+}
+
+export interface IncidentMediaSummary {
+    total: number;
+    images: number;
+    clips: number;
+    assessed: number;
+    confirms: number;
+    contradicts: number;
+    inconclusive: number;
+    lowQuality: number;
+    unavailable: number;
+    pendingRequest: boolean;
+    thumbnails: IncidentMediaThumbnail[];
 }
 
 // ---- Full incident detail (extends MockIncident) ----
@@ -206,6 +247,17 @@ export interface IncidentDetail extends MockIncident {
     aiEvaluationId: number | null;
     model: string;
     latencyMs: number;
+    summary: string | null;
+    openedAt: string | null;
+    slaDueAt: string | null;
+    eventOccurredAt: string | null;
+    aiRiskScore: number | null;
+    aiMode: string | null;
+    aiEvaluatedAt: string | null;
+    aiReasoningSteps: string[];
+    resolution: IncidentResolutionInfo | null;
+    /** Presente en el payload del panel (JSON) y de la página completa. */
+    mediaSummary?: IncidentMediaSummary | null;
     timeline: IncidentTimelineEntry[];
     relatedLinks: RelatedIncidentLink[];
     comments: IncidentComment[];
