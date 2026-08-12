@@ -119,6 +119,26 @@ function EntryIcon({ entry }: { entry: IncidentTimelineEntry }) {
     );
 }
 
+/** Etiqueta pluralizada para los conteos del grupo de media. */
+function pluralResultLabel(result: string, count: number): string {
+    const plural = count !== 1;
+
+    switch (result) {
+        case 'contradicts_event':
+            return plural ? 'contradicen el evento' : 'contradice el evento';
+        case 'confirms_event':
+            return plural ? 'confirman el evento' : 'confirma el evento';
+        case 'inconclusive':
+            return plural ? 'no concluyentes' : 'no concluyente';
+        case 'low_quality':
+            return 'de baja calidad';
+        case 'unavailable':
+            return plural ? 'no disponibles' : 'no disponible';
+        default:
+            return mediaResultLabel(result).toLowerCase();
+    }
+}
+
 function MediaGroupNode({
     entries,
     formatTs,
@@ -169,7 +189,7 @@ function MediaGroupNode({
                     {counts
                         .map(
                             ([result, count]) =>
-                                `${count} ${mediaResultLabel(result).toLowerCase()}`,
+                                `${count} ${pluralResultLabel(result, count)}`,
                         )
                         .join(' · ')}
                 </div>

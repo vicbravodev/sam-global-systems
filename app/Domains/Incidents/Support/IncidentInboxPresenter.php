@@ -43,6 +43,14 @@ class IncidentInboxPresenter
     ];
 
     /**
+     * Descripciones históricas almacenadas en inglés por writers antiguos.
+     * Los writers ya escriben en español; esto cubre filas preexistentes.
+     */
+    private const LEGACY_DESCRIPTION_ES = [
+        'SLA breached without acknowledgement.' => 'SLA vencido sin atención (ACK).',
+    ];
+
+    /**
      * Map an incident to a lightweight inbox row (`MockIncident`).
      *
      * @param  Collection<int, User>  $users  Pre-resolved assignee users keyed by id.
@@ -414,7 +422,9 @@ class IncidentInboxPresenter
             'text' => $this->timelineText($entry, $payload),
             'ts' => $entry->occurred_at?->format('H:i:s') ?? '',
             'tsIso' => $entry->occurred_at?->toIso8601String(),
-            'sub' => $entry->description !== null ? (string) $entry->description : null,
+            'sub' => $entry->description !== null
+                ? (self::LEGACY_DESCRIPTION_ES[$entry->description] ?? (string) $entry->description)
+                : null,
             'meta' => $entry->entry_type === TimelineEntryType::MediaAssessed
                 ? [
                     'result' => is_string($result) ? $result : null,
