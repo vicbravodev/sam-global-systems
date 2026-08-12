@@ -29,6 +29,17 @@ class NotificationChannel extends Model
     ];
 
     /**
+     * Credenciales cifradas at rest: jamás deben salir en una serialización
+     * (JSON/array) hacia el navegador o la API. Los resúmenes enmascarados se
+     * construyen explícitamente donde se necesitan.
+     *
+     * @var list<string>
+     */
+    protected $hidden = [
+        'config_json',
+    ];
+
+    /**
      * @return array<string, string>
      */
     protected function casts(): array

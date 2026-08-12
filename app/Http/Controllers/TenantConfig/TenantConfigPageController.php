@@ -198,9 +198,6 @@ class TenantConfigPageController extends Controller
                         'isGlobal' => $channel->team_id === null,
                         // Per-tenant switch over SAM platform channels (V2-B1).
                         'enabledForTeam' => ! in_array($channel->id, $disabledGlobals, true),
-                        // Secrets stay server-side: only key names + masked tails
-                        // reach the browser (Roadmap F5c).
-                        'configSummary' => $this->maskConfig((array) ($channel->config_json ?? [])),
                     ])
                     ->all();
             },
@@ -235,29 +232,5 @@ class TenantConfigPageController extends Controller
             'canManageChannels' => fn () => (bool) request()->user()?->can('manage', NotificationChannel::class),
             'canManage' => fn () => (bool) request()->user()?->can('update', TenantSetting::class),
         ]);
-    }
-
-    /**
-     * @param  array<string, mixed>  $config
-     * @return array<string, string>
-     */
-    private function maskConfig(array $config): array
-    {
-        $masked = [];
-
-        foreach ($config as $key => $value) {
-            if (! is_scalar($value)) {
-                $masked[(string) $key] = '•••';
-
-                continue;
-            }
-
-            $string = (string) $value;
-            $masked[(string) $key] = mb_strlen($string) > 8
-                ? '••••'.mb_substr($string, -4)
-                : '••••';
-        }
-
-        return $masked;
     }
 }
