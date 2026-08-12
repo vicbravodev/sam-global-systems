@@ -31,6 +31,18 @@ class IncidentInboxPresenter
     private const DEFAULT_SLA_SECONDS = 1800;
 
     /**
+     * Etiquetas en español para los veredictos de media de la IA. El valor
+     * crudo viene en `payload_json.result` de las entradas MediaAssessed.
+     */
+    private const MEDIA_RESULT_ES = [
+        'confirms_event' => 'confirma el evento',
+        'contradicts_event' => 'contradice el evento',
+        'inconclusive' => 'no concluyente',
+        'low_quality' => 'baja calidad',
+        'unavailable' => 'no disponible',
+    ];
+
+    /**
      * Map an incident to a lightweight inbox row (`MockIncident`).
      *
      * @param  Collection<int, User>  $users  Pre-resolved assignee users keyed by id.
@@ -85,6 +97,15 @@ class IncidentInboxPresenter
             'aiEvaluationId' => $evaluation?->id !== null ? (int) $evaluation->id : null,
             'model' => $this->model($evaluation),
             'latencyMs' => $this->latencyMs($evaluation),
+            'summary' => $this->incidentSummary($incident),
+            'openedAt' => $incident->opened_at?->toIso8601String(),
+            'slaDueAt' => $incident->sla_due_at?->toIso8601String(),
+            'eventOccurredAt' => $incident->relatedEvent?->occurred_at?->toIso8601String(),
+            'aiRiskScore' => $evaluation?->risk_score !== null ? round((float) $evaluation->risk_score, 2) : null,
+            'aiMode' => $evaluation?->evaluation_mode?->value,
+            'aiEvaluatedAt' => $evaluation?->evaluated_at?->toIso8601String(),
+            'aiReasoningSteps' => $this->reasoningSteps($evaluation),
+            'resolution' => $this->resolution($incident),
             'timeline' => $incident->timeline
                 ->map(fn (IncidentTimeline $entry) => $this->timelineEntry($entry, $users))
                 ->values()
@@ -355,16 +376,23 @@ class IncidentInboxPresenter
 
     /**
      * @param  Collection<int, User>  $users
-     * @return array{type: string, actor: string, text: string, ts: string, sub: string|null}
+     * @return array{type: string, entryType: string|null, actor: string, text: string, ts: string, tsIso: string|null, sub: string|null, meta: array{result: string|null, confidence: float|null}|null}
      */
     private function timelineEntry(IncidentTimeline $entry, Collection $users): array
     {
         $type = match ($entry->entry_type) {
             TimelineEntryType::Created, TimelineEntryType::Escalated => 'critical',
-            TimelineEntryType::Assigned => 'assign',
+            TimelineEntryType::SlaBreached => 'sla',
+            TimelineEntryType::MediaAssessed => 'media',
+            TimelineEntryType::Resolved,
+            TimelineEntryType::ExternallyResolved,
+            TimelineEntryType::Closed => 'resolved',
+            TimelineEntryType::Assigned,
+            TimelineEntryType::Claimed,
+            TimelineEntryType::Released => 'assign',
             TimelineEntryType::CommentAdded => 'comment',
             TimelineEntryType::EventLinked => 'webhook',
-            default => 'system',
+            default => $entry->actor_type === TimelineActorType::Ai ? 'ai' : 'system',
         };
 
         $actor = match ($entry->actor_type) {
@@ -375,17 +403,130 @@ class IncidentInboxPresenter
             default => 'Sistema',
         };
 
+        $payload = is_array($entry->payload_json) ? $entry->payload_json : [];
+        $result = $payload['result'] ?? null;
+        $confidence = $payload['confidence_score'] ?? null;
+
         return [
             'type' => $type,
+            'entryType' => $entry->entry_type?->value,
             'actor' => (string) $actor,
-            'text' => (string) ($entry->title ?? ''),
+            'text' => $this->timelineText($entry, $payload),
             'ts' => $entry->occurred_at?->format('H:i:s') ?? '',
+            'tsIso' => $entry->occurred_at?->toIso8601String(),
             'sub' => $entry->description !== null ? (string) $entry->description : null,
+            'meta' => $entry->entry_type === TimelineEntryType::MediaAssessed
+                ? [
+                    'result' => is_string($result) ? $result : null,
+                    'confidence' => is_numeric($confidence) ? round((float) $confidence, 2) : null,
+                ]
+                : null,
         ];
     }
 
     /**
-     * @return array{ts: string, eventType: string, asset: string, decision: string, severity: string|null}|null
+     * Texto de la entrada en español, derivado del tipo — los `title`
+     * almacenados vienen de los writers del backend en inglés y no se
+     * muestran tal cual. El título crudo queda como fallback para tipos
+     * desconocidos.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function timelineText(IncidentTimeline $entry, array $payload): string
+    {
+        $base = match ($entry->entry_type) {
+            TimelineEntryType::Created => 'Incidente creado',
+            TimelineEntryType::StatusChanged => 'Estado actualizado',
+            TimelineEntryType::PriorityChanged => 'Prioridad actualizada',
+            TimelineEntryType::Assigned => 'Incidente asignado',
+            TimelineEntryType::Escalated => 'Incidente escalado',
+            TimelineEntryType::Acknowledged => 'Incidente atendido (ACK)',
+            TimelineEntryType::Claimed => 'Incidente tomado',
+            TimelineEntryType::Released => 'Incidente liberado',
+            TimelineEntryType::SlaBreached => 'SLA incumplido',
+            TimelineEntryType::CommentAdded => 'Comentario agregado',
+            TimelineEntryType::EvidenceAdded => 'Evidencia adjuntada',
+            TimelineEntryType::ActionExecuted => 'Acción ejecutada',
+            TimelineEntryType::Resolved => 'Incidente resuelto',
+            TimelineEntryType::ExternallyResolved => 'Resuelto en origen',
+            TimelineEntryType::Closed => 'Incidente cerrado',
+            TimelineEntryType::Reopened => 'Incidente reabierto',
+            TimelineEntryType::Reclassified => 'Incidente reclasificado',
+            TimelineEntryType::EventLinked => 'Evento vinculado',
+            TimelineEntryType::MediaAssessed => 'Media evaluada',
+            TimelineEntryType::VerificationCall => 'Llamada de verificación',
+            default => null,
+        };
+
+        if ($base === null) {
+            return (string) ($entry->title ?? '');
+        }
+
+        if ($entry->entry_type === TimelineEntryType::MediaAssessed) {
+            $result = $payload['result'] ?? null;
+            $label = is_string($result) ? (self::MEDIA_RESULT_ES[$result] ?? $result) : null;
+
+            return $label !== null ? "{$base}: {$label}" : $base;
+        }
+
+        if ($entry->entry_type === TimelineEntryType::EventLinked) {
+            $eventId = $payload['normalized_event_id'] ?? null;
+
+            return is_numeric($eventId) ? "Evento #{$eventId} vinculado" : $base;
+        }
+
+        return $base;
+    }
+
+    /**
+     * Resumen operativo propio del incidente (no el de la IA). Null cuando
+     * no hay texto útil que mostrar.
+     */
+    private function incidentSummary(Incident $incident): ?string
+    {
+        $summary = trim((string) ($incident->summary ?? ''));
+
+        return $summary !== '' ? $summary : null;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function reasoningSteps(?AIEventEvaluation $evaluation): array
+    {
+        $steps = $evaluation?->signals_json['reasoning_steps'] ?? [];
+
+        if (! is_array($steps)) {
+            return [];
+        }
+
+        return array_values(array_filter(
+            $steps,
+            fn ($step) => is_string($step) && trim($step) !== '',
+        ));
+    }
+
+    /**
+     * @return array{code: string|null, summary: string|null, rootCause: string|null, resolvedAt: string|null}|null
+     */
+    private function resolution(Incident $incident): ?array
+    {
+        $resolution = $incident->relationLoaded('resolution') ? $incident->resolution : null;
+
+        if ($resolution === null) {
+            return null;
+        }
+
+        return [
+            'code' => $resolution->resolution_code?->value,
+            'summary' => $resolution->resolution_summary,
+            'rootCause' => $resolution->root_cause,
+            'resolvedAt' => $resolution->resolved_at?->toIso8601String(),
+        ];
+    }
+
+    /**
+     * @return array{ts: string, eventId: int, eventType: string, asset: string, relationType: string|null, severity: string|null}|null
      */
     private function relatedLink(IncidentEventLink $link): ?array
     {
@@ -397,9 +538,10 @@ class IncidentInboxPresenter
 
         return [
             'ts' => $event->occurred_at?->format('H:i:s') ?? '',
+            'eventId' => (int) $event->id,
             'eventType' => (string) ($event->eventType?->code ?? '—'),
             'asset' => (string) ($event->asset?->code ?? $event->asset?->name ?? '—'),
-            'decision' => 'info',
+            'relationType' => $link->relation_type?->value,
             'severity' => $this->eventSeverity($event),
         ];
     }
@@ -459,6 +601,7 @@ class IncidentInboxPresenter
             'label' => $label,
             'sub' => (string) ($evidence->description ?? ''),
             'type' => $type,
+            'fileUrl' => $evidence->file_url,
         ];
     }
 
