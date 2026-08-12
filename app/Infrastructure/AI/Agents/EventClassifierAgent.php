@@ -64,6 +64,18 @@ or evasive maneuvers shortly before or after a panic weigh strongly toward a
 real assault or forced stop ("real_event"). Calm telemetry around the event
 supports a false positive ONLY when the other benign signals (resolved,
 parked at base, clean media) also align — calm alone never downgrades.
+
+Visual verdicts: `media_assessments` (possibly empty) lists what a vision
+model concluded per camera image of THIS event: `result`
+("confirms_event" | "contradicts_event" | "inconclusive" | "low_quality" |
+"unavailable"), `confidence`, `summary` (what was seen) and
+`extracted_signals` (e.g. passenger_detected, visible_threat,
+persons_visible_count, cabin_appears_normal). Weigh these verdicts in your
+classification and cite them in `reasoning_steps`: multiple confident
+"contradicts_event" images support downgrading ONLY together with the other
+benign signals above; any "confirms_event" image or visible threat weighs
+strongly toward "real_event". Never claim visual confirmation is impossible
+when `media_assessments` is non-empty — describe what the images showed.
 Never include any field outside this schema.
 INSTRUCTIONS;
     }

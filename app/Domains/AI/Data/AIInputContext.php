@@ -13,6 +13,7 @@ final readonly class AIInputContext
      * @param  array<string, mixed>  $operationalProfile
      * @param  array<string, mixed>  $recentHistory
      * @param  array<string, mixed>  $tenantProfile
+     * @param  list<array<string, mixed>>  $mediaAssessments  Último veredicto visual por media del evento (result, confidence, summary, extracted_signals).
      */
     public function __construct(
         public int $teamId,
@@ -22,6 +23,7 @@ final readonly class AIInputContext
         public array $operationalProfile,
         public array $recentHistory,
         public array $tenantProfile,
+        public array $mediaAssessments = [],
     ) {}
 
     /**
@@ -37,6 +39,7 @@ final readonly class AIInputContext
             'operational_profile' => $this->operationalProfile,
             'recent_history' => $this->recentHistory,
             'tenant_profile' => $this->tenantProfile,
+            'media_assessments' => $this->mediaAssessments,
         ];
     }
 }
