@@ -7,6 +7,8 @@ use App\Domains\Assets\Jobs\DetectAfterHoursMovementJob;
 use App\Domains\Assets\Jobs\DetectOfflineAssetsJob;
 use App\Domains\Assets\Jobs\DetectUnauthorizedStopJob;
 use App\Domains\Assets\Jobs\PollAllAssetLocationsJob;
+use App\Domains\Assets\Jobs\PollAllAssetTelemetryJob;
+use App\Domains\Assets\Jobs\PurgeOldAssetTelemetryJob;
 use App\Domains\Drivers\Jobs\RecalculateDriverRiskProfilesJob;
 use App\Domains\Ingestion\Jobs\PollSamsaraSafetyEventsJob;
 use App\Domains\Ingestion\Jobs\PruneDeduplicationKeysJob;
@@ -48,6 +50,12 @@ Schedule::job(new RecalculateDriverRiskProfilesJob)->dailyAt('04:30')->onOneServ
 Schedule::job(new SyncDueIntegrationsJob)->everyFifteenMinutes()->onOneServer();
 Schedule::job(new PollAllAssetLocationsJob)->everyFiveMinutes()->onOneServer();
 Schedule::job(new PollSamsaraSafetyEventsJob)->everyTwoMinutes()->onOneServer();
+
+// Onboard diagnostics (fuel, odometer, battery, engine state, temperature).
+// Slower floor than positions on purpose: these stats change by the percent or
+// the kilometre, so a faster tick spends requests without yielding readings.
+Schedule::job(new PollAllAssetTelemetryJob)->everyFifteenMinutes()->onOneServer();
+Schedule::job(new PurgeOldAssetTelemetryJob)->dailyAt('03:45')->onOneServer();
 
 // Offline-asset watchdog (Roadmap V2-C1): silence beyond the tenant/asset
 // threshold raises an internal `device_offline` event through the pipeline.

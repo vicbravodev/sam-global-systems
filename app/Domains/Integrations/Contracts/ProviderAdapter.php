@@ -2,6 +2,7 @@
 
 namespace App\Domains\Integrations\Contracts;
 
+use App\Domains\Assets\Enums\TelemetryType;
 use App\Domains\Integrations\Models\TenantIntegration;
 
 interface ProviderAdapter
@@ -30,6 +31,21 @@ interface ProviderAdapter
      * @return array<int, array{external_id: string, latitude: float, longitude: float, speed?: float|null, heading?: int|null, formatted_location?: string|null, recorded_at?: string|null}>
      */
     public function fetchAssetLocations(TenantIntegration $integration): array;
+
+    /**
+     * Fetch the latest onboard-diagnostic readings for each asset.
+     *
+     * Separate from {@see fetchAssetLocations()} because these stats change on
+     * their own (much slower) schedules — fuel by the percent, odometer by the
+     * kilometre — and are polled on a slower cadence than positions.
+     *
+     * Implementations return one entry per (asset, reading) pair with values
+     * already normalized to the unit the domain stores: km, volts, °C. Stats a
+     * vehicle does not report are omitted rather than returned as null.
+     *
+     * @return array<int, array{external_id: string, type: TelemetryType, value: float|string, unit: string|null, recorded_at: string|null}>
+     */
+    public function fetchAssetTelemetry(TenantIntegration $integration): array;
 
     /**
      * Fetch the current position of a single asset directly from the provider.
