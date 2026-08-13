@@ -15,7 +15,7 @@ class ResolveEscalationPath
         $policy = null;
 
         if ($sourceRule?->escalation_policy_id) {
-            $policy = EscalationPolicy::withoutGlobalScopes()
+            $policy = EscalationPolicy::query()
                 ->where('id', $sourceRule->escalation_policy_id)
                 ->where('team_id', $decision->team_id)
                 ->where('is_active', true)
@@ -23,7 +23,7 @@ class ResolveEscalationPath
         }
 
         if ($policy === null && $decision->decision_code === DecisionOutcomeCode::Escalate->value) {
-            $policy = EscalationPolicy::withoutGlobalScopes()
+            $policy = EscalationPolicy::query()
                 ->where('team_id', $decision->team_id)
                 ->where('is_active', true)
                 ->orderBy('id')

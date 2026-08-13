@@ -6,6 +6,7 @@ use App\Domains\AI\Jobs\EvaluateEventJob;
 use App\Domains\AI\Support\AIEvaluationGate;
 use App\Domains\Context\Events\EventContextBuilt;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Support\TenantContext;
 
 class EvaluateOnEventContextBuilt
 {
@@ -23,6 +24,11 @@ class EvaluateOnEventContextBuilt
             return;
         }
 
-        EvaluateEventJob::dispatch($normalizedEvent->id);
+        // El job se despacha dentro del tenant del evento para que viaje en su
+        // contexto hasta el worker. Ver §2.1.
+        TenantContext::for(
+            $normalizedEvent->team_id,
+            fn () => EvaluateEventJob::dispatch($normalizedEvent->id),
+        );
     }
 }

@@ -373,7 +373,7 @@ class ExecuteAction
             throw new \RuntimeException("{$execution->action_type->value} action requires a linked incident.");
         }
 
-        $incident = Incident::withoutGlobalScopes()
+        $incident = Incident::query()
             ->whereKey($incidentId)
             ->where('team_id', $execution->team_id)
             ->first();

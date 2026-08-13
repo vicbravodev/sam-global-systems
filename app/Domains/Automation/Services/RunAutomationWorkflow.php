@@ -37,7 +37,7 @@ class RunAutomationWorkflow
         ActionExecutionSourceType $sourceType,
         ?string $sourceReferenceId,
     ): ?WorkflowExecution {
-        $existing = WorkflowExecution::withoutGlobalScopes()
+        $existing = WorkflowExecution::query()
             ->where('automation_workflow_id', $workflow->id)
             ->where('source_type', $sourceType->value)
             ->when(

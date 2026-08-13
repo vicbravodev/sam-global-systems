@@ -24,7 +24,7 @@ class BuildOperationalContextProfile
         $riskLevel = $this->riskLevelFromScore($priorityScore);
         $profileCode = $this->profileCodeFor($riskLevel, $signals);
 
-        return OperationalContextProfile::withoutGlobalScopes()->updateOrCreate(
+        return OperationalContextProfile::query()->updateOrCreate(
             ['normalized_event_id' => $snapshot->normalized_event_id],
             [
                 'team_id' => $snapshot->team_id,

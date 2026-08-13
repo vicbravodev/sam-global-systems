@@ -5,6 +5,7 @@ namespace App\Domains\Decisions\Jobs;
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\Decisions\Actions\EvaluateDecisionRules;
 use App\Support\JobFailureReporter;
+use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -33,7 +34,8 @@ class ReevaluateDecisionJob implements ShouldQueue
             return;
         }
 
-        $evaluateDecisionRules->execute($eval);
+        // Entra en el tenant de la evaluación antes de re-decidir. Ver §2.1.
+        TenantContext::for($eval->team_id, fn () => $evaluateDecisionRules->execute($eval));
     }
 
     public function failed(\Throwable $exception): void
