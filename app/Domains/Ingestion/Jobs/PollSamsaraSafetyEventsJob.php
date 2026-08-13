@@ -4,6 +4,7 @@ namespace App\Domains\Ingestion\Jobs;
 
 use App\Domains\Integrations\Enums\TenantIntegrationStatus;
 use App\Domains\Integrations\Models\TenantIntegration;
+use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -28,14 +29,17 @@ class PollSamsaraSafetyEventsJob implements ShouldQueue
 
     public function handle(): void
     {
-        TenantIntegration::withoutGlobalScopes()
+        // Fan-out de plataforma: recorre todos los tenants a propósito, y
+        // mete cada iteración en el contexto de SU tenant para que todo lo
+        // que se despache desde ahí viaje ya scopeado. Ver §2.1.
+        TenantContext::withoutTenant(fn () => TenantIntegration::query()
             ->where('status', TenantIntegrationStatus::Active)
             ->with('provider')
-            ->each(function (TenantIntegration $integration): void {
+            ->each(fn (TenantIntegration $integration) => TenantContext::for($integration->team_id, function () use ($integration): void {
                 if ($this->shouldPoll($integration)) {
                     PollSafetyEventsJob::dispatch($integration);
                 }
-            });
+            })));
     }
 
     private function shouldPoll(TenantIntegration $integration): bool
