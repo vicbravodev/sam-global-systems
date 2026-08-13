@@ -4,6 +4,7 @@ namespace App\Domains\Normalization\Actions;
 
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Assets\Models\AssetExternalReference;
+use App\Domains\Drivers\Models\Driver;
 use App\Domains\Drivers\Models\DriverExternalReference;
 use App\Domains\Ingestion\Models\RawEvent;
 use App\Domains\Normalization\Enums\NormalizedEventStatus;
@@ -159,8 +160,8 @@ class NormalizeRawEvent
             ? $rule->mappedCategory
             : $eventType->category;
 
-        $assetId = $this->resolveAssetId($rawEvent->provider_id, $payload);
-        $driverId = $this->resolveDriverId($rawEvent->provider_id, $payload);
+        $assetId = $this->resolveAssetId($rawEvent->provider_id, $rawEvent->team_id, $payload);
+        $driverId = $this->resolveDriverId($rawEvent->provider_id, $rawEvent->team_id, $payload);
 
         $normalizedEvent = NormalizedEvent::withoutGlobalScopes()->updateOrCreate(
             ['raw_event_id' => $rawEvent->id],
@@ -195,9 +196,9 @@ class NormalizeRawEvent
      * 3. payload.vehicleId (AlertIncident alternative)
      * 4. payload.data.conditions.0.details.panicButton.vehicle.id (AlertIncident nested)
      */
-    private function resolveAssetId(?int $providerId, array $payload): ?int
+    private function resolveAssetId(?int $providerId, ?int $teamId, array $payload): ?int
     {
-        if (! $providerId) {
+        if (! $providerId || ! $teamId) {
             return null;
         }
 
@@ -215,7 +216,19 @@ class NormalizeRawEvent
             ->where('external_id', (string) $externalId)
             ->first();
 
-        return $reference?->asset_id;
+        if ($reference === null) {
+            return null;
+        }
+
+        // (provider_id, external_id) is unique platform-wide, so a payload id
+        // can point at another tenant's asset. Isolation must not depend on
+        // how the provider allocates its identifiers.
+        $belongs = Asset::withoutGlobalScopes()
+            ->whereKey($reference->asset_id)
+            ->where('team_id', $teamId)
+            ->exists();
+
+        return $belongs ? $reference->asset_id : null;
     }
 
     /**
@@ -225,9 +238,9 @@ class NormalizeRawEvent
      * 1. payload.driver.id (both formats at root)
      * 2. payload.data.conditions.0.details.panicButton.driver.id (AlertIncident nested)
      */
-    private function resolveDriverId(?int $providerId, array $payload): ?int
+    private function resolveDriverId(?int $providerId, ?int $teamId, array $payload): ?int
     {
-        if (! $providerId) {
+        if (! $providerId || ! $teamId) {
             return null;
         }
 
@@ -243,7 +256,18 @@ class NormalizeRawEvent
             ->where('external_id', (string) $externalId)
             ->first();
 
-        return $reference?->driver_id;
+        if ($reference === null) {
+            return null;
+        }
+
+        // Same platform-wide unique key as the asset references above: verify
+        // the driver belongs to the tenant that owns the event.
+        $belongs = Driver::withoutGlobalScopes()
+            ->whereKey($reference->driver_id)
+            ->where('team_id', $teamId)
+            ->exists();
+
+        return $belongs ? $reference->driver_id : null;
     }
 
     /**

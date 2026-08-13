@@ -68,7 +68,9 @@ class SamsaraAdapterLocationsTest extends TestCase
         $this->assertSame('100', $locations[0]['external_id']);
         $this->assertEqualsWithDelta(40.1234567, $locations[0]['latitude'], 0.0000001);
         $this->assertEqualsWithDelta(-74.7654321, $locations[0]['longitude'], 0.0000001);
-        $this->assertSame(55.5, $locations[0]['speed']);
+        // Samsara reports `speedMilesPerHour`; the adapter normalizes to km/h
+        // so the rest of the domain only ever deals with one unit.
+        $this->assertSame(89.32, $locations[0]['speed']);
         $this->assertSame(89, $locations[0]['heading']);
         $this->assertSame('NJ Turnpike', $locations[0]['formatted_location']);
         $this->assertSame('2026-06-08T10:00:00Z', $locations[0]['recorded_at']);
@@ -93,6 +95,30 @@ class SamsaraAdapterLocationsTest extends TestCase
 
         $this->assertCount(1, $locations);
         $this->assertSame('1', $locations[0]['external_id']);
+    }
+
+    public function test_it_converts_speed_from_mph_to_kph_and_preserves_nulls(): void
+    {
+        Http::fake([
+            'api.samsara.com/fleet/vehicles/stats*' => Http::response([
+                'data' => [
+                    // 48.3 mph is Samsara's own documented example value.
+                    ['id' => '1', 'gps' => ['latitude' => 1.0, 'longitude' => 2.0, 'speedMilesPerHour' => 48.3]],
+                    // A parked vehicle reports zero, which must stay zero and
+                    // not be confused with "no reading".
+                    ['id' => '2', 'gps' => ['latitude' => 1.0, 'longitude' => 2.0, 'speedMilesPerHour' => 0]],
+                    // No speed at all: stays null rather than becoming 0 km/h.
+                    ['id' => '3', 'gps' => ['latitude' => 1.0, 'longitude' => 2.0]],
+                ],
+                'pagination' => ['hasNextPage' => false],
+            ], 200),
+        ]);
+
+        $locations = app(SamsaraAdapter::class)->fetchAssetLocations($this->makeIntegration());
+
+        $this->assertSame(77.73, $locations[0]['speed']);
+        $this->assertSame(0.0, $locations[1]['speed']);
+        $this->assertNull($locations[2]['speed']);
     }
 
     public function test_it_returns_empty_without_token(): void

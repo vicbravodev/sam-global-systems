@@ -37,6 +37,14 @@ function minutesSince(iso: string): number {
     return Math.max(0, Math.floor((Date.now() - Date.parse(iso)) / 60000));
 }
 
+// Engine state arrives verbatim from the provider so the stored reading stays
+// faithful to the source; translating it is a presentation concern.
+const ENGINE_STATE_LABELS: Record<string, string> = {
+    On: 'Encendido',
+    Off: 'Apagado',
+    Idle: 'Ralentí',
+};
+
 function formatTelemetryValue(data: TelemetryEntry['data']): string {
     if (data === null) {
         return '—';
@@ -45,8 +53,12 @@ function formatTelemetryValue(data: TelemetryEntry['data']): string {
     const value = data.value;
     const unit = typeof data.unit === 'string' ? ` ${data.unit}` : '';
 
-    if (typeof value === 'number' || typeof value === 'string') {
-        return `${typeof value === 'number' ? value.toLocaleString('es') : value}${unit}`;
+    if (typeof value === 'string') {
+        return `${ENGINE_STATE_LABELS[value] ?? value}${unit}`;
+    }
+
+    if (typeof value === 'number') {
+        return `${value.toLocaleString('es')}${unit}`;
     }
 
     return JSON.stringify(data);

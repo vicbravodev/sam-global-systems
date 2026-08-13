@@ -94,7 +94,7 @@ class RetryNotificationDeliveryJob implements ShouldQueue
 
         $recordUsage->execute(
             teamId: $delivery->team_id,
-            meterCode: 'outbound_notifications',
+            meterCode: $delivery->channel->channel_type->usageMeterCode(),
             quantity: 1,
             eventKey: "notif_retry_{$delivery->id}_{$delivery->attempt_number}",
         );

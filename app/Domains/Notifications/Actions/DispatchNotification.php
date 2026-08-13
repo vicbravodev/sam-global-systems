@@ -117,7 +117,7 @@ class DispatchNotification
 
                 $this->recordUsage->execute(
                     teamId: $notification->team_id,
-                    meterCode: 'outbound_notifications',
+                    meterCode: $channel->channel_type->usageMeterCode(),
                     quantity: 1,
                     eventKey: "notif_delivery_{$delivery->id}",
                 );
