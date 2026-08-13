@@ -1,5 +1,15 @@
 import { usePage } from '@inertiajs/react';
-import { Camera, Clapperboard, FileQuestion, Loader2 } from 'lucide-react';
+import {
+    Camera,
+    Check,
+    ChevronLeft,
+    ChevronRight,
+    Clapperboard,
+    FileQuestion,
+    HelpCircle,
+    Loader2,
+    X,
+} from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
@@ -11,21 +21,15 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { postJson, readErrorMessage } from '@/lib/sam-fetch';
+import { cn } from '@/lib/utils';
 import type {
     IncidentMediaAssessment,
     IncidentMediaItem,
     IncidentMediaRequestSummary,
 } from '@/types/sam';
+import { mediaResultLabel } from './media-verdict';
 
 const PENDING_REQUEST_STATUSES = ['pending', 'sent', 'processing'];
-
-const RESULT_LABEL: Record<string, string> = {
-    confirms_event: 'Confirma el evento',
-    contradicts_event: 'Contradice el evento',
-    inconclusive: 'No concluyente',
-    low_quality: 'Baja calidad',
-    unavailable: 'No disponible',
-};
 
 function isVideo(item: IncidentMediaItem): boolean {
     return (
@@ -35,17 +39,50 @@ function isVideo(item: IncidentMediaItem): boolean {
     );
 }
 
+function VerdictBadge({ result }: { result: string | null }) {
+    if (result === null) {
+        return null;
+    }
+
+    const tone =
+        result === 'contradicts_event'
+            ? 'bg-severity-high text-white'
+            : result === 'confirms_event'
+              ? 'bg-health-ok text-white'
+              : 'bg-black/70 text-white/90';
+    const Icon =
+        result === 'contradicts_event'
+            ? X
+            : result === 'confirms_event'
+              ? Check
+              : HelpCircle;
+
+    return (
+        <span
+            className={cn(
+                'absolute bottom-1 left-1 inline-grid size-4.5 place-items-center rounded-full',
+                tone,
+            )}
+            title={mediaResultLabel(result)}
+        >
+            <Icon size={11} strokeWidth={2.25} />
+        </span>
+    );
+}
+
 function MediaThumb({
     item,
+    result,
     onOpen,
 }: {
     item: IncidentMediaItem;
+    result: string | null;
     onOpen: () => void;
 }) {
     const video = isVideo(item);
     const preview = item.thumbnailUrl ?? (video ? null : item.url);
-    // Signed URLs expire (30 min): degrade to the placeholder icon instead of
-    // a wall of broken images on long-lived tabs.
+    // Las URLs firmadas expiran (30 min): degradar al ícono en vez de dejar
+    // una pared de imágenes rotas en pestañas long-lived.
     const [previewFailed, setPreviewFailed] = useState(false);
 
     return (
@@ -53,7 +90,7 @@ function MediaThumb({
             type="button"
             onClick={onOpen}
             disabled={item.url === null}
-            className="group relative flex aspect-video items-center justify-center overflow-hidden rounded-md border border-border bg-surface-2 transition-colors hover:border-fg-3 disabled:cursor-not-allowed disabled:opacity-60"
+            className="group relative flex h-24 w-40 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-surface-2 transition-colors hover:border-fg-3 disabled:cursor-not-allowed disabled:opacity-60"
             aria-label={`Abrir media #${item.id}`}
         >
             {preview && !previewFailed ? (
@@ -61,20 +98,22 @@ function MediaThumb({
                     src={preview}
                     alt={`Media del incidente #${item.id}`}
                     className="h-full w-full object-cover"
+                    loading="lazy"
                     onError={() => setPreviewFailed(true)}
                 />
             ) : (
                 <span className="flex flex-col items-center gap-1 text-fg-3">
                     {video ? (
-                        <Clapperboard size={20} strokeWidth={1.5} />
+                        <Clapperboard size={18} strokeWidth={1.5} />
                     ) : (
-                        <Camera size={20} strokeWidth={1.5} />
+                        <Camera size={18} strokeWidth={1.5} />
                     )}
                     <span className="text-3xs uppercase">
                         {item.mediaType ?? 'media'}
                     </span>
                 </span>
             )}
+            <VerdictBadge result={result} />
             {video && item.durationSeconds !== null && (
                 <span className="absolute right-1 bottom-1 rounded bg-black/70 px-1 font-mono text-3xs text-white">
                     {Math.floor(item.durationSeconds / 60)}:
@@ -85,7 +124,7 @@ function MediaThumb({
     );
 }
 
-interface MediaGalleryProps {
+interface MediaStripProps {
     incidentId: number;
     media: IncidentMediaItem[];
     assessments: IncidentMediaAssessment[];
@@ -93,13 +132,18 @@ interface MediaGalleryProps {
     onMutated: () => void;
 }
 
-export function MediaGallery({
+/**
+ * Tira horizontal de media del evento: altura fija independiente de la
+ * cantidad de elementos (22 medias ocupan lo mismo que 3), con veredicto de
+ * la IA por miniatura y visor con navegación.
+ */
+export function MediaStrip({
     incidentId,
     media,
     assessments,
     requests,
     onMutated,
-}: MediaGalleryProps) {
+}: MediaStripProps) {
     const page = usePage();
     const teamSlug =
         (
@@ -108,7 +152,7 @@ export function MediaGallery({
             }
         ).currentTeam?.slug ?? null;
 
-    const [openItem, setOpenItem] = useState<IncidentMediaItem | null>(null);
+    const [openIndex, setOpenIndex] = useState<number | null>(null);
     const [requesting, setRequesting] = useState(false);
 
     const pendingRequest = requests.find((request) =>
@@ -119,6 +163,11 @@ export function MediaGallery({
         assessments.find(
             (assessment) => assessment.mediaContextId === item.id,
         ) ?? null;
+
+    const images = media.filter(
+        (item) => item.mediaType === 'image' || item.mediaType === 'snapshot',
+    ).length;
+    const clips = media.length - images;
 
     const requestMedia = async () => {
         if (teamSlug === null) {
@@ -155,13 +204,31 @@ export function MediaGallery({
         }
     };
 
+    const openItem = openIndex !== null ? (media[openIndex] ?? null) : null;
     const openAssessment = openItem ? assessmentFor(openItem) : null;
 
+    const navigate = (delta: number) => {
+        if (openIndex === null || media.length === 0) {
+            return;
+        }
+
+        setOpenIndex((openIndex + delta + media.length) % media.length);
+    };
+
     return (
-        <section className="rounded-lg border border-border bg-surface-1 p-4">
-            <div className="mb-3 flex items-center justify-between gap-2">
-                <h3 className="text-sm font-semibold tracking-caps text-fg-1 uppercase">
+        <section>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-3xs font-semibold tracking-caps text-fg-3 uppercase">
                     Media del evento
+                    {media.length > 0 && (
+                        <span className="ml-1.5 font-mono text-fg-2 normal-case">
+                            {images > 0 &&
+                                `${images} ${images === 1 ? 'imagen' : 'imágenes'}`}
+                            {images > 0 && clips > 0 && ' · '}
+                            {clips > 0 &&
+                                `${clips} ${clips === 1 ? 'clip' : 'clips'}`}
+                        </span>
+                    )}
                 </h3>
                 {pendingRequest ? (
                     <Badge variant="outline" className="gap-1 text-fg-2">
@@ -182,42 +249,39 @@ export function MediaGallery({
             </div>
 
             {media.length === 0 ? (
-                <div className="flex flex-col items-center gap-2 rounded-md border border-dashed border-border py-8 text-fg-3">
+                <div className="flex flex-col items-center gap-2 rounded-md border border-dashed border-border py-6 text-fg-3">
                     <FileQuestion size={20} strokeWidth={1.5} />
                     <span className="text-xs">
                         Sin media disponible para este evento.
                     </span>
                 </div>
             ) : (
-                <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
-                    {media.map((item) => (
-                        <div key={item.id} className="flex flex-col gap-1">
-                            <MediaThumb
-                                item={item}
-                                onOpen={() => setOpenItem(item)}
-                            />
-                            {assessmentFor(item) && (
-                                <span className="truncate text-2xs text-fg-3">
-                                    IA:{' '}
-                                    {RESULT_LABEL[
-                                        assessmentFor(item)?.result ?? ''
-                                    ] ?? assessmentFor(item)?.result}
-                                </span>
-                            )}
-                        </div>
+                <div className="flex gap-2 overflow-x-auto pb-1.5">
+                    {media.map((item, idx) => (
+                        <MediaThumb
+                            key={item.id}
+                            item={item}
+                            result={assessmentFor(item)?.result ?? null}
+                            onOpen={() => setOpenIndex(idx)}
+                        />
                     ))}
                 </div>
             )}
 
             <Dialog
                 open={openItem !== null}
-                onOpenChange={(open) => !open && setOpenItem(null)}
+                onOpenChange={(open) => !open && setOpenIndex(null)}
             >
                 <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>
                             Media #{openItem?.id} ·{' '}
                             {openItem?.mediaType ?? 'media'}
+                            {openIndex !== null && media.length > 1 && (
+                                <span className="ml-2 font-mono text-xs font-normal text-fg-3">
+                                    {openIndex + 1} / {media.length}
+                                </span>
+                            )}
                         </DialogTitle>
                     </DialogHeader>
                     {openItem &&
@@ -227,27 +291,46 @@ export function MediaGallery({
                                 src={openItem.url}
                                 controls
                                 autoPlay
-                                className="max-h-[60vh] w-full rounded-md bg-black"
+                                className="max-h-[55vh] w-full rounded-md bg-black"
                             />
                         ) : (
                             <img
                                 src={openItem.url}
                                 alt={`Media del incidente #${openItem.id}`}
-                                className="max-h-[60vh] w-full rounded-md object-contain"
+                                className="max-h-[55vh] w-full rounded-md object-contain"
                             />
                         ))}
                     {openAssessment && (
                         <div className="rounded-md border border-border bg-surface-2 p-3 text-xs">
                             <div className="mb-1 font-semibold text-fg-1">
-                                Qué vio la IA —{' '}
-                                {RESULT_LABEL[openAssessment.result ?? ''] ??
-                                    openAssessment.result}
+                                Qué vio la IA:{' '}
+                                {mediaResultLabel(openAssessment.result)}
                                 {openAssessment.confidenceScore !== null &&
-                                    ` (${Math.round(openAssessment.confidenceScore * 100)}%)`}
+                                    ` (${Math.round(openAssessment.confidenceScore * 100)} %)`}
                             </div>
                             <p className="text-fg-2">
                                 {openAssessment.summary ?? 'Sin resumen.'}
                             </p>
+                        </div>
+                    )}
+                    {media.length > 1 && (
+                        <div className="flex items-center justify-between">
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => navigate(-1)}
+                            >
+                                <ChevronLeft size={13} />
+                                Anterior
+                            </Button>
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => navigate(1)}
+                            >
+                                Siguiente
+                                <ChevronRight size={13} />
+                            </Button>
                         </div>
                     )}
                 </DialogContent>
