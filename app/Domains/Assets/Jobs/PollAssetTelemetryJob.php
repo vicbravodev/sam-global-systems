@@ -54,17 +54,15 @@ class PollAssetTelemetryJob implements ShouldBeUnique, ShouldQueue
                 continue;
             }
 
-            $asset = $resolveAsset->execute($this->integration->provider_id, (string) $externalId);
+            // The team is part of the lookup, so an external id that belongs to
+            // another tenant resolves to null instead of leaking its asset here.
+            $asset = $resolveAsset->execute(
+                $this->integration->provider_id,
+                (string) $externalId,
+                $this->integration->team_id,
+            );
 
             if ($asset === null) {
-                continue;
-            }
-
-            // ResolveAssetFromExternalId looks up (provider, external_id)
-            // across all tenants, so it can hand back another team's asset.
-            // Provider-side ids are unique in practice, but tenant isolation
-            // must not rest on an external system's id allocation.
-            if ($asset->team_id !== $this->integration->team_id) {
                 continue;
             }
 
