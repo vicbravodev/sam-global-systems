@@ -101,7 +101,7 @@ class FallbackNotificationChannelJob implements ShouldQueue
 
         $recordUsage->execute(
             teamId: $delivery->team_id,
-            meterCode: 'outbound_notifications',
+            meterCode: $fallbackChannel->channel_type->usageMeterCode(),
             quantity: 1,
             eventKey: "notif_fallback_{$delivery->id}",
         );

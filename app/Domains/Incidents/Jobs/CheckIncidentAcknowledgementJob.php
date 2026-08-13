@@ -102,7 +102,7 @@ class CheckIncidentAcknowledgementJob implements ShouldQueue
             if ($incident->status?->code !== IncidentStatusCode::Escalated->value) {
                 $incident = $escalateIncident->execute(
                     $incident,
-                    reason: 'SLA breached without acknowledgement.',
+                    reason: 'SLA vencido sin atención (ACK).',
                     escalatedByType: IncidentCreatorType::System,
                 );
             }
