@@ -5,14 +5,16 @@ namespace App\Domains\Notifications\Channels;
 use App\Contracts\Notifications\NotificationDriver;
 use App\Domains\Notifications\Data\DeliveryResult;
 use App\Domains\Notifications\Data\RenderedNotification;
+use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Models\NotificationChannel;
+use App\Domains\Notifications\Support\PlatformTwilioConfig;
 use Twilio\Exceptions\TwilioException;
 
 /**
  * Twilio SMS driver. Body is truncated to 160 chars (155 + " (ver portal)")
  * so it always fits in a single segment.
  *
- * Required config_json keys:
+ * Credentials resolve config_json → platform env (services.twilio):
  *   - twilio_account_sid (or account_sid) — cifrado at rest.
  *   - twilio_auth_token  (or auth_token)  — cifrado at rest.
  *   - from               — Twilio sender (E.164, e.g. "+14155238886") or
@@ -30,7 +32,7 @@ class SmsNotificationDriver implements NotificationDriver
 
     public function send(RenderedNotification $notification, NotificationChannel $channel): DeliveryResult
     {
-        $config = $channel->config_json ?? [];
+        $config = PlatformTwilioConfig::merge($channel->config_json ?? [], ChannelType::Sms);
 
         $from = $config['from'] ?? null;
         $sid = $config['twilio_account_sid'] ?? $config['account_sid'] ?? null;

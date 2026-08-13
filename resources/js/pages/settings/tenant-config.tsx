@@ -27,7 +27,6 @@ import {
 } from '@/components/ui/select';
 import { formatDateTime } from '@/lib/format';
 import {
-    deleteJson,
     postJson,
     putJson,
     readErrorMessage,
@@ -102,7 +101,6 @@ interface ChannelRow {
     isActive: boolean;
     isGlobal: boolean;
     enabledForTeam: boolean;
-    configSummary: Record<string, string>;
 }
 
 interface VersionRow {
@@ -1569,142 +1567,19 @@ function ScheduleCard({
     );
 }
 
-// ---- Channels tab (F5c) ----
-
-const CHANNEL_CONFIG_FIELDS: Record<string, { key: string; label: string }[]> =
-    {
-        slack: [{ key: 'slack_webhook_url', label: 'Webhook URL de Slack' }],
-        sms: [
-            { key: 'twilio_account_sid', label: 'Twilio Account SID' },
-            { key: 'twilio_auth_token', label: 'Twilio Auth Token' },
-            { key: 'from', label: 'Número emisor (E.164 o MG…)' },
-        ],
-        whatsapp: [
-            { key: 'twilio_account_sid', label: 'Twilio Account SID' },
-            { key: 'twilio_auth_token', label: 'Twilio Auth Token' },
-            { key: 'from', label: 'Emisor (whatsapp:+…)' },
-        ],
-        voice: [
-            { key: 'twilio_account_sid', label: 'Twilio Account SID' },
-            { key: 'twilio_auth_token', label: 'Twilio Auth Token' },
-            { key: 'from', label: 'Número de voz (E.164)' },
-        ],
-        push: [
-            {
-                key: 'firebase_credentials',
-                label: 'Credenciales Firebase (JSON)',
-            },
-        ],
-        webhook: [
-            { key: 'url', label: 'URL destino' },
-            { key: 'secret', label: 'Secreto HMAC' },
-        ],
-        email: [],
-        web: [],
-    };
+// ---- Channels tab (V2-B1) ----
+// La mensajería la opera SAM con credenciales de plataforma (env): el tenant
+// no configura canales ni credenciales — sólo apaga/enciende los canales SAM
+// para su propio equipo.
 
 function ChannelsTab({
     channels,
-    channelTypes,
     canManage,
 }: {
     channels: ChannelRow[];
-    channelTypes: { value: string; label: string }[];
     canManage: boolean;
 }) {
     const base = useTeamBase();
-    const [creating, setCreating] = useState(false);
-    const [submitting, setSubmitting] = useState(false);
-    const [errors, setErrors] = useState<Record<string, string>>({});
-    const [form, setForm] = useState({
-        code: '',
-        name: '',
-        channelType: 'slack',
-        config: {} as Record<string, string>,
-    });
-    const [testAddress, setTestAddress] = useState('');
-    const [testingId, setTestingId] = useState<number | null>(null);
-
-    const providerFor = (type: string): string =>
-        type === 'sms' || type === 'whatsapp' || type === 'voice'
-            ? 'twilio'
-            : type === 'push'
-              ? 'firebase'
-              : type === 'slack'
-                ? 'slack'
-                : type === 'webhook'
-                  ? 'webhook'
-                  : 'mail';
-
-    const create = async () => {
-        // D-01: guard contra doble click.
-        if (base === null || submitting) {
-            return;
-        }
-
-        const nextErrors: Record<string, string> = {};
-
-        if (form.code === '') {
-            nextErrors.code = 'El código es obligatorio.';
-        }
-
-        if (form.name === '') {
-            nextErrors.name = 'El nombre es obligatorio.';
-        }
-
-        if (Object.keys(nextErrors).length > 0) {
-            setErrors(nextErrors);
-
-            return;
-        }
-
-        setErrors({});
-        setSubmitting(true);
-
-        const result = await submit(
-            postJson(`${base}/channels`, {
-                code: form.code,
-                name: form.name,
-                provider: providerFor(form.channelType),
-                channel_type: form.channelType,
-                config_json: form.config,
-                is_active: true,
-            }),
-            'Canal creado.',
-        );
-
-        setSubmitting(false);
-
-        if (result.ok) {
-            setCreating(false);
-        } else {
-            setErrors(result.fieldErrors);
-        }
-    };
-
-    const toggleActive = (channel: ChannelRow) => {
-        if (base === null) {
-            return;
-        }
-
-        void submit(
-            putJson(`${base}/channels/${channel.id}`, {
-                is_active: !channel.isActive,
-            }),
-            channel.isActive ? 'Canal desactivado.' : 'Canal activado.',
-        );
-    };
-
-    const remove = (channel: ChannelRow) => {
-        if (base === null) {
-            return;
-        }
-
-        void submit(
-            deleteJson(`${base}/channels/${channel.id}`),
-            'Canal eliminado.',
-        );
-    };
 
     const toggleGlobal = (channel: ChannelRow) => {
         if (base === null) {
@@ -1721,193 +1596,27 @@ function ChannelsTab({
         );
     };
 
-    const testChannel = async (channel: ChannelRow) => {
-        if (base === null) {
-            return;
-        }
-
-        if (testAddress === '') {
-            toast.error(
-                'Indica el destino de prueba (email, teléfono, user id o URL).',
-            );
-
-            return;
-        }
-
-        setTestingId(channel.id);
-
-        try {
-            const response = await postJson(
-                `${base}/channels/${channel.id}/test`,
-                { address: testAddress },
-            );
-            const payload = (await response.json()) as {
-                data?: { success?: boolean; error?: string | null };
-            };
-
-            if (response.ok && payload.data?.success) {
-                toast.success('Mensaje de prueba enviado. Revisa el destino.');
-            } else {
-                toast.error(
-                    payload.data?.error ?? 'La prueba del canal falló.',
-                );
-            }
-        } catch {
-            toast.error('Error de red. Vuelve a intentarlo.');
-        } finally {
-            setTestingId(null);
-        }
-    };
-
-    const fields = CHANNEL_CONFIG_FIELDS[form.channelType] ?? [];
-
     return (
         <Card>
             <CardHeader>
-                <CardTitle className="flex items-center justify-between text-sm uppercase">
+                <CardTitle className="text-sm uppercase">
                     Canales de notificación ({channels.length})
-                    {canManage && (channels.length > 0 || creating) && (
-                        <Button
-                            size="sm"
-                            variant={creating ? 'ghost' : 'outline'}
-                            onClick={() => setCreating(!creating)}
-                        >
-                            {creating ? 'Cancelar' : 'Nuevo canal'}
-                        </Button>
-                    )}
                 </CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
-                {creating && (
-                    <div className="flex flex-col gap-2 rounded-md border border-border p-3">
-                        <div className="flex flex-wrap gap-2">
-                            <div className="flex flex-col gap-1">
-                                <Input
-                                    placeholder="code (ej. twilio_sms)"
-                                    value={form.code}
-                                    aria-invalid={Boolean(errors.code)}
-                                    onChange={(e) =>
-                                        setForm({
-                                            ...form,
-                                            code: e.target.value,
-                                        })
-                                    }
-                                    className="w-48 font-mono text-xs"
-                                />
-                                <InputError
-                                    message={errors.code}
-                                    className="max-w-48 text-xs"
-                                />
-                            </div>
-                            <div className="flex flex-col gap-1">
-                                <Input
-                                    placeholder="Nombre"
-                                    value={form.name}
-                                    aria-invalid={Boolean(errors.name)}
-                                    onChange={(e) =>
-                                        setForm({
-                                            ...form,
-                                            name: e.target.value,
-                                        })
-                                    }
-                                    className="w-56 text-xs"
-                                />
-                                <InputError
-                                    message={errors.name}
-                                    className="max-w-56 text-xs"
-                                />
-                            </div>
-                            <Select
-                                value={form.channelType}
-                                onValueChange={(value) =>
-                                    setForm({
-                                        ...form,
-                                        channelType: value,
-                                        config: {},
-                                    })
-                                }
-                            >
-                                <SelectTrigger className="h-9">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {channelTypes.map((type) => (
-                                        <SelectItem
-                                            key={type.value}
-                                            value={type.value}
-                                        >
-                                            {type.label}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        {fields.map((field) => (
-                            <div
-                                key={field.key}
-                                className="flex flex-col gap-1"
-                            >
-                                <Label className="text-xs">{field.label}</Label>
-                                <Input
-                                    type="password"
-                                    autoComplete="off"
-                                    value={form.config[field.key] ?? ''}
-                                    onChange={(e) =>
-                                        setForm({
-                                            ...form,
-                                            config: {
-                                                ...form.config,
-                                                [field.key]: e.target.value,
-                                            },
-                                        })
-                                    }
-                                    className="max-w-md font-mono text-xs"
-                                />
-                            </div>
-                        ))}
-                        <div>
-                            <Button
-                                size="sm"
-                                onClick={create}
-                                disabled={submitting}
-                            >
-                                {submitting ? 'Creando…' : 'Crear canal'}
-                            </Button>
-                        </div>
-                    </div>
-                )}
-
-                {canManage && channels.length > 0 && (
-                    <div className="flex items-center gap-2">
-                        <Label className="text-xs whitespace-nowrap">
-                            Destino de prueba
-                        </Label>
-                        <Input
-                            placeholder="email, +52…, user id o URL"
-                            value={testAddress}
-                            onChange={(e) => setTestAddress(e.target.value)}
-                            className="max-w-xs text-xs"
-                        />
-                    </div>
-                )}
+                <p className="text-xs text-fg-3">
+                    SAM opera la mensajería por ti (email, SMS, WhatsApp y
+                    llamadas): no necesitas configurar credenciales ni
+                    proveedores. Si no quieres recibir avisos por alguna vía,
+                    apágala para tu equipo.
+                </p>
 
                 {channels.length === 0 ? (
                     <EmptyState
                         className="min-h-0 gap-0.5 px-0 py-4"
                         icon={Radio}
-                        title="Sin canales configurados"
-                        description="Configura Slack, Twilio (SMS/WhatsApp) o FCM para que las notificaciones y las llamadas de verificación operen."
-                        action={
-                            canManage && !creating ? (
-                                <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => setCreating(true)}
-                                >
-                                    Nuevo canal
-                                </Button>
-                            ) : undefined
-                        }
+                        title="Sin canales disponibles"
+                        description="SAM aún no ha habilitado canales de mensajería para tu cuenta. Contacta a soporte."
                     />
                 ) : (
                     <ul className="flex flex-col gap-2">
@@ -1924,13 +1633,6 @@ function ChannelsTab({
                                 </Badge>
                                 <span className="font-medium text-fg-1">
                                     {channel.name}
-                                </span>
-                                <span className="font-mono text-2xs text-fg-3">
-                                    {Object.entries(channel.configSummary)
-                                        .map(
-                                            ([key, value]) => `${key}=${value}`,
-                                        )
-                                        .join(' · ') || 'sin config'}
                                 </span>
                                 {channel.isGlobal && (
                                     <Badge
@@ -1970,36 +1672,6 @@ function ChannelsTab({
                                             {channel.enabledForTeam
                                                 ? 'Apagar para mi equipo'
                                                 : 'Encender'}
-                                        </Button>
-                                    </span>
-                                )}
-                                {canManage && !channel.isGlobal && (
-                                    <span className="ml-auto flex gap-1">
-                                        <Button
-                                            size="sm"
-                                            variant="outline"
-                                            disabled={testingId === channel.id}
-                                            onClick={() => testChannel(channel)}
-                                        >
-                                            Probar canal
-                                        </Button>
-                                        <Button
-                                            size="sm"
-                                            variant="ghost"
-                                            onClick={() =>
-                                                toggleActive(channel)
-                                            }
-                                        >
-                                            {channel.isActive
-                                                ? 'Desactivar'
-                                                : 'Activar'}
-                                        </Button>
-                                        <Button
-                                            size="sm"
-                                            variant="ghost"
-                                            onClick={() => remove(channel)}
-                                        >
-                                            Eliminar
                                         </Button>
                                     </span>
                                 )}
@@ -2377,7 +2049,6 @@ export default function TenantConfigPage() {
                 {tab === 'channels' && (
                     <ChannelsTab
                         channels={props.channels}
-                        channelTypes={props.channelTypes}
                         canManage={props.canManageChannels}
                     />
                 )}

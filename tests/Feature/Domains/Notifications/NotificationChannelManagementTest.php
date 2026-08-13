@@ -2,23 +2,20 @@
 
 namespace Tests\Feature\Domains\Notifications;
 
-use App\Contracts\Notifications\ChannelDriverRegistry;
-use App\Contracts\Notifications\NotificationDriver;
-use App\Domains\Notifications\Data\DeliveryResult;
-use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Models\Team;
 use App\Models\User;
 use Database\Seeders\AccessSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Route;
 use Inertia\Testing\AssertableInertia as Assert;
-use Mockery;
 use Tests\TestCase;
 
 /**
- * Roadmap F5c: tenant notification channel management (CRUD + probar canal)
- * with secrets masked before they reach the browser.
+ * SAM opera la mensajería centralmente (credenciales Twilio en env): los
+ * tenants ya no configuran canales — sólo ven los canales de plataforma y
+ * pueden apagarlos/encenderlos para su equipo (V2-B1).
  */
 class NotificationChannelManagementTest extends TestCase
 {
@@ -38,11 +35,25 @@ class NotificationChannelManagementTest extends TestCase
         $this->team = $this->user->currentTeam;
     }
 
-    public function test_config_page_lists_channels_with_masked_secrets(): void
+    public function test_tenant_channel_config_routes_no_longer_exist(): void
+    {
+        foreach ([
+            'tenant-config.channels.store',
+            'tenant-config.channels.update',
+            'tenant-config.channels.destroy',
+            'tenant-config.channels.test',
+            'api.notifications.channels.index',
+            'api.notifications.channels.update',
+        ] as $name) {
+            $this->assertFalse(Route::has($name), "Route [{$name}] should be gone: tenants no configuran mensajería.");
+        }
+    }
+
+    public function test_config_page_lists_channels_without_credential_data(): void
     {
         NotificationChannel::factory()->sms()->create([
-            'team_id' => $this->team->id,
-            'name' => 'Twilio SMS',
+            'team_id' => null,
+            'name' => 'SMS SAM (Twilio)',
             'config_json' => [
                 'twilio_account_sid' => 'AC1234567890',
                 'twilio_auth_token' => 'super-secret-token-9876',
@@ -59,122 +70,23 @@ class NotificationChannelManagementTest extends TestCase
             fn (Assert $page) => $page
                 ->component('settings/tenant-config')
                 ->has('channels', 1)
-                ->where('channels.0.name', 'Twilio SMS')
-                ->where('channels.0.configSummary.twilio_auth_token', '••••9876')
-                ->has('channelTypes')
+                ->where('channels.0.name', 'SMS SAM (Twilio)')
+                ->missing('channels.0.configSummary')
                 ->where('canManageChannels', true),
         );
 
-        // The raw secret must never appear in the page payload.
+        // Nothing derived from credentials reaches the browser anymore.
         $this->assertStringNotContainsString('super-secret-token-9876', $response->getContent());
+        $this->assertStringNotContainsString('AC1234567890', $response->getContent());
     }
 
-    public function test_channel_can_be_created_via_web_route(): void
+    public function test_config_json_is_hidden_when_a_channel_is_serialized(): void
     {
-        $response = $this->actingAs($this->user)->postJson(
-            route('tenant-config.channels.store', ['current_team' => $this->team->slug]),
-            [
-                'code' => 'slack_ops',
-                'name' => 'Slack #ops',
-                'provider' => 'slack',
-                'channel_type' => 'slack',
-                'config_json' => ['slack_webhook_url' => 'https://hooks.slack.com/services/T000/B000/XXXX'],
-            ],
-        );
+        $channel = NotificationChannel::factory()->voice()->create(['team_id' => null]);
+        $sid = $channel->config_json['twilio_account_sid'];
 
-        $response->assertCreated();
-
-        $channel = NotificationChannel::query()
-            ->where('team_id', $this->team->id)
-            ->where('code', 'slack_ops')
-            ->first();
-
-        $this->assertNotNull($channel);
-        $this->assertSame(ChannelType::Slack, $channel->channel_type);
-        $this->assertSame(
-            'https://hooks.slack.com/services/T000/B000/XXXX',
-            $channel->config_json['slack_webhook_url'],
-        );
-
-        // Encrypted at rest: the raw column must not contain the secret.
-        $raw = (string) DB::table('notification_channels')
-            ->where('id', $channel->id)
-            ->value('config_json');
-        $this->assertStringNotContainsString('hooks.slack.com', $raw);
-    }
-
-    public function test_channel_test_endpoint_sends_through_the_driver(): void
-    {
-        $channel = NotificationChannel::factory()->sms()->create([
-            'team_id' => $this->team->id,
-        ]);
-
-        $driver = Mockery::mock(NotificationDriver::class);
-        $driver->shouldReceive('send')
-            ->once()
-            ->andReturn(DeliveryResult::success('SM-test'));
-
-        $registry = Mockery::mock(ChannelDriverRegistry::class);
-        $registry->shouldReceive('driverFor')->andReturn($driver);
-        $this->app->instance(ChannelDriverRegistry::class, $registry);
-
-        $response = $this->actingAs($this->user)->postJson(
-            route('tenant-config.channels.test', [
-                'current_team' => $this->team->slug,
-                'channel' => $channel->id,
-            ]),
-            ['address' => '+5215512345678'],
-        );
-
-        $response->assertOk();
-        $response->assertJsonPath('data.success', true);
-    }
-
-    public function test_channel_test_reports_driver_failure(): void
-    {
-        $channel = NotificationChannel::factory()->sms()->create([
-            'team_id' => $this->team->id,
-        ]);
-
-        $driver = Mockery::mock(NotificationDriver::class);
-        $driver->shouldReceive('send')->andReturn(DeliveryResult::failure('credenciales inválidas'));
-
-        $registry = Mockery::mock(ChannelDriverRegistry::class);
-        $registry->shouldReceive('driverFor')->andReturn($driver);
-        $this->app->instance(ChannelDriverRegistry::class, $registry);
-
-        $response = $this->actingAs($this->user)->postJson(
-            route('tenant-config.channels.test', [
-                'current_team' => $this->team->slug,
-                'channel' => $channel->id,
-            ]),
-            ['address' => '+5215512345678'],
-        );
-
-        $response->assertStatus(422);
-        $response->assertJsonPath('data.error', 'credenciales inválidas');
-    }
-
-    public function test_global_channel_cannot_be_deleted_nor_edited_by_a_tenant(): void
-    {
-        $global = NotificationChannel::factory()->email()->create(['team_id' => null]);
-
-        // V2-B1: platform channels are entirely off-limits for tenants —
-        // delete, edit and test all hit the policy (only toggle is allowed).
-        $this->actingAs($this->user)->deleteJson(
-            route('tenant-config.channels.destroy', [
-                'current_team' => $this->team->slug,
-                'channel' => $global->id,
-            ]),
-        )->assertForbidden();
-
-        $this->actingAs($this->user)->putJson(
-            route('tenant-config.channels.update', [
-                'current_team' => $this->team->slug,
-                'channel' => $global->id,
-            ]),
-            ['is_active' => false],
-        )->assertForbidden();
+        $this->assertArrayNotHasKey('config_json', $channel->toArray());
+        $this->assertStringNotContainsString($sid, (string) json_encode($channel));
     }
 
     public function test_tenant_can_toggle_a_global_channel_for_itself(): void
@@ -239,19 +151,5 @@ class NotificationChannelManagementTest extends TestCase
         $this->assertEqualsCanonicalizing([$own->id], $mine);
         // …while the other tenant still sees SAM's channel (no leak).
         $this->assertContains($global->id, $theirs);
-    }
-
-    public function test_other_tenant_channel_cannot_be_managed(): void
-    {
-        $foreign = NotificationChannel::factory()->sms()->create([
-            'team_id' => User::factory()->create()->currentTeam->id,
-        ]);
-
-        $this->actingAs($this->user)->deleteJson(
-            route('tenant-config.channels.destroy', [
-                'current_team' => $this->team->slug,
-                'channel' => $foreign->id,
-            ]),
-        )->assertForbidden();
     }
 }

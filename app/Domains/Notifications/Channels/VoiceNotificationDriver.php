@@ -5,7 +5,9 @@ namespace App\Domains\Notifications\Channels;
 use App\Contracts\Notifications\NotificationDriver;
 use App\Domains\Notifications\Data\DeliveryResult;
 use App\Domains\Notifications\Data\RenderedNotification;
+use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Models\NotificationChannel;
+use App\Domains\Notifications\Support\PlatformTwilioConfig;
 use Twilio\Exceptions\TwilioException;
 
 /**
@@ -15,7 +17,7 @@ use Twilio\Exceptions\TwilioException;
  * (`PlaceVerificationCallJob`); this driver covers escalation steps that
  * choose `voice` as a plain notification channel (Roadmap V2-A4).
  *
- * Required config_json keys:
+ * Credentials resolve config_json → platform env (services.twilio):
  *   - twilio_account_sid (or account_sid) — cifrado at rest.
  *   - twilio_auth_token  (or auth_token)  — cifrado at rest.
  *   - from               — Twilio voice number (E.164).
@@ -28,7 +30,7 @@ class VoiceNotificationDriver implements NotificationDriver
 
     public function send(RenderedNotification $notification, NotificationChannel $channel): DeliveryResult
     {
-        $config = $channel->config_json ?? [];
+        $config = PlatformTwilioConfig::merge($channel->config_json ?? [], ChannelType::Voice);
 
         $from = $config['from'] ?? null;
         $sid = $config['twilio_account_sid'] ?? $config['account_sid'] ?? null;
