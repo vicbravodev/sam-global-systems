@@ -5,6 +5,7 @@ namespace App\Domains\Automation\Jobs;
 use App\Domains\Automation\Actions\ExecuteAction;
 use App\Domains\Automation\Enums\ActionExecutionStatus;
 use App\Domains\Automation\Models\ActionExecution;
+use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -44,7 +45,12 @@ class ExecuteActionJob implements ShouldQueue
             return;
         }
 
-        $executeAction->execute($execution);
+        // Entra en el tenant de la ejecución: la acción resuelve plantillas,
+        // canales y destinatarios del tenant. Ver §2.1.
+        TenantContext::for(
+            $execution->team_id,
+            fn () => $executeAction->execute($execution),
+        );
     }
 
     public function failed(\Throwable $exception): void

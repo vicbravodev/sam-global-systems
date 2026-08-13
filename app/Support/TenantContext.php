@@ -68,15 +68,23 @@ class TenantContext
 
     /**
      * Ejecuta el callback dentro del tenant dado y restaura el anterior al
-     * salir. Es la forma correcta de iterar tenants en un job de plataforma.
+     * salir. Es la forma correcta de iterar tenants en un job de plataforma,
+     * y de que un job se meta en su propio tenant al arrancar.
+     *
+     * Un tenant null significa "este registro no es de ningún tenant": se
+     * ejecuta sin tenant activo, no heredando el del usuario de turno.
      *
      * @template TReturn
      *
      * @param  Closure(): TReturn  $callback
      * @return TReturn
      */
-    public static function for(Team|int $team, Closure $callback): mixed
+    public static function for(Team|int|null $team, Closure $callback): mixed
     {
+        if ($team === null) {
+            return self::withoutTenant($callback);
+        }
+
         return self::restoring(fn () => self::set($team), $callback);
     }
 

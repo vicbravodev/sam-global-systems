@@ -7,6 +7,7 @@ use App\Domains\Ingestion\Events\RawEventFailed;
 use App\Domains\Ingestion\Events\RawEventProcessed;
 use App\Domains\Ingestion\Models\RawEvent;
 use App\Support\JobFailureReporter;
+use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -30,19 +31,23 @@ class ProcessRawEventJob implements ShouldQueue
 
     public function handle(DetectDuplicateEvent $detectDuplicate): void
     {
+        // El job entra por su propio id, así que la búsqueda inicial no puede
+        // estar scopeada; a partir de ahí se mete en el tenant del evento para
+        // que todo lo demás sí lo esté, herede o no contexto del que despachó.
+        // Ver §2.1.
         $rawEvent = RawEvent::withoutGlobalScopes()->findOrFail($this->rawEventId);
 
-        $isDuplicate = $detectDuplicate->execute($rawEvent);
+        TenantContext::for($rawEvent->team_id, function () use ($rawEvent, $detectDuplicate) {
+            if ($detectDuplicate->execute($rawEvent)) {
+                return;
+            }
 
-        if ($isDuplicate) {
-            return;
-        }
+            $rawEvent->markAsProcessing();
 
-        $rawEvent->markAsProcessing();
+            $rawEvent->markAsProcessed();
 
-        $rawEvent->markAsProcessed();
-
-        RawEventProcessed::dispatch($rawEvent);
+            RawEventProcessed::dispatch($rawEvent);
+        });
     }
 
     public function failed(\Throwable $exception): void
@@ -54,9 +59,11 @@ class ProcessRawEventJob implements ShouldQueue
         $rawEvent = RawEvent::withoutGlobalScopes()->find($this->rawEventId);
 
         if ($rawEvent) {
-            $rawEvent->markAsFailed();
+            TenantContext::for($rawEvent->team_id, function () use ($rawEvent, $exception) {
+                $rawEvent->markAsFailed();
 
-            RawEventFailed::dispatch($rawEvent, $exception->getMessage());
+                RawEventFailed::dispatch($rawEvent, $exception->getMessage());
+            });
         }
     }
 }
