@@ -18,7 +18,7 @@ class TenantRuleOverrideController extends Controller
     {
         $this->authorize('viewAny', TenantRuleOverride::class);
 
-        $overrides = TenantRuleOverride::withoutGlobalScopes()
+        $overrides = TenantRuleOverride::query()
             ->where('team_id', $current_team->id)
             ->orderBy('base_rule_code')
             ->get();
@@ -30,7 +30,7 @@ class TenantRuleOverrideController extends Controller
     {
         $this->authorize('create', TenantRuleOverride::class);
 
-        $override = TenantRuleOverride::withoutGlobalScopes()->create([
+        $override = TenantRuleOverride::query()->create([
             'team_id' => $current_team->id,
             'base_rule_code' => $request->validated('base_rule_code'),
             'override_type' => RuleOverrideType::from($request->validated('override_type')),

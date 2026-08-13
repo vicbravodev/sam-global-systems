@@ -27,7 +27,7 @@ class AnalyticsPageController extends Controller
 
         return Inertia::render('analytics/index', [
             'overview' => function () use ($current_team): ?array {
-                $snapshot = AnalyticsSnapshot::withoutGlobalScopes()
+                $snapshot = AnalyticsSnapshot::query()
                     ->where('team_id', $current_team->id)
                     ->where('snapshot_type', SnapshotType::TenantOverview->value)
                     ->orderByDesc('period_start')
@@ -43,7 +43,7 @@ class AnalyticsPageController extends Controller
                     'data' => $snapshot->snapshot_json,
                 ];
             },
-            'kpis' => fn () => KpiRecord::withoutGlobalScopes()
+            'kpis' => fn () => KpiRecord::query()
                 ->where('team_id', $current_team->id)
                 ->orderByDesc('calculated_at')
                 ->limit(50)
@@ -60,7 +60,7 @@ class AnalyticsPageController extends Controller
                     'calculatedAt' => $kpi->calculated_at?->toIso8601String(),
                 ])
                 ->all(),
-            'reports' => fn () => ReportDefinition::withoutGlobalScopes()
+            'reports' => fn () => ReportDefinition::query()
                 ->where(fn (Builder $q) => $q
                     ->whereNull('team_id')
                     ->orWhere('team_id', $current_team->id))
@@ -75,7 +75,7 @@ class AnalyticsPageController extends Controller
                     'reportType' => $report->report_type?->value ?? (string) $report->report_type,
                 ])
                 ->all(),
-            'executions' => fn () => ReportExecution::withoutGlobalScopes()
+            'executions' => fn () => ReportExecution::query()
                 ->where('team_id', $current_team->id)
                 ->with('definition')
                 ->orderByDesc('id')

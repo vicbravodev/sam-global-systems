@@ -19,6 +19,7 @@ use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentCallVerification;
 use App\Domains\Incidents\Support\VerificationCallTwiml;
 use App\Http\Controllers\Controller;
+use App\Support\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Twilio\Security\RequestValidator;
@@ -54,7 +55,7 @@ class TwilioVoiceController extends Controller
 
         if (! in_array($digits, ['1', '2'], true)) {
             // Invalid or absent digit: re-prompt once more on the same call.
-            $incident = Incident::withoutGlobalScopes()->with('asset')->find($row->incident_id);
+            $incident = Incident::query()->with('asset')->find($row->incident_id);
 
             if ($incident === null) {
                 return $this->twiml(VerificationCallTwiml::say('El incidente ya no existe. Gracias.'));
@@ -67,7 +68,7 @@ class TwilioVoiceController extends Controller
             ));
         }
 
-        $incident = Incident::withoutGlobalScopes()->find($row->incident_id);
+        $incident = Incident::query()->find($row->incident_id);
 
         if ($incident === null || $incident->isTerminal()) {
             $this->consume($row, $digits, $digits === '1' ? CallVerificationOutcome::ConfirmedReal : CallVerificationOutcome::ConfirmedFalse);
@@ -199,6 +200,11 @@ class TwilioVoiceController extends Controller
         );
 
         abort_unless($isValid, 403, 'Invalid Twilio signature.');
+
+        // Validada la firma, el resto de la petición corre dentro del tenant de
+        // la verificación: el webhook entra sin sesión, así que hasta aquí no
+        // había contexto que scopeara nada. Ver §2.1.
+        TenantContext::set($row->team_id);
 
         return $row;
     }

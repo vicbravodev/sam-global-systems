@@ -22,6 +22,7 @@ use App\Enums\TeamRole;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
 use App\Models\User;
+use App\Support\TenantContext;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -102,99 +103,103 @@ class TenantController extends Controller
 
     public function show(Team $team, ResolveAssetLimit $resolveAssetLimit): Response
     {
-        $subscription = Subscription::withoutGlobalScopes()
-            ->with('plan')
-            ->where('team_id', $team->id)
-            ->orderByDesc('starts_at')
-            ->first();
+        // El operador está viendo UN tenant: entrar en él hace que todo lo
+        // que se lea aquí sea suyo, sin depender de filtros a mano. Ver §2.1.
+        return TenantContext::for($team->id, function () use ($team, $resolveAssetLimit) {
+            $subscription = Subscription::query()
+                ->with('plan')
+                ->where('team_id', $team->id)
+                ->orderByDesc('starts_at')
+                ->first();
 
-        $members = $team->members()->get()->map(fn (User $member) => [
-            'id' => (int) $member->id,
-            'name' => (string) $member->name,
-            'email' => (string) $member->email,
-            'role' => $member->pivot->role instanceof TeamRole
-                ? $member->pivot->role->value
-                : (string) $member->pivot->role,
-        ])->values()->all();
-
-        $features = TenantFeature::withoutGlobalScopes()
-            ->where('team_id', $team->id)
-            ->orderBy('feature_key')
-            ->get()
-            ->map(fn (TenantFeature $feature) => [
-                'key' => (string) $feature->feature_key,
-                'enabled' => (bool) $feature->enabled,
-                'source' => $feature->source->value,
-                'limits' => $feature->limits_json,
+            $members = $team->members()->get()->map(fn (User $member) => [
+                'id' => (int) $member->id,
+                'name' => (string) $member->name,
+                'email' => (string) $member->email,
+                'role' => $member->pivot->role instanceof TeamRole
+                    ? $member->pivot->role->value
+                    : (string) $member->pivot->role,
             ])->values()->all();
 
-        $usage = TenantUsageCounter::withoutGlobalScopes()
-            ->with('usageMeter')
-            ->where('team_id', $team->id)
-            ->orderByDesc('period_start')
-            ->limit(20)
-            ->get()
-            ->map(fn (TenantUsageCounter $counter) => [
-                'meter' => (string) ($counter->usageMeter?->name ?? $counter->usageMeter?->code ?? '—'),
-                'periodStart' => $counter->period_start?->toDateString(),
-                'consumed' => (int) $counter->consumed_value,
-                'included' => (int) $counter->included_value,
-                'overage' => (int) $counter->overage_value,
-            ])->values()->all();
+            $features = TenantFeature::query()
+                ->where('team_id', $team->id)
+                ->orderBy('feature_key')
+                ->get()
+                ->map(fn (TenantFeature $feature) => [
+                    'key' => (string) $feature->feature_key,
+                    'enabled' => (bool) $feature->enabled,
+                    'source' => $feature->source->value,
+                    'limits' => $feature->limits_json,
+                ])->values()->all();
 
-        $branding = TenantBranding::withoutGlobalScopes()
-            ->where('team_id', $team->id)
-            ->first();
-
-        return Inertia::render('admin/tenants/show', [
-            'tenant' => [
-                'id' => (int) $team->id,
-                'name' => (string) $team->name,
-                'slug' => (string) $team->slug,
-                'isPersonal' => (bool) $team->is_personal,
-                'createdAt' => $team->created_at?->toIso8601String(),
-                'branding' => [
-                    'displayName' => $branding?->display_name,
-                    'primaryColor' => $branding?->primary_color,
-                    'secondaryColor' => $branding?->secondary_color,
-                    'logoUrl' => $branding?->logo_url,
-                ],
-            ],
-            'subscription' => $subscription ? [
-                'status' => $subscription->status->value,
-                'plan' => $subscription->plan?->name,
-                'billingCycle' => $subscription->billing_cycle?->value,
-                'startsAt' => $subscription->starts_at?->toIso8601String(),
-                'trialEndsAt' => $subscription->trial_ends_at?->toIso8601String(),
-                'renewsAt' => $subscription->renews_at?->toIso8601String(),
-            ] : null,
-            'members' => $members,
-            'features' => $features,
-            'usage' => $usage,
-            'invoices' => InvoiceSnapshot::withoutGlobalScopes()
+            $usage = TenantUsageCounter::query()
+                ->with('usageMeter')
                 ->where('team_id', $team->id)
                 ->orderByDesc('period_start')
-                ->limit(12)
+                ->limit(20)
                 ->get()
-                ->map(fn ($invoice) => [
-                    'id' => (int) $invoice->id,
-                    'periodStart' => $invoice->period_start?->toDateString(),
-                    'periodEnd' => $invoice->period_end?->toDateString(),
-                    'total' => (float) $invoice->total,
-                    'currency' => (string) $invoice->currency,
-                    'status' => $invoice->status?->value ?? (string) $invoice->status,
-                    'hasReceipt' => $invoice->payment_receipt_file_object_id !== null,
-                    'paidAt' => $invoice->paid_at?->toDateString(),
-                ])->values()->all(),
-            'plans' => $this->planOptions(),
-            'assetUsage' => [
-                'limit' => $resolveAssetLimit->execute((int) $team->id),
-                'current' => Asset::withoutGlobalScopes()
+                ->map(fn (TenantUsageCounter $counter) => [
+                    'meter' => (string) ($counter->usageMeter?->name ?? $counter->usageMeter?->code ?? '—'),
+                    'periodStart' => $counter->period_start?->toDateString(),
+                    'consumed' => (int) $counter->consumed_value,
+                    'included' => (int) $counter->included_value,
+                    'overage' => (int) $counter->overage_value,
+                ])->values()->all();
+
+            $branding = TenantBranding::query()
+                ->where('team_id', $team->id)
+                ->first();
+
+            return Inertia::render('admin/tenants/show', [
+                'tenant' => [
+                    'id' => (int) $team->id,
+                    'name' => (string) $team->name,
+                    'slug' => (string) $team->slug,
+                    'isPersonal' => (bool) $team->is_personal,
+                    'createdAt' => $team->created_at?->toIso8601String(),
+                    'branding' => [
+                        'displayName' => $branding?->display_name,
+                        'primaryColor' => $branding?->primary_color,
+                        'secondaryColor' => $branding?->secondary_color,
+                        'logoUrl' => $branding?->logo_url,
+                    ],
+                ],
+                'subscription' => $subscription ? [
+                    'status' => $subscription->status->value,
+                    'plan' => $subscription->plan?->name,
+                    'billingCycle' => $subscription->billing_cycle?->value,
+                    'startsAt' => $subscription->starts_at?->toIso8601String(),
+                    'trialEndsAt' => $subscription->trial_ends_at?->toIso8601String(),
+                    'renewsAt' => $subscription->renews_at?->toIso8601String(),
+                ] : null,
+                'members' => $members,
+                'features' => $features,
+                'usage' => $usage,
+                'invoices' => InvoiceSnapshot::query()
                     ->where('team_id', $team->id)
-                    ->where('status', '!=', AssetStatus::Inactive)
-                    ->count(),
-            ],
-        ]);
+                    ->orderByDesc('period_start')
+                    ->limit(12)
+                    ->get()
+                    ->map(fn ($invoice) => [
+                        'id' => (int) $invoice->id,
+                        'periodStart' => $invoice->period_start?->toDateString(),
+                        'periodEnd' => $invoice->period_end?->toDateString(),
+                        'total' => (float) $invoice->total,
+                        'currency' => (string) $invoice->currency,
+                        'status' => $invoice->status?->value ?? (string) $invoice->status,
+                        'hasReceipt' => $invoice->payment_receipt_file_object_id !== null,
+                        'paidAt' => $invoice->paid_at?->toDateString(),
+                    ])->values()->all(),
+                'plans' => $this->planOptions(),
+                'assetUsage' => [
+                    'limit' => $resolveAssetLimit->execute((int) $team->id),
+                    'current' => Asset::query()
+                        ->where('team_id', $team->id)
+                        ->where('status', '!=', AssetStatus::Inactive)
+                        ->count(),
+                ],
+            ]);
+        });
     }
 
     public function update(Request $request, Team $team, UpdateTenant $updateTenant, RecordAuditEntry $audit): RedirectResponse
@@ -271,12 +276,13 @@ class TenantController extends Controller
      */
     private function latestSubscriptionsByTeam(array $teamIds): BaseCollection
     {
-        return Subscription::withoutGlobalScopes()
+        // Listado de la consola de operador: cruza tenants a propósito.
+        return TenantContext::withoutTenant(fn () => Subscription::query()
             ->with('plan')
             ->whereIn('team_id', $teamIds)
             ->get()
             ->groupBy('team_id')
-            ->map(fn ($group) => $group->sortByDesc('starts_at')->first());
+            ->map(fn ($group) => $group->sortByDesc('starts_at')->first()));
     }
 
     /**

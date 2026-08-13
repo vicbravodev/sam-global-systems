@@ -24,7 +24,7 @@ class TenantConfigController extends Controller
     {
         $this->authorize('viewAny', TenantSetting::class);
 
-        $settings = TenantSetting::withoutGlobalScopes()
+        $settings = TenantSetting::query()
             ->where('team_id', $current_team->id)
             ->orderBy('setting_group')
             ->orderBy('setting_key')

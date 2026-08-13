@@ -26,7 +26,7 @@ class AutomationPageController extends Controller
         $this->authorize('viewAny', AutomationWorkflow::class);
 
         return Inertia::render('automation/index', [
-            'workflows' => fn () => AutomationWorkflow::withoutGlobalScopes()
+            'workflows' => fn () => AutomationWorkflow::query()
                 ->where('team_id', $current_team->id)
                 ->orderBy('name')
                 ->get()
@@ -42,7 +42,7 @@ class AutomationPageController extends Controller
                     'isActive' => (bool) $workflow->is_active,
                 ])
                 ->all(),
-            'executions' => fn () => ActionExecution::withoutGlobalScopes()
+            'executions' => fn () => ActionExecution::query()
                 ->where('team_id', $current_team->id)
                 ->orderByDesc('id')
                 ->limit(50)

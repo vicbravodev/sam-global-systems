@@ -16,7 +16,7 @@ class TenantScheduleProfileController extends Controller
     {
         $this->authorize('viewAny', TenantScheduleProfile::class);
 
-        $profiles = TenantScheduleProfile::withoutGlobalScopes()
+        $profiles = TenantScheduleProfile::query()
             ->where('team_id', $current_team->id)
             ->orderBy('profile_code')
             ->get();

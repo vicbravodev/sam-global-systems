@@ -26,7 +26,7 @@ class InvoiceReceiptController extends Controller
     ): JsonResponse {
         // Explicit lookup — implicit binding + BelongsToTenant can disagree
         // with the route team when the user belongs to several teams.
-        $invoice = InvoiceSnapshot::withoutGlobalScopes()
+        $invoice = InvoiceSnapshot::query()
             ->where('team_id', $current_team->id)
             ->findOrFail($invoice);
 

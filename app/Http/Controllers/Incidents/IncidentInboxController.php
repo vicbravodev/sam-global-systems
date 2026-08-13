@@ -318,7 +318,7 @@ class IncidentInboxController extends Controller
             ->orderByDesc('id')
             ->get();
 
-        $evaluationIds = AIEventEvaluation::withoutGlobalScopes()
+        $evaluationIds = AIEventEvaluation::query()
             ->where('normalized_event_id', $incident->related_event_id)
             ->select('id');
 
@@ -436,7 +436,7 @@ class IncidentInboxController extends Controller
             return [];
         }
 
-        $evaluationIds = AIEventEvaluation::withoutGlobalScopes()
+        $evaluationIds = AIEventEvaluation::query()
             ->where('normalized_event_id', $incident->related_event_id)
             ->select('id');
 

@@ -12,6 +12,7 @@ use App\Domains\Tenancy\Enums\SubscriptionStatus;
 use App\Domains\Tenancy\Models\Subscription;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
+use App\Support\TenantContext;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -107,10 +108,9 @@ class TenantSubscriptionController extends Controller
 
     private function subscriptionFor(Team $team): ?Subscription
     {
-        return Subscription::withoutGlobalScopes()
-            ->where('team_id', $team->id)
+        return TenantContext::for($team->id, fn () => Subscription::query()
             ->orderByDesc('starts_at')
-            ->first();
+            ->first());
     }
 
     /**
