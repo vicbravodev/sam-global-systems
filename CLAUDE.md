@@ -37,11 +37,44 @@ Todo código de negocio nuevo vive bajo `app/Domains/{Dominio}/` con subdirs: `A
 
 **Convenciones de nombres (del Master Guide §8):** Modelos singular PascalCase, tablas plural snake_case, columnas JSON sufijadas `_json`, actions `Verbo+Sustantivo`, jobs `...Job`, eventos en pasado, broadcasting events con sufijo `Broadcast` solo si hay que desambiguar.
 
+### 2.1 Tenant scope OBLIGATORIO en toda feature (regla dura, no negociable)
+
+**Ninguna feature se da por terminada si su dato no está scopeado a un tenant.** SAM es multi-tenant: una fuga cross-tenant es el peor bug que este producto puede tener — expone la operación de un cliente a otro. No es un "nice to have" de seguridad, es requisito de aceptación como lo son los tests.
+
+**Por qué existe esta regla:** el scope global de `BelongsToTenant` sólo filtraba si `currentTeam()` devolvía algo, y `currentTeam()` era `auth()->user()?->currentTeam`. En jobs, listeners, comandos y scheduler no hay usuario autenticado, así que **el scope era un no-op justo en el pipeline que ES el producto**. De ahí salieron `c64334a` (assets resueltos por external id de otro tenant) y `3695360` (normalización vinculando activo/conductor de otro tenant), ninguna detectada por los tests de aislamiento de entonces.
+
+**Cómo está resuelto ahora ([`App\Support\TenantContext`](app/Support/TenantContext.php)):** el tenant activo vive en el `Context` de Laravel, que se deshidrata en el payload del job al despachar y se rehidrata en el worker. `currentTeamId()` lo lee primero y cae al usuario autenticado después. El scope global **sí** filtra en colas, y `withoutGlobalScopes()` pasó de 308 llamadas a 50.
+
+**Los cuatro patrones, y cuándo usa cada uno:**
+
+| Situación | Patrón |
+|---|---|
+| Job o listener que entra por un id | Lookup de entrada **sin scope** (es como descubre su tenant) y `TenantContext::set($model->team_id)` justo después. `set()` no restaura, y no hace falta: `Context::hydrate()` hace `flush()` al arrancar cada job. |
+| Action, query o servicio que recibe `int $teamId` | `TenantContext::for($teamId, fn () => ...)`. Nunca `set()`: una Action corre dentro del flujo de otro y debe devolver el contexto como estaba. |
+| Trabajo de plataforma que cruza tenants a propósito (fan-out del scheduler, consola de operador, agregados de facturación) | `TenantContext::withoutTenant(fn () => ...)`, y dentro `TenantContext::for($row->team_id, ...)` por cada tenant. Deja la intención escrita en vez de esconderla tras un bypass. |
+| Todo lo demás | `Model::query()` a secas. Sin contexto se comporta igual que antes; con contexto, filtra. |
+
+**Checklist obligatorio por feature (todo lo aplicable, sin excepciones):**
+
+1. **Tabla**: `foreignId('team_id')->constrained()->cascadeOnDelete()` + índice. `nullable()` **sólo** si el registro puede ser un catálogo global de plataforma (`team_id = null`), y en ese caso hay que documentarlo en la migración con un comentario.
+2. **Modelo**: `use App\Concerns\BelongsToTenant`. Si el modelo es del tipo "global o de tenant" (`team_id` nullable), **NO** lleva el trait, y entonces toda consulta debe usar el idiom explícito `->where('team_id', $teamId)` con fallback `->whereNull('team_id')` — ver [`ResolveActionTemplate`](app/Domains/Automation/Actions/ResolveActionTemplate.php) como plantilla. Ninguna de las dos opciones es "no hacer nada".
+3. **Toda query fuera de HTTP** (Action, Job, Listener, Command, Query, seeder de tenant) corre **dentro de un `TenantContext`**, según la tabla de patrones de arriba. Un `withoutGlobalScopes()` nuevo necesita justificarse: sólo valen el lookup de entrada por el que un job descubre su tenant, la escritura de ingesta y las filas de plataforma (`team_id` null). Cualquier otro es un error de revisión.
+4. **Resolución por identificador externo o de proveedor** (`external_id`, `provider_id`, ids de payload de webhook, ids de Samsara): **siempre** verificar que el registro resuelto pertenece al team del evento antes de usarlo. Los ids de proveedor son únicos platform-wide, no por tenant — el aislamiento nunca puede depender de cómo el proveedor asigna sus ids.
+5. **Jobs y eventos**: propagar `team_id` explícito en el constructor/payload. Nunca reconstruir el tenant desde `currentTeam()` dentro de un job. Si un job recibe a la vez un id de recurso y un `teamId`, debe validar que concuerdan y abortar si no.
+6. **Endpoint nuevo**: ruta bajo `/{current_team}/...` con `EnsureTeamMembership` + `$this->authorize(...)` con una Policy que compruebe el team, no sólo el permiso. Si el modelo bindeado por ruta no lleva el trait, la Policy es la ÚNICA barrera: tiene que comparar `team_id` explícitamente.
+7. **Caché / claves KV / locks / nombres de archivo en storage**: la clave incluye el `team_id`. Una clave de caché compartida entre tenants es una fuga igual de grave que una query mal filtrada.
+8. **Tests (bloqueante, sin esto la feature no está hecha):** además del `TenantIsolationTest` de scope del dominio, **cada feature nueva aporta un test de fuga sobre su propio camino real**, con el trait [`Tests\Concerns\AssertsTenantIsolation`](tests/Concerns/AssertsTenantIsolation.php): `$this->assertNoTenantLeak($teamB, fn () => ...)` ejecuta la Action/Job/endpoint dentro de B y falla si tocó datos de A (escritura) o devolvió modelos ajenos (lectura). Plantilla: [`NormalizeEventJobTenantLeakTest`](tests/Feature/Domains/Normalization/NormalizeEventJobTenantLeakTest.php). Un test que sólo hace `actingAs($userA); assertSame(2, Model::count())` prueba el scope global de Laravel, no tu feature — no cuenta.
+9. **Factories**: un modelo hijo se crea en el MISMO tenant que su padre. Una factory que le pone un `Team::factory()` propio a cada relación fabrica datos que en producción no existen y enmascara fallos de aislamiento (pasó con `NormalizedEventFactory`, que creaba el `RawEvent` en otro team).
+
+**Al revisar o cerrar un PR, si algún punto aplicable del checklist no está cubierto, el PR no se cierra.** Ante la duda entre filtrar de más o de menos: filtrar de más.
+
 ---
 
 ## 3. Estado de implementación (auditoría al 2026-04-29)
 
-**~624 tests passing · ~1480 assertions · corrida local ~17s.** Specs 01–16 e infra I1/I2/I3 implementados y mergeados. PR de cierre de gaps post-spec-16 cubre el wiring TenantConfig→consumidores, listener typing, y refresh de docs.
+> **Nota de vigencia:** la tabla de abajo es de la auditoría 2026-04-29 y describe el cierre de V1 (specs 01–16). El estado real medido el **2026-08-13** es **1602 tests · 6001 assertions · ~67s**, con V1 cerrado y V2 ("SAM Monitorista") en curso — el roadmap vivo y los gaps G1–G9 están en [`docs/ROADMAP.md`](docs/ROADMAP.md). Ante discrepancia, manda el código.
+
+**~624 tests passing · ~1480 assertions · corrida local ~17s** (medición 2026-04-29, desactualizada — ver nota arriba). Specs 01–16 e infra I1/I2/I3 implementados y mergeados. PR de cierre de gaps post-spec-16 cubre el wiring TenantConfig→consumidores, listener typing, y refresh de docs.
 
 | Spec | Dominio | Estado | Tests | Notas |
 |------|---------|--------|-------|-------|
@@ -183,7 +216,7 @@ Sirve el build de producción vía manifest, así que tras cada cambio de front 
 ### Tests — qué exigir siempre
 
 - Un test por cada Action y cada Job crítico.
-- Un `TenantIsolationTest` por dominio que verifique que `BelongsToTenant` scope aísla queries entre teams distintos.
+- Un `TenantIsolationTest` por dominio que verifique que `BelongsToTenant` scope aísla queries entre teams distintos. **Eso es el piso, no el techo**: además, cada feature aporta su propio test de fuga cross-tenant sobre su camino real (Action/Job/endpoint), según §2.1 punto 8.
 - Tests de idempotencia en cualquier cosa que reciba `event_key` / signature / webhook (duplicates no deben crear side-effects).
 - Usar factories; nunca `Model::create()` manual en tests.
 - Para Storage: `Storage::fake('rustfs')`. Para eventos: `Event::fake([...Broadcast::class])`.
@@ -208,6 +241,8 @@ Sirve el build de producción vía manifest, así que tras cada cambio de front 
 - No reemplazar modelos existentes (`User`, `Team`, `Membership`, `TeamInvitation`) — extender.
 - No usar Redis Cluster — Horizon no lo soporta y Valkey corre standalone.
 - No inventar un modelo `Tenant`: `Team` = tenant.
+- **No shipear una feature sin scope de tenant** (tabla, modelo, queries, jobs, endpoints, caché y tests) — checklist completo en §2.1. No confiar en que el scope global de `BelongsToTenant` cubre código que corre en colas: ahí no hay usuario autenticado y el scope no filtra nada.
+- No usar `withoutGlobalScopes()` sin un `where('team_id', ...)` explícito en la misma cadena de query.
 - No añadir `axios` de forma manual al frontend (Inertia v3 lo removió); usar `useHttp` / `useForm`.
 - No mockear la base de datos en tests de feature — usar `RefreshDatabase` + factories reales.
 - No crear docs en `docs/` ni `README` nuevos sin que el usuario lo pida explícitamente.

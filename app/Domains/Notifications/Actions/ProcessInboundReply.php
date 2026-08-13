@@ -12,6 +12,7 @@ use App\Domains\Incidents\Enums\IncidentCreatorType;
 use App\Domains\Incidents\Enums\ResolutionCode;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Notifications\Models\NotificationReplyToken;
+use App\Support\TenantContext;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -47,6 +48,8 @@ class ProcessInboundReply
         $code = strtoupper($matches[2]);
 
         return DB::transaction(function () use ($keyword, $code, $fromAddress, $body, $channelTeamId) {
+            // Lookup de entrada: el webhook llega sin sesión y el tenant sale
+            // del propio token, así que aquí no puede haber scope todavía.
             $token = NotificationReplyToken::withoutGlobalScopes()
                 ->where('token', $code)
                 ->lockForUpdate()
@@ -74,6 +77,11 @@ class ProcessInboundReply
                 return null;
             }
 
+            // Validado a quién pertenece el token, el resto del flujo corre
+            // dentro de su tenant: el webhook entra sin sesión, así que hasta
+            // aquí no había contexto que scopeara nada. Ver §2.1.
+            TenantContext::set($token->team_id);
+
             if ($token->isConsumed()) {
                 return "Ya registramos tu respuesta para el incidente #{$token->incident_id}.";
             }
@@ -82,7 +90,7 @@ class ProcessInboundReply
                 return "El código {$code} ha expirado. Gestiona el incidente #{$token->incident_id} desde el portal.";
             }
 
-            $incident = $token->incident()->withoutGlobalScopes()->first();
+            $incident = $token->incident()->first();
 
             if ($incident === null || $incident->isTerminal()) {
                 $token->update(['consumed_at' => now(), 'consumed_action' => 'noop_terminal']);

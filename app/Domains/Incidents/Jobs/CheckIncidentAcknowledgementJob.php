@@ -16,6 +16,7 @@ use App\Domains\Notifications\Enums\NotificationPriority;
 use App\Domains\Notifications\Enums\NotificationSourceType;
 use App\Domains\Notifications\Enums\NotificationTriggeredByType;
 use App\Domains\TenantConfig\Models\TenantEscalationConfig;
+use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -65,6 +66,10 @@ class CheckIncidentAcknowledgementJob implements ShouldQueue
         if ($incident === null || $incident->team_id === null) {
             return;
         }
+
+        // Trabaja dentro del tenant del propio registro: el lookup de
+        // entrada no puede estar scopeado, todo lo que sigue sí. Ver §2.1.
+        TenantContext::set($incident->team_id);
 
         // Acknowledged or closed in time: the chain ends silently.
         if ($incident->acknowledged_at !== null || $incident->isTerminal()) {
@@ -118,7 +123,7 @@ class CheckIncidentAcknowledgementJob implements ShouldQueue
      */
     private function escalationSteps(int $teamId): array
     {
-        $config = TenantEscalationConfig::withoutGlobalScopes()
+        $config = TenantEscalationConfig::query()
             ->where('team_id', $teamId)
             ->where('is_active', true)
             ->first();

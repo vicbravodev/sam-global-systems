@@ -19,7 +19,7 @@ class SetTenantFeature
      */
     public function execute(Team $team, string $featureKey, bool $enabled, ?array $limits = null): TenantFeature
     {
-        $feature = TenantFeature::withoutGlobalScopes()->firstOrNew([
+        $feature = TenantFeature::query()->firstOrNew([
             'team_id' => $team->id,
             'feature_key' => $featureKey,
         ]);

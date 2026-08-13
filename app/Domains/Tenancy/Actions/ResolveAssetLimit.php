@@ -6,6 +6,7 @@ use App\Domains\Tenancy\Models\BillingRate;
 use App\Domains\Tenancy\Models\Subscription;
 use App\Domains\Tenancy\Models\TenantFeature;
 use App\Domains\Tenancy\Models\UsageMeter;
+use App\Support\TenantContext;
 
 /**
  * Resolves the effective cap on monitored/synced assets for a tenant.
@@ -20,37 +21,39 @@ class ResolveAssetLimit
 
     public function execute(int $teamId): ?int
     {
-        $feature = TenantFeature::withoutGlobalScopes()
-            ->where('team_id', $teamId)
-            ->where('feature_key', self::METER_CODE)
-            ->first();
+        return TenantContext::for($teamId, function () use ($teamId) {
+            $feature = TenantFeature::query()
+                ->where('team_id', $teamId)
+                ->where('feature_key', self::METER_CODE)
+                ->first();
 
-        $featureLimit = $feature?->limits_json['included_quantity'] ?? null;
+            $featureLimit = $feature?->limits_json['included_quantity'] ?? null;
 
-        if (is_numeric($featureLimit)) {
-            return (int) $featureLimit;
-        }
+            if (is_numeric($featureLimit)) {
+                return (int) $featureLimit;
+            }
 
-        $meterId = UsageMeter::query()->where('code', self::METER_CODE)->value('id');
+            $meterId = UsageMeter::query()->where('code', self::METER_CODE)->value('id');
 
-        if ($meterId === null) {
-            return null;
-        }
+            if ($meterId === null) {
+                return null;
+            }
 
-        $subscription = Subscription::withoutGlobalScopes()
-            ->where('team_id', $teamId)
-            ->orderByDesc('starts_at')
-            ->first();
+            $subscription = Subscription::query()
+                ->where('team_id', $teamId)
+                ->orderByDesc('starts_at')
+                ->first();
 
-        if ($subscription?->plan_id === null) {
-            return null;
-        }
+            if ($subscription?->plan_id === null) {
+                return null;
+            }
 
-        $included = BillingRate::query()
-            ->where('plan_id', $subscription->plan_id)
-            ->where('usage_meter_id', $meterId)
-            ->value('included_quantity');
+            $included = BillingRate::query()
+                ->where('plan_id', $subscription->plan_id)
+                ->where('usage_meter_id', $meterId)
+                ->value('included_quantity');
 
-        return $included !== null && (int) $included > 0 ? (int) $included : null;
+            return $included !== null && (int) $included > 0 ? (int) $included : null;
+        });
     }
 }

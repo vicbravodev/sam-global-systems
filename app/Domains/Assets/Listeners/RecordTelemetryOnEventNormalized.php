@@ -7,6 +7,7 @@ use App\Domains\Assets\Enums\TelemetryType;
 use App\Domains\Assets\Jobs\PollAssetTelemetryJob;
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Normalization\Events\EventNormalized;
+use App\Support\TenantContext;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 
@@ -40,9 +41,13 @@ class RecordTelemetryOnEventNormalized
             return;
         }
 
-        $asset = Asset::withoutGlobalScopes()
-            ->whereKey($normalizedEvent->asset_id)
-            ->first();
+        // El activo se busca dentro del tenant del evento: un asset_id suelto
+        // no puede traer el activo de otro cliente, que es exactamente lo que
+        // pasó en c64334a. Ver §2.1.
+        $asset = TenantContext::for(
+            $normalizedEvent->team_id,
+            fn () => Asset::query()->whereKey($normalizedEvent->asset_id)->first(),
+        );
 
         if ($asset === null) {
             return;

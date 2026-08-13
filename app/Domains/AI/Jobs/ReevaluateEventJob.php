@@ -6,6 +6,7 @@ use App\Domains\AI\Actions\ReevaluateEventWithNewEvidence;
 use App\Domains\AI\Enums\ReevaluationTrigger;
 use App\Domains\AI\Support\AIEvaluationGate;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUniqueUntilProcessing;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -65,12 +66,13 @@ class ReevaluateEventJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
 
         $trigger = ReevaluationTrigger::from($this->triggerType);
 
-        $reevaluate->execute(
+        // Entra en el tenant del evento antes de reevaluar. Ver §2.1.
+        TenantContext::for($normalizedEvent->team_id, fn () => $reevaluate->execute(
             event: $normalizedEvent,
             trigger: $trigger,
             triggerReferenceId: $this->triggerReferenceId,
             reason: $this->reason,
-        );
+        ));
     }
 
     public function failed(\Throwable $exception): void

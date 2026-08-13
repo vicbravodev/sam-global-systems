@@ -8,6 +8,7 @@ use App\Domains\Context\Enums\MediaRequestType;
 use App\Domains\Context\Events\EventContextBuilt;
 use App\Domains\Context\Jobs\FetchDeferredEventMediaJob;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Support\TenantContext;
 
 /**
  * Auto-pull camera footage for critical events (Roadmap B6-P3). Opt-in per
@@ -57,10 +58,10 @@ class RequestPanicMediaOnContextBuilt
 
         // One sweep-only request is enough: the sweep lists every clip and still
         // the dashcam uploaded for the event window, regardless of request type.
-        $this->requestDeferredEventMedia->execute(
+        TenantContext::for($normalizedEvent->team_id, fn () => $this->requestDeferredEventMedia->execute(
             $normalizedEvent,
             MediaRequestType::FetchVideoClip,
             sweepOnly: true,
-        );
+        ));
     }
 }

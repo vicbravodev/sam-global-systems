@@ -5,6 +5,7 @@ namespace App\Domains\Incidents\Jobs;
 use App\Domains\Incidents\Actions\CreateIncidentFromEvent;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Support\JobFailureReporter;
+use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -44,6 +45,10 @@ class CreateIncidentJob implements ShouldBeUnique, ShouldQueue
         if ($event === null) {
             return;
         }
+
+        // Trabaja dentro del tenant del propio registro: el lookup de
+        // entrada no puede estar scopeado, todo lo que sigue sí. Ver §2.1.
+        TenantContext::set($event->team_id);
 
         $incident = $createIncidentFromEvent->execute($event, $this->context);
 

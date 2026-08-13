@@ -43,7 +43,7 @@ class DispatchNotification
             return $notification;
         }
 
-        $recipientsExisted = NotificationRecipient::withoutGlobalScopes()
+        $recipientsExisted = NotificationRecipient::query()
             ->where('notification_id', $notification->id)
             ->exists();
 
@@ -201,7 +201,7 @@ class DispatchNotification
     ): void {
         try {
             DB::transaction(function () use ($notification, $recipient, $channel, $reason) {
-                $existing = NotificationDelivery::withoutGlobalScopes()
+                $existing = NotificationDelivery::query()
                     ->where('notification_id', $notification->id)
                     ->where('recipient_id', $recipient->id)
                     ->where('channel_id', $channel->id)
@@ -250,7 +250,7 @@ class DispatchNotification
         Notification $notification,
         RecipientDescriptor $descriptor,
     ): NotificationRecipient {
-        $existing = NotificationRecipient::withoutGlobalScopes()
+        $existing = NotificationRecipient::query()
             ->where('notification_id', $notification->id)
             ->where('recipient_type', $descriptor->recipientType->value)
             ->where('address', $descriptor->address)
@@ -287,7 +287,7 @@ class DispatchNotification
     ): ?NotificationDelivery {
         try {
             return DB::transaction(function () use ($notification, $recipient, $channel) {
-                $existing = NotificationDelivery::withoutGlobalScopes()
+                $existing = NotificationDelivery::query()
                     ->where('notification_id', $notification->id)
                     ->where('recipient_id', $recipient->id)
                     ->where('channel_id', $channel->id)

@@ -12,6 +12,7 @@ use App\Domains\Ingestion\Enums\EventSourceType;
 use App\Domains\Ingestion\Models\RawEvent;
 use App\Domains\Normalization\Models\EventType;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -65,16 +66,18 @@ class DetectOfflineAssetsJob implements ShouldQueue
         StoreRawEvent $storeRawEvent,
         QueueRawEventForProcessing $queueForProcessing,
     ): void {
-        Asset::withoutGlobalScopes()
+        // Vigilancia de plataforma: recorre todos los tenants a propósito,
+        // pero inspecciona cada activo dentro del contexto del suyo. Ver §2.1.
+        TenantContext::withoutTenant(fn () => Asset::query()
             ->whereNotNull('team_id')
             ->whereNotNull('last_seen_at')
             ->whereNotIn('status', [AssetStatus::Inactive, AssetStatus::Maintenance])
             ->with('latestLocation')
             ->chunkById(200, function ($assets) use ($tenantConfig, $storeRawEvent, $queueForProcessing) {
                 foreach ($assets as $asset) {
-                    $this->inspectAsset($asset, $tenantConfig, $storeRawEvent, $queueForProcessing);
+                    TenantContext::for($asset->team_id, fn () => $this->inspectAsset($asset, $tenantConfig, $storeRawEvent, $queueForProcessing));
                 }
-            });
+            }));
     }
 
     private function inspectAsset(
@@ -91,7 +94,7 @@ class DetectOfflineAssetsJob implements ShouldQueue
 
         $deduplicationKey = sprintf('offline:%d:%d', $asset->id, $asset->last_seen_at->getTimestamp());
 
-        $alreadyRaised = RawEvent::withoutGlobalScopes()
+        $alreadyRaised = RawEvent::query()
             ->where('team_id', $asset->team_id)
             ->where('deduplication_key', $deduplicationKey)
             ->exists();
@@ -164,7 +167,7 @@ class DetectOfflineAssetsJob implements ShouldQueue
             return;
         }
 
-        NormalizedEvent::withoutGlobalScopes()
+        NormalizedEvent::query()
             ->where('event_type_id', $eventTypeId)
             ->where('occurred_at', '>=', now()->subDays(7))
             ->whereNotNull('asset_id')

@@ -37,7 +37,7 @@ class IncidentMediaRequestController extends Controller
         $type = MediaRequestType::tryFrom((string) ($payload['request_type'] ?? MediaRequestType::FetchVideoClip->value))
             ?? MediaRequestType::FetchVideoClip;
 
-        $event = NormalizedEvent::withoutGlobalScopes()->findOrFail($incident->related_event_id);
+        $event = NormalizedEvent::query()->findOrFail($incident->related_event_id);
 
         $mediaRequest = $action->execute($event, $type);
 

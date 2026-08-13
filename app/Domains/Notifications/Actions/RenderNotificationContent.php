@@ -43,7 +43,7 @@ class RenderNotificationContent
 
     private function resolveTemplate(Notification $notification, ChannelType $channelType): ?NotificationTemplate
     {
-        return NotificationTemplate::withoutGlobalScopes()
+        return NotificationTemplate::query()
             ->where(function ($query) use ($notification) {
                 $query->where('team_id', $notification->team_id)
                     ->orWhereNull('team_id');

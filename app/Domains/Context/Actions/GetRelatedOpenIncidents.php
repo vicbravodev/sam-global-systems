@@ -29,7 +29,7 @@ class GetRelatedOpenIncidents
         $occurredAt = $normalizedEvent->occurred_at ?? now();
         $threshold = Carbon::instance($occurredAt)->subMinutes($window);
 
-        $query = Incident::withoutGlobalScopes()
+        $query = Incident::query()
             ->where('team_id', $teamId)
             ->whereHas('status', fn ($q) => $q->where('is_terminal', false))
             ->where('opened_at', '>=', $threshold);

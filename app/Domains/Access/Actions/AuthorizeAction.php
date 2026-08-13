@@ -137,7 +137,7 @@ class AuthorizeAction
             return true;
         }
 
-        $subscription = Subscription::withoutGlobalScopes()
+        $subscription = Subscription::query()
             ->where('team_id', $team->id)
             ->latest('starts_at')
             ->first();
@@ -153,7 +153,7 @@ class AuthorizeAction
     {
         $module = $this->extractModule($permissionCode);
 
-        $feature = TenantFeature::withoutGlobalScopes()
+        $feature = TenantFeature::query()
             ->where('team_id', $team->id)
             ->where('feature_key', $module)
             ->first();

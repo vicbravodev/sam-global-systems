@@ -34,7 +34,7 @@ class CreateTenant
         if ($planCode) {
             $plan = Plan::where('code', $planCode)->firstOrFail();
 
-            Subscription::withoutGlobalScopes()->create([
+            Subscription::query()->create([
                 'team_id' => $team->id,
                 'plan_id' => $plan->id,
                 'status' => SubscriptionStatus::Trialing,
@@ -46,7 +46,7 @@ class CreateTenant
             $this->seedDefaultFeatures($team, $plan);
         }
 
-        TenantBranding::withoutGlobalScopes()->create([
+        TenantBranding::query()->create([
             'team_id' => $team->id,
         ]);
 
@@ -60,7 +60,7 @@ class CreateTenant
         $billingRates = BillingRate::where('plan_id', $plan->id)->get();
 
         foreach ($billingRates as $rate) {
-            TenantFeature::withoutGlobalScopes()->create([
+            TenantFeature::query()->create([
                 'team_id' => $team->id,
                 'feature_key' => $rate->usageMeter->code,
                 'enabled' => true,

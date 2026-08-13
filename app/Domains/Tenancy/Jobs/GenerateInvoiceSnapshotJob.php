@@ -36,7 +36,7 @@ class GenerateInvoiceSnapshotJob implements ShouldQueue
         $periodStart = $this->periodStart ?? now()->startOfMonth()->toDateString();
         $periodEnd = $this->periodEnd ?? now()->endOfMonth()->toDateString();
 
-        $existingSnapshot = InvoiceSnapshot::withoutGlobalScopes()
+        $existingSnapshot = InvoiceSnapshot::query()
             ->where('team_id', $team->id)
             ->whereDate('period_start', $periodStart)
             ->whereDate('period_end', $periodEnd)
@@ -46,7 +46,7 @@ class GenerateInvoiceSnapshotJob implements ShouldQueue
             return;
         }
 
-        $subscription = Subscription::withoutGlobalScopes()
+        $subscription = Subscription::query()
             ->where('team_id', $team->id)
             ->whereIn('status', ['trialing', 'active', 'past_due'])
             ->latest('starts_at')
@@ -64,7 +64,7 @@ class GenerateInvoiceSnapshotJob implements ShouldQueue
                 ->get();
 
             foreach ($billingRates as $rate) {
-                $counter = TenantUsageCounter::withoutGlobalScopes()
+                $counter = TenantUsageCounter::query()
                     ->where('team_id', $team->id)
                     ->where('usage_meter_id', $rate->usage_meter_id)
                     ->whereDate('period_start', $periodStart)
@@ -90,7 +90,7 @@ class GenerateInvoiceSnapshotJob implements ShouldQueue
 
         $total = $subtotal + $overageTotal;
 
-        InvoiceSnapshot::withoutGlobalScopes()->create([
+        InvoiceSnapshot::query()->create([
             'team_id' => $team->id,
             'subscription_id' => $subscription?->id,
             'period_start' => $periodStart,

@@ -7,6 +7,7 @@ use App\Domains\Assets\Enums\AssetStatus;
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Models\Team;
+use App\Support\TenantContext;
 use Illuminate\Console\Command;
 
 class RecordAssetUsageMeters extends Command
@@ -19,9 +20,13 @@ class RecordAssetUsageMeters extends Command
     {
         $date = now()->toDateString();
 
+        // Comando de plataforma: recorre todos los tenants a propósito, y
+        // cuenta los activos de cada uno dentro de su contexto. Ver §2.1.
         Team::query()->each(function (Team $team) use ($recordUsage, $date) {
-            $this->recordMonitoredAssets($team, $recordUsage, $date);
-            $this->recordActiveCameras($team, $recordUsage, $date);
+            TenantContext::for($team->id, function () use ($team, $recordUsage, $date) {
+                $this->recordMonitoredAssets($team, $recordUsage, $date);
+                $this->recordActiveCameras($team, $recordUsage, $date);
+            });
         });
 
         $this->info('Asset usage meters recorded successfully.');
@@ -31,8 +36,7 @@ class RecordAssetUsageMeters extends Command
 
     private function recordMonitoredAssets(Team $team, RecordUsageEvent $recordUsage, string $date): void
     {
-        $count = Asset::withoutGlobalScopes()
-            ->where('team_id', $team->id)
+        $count = Asset::query()
             ->where('status', '!=', AssetStatus::Inactive)
             ->count();
 
@@ -48,8 +52,7 @@ class RecordAssetUsageMeters extends Command
 
     private function recordActiveCameras(Team $team, RecordUsageEvent $recordUsage, string $date): void
     {
-        $count = Asset::withoutGlobalScopes()
-            ->where('team_id', $team->id)
+        $count = Asset::query()
             ->where('status', '!=', AssetStatus::Inactive)
             ->whereHas('assetType', fn ($query) => $query->where('category', AssetCategory::Camera))
             ->count();

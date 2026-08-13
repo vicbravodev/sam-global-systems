@@ -40,7 +40,7 @@ class AIStreamController extends Controller
         $evaluationId = $payload['evaluation_id'] ?? null;
 
         $evaluation = $evaluationId !== null
-            ? AIEventEvaluation::withoutGlobalScopes()->find($evaluationId)
+            ? AIEventEvaluation::query()->find($evaluationId)
             : null;
 
         return new StreamedResponse(function () use ($taskId, $evaluation): void {

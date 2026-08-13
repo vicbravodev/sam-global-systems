@@ -5,6 +5,7 @@ namespace App\Http\Middleware;
 use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Models\User;
+use App\Support\TenantContext;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -29,6 +30,8 @@ class EnsureTeamMembership
                 $user->forceSwitchTeam($team);
             }
 
+            TenantContext::set($team);
+
             return $next($request);
         }
 
@@ -39,6 +42,11 @@ class EnsureTeamMembership
         if ($request->route('current_team') && ! $user->isCurrentTeam($team)) {
             $user->switchTeam($team);
         }
+
+        // Fija el tenant en el Context para que lo hereden los jobs que se
+        // despachen durante esta request: el worker rehidrata el Context y el
+        // scope global sigue filtrando allí. Ver App\Support\TenantContext.
+        TenantContext::set($team);
 
         return $next($request);
     }

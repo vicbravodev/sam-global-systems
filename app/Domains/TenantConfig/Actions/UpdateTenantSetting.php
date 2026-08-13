@@ -8,6 +8,7 @@ use App\Domains\TenantConfig\Enums\SettingValueType;
 use App\Domains\TenantConfig\Events\TenantSettingUpdated;
 use App\Domains\TenantConfig\Models\TenantSetting;
 use App\Domains\TenantConfig\Support\CacheKeys;
+use App\Support\TenantContext;
 use Illuminate\Support\Facades\Cache;
 use InvalidArgumentException;
 
@@ -29,62 +30,64 @@ class UpdateTenantSetting
         SettingUpdatedByType $updatedByType = SettingUpdatedByType::System,
         ?int $updatedById = null,
     ): TenantSetting {
-        if (! $valueType->accepts($value)) {
-            throw new InvalidArgumentException(
-                "Value for setting '{$settingKey}' is not compatible with declared type {$valueType->value}.",
+        return TenantContext::for($teamId, function () use ($teamId, $settingKey, $settingGroup, $valueType, $value, $updatedByType, $updatedById) {
+            if (! $valueType->accepts($value)) {
+                throw new InvalidArgumentException(
+                    "Value for setting '{$settingKey}' is not compatible with declared type {$valueType->value}.",
+                );
+            }
+
+            $existing = TenantSetting::query()
+                ->where('team_id', $teamId)
+                ->where('setting_key', $settingKey)
+                ->first();
+
+            $previousTypedValue = $existing?->typed_value;
+            $storedJson = $this->wrap($value, $valueType);
+
+            if ($existing) {
+                $existing->fill([
+                    'setting_group' => $settingGroup,
+                    'value_json' => $storedJson,
+                    'value_type' => $valueType,
+                    'version' => $existing->version + 1,
+                    'is_active' => true,
+                    'updated_by_type' => $updatedByType,
+                    'updated_by_id' => $updatedById,
+                ])->save();
+                $setting = $existing;
+            } else {
+                $setting = TenantSetting::query()->create([
+                    'team_id' => $teamId,
+                    'setting_key' => $settingKey,
+                    'setting_group' => $settingGroup,
+                    'value_json' => $storedJson,
+                    'value_type' => $valueType,
+                    'version' => 1,
+                    'is_active' => true,
+                    'updated_by_type' => $updatedByType,
+                    'updated_by_id' => $updatedById,
+                ]);
+            }
+
+            Cache::forget(CacheKeys::setting($teamId, $settingKey));
+
+            TenantSettingUpdated::dispatch(
+                $teamId,
+                $settingKey,
+                $settingGroup,
+                $previousTypedValue,
+                $value,
+                $updatedByType,
+                $updatedById,
             );
-        }
 
-        $existing = TenantSetting::withoutGlobalScopes()
-            ->where('team_id', $teamId)
-            ->where('setting_key', $settingKey)
-            ->first();
+            if ($this->shouldSnapshot($settingGroup)) {
+                $this->snapshotTenantConfig->execute($teamId, $updatedByType, $updatedById);
+            }
 
-        $previousTypedValue = $existing?->typed_value;
-        $storedJson = $this->wrap($value, $valueType);
-
-        if ($existing) {
-            $existing->fill([
-                'setting_group' => $settingGroup,
-                'value_json' => $storedJson,
-                'value_type' => $valueType,
-                'version' => $existing->version + 1,
-                'is_active' => true,
-                'updated_by_type' => $updatedByType,
-                'updated_by_id' => $updatedById,
-            ])->save();
-            $setting = $existing;
-        } else {
-            $setting = TenantSetting::withoutGlobalScopes()->create([
-                'team_id' => $teamId,
-                'setting_key' => $settingKey,
-                'setting_group' => $settingGroup,
-                'value_json' => $storedJson,
-                'value_type' => $valueType,
-                'version' => 1,
-                'is_active' => true,
-                'updated_by_type' => $updatedByType,
-                'updated_by_id' => $updatedById,
-            ]);
-        }
-
-        Cache::forget(CacheKeys::setting($teamId, $settingKey));
-
-        TenantSettingUpdated::dispatch(
-            $teamId,
-            $settingKey,
-            $settingGroup,
-            $previousTypedValue,
-            $value,
-            $updatedByType,
-            $updatedById,
-        );
-
-        if ($this->shouldSnapshot($settingGroup)) {
-            $this->snapshotTenantConfig->execute($teamId, $updatedByType, $updatedById);
-        }
-
-        return $setting->refresh();
+            return $setting->refresh();
+        });
     }
 
     /**

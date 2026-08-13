@@ -6,6 +6,7 @@ use App\Contracts\TenantConfig\TenantConfigResolver;
 use App\Domains\Incidents\Actions\HandleVerificationCallAttemptFailure;
 use App\Domains\Incidents\Actions\StartIncidentCallVerification;
 use App\Domains\Incidents\Models\IncidentCallVerification;
+use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -40,6 +41,10 @@ class EvaluateVerificationCallOutcomeJob implements ShouldQueue
         if ($verification === null || ! $verification->status->isInFlight()) {
             return;
         }
+
+        // Trabaja dentro del tenant del propio registro: el lookup de
+        // entrada no puede estar scopeado, todo lo que sigue sí. Ver §2.1.
+        TenantContext::set($verification->team_id);
 
         $retryDelay = max(30, (int) $tenantConfig->resolve(
             (int) $verification->team_id,

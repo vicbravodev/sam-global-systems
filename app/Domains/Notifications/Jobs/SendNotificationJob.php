@@ -5,6 +5,7 @@ namespace App\Domains\Notifications\Jobs;
 use App\Domains\Notifications\Actions\DispatchNotification;
 use App\Domains\Notifications\Models\Notification;
 use App\Support\JobFailureReporter;
+use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -32,6 +33,10 @@ class SendNotificationJob implements ShouldQueue
         if ($notification === null) {
             return;
         }
+
+        // Trabaja dentro del tenant del propio registro: el lookup de
+        // entrada no puede estar scopeado, todo lo que sigue sí. Ver §2.1.
+        TenantContext::set($notification->team_id);
 
         $dispatch->execute($notification);
     }

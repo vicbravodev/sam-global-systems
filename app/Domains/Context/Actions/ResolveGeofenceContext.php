@@ -49,7 +49,7 @@ class ResolveGeofenceContext
         return Cache::remember(
             "team:{$teamId}:geofences",
             self::CACHE_TTL_SECONDS,
-            fn () => Geofence::withoutGlobalScopes()
+            fn () => Geofence::query()
                 ->where('team_id', $teamId)
                 ->where('is_active', true)
                 ->get(),

@@ -18,6 +18,6 @@ class ResolveDriverForEvent
             return null;
         }
 
-        return Driver::withoutGlobalScopes()->find($assignment->driver_id);
+        return Driver::query()->find($assignment->driver_id);
     }
 }

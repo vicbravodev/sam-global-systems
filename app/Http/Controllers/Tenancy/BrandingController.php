@@ -68,7 +68,7 @@ class BrandingController extends Controller
 
     private function brandingFor(Team $current_team): TenantBranding
     {
-        $branding = TenantBranding::withoutGlobalScopes()
+        $branding = TenantBranding::query()
             ->firstOrNew(['team_id' => $current_team->id]);
 
         $branding->team_id = $current_team->id;

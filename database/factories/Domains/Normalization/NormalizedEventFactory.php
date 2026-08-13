@@ -21,8 +21,14 @@ class NormalizedEventFactory extends Factory
     public function definition(): array
     {
         return [
-            'raw_event_id' => RawEvent::factory(),
+            // El team va primero para que el RawEvent se cree en el MISMO
+            // tenant: si no, la factory producía un evento normalizado de un
+            // team colgando de un evento crudo de otro, algo que en producción
+            // no ocurre y que enmascaraba fallos de aislamiento. Ver §2.1.
             'team_id' => Team::factory(),
+            'raw_event_id' => fn (array $attributes) => RawEvent::factory()->create([
+                'team_id' => $attributes['team_id'],
+            ]),
             'provider_id' => null,
             'asset_id' => null,
             'driver_id' => null,

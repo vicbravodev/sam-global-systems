@@ -7,6 +7,7 @@ use App\Domains\AI\Enums\EventClassification;
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\Analytics\Enums\PeriodType;
 use App\Domains\Analytics\Models\KpiRecord;
+use App\Support\TenantContext;
 use Carbon\CarbonInterface;
 
 class EvaluateAIEffectiveness
@@ -24,90 +25,92 @@ class EvaluateAIEffectiveness
      */
     public function execute(int $teamId, CarbonInterface $from, CarbonInterface $to): array
     {
-        $records = [];
+        return TenantContext::for($teamId, function () use ($teamId, $from, $to) {
+            $records = [];
 
-        $totalEvaluations = AIEventEvaluation::withoutGlobalScopes()
-            ->where('team_id', $teamId)
-            ->whereBetween('evaluated_at', [$from, $to])
-            ->count();
+            $totalEvaluations = AIEventEvaluation::query()
+                ->where('team_id', $teamId)
+                ->whereBetween('evaluated_at', [$from, $to])
+                ->count();
 
-        $falsePositives = AIEventEvaluation::withoutGlobalScopes()
-            ->where('team_id', $teamId)
-            ->whereBetween('evaluated_at', [$from, $to])
-            ->where('classification', EventClassification::FalsePositive->value)
-            ->count();
+            $falsePositives = AIEventEvaluation::query()
+                ->where('team_id', $teamId)
+                ->whereBetween('evaluated_at', [$from, $to])
+                ->where('classification', EventClassification::FalsePositive->value)
+                ->count();
 
-        $realEvents = AIEventEvaluation::withoutGlobalScopes()
-            ->where('team_id', $teamId)
-            ->whereBetween('evaluated_at', [$from, $to])
-            ->where('classification', EventClassification::RealEvent->value)
-            ->count();
+            $realEvents = AIEventEvaluation::query()
+                ->where('team_id', $teamId)
+                ->whereBetween('evaluated_at', [$from, $to])
+                ->where('classification', EventClassification::RealEvent->value)
+                ->count();
 
-        $avgConfidence = AIEventEvaluation::withoutGlobalScopes()
-            ->where('team_id', $teamId)
-            ->whereBetween('evaluated_at', [$from, $to])
-            ->whereNotNull('confidence_score')
-            ->avg('confidence_score');
+            $avgConfidence = AIEventEvaluation::query()
+                ->where('team_id', $teamId)
+                ->whereBetween('evaluated_at', [$from, $to])
+                ->whereNotNull('confidence_score')
+                ->avg('confidence_score');
 
-        $decisionTotals = $this->decisions->totalsForTenant($teamId, $from, $to);
-        $decisionsCount = (int) $decisionTotals['total'];
-        $overrides = (int) $decisionTotals['human_overrides'];
+            $decisionTotals = $this->decisions->totalsForTenant($teamId, $from, $to);
+            $decisionsCount = (int) $decisionTotals['total'];
+            $overrides = (int) $decisionTotals['human_overrides'];
 
-        $records['ai_total_evaluations'] = $this->upsert(
-            $teamId,
-            'ai_total_evaluations',
-            $from,
-            $to,
-            (float) $totalEvaluations,
-            'count',
-        );
+            $records['ai_total_evaluations'] = $this->upsert(
+                $teamId,
+                'ai_total_evaluations',
+                $from,
+                $to,
+                (float) $totalEvaluations,
+                'count',
+            );
 
-        $records['ai_false_positive_rate'] = $this->upsert(
-            $teamId,
-            'ai_false_positive_rate',
-            $from,
-            $to,
-            $totalEvaluations === 0 ? 0.0 : round($falsePositives / $totalEvaluations, 4),
-            'ratio',
-        );
+            $records['ai_false_positive_rate'] = $this->upsert(
+                $teamId,
+                'ai_false_positive_rate',
+                $from,
+                $to,
+                $totalEvaluations === 0 ? 0.0 : round($falsePositives / $totalEvaluations, 4),
+                'ratio',
+            );
 
-        $records['ai_real_event_rate'] = $this->upsert(
-            $teamId,
-            'ai_real_event_rate',
-            $from,
-            $to,
-            $totalEvaluations === 0 ? 0.0 : round($realEvents / $totalEvaluations, 4),
-            'ratio',
-        );
+            $records['ai_real_event_rate'] = $this->upsert(
+                $teamId,
+                'ai_real_event_rate',
+                $from,
+                $to,
+                $totalEvaluations === 0 ? 0.0 : round($realEvents / $totalEvaluations, 4),
+                'ratio',
+            );
 
-        $records['ai_average_confidence'] = $this->upsert(
-            $teamId,
-            'ai_average_confidence',
-            $from,
-            $to,
-            (float) ($avgConfidence ?? 0),
-            'score',
-        );
+            $records['ai_average_confidence'] = $this->upsert(
+                $teamId,
+                'ai_average_confidence',
+                $from,
+                $to,
+                (float) ($avgConfidence ?? 0),
+                'score',
+            );
 
-        $records['ai_human_override_rate'] = $this->upsert(
-            $teamId,
-            'ai_human_override_rate',
-            $from,
-            $to,
-            $decisionsCount === 0 ? 0.0 : round($overrides / $decisionsCount, 4),
-            'ratio',
-        );
+            $records['ai_human_override_rate'] = $this->upsert(
+                $teamId,
+                'ai_human_override_rate',
+                $from,
+                $to,
+                $decisionsCount === 0 ? 0.0 : round($overrides / $decisionsCount, 4),
+                'ratio',
+            );
 
-        $records['ai_accuracy_rate'] = $this->upsert(
-            $teamId,
-            'ai_accuracy_rate',
-            $from,
-            $to,
-            $decisionsCount === 0 ? 0.0 : round(max(0, $decisionsCount - $overrides) / $decisionsCount, 4),
-            'ratio',
-        );
+            $records['ai_accuracy_rate'] = $this->upsert(
+                $teamId,
+                'ai_accuracy_rate',
+                $from,
+                $to,
+                $decisionsCount === 0 ? 0.0 : round(max(0, $decisionsCount - $overrides) / $decisionsCount, 4),
+                'ratio',
+            );
 
-        return $records;
+            return $records;
+        });
     }
 
     private function upsert(
@@ -118,7 +121,7 @@ class EvaluateAIEffectiveness
         float $value,
         string $unit,
     ): KpiRecord {
-        $record = KpiRecord::withoutGlobalScopes()
+        $record = KpiRecord::query()
             ->where('team_id', $teamId)
             ->where('kpi_code', $code)
             ->where('period_type', PeriodType::Daily->value)
@@ -148,6 +151,6 @@ class EvaluateAIEffectiveness
             return $record;
         }
 
-        return KpiRecord::withoutGlobalScopes()->create($payload);
+        return KpiRecord::query()->create($payload);
     }
 }

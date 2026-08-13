@@ -13,6 +13,7 @@ use App\Domains\Ingestion\Actions\QueueRawEventForProcessing;
 use App\Domains\Ingestion\Actions\StoreRawEvent;
 use App\Domains\Ingestion\Enums\EventSourceType;
 use App\Domains\Ingestion\Models\RawEvent;
+use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -64,15 +65,17 @@ class DetectUnauthorizedStopJob implements ShouldQueue
         /** @var array<int, bool> $teamHasGeofences */
         $teamHasGeofences = [];
 
-        Asset::withoutGlobalScopes()
+        // Vigilancia de plataforma: recorre todos los tenants a propósito,
+        // pero inspecciona cada activo dentro del contexto del suyo. Ver §2.1.
+        TenantContext::withoutTenant(fn () => Asset::query()
             ->whereNotNull('team_id')
             ->whereNotIn('status', [AssetStatus::Inactive, AssetStatus::Maintenance])
             ->with('latestLocation')
             ->chunkById(200, function ($assets) use (&$teamHasGeofences, $tenantConfig, $resolveGeofences, $storeRawEvent, $queueForProcessing) {
                 foreach ($assets as $asset) {
-                    $this->inspectAsset($asset, $teamHasGeofences, $tenantConfig, $resolveGeofences, $storeRawEvent, $queueForProcessing);
+                    TenantContext::for($asset->team_id, fn () => $this->inspectAsset($asset, $teamHasGeofences, $tenantConfig, $resolveGeofences, $storeRawEvent, $queueForProcessing));
                 }
-            });
+            }));
     }
 
     /**
@@ -118,7 +121,7 @@ class DetectUnauthorizedStopJob implements ShouldQueue
             return;
         }
 
-        $teamHasGeofences[$teamId] ??= Geofence::withoutGlobalScopes()
+        $teamHasGeofences[$teamId] ??= Geofence::query()
             ->where('team_id', $teamId)
             ->where('is_active', true)
             ->exists();
@@ -143,7 +146,7 @@ class DetectUnauthorizedStopJob implements ShouldQueue
 
         $deduplicationKey = sprintf('suspicious_stop:%d:%d', $asset->id, $anchor->recorded_at->getTimestamp());
 
-        $alreadyRaised = RawEvent::withoutGlobalScopes()
+        $alreadyRaised = RawEvent::query()
             ->where('team_id', $teamId)
             ->where('deduplication_key', $deduplicationKey)
             ->exists();

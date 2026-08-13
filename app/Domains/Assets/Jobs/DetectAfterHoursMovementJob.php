@@ -10,6 +10,7 @@ use App\Domains\Ingestion\Actions\StoreRawEvent;
 use App\Domains\Ingestion\Enums\EventSourceType;
 use App\Domains\Ingestion\Models\RawEvent;
 use App\Domains\TenantConfig\Data\ResolvedSchedule;
+use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -51,18 +52,23 @@ class DetectAfterHoursMovementJob implements ShouldQueue
         /** @var array<int, ResolvedSchedule> $schedules */
         $schedules = [];
 
-        Asset::withoutGlobalScopes()
+        // Recorre todos los tenants a propósito, pero inspecciona cada activo
+        // dentro del contexto de SU tenant. Ver §2.1.
+        TenantContext::withoutTenant(fn () => Asset::query()
             ->whereNotNull('team_id')
             ->whereNotIn('status', [AssetStatus::Inactive, AssetStatus::Maintenance])
             ->with('latestLocation')
             ->chunkById(200, function ($assets) use (&$schedules, $scheduleResolver, $storeRawEvent, $queueForProcessing) {
                 foreach ($assets as $asset) {
                     $teamId = (int) $asset->team_id;
-                    $schedules[$teamId] ??= $scheduleResolver->resolve($teamId);
 
-                    $this->inspectAsset($asset, $schedules[$teamId], $storeRawEvent, $queueForProcessing);
+                    TenantContext::for($teamId, function () use ($asset, $teamId, &$schedules, $scheduleResolver, $storeRawEvent, $queueForProcessing) {
+                        $schedules[$teamId] ??= $scheduleResolver->resolve($teamId);
+
+                        $this->inspectAsset($asset, $schedules[$teamId], $storeRawEvent, $queueForProcessing);
+                    });
                 }
-            });
+            }));
     }
 
     private function inspectAsset(
@@ -90,7 +96,7 @@ class DetectAfterHoursMovementJob implements ShouldQueue
         $localDate = now()->setTimezone($schedule->timezone)->toDateString();
         $deduplicationKey = sprintf('after_hours:%d:%s', $asset->id, $localDate);
 
-        $alreadyRaised = RawEvent::withoutGlobalScopes()
+        $alreadyRaised = RawEvent::query()
             ->where('team_id', $asset->team_id)
             ->where('deduplication_key', $deduplicationKey)
             ->exists();

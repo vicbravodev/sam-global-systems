@@ -8,6 +8,7 @@ use App\Domains\Incidents\Enums\TimelineEntryType;
 use App\Domains\Incidents\Events\IncidentStatusChanged;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentPriority;
+use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -34,6 +35,10 @@ class UpdateIncidentPriorityJob implements ShouldQueue
         if ($incident === null) {
             return;
         }
+
+        // Trabaja dentro del tenant del propio registro: el lookup de
+        // entrada no puede estar scopeado, todo lo que sigue sí. Ver §2.1.
+        TenantContext::set($incident->team_id);
 
         $newPriority = IncidentPriority::query()->find($this->newPriorityId);
 

@@ -5,6 +5,7 @@ namespace App\Domains\Context\Jobs;
 use App\Domains\Context\Actions\BuildEventContext;
 use App\Domains\Normalization\Enums\NormalizedEventStatus;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -43,7 +44,13 @@ class EnrichContextJob implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        $buildEventContext->execute($normalizedEvent);
+        // Entra en el tenant del evento antes de construir el contexto: el
+        // enriquecimiento lee historial, geocercas e incidentes previos, y todo
+        // eso tiene que quedarse dentro del tenant. Ver §2.1.
+        TenantContext::for(
+            $normalizedEvent->team_id,
+            fn () => $buildEventContext->execute($normalizedEvent),
+        );
     }
 
     public function failed(\Throwable $exception): void

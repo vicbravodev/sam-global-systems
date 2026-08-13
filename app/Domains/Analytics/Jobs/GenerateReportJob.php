@@ -34,7 +34,14 @@ class GenerateReportJob implements ShouldQueue
 
     public function handle(GenerateReport $action): void
     {
-        $definition = ReportDefinition::query()->findOrFail($this->reportDefinitionId);
+        // ReportDefinition no lleva BelongsToTenant (team_id nullable: hay
+        // definiciones de plataforma). Al recibir el id de la definición y el
+        // teamId por separado, hay que comprobar que concuerdan: si no, se
+        // generaría el reporte de un tenant con la definición de otro.
+        $definition = ReportDefinition::query()
+            ->whereKey($this->reportDefinitionId)
+            ->where(fn ($query) => $query->whereNull('team_id')->orWhere('team_id', $this->teamId))
+            ->firstOrFail();
 
         $action->execute(
             definition: $definition,

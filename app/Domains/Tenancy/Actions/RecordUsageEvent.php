@@ -6,6 +6,7 @@ use App\Domains\Tenancy\Enums\ResetPeriod;
 use App\Domains\Tenancy\Events\UsageRecorded;
 use App\Domains\Tenancy\Models\UsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
+use App\Support\TenantContext;
 use DateTimeInterface;
 use Illuminate\Support\Facades\Cache;
 
@@ -19,26 +20,28 @@ class RecordUsageEvent
         ?array $metadata = null,
         ?DateTimeInterface $occurredAt = null,
     ): void {
-        $meter = $this->resolveMeter($meterCode);
-        $occurredAt = $occurredAt ?? now();
+        TenantContext::for($teamId, function () use ($teamId, $meterCode, $quantity, $eventKey, $metadata, $occurredAt) {
+            $meter = $this->resolveMeter($meterCode);
+            $occurredAt = $occurredAt ?? now();
 
-        $billingPeriodKey = $this->buildBillingPeriodKey($meter, $occurredAt);
+            $billingPeriodKey = $this->buildBillingPeriodKey($meter, $occurredAt);
 
-        $inserted = UsageEvent::withoutGlobalScopes()->insertOrIgnore([
-            'team_id' => $teamId,
-            'usage_meter_id' => $meter->id,
-            'event_key' => $eventKey,
-            'quantity' => $quantity,
-            'metadata_json' => $metadata ? json_encode($metadata) : null,
-            'occurred_at' => $occurredAt,
-            'billing_period_key' => $billingPeriodKey,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+            $inserted = UsageEvent::query()->insertOrIgnore([
+                'team_id' => $teamId,
+                'usage_meter_id' => $meter->id,
+                'event_key' => $eventKey,
+                'quantity' => $quantity,
+                'metadata_json' => $metadata ? json_encode($metadata) : null,
+                'occurred_at' => $occurredAt,
+                'billing_period_key' => $billingPeriodKey,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
 
-        if ($inserted > 0) {
-            UsageRecorded::dispatch($teamId, $meterCode, $quantity, $eventKey);
-        }
+            if ($inserted > 0) {
+                UsageRecorded::dispatch($teamId, $meterCode, $quantity, $eventKey);
+            }
+        });
     }
 
     private function resolveMeter(string $code): UsageMeter

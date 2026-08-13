@@ -71,11 +71,11 @@ class DecisionFactsBuilder
      */
     private function resolveOperatorCallOutcome(AIEventEvaluation $eval): ?string
     {
-        $incidentIds = Incident::withoutGlobalScopes()
+        $incidentIds = Incident::query()
             ->where('related_event_id', $eval->normalized_event_id)
             ->select('id');
 
-        $outcome = IncidentCallVerification::withoutGlobalScopes()
+        $outcome = IncidentCallVerification::query()
             ->whereIn('incident_id', $incidentIds)
             ->whereNotNull('outcome')
             ->orderByDesc('responded_at')
@@ -98,7 +98,7 @@ class DecisionFactsBuilder
      */
     private function resolveMediaAssessment(AIEventEvaluation $eval): ?string
     {
-        $evaluationIds = AIEventEvaluation::withoutGlobalScopes()
+        $evaluationIds = AIEventEvaluation::query()
             ->where('normalized_event_id', $eval->normalized_event_id)
             ->select('id');
 
@@ -126,7 +126,7 @@ class DecisionFactsBuilder
      */
     private function resolveMediaVisionFacts(AIEventEvaluation $eval): array
     {
-        $evaluationIds = AIEventEvaluation::withoutGlobalScopes()
+        $evaluationIds = AIEventEvaluation::query()
             ->where('normalized_event_id', $eval->normalized_event_id)
             ->select('id');
 

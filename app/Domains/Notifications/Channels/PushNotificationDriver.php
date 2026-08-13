@@ -40,7 +40,7 @@ class PushNotificationDriver implements NotificationDriver
 
         $userId = (int) $notification->address;
 
-        $tokens = UserPushToken::withoutGlobalScopes()
+        $tokens = UserPushToken::query()
             ->where('user_id', $userId)
             ->pluck('token')
             ->all();
@@ -89,7 +89,7 @@ class PushNotificationDriver implements NotificationDriver
             return;
         }
 
-        UserPushToken::withoutGlobalScopes()
+        UserPushToken::query()
             ->whereIn('token', $report->invalidTokens)
             ->delete();
     }
