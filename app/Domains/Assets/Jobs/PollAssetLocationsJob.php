@@ -53,7 +53,14 @@ class PollAssetLocationsJob implements ShouldBeUnique, ShouldQueue
                 continue;
             }
 
-            $asset = $resolveAsset->execute($this->integration->provider_id, (string) $externalId);
+            // The resolver is tenant-scoped on purpose: (provider, external_id)
+            // is unique platform-wide, so without the team filter a poll could
+            // land on another tenant's asset.
+            $asset = $resolveAsset->execute(
+                $this->integration->provider_id,
+                (string) $externalId,
+                $this->integration->team_id,
+            );
 
             if ($asset === null) {
                 continue;
