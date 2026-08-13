@@ -1,18 +1,11 @@
 import { RelativeTime } from '@/components/sam/relative-time';
+import { formatDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 const DAY_MINUTES = 1440;
 
 function minutesSince(iso: string): number {
     return Math.max(0, Math.floor((Date.now() - Date.parse(iso)) / 60000));
-}
-
-function absoluteDate(iso: string): string {
-    return new Date(iso).toLocaleDateString('es', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-    });
 }
 
 interface Props {
@@ -51,7 +44,7 @@ export function AssetSignal({
     if (minutes >= DAY_MINUTES) {
         return (
             <span className={cn('text-2xs text-fg-3', className)}>
-                Sin señal desde {absoluteDate(lastSignalAt)}
+                Sin señal desde {formatDate(lastSignalAt)}
                 {deviceNote}
             </span>
         );

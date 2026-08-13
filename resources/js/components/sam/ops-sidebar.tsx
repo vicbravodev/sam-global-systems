@@ -18,7 +18,7 @@ import {
     Workflow,
     Receipt,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
     Tooltip,
     TooltipContent,
@@ -137,125 +137,144 @@ export function OpsSidebar({ navBadges, mobile = false }: OpsSidebarProps) {
 
     const dashboardHref = currentTeam ? dashboard(currentTeam.slug).url : '/';
 
-    const navGroups: NavGroup[] = [
-        {
-            title: 'Operación',
-            items: [
-                {
-                    label: 'Panel',
-                    icon: LayoutGrid,
-                    href: dashboardHref,
-                },
-                {
-                    label: 'Incidentes',
-                    icon: Inbox,
-                    href: `/${teamSlug}/incidents`,
-                    badge: 'inbox',
-                    pulseWhenInactive: true,
-                },
-                {
-                    label: 'Eventos',
-                    icon: History,
-                    href: `/${teamSlug}/events`,
-                },
-                {
-                    label: 'Mapa en vivo',
-                    icon: MapPin,
-                    href: `/${teamSlug}/assets/map`,
-                },
-            ],
-        },
-        {
-            title: 'Recursos',
-            items: [
-                {
-                    label: 'Flota',
-                    icon: Truck,
-                    href: `/${teamSlug}/assets`,
-                },
-                {
-                    label: 'Conductores',
-                    icon: Users,
-                    href: `/${teamSlug}/drivers`,
-                },
-            ],
-        },
-        {
-            title: 'Inteligencia',
-            items: [
-                {
-                    label: 'Reglas',
-                    icon: Workflow,
-                    href: `/${teamSlug}/rules`,
-                },
-                {
-                    label: 'Automatizaciones',
-                    icon: Radar,
-                    href: `/${teamSlug}/automation`,
-                },
-                {
-                    label: 'Analítica',
-                    icon: BarChart3,
-                    href: `/${teamSlug}/analytics`,
-                },
-            ],
-        },
-        {
-            title: 'Configuración',
-            items: [
-                {
-                    label: 'Integraciones',
-                    icon: Plug,
-                    href: `/${teamSlug}/integrations`,
-                },
-                {
-                    label: 'Bandeja de notificaciones',
-                    icon: Bell,
-                    href: `/${teamSlug}/notifications`,
-                },
-                {
-                    label: 'Auditoría',
-                    icon: FileClock,
-                    href: `/${teamSlug}/audit`,
-                },
-                {
-                    label: 'Facturación',
-                    icon: Receipt,
-                    href: `/${teamSlug}/billing`,
-                },
-                {
-                    // C2: una sola entrada de Ajustes con sub-secciones
-                    // (cuenta + tenant + equipo y roles) en vez de entradas
-                    // sueltas y solapadas.
-                    label: 'Ajustes',
-                    icon: Settings,
-                    href: `/${teamSlug}/settings/tenant-config`,
-                },
-            ],
-        },
-    ];
+    const navGroups: NavGroup[] = useMemo(() => {
+        const groups: NavGroup[] = [
+            {
+                title: 'Operación',
+                items: [
+                    {
+                        label: 'Panel',
+                        icon: LayoutGrid,
+                        href: dashboardHref,
+                    },
+                    {
+                        label: 'Incidentes',
+                        icon: Inbox,
+                        href: `/${teamSlug}/incidents`,
+                        badge: 'inbox',
+                        pulseWhenInactive: true,
+                    },
+                    {
+                        label: 'Eventos',
+                        icon: History,
+                        href: `/${teamSlug}/events`,
+                    },
+                    {
+                        label: 'Mapa en vivo',
+                        icon: MapPin,
+                        href: `/${teamSlug}/assets/map`,
+                    },
+                ],
+            },
+            {
+                title: 'Recursos',
+                items: [
+                    {
+                        label: 'Flota',
+                        icon: Truck,
+                        href: `/${teamSlug}/assets`,
+                    },
+                    {
+                        label: 'Conductores',
+                        icon: Users,
+                        href: `/${teamSlug}/drivers`,
+                    },
+                ],
+            },
+            {
+                title: 'Inteligencia',
+                items: [
+                    {
+                        label: 'Reglas',
+                        icon: Workflow,
+                        href: `/${teamSlug}/rules`,
+                    },
+                    {
+                        label: 'Automatizaciones',
+                        icon: Radar,
+                        href: `/${teamSlug}/automation`,
+                    },
+                    {
+                        label: 'Analítica',
+                        icon: BarChart3,
+                        href: `/${teamSlug}/analytics`,
+                    },
+                ],
+            },
+            {
+                title: 'Configuración',
+                items: [
+                    {
+                        label: 'Integraciones',
+                        icon: Plug,
+                        href: `/${teamSlug}/integrations`,
+                    },
+                    {
+                        label: 'Bandeja de notificaciones',
+                        icon: Bell,
+                        href: `/${teamSlug}/notifications`,
+                    },
+                    {
+                        label: 'Auditoría',
+                        icon: FileClock,
+                        href: `/${teamSlug}/audit`,
+                    },
+                    {
+                        label: 'Facturación',
+                        icon: Receipt,
+                        href: `/${teamSlug}/billing`,
+                    },
+                    {
+                        // C2: una sola entrada de Ajustes con sub-secciones
+                        // (cuenta + tenant + equipo y roles) en vez de entradas
+                        // sueltas y solapadas.
+                        label: 'Ajustes',
+                        icon: Settings,
+                        href: `/${teamSlug}/settings/tenant-config`,
+                    },
+                ],
+            },
+        ];
 
-    // Cross-tenant control panel: only the SaaS operator (super-admin) sees it.
-    if (isSuperAdmin) {
-        navGroups.push({
-            title: 'Administración',
-            items: [
-                {
-                    label: 'Super Admin',
-                    icon: Shield,
-                    href: adminTenantsIndex().url,
-                },
-            ],
-        });
-    }
-
-    const isActive = (href: string) => {
-        if (href === '#') {
-            return false;
+        // Cross-tenant control panel: only the SaaS operator (super-admin) sees it.
+        if (isSuperAdmin) {
+            groups.push({
+                title: 'Administración',
+                items: [
+                    {
+                        label: 'Super Admin',
+                        icon: Shield,
+                        href: adminTenantsIndex().url,
+                    },
+                ],
+            });
         }
 
-        return currentUrl.startsWith(href);
-    };
+        return groups;
+    }, [dashboardHref, teamSlug, isSuperAdmin]);
+
+    // Un único ítem activo: entre todos los hrefs de nav, el candidato cuyo
+    // segmento de ruta coincide (path === href o path.startsWith(href + '/'))
+    // y es más largo gana. Evita que un grupo padre (p.ej. "Flota" en
+    // /assets) y un hijo con prefijo compartido (p.ej. "Mapa en vivo" en
+    // /assets/map) se iluminen a la vez.
+    const path = currentUrl.split(/[?#]/)[0];
+
+    const activeHref = useMemo(() => {
+        const allHrefs = navGroups.flatMap((group) =>
+            group.items.map((item) => item.href),
+        );
+
+        return allHrefs
+            .filter(
+                (href) =>
+                    href !== '#' &&
+                    (path === href || path.startsWith(href + '/')),
+            )
+            .sort((a, b) => b.length - a.length)[0];
+    }, [navGroups, path]);
+
+    const isActive = (href: string) => href !== '#' && href === activeHref;
 
     return (
         <aside

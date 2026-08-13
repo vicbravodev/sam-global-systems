@@ -20,7 +20,9 @@ class PollAssetLocationsJobTest extends TestCase
     private function makeSamsaraIntegration(): TenantIntegration
     {
         $user = User::factory()->create();
-        $provider = IntegrationProvider::factory()->samsara()->create();
+        // `code` is unique, so tests with two tenants share one provider row.
+        $provider = IntegrationProvider::where('code', 'samsara')->first()
+            ?? IntegrationProvider::factory()->samsara()->create();
 
         $integration = TenantIntegration::withoutGlobalScopes()->create([
             'team_id' => $user->currentTeam->id,
@@ -40,19 +42,27 @@ class PollAssetLocationsJobTest extends TestCase
         return $integration->load('provider');
     }
 
-    public function test_it_persists_location_snapshots_for_known_assets_and_skips_unknown(): void
+    private function linkAsset(TenantIntegration $integration, string $externalId): Asset
     {
-        $integration = $this->makeSamsaraIntegration();
-
         $asset = Asset::factory()->create(['team_id' => $integration->team_id]);
+
         AssetExternalReference::create([
             'asset_id' => $asset->id,
             'provider_id' => $integration->provider_id,
-            'external_id' => '100',
+            'external_id' => $externalId,
             'external_type' => 'vehicle',
             'first_seen_at' => now(),
             'last_seen_at' => now(),
         ]);
+
+        return $asset;
+    }
+
+    public function test_it_persists_location_snapshots_for_known_assets_and_skips_unknown(): void
+    {
+        $integration = $this->makeSamsaraIntegration();
+
+        $asset = $this->linkAsset($integration, '100');
 
         Http::fake([
             'api.samsara.com/fleet/vehicles/stats*' => Http::response([
@@ -107,124 +117,33 @@ class PollAssetLocationsJobTest extends TestCase
         $this->assertNotNull($integration->last_location_poll_at);
     }
 
-    public function test_it_persists_telemetry_alongside_the_position(): void
+    public function test_it_never_writes_locations_onto_another_tenants_asset(): void
     {
-        $integration = $this->makeSamsaraIntegration();
+        $first = $this->makeSamsaraIntegration();
+        $firstAsset = $this->linkAsset($first, '100');
 
-        $asset = Asset::factory()->create([
-            'team_id' => $integration->team_id,
-            'last_seen_at' => now()->subDays(30),
-        ]);
-        AssetExternalReference::create([
-            'asset_id' => $asset->id,
-            'provider_id' => $integration->provider_id,
-            'external_id' => '100',
-            'external_type' => 'vehicle',
-            'first_seen_at' => now(),
-            'last_seen_at' => now(),
-        ]);
-
-        // The GPS call and the telemetry call hit the same endpoint with
-        // different `types`, so the fake branches on the query.
-        Http::fake(function ($request) {
-            if (str_contains($request->url(), 'types=gps')) {
-                return Http::response([
-                    'data' => [[
-                        'id' => '100',
-                        'gps' => [
-                            'latitude' => 40.1,
-                            'longitude' => -74.2,
-                            'time' => '2026-08-10T09:20:00Z',
-                        ],
-                    ]],
-                    'pagination' => ['hasNextPage' => false],
-                ], 200);
-            }
-
-            return Http::response([
-                'data' => [
-                    [
-                        'id' => '100',
-                        'fuelPercents' => ['time' => '2026-08-10T09:30:00Z', 'value' => 54],
-                        'engineStates' => ['time' => '2026-08-10T09:30:00Z', 'value' => 'Running'],
-                    ],
-                    // No external reference for this vehicle yet — must be skipped.
-                    ['id' => '999', 'fuelPercents' => ['time' => '2026-08-10T09:30:00Z', 'value' => 10]],
-                ],
-                'pagination' => ['hasNextPage' => false],
-            ], 200);
-        });
-
-        app()->call([new PollAssetLocationsJob($integration), 'handle']);
-
-        $this->assertDatabaseCount('asset_telemetry_snapshots', 2);
-        $this->assertDatabaseHas('asset_telemetry_snapshots', [
-            'asset_id' => $asset->id,
-            'telemetry_type' => 'fuel',
-        ]);
-        $this->assertDatabaseHas('asset_telemetry_snapshots', [
-            'asset_id' => $asset->id,
-            'telemetry_type' => 'ignition',
-        ]);
-
-        // The telemetry reading is newer than the GPS fix, so it is the one that
-        // sets the asset's last real signal.
-        $asset->refresh();
-        $this->assertSame('2026-08-10T09:30:00+00:00', $asset->last_seen_at->toIso8601String());
-    }
-
-    public function test_re_polling_the_same_telemetry_snapshot_does_not_duplicate_rows(): void
-    {
-        $integration = $this->makeSamsaraIntegration();
-
-        $asset = Asset::factory()->create(['team_id' => $integration->team_id]);
-        AssetExternalReference::create([
-            'asset_id' => $asset->id,
-            'provider_id' => $integration->provider_id,
-            'external_id' => '100',
-            'external_type' => 'vehicle',
-            'first_seen_at' => now(),
-            'last_seen_at' => now(),
-        ]);
-
-        Http::fake(function ($request) {
-            if (str_contains($request->url(), 'types=gps')) {
-                return Http::response(['data' => [], 'pagination' => ['hasNextPage' => false]], 200);
-            }
-
-            return Http::response([
-                'data' => [[
-                    'id' => '100',
-                    'fuelPercents' => ['time' => '2026-08-10T09:30:00Z', 'value' => 54],
-                ]],
-                'pagination' => ['hasNextPage' => false],
-            ], 200);
-        });
-
-        app()->call([new PollAssetLocationsJob($integration), 'handle']);
-        app()->call([new PollAssetLocationsJob($integration), 'handle']);
-
-        // A device that has not sent a new reading keeps returning the same
-        // timestamped value on every tick; that must not grow the table.
-        $this->assertDatabaseCount('asset_telemetry_snapshots', 1);
-    }
-
-    public function test_telemetry_polling_can_be_disabled_per_integration(): void
-    {
-        $integration = $this->makeSamsaraIntegration();
-        $integration->update(['config_json' => ['sync' => ['poll_telemetry' => false]]]);
+        // `asset_external_references` is unique on (provider_id, external_id)
+        // globally, so the other tenant owns a different id — and the resolver
+        // looks the reference up across every tenant.
+        $second = $this->makeSamsaraIntegration();
+        $otherTenantAsset = $this->linkAsset($second, '999');
 
         Http::fake([
             'api.samsara.com/fleet/vehicles/stats*' => Http::response([
-                'data' => [],
+                'data' => [
+                    ['id' => '100', 'gps' => ['latitude' => 40.1, 'longitude' => -74.2]],
+                    ['id' => '999', 'gps' => ['latitude' => 1.0, 'longitude' => 2.0]],
+                ],
                 'pagination' => ['hasNextPage' => false],
             ], 200),
         ]);
 
-        app()->call([new PollAssetLocationsJob($integration), 'handle']);
+        app()->call([new PollAssetLocationsJob($first), 'handle']);
 
-        Http::assertSentCount(1);
-        Http::assertSent(fn ($request) => str_contains($request->url(), 'types=gps'));
+        // A poll for one tenant must never write rows against another tenant's asset.
+        $this->assertDatabaseCount('asset_location_snapshots', 1);
+        $this->assertDatabaseHas('asset_location_snapshots', ['asset_id' => $firstAsset->id]);
+        $this->assertDatabaseMissing('asset_location_snapshots', ['asset_id' => $otherTenantAsset->id]);
     }
 
     public function test_it_targets_the_sync_queue(): void

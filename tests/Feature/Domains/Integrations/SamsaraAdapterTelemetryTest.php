@@ -2,8 +2,8 @@
 
 namespace Tests\Feature\Domains\Integrations;
 
+use App\Domains\Assets\Enums\TelemetryType;
 use App\Domains\Integrations\Adapters\SamsaraAdapter;
-use App\Domains\Integrations\Contracts\NullProviderAdapter;
 use App\Domains\Integrations\Models\IntegrationCredential;
 use App\Domains\Integrations\Models\IntegrationProvider;
 use App\Domains\Integrations\Models\TenantIntegration;
@@ -19,10 +19,11 @@ class SamsaraAdapterTelemetryTest extends TestCase
     private function makeIntegration(?string $token = 'sk-test-token'): TenantIntegration
     {
         $user = User::factory()->create();
+        $team = $user->currentTeam;
         $provider = IntegrationProvider::factory()->samsara()->create();
 
         $integration = TenantIntegration::withoutGlobalScopes()->create([
-            'team_id' => $user->currentTeam->id,
+            'team_id' => $team->id,
             'provider_id' => $provider->id,
             'name' => 'Samsara Fleet',
             'status' => 'active',
@@ -42,10 +43,22 @@ class SamsaraAdapterTelemetryTest extends TestCase
     }
 
     /**
-     * @param  array<int, array<string, mixed>>  $readings
+     * @param  array<string, mixed>  $stats
+     */
+    private function fakeStats(array $stats): void
+    {
+        Http::fake([
+            'api.samsara.com/fleet/vehicles/stats*' => Http::response([
+                'data' => [['id' => '100', 'name' => 'Truck 1'] + $stats],
+                'pagination' => ['hasNextPage' => false],
+            ], 200),
+        ]);
+    }
+
+    /**
      * @return array<string, mixed>|null
      */
-    private function reading(array $readings, string $type): ?array
+    private function readingFor(array $readings, TelemetryType $type): ?array
     {
         foreach ($readings as $reading) {
             if ($reading['type'] === $type) {
@@ -56,186 +69,153 @@ class SamsaraAdapterTelemetryTest extends TestCase
         return null;
     }
 
-    public function test_it_maps_the_vehicle_stats_snapshot_to_telemetry_readings(): void
+    public function test_it_splits_requests_to_respect_the_three_type_limit(): void
     {
-        Http::fake([
-            'api.samsara.com/fleet/vehicles/stats*' => Http::response([
-                'data' => [
-                    [
-                        'id' => '100',
-                        'engineStates' => ['time' => '2026-08-10T09:30:00Z', 'value' => 'Running'],
-                        'fuelPercents' => ['time' => '2026-08-10T09:29:00Z', 'value' => 54],
-                        'obdOdometerMeters' => ['time' => '2026-08-10T09:28:00Z', 'value' => 14010293],
-                        'batteryMilliVolts' => ['time' => '2026-08-10T09:27:00Z', 'value' => 12600],
-                        'ambientAirTemperatureMilliC' => ['time' => '2026-08-10T09:26:00Z', 'value' => 31110],
-                    ],
-                ],
-                'pagination' => ['hasNextPage' => false],
-            ], 200),
-        ]);
-
-        $records = app(SamsaraAdapter::class)->fetchAssetTelemetry($this->makeIntegration());
-
-        $this->assertCount(1, $records);
-        $this->assertSame('100', $records[0]['external_id']);
-
-        $readings = $records[0]['readings'];
-        $this->assertCount(5, $readings);
-
-        // Units are stored display-ready: the asset detail panel prints
-        // "{value} {unit}" verbatim.
-        $ignition = $this->reading($readings, 'ignition');
-        $this->assertSame('running', $ignition['data']['value']);
-        $this->assertSame('2026-08-10T09:30:00Z', $ignition['recorded_at']);
-
-        $fuel = $this->reading($readings, 'fuel');
-        $this->assertEquals(54, $fuel['data']['value']);
-        $this->assertSame('%', $fuel['data']['unit']);
-
-        // Samsara reports meters; the panel shows kilometres.
-        $odometer = $this->reading($readings, 'odometer');
-        $this->assertEquals(14010.3, $odometer['data']['value']);
-        $this->assertSame('km', $odometer['data']['unit']);
-
-        $battery = $this->reading($readings, 'battery');
-        $this->assertEquals(12.6, $battery['data']['value']);
-        $this->assertSame('V', $battery['data']['unit']);
-
-        $temperature = $this->reading($readings, 'temperature');
-        $this->assertEquals(31.1, $temperature['data']['value']);
-        $this->assertSame('°C', $temperature['data']['unit']);
-    }
-
-    public function test_it_requests_every_supported_stat_type_in_a_single_call(): void
-    {
-        Http::fake([
-            'api.samsara.com/fleet/vehicles/stats*' => Http::response([
-                'data' => [],
-                'pagination' => ['hasNextPage' => false],
-            ], 200),
-        ]);
+        $this->fakeStats([]);
 
         app(SamsaraAdapter::class)->fetchAssetTelemetry($this->makeIntegration());
 
+        // Samsara caps `types` at 3 per request, so the 5 stat types we track
+        // have to be fetched across two calls.
+        Http::assertSentCount(2);
+
         Http::assertSent(function ($request) {
-            $types = explode(',', (string) $request['types']);
+            $types = $this->typesOf($request);
 
-            foreach (['engineStates', 'fuelPercents', 'obdOdometerMeters', 'batteryMilliVolts', 'ambientAirTemperatureMilliC'] as $type) {
-                if (! in_array($type, $types, true)) {
-                    return false;
-                }
-            }
-
-            return true;
+            return $types !== null && count($types) <= 3;
         });
-
-        Http::assertSentCount(1);
     }
 
-    public function test_engine_state_is_normalized_to_a_stable_vocabulary(): void
+    /**
+     * @return list<string>|null
+     */
+    private function typesOf($request): ?array
     {
-        Http::fake([
-            'api.samsara.com/fleet/vehicles/stats*' => Http::response([
-                'data' => [
-                    ['id' => '1', 'engineStates' => ['time' => '2026-08-10T09:30:00Z', 'value' => 'Off']],
-                    ['id' => '2', 'engineStates' => ['time' => '2026-08-10T09:30:00Z', 'value' => 'Idle']],
-                ],
-                'pagination' => ['hasNextPage' => false],
-            ], 200),
-        ]);
+        parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
 
-        $records = app(SamsaraAdapter::class)->fetchAssetTelemetry($this->makeIntegration());
-
-        $this->assertSame('off', $this->reading($records[0]['readings'], 'ignition')['data']['value']);
-        $this->assertSame('idle', $this->reading($records[1]['readings'], 'ignition')['data']['value']);
+        return isset($query['types']) ? explode(',', (string) $query['types']) : null;
     }
 
-    public function test_a_stat_reported_as_a_list_uses_the_most_recent_entry(): void
+    public function test_it_maps_every_tracked_stat_type_with_normalized_units(): void
     {
-        Http::fake([
-            'api.samsara.com/fleet/vehicles/stats*' => Http::response([
-                'data' => [
-                    [
-                        'id' => '100',
-                        'fuelPercents' => [
-                            ['time' => '2026-08-10T09:00:00Z', 'value' => 80],
-                            ['time' => '2026-08-10T09:30:00Z', 'value' => 54],
-                        ],
-                    ],
-                ],
-                'pagination' => ['hasNextPage' => false],
-            ], 200),
+        $this->fakeStats([
+            'fuelPercents' => ['time' => '2026-08-12T10:00:00Z', 'value' => 54],
+            'engineStates' => ['time' => '2026-08-12T10:01:00Z', 'value' => 'On'],
+            'obdOdometerMeters' => ['time' => '2026-08-12T10:02:00Z', 'value' => 14010293],
+            'batteryMilliVolts' => ['time' => '2026-08-12T10:03:00Z', 'value' => 12640],
+            'ambientAirTemperatureMilliC' => ['time' => '2026-08-12T10:04:00Z', 'value' => 31110],
         ]);
 
-        $records = app(SamsaraAdapter::class)->fetchAssetTelemetry($this->makeIntegration());
-        $fuel = $this->reading($records[0]['readings'], 'fuel');
+        $readings = app(SamsaraAdapter::class)->fetchAssetTelemetry($this->makeIntegration());
 
-        $this->assertEquals(54, $fuel['data']['value']);
-        $this->assertSame('2026-08-10T09:30:00Z', $fuel['recorded_at']);
+        $fuel = $this->readingFor($readings, TelemetryType::Fuel);
+        $this->assertSame(54.0, $fuel['value']);
+        $this->assertSame('%', $fuel['unit']);
+        $this->assertSame('100', $fuel['external_id']);
+        $this->assertSame('2026-08-12T10:00:00Z', $fuel['recorded_at']);
+
+        // Engine state is a string enum, not a measurement — no unit.
+        $ignition = $this->readingFor($readings, TelemetryType::Ignition);
+        $this->assertSame('On', $ignition['value']);
+        $this->assertNull($ignition['unit']);
+
+        // 14 010 293 m -> km, one decimal.
+        $this->assertSame(14010.3, $this->readingFor($readings, TelemetryType::Odometer)['value']);
+        $this->assertSame('km', $this->readingFor($readings, TelemetryType::Odometer)['unit']);
+
+        // 12 640 mV -> V.
+        $this->assertSame(12.64, $this->readingFor($readings, TelemetryType::Battery)['value']);
+        $this->assertSame('V', $this->readingFor($readings, TelemetryType::Battery)['unit']);
+
+        // 31 110 milli-degrees -> °C.
+        $this->assertSame(31.1, $this->readingFor($readings, TelemetryType::Temperature)['value']);
+        $this->assertSame('°C', $this->readingFor($readings, TelemetryType::Temperature)['unit']);
     }
 
-    public function test_a_vehicle_with_no_usable_stats_is_omitted(): void
+    public function test_it_skips_stats_the_vehicle_does_not_report(): void
     {
-        Http::fake([
-            'api.samsara.com/fleet/vehicles/stats*' => Http::response([
-                'data' => [
-                    ['id' => '100'],
-                    ['id' => '101', 'fuelPercents' => ['time' => '2026-08-10T09:30:00Z', 'value' => null]],
-                    ['id' => '102', 'fuelPercents' => ['time' => '2026-08-10T09:30:00Z', 'value' => 20]],
-                ],
-                'pagination' => ['hasNextPage' => false],
-            ], 200),
+        // A vehicle with no diagnostic coverage omits obdOdometerMeters
+        // entirely rather than sending a null value.
+        $this->fakeStats([
+            'fuelPercents' => ['time' => '2026-08-12T10:00:00Z', 'value' => 54],
         ]);
 
-        $records = app(SamsaraAdapter::class)->fetchAssetTelemetry($this->makeIntegration());
-
-        $this->assertCount(1, $records);
-        $this->assertSame('102', $records[0]['external_id']);
-    }
-
-    public function test_a_reading_without_a_measurement_time_is_dropped(): void
-    {
-        Http::fake([
-            'api.samsara.com/fleet/vehicles/stats*' => Http::response([
-                'data' => [
-                    [
-                        'id' => '100',
-                        // No `time`: stamping it with the poll time would append a
-                        // duplicate row on every tick instead of matching the
-                        // reading already stored.
-                        'fuelPercents' => ['value' => 54],
-                        'engineStates' => ['time' => '2026-08-10T09:30:00Z', 'value' => 'Running'],
-                    ],
-                ],
-                'pagination' => ['hasNextPage' => false],
-            ], 200),
-        ]);
-
-        $readings = app(SamsaraAdapter::class)->fetchAssetTelemetry($this->makeIntegration())[0]['readings'];
+        $readings = app(SamsaraAdapter::class)->fetchAssetTelemetry($this->makeIntegration());
 
         $this->assertCount(1, $readings);
-        $this->assertSame('ignition', $readings[0]['type']);
+        $this->assertSame(TelemetryType::Fuel, $readings[0]['type']);
     }
 
-    public function test_it_returns_nothing_on_a_provider_error(): void
+    public function test_it_accepts_a_list_of_readings_and_uses_the_most_recent(): void
     {
-        Http::fake([
-            'api.samsara.com/fleet/vehicles/stats*' => Http::response(['message' => 'forbidden'], 403),
+        $this->fakeStats([
+            'fuelPercents' => [
+                ['time' => '2026-08-12T09:00:00Z', 'value' => 80],
+                ['time' => '2026-08-12T10:00:00Z', 'value' => 54],
+            ],
         ]);
 
-        $this->assertSame([], app(SamsaraAdapter::class)->fetchAssetTelemetry($this->makeIntegration()));
+        $readings = app(SamsaraAdapter::class)->fetchAssetTelemetry($this->makeIntegration());
+
+        $this->assertSame(54.0, $readings[0]['value']);
+        $this->assertSame('2026-08-12T10:00:00Z', $readings[0]['recorded_at']);
     }
 
-    public function test_it_skips_the_provider_without_a_token(): void
+    public function test_it_follows_the_pagination_cursor(): void
     {
-        Http::fake();
+        $page = 0;
 
+        Http::fake([
+            'api.samsara.com/fleet/vehicles/stats*' => function () use (&$page) {
+                $page++;
+
+                // First call of each batch paginates once; the cursor must be
+                // echoed back as `after`.
+                return Http::response([
+                    'data' => [[
+                        'id' => (string) $page,
+                        'fuelPercents' => ['time' => '2026-08-12T10:00:00Z', 'value' => 50],
+                    ]],
+                    'pagination' => ['endCursor' => 'cursor-'.$page, 'hasNextPage' => $page % 2 === 1],
+                ], 200);
+            },
+        ]);
+
+        $readings = app(SamsaraAdapter::class)->fetchAssetTelemetry($this->makeIntegration());
+
+        $this->assertGreaterThan(1, count($readings));
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'after=cursor-1'));
+    }
+
+    public function test_it_returns_empty_without_token(): void
+    {
         $this->assertSame([], app(SamsaraAdapter::class)->fetchAssetTelemetry($this->makeIntegration(token: null)));
-        Http::assertNothingSent();
     }
 
-    public function test_the_null_adapter_reports_no_telemetry(): void
+    public function test_it_returns_what_it_has_when_a_batch_fails(): void
     {
-        $this->assertSame([], (new NullProviderAdapter)->fetchAssetTelemetry($this->makeIntegration()));
+        $call = 0;
+
+        Http::fake([
+            'api.samsara.com/fleet/vehicles/stats*' => function () use (&$call) {
+                $call++;
+
+                if ($call === 1) {
+                    return Http::response([
+                        'data' => [['id' => '100', 'fuelPercents' => ['time' => '2026-08-12T10:00:00Z', 'value' => 54]]],
+                        'pagination' => ['hasNextPage' => false],
+                    ], 200);
+                }
+
+                return Http::response(['message' => 'rate limited'], 429);
+            },
+        ]);
+
+        $readings = app(SamsaraAdapter::class)->fetchAssetTelemetry($this->makeIntegration());
+
+        // The successful batch still yields data; the failed one contributes
+        // nothing rather than blowing up the whole poll.
+        $this->assertCount(1, $readings);
+        $this->assertSame(TelemetryType::Fuel, $readings[0]['type']);
     }
 }

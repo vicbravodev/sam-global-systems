@@ -45,6 +45,14 @@ class NotificationChannelFactory extends Factory
         ]);
     }
 
+    public function whatsapp(): static
+    {
+        return $this->state(fn () => [
+            'channel_type' => ChannelType::Whatsapp,
+            'provider' => 'twilio',
+        ]);
+    }
+
     public function web(): static
     {
         return $this->state(fn () => [

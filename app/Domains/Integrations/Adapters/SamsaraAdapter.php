@@ -3,6 +3,7 @@
 namespace App\Domains\Integrations\Adapters;
 
 use App\Contracts\Integrations\MediaRetrievalAdapter;
+use App\Domains\Assets\Enums\TelemetryType;
 use App\Domains\Integrations\Contracts\ProviderAdapter;
 use App\Domains\Integrations\Models\TenantIntegration;
 use Illuminate\Http\Client\PendingRequest;
@@ -24,6 +25,34 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
      * Hard cap on pagination pages per sync call to avoid runaway loops.
      */
     private const MAX_PAGES = 50;
+
+    /**
+     * Samsara stat type -> [our type, unit, divisor, decimals].
+     *
+     * Samsara reports these in base units (metres, millivolts, millidegrees);
+     * the divisor converts to what the domain stores and the UI renders. A null
+     * divisor marks a categorical stat kept verbatim.
+     *
+     * `speed` is deliberately absent: it already arrives with every GPS reading
+     * and is persisted as a location snapshot, so ingesting it again here would
+     * duplicate the same measurement in two tables.
+     */
+    private const TELEMETRY_STAT_MAP = [
+        'engineStates' => [TelemetryType::Ignition, null, null, 0],
+        'fuelPercents' => [TelemetryType::Fuel, '%', 1, 0],
+        'obdOdometerMeters' => [TelemetryType::Odometer, 'km', 1000, 1],
+        'batteryMilliVolts' => [TelemetryType::Battery, 'V', 1000, 2],
+        'ambientAirTemperatureMilliC' => [TelemetryType::Temperature, '°C', 1000, 1],
+    ];
+
+    /**
+     * The stat types above grouped into requests of at most 3 — Samsara's
+     * documented cap on the `types` query parameter.
+     */
+    private const TELEMETRY_BATCHES = [
+        ['engineStates', 'fuelPercents', 'obdOdometerMeters'],
+        ['batteryMilliVolts', 'ambientAirTemperatureMilliC'],
+    ];
 
     public function testConnection(TenantIntegration $integration): array
     {
@@ -124,33 +153,14 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
     }
 
     /**
-     * Stat types pulled for telemetry, mapped to the telemetry vocabulary the
-     * Assets domain stores. All of them live under the same "Read Vehicle
-     * Statistics" scope already required for the GPS poll.
+     * Fetch the latest onboard-diagnostic readings for every vehicle.
      *
-     * @var array<string, string>
-     */
-    private const TELEMETRY_STAT_TYPES = [
-        'engineStates' => 'ignition',
-        'fuelPercents' => 'fuel',
-        'obdOdometerMeters' => 'odometer',
-        'batteryMilliVolts' => 'battery',
-        'ambientAirTemperatureMilliC' => 'temperature',
-    ];
-
-    /**
-     * Fetch the latest telemetry reading per vehicle.
+     * Samsara caps `types` at 3 per request, so the stats we track are fetched
+     * in two batches and flattened into one list of readings. A batch that
+     * fails contributes nothing rather than aborting the whole poll — a rate
+     * limit on the second call should not discard the first call's data.
      *
-     * One `/fleet/vehicles/stats` call covers every type at once (the endpoint
-     * returns the most recent value per requested stat), so the whole fleet's
-     * telemetry costs a single paginated request. Vehicles whose gateway reports
-     * none of the requested stats are omitted rather than returned empty.
-     *
-     * Speed is deliberately absent: it already rides along with the GPS reading
-     * on the location snapshot, and duplicating it here would store the same
-     * measurement in two tables.
-     *
-     * @return array<int, array{external_id: string, readings: array<int, array{type: string, data: array<string, mixed>, recorded_at: string|null}>}>
+     * @return array<int, array<string, mixed>>
      */
     public function fetchAssetTelemetry(TenantIntegration $integration): array
     {
@@ -160,12 +170,37 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
             return [];
         }
 
+        $readings = [];
+
+        foreach (self::TELEMETRY_BATCHES as $batch) {
+            foreach ($this->fetchStatsBatch($token, $batch) as $record) {
+                foreach ($batch as $statType) {
+                    $mapped = $this->mapTelemetryReading((array) $record, $statType);
+
+                    if ($mapped !== null) {
+                        $readings[] = $mapped;
+                    }
+                }
+            }
+        }
+
+        return $readings;
+    }
+
+    /**
+     * Page through `/fleet/vehicles/stats` for one batch of stat types.
+     *
+     * @param  list<string>  $types
+     * @return array<int, array<string, mixed>>
+     */
+    private function fetchStatsBatch(string $token, array $types): array
+    {
         $records = [];
         $cursor = null;
         $pages = 0;
 
         do {
-            $query = ['types' => implode(',', array_keys(self::TELEMETRY_STAT_TYPES))];
+            $query = ['types' => implode(',', $types)];
 
             if ($cursor !== null) {
                 $query['after'] = $cursor;
@@ -178,11 +213,7 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
             }
 
             foreach ((array) $response->json('data', []) as $record) {
-                $mapped = $this->mapVehicleTelemetry((array) $record);
-
-                if ($mapped !== null) {
-                    $records[] = $mapped;
-                }
+                $records[] = $record;
             }
 
             $cursor = $response->json('pagination.endCursor');
@@ -194,97 +225,44 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
     }
 
     /**
+     * Map one stat off a vehicle record, converting to the unit we store.
+     *
+     * Returns null when the vehicle does not report this stat — Samsara omits
+     * the key entirely for vehicles without diagnostic coverage.
+     *
      * @param  array<string, mixed>  $record
-     * @return array{external_id: string, readings: array<int, array{type: string, data: array<string, mixed>, recorded_at: string|null}>}|null
+     * @return array<string, mixed>|null
      */
-    private function mapVehicleTelemetry(array $record): ?array
+    private function mapTelemetryReading(array $record, string $statType): ?array
     {
-        $readings = [];
+        $stat = Arr::get($record, $statType);
 
-        foreach (self::TELEMETRY_STAT_TYPES as $statType => $telemetryType) {
-            $stat = $this->latestStat(Arr::get($record, $statType));
-
-            if ($stat === null) {
-                continue;
-            }
-
-            $data = $this->mapStatValue($statType, $stat['value']);
-
-            if ($data === null) {
-                continue;
-            }
-
-            $readings[] = [
-                'type' => $telemetryType,
-                'data' => $data,
-                'recorded_at' => $stat['time'],
-            ];
-        }
-
-        return $readings === []
-            ? null
-            : ['external_id' => (string) Arr::get($record, 'id'), 'readings' => $readings];
-    }
-
-    /**
-     * Normalize a stat field to `{value, time}`. Snapshot requests return one
-     * object per type; the history/feed shapes return a list, in which case the
-     * most recent entry wins (same handling as the GPS mapping).
-     *
-     * A reading without a measurement time is dropped: `time` is required on
-     * every stat Samsara returns, and without it the caller would have to stamp
-     * the reading with the poll time, appending a duplicate row on every tick
-     * instead of recognising the reading it already stored.
-     *
-     * @return array{value: mixed, time: string}|null
-     */
-    private function latestStat(mixed $stat): ?array
-    {
+        // History-style responses nest a list of readings; take the newest.
         if (is_array($stat) && array_is_list($stat)) {
             $stat = end($stat) ?: null;
         }
 
-        if (! is_array($stat) || ! array_key_exists('value', $stat) || $stat['value'] === null) {
+        if (! is_array($stat)) {
             return null;
         }
 
-        $time = Arr::get($stat, 'time');
+        $value = Arr::get($stat, 'value');
 
-        if (! is_string($time) || $time === '') {
+        if ($value === null) {
             return null;
         }
 
-        return ['value' => $stat['value'], 'time' => $time];
-    }
+        [$type, $unit, $divisor, $decimals] = self::TELEMETRY_STAT_MAP[$statType];
 
-    /**
-     * Convert a raw Samsara stat into the stored `{value, unit}` shape.
-     *
-     * Units are display-ready: the asset detail panel prints "{value} {unit}"
-     * verbatim. Samsara reports in milli-units and meters, which nobody wants to
-     * read, so they are converted here rather than at render time.
-     *
-     * @return array<string, mixed>|null
-     */
-    private function mapStatValue(string $statType, mixed $value): ?array
-    {
-        if ($statType === 'engineStates') {
-            return is_string($value) && $value !== ''
-                ? ['value' => strtolower($value)]
-                : null;
-        }
-
-        if (! is_numeric($value)) {
-            return null;
-        }
-
-        return match ($statType) {
-            'fuelPercents' => ['value' => (float) $value, 'unit' => '%'],
-            'obdOdometerMeters' => ['value' => round((float) $value / 1000, 1), 'unit' => 'km'],
-            'batteryMilliVolts' => ['value' => round((float) $value / 1000, 2), 'unit' => 'V'],
-            'ambientAirTemperatureMilliC' => ['value' => round((float) $value / 1000, 1), 'unit' => '°C'],
-            default => null,
-        };
+        return [
+            'external_id' => (string) Arr::get($record, 'id'),
+            'type' => $type,
+            // A null divisor marks a categorical stat (engine state), which is
+            // stored verbatim instead of being treated as a measurement.
+            'value' => $divisor === null ? (string) $value : round((float) $value / $divisor, $decimals),
+            'unit' => $unit,
+            'recorded_at' => Arr::get($stat, 'time'),
+        ];
     }
 
     /**
@@ -340,7 +318,7 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
             'external_id' => (string) Arr::get($record, 'id', $externalAssetId),
             'latitude' => (float) $latitude,
             'longitude' => (float) $longitude,
-            'speed' => $speed !== null ? (float) $speed : null,
+            'speed' => self::mphToKph($speed),
             'heading' => $heading !== null ? (int) round((float) $heading) : null,
             'formatted_location' => Arr::get($location, 'reverseGeo.formattedLocation'),
             'recorded_at' => Arr::get($location, 'time'),
@@ -848,11 +826,32 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
             'external_id' => (string) Arr::get($record, 'id'),
             'latitude' => (float) $latitude,
             'longitude' => (float) $longitude,
-            'speed' => $speed !== null ? (float) $speed : null,
+            'speed' => self::mphToKph($speed),
             'heading' => $heading !== null ? (int) round((float) $heading) : null,
             'formatted_location' => Arr::get($gps, 'reverseGeo.formattedLocation'),
             'recorded_at' => Arr::get($gps, 'time'),
         ];
+    }
+
+    /**
+     * Convert a Samsara speed reading to km/h.
+     *
+     * Every speed Samsara returns is in miles per hour — both `gps
+     * .speedMilesPerHour` on the stats endpoints and `location.speed` on
+     * `/fleet/vehicles/locations` resolve to the same `VehicleLocationSpeed`
+     * schema ("GPS speed of the vehicle in miles per hour"). The domain stores
+     * and displays km/h, so the conversion belongs here at the provider
+     * boundary rather than in each consumer.
+     *
+     * Rounded to 2 decimals to match the `decimal(6,2)` storage column.
+     */
+    private static function mphToKph(mixed $mph): ?float
+    {
+        if ($mph === null) {
+            return null;
+        }
+
+        return round((float) $mph * 1.609344, 2);
     }
 
     private function client(string $token): PendingRequest

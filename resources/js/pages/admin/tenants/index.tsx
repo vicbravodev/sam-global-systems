@@ -19,6 +19,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { formatDate } from '@/lib/format';
 import { store as impersonateStore } from '@/routes/admin/impersonate';
 import {
     show as adminTenantShow,
@@ -62,22 +63,6 @@ const STATUS_LABEL: Record<string, string> = {
     canceled: 'Cancelada',
     expired: 'Expirada',
 };
-
-function formatDate(iso: string | null): string {
-    if (!iso) {
-        return '—';
-    }
-
-    const date = new Date(iso);
-
-    return Number.isNaN(date.getTime())
-        ? '—'
-        : date.toLocaleDateString('es', {
-              day: '2-digit',
-              month: '2-digit',
-              year: 'numeric',
-          });
-}
 
 function StatCard({ label, value }: { label: string; value: number }) {
     // D6: misma celda cockpit que la franja de KPIs del dashboard (F3.1):

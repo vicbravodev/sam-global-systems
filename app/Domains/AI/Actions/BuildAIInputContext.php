@@ -4,6 +4,8 @@ namespace App\Domains\AI\Actions;
 
 use App\Domains\AI\Data\AIInputContext;
 use App\Domains\AI\Data\TenantAIProfileData;
+use App\Domains\AI\Models\AIEventEvaluation;
+use App\Domains\AI\Models\AIMediaAssessment;
 use App\Domains\Context\Models\EventContextSnapshot;
 use App\Domains\Normalization\Models\NormalizedEvent;
 
@@ -40,7 +42,41 @@ class BuildAIInputContext
             operationalProfile: $operationalProfile,
             recentHistory: $recentHistory,
             tenantProfile: $profile->toArray(),
+            mediaAssessments: $this->mediaVerdicts($event),
         );
+    }
+
+    /**
+     * Último veredicto visual por media del evento, a través de todas las
+     * versiones de evaluación. En la primera evaluación aún no hay
+     * assessments y la lista queda vacía: el comportamiento no cambia.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function mediaVerdicts(NormalizedEvent $event): array
+    {
+        $evaluationIds = AIEventEvaluation::withoutGlobalScopes()
+            ->where('normalized_event_id', $event->id)
+            ->select('id');
+
+        return AIMediaAssessment::withoutGlobalScopes()
+            ->whereIn('evaluation_id', $evaluationIds)
+            ->orderByDesc('assessed_at')
+            ->orderByDesc('id')
+            ->get()
+            ->unique('event_media_context_id')
+            ->map(fn (AIMediaAssessment $assessment): array => [
+                'media_context_id' => (int) $assessment->event_media_context_id,
+                'media_type' => $assessment->media_type?->value,
+                'result' => $assessment->result?->value,
+                'confidence' => $assessment->confidence_score !== null
+                    ? round((float) $assessment->confidence_score, 2)
+                    : null,
+                'summary' => $assessment->summary_text,
+                'extracted_signals' => $assessment->extracted_signals_json ?? [],
+            ])
+            ->values()
+            ->all();
     }
 
     /**

@@ -48,8 +48,8 @@ class NotifyOnIncidentCreated
                 'incident_url' => $this->incidentUrl($incident),
                 'has_media' => $this->hasMedia($context),
             ],
-            subject: 'New incident created',
-            bodyPreview: 'A new incident has been reported on your team.',
+            subject: 'Nuevo incidente creado',
+            bodyPreview: 'Se ha reportado un nuevo incidente en tu equipo.',
         );
     }
 

@@ -4,6 +4,7 @@ namespace App\Domains\Assets\Actions;
 
 use App\Domains\Assets\Enums\AssetStatus;
 use App\Domains\Assets\Events\AssetDiscovered;
+use App\Domains\Assets\Exceptions\AssetExternalReferenceConflictException;
 use App\Domains\Assets\Exceptions\AssetLimitReachedException;
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Assets\Models\AssetExternalReference;
@@ -29,11 +30,14 @@ class SyncAssetFromIntegration
         $providerId = $integration->provider_id;
         $externalId = $assetData['external_id'];
 
-        $existingAsset = $this->resolveAsset->execute($providerId, $externalId);
+        $existingAsset = $this->resolveAsset->execute($providerId, $externalId, $teamId);
 
-        $asset = $existingAsset
-            ? $this->updateExistingAsset($existingAsset, $assetData, $providerId)
-            : $this->createNewAsset($teamId, $integrationId, $providerId, $assetData);
+        if ($existingAsset) {
+            $asset = $this->updateExistingAsset($existingAsset, $assetData, $providerId);
+        } else {
+            $this->assertExternalIdIsUnclaimed($teamId, $providerId, $externalId);
+            $asset = $this->createNewAsset($teamId, $integrationId, $providerId, $assetData);
+        }
 
         $this->reconcileDevices($asset, $providerId, $assetData);
 
@@ -55,6 +59,23 @@ class SyncAssetFromIntegration
         }
 
         $this->syncDevices->execute($asset, $providerId, $assetData['devices']);
+    }
+
+    /**
+     * The resolver only hands back assets of `$teamId`, so reaching this point
+     * with a reference already on file means another tenant owns the external
+     * id. Refuse loudly instead of writing over their asset (the old behaviour)
+     * or crashing on the unique index a moment later.
+     */
+    private function assertExternalIdIsUnclaimed(int $teamId, int $providerId, string $externalId): void
+    {
+        $claimed = AssetExternalReference::where('provider_id', $providerId)
+            ->where('external_id', $externalId)
+            ->exists();
+
+        if ($claimed) {
+            throw new AssetExternalReferenceConflictException($teamId, $providerId, $externalId);
+        }
     }
 
     /**

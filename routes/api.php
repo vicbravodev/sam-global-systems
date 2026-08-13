@@ -35,7 +35,6 @@ use App\Http\Controllers\Integrations\WebhookController;
 use App\Http\Controllers\Normalization\EventTypeController;
 use App\Http\Controllers\Normalization\MappingRuleController;
 use App\Http\Controllers\Normalization\NormalizedEventController;
-use App\Http\Controllers\Notifications\NotificationChannelController;
 use App\Http\Controllers\Notifications\NotificationController;
 use App\Http\Controllers\Notifications\NotificationPreferenceController;
 use App\Http\Controllers\Notifications\NotificationTemplateController;
@@ -152,9 +151,6 @@ Route::prefix('{current_team}')
         Route::get('notifications/templates', [NotificationTemplateController::class, 'index'])->name('api.notifications.templates.index');
         Route::post('notifications/templates', [NotificationTemplateController::class, 'store'])->name('api.notifications.templates.store');
         Route::put('notifications/templates/{template}', [NotificationTemplateController::class, 'update'])->name('api.notifications.templates.update');
-
-        Route::get('notifications/channels', [NotificationChannelController::class, 'index'])->name('api.notifications.channels.index');
-        Route::put('notifications/channels/{channel}', [NotificationChannelController::class, 'update'])->name('api.notifications.channels.update');
 
         Route::get('notifications/preferences', [NotificationPreferenceController::class, 'index'])->name('api.notifications.preferences.index');
         Route::put('notifications/preferences', [NotificationPreferenceController::class, 'update'])->name('api.notifications.preferences.update');

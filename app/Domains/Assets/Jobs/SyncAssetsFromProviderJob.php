@@ -3,6 +3,7 @@
 namespace App\Domains\Assets\Jobs;
 
 use App\Domains\Assets\Actions\SyncAssetFromIntegration;
+use App\Domains\Assets\Exceptions\AssetExternalReferenceConflictException;
 use App\Domains\Assets\Exceptions\AssetLimitReachedException;
 use App\Domains\Integrations\Contracts\ProviderAdapter;
 use App\Domains\Integrations\Models\TenantIntegration;
@@ -45,6 +46,11 @@ class SyncAssetsFromProviderJob implements ShouldQueue
             } catch (AssetLimitReachedException) {
                 // Tenant is at its asset cap: skip net-new assets and keep
                 // processing the rest of the batch instead of failing the job.
+                continue;
+            } catch (AssetExternalReferenceConflictException) {
+                // The provider handed us an external id another tenant already
+                // owns: skip that asset rather than touching their data, and
+                // keep syncing the rest of the batch.
                 continue;
             }
         }

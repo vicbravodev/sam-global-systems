@@ -2,6 +2,7 @@
 
 namespace App\Domains\Integrations\Contracts;
 
+use App\Domains\Assets\Enums\TelemetryType;
 use App\Domains\Integrations\Models\TenantIntegration;
 
 interface ProviderAdapter
@@ -32,16 +33,17 @@ interface ProviderAdapter
     public function fetchAssetLocations(TenantIntegration $integration): array;
 
     /**
-     * Fetch the latest telemetry reading per asset (fuel, odometer, ignition,
-     * battery, temperature — whatever the provider exposes).
+     * Fetch the latest onboard-diagnostic readings for each asset.
      *
-     * Each reading carries a `type` from the Assets domain's telemetry
-     * vocabulary, a provider-agnostic `{value, unit}` payload with units already
-     * converted for display, and the moment the device measured it. Assets with
-     * no usable reading are omitted rather than returned with an empty list, so
-     * callers can persist whatever comes back without filtering.
+     * Separate from {@see fetchAssetLocations()} because these stats change on
+     * their own (much slower) schedules — fuel by the percent, odometer by the
+     * kilometre — and are polled on a slower cadence than positions.
      *
-     * @return array<int, array{external_id: string, readings: array<int, array{type: string, data: array<string, mixed>, recorded_at: string|null}>}>
+     * Implementations return one entry per (asset, reading) pair with values
+     * already normalized to the unit the domain stores: km, volts, °C. Stats a
+     * vehicle does not report are omitted rather than returned as null.
+     *
+     * @return array<int, array{external_id: string, type: TelemetryType, value: float|string, unit: string|null, recorded_at: string|null}>
      */
     public function fetchAssetTelemetry(TenantIntegration $integration): array;
 

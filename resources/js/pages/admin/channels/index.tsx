@@ -6,6 +6,13 @@ import { ConfirmDialog } from '@/components/sam/confirm-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 
 interface PlatformChannel {
     id: number;
@@ -19,7 +26,7 @@ interface PlatformChannel {
 
 interface AdminChannelsIndexProps {
     channels: PlatformChannel[];
-    channelTypes: string[];
+    channelTypes: { value: string; label: string }[];
 }
 
 const CONFIG_FIELDS: Record<string, { key: string; label: string }[]> = {
@@ -173,23 +180,30 @@ export default function AdminChannelsIndex({
                         </div>
                         <div className="flex flex-col gap-1">
                             <Label className="sam-meta">Tipo</Label>
-                            <select
+                            <Select
                                 value={form.channelType}
-                                onChange={(e) =>
+                                onValueChange={(value) =>
                                     setForm({
                                         ...form,
-                                        channelType: e.target.value,
+                                        channelType: value,
                                         config: {},
                                     })
                                 }
-                                className="h-9 w-36 rounded-md border border-border bg-surface-1 px-2 text-sm"
                             >
-                                {channelTypes.map((type) => (
-                                    <option key={type} value={type}>
-                                        {type}
-                                    </option>
-                                ))}
-                            </select>
+                                <SelectTrigger className="h-9 w-36">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {channelTypes.map((type) => (
+                                        <SelectItem
+                                            key={type.value}
+                                            value={type.value}
+                                        >
+                                            {type.label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                         </div>
                         {fields.map((field) => (
                             <div

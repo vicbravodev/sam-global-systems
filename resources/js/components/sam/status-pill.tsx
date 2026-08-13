@@ -10,6 +10,19 @@ export type IncidentStatus =
     | 'closed'
     | 'discarded';
 
+/**
+ * Estados terminales: sin SLA vivo y sin toma humana disponible. Cualquier
+ * UI que muestre countdown de SLA o botón "Tomar" debe consultar esta lista
+ * antes de renderizarlos — un incidente terminal no admite ninguno de los
+ * dos (evita la falsa alarma "VENCIDO" + botón activo sobre incidentes ya
+ * resueltos/cerrados/descartados).
+ */
+export const TERMINAL_STATUSES: readonly IncidentStatus[] = [
+    'resolved',
+    'closed',
+    'discarded',
+];
+
 // Labels MUST mirror IncidentStatusPresenter::UI_LABELS (backend), the single
 // source of truth for the status string shown to operators.
 const VARIANTS: Record<IncidentStatus, { label: string; className: string }> = {

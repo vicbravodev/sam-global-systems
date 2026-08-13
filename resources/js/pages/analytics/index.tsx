@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
+import { formatDate, formatDateTime } from '@/lib/format';
 import { postJson, readErrorMessage } from '@/lib/sam-fetch';
 
 interface OverviewProp {
@@ -175,11 +176,9 @@ function KpisTab({
                         Resumen del tenant
                         {overview?.periodStart && (
                             <span className="ml-2 font-normal text-fg-3 normal-case">
-                                {new Date(
-                                    overview.periodStart,
-                                ).toLocaleDateString('es')}
+                                {formatDate(overview.periodStart)}
                                 {overview.periodEnd &&
-                                    ` — ${new Date(overview.periodEnd).toLocaleDateString('es')}`}
+                                    ` — ${formatDate(overview.periodEnd)}`}
                             </span>
                         )}
                     </CardTitle>
@@ -241,7 +240,7 @@ function KpisTab({
                                         <td className="py-2 pr-4">
                                             {kpi.periodType}
                                             {kpi.periodStart &&
-                                                ` · ${new Date(kpi.periodStart).toLocaleDateString('es')}`}
+                                                ` · ${formatDate(kpi.periodStart)}`}
                                         </td>
                                         <td className="py-2 pr-4">
                                             {kpi.dimensionType
@@ -249,11 +248,7 @@ function KpisTab({
                                                 : 'global'}
                                         </td>
                                         <td className="py-2 pr-4 font-mono text-2xs whitespace-nowrap">
-                                            {kpi.calculatedAt
-                                                ? new Date(
-                                                      kpi.calculatedAt,
-                                                  ).toLocaleString('es')
-                                                : '—'}
+                                            {formatDateTime(kpi.calculatedAt)}
                                         </td>
                                     </tr>
                                 ))}
@@ -422,11 +417,9 @@ function ReportsTab({
                                             {execution.status}
                                         </td>
                                         <td className="py-2 pr-4 font-mono text-2xs whitespace-nowrap">
-                                            {execution.finishedAt
-                                                ? new Date(
-                                                      execution.finishedAt,
-                                                  ).toLocaleString('es')
-                                                : '—'}
+                                            {formatDateTime(
+                                                execution.finishedAt,
+                                            )}
                                         </td>
                                         <td className="py-2 text-right">
                                             {execution.downloadable &&

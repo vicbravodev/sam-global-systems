@@ -14,6 +14,7 @@ use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\AI\Models\AIExplanation;
 use App\Domains\AI\Models\AIInferenceLog;
 use App\Domains\AI\Support\HeuristicRulesRunner;
+use App\Domains\AI\Support\MediaVerdictFusion;
 use App\Domains\Context\Models\EventContextSnapshot;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\Tenancy\Actions\RecordUsageEvent;
@@ -32,6 +33,7 @@ class EvaluateEventWithAI
         private readonly GenerateRecommendedActions $generateRecommendedActions,
         private readonly DetectFalsePositive $detectFalsePositive,
         private readonly HeuristicRulesRunner $rulesRunner,
+        private readonly MediaVerdictFusion $mediaVerdictFusion,
         private readonly EventEvaluationAgent $agent,
         private readonly RecordUsageEvent $recordUsageEvent,
     ) {}
@@ -45,6 +47,11 @@ class EvaluateEventWithAI
         $profile = $this->resolveTenantProfile->execute($event->team_id);
         $input = $this->buildInputContext->execute($event, $snapshot, $profile);
         $riskScore = $this->calculateRiskScore->execute($event, $snapshot);
+
+        // Veredicto visual del evento (si ya hay media evaluada): ajusta de
+        // forma determinista confianza/riesgo/explicación en todas las rutas
+        // no deterministas. En la primera evaluación aún no hay assessments.
+        $fusion = $this->mediaVerdictFusion->fuse($input->mediaAssessments);
 
         $rulesDecision = $this->rulesRunner->evaluate($event, $snapshot?->signals_json ?? []);
 
@@ -73,17 +80,26 @@ class EvaluateEventWithAI
         }
 
         if ($this->quotaExceeded($event->team_id, $profile->monthlyTokenLimit)) {
-            return DB::transaction(function () use ($event, $version, $riskScore, $input) {
+            return DB::transaction(function () use ($event, $version, $riskScore, $input, $fusion) {
+                $fused = $this->applyFusion(
+                    $fusion,
+                    confidence: 0.5,
+                    riskScore: $riskScore,
+                    explanation: 'Cuota de IA del tenant agotada; se evalúa solo con reglas.',
+                    reasoningSteps: ['quota_exceeded'],
+                    keyFactors: ['reason' => 'quota_exceeded'],
+                );
+
                 return $this->persistEvaluation(
                     event: $event,
                     version: $version,
                     mode: EvaluationMode::RulesOnly,
                     classification: EventClassification::Unclear,
-                    confidence: 0.5,
-                    riskScore: $riskScore,
-                    explanationSummary: 'Cuota de IA del tenant agotada; se evalúa solo con reglas.',
-                    reasoningSteps: ['quota_exceeded'],
-                    keyFactors: ['reason' => 'quota_exceeded'],
+                    confidence: $fused['confidence'],
+                    riskScore: $fused['riskScore'],
+                    explanationSummary: $fused['explanation'],
+                    reasoningSteps: $fused['reasoningSteps'],
+                    keyFactors: $fused['keyFactors'],
                     modelUsed: 'rules_engine:1.0',
                     agentInputSnapshot: $input,
                     inferenceTokens: null,
@@ -102,17 +118,26 @@ class EvaluateEventWithAI
                 'error' => $exception->getMessage(),
             ]);
 
-            return DB::transaction(function () use ($event, $version, $riskScore, $input, $exception) {
+            return DB::transaction(function () use ($event, $version, $riskScore, $input, $exception, $fusion) {
+                $fused = $this->applyFusion(
+                    $fusion,
+                    confidence: 0.4,
+                    riskScore: $riskScore,
+                    explanation: 'Falló el agente de IA; se evalúa solo con reglas. Error: '.$exception->getMessage(),
+                    reasoningSteps: ['agent_error_fallback'],
+                    keyFactors: ['error' => $exception->getMessage()],
+                );
+
                 return $this->persistEvaluation(
                     event: $event,
                     version: $version,
                     mode: EvaluationMode::RulesOnly,
                     classification: EventClassification::Unclear,
-                    confidence: 0.4,
-                    riskScore: $riskScore,
-                    explanationSummary: 'Falló el agente de IA; se evalúa solo con reglas. Error: '.$exception->getMessage(),
-                    reasoningSteps: ['agent_error_fallback'],
-                    keyFactors: ['error' => $exception->getMessage()],
+                    confidence: $fused['confidence'],
+                    riskScore: $fused['riskScore'],
+                    explanationSummary: $fused['explanation'],
+                    reasoningSteps: $fused['reasoningSteps'],
+                    keyFactors: $fused['keyFactors'],
                     modelUsed: 'rules_engine:1.0',
                     agentInputSnapshot: $input,
                     inferenceTokens: null,
@@ -125,17 +150,28 @@ class EvaluateEventWithAI
 
         $finalRiskScore = round(max(0.0, min(1.0, $riskScore + $result->riskScoreDelta)), 2);
 
-        return DB::transaction(function () use ($event, $version, $result, $finalRiskScore, $input) {
+        return DB::transaction(function () use ($event, $version, $result, $finalRiskScore, $input, $fusion) {
+            $fused = $this->applyFusion(
+                $fusion,
+                confidence: $result->confidenceScore,
+                riskScore: $finalRiskScore,
+                explanation: $result->explanationSummary,
+                reasoningSteps: $result->reasoningSteps,
+                keyFactors: $result->keyFactors,
+            );
+
             $evaluation = $this->persistEvaluation(
                 event: $event,
                 version: $version,
-                mode: EvaluationMode::AiText,
+                // Con veredicto visual fusionado la evaluación ya no es solo
+                // de texto: queda marcada como híbrida.
+                mode: $fusion !== null ? EvaluationMode::Hybrid : EvaluationMode::AiText,
                 classification: $result->classification,
-                confidence: $result->confidenceScore,
-                riskScore: $finalRiskScore,
-                explanationSummary: $result->explanationSummary,
-                reasoningSteps: $result->reasoningSteps,
-                keyFactors: $result->keyFactors,
+                confidence: $fused['confidence'],
+                riskScore: $fused['riskScore'],
+                explanationSummary: $fused['explanation'],
+                reasoningSteps: $fused['reasoningSteps'],
+                keyFactors: $fused['keyFactors'],
                 modelUsed: $result->modelUsed,
                 agentInputSnapshot: $input,
                 inferenceTokens: $result->totalTokens(),
@@ -150,6 +186,44 @@ class EvaluateEventWithAI
 
             return $evaluation;
         });
+    }
+
+    /**
+     * Aplica el ajuste del veredicto visual a los valores que se van a
+     * persistir. Con $fusion null devuelve los valores intactos.
+     *
+     * @param  array{step: string, sentence: string, confidenceDelta: float, riskDelta: float, keyFactors: array<string, int>}|null  $fusion
+     * @param  array<int, string>  $reasoningSteps
+     * @param  array<string, mixed>  $keyFactors
+     * @return array{confidence: float, riskScore: float, explanation: string, reasoningSteps: array<int, string>, keyFactors: array<string, mixed>}
+     */
+    private function applyFusion(
+        ?array $fusion,
+        float $confidence,
+        float $riskScore,
+        string $explanation,
+        array $reasoningSteps,
+        array $keyFactors,
+    ): array {
+        if ($fusion === null) {
+            return [
+                'confidence' => $confidence,
+                'riskScore' => $riskScore,
+                'explanation' => $explanation,
+                'reasoningSteps' => $reasoningSteps,
+                'keyFactors' => $keyFactors,
+            ];
+        }
+
+        return [
+            'confidence' => round(max(0.05, min(0.99, $confidence + $fusion['confidenceDelta'])), 2),
+            'riskScore' => round(max(0.0, min(1.0, $riskScore + $fusion['riskDelta'])), 2),
+            'explanation' => rtrim($explanation) === ''
+                ? $fusion['sentence']
+                : rtrim($explanation).' '.$fusion['sentence'],
+            'reasoningSteps' => [...$reasoningSteps, $fusion['step']],
+            'keyFactors' => [...$keyFactors, ...$fusion['keyFactors']],
+        ];
     }
 
     /**

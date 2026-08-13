@@ -13,6 +13,7 @@ use App\Domains\Incidents\Support\VerificationCallTwiml;
 use App\Domains\Notifications\Channels\TwilioVoiceCaller;
 use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Models\NotificationChannel;
+use App\Domains\Notifications\Support\PlatformTwilioConfig;
 use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
 use App\Support\JobFailureReporter;
@@ -91,7 +92,7 @@ class PlaceVerificationCallJob implements ShouldQueue
         }
 
         $channel = $this->resolveVoiceChannel((int) $verification->team_id);
-        $config = $channel?->config_json ?? [];
+        $config = PlatformTwilioConfig::merge($channel?->config_json ?? [], ChannelType::Voice);
         $from = $config['from'] ?? null;
         $sid = $config['twilio_account_sid'] ?? $config['account_sid'] ?? null;
         $token = $config['twilio_auth_token'] ?? $config['auth_token'] ?? null;

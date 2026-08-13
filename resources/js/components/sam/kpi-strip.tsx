@@ -58,6 +58,8 @@ export interface KpiProps {
     value: ReactNode;
     unit?: string;
     delta?: DeltaProps;
+    /** Texto secundario bajo el valor (p. ej. "SLA promedio: 02:30"). */
+    sub?: ReactNode;
     /** Optional visual (e.g. <SparkArea/> or a <Bar/>) rendered under the value. */
     sparkline?: ReactNode;
     className?: string;
@@ -69,6 +71,7 @@ export function Kpi({
     value,
     unit,
     delta,
+    sub,
     sparkline,
     className,
 }: KpiProps) {
@@ -89,6 +92,7 @@ export function Kpi({
                 {unit && <span className="text-xs text-fg-3">{unit}</span>}
             </div>
             {delta && <Delta {...delta} />}
+            {sub && <div className="text-2xs text-fg-3">{sub}</div>}
             {sparkline && <div className="mt-auto pt-2">{sparkline}</div>}
         </div>
     );

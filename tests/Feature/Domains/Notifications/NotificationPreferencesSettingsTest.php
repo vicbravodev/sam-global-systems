@@ -58,7 +58,12 @@ class NotificationPreferencesSettingsTest extends TestCase
                     fn ($types) => collect($types)->contains('incident.panic_emergency.created')
                         && collect($types)->contains('incident.sla_breached'),
                 )
-                ->has('channelOptions'),
+                ->has('channelOptions')
+                ->where(
+                    'channelOptions',
+                    fn ($options) => collect($options)->contains(['value' => 'sms', 'label' => 'SMS'])
+                        && collect($options)->contains(['value' => 'whatsapp', 'label' => 'WhatsApp']),
+                ),
         );
     }
 

@@ -2,9 +2,9 @@
 
 namespace App\Domains\Assets\Listeners;
 
-use App\Domains\Assets\Actions\UpdateAssetTelemetrySnapshot;
+use App\Domains\Assets\Actions\RecordAssetTelemetry;
 use App\Domains\Assets\Enums\TelemetryType;
-use App\Domains\Assets\Jobs\PollAssetLocationsJob;
+use App\Domains\Assets\Jobs\PollAssetTelemetryJob;
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Normalization\Events\EventNormalized;
 use Illuminate\Support\Arr;
@@ -16,14 +16,14 @@ use Illuminate\Support\Carbon;
  * Provider events are a thin telemetry source — a Samsara safety event exposes
  * no instantaneous speed, fuel, odometer or engine state; the only real
  * measurement on the payload is the speeding pair, and only on speeding events.
- * The fleet-wide readings come from the stats poll ({@see PollAssetLocationsJob}),
+ * The fleet-wide readings come from the stats poll ({@see PollAssetTelemetryJob}),
  * so this listener complements it rather than replacing it: it records the speed
  * measured at the moment of the event, attributed to the event that reported it.
  */
 class RecordTelemetryOnEventNormalized
 {
     public function __construct(
-        private UpdateAssetTelemetrySnapshot $updateTelemetry,
+        private RecordAssetTelemetry $recordTelemetry,
     ) {}
 
     public function handle(EventNormalized $event): void
@@ -48,10 +48,11 @@ class RecordTelemetryOnEventNormalized
             return;
         }
 
-        $this->updateTelemetry->execute(
+        $this->recordTelemetry->execute(
             asset: $asset,
             type: TelemetryType::Speed,
-            data: ['value' => $speed, 'unit' => 'km/h'],
+            value: $speed,
+            unit: 'km/h',
             recordedAt: $normalizedEvent->occurred_at !== null
                 ? Carbon::instance($normalizedEvent->occurred_at)
                 : null,

@@ -214,10 +214,8 @@ Route::prefix('{current_team}')
         Route::post('settings/tenant-config/escalation', [TenantEscalationConfigController::class, 'store'])->name('tenant-config.escalation.store');
         Route::put('settings/tenant-config/escalation/{escalationConfig}', [TenantEscalationConfigController::class, 'update'])->name('tenant-config.escalation.update');
         Route::put('settings/tenant-config/schedule/{scheduleProfile}', [TenantScheduleProfileController::class, 'update'])->name('tenant-config.schedule.update');
-        Route::post('settings/tenant-config/channels', [NotificationChannelController::class, 'store'])->name('tenant-config.channels.store');
-        Route::put('settings/tenant-config/channels/{channel}', [NotificationChannelController::class, 'update'])->name('tenant-config.channels.update');
-        Route::delete('settings/tenant-config/channels/{channel}', [NotificationChannelController::class, 'destroy'])->name('tenant-config.channels.destroy');
-        Route::post('settings/tenant-config/channels/{channel}/test', [NotificationChannelController::class, 'test'])->name('tenant-config.channels.test');
+        // La mensajería la opera SAM con credenciales de plataforma (env);
+        // los tenants no configuran canales — sólo los apagan/encienden (V2-B1).
         Route::post('settings/tenant-config/channels/{channel}/toggle', [NotificationChannelController::class, 'toggle'])->name('tenant-config.channels.toggle');
 
         // Tarea 7: pantalla de tiempos de respuesta (SLA) por prioridad — consume
