@@ -5,6 +5,7 @@ namespace Tests\Feature\Domains\Assets;
 use App\Domains\Assets\Actions\ResolveAssetFromExternalId;
 use App\Domains\Assets\Actions\SyncAssetFromIntegration;
 use App\Domains\Assets\Events\AssetDiscovered;
+use App\Domains\Assets\Exceptions\AssetExternalReferenceConflictException;
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Assets\Models\AssetExternalReference;
 use App\Domains\Assets\Models\AssetType;
@@ -37,6 +38,20 @@ class SyncAssetFromIntegrationTest extends TestCase
         AssetType::factory()->vehicle()->create();
 
         return [$user, $team, $provider, $integration];
+    }
+
+    private function makeIntegrationForAnotherTeam(IntegrationProvider $provider): TenantIntegration
+    {
+        $user = User::factory()->create();
+
+        return TenantIntegration::withoutGlobalScopes()->create([
+            'team_id' => $user->currentTeam->id,
+            'provider_id' => $provider->id,
+            'name' => 'Other Tenant Integration',
+            'auth_type' => 'api_key',
+            'credentials_encrypted' => 'test-key',
+            'status' => 'active',
+        ]);
     }
 
     public function test_it_creates_asset_from_integration_sync(): void
@@ -204,7 +219,7 @@ class SyncAssetFromIntegrationTest extends TestCase
         ]);
 
         $resolveAction = app(ResolveAssetFromExternalId::class);
-        $resolvedAsset = $resolveAction->execute($provider->id, 'ext-vehicle-004');
+        $resolvedAsset = $resolveAction->execute($provider->id, 'ext-vehicle-004', $team->id);
 
         $this->assertNotNull(
             $resolvedAsset,
@@ -220,14 +235,75 @@ class SyncAssetFromIntegrationTest extends TestCase
 
     public function test_it_returns_null_for_unknown_external_id(): void
     {
-        [, , $provider] = $this->createSetup();
+        [, $team, $provider] = $this->createSetup();
 
         $resolveAction = app(ResolveAssetFromExternalId::class);
-        $result = $resolveAction->execute($provider->id, 'nonexistent-id');
+        $result = $resolveAction->execute($provider->id, 'nonexistent-id', $team->id);
 
         $this->assertNull(
             $result,
             'ResolveAssetFromExternalId should return null for an unknown external ID',
+        );
+    }
+
+    public function test_it_does_not_resolve_an_asset_owned_by_another_tenant(): void
+    {
+        Event::fake([AssetDiscovered::class]);
+
+        [, $team, $provider, $integration] = $this->createSetup();
+
+        $action = app(SyncAssetFromIntegration::class);
+        $action->execute($team->id, $integration->id, [
+            'external_id' => 'ext-vehicle-005',
+            'name' => 'Tenant A Vehicle',
+            'asset_type_code' => 'vehicle',
+        ]);
+
+        $otherIntegration = $this->makeIntegrationForAnotherTeam($provider);
+
+        $resolved = app(ResolveAssetFromExternalId::class)
+            ->execute($provider->id, 'ext-vehicle-005', $otherIntegration->team_id);
+
+        $this->assertNull(
+            $resolved,
+            'An external id owned by another tenant must never resolve to that tenant\'s asset',
+        );
+    }
+
+    public function test_it_refuses_to_hijack_an_asset_owned_by_another_tenant(): void
+    {
+        Event::fake([AssetDiscovered::class]);
+
+        [, $team, $provider, $integration] = $this->createSetup();
+
+        $action = app(SyncAssetFromIntegration::class);
+        $ownedAsset = $action->execute($team->id, $integration->id, [
+            'external_id' => 'ext-vehicle-006',
+            'name' => 'Tenant A Vehicle',
+            'asset_type_code' => 'vehicle',
+        ]);
+
+        $otherIntegration = $this->makeIntegrationForAnotherTeam($provider);
+
+        $this->assertThrows(
+            fn () => $action->execute($otherIntegration->team_id, $otherIntegration->id, [
+                'external_id' => 'ext-vehicle-006',
+                'name' => 'Hijacked Vehicle',
+                'asset_type_code' => 'vehicle',
+            ]),
+            AssetExternalReferenceConflictException::class,
+        );
+
+        $this->assertEquals(
+            'Tenant A Vehicle',
+            $ownedAsset->fresh()->name,
+            'A sync run by another tenant must not write over the owning tenant\'s asset',
+        );
+
+        $this->assertEquals(
+            0,
+            Asset::withoutGlobalScopes()->where('team_id', $otherIntegration->team_id)->count(),
+            'The colliding external id must not silently produce an asset for the other tenant either',
         );
     }
 }
