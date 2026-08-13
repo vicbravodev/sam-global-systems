@@ -12,6 +12,7 @@ use App\Domains\Notifications\Events\NotificationFailed;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Models\NotificationDelivery;
 use App\Domains\Tenancy\Actions\RecordUsageEvent;
+use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -47,6 +48,9 @@ class FallbackNotificationChannelJob implements ShouldQueue
             return;
         }
 
+        // Trabaja dentro del tenant de la entrega. Ver §2.1.
+        TenantContext::set($primary->team_id);
+
         $policy = $policies->resolve($primary->notification->team);
 
         $fallback = collect($policy->fallbackChannels)
@@ -68,7 +72,7 @@ class FallbackNotificationChannelJob implements ShouldQueue
             return;
         }
 
-        $exists = NotificationDelivery::withoutGlobalScopes()
+        $exists = NotificationDelivery::query()
             ->where('notification_id', $primary->notification_id)
             ->where('recipient_id', $primary->recipient_id)
             ->where('channel_id', $fallbackChannel->id)

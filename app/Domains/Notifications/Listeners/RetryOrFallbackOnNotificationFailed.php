@@ -7,6 +7,7 @@ use App\Domains\Notifications\Events\NotificationFailed;
 use App\Domains\Notifications\Jobs\FallbackNotificationChannelJob;
 use App\Domains\Notifications\Jobs\RetryNotificationDeliveryJob;
 use App\Domains\Notifications\Models\NotificationDelivery;
+use App\Support\TenantContext;
 
 /**
  * Escala una entrega fallida: reintenta con el backoff por canal que declara
@@ -22,11 +23,14 @@ class RetryOrFallbackOnNotificationFailed
 {
     public function handle(NotificationFailed $event): void
     {
-        $delivery = NotificationDelivery::withoutGlobalScopes()->find($event->deliveryId);
+        $delivery = NotificationDelivery::query()->find($event->deliveryId);
 
         if ($delivery === null || $delivery->status !== DeliveryStatus::Failed) {
             return;
         }
+
+        // Trabaja dentro del tenant de la entrega. Ver §2.1.
+        TenantContext::set($delivery->team_id);
 
         $retry = new RetryNotificationDeliveryJob($delivery->id);
 

@@ -69,7 +69,7 @@ class NotifyOnIncidentCreated
 
         $specific = "incident.{$typeCode}.created";
 
-        $hasTemplate = NotificationTemplate::withoutGlobalScopes()
+        $hasTemplate = NotificationTemplate::query()
             ->where(function ($query) use ($incident) {
                 $query->where('team_id', $incident->team_id)
                     ->orWhereNull('team_id');
@@ -87,7 +87,7 @@ class NotifyOnIncidentCreated
             return null;
         }
 
-        return EventContextSnapshot::withoutGlobalScopes()
+        return EventContextSnapshot::query()
             ->where('normalized_event_id', $incident->related_event_id)
             ->first();
     }

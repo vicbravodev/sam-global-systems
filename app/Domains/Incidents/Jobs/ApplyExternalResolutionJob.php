@@ -6,6 +6,7 @@ use App\Domains\Incidents\Actions\ApplyExternalResolution;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Support\JobFailureReporter;
+use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -35,6 +36,10 @@ class ApplyExternalResolutionJob implements ShouldQueue
             return;
         }
 
+        // Trabaja dentro del tenant del propio registro: el lookup de
+        // entrada no puede estar scopeado, todo lo que sigue sí. Ver §2.1.
+        TenantContext::set($event->team_id);
+
         foreach ($this->findOpenIncidents($event) as $incident) {
             $applyExternalResolution->execute($incident, $event);
         }
@@ -53,7 +58,7 @@ class ApplyExternalResolutionJob implements ShouldQueue
         $externalEventId = $event->rawEvent()->withoutGlobalScopes()->value('external_event_id');
 
         if ($externalEventId !== null) {
-            $incidents = Incident::withoutGlobalScopes()
+            $incidents = Incident::query()
                 ->where('team_id', $event->team_id)
                 ->whereHas('status', fn ($q) => $q->where('is_terminal', false))
                 ->whereHas('eventLinks.normalizedEvent.rawEvent', function ($q) use ($event, $externalEventId) {
@@ -74,7 +79,7 @@ class ApplyExternalResolutionJob implements ShouldQueue
         $window = (int) config('incidents.duplicate_window_minutes', 30);
         $occurredAt = $event->occurred_at ?? now();
 
-        $fallback = Incident::withoutGlobalScopes()
+        $fallback = Incident::query()
             ->where('team_id', $event->team_id)
             ->whereHas('status', fn ($q) => $q->where('is_terminal', false))
             ->where('opened_at', '>=', Carbon::instance($occurredAt)->subMinutes($window))

@@ -58,7 +58,7 @@ class AnnotateIncidentOnMediaAssessmentCompleted
             return null;
         }
 
-        $incident = Incident::withoutGlobalScopes()
+        $incident = Incident::query()
             ->where('related_event_id', $normalizedEventId)
             ->orderByDesc('id')
             ->first();
@@ -69,7 +69,7 @@ class AnnotateIncidentOnMediaAssessmentCompleted
 
         // Deduped events get linked to an existing open incident instead of
         // spawning their own — follow the link.
-        return Incident::withoutGlobalScopes()
+        return Incident::query()
             ->whereHas('eventLinks', fn ($query) => $query->where('normalized_event_id', $normalizedEventId))
             ->orderByDesc('id')
             ->first();

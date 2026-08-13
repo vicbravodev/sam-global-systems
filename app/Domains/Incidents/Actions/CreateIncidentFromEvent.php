@@ -285,7 +285,7 @@ class CreateIncidentFromEvent
 
     private function autoAttachEvidence(Incident $incident, NormalizedEvent $event): void
     {
-        $contextSnapshot = EventContextSnapshot::withoutGlobalScopes()
+        $contextSnapshot = EventContextSnapshot::query()
             ->where('normalized_event_id', $event->id)
             ->first();
 
@@ -303,7 +303,7 @@ class CreateIncidentFromEvent
             );
         }
 
-        $aiEvaluation = AIEventEvaluation::withoutGlobalScopes()
+        $aiEvaluation = AIEventEvaluation::query()
             ->where('normalized_event_id', $event->id)
             ->latest('id')
             ->first();

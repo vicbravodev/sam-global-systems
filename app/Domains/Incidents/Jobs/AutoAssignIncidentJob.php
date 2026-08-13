@@ -6,6 +6,7 @@ use App\Domains\Incidents\Actions\AssignIncident;
 use App\Domains\Incidents\Enums\AssigneeType;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentAssignment;
+use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -33,6 +34,10 @@ class AutoAssignIncidentJob implements ShouldQueue
         if ($incident === null) {
             return;
         }
+
+        // Trabaja dentro del tenant del propio registro: el lookup de
+        // entrada no puede estar scopeado, todo lo que sigue sí. Ver §2.1.
+        TenantContext::set($incident->team_id);
 
         // A deduped event (or a B8 re-decision) re-dispatches this job for an
         // incident that is already routed — re-assigning would spam the

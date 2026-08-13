@@ -92,7 +92,7 @@ class SelectNotificationChannels
             return null;
         }
 
-        return NotificationPreference::withoutGlobalScopes()
+        return NotificationPreference::query()
             ->where('team_id', $notification->team_id)
             ->where('user_id', $userId)
             ->where('notification_type', $notification->notification_type)
