@@ -176,7 +176,7 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
             'external_id' => (string) Arr::get($record, 'id', $externalAssetId),
             'latitude' => (float) $latitude,
             'longitude' => (float) $longitude,
-            'speed' => $speed !== null ? (float) $speed : null,
+            'speed' => self::mphToKph($speed),
             'heading' => $heading !== null ? (int) round((float) $heading) : null,
             'formatted_location' => Arr::get($location, 'reverseGeo.formattedLocation'),
             'recorded_at' => Arr::get($location, 'time'),
@@ -641,11 +641,32 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
             'external_id' => (string) Arr::get($record, 'id'),
             'latitude' => (float) $latitude,
             'longitude' => (float) $longitude,
-            'speed' => $speed !== null ? (float) $speed : null,
+            'speed' => self::mphToKph($speed),
             'heading' => $heading !== null ? (int) round((float) $heading) : null,
             'formatted_location' => Arr::get($gps, 'reverseGeo.formattedLocation'),
             'recorded_at' => Arr::get($gps, 'time'),
         ];
+    }
+
+    /**
+     * Convert a Samsara speed reading to km/h.
+     *
+     * Every speed Samsara returns is in miles per hour — both `gps
+     * .speedMilesPerHour` on the stats endpoints and `location.speed` on
+     * `/fleet/vehicles/locations` resolve to the same `VehicleLocationSpeed`
+     * schema ("GPS speed of the vehicle in miles per hour"). The domain stores
+     * and displays km/h, so the conversion belongs here at the provider
+     * boundary rather than in each consumer.
+     *
+     * Rounded to 2 decimals to match the `decimal(6,2)` storage column.
+     */
+    private static function mphToKph(mixed $mph): ?float
+    {
+        if ($mph === null) {
+            return null;
+        }
+
+        return round((float) $mph * 1.609344, 2);
     }
 
     private function client(string $token): PendingRequest

@@ -65,7 +65,8 @@ class SamsaraAdapterLiveLocationTest extends TestCase
         $this->assertSame('100', $live['external_id']);
         $this->assertEqualsWithDelta(19.4326077, $live['latitude'], 0.0000001);
         $this->assertEqualsWithDelta(-99.133208, $live['longitude'], 0.0000001);
-        $this->assertSame(42.3, $live['speed']);
+        // `location.speed` is miles per hour; the adapter normalizes to km/h.
+        $this->assertSame(68.08, $live['speed']);
         $this->assertSame(272, $live['heading']);
         $this->assertSame('CDMX Centro', $live['formatted_location']);
         $this->assertSame('2026-06-10T01:00:00Z', $live['recorded_at']);
