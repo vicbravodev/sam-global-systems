@@ -3,6 +3,7 @@
 namespace App\Domains\Integrations\Adapters;
 
 use App\Contracts\Integrations\MediaRetrievalAdapter;
+use App\Domains\Assets\Enums\TelemetryType;
 use App\Domains\Integrations\Contracts\ProviderAdapter;
 use App\Domains\Integrations\Models\TenantIntegration;
 use Illuminate\Http\Client\PendingRequest;
@@ -24,6 +25,34 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
      * Hard cap on pagination pages per sync call to avoid runaway loops.
      */
     private const MAX_PAGES = 50;
+
+    /**
+     * Samsara stat type -> [our type, unit, divisor, decimals].
+     *
+     * Samsara reports these in base units (metres, millivolts, millidegrees);
+     * the divisor converts to what the domain stores and the UI renders. A null
+     * divisor marks a categorical stat kept verbatim.
+     *
+     * `speed` is deliberately absent: it already arrives with every GPS reading
+     * and is persisted as a location snapshot, so ingesting it again here would
+     * duplicate the same measurement in two tables.
+     */
+    private const TELEMETRY_STAT_MAP = [
+        'engineStates' => [TelemetryType::Ignition, null, null, 0],
+        'fuelPercents' => [TelemetryType::Fuel, '%', 1, 0],
+        'obdOdometerMeters' => [TelemetryType::Odometer, 'km', 1000, 1],
+        'batteryMilliVolts' => [TelemetryType::Battery, 'V', 1000, 2],
+        'ambientAirTemperatureMilliC' => [TelemetryType::Temperature, '°C', 1000, 1],
+    ];
+
+    /**
+     * The stat types above grouped into requests of at most 3 — Samsara's
+     * documented cap on the `types` query parameter.
+     */
+    private const TELEMETRY_BATCHES = [
+        ['engineStates', 'fuelPercents', 'obdOdometerMeters'],
+        ['batteryMilliVolts', 'ambientAirTemperatureMilliC'],
+    ];
 
     public function testConnection(TenantIntegration $integration): array
     {
@@ -121,6 +150,119 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
         } while ($hasNext && $cursor && $pages < self::MAX_PAGES);
 
         return $locations;
+    }
+
+    /**
+     * Fetch the latest onboard-diagnostic readings for every vehicle.
+     *
+     * Samsara caps `types` at 3 per request, so the stats we track are fetched
+     * in two batches and flattened into one list of readings. A batch that
+     * fails contributes nothing rather than aborting the whole poll — a rate
+     * limit on the second call should not discard the first call's data.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function fetchAssetTelemetry(TenantIntegration $integration): array
+    {
+        $token = $this->resolveToken($integration);
+
+        if ($token === null) {
+            return [];
+        }
+
+        $readings = [];
+
+        foreach (self::TELEMETRY_BATCHES as $batch) {
+            foreach ($this->fetchStatsBatch($token, $batch) as $record) {
+                foreach ($batch as $statType) {
+                    $mapped = $this->mapTelemetryReading((array) $record, $statType);
+
+                    if ($mapped !== null) {
+                        $readings[] = $mapped;
+                    }
+                }
+            }
+        }
+
+        return $readings;
+    }
+
+    /**
+     * Page through `/fleet/vehicles/stats` for one batch of stat types.
+     *
+     * @param  list<string>  $types
+     * @return array<int, array<string, mixed>>
+     */
+    private function fetchStatsBatch(string $token, array $types): array
+    {
+        $records = [];
+        $cursor = null;
+        $pages = 0;
+
+        do {
+            $query = ['types' => implode(',', $types)];
+
+            if ($cursor !== null) {
+                $query['after'] = $cursor;
+            }
+
+            $response = $this->client($token)->get('/fleet/vehicles/stats', $query);
+
+            if (! $response->successful()) {
+                break;
+            }
+
+            foreach ((array) $response->json('data', []) as $record) {
+                $records[] = $record;
+            }
+
+            $cursor = $response->json('pagination.endCursor');
+            $hasNext = (bool) $response->json('pagination.hasNextPage', false);
+            $pages++;
+        } while ($hasNext && $cursor && $pages < self::MAX_PAGES);
+
+        return $records;
+    }
+
+    /**
+     * Map one stat off a vehicle record, converting to the unit we store.
+     *
+     * Returns null when the vehicle does not report this stat — Samsara omits
+     * the key entirely for vehicles without diagnostic coverage.
+     *
+     * @param  array<string, mixed>  $record
+     * @return array<string, mixed>|null
+     */
+    private function mapTelemetryReading(array $record, string $statType): ?array
+    {
+        $stat = Arr::get($record, $statType);
+
+        // History-style responses nest a list of readings; take the newest.
+        if (is_array($stat) && array_is_list($stat)) {
+            $stat = end($stat) ?: null;
+        }
+
+        if (! is_array($stat)) {
+            return null;
+        }
+
+        $value = Arr::get($stat, 'value');
+
+        if ($value === null) {
+            return null;
+        }
+
+        [$type, $unit, $divisor, $decimals] = self::TELEMETRY_STAT_MAP[$statType];
+
+        return [
+            'external_id' => (string) Arr::get($record, 'id'),
+            'type' => $type,
+            // A null divisor marks a categorical stat (engine state), which is
+            // stored verbatim instead of being treated as a measurement.
+            'value' => $divisor === null ? (string) $value : round((float) $value / $divisor, $decimals),
+            'unit' => $unit,
+            'recorded_at' => Arr::get($stat, 'time'),
+        ];
     }
 
     /**

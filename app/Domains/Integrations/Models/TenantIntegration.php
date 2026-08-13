@@ -28,6 +28,7 @@ class TenantIntegration extends Model
         'sync_state_json',
         'last_sync_at',
         'last_location_poll_at',
+        'last_telemetry_poll_at',
         'last_error_at',
         'last_error_message',
     ];
@@ -86,6 +87,7 @@ class TenantIntegration extends Model
             'sync_state_json' => 'array',
             'last_sync_at' => 'datetime',
             'last_location_poll_at' => 'datetime',
+            'last_telemetry_poll_at' => 'datetime',
             'last_error_at' => 'datetime',
         ];
     }
