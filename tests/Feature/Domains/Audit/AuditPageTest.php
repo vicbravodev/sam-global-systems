@@ -57,6 +57,40 @@ class AuditPageTest extends TestCase
         );
     }
 
+    public function test_logs_expose_a_human_readable_entity_label_for_fqcn(): void
+    {
+        AuditLog::factory()->create([
+            'team_id' => $this->team->id,
+            'entity_type' => 'App\\Domains\\Normalization\\Models\\NormalizedEvent',
+        ]);
+
+        $response = $this->actingAs($this->user)->get(
+            route('audit.show', ['current_team' => $this->team->slug]),
+        );
+
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->where('logs.0.entityLabel', 'Evento normalizado'),
+        );
+    }
+
+    public function test_logs_expose_a_human_readable_entity_label_for_short_type(): void
+    {
+        AuditLog::factory()->create([
+            'team_id' => $this->team->id,
+            'entity_type' => 'incident',
+        ]);
+
+        $response = $this->actingAs($this->user)->get(
+            route('audit.show', ['current_team' => $this->team->slug]),
+        );
+
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->where('logs.0.entityLabel', 'Incidente'),
+        );
+    }
+
     public function test_logs_can_be_filtered_by_category(): void
     {
         AuditLog::factory()->create([

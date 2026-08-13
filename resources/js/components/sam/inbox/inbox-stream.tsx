@@ -1,6 +1,11 @@
 import { MapPin, Truck, User } from 'lucide-react';
-import { SeverityBadge, StatusPill, ProviderTag } from '@/components/sam';
-import type { Severity } from '@/components/sam';
+import {
+    SeverityBadge,
+    StatusPill,
+    ProviderTag,
+    TERMINAL_STATUSES,
+} from '@/components/sam';
+import type { Severity, IncidentStatus } from '@/components/sam';
 import { cn } from '@/lib/utils';
 import type { MockIncident } from '@/types/sam';
 import { useLiveSla } from './use-live-sla';
@@ -38,8 +43,23 @@ function UserAvatar({
 
 // ---- LiveSlaCell ----
 
-function LiveSlaCell({ seconds, total }: { seconds: number; total: number }) {
+function LiveSlaCell({
+    seconds,
+    total,
+    status,
+}: {
+    seconds: number;
+    total: number;
+    status: IncidentStatus;
+}) {
+    // Hook siempre se llama (reglas de hooks); el early-return terminal va
+    // DESPUÉS, descartando el valor.
     const live = useLiveSla(seconds);
+
+    if (TERMINAL_STATUSES.includes(status)) {
+        return <span className="font-mono text-2xs text-fg-3">—</span>;
+    }
+
     const consumed = total > 0 ? 1 - live / total : 1;
     const expired = live <= 0;
     const critical = expired || consumed >= 0.95;
@@ -118,6 +138,7 @@ function StreamCard({ incident, selected, onClick }: StreamCardProps) {
                     <LiveSlaCell
                         seconds={incident.slaSeconds}
                         total={incident.slaTotal}
+                        status={incident.status}
                     />
                 </div>
 

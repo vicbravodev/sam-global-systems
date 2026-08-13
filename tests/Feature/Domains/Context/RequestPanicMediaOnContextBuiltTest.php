@@ -76,7 +76,7 @@ class RequestPanicMediaOnContextBuiltTest extends TestCase
         app(RequestPanicMediaOnContextBuilt::class)->handle($event);
     }
 
-    public function test_requests_clip_and_stills_for_critical_event_with_camera_when_opted_in(): void
+    public function test_opens_a_single_sweep_only_request_for_critical_event_when_opted_in(): void
     {
         $this->enableAutoRequest();
 
@@ -84,35 +84,34 @@ class RequestPanicMediaOnContextBuiltTest extends TestCase
 
         $this->handle($event);
 
-        $requests = EventMediaRequest::withoutGlobalScopes()
+        // Panic footage is auto-uploaded by the dashcam: one sweep-only request
+        // (never a paid retrieval) is enough to pull both clips and stills.
+        $request = EventMediaRequest::withoutGlobalScopes()
             ->where('normalized_event_id', $event->snapshot->normalized_event_id)
-            ->get();
+            ->sole();
 
-        $this->assertEqualsCanonicalizing(
-            [MediaRequestType::FetchVideoClip, MediaRequestType::FetchSnapshot],
-            $requests->pluck('request_type')->all(),
+        $this->assertSame(MediaRequestType::FetchVideoClip, $request->request_type);
+        $this->assertTrue($request->sweep_only);
+        $this->assertSame(MediaRequestStatus::Pending, $request->status);
+        $this->assertSame($this->teamId, $request->team_id);
+
+        Queue::assertPushed(
+            FetchDeferredEventMediaJob::class,
+            fn (FetchDeferredEventMediaJob $job) => $job->eventMediaRequestId === $request->id,
         );
-
-        foreach ($requests as $request) {
-            $this->assertSame(MediaRequestStatus::Pending, $request->status);
-            $this->assertSame($this->teamId, $request->team_id);
-
-            Queue::assertPushed(
-                FetchDeferredEventMediaJob::class,
-                fn (FetchDeferredEventMediaJob $job) => $job->eventMediaRequestId === $request->id,
-            );
-        }
     }
 
-    public function test_stills_are_skipped_when_the_tenant_sets_still_count_to_zero(): void
+    public function test_never_places_a_still_retrieval_request_for_panic(): void
     {
         $this->enableAutoRequest();
 
+        // Even with a generous still count, the panic path stays sweep-only and
+        // never opens a paid FetchSnapshot retrieval request.
         TenantSetting::factory()->create([
             'team_id' => $this->teamId,
             'setting_key' => FetchDeferredEventMediaJob::SETTING_STILL_COUNT,
             'setting_group' => SettingGroup::Operational,
-            'value_json' => ['value' => 0],
+            'value_json' => ['value' => 6],
             'value_type' => SettingValueType::Number,
         ]);
 
@@ -120,11 +119,13 @@ class RequestPanicMediaOnContextBuiltTest extends TestCase
 
         $this->handle($event);
 
-        $request = EventMediaRequest::withoutGlobalScopes()
-            ->where('normalized_event_id', $event->snapshot->normalized_event_id)
-            ->sole();
-
-        $this->assertSame(MediaRequestType::FetchVideoClip, $request->request_type);
+        $this->assertSame(
+            0,
+            EventMediaRequest::withoutGlobalScopes()
+                ->where('request_type', MediaRequestType::FetchSnapshot->value)
+                ->count(),
+        );
+        $this->assertSame(1, EventMediaRequest::withoutGlobalScopes()->count());
     }
 
     public function test_does_nothing_by_default_because_auto_request_is_opt_in(): void
@@ -144,7 +145,7 @@ class RequestPanicMediaOnContextBuiltTest extends TestCase
         $this->assertSame(0, EventMediaRequest::withoutGlobalScopes()->count());
     }
 
-    public function test_camera_less_asset_still_requests_the_clip_to_drive_the_uploaded_sweep(): void
+    public function test_camera_less_asset_still_opens_the_sweep_only_request(): void
     {
         $this->enableAutoRequest();
 
@@ -152,13 +153,14 @@ class RequestPanicMediaOnContextBuiltTest extends TestCase
 
         $this->handle($event);
 
-        // Only the clip request: stills retrievals would never be placed, and
-        // a single request is enough to keep the uploaded-media sweep alive.
+        // The camera flag is irrelevant to the sweep-only request: the uploaded
+        // media listing works regardless, and the flag can be stale anyway.
         $request = EventMediaRequest::withoutGlobalScopes()
             ->where('normalized_event_id', $event->snapshot->normalized_event_id)
             ->sole();
 
         $this->assertSame(MediaRequestType::FetchVideoClip, $request->request_type);
+        $this->assertTrue($request->sweep_only);
         Queue::assertPushed(
             FetchDeferredEventMediaJob::class,
             fn (FetchDeferredEventMediaJob $job) => $job->eventMediaRequestId === $request->id,
@@ -174,8 +176,8 @@ class RequestPanicMediaOnContextBuiltTest extends TestCase
         $this->handle($event);
         $this->handle($event);
 
-        // One clip + one stills request, no duplicates on rebuild.
-        $this->assertSame(2, EventMediaRequest::withoutGlobalScopes()->count());
+        // A single sweep-only request, no duplicates on rebuild.
+        $this->assertSame(1, EventMediaRequest::withoutGlobalScopes()->count());
     }
 
     public function test_records_usage_once_per_request(): void

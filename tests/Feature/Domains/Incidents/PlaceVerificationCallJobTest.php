@@ -115,6 +115,36 @@ class PlaceVerificationCallJobTest extends TestCase
         $this->assertSame($global->id, $verification->fresh()->notification_channel_id);
     }
 
+    public function test_falls_back_to_platform_env_credentials_when_channel_has_no_config(): void
+    {
+        config()->set('services.twilio', [
+            'account_sid' => 'AC_PLATFORM',
+            'auth_token' => 'tok_platform',
+            'voice_from' => '+15550003333',
+        ]);
+
+        NotificationChannel::factory()->voice()->create([
+            'team_id' => null,
+            'config_json' => null,
+        ]);
+        $verification = $this->makeVerification();
+
+        $this->mock(TwilioVoiceCaller::class, function ($mock) {
+            $mock->shouldReceive('createCall')
+                ->once()
+                ->withArgs(function (array $config, string $to, string $from) {
+                    return $config['twilio_account_sid'] === 'AC_PLATFORM'
+                        && $config['twilio_auth_token'] === 'tok_platform'
+                        && $from === '+15550003333';
+                })
+                ->andReturn((object) ['sid' => 'CA-env', 'status' => 'queued']);
+        });
+
+        $this->runJob($verification);
+
+        $this->assertSame(CallVerificationStatus::Calling, $verification->fresh()->status);
+    }
+
     public function test_prefers_the_tenant_channel_over_the_global_one(): void
     {
         NotificationChannel::factory()->voice()->create(['team_id' => null]);

@@ -184,7 +184,7 @@ class ExecuteActionBridgesTest extends TestCase
         $this->assertSame(IncidentStatusCode::InReview->value, $incident->fresh()->status?->code);
         $this->assertSame(1, IncidentTimeline::query()
             ->where('incident_id', $incident->id)
-            ->where('title', 'Human review requested')
+            ->where('title', 'Revisión humana solicitada')
             ->count());
     }
 

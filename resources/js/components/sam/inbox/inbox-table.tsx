@@ -1,5 +1,5 @@
 import type { InboxDensity, MockIncident } from '@/types/sam';
-import { IncidentRow } from './incident-row';
+import { IncidentCard, IncidentRow } from './incident-row';
 
 interface InboxTableProps {
     rows: MockIncident[];
@@ -10,6 +10,9 @@ interface InboxTableProps {
     onToggle: (id: string) => void;
     onSelectAll: () => void;
     allChecked: boolean;
+    currentUserId: number | null;
+    claimPendingId: number | null;
+    onClaimToggle: (incident: MockIncident) => void;
 }
 
 export function InboxTable({
@@ -21,12 +24,30 @@ export function InboxTable({
     onToggle,
     onSelectAll,
     allChecked,
+    currentUserId,
+    claimPendingId,
+    onClaimToggle,
 }: InboxTableProps) {
     return (
         <div className="min-h-0 flex-1 overflow-auto">
-            {/* min-w: en viewports angostos la tabla scrollea dentro del
-                wrapper en vez de aplastar las columnas. */}
-            <table className="w-full min-w-[760px] border-collapse">
+            {/* D1: en < md las filas se vuelven tarjetas apiladas; la tabla
+                densa solo aparece en md+ para no forzar scroll lateral. */}
+            <div className="flex flex-col gap-2 p-2 md:hidden">
+                {rows.map((incident) => (
+                    <IncidentCard
+                        key={incident.id}
+                        incident={incident}
+                        selected={selectedId === incident.id}
+                        checked={selectedSet.has(incident.id)}
+                        currentUserId={currentUserId}
+                        claimBusy={claimPendingId === incident.incidentId}
+                        onClick={() => onSelect(incident.id)}
+                        onToggle={() => onToggle(incident.id)}
+                        onClaimToggle={() => onClaimToggle(incident)}
+                    />
+                ))}
+            </div>
+            <table className="hidden w-full min-w-[760px] border-collapse md:table">
                 <thead>
                     <tr className="sticky top-0 z-10 border-b border-border bg-surface-3 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
                         <th className="w-[34px] px-2.5 py-2 text-left">
@@ -63,6 +84,7 @@ export function InboxTable({
                             Conductor
                         </th>
                         <th className="w-40 px-2.5 py-2 text-left">Asignado</th>
+                        <th className="w-28 px-2.5 py-2 text-left">Toma</th>
                         <th className="w-28 px-2.5 py-2 text-left">Estado</th>
                         <th className="w-24 px-2.5 py-2 text-left">SLA</th>
                         <th className="w-20 px-2.5 py-2 text-left">Edad</th>
@@ -76,8 +98,11 @@ export function InboxTable({
                             selected={selectedId === incident.id}
                             checked={selectedSet.has(incident.id)}
                             density={density}
+                            currentUserId={currentUserId}
+                            claimBusy={claimPendingId === incident.incidentId}
                             onClick={() => onSelect(incident.id)}
                             onToggle={() => onToggle(incident.id)}
+                            onClaimToggle={() => onClaimToggle(incident)}
                         />
                     ))}
                 </tbody>

@@ -5,13 +5,13 @@ namespace App\Domains\Decisions\Jobs;
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\Decisions\Actions\EvaluateDecisionRules;
 use App\Domains\Decisions\Models\Decision;
+use App\Support\JobFailureReporter;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Log;
 
 class RunDecisionEngineJob implements ShouldBeUnique, ShouldQueue
 {
@@ -58,9 +58,8 @@ class RunDecisionEngineJob implements ShouldBeUnique, ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
-        Log::warning('RunDecisionEngineJob failed', [
+        JobFailureReporter::report(static::class, $exception, [
             'ai_evaluation_id' => $this->aiEvaluationId,
-            'error' => $exception->getMessage(),
         ]);
     }
 }

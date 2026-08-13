@@ -176,6 +176,40 @@ class DriverShowPageTest extends TestCase
         );
     }
 
+    public function test_identity_is_exposed_for_a_driver_without_operational_history(): void
+    {
+        // B4: un conductor recién sincronizado (sin riesgo/contactos/documentos/
+        // asignaciones/estado) debe exponer igualmente su identidad.
+        [$user, $team] = $this->createUserWithRole('detail_identity', ['drivers.view']);
+
+        $driver = Driver::factory()->create([
+            'team_id' => $team->id,
+            'full_name' => 'Bruno Salas',
+            'employee_code' => 'EMP-0099',
+            'external_primary_id' => 'SAMSARA-555',
+        ]);
+
+        $response = $this->actingAs($user)->get(
+            route('drivers.show', [
+                'current_team' => $team->slug,
+                'driver' => $driver->id,
+            ]),
+        );
+
+        $response->assertOk();
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->component('drivers/show')
+                ->where('driver.fullName', 'Bruno Salas')
+                ->where('driver.employeeCode', 'EMP-0099')
+                ->where('driver.externalPrimaryId', 'SAMSARA-555')
+                ->where('driver.riskProfile', null)
+                ->has('driver.contacts', 0)
+                ->has('assignments', 0)
+                ->has('statusLog', 0),
+        );
+    }
+
     public function test_related_records_of_other_drivers_are_not_leaked(): void
     {
         [$user, $team] = $this->createUserWithRole('detail_viewer_2', ['drivers.view']);

@@ -175,4 +175,51 @@ class SyncDriverFromIntegrationTest extends TestCase
             'full_name should be derived as "first_name last_name"',
         );
     }
+
+    public function test_sync_persists_normalized_e164_phone_on_create(): void
+    {
+        Event::fake([DriverDiscovered::class]);
+
+        [$user, $team, $provider, $integration] = $this->createSetup();
+
+        $driver = app(SyncDriverFromIntegration::class)->execute($team->id, $integration->id, [
+            'external_id' => 'ext-phone-1',
+            'name' => 'Jane Doe',
+            'phone' => '+1 (415) 555-1234',
+        ]);
+
+        $this->assertSame('+14155551234', $driver->fresh()->phone);
+    }
+
+    public function test_sync_stores_null_when_phone_is_not_e164(): void
+    {
+        Event::fake([DriverDiscovered::class]);
+
+        [$user, $team, $provider, $integration] = $this->createSetup();
+
+        $driver = app(SyncDriverFromIntegration::class)->execute($team->id, $integration->id, [
+            'external_id' => 'ext-phone-2',
+            'name' => 'Jane Doe',
+            'phone' => '415-555-1234',
+        ]);
+
+        $this->assertNull($driver->fresh()->phone);
+    }
+
+    public function test_sync_preserves_existing_phone_when_absent_from_payload(): void
+    {
+        Event::fake([DriverDiscovered::class]);
+
+        [$user, $team, $provider, $integration] = $this->createSetup();
+
+        $driver = app(SyncDriverFromIntegration::class)->execute($team->id, $integration->id, [
+            'external_id' => 'ext-phone-3', 'name' => 'Jane', 'phone' => '+14155551234',
+        ]);
+        $this->assertSame('+14155551234', $driver->fresh()->phone);
+
+        app(SyncDriverFromIntegration::class)->execute($team->id, $integration->id, [
+            'external_id' => 'ext-phone-3', 'name' => 'Jane Roe',
+        ]);
+        $this->assertSame('+14155551234', $driver->fresh()->phone);
+    }
 }

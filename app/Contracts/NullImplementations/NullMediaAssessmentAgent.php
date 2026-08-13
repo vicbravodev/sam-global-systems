@@ -44,7 +44,7 @@ class NullMediaAssessmentAgent implements MediaAssessmentAgent
         return new MediaAssessmentOutput(
             result: $this->forcedResult,
             confidenceScore: $this->forcedConfidence,
-            summaryText: 'Deterministic media assessment produced by NullMediaAssessmentAgent.',
+            summaryText: 'Evaluación de medios determinista generada por NullMediaAssessmentAgent.',
             extractedSignals: $signals,
             modelUsed: 'null-media-agent:1.0',
             inputTokens: 250,

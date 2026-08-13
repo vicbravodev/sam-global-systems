@@ -4,12 +4,12 @@ namespace App\Domains\Notifications\Jobs;
 
 use App\Domains\Notifications\Actions\DispatchNotification;
 use App\Domains\Notifications\Models\Notification;
+use App\Support\JobFailureReporter;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Log;
 
 class SendNotificationJob implements ShouldQueue
 {
@@ -38,9 +38,8 @@ class SendNotificationJob implements ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
-        Log::warning('SendNotificationJob failed', [
+        JobFailureReporter::report(static::class, $exception, [
             'notification_id' => $this->notificationId,
-            'error' => $exception->getMessage(),
         ]);
     }
 }

@@ -137,7 +137,7 @@ class DbIncidentMetricsQuery implements IncidentMetricsQuery
             ->whereNotNull('resolved_at')
             ->whereBetween('resolved_at', [$from, $to])
             ->with(['priority', 'relatedEvent.eventSeverity'])
-            ->get(['id', 'team_id', 'incident_priority_id', 'related_event_id', 'opened_at', 'resolved_at']);
+            ->get(['id', 'team_id', 'incident_priority_id', 'related_event_id', 'opened_at', 'resolved_at', 'sla_due_at']);
 
         if ($resolved->isEmpty()) {
             return null;
@@ -148,7 +148,15 @@ class DbIncidentMetricsQuery implements IncidentMetricsQuery
                 return false;
             }
 
-            // Same SLA-budget resolution chain as IncidentInboxPresenter:
+            // `sla_due_at` is the vigilance actually scheduled at creation
+            // time (possibly a tenant override) — comparing against it
+            // directly keeps compliance in sync with the real watchdog.
+            if ($incident->sla_due_at !== null) {
+                return $incident->resolved_at->lessThanOrEqualTo($incident->sla_due_at);
+            }
+
+            // Incidents predating the `sla_due_at` column (or with no SLA
+            // resolved at creation): same catalog chain as before —
             // priority SLA, then event-severity response SLA, then default.
             $slaSeconds = (int) ($incident->priority?->sla_seconds
                 ?? $incident->relatedEvent?->eventSeverity?->response_sla_seconds

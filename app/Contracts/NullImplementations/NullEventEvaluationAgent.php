@@ -48,7 +48,7 @@ class NullEventEvaluationAgent implements EventEvaluationAgent
             classification: $this->forcedClassification,
             confidenceScore: $this->forcedConfidence,
             riskScoreDelta: 0.0,
-            explanationSummary: 'Deterministic evaluation produced by NullEventEvaluationAgent.',
+            explanationSummary: 'Evaluación determinista generada por NullEventEvaluationAgent.',
             reasoningSteps: $reasoning,
             keyFactors: $keyFactors,
             modelUsed: 'null-agent:1.0',

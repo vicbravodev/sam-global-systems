@@ -73,7 +73,7 @@ class AddIncidentEvidence
             entryType: TimelineEntryType::EvidenceAdded,
             actorType: $addedByType === IncidentCreatorType::User ? TimelineActorType::User : TimelineActorType::System,
             actorId: $addedById,
-            title: 'Evidence attached: '.($title ?? $evidenceType->value),
+            title: 'Evidencia adjuntada: '.($title ?? $evidenceType->value),
             payload: [
                 'evidence_id' => $evidence->id,
                 'evidence_type' => $evidenceType->value,

@@ -41,7 +41,7 @@
 - Modify: `app/Domains/Assets/Enums/AssetCategory.php`
 - Test: `tests/Unit/Domains/Shared/EnumLabelsTest.php`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/Unit/Domains/Shared/EnumLabelsTest.php`:
 
@@ -99,12 +99,12 @@ final class EnumLabelsTest extends TestCase
 }
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `php artisan test --compact --filter=EnumLabelsTest`
 Expected: FAIL — `Call to undefined method ...::label()`.
 
-- [ ] **Step 3: Add `label()` to `DecisionOutcomeCode`**
+- [x] **Step 3: Add `label()` to `DecisionOutcomeCode`**
 
 En `app/Domains/Decisions/Enums/DecisionOutcomeCode.php`, dentro del enum (después de `createsIncident()`), añadir:
 
@@ -122,7 +122,7 @@ En `app/Domains/Decisions/Enums/DecisionOutcomeCode.php`, dentro del enum (despu
     }
 ```
 
-- [ ] **Step 4: Add `label()` to `EventClassification`**
+- [x] **Step 4: Add `label()` to `EventClassification`**
 
 En `app/Domains/AI/Enums/EventClassification.php`, después de `isActionable()`:
 
@@ -140,7 +140,7 @@ En `app/Domains/AI/Enums/EventClassification.php`, después de `isActionable()`:
     }
 ```
 
-- [ ] **Step 5: Add `label()` to `DriverStatus`**
+- [x] **Step 5: Add `label()` to `DriverStatus`**
 
 En `app/Domains/Drivers/Enums/DriverStatus.php`, dentro del enum:
 
@@ -157,7 +157,7 @@ En `app/Domains/Drivers/Enums/DriverStatus.php`, dentro del enum:
     }
 ```
 
-- [ ] **Step 6: Add `label()` to `AssetCategory`**
+- [x] **Step 6: Add `label()` to `AssetCategory`**
 
 En `app/Domains/Assets/Enums/AssetCategory.php`, dentro del enum:
 
@@ -174,12 +174,12 @@ En `app/Domains/Assets/Enums/AssetCategory.php`, dentro del enum:
     }
 ```
 
-- [ ] **Step 7: Run the test to verify it passes**
+- [x] **Step 7: Run the test to verify it passes**
 
 Run: `php artisan test --compact --filter=EnumLabelsTest`
 Expected: PASS (5 tests).
 
-- [ ] **Step 8: Format and commit**
+- [x] **Step 8: Format and commit**
 
 ```bash
 vendor/bin/pint --dirty --format agent
@@ -200,21 +200,21 @@ El detalle de evento muestra `REQUIRE_HUMAN_REVIEW` y `unclear` crudos; la lista
 - Modify: `resources/js/pages/rules/index.tsx`
 - Test: extender el feature test existente de la página de eventos y el de reglas.
 
-- [ ] **Step 1: Localizar el ensamblado de props del detalle de evento**
+- [x] **Step 1: Localizar el ensamblado de props del detalle de evento**
 
 Run: `grep -n "classification\|outcome\|->value\|EventClassification\|DecisionOutcomeCode" app/Http/Controllers/Normalization/EventsPageController.php`
 Anotar el método que arma el payload del detalle (el que produce `Clasificación` y `Resultado` que vimos en `detail-events`) y las líneas donde hoy se emite el `value`/`code` crudo de clasificación y outcome.
 
-- [ ] **Step 2: Write the failing test (evento expone labels en español)**
+- [x] **Step 2: Write the failing test (evento expone labels en español)**
 
 Localizar el feature test de la página de eventos: `grep -rln "events/show\|EventsPage\|component('events" tests/`. En ese archivo (o crear `tests/Feature/Domains/Normalization/EventDetailLabelsTest.php` siguiendo su estilo con `RefreshDatabase` y factories), añadir un test que cargue el detalle de un evento con clasificación `unclear` y outcome `REQUIRE_HUMAN_REVIEW` y asserte vía `assertInertia` que el prop incluye `classificationLabel === 'Sin determinar'` y `outcomeLabel === 'Revisión humana'`. Usar factories existentes (`NormalizedEvent`, evaluación IA, decisión); nunca `Model::create()` manual.
 
-- [ ] **Step 3: Run the test to verify it fails**
+- [x] **Step 3: Run the test to verify it fails**
 
 Run: `php artisan test --compact --filter=EventDetailLabels`
 Expected: FAIL — el prop `classificationLabel`/`outcomeLabel` no existe todavía.
 
-- [ ] **Step 4: Emitir los labels desde `EventsPageController`**
+- [x] **Step 4: Emitir los labels desde `EventsPageController`**
 
 En el método del detalle (identificado en Step 1), donde hoy se serializa la clasificación y el outcome, añadir los campos humanizados junto a los crudos (mantener los crudos por compatibilidad):
 
@@ -229,7 +229,7 @@ En el método del detalle (identificado en Step 1), donde hoy se serializa la cl
 
 Si en el controlador el valor llega como string, resolver el enum con `EventClassification::tryFrom($value)` / `DecisionOutcomeCode::tryFrom($value)` antes de llamar `label()`.
 
-- [ ] **Step 5: Consumir el label en `events/show.tsx`**
+- [x] **Step 5: Consumir el label en `events/show.tsx`**
 
 Run: `grep -n "classification\|outcome\|Clasificación\|Resultado" resources/js/pages/events/show.tsx`
 Sustituir el render del code crudo por el label, con fallback al crudo:
@@ -241,16 +241,16 @@ Sustituir el render del code crudo por el label, con fallback al crudo:
 
 Actualizar la interfaz TypeScript local del componente para incluir `classificationLabel?: string | null` y `outcomeLabel?: string | null`.
 
-- [ ] **Step 6: Run the test to verify it passes**
+- [x] **Step 6: Run the test to verify it passes**
 
 Run: `php artisan test --compact --filter=EventDetailLabels`
 Expected: PASS.
 
-- [ ] **Step 7: Write the failing test (reglas muestran label del outcome)**
+- [x] **Step 7: Write the failing test (reglas muestran label del outcome)**
 
 Run: `grep -rln "rules/index\|component('rules" tests/` para hallar el feature test de reglas. Añadir un test que cargue la página de reglas con una regla cuyo outcome sea `REQUIRE_HUMAN_REVIEW` y asserte vía `assertInertia` que el prop de la fila incluye `outcomeLabel === 'Revisión humana'` (o que el array `outcomes` incluye `label`). Run para confirmar fallo.
 
-- [ ] **Step 8: Emitir el label del outcome en `RulesPageController`**
+- [x] **Step 8: Emitir el label del outcome en `RulesPageController`**
 
 Run: `grep -n "outcome\|DecisionOutcomeCode\|->value\|->code" app/Http/Controllers/Decisions/RulesPageController.php`
 Donde se arma cada fila de regla y el listado `outcomes`, añadir `outcomeLabel` resolviendo `DecisionOutcomeCode::tryFrom($code)?->label()` con fallback al code:
@@ -260,19 +260,19 @@ Donde se arma cada fila de regla y el listado `outcomes`, añadir `outcomeLabel`
 'outcomeLabel' => $code !== null ? (DecisionOutcomeCode::tryFrom($code)?->label() ?? $code) : null,
 ```
 
-- [ ] **Step 9: Consumir el label en `rules/index.tsx`**
+- [x] **Step 9: Consumir el label en `rules/index.tsx`**
 
 Run: `grep -n "outcomeCode\|OUTCOME\|outcome" resources/js/pages/rules/index.tsx`
 Render de la columna OUTCOME: `{rule.outcomeLabel ?? rule.outcomeCode ?? '—'}`. Añadir `outcomeLabel?: string | null` a la interfaz de la fila.
 
-- [ ] **Step 10: Run tests + front gates**
+- [x] **Step 10: Run tests + front gates**
 
 Run: `php artisan test --compact --filter="EventDetailLabels|Rules"`
 Expected: PASS.
 Run: `npm run types:check`
 Expected: sin errores de tipos.
 
-- [ ] **Step 11: Format and commit**
+- [x] **Step 11: Format and commit**
 
 ```bash
 vendor/bin/pint --dirty --format agent
@@ -290,7 +290,7 @@ Los nombres/descripciones de `event_categories` y `event_types` están en inglé
 - Modify: `database/seeders/NormalizationSeeder.php`
 - Test: `tests/Feature/Domains/Normalization/EventTypeSpanishTest.php`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/Feature/Domains/Normalization/EventTypeSpanishTest.php`:
 
@@ -322,12 +322,12 @@ final class EventTypeSpanishTest extends TestCase
 
 > Nota: confirmar los nombres de tabla reales con `grep -n "table(" database/seeders/NormalizationSeeder.php` antes de correr; ajustar `event_categories`/`event_types` si difieren.
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `php artisan test --compact --filter=EventTypeSpanish`
 Expected: FAIL — los valores siguen en inglés.
 
-- [ ] **Step 3: Traducir categorías**
+- [x] **Step 3: Traducir categorías**
 
 En `database/seeders/NormalizationSeeder.php`, el array de categorías:
 
@@ -339,7 +339,7 @@ En `database/seeders/NormalizationSeeder.php`, el array de categorías:
 ['code' => 'maintenance', 'name' => 'Mantenimiento', 'description' => 'Eventos de mantenimiento de equipos y dispositivos'],
 ```
 
-- [ ] **Step 4: Traducir tipos de evento (todo el array `$eventTypes`)**
+- [x] **Step 4: Traducir tipos de evento (todo el array `$eventTypes`)**
 
 Traducir el `name` de **cada** entrada del array `$eventTypes` (los `code`, `category` y `severity` no se tocan). Glosario (aplicar a todas las entradas del array, incluidas las que estén más abajo de la línea 109 con el mismo criterio):
 
@@ -360,12 +360,12 @@ railroad_crossing_violation → Violación de cruce ferroviario
 
 Para cualquier `code` adicional presente en el array y no listado arriba (p.ej. `device_offline → Dispositivo sin conexión`, tipos `operational`/`maintenance`), traducir su `name` al español manteniendo el sentido. La lista es finita y vive solo en este archivo: traducir **todas** las entradas, no dejar ninguna en inglés.
 
-- [ ] **Step 5: Run the test to verify it passes**
+- [x] **Step 5: Run the test to verify it passes**
 
 Run: `php artisan test --compact --filter=EventTypeSpanish`
 Expected: PASS.
 
-- [ ] **Step 6: Format and commit**
+- [x] **Step 6: Format and commit**
 
 ```bash
 vendor/bin/pint --dirty --format agent
@@ -385,7 +385,7 @@ Los nombres y descripciones de roles en `AccessSeeder` están en inglés y se mu
 - Modify: `database/seeders/AccessSeeder.php`
 - Test: `tests/Feature/Domains/Access/RoleSpanishTest.php`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/Feature/Domains/Access/RoleSpanishTest.php`:
 
@@ -419,12 +419,12 @@ final class RoleSpanishTest extends TestCase
 
 > Confirmar el nombre real de la tabla con `grep -n "table(\|Role::" database/seeders/AccessSeeder.php`; ajustar `roles` si difiere.
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `php artisan test --compact --filter=RoleSpanish`
 Expected: FAIL — nombres en inglés.
 
-- [ ] **Step 3: Traducir el array de roles**
+- [x] **Step 3: Traducir el array de roles**
 
 En `database/seeders/AccessSeeder.php`, el array de roles:
 
@@ -438,21 +438,21 @@ En `database/seeders/AccessSeeder.php`, el array de roles:
 ['code' => 'viewer', 'name' => 'Observador', 'scope' => 'tenant', 'description' => 'Acceso de solo lectura a todos los módulos del tenant'],
 ```
 
-- [ ] **Step 4: Traducir el array de permisos (`name`/`description`)**
+- [x] **Step 4: Traducir el array de permisos (`name`/`description`)**
 
 Traducir el `name` y `description` de cada permiso del array de permisos (los `code` y `module` no se tocan). Patrón: "View X"→"Ver X", "Manage X"→"Gestionar X", "Export"→"Exportar", "Execute"→"Ejecutar", "Send"→"Enviar", "Invite"→"Invitar", "Resolve"→"Resolver", "Close"→"Cerrar", "Override"→"Anular"/"Sobrescribir". Traducir las descripciones al español manteniendo el sentido. Cubrir **todas** las entradas del array.
 
-- [ ] **Step 5: Run the test to verify it passes**
+- [x] **Step 5: Run the test to verify it passes**
 
 Run: `php artisan test --compact --filter=RoleSpanish`
 Expected: PASS.
 
-- [ ] **Step 6: Verificar que no se rompió RBAC**
+- [x] **Step 6: Verificar que no se rompió RBAC**
 
 Run: `php artisan test --compact tests/Feature/Domains/Access`
 Expected: PASS (los tests existentes usan `code`, no `name`, así que no deben verse afectados).
 
-- [ ] **Step 7: Format and commit**
+- [x] **Step 7: Format and commit**
 
 ```bash
 vendor/bin/pint --dirty --format agent
@@ -466,27 +466,27 @@ git commit -m "feat(i18n): roles y permisos del sistema en español"
 
 ## Cierre de la Fase A (gate completo)
 
-- [ ] **Step 1: Suite completa**
+- [x] **Step 1: Suite completa**
 
 Run: `php artisan test --compact`
 Expected: todo verde (incluye los ~624 tests previos + los nuevos).
 
-- [ ] **Step 2: Estilo backend**
+- [x] **Step 2: Estilo backend**
 
 Run: `vendor/bin/pint --test`
 Expected: limpio.
 
-- [ ] **Step 3: Gates frontend**
+- [x] **Step 3: Gates frontend**
 
 Run: `npm run types:check && npm run lint:check && npm run format:check`
 Expected: verdes.
 
-- [ ] **Step 4: Build**
+- [x] **Step 4: Build**
 
 Run: `npm run build`
 Expected: exitoso.
 
-- [ ] **Step 5: Verificación visual (opcional, recomendado)**
+- [x] **Step 5: Verificación visual (opcional, recomendado)**
 
 Run: `node scripts/audit-ux.mjs --base=http://localhost` y revisar `detail-events`, `rules`, `settings-roles`, `events` — confirmar que outcome/clasificación/tipo/roles salen en español.
 

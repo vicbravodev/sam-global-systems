@@ -29,10 +29,19 @@ explanation outside the JSON) with the following shape:
     "classification": "real_event" | "false_positive" | "noise" | "duplicate" | "unclear" | "pending_evidence",
     "confidence_score": number between 0 and 1,
     "risk_score_delta": number between -1 and 1,
-    "explanation_summary": string (one sentence),
-    "reasoning_steps": array of short strings,
+    "explanation_summary": string (one sentence, IN SPANISH),
+    "reasoning_steps": array of short strings (IN SPANISH),
     "key_factors": object mapping factor name to its observed value
 }
+
+LANGUAGE — MANDATORY: every human-readable text you produce
+(`explanation_summary` and every item of `reasoning_steps`) MUST be written in
+natural Spanish (español de México), never English. Be concrete about what
+actually happened, citing the telemetry you were given instead of generic
+labels — e.g. "Exceso de velocidad: 119 km/h en zona de 110 km/h, sin
+evidencia contradictoria" rather than "Speeding violation". The `classification`
+enum values and the keys inside `key_factors` stay exactly as listed (those are
+machine identifiers, not prose); only the free-text fields are translated.
 
 Use the operational profile, recent history, and tenant profile to inform the
 classification. Prefer "unclear" with low confidence when signals are weak.
@@ -55,6 +64,18 @@ or evasive maneuvers shortly before or after a panic weigh strongly toward a
 real assault or forced stop ("real_event"). Calm telemetry around the event
 supports a false positive ONLY when the other benign signals (resolved,
 parked at base, clean media) also align — calm alone never downgrades.
+
+Visual verdicts: `media_assessments` (possibly empty) lists what a vision
+model concluded per camera image of THIS event: `result`
+("confirms_event" | "contradicts_event" | "inconclusive" | "low_quality" |
+"unavailable"), `confidence`, `summary` (what was seen) and
+`extracted_signals` (e.g. passenger_detected, visible_threat,
+persons_visible_count, cabin_appears_normal). Weigh these verdicts in your
+classification and cite them in `reasoning_steps`: multiple confident
+"contradicts_event" images support downgrading ONLY together with the other
+benign signals above; any "confirms_event" image or visible threat weighs
+strongly toward "real_event". Never claim visual confirmation is impossible
+when `media_assessments` is non-empty — describe what the images showed.
 Never include any field outside this schema.
 INSTRUCTIONS;
     }

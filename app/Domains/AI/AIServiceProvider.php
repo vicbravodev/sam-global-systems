@@ -7,6 +7,7 @@ use App\Contracts\AI\MediaAssessmentAgent;
 use App\Contracts\NullImplementations\NullEventEvaluationAgent;
 use App\Contracts\NullImplementations\NullMediaAssessmentAgent;
 use App\Domains\AI\Events\AIEvaluationCompleted;
+use App\Domains\AI\Listeners\AssessPendingMediaOnEvaluationCompleted;
 use App\Domains\AI\Listeners\BroadcastAIEvaluationCompleted;
 use App\Domains\AI\Listeners\EvaluateMediaOnEventMediaAvailable;
 use App\Domains\AI\Listeners\EvaluateOnEventContextBuilt;
@@ -51,6 +52,9 @@ class AIServiceProvider extends ServiceProvider
         Event::listen(EventContextBuilt::class, EvaluateOnEventContextBuilt::class);
         Event::listen(EventMediaAvailable::class, EvaluateMediaOnEventMediaAvailable::class);
         Event::listen(AIEvaluationCompleted::class, BroadcastAIEvaluationCompleted::class);
+        // Backfill assessments for media that persisted before this evaluation
+        // existed (extraction and text evaluation race on separate queues).
+        Event::listen(AIEvaluationCompleted::class, AssessPendingMediaOnEvaluationCompleted::class);
 
         // Laravel's dispatcher does not fire parent-class listeners for
         // child events, so we register against both `AgentPrompted` and

@@ -71,7 +71,10 @@ class IncidentInboxController extends Controller
         $users = $this->resolveUsers(
             $incidents->map(fn (Incident $incident) => $incident->currentAssignment)
                 ->filter(fn ($assignment) => $assignment?->assigned_to_type === AssigneeType::User)
-                ->map(fn ($assignment) => (int) $assignment->assigned_to_id),
+                ->map(fn ($assignment) => (int) $assignment->assigned_to_id)
+                // Los que tienen tomado un incidente se resuelven en la misma
+                // consulta que los asignados: la bandeja pinta ambos nombres.
+                ->concat($incidents->map(fn (Incident $incident) => $incident->claimed_by_user_id)),
         );
 
         return Inertia::render('incidents/index', [
@@ -259,6 +262,7 @@ class IncidentInboxController extends Controller
             'timeline',
             'comments',
             'evidence',
+            'resolution',
             'eventLinks.normalizedEvent.eventType',
             'eventLinks.normalizedEvent.eventSeverity',
             'eventLinks.normalizedEvent.asset',
@@ -271,11 +275,15 @@ class IncidentInboxController extends Controller
             ->concat($incident->comments->map(fn ($comment) => (int) $comment->user_id))
             ->concat($incident->timeline
                 ->filter(fn ($entry) => $entry->actor_type === TimelineActorType::User)
-                ->map(fn ($entry) => (int) $entry->actor_id));
+                ->map(fn ($entry) => (int) $entry->actor_id))
+            ->push($incident->claimed_by_user_id);
 
         $users = $this->resolveUsers($userIds);
 
         $detail = $this->presenter->toDetail($incident, $users);
+        // Incluido también en la rama JSON: el panel de la bandeja muestra el
+        // veredicto visual agregado y las miniaturas sin navegación completa.
+        $detail['mediaSummary'] = $this->mediaSummary($incident);
 
         if ($request->wantsJson()) {
             return response()->json($detail);
@@ -290,6 +298,88 @@ class IncidentInboxController extends Controller
             'members' => fn () => $this->members($current_team),
             'reclassifyOptions' => fn () => $this->reclassifyOptions(),
         ]);
+    }
+
+    /**
+     * Veredicto visual agregado del evento origen: cuántas medias hay, cuántas
+     * evaluó la IA y en qué sentido, más hasta 4 miniaturas para el panel de
+     * la bandeja. Null cuando el incidente no tiene evento origen.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function mediaSummary(Incident $incident): ?array
+    {
+        if ($incident->related_event_id === null) {
+            return null;
+        }
+
+        $media = EventMediaContext::query()
+            ->where('normalized_event_id', $incident->related_event_id)
+            ->orderByDesc('id')
+            ->get();
+
+        $evaluationIds = AIEventEvaluation::withoutGlobalScopes()
+            ->where('normalized_event_id', $incident->related_event_id)
+            ->select('id');
+
+        // Un veredicto por media: la evaluación más reciente gana.
+        $verdicts = AIMediaAssessment::query()
+            ->whereIn('evaluation_id', $evaluationIds)
+            ->orderByDesc('assessed_at')
+            ->get(['event_media_context_id', 'result'])
+            ->unique('event_media_context_id');
+
+        $countFor = fn (string $result): int => $verdicts
+            ->filter(fn (AIMediaAssessment $assessment) => $assessment->result?->value === $result)
+            ->count();
+
+        $storage = app(ObjectStorage::class);
+
+        $thumbnails = $media
+            ->filter(fn (EventMediaContext $item) => in_array($item->media_type?->value, ['image', 'snapshot'], true))
+            ->take(4)
+            ->map(function (EventMediaContext $item) use ($storage): array {
+                $url = $item->thumbnail_url ?? $item->media_url;
+
+                if ($url === null && $item->storage_path !== null) {
+                    try {
+                        $url = $storage->temporaryUrl($item->storage_path, now()->addMinutes(30));
+                    } catch (\Throwable) {
+                        $url = null;
+                    }
+                }
+
+                return [
+                    'id' => (int) $item->id,
+                    'url' => $url,
+                    'mediaType' => $item->media_type?->value,
+                ];
+            })
+            ->values()
+            ->all();
+
+        $pendingRequest = EventMediaRequest::query()
+            ->where('normalized_event_id', $incident->related_event_id)
+            ->whereIn('status', ['pending', 'sent', 'processing'])
+            ->exists();
+
+        return [
+            'total' => $media->count(),
+            'images' => $media
+                ->filter(fn (EventMediaContext $item) => in_array($item->media_type?->value, ['image', 'snapshot'], true))
+                ->count(),
+            'clips' => $media
+                ->filter(fn (EventMediaContext $item) => in_array($item->media_type?->value, ['video', 'clip'], true))
+                ->count(),
+            'assessed' => $verdicts->count(),
+            'confirms' => $countFor('confirms_event'),
+            'contradicts' => $countFor('contradicts_event'),
+            'inconclusive' => $countFor('inconclusive'),
+            'lowQuality' => $countFor('low_quality'),
+            'unavailable' => $countFor('unavailable'),
+            'pendingRequest' => $pendingRequest,
+            'thumbnails' => $thumbnails,
+        ];
     }
 
     /**
@@ -432,7 +522,10 @@ class IncidentInboxController extends Controller
      */
     private function resolveUsers(Collection $ids): Collection
     {
-        $ids = $ids->filter()->unique()->values();
+        // $ids puede llegar como Eloquent Collection "impura" (p. ej. tras
+        // concat() sobre una EloquentCollection vacía): forzar a base
+        // Collection evita que unique() invoque getKey() sobre enteros.
+        $ids = $ids->toBase()->filter()->unique()->values();
 
         if ($ids->isEmpty()) {
             return collect();

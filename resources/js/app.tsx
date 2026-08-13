@@ -7,6 +7,7 @@ import AdminLayout from '@/layouts/admin-layout';
 import AuthLayout from '@/layouts/auth-layout';
 import OpsLayout from '@/layouts/ops-layout';
 import SettingsLayout from '@/layouts/settings/layout';
+import TenantSettingsLayout from '@/layouts/settings/tenant-settings-layout';
 
 const appName = import.meta.env.VITE_APP_NAME || 'SAM';
 
@@ -19,14 +20,14 @@ createInertiaApp({
                 return null;
             case name.startsWith('auth/'):
                 return AuthLayout;
-            // Team-scoped settings (roles, tenant config) live in the ops
-            // shell, not in the user-level settings layout. Must match
-            // before `settings/`.
+            // Team-scoped settings (roles, tenant config) viven en el shell
+            // ops con la sub-nav unificada de Ajustes (C2), a ancho completo.
+            // Debe coincidir antes de `settings/`.
             case name.startsWith('settings/roles'):
             case name.startsWith('settings/tenant-config'):
-                return OpsLayout;
+                return [OpsLayout, TenantSettingsLayout];
             // Settings de usuario y equipos viven en el shell ops con la
-            // sub-nav "Cuenta" (F1.1: un solo producto, un solo shell).
+            // sub-nav unificada de Ajustes (C2: un solo menú con sub-secciones).
             case name.startsWith('settings/'):
             case name.startsWith('teams/'):
                 return [OpsLayout, SettingsLayout];

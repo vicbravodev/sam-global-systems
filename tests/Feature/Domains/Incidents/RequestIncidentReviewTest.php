@@ -47,7 +47,7 @@ class RequestIncidentReviewTest extends TestCase
             ->first();
 
         $this->assertNotNull($entry);
-        $this->assertSame('Human review requested', $entry->title);
+        $this->assertSame('Revisión humana solicitada', $entry->title);
 
         Event::assertDispatched(
             IncidentStatusChanged::class,

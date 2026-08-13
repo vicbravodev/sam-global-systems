@@ -48,9 +48,19 @@ class ResolveRecipients
                 ? (RecipientType::tryFrom($entry['recipient_type']) ?? RecipientType::ExternalContact)
                 : RecipientType::ExternalContact;
 
+            $email = isset($entry['email']) && is_string($entry['email'])
+                ? $entry['email']
+                : (str_contains($address, '@') ? $address : null);
+
+            $phone = isset($entry['phone']) && is_string($entry['phone'])
+                ? $entry['phone']
+                : ($this->looksLikePhone($address) ? $address : null);
+
             $descriptors[] = new RecipientDescriptor(
                 recipientType: $type,
                 address: $address,
+                email: $email,
+                phone: $phone,
                 name: isset($entry['name']) && is_string($entry['name']) ? $entry['name'] : null,
                 referenceId: isset($entry['recipient_reference_id']) ? (string) $entry['recipient_reference_id'] : null,
                 channelPreference: isset($entry['channel_preference']) && is_string($entry['channel_preference']) ? $entry['channel_preference'] : null,
@@ -83,6 +93,8 @@ class ResolveRecipients
             $descriptors[] = new RecipientDescriptor(
                 recipientType: RecipientType::User,
                 address: $user->email,
+                email: $user->email,
+                phone: $user->phone,
                 name: $user->name,
                 referenceId: (string) $user->id,
                 role: $membership->getRawOriginal('role'),
@@ -90,5 +102,10 @@ class ResolveRecipients
         }
 
         return $descriptors;
+    }
+
+    private function looksLikePhone(string $value): bool
+    {
+        return preg_match('/^\+[0-9]{8,15}$/', trim($value)) === 1;
     }
 }

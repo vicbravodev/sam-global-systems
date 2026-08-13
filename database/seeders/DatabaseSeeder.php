@@ -18,10 +18,13 @@ class DatabaseSeeder extends Seeder
         $this->call(IncidentsSeeder::class);
         $this->call(NotificationMeterSeeder::class);
         $this->call(NotificationTemplateSeeder::class);
+        // Canales de plataforma operados por SAM (credenciales Twilio en env).
+        $this->call(PlatformChannelSeeder::class);
         $this->call(AssetMeterSeeder::class);
         $this->call(IngestionMeterSeeder::class);
         $this->call(ContextMeterSeeder::class);
         $this->call(IncidentsMeterSeeder::class);
+        $this->call(OtpMeterSeeder::class);
         // PlanSeeder must run after every *MeterSeeder so meter codes resolve.
         $this->call(PlanSeeder::class);
 

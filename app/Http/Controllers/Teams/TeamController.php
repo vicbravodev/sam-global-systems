@@ -27,6 +27,8 @@ class TeamController extends Controller
 
         return Inertia::render('teams/index', [
             'teams' => $user->toUserTeams(includeCurrent: true),
+            // C3: solo el superadmin puede crear equipos/tenants.
+            'canCreateTeam' => $user->isSuperAdmin(),
         ]);
     }
 
@@ -35,6 +37,10 @@ class TeamController extends Controller
      */
     public function store(SaveTeamRequest $request, CreateTeam $createTeam): RedirectResponse
     {
+        // C3: Team = tenant. La creación de equipos/tenants es exclusiva del
+        // superadmin; un usuario normal ya no crea equipos desde su cuenta.
+        abort_unless($request->user()->isSuperAdmin(), 403);
+
         $team = $createTeam->handle($request->user(), $request->validated('name'));
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Team created.')]);

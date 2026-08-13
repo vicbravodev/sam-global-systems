@@ -26,13 +26,15 @@ class TeamTest extends TestCase
             fn (Assert $page) => $page
                 ->component('teams/index')
                 ->has('teams', 1)
-                ->where('teams.0.id', $user->currentTeam->id),
+                ->where('teams.0.id', $user->currentTeam->id)
+                ->where('canCreateTeam', false),
         );
     }
 
-    public function test_teams_can_be_created()
+    public function test_teams_can_be_created_by_a_super_admin()
     {
-        $user = User::factory()->create();
+        // C3: Team = tenant; crear equipos/tenants es exclusivo del superadmin.
+        $user = User::factory()->create(['global_role' => 'super_admin']);
 
         $response = $this
             ->actingAs($user)
@@ -48,9 +50,29 @@ class TeamTest extends TestCase
         ]);
     }
 
+    public function test_regular_users_cannot_create_teams()
+    {
+        // C3: un usuario normal ya no puede crear equipos/tenants desde su cuenta.
+        $user = User::factory()->create();
+
+        $response = $this
+            ->actingAs($user)
+            ->post(route('teams.store'), [
+                'name' => 'Equipo no permitido',
+            ]);
+
+        $response->assertForbidden();
+
+        $this->assertDatabaseMissing('teams', [
+            'name' => 'Equipo no permitido',
+        ]);
+    }
+
     public function test_team_slug_uses_next_available_suffix()
     {
-        $user = User::factory()->create();
+        // Crear equipos es exclusivo del superadmin (C3); el slug se sigue
+        // resolviendo igual.
+        $user = User::factory()->create(['global_role' => 'super_admin']);
 
         Team::factory()->create(['name' => 'Acme', 'slug' => 'acme']);
         Team::factory()->create(['name' => 'Acme One', 'slug' => 'acme-1']);

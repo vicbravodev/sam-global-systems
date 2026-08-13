@@ -20,6 +20,15 @@ import {
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { PageHeader } from '@/components/ui/page-header';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import { formatDateTime } from '@/lib/format';
 import {
     deleteJson,
     postJson,
@@ -70,8 +79,8 @@ interface AutomationPageProps {
     workflows: WorkflowRow[];
     executions: ExecutionRow[];
     options: {
-        actionTypes: string[];
-        triggerTypes: string[];
+        actionTypes: { value: string; label: string }[];
+        triggerTypes: { value: string; label: string }[];
         statuses: string[];
     };
     triggerConditionFields: Record<string, ConditionFieldDef[]>;
@@ -83,11 +92,19 @@ interface AutomationPageProps {
 }
 
 const TABS = [
-    { key: 'workflows', label: 'Workflows' },
+    { key: 'workflows', label: 'Automatizaciones' },
     { key: 'executions', label: 'Ejecuciones' },
 ] as const;
 
 type TabKey = (typeof TABS)[number]['key'];
+
+const TARGET_TYPES = [
+    { value: 'role', label: 'Rol' },
+    { value: 'user', label: 'Usuario' },
+    { value: 'email', label: 'Correo' },
+    { value: 'phone', label: 'Teléfono' },
+    { value: 'url', label: 'URL' },
+] as const;
 
 const STATUS_COLOR: Record<string, string> = {
     completed: 'text-severity-low',
@@ -101,6 +118,17 @@ const STATUS_COLOR: Record<string, string> = {
 
 function manualReference(): string {
     return `manual-${Date.now()}`;
+}
+
+function labelFor(
+    options: { value: string; label: string }[],
+    value: string | null,
+): string {
+    if (value === null) {
+        return '—';
+    }
+
+    return options.find((o) => o.value === value)?.label ?? value;
 }
 
 function useTeamBase(): string | null {
@@ -260,7 +288,7 @@ function WorkflowBuilder({
                 })),
                 is_active: true,
             }),
-            'Workflow creado.',
+            'Automatización creada.',
         );
 
         setSubmitting(false);
@@ -282,7 +310,14 @@ function WorkflowBuilder({
         <div className="flex flex-col gap-2 rounded-md border border-border p-3">
             <div className="flex flex-wrap gap-2">
                 <div className="flex flex-col gap-1">
+                    <Label
+                        htmlFor="wf-code"
+                        className="text-2xs text-fg-3 uppercase"
+                    >
+                        Código
+                    </Label>
                     <Input
+                        id="wf-code"
                         placeholder="code (ej. critico-notifica)"
                         value={form.code}
                         aria-invalid={Boolean(errors.code)}
@@ -297,7 +332,14 @@ function WorkflowBuilder({
                     />
                 </div>
                 <div className="flex flex-col gap-1">
+                    <Label
+                        htmlFor="wf-name"
+                        className="text-2xs text-fg-3 uppercase"
+                    >
+                        Nombre
+                    </Label>
                     <Input
+                        id="wf-name"
                         placeholder="Nombre"
                         value={form.name}
                         aria-invalid={Boolean(errors.name)}
@@ -311,20 +353,35 @@ function WorkflowBuilder({
                         className="max-w-64 text-xs"
                     />
                 </div>
-                <select
-                    value={form.triggerType}
-                    onChange={(e) => {
-                        setForm({ ...form, triggerType: e.target.value });
-                        setConditions({});
-                    }}
-                    className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-xs"
-                >
-                    {options.triggerTypes.map((trigger) => (
-                        <option key={trigger} value={trigger}>
-                            trigger: {trigger}
-                        </option>
-                    ))}
-                </select>
+                <div className="flex flex-col gap-1">
+                    <Label
+                        htmlFor="wf-trigger-type"
+                        className="text-2xs text-fg-3 uppercase"
+                    >
+                        Disparador
+                    </Label>
+                    <Select
+                        value={form.triggerType}
+                        onValueChange={(value) => {
+                            setForm({ ...form, triggerType: value });
+                            setConditions({});
+                        }}
+                    >
+                        <SelectTrigger id="wf-trigger-type" className="h-9">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {options.triggerTypes.map((trigger) => (
+                                <SelectItem
+                                    key={trigger.value}
+                                    value={trigger.value}
+                                >
+                                    {trigger.label}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
             </div>
 
             <span className="text-2xs text-fg-3 uppercase">
@@ -347,36 +404,52 @@ function WorkflowBuilder({
                     <span className="w-5 text-center font-mono text-2xs text-fg-3">
                         {index + 1}
                     </span>
-                    <select
+                    <Select
                         value={step.action_type}
-                        onChange={(e) =>
-                            setStep(index, 'action_type', e.target.value)
+                        onValueChange={(value) =>
+                            setStep(index, 'action_type', value)
                         }
-                        className="rounded-md border border-border bg-surface-2 px-2 py-1 text-xs"
                     >
-                        {options.actionTypes.map((action) => (
-                            <option key={action} value={action}>
-                                {action}
-                            </option>
-                        ))}
-                    </select>
-                    <select
+                        <SelectTrigger aria-label="Acción" className="h-9">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {options.actionTypes.map((action) => (
+                                <SelectItem
+                                    key={action.value}
+                                    value={action.value}
+                                >
+                                    {action.label}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <Select
                         value={step.target_type}
-                        onChange={(e) =>
-                            setStep(index, 'target_type', e.target.value)
+                        onValueChange={(value) =>
+                            setStep(index, 'target_type', value)
                         }
-                        className="rounded-md border border-border bg-surface-2 px-2 py-1 text-xs"
                     >
-                        {['role', 'user', 'email', 'phone', 'url'].map(
-                            (target) => (
-                                <option key={target} value={target}>
-                                    {target}
-                                </option>
-                            ),
-                        )}
-                    </select>
+                        <SelectTrigger
+                            aria-label="Tipo de destino"
+                            className="h-9"
+                        >
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {TARGET_TYPES.map((target) => (
+                                <SelectItem
+                                    key={target.value}
+                                    value={target.value}
+                                >
+                                    {target.label}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
                     {step.target_type === 'user' ? (
                         <Combobox
+                            aria-label="Destino"
                             options={teamTargets.users}
                             value={
                                 step.target_reference === ''
@@ -391,6 +464,7 @@ function WorkflowBuilder({
                         />
                     ) : step.target_type === 'role' ? (
                         <Combobox
+                            aria-label="Destino"
                             options={teamTargets.roles}
                             value={
                                 step.target_reference === ''
@@ -405,6 +479,7 @@ function WorkflowBuilder({
                         />
                     ) : (
                         <Input
+                            aria-label="Destino"
                             placeholder="destino (email, tel, url…)"
                             value={step.target_reference}
                             onChange={(e) =>
@@ -419,7 +494,8 @@ function WorkflowBuilder({
                     )}
                     <Input
                         type="number"
-                        title="delay en segundos"
+                        title="retraso en segundos"
+                        aria-label="Retraso en segundos"
                         value={step.delay_seconds}
                         onChange={(e) =>
                             setStep(index, 'delay_seconds', e.target.value)
@@ -455,7 +531,7 @@ function WorkflowBuilder({
                     Añadir paso
                 </Button>
                 <Button size="sm" onClick={create} disabled={submitting}>
-                    {submitting ? 'Creando…' : 'Crear workflow'}
+                    {submitting ? 'Creando…' : 'Crear automatización'}
                 </Button>
             </div>
         </div>
@@ -506,7 +582,7 @@ function EditWorkflowDialog({
                 name,
                 description: description === '' ? null : description,
             }),
-            'Workflow actualizado.',
+            'Automatización actualizada.',
         );
 
         setSaving(false);
@@ -529,12 +605,15 @@ function EditWorkflowDialog({
         >
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Editar workflow</DialogTitle>
+                    <DialogTitle>Editar automatización</DialogTitle>
                 </DialogHeader>
                 <div className="flex flex-col gap-3">
                     <div className="flex flex-col gap-1">
-                        <Label className="text-xs">Nombre</Label>
+                        <Label htmlFor="wf-edit-name" className="text-xs">
+                            Nombre
+                        </Label>
                         <Input
+                            id="wf-edit-name"
                             value={name}
                             aria-invalid={Boolean(errors.name)}
                             onChange={(e) => setName(e.target.value)}
@@ -542,8 +621,14 @@ function EditWorkflowDialog({
                         <InputError message={errors.name} className="text-xs" />
                     </div>
                     <div className="flex flex-col gap-1">
-                        <Label className="text-xs">Descripción</Label>
+                        <Label
+                            htmlFor="wf-edit-description"
+                            className="text-xs"
+                        >
+                            Descripción
+                        </Label>
                         <textarea
+                            id="wf-edit-description"
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
                             rows={3}
@@ -555,9 +640,10 @@ function EditWorkflowDialog({
                         />
                     </div>
                     <p className="text-2xs text-fg-3">
-                        El código del workflow ({workflow?.code}) identifica el
-                        registro y no se puede cambiar. Para editar los pasos,
-                        elimina el workflow y créalo de nuevo.
+                        El código de la automatización ({workflow?.code})
+                        identifica el registro y no se puede cambiar. Para
+                        editar los pasos, elimina la automatización y créala de
+                        nuevo.
                     </p>
                 </div>
                 <DialogFooter>
@@ -604,7 +690,9 @@ function WorkflowsTab({
             putJson(`${base}/workflows/${workflow.id}`, {
                 is_active: !workflow.isActive,
             }),
-            workflow.isActive ? 'Workflow desactivado.' : 'Workflow activado.',
+            workflow.isActive
+                ? 'Automatización desactivada.'
+                : 'Automatización activada.',
         );
     };
 
@@ -615,7 +703,7 @@ function WorkflowsTab({
 
         const result = await submit(
             deleteJson(`${base}/workflows/${workflow.id}`),
-            'Workflow eliminado.',
+            'Automatización eliminada.',
         );
 
         if (result.ok) {
@@ -632,7 +720,7 @@ function WorkflowsTab({
             postJson(`${base}/workflows/${workflow.id}/trigger`, {
                 source_reference_id: manualReference(),
             }),
-            'Workflow disparado.',
+            'Automatización disparada.',
         );
     };
 
@@ -645,7 +733,7 @@ function WorkflowsTab({
                         variant={creating ? 'ghost' : 'outline'}
                         onClick={() => setCreating(!creating)}
                     >
-                        {creating ? 'Cancelar' : 'Nuevo workflow'}
+                        {creating ? 'Cancelar' : 'Nueva automatización'}
                     </Button>
                 )}
             </div>
@@ -665,14 +753,14 @@ function WorkflowsTab({
                         <EmptyState
                             icon={Workflow}
                             title="Todavía no hay automatizaciones"
-                            description="Un workflow reacciona solo: cuando se crea o escala un incidente puede notificar al equipo, pedir media o ejecutar acciones sin que nadie lo toque."
+                            description="Una automatización reacciona sola: cuando se crea o escala un incidente puede notificar al equipo, pedir media o ejecutar acciones sin que nadie lo toque."
                             action={
                                 canManage ? (
                                     <Button
                                         size="sm"
                                         onClick={() => setCreating(true)}
                                     >
-                                        Nuevo workflow
+                                        Nueva automatización
                                     </Button>
                                 ) : undefined
                             }
@@ -687,7 +775,10 @@ function WorkflowsTab({
                         <CardTitle className="flex flex-wrap items-center gap-2 text-base">
                             {workflow.name}
                             <Badge variant="outline" className="text-fg-3">
-                                {workflow.triggerType}
+                                {labelFor(
+                                    options.triggerTypes,
+                                    workflow.triggerType,
+                                )}
                             </Badge>
                             <Badge
                                 variant="outline"
@@ -758,7 +849,12 @@ function WorkflowsTab({
                                         variant="outline"
                                         className="font-mono text-3xs"
                                     >
-                                        {String(step.action_type ?? '—')}
+                                        {step.action_type
+                                            ? labelFor(
+                                                  options.actionTypes,
+                                                  step.action_type,
+                                              )
+                                            : '—'}
                                     </Badge>
                                     <span className="text-fg-3">→</span>
                                     {String(step.target_type ?? '')}{' '}
@@ -784,10 +880,10 @@ function WorkflowsTab({
 
             <ConfirmDialog
                 open={deleting !== null}
-                title="Eliminar workflow"
+                title="Eliminar automatización"
                 description={
                     deleting
-                        ? `¿Seguro que deseas eliminar el workflow "${deleting.name}"? Dejará de reaccionar a incidentes y decisiones. Esta acción no se puede deshacer.`
+                        ? `¿Seguro que deseas eliminar la automatización "${deleting.name}"? Dejará de reaccionar a incidentes y decisiones. Esta acción no se puede deshacer.`
                         : ''
                 }
                 onConfirm={() => {
@@ -897,11 +993,7 @@ function ExecutionsTab({
                                         {execution.errorMessage ?? '—'}
                                     </td>
                                     <td className="py-2 pr-4 font-mono text-2xs whitespace-nowrap">
-                                        {execution.executedAt
-                                            ? new Date(
-                                                  execution.executedAt,
-                                              ).toLocaleString('es')
-                                            : '—'}
+                                        {formatDateTime(execution.executedAt)}
                                     </td>
                                     <td className="py-2 text-right whitespace-nowrap">
                                         {canManage &&
@@ -967,15 +1059,10 @@ export default function AutomationIndex() {
         <>
             <Head title="Automatizaciones" />
             <div className="flex flex-col gap-4 p-5">
-                <div>
-                    <h1 className="text-md font-semibold text-fg-1">
-                        Automatizaciones
-                    </h1>
-                    <p className="text-xs text-fg-3">
-                        Workflows que reaccionan a decisiones e incidentes, y el
-                        historial de acciones ejecutadas.
-                    </p>
-                </div>
+                <PageHeader
+                    title="Automatizaciones"
+                    description="Automatizaciones que reaccionan a decisiones e incidentes, y el historial de acciones ejecutadas."
+                />
 
                 <div className="flex flex-wrap gap-1 border-b border-border">
                     {TABS.map((item) => (

@@ -66,7 +66,7 @@ class CreateManualIncident
                 entryType: TimelineEntryType::Created,
                 actorType: TimelineActorType::User,
                 actorId: $creator->id,
-                title: 'Incident created manually by '.Str::limit((string) $creator->name, 60),
+                title: 'Incidente creado manualmente por '.Str::limit((string) $creator->name, 60),
                 payload: [
                     'source_type' => IncidentSourceType::Manual->value,
                     'creator_id' => $creator->id,

@@ -9,6 +9,7 @@ use App\Domains\Incidents\Enums\IncidentStatusCode;
 use App\Domains\Incidents\Enums\TimelineActorType;
 use App\Domains\Incidents\Enums\TimelineEntryType;
 use App\Domains\Incidents\Models\Incident;
+use App\Domains\Incidents\Support\IncidentSuppression;
 use App\Domains\Notifications\Actions\SendNotification;
 use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Enums\NotificationPriority;
@@ -70,6 +71,11 @@ class CheckIncidentAcknowledgementJob implements ShouldQueue
             return;
         }
 
+        // Somebody already claimed it: a human is on it, the watchdog stays quiet.
+        if (IncidentSuppression::isUnderHumanControl($incident)) {
+            return;
+        }
+
         // Delivered before the SLA actually expired (clock skew, sync queue in
         // tests): not a breach yet, never escalate early.
         if ($this->level === 0 && $this->attempt === 1 && $incident->sla_due_at !== null && now()->lt($incident->sla_due_at)) {
@@ -85,8 +91,8 @@ class CheckIncidentAcknowledgementJob implements ShouldQueue
                 incident: $incident,
                 entryType: TimelineEntryType::SlaBreached,
                 actorType: TimelineActorType::System,
-                title: 'SLA breached',
-                description: "Incident not acknowledged before its SLA (escalation level {$this->level}).",
+                title: 'SLA incumplido',
+                description: "El incidente no fue atendido antes de su SLA (nivel de escalamiento {$this->level}).",
                 payload: [
                     'level' => $this->level,
                     'sla_due_at' => $incident->sla_due_at?->toIso8601String(),
@@ -96,7 +102,7 @@ class CheckIncidentAcknowledgementJob implements ShouldQueue
             if ($incident->status?->code !== IncidentStatusCode::Escalated->value) {
                 $incident = $escalateIncident->execute(
                     $incident,
-                    reason: 'SLA breached without acknowledgement.',
+                    reason: 'SLA vencido sin atención (ACK).',
                     escalatedByType: IncidentCreatorType::System,
                 );
             }

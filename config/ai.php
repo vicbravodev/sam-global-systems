@@ -181,4 +181,23 @@ return [
         'media_debounce_seconds' => (int) env('AI_REEVALUATION_MEDIA_DEBOUNCE_SECONDS', 60),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Categories Excluded From AI Evaluation
+    |--------------------------------------------------------------------------
+    |
+    | Event categories whose classification already comes authoritatively from
+    | the provider (Samsara safety events: harsh braking, speeding, distraction,
+    | drowsy, mobile usage…), or whose volume makes per-event AI analysis
+    | wasteful (maintenance: the offline-asset watchdog emits one device_offline
+    | per silent asset, so a fleet-wide outage floods hundreds of events and
+    | can exhaust the tenant's monthly token quota, starving critical events
+    | like panic). Skipped events are still persisted and feed correlation for
+    | high-value incidents (panic, jamming). Resolved by
+    | `App\Domains\AI\Support\AIEvaluationGate`.
+    |
+    */
+
+    'skip_evaluation_categories' => ['safety', 'maintenance'],
+
 ];

@@ -86,7 +86,7 @@ class CloseIncident
                 entryType: TimelineEntryType::Resolved,
                 actorType: $resolvedByType === IncidentCreatorType::User ? TimelineActorType::User : TimelineActorType::System,
                 actorId: $resolvedById,
-                title: 'Incident resolved: '.$resolutionCode->value,
+                title: 'Incidente resuelto: '.$resolutionCode->value,
                 description: $summary,
                 payload: [
                     'resolution_code' => $resolutionCode->value,
@@ -100,7 +100,7 @@ class CloseIncident
                     entryType: TimelineEntryType::Closed,
                     actorType: $resolvedByType === IncidentCreatorType::User ? TimelineActorType::User : TimelineActorType::System,
                     actorId: $resolvedById,
-                    title: 'Incident closed',
+                    title: 'Incidente cerrado',
                 );
             }
 

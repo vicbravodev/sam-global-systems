@@ -1,4 +1,5 @@
-import { Head, router, usePage } from '@inertiajs/react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
+import { Radio, SlidersHorizontal } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import InputError from '@/components/input-error';
@@ -14,10 +15,18 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
-    deleteJson,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import { formatDateTime } from '@/lib/format';
+import {
     postJson,
     putJson,
     readErrorMessage,
@@ -92,7 +101,6 @@ interface ChannelRow {
     isActive: boolean;
     isGlobal: boolean;
     enabledForTeam: boolean;
-    configSummary: Record<string, string>;
 }
 
 interface VersionRow {
@@ -106,11 +114,10 @@ interface VersionRow {
 interface TenantConfigProps {
     settings: SettingRow[];
     aiProfile: AiProfile;
+    // Sólo se ofrecen las opciones del campo realmente vivo (automation_level);
+    // ver el comentario en AiTab para el resto de la historia.
     aiProfileOptions: {
-        riskTolerances: string[];
-        falsePositiveTolerances: string[];
-        automationLevels: string[];
-        mediaStrategies: string[];
+        automationLevels: { value: string; label: string }[];
     };
     notificationPolicies: NotificationPolicyRow[];
     escalationConfigs: EscalationConfigRow[];
@@ -123,7 +130,7 @@ interface TenantConfigProps {
     versions: VersionRow[];
     channels: ChannelRow[];
     branding: BrandingProp;
-    channelTypes: string[];
+    channelTypes: { value: string; label: string }[];
     canManageChannels: boolean;
     canManage: boolean;
 }
@@ -131,7 +138,7 @@ interface TenantConfigProps {
 const TABS = [
     { key: 'general', label: 'General' },
     { key: 'ai', label: 'Perfil IA' },
-    { key: 'notifications', label: 'Notificaciones' },
+    { key: 'notifications', label: 'Política de notificaciones' },
     { key: 'escalation', label: 'Escalación' },
     { key: 'schedule', label: 'Horario on-call' },
     { key: 'channels', label: 'Canales' },
@@ -404,8 +411,12 @@ function GeneralTab({
                     </CardTitle>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-4 text-sm">
-                    <label className="flex items-start gap-2">
+                    <label
+                        htmlFor="tc-auto-request"
+                        className="flex items-start gap-2"
+                    >
                         <input
+                            id="tc-auto-request"
                             type="checkbox"
                             checked={autoRequest}
                             disabled={!canManage}
@@ -418,36 +429,44 @@ function GeneralTab({
                                 críticos
                             </span>
                             <span className="block text-xs text-fg-3">
-                                {MEDIA_AUTO_REQUEST_KEY} — consume cuota de
-                                retrievals del proveedor (default: apagado).
+                                Consume cuota de retrievals del proveedor
+                                (apagado por defecto).
+                            </span>
+                            <span className="block font-mono text-3xs text-fg-3">
+                                {MEDIA_AUTO_REQUEST_KEY}
                             </span>
                         </span>
                     </label>
 
                     <div className="flex flex-col gap-1">
                         <Label className="text-xs">
-                            Resolución externa de pánico ({PANIC_AUTO_CLOSE_KEY}
-                            )
+                            Resolución externa de pánico
                         </Label>
-                        <select
+                        <Select
                             value={panicMode}
                             disabled={!canManage}
-                            onChange={(e) => setPanicMode(e.target.value)}
-                            className="w-64 rounded-md border border-border bg-surface-1 px-2 py-1.5 text-sm"
+                            onValueChange={setPanicMode}
                         >
-                            <option value="annotate">
-                                Solo anotar (annotate)
-                            </option>
-                            <option value="close">
-                                Cerrar incidente (close)
-                            </option>
-                        </select>
+                            <SelectTrigger className="h-9 w-64">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="annotate">
+                                    Solo anotar (annotate)
+                                </SelectItem>
+                                <SelectItem value="close">
+                                    Cerrar incidente (close)
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <span className="block font-mono text-3xs text-fg-3">
+                            {PANIC_AUTO_CLOSE_KEY}
+                        </span>
                     </div>
 
                     <div className="flex flex-col gap-1">
                         <Label className="text-xs">
-                            GPS fresco: umbral de obsolescencia en segundos (
-                            {LIVE_LOCATION_KEY})
+                            GPS fresco: umbral de obsolescencia en segundos
                         </Label>
                         <Input
                             type="number"
@@ -462,6 +481,9 @@ function GeneralTab({
                             message={stalenessError ?? undefined}
                             className="text-xs"
                         />
+                        <span className="block font-mono text-3xs text-fg-3">
+                            {LIVE_LOCATION_KEY}
+                        </span>
                     </div>
 
                     {canManage && (
@@ -477,58 +499,67 @@ function GeneralTab({
             <Card>
                 <CardHeader>
                     <CardTitle className="text-sm uppercase">
-                        Otros settings ({otherSettings.length})
+                        Otros ajustes ({otherSettings.length})
                     </CardTitle>
                 </CardHeader>
                 <CardContent>
                     {otherSettings.length === 0 ? (
-                        <p className="text-xs text-fg-3">
-                            Sin settings adicionales.
-                        </p>
+                        <EmptyState
+                            className="min-h-0 gap-0.5 px-0 py-4"
+                            icon={SlidersHorizontal}
+                            title="Sin ajustes adicionales"
+                            description="Aquí aparecerán los ajustes que no tienen un control dedicado en esta página."
+                        />
                     ) : (
-                        <table className="w-full text-left text-xs">
-                            <thead className="text-2xs text-fg-3 uppercase">
-                                <tr>
-                                    <th className="py-1">Setting</th>
-                                    <th className="py-1">Grupo</th>
-                                    <th className="py-1">Valor</th>
-                                    <th className="py-1">v</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {otherSettings.map((s) => {
-                                    const known = SETTING_LABELS[s.key];
+                        // D3: scroll horizontal contenido + ancho mínimo para que
+                        // GRUPO/VALOR no se encimen en móvil.
+                        <div className="overflow-x-auto">
+                            <table className="w-full min-w-[32rem] text-left text-xs">
+                                <thead className="text-2xs text-fg-3 uppercase">
+                                    <tr>
+                                        <th className="py-1 pr-4">Setting</th>
+                                        <th className="py-1 pr-4">Grupo</th>
+                                        <th className="py-1 pr-4">Valor</th>
+                                        <th className="py-1">v</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {otherSettings.map((s) => {
+                                        const known = SETTING_LABELS[s.key];
 
-                                    return (
-                                        <tr
-                                            key={s.id}
-                                            className="border-t border-border/50 text-fg-2"
-                                        >
-                                            <td className="py-2 pr-4">
-                                                <span className="block text-fg-1">
-                                                    {known?.label ?? s.key}
-                                                </span>
-                                                {known && (
-                                                    <span className="block text-2xs text-fg-3">
-                                                        {known.description}
+                                        return (
+                                            <tr
+                                                key={s.id}
+                                                className="border-t border-border/50 text-fg-2"
+                                            >
+                                                <td className="py-2 pr-4">
+                                                    <span className="block text-fg-1">
+                                                        {known?.label ?? s.key}
                                                     </span>
-                                                )}
-                                                <span className="block font-mono text-3xs text-fg-3">
-                                                    {s.key}
-                                                </span>
-                                            </td>
-                                            <td className="py-2">{s.group}</td>
-                                            <td className="py-2 font-mono text-2xs">
-                                                {JSON.stringify(s.value)}
-                                            </td>
-                                            <td className="py-2">
-                                                {s.version}
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
+                                                    {known && (
+                                                        <span className="block text-2xs text-fg-3">
+                                                            {known.description}
+                                                        </span>
+                                                    )}
+                                                    <span className="block font-mono text-3xs text-fg-3">
+                                                        {s.key}
+                                                    </span>
+                                                </td>
+                                                <td className="py-2 pr-4">
+                                                    {s.group}
+                                                </td>
+                                                <td className="py-2 pr-4 font-mono text-2xs">
+                                                    {JSON.stringify(s.value)}
+                                                </td>
+                                                <td className="py-2">
+                                                    {s.version}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
                     )}
                 </CardContent>
             </Card>
@@ -548,14 +579,18 @@ function AiTab({
     canManage: boolean;
 }) {
     const base = useTeamBase();
+    // risk_tolerance / false_positive_tolerance / media_strategy ya no tienen
+    // control en esta UI (ver comentario más abajo) y dejaron de mandarse en
+    // el payload de guardado. UpdateTenantAIProfileRequest los relajó de
+    // `required` a `sometimes`, y el controlador conserva el valor
+    // persistido actual cuando faltan — así que ya no hace falta re-enviar
+    // un snapshot capturado al montar el formulario (que podía pisar un
+    // cambio hecho por otra vía mientras la pestaña seguía abierta).
     const [form, setForm] = useState({
         profile_code: profile.profileCode ?? 'custom',
         name: profile.name ?? 'Perfil del tenant',
         description: profile.description ?? '',
-        risk_tolerance: profile.riskTolerance ?? 'medium',
-        false_positive_tolerance: profile.falsePositiveTolerance ?? 'medium',
         automation_level: profile.automationLevel ?? 'assisted',
-        media_strategy: profile.mediaStrategy ?? 'optional',
     });
     const [saving, setSaving] = useState(false);
 
@@ -565,27 +600,12 @@ function AiTab({
     const selects: {
         key: keyof typeof form;
         label: string;
-        options: string[];
+        options: { value: string; label: string }[];
     }[] = [
-        {
-            key: 'risk_tolerance',
-            label: 'Tolerancia al riesgo',
-            options: options.riskTolerances,
-        },
-        {
-            key: 'false_positive_tolerance',
-            label: 'Tolerancia a falsos positivos',
-            options: options.falsePositiveTolerances,
-        },
         {
             key: 'automation_level',
             label: 'Nivel de automatización',
             options: options.automationLevels,
-        },
-        {
-            key: 'media_strategy',
-            label: 'Estrategia de media',
-            options: options.mediaStrategies,
         },
     ];
 
@@ -629,21 +649,33 @@ function AiTab({
                         onChange={(e) => set('description', e.target.value)}
                     />
                 </div>
+                {/*
+                  Sólo se expone automation_level: es el único campo de TenantAIProfile que
+                  hoy llega al pipeline (ver app/Domains/AI/Data/TenantAIProfileData.php).
+                  Los demás se retiraron de la UI hasta que exista consumidor real.
+                */}
                 {selects.map((select) => (
                     <div key={select.key} className="flex flex-col gap-1">
                         <Label className="text-xs">{select.label}</Label>
-                        <select
+                        <Select
                             value={form[select.key]}
                             disabled={!canManage}
-                            onChange={(e) => set(select.key, e.target.value)}
-                            className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-sm"
+                            onValueChange={(value) => set(select.key, value)}
                         >
-                            {select.options.map((option) => (
-                                <option key={option} value={option}>
-                                    {option}
-                                </option>
-                            ))}
-                        </select>
+                            <SelectTrigger className="h-9">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {select.options.map((option) => (
+                                    <SelectItem
+                                        key={option.value}
+                                        value={option.value}
+                                    >
+                                        {option.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
                     </div>
                 ))}
                 {canManage && (
@@ -753,8 +785,8 @@ function NotificationsTab({
             <CardContent className="flex flex-col gap-4">
                 {drafts.length === 0 && (
                     <p className="text-xs text-fg-3">
-                        Sin políticas — aplican los defaults del sistema (email
-                        + web; críticos añaden sms/push).
+                        Sin políticas: aplican los defaults del sistema (email +
+                        web; críticos añaden sms/push).
                     </p>
                 )}
                 {drafts.map((policy, index) => (
@@ -802,8 +834,12 @@ function NotificationsTab({
                                 }
                                 className="w-56 text-xs"
                             />
-                            <label className="flex items-center gap-1 text-xs text-fg-2">
+                            <label
+                                htmlFor={`tc-policy-active-${index}`}
+                                className="flex items-center gap-1 text-xs text-fg-2"
+                            >
                                 <input
+                                    id={`tc-policy-active-${index}`}
                                     type="checkbox"
                                     checked={policy.isActive}
                                     disabled={!canManage}
@@ -839,9 +875,11 @@ function NotificationsTab({
                             {CHANNEL_OPTIONS.map((channel) => (
                                 <label
                                     key={channel}
+                                    htmlFor={`tc-policy-${index}-channel-${channel}`}
                                     className="flex items-center gap-1 text-xs text-fg-2"
                                 >
                                     <input
+                                        id={`tc-policy-${index}-channel-${channel}`}
                                         type="checkbox"
                                         checked={policy.allowedChannels.includes(
                                             channel,
@@ -926,7 +964,7 @@ function EscalationTab({
 }: {
     configs: EscalationConfigRow[];
     conditionFields: ConditionFieldDef[];
-    channelTypes: string[];
+    channelTypes: { value: string; label: string }[];
     recipientOptions: TenantConfigProps['recipientOptions'];
     canManage: boolean;
 }) {
@@ -987,8 +1025,8 @@ function EscalationTab({
             {configs.length === 0 && (
                 <Card>
                     <CardContent className="flex items-center justify-between py-4 text-xs text-fg-3">
-                        Sin configuración de escalación — el SLA (P6) no escala
-                        por niveles hasta definir los steps.
+                        Sin configuración de escalación: el SLA no escala por
+                        niveles hasta que definas los pasos.
                         {canManage && (
                             <Button
                                 size="sm"
@@ -1104,7 +1142,7 @@ function EscalationStepsEditor({
     onChange,
 }: {
     steps: EscalationStepDraft[];
-    channelTypes: string[];
+    channelTypes: { value: string; label: string }[];
     recipientOptions: TenantConfigProps['recipientOptions'];
     disabled: boolean;
     onChange: (steps: EscalationStepDraft[]) => void;
@@ -1139,9 +1177,13 @@ function EscalationStepsEditor({
                     <span className="w-5 text-center font-mono text-2xs text-fg-3">
                         {index + 1}
                     </span>
-                    <label className="flex items-center gap-1.5 text-xs text-fg-2">
+                    <label
+                        htmlFor={`esc-step-${step.id}-delay`}
+                        className="flex items-center gap-1.5 text-xs text-fg-2"
+                    >
                         Esperar
                         <Input
+                            id={`esc-step-${step.id}-delay`}
                             type="number"
                             min="0"
                             value={step.delayMinutes}
@@ -1158,11 +1200,13 @@ function EscalationStepsEditor({
                     </label>
                     <div className="flex flex-wrap items-center gap-1">
                         {channelTypes.map((channel) => {
-                            const active = step.channels.includes(channel);
+                            const active = step.channels.includes(
+                                channel.value,
+                            );
 
                             return (
                                 <button
-                                    key={channel}
+                                    key={channel.value}
                                     type="button"
                                     disabled={disabled}
                                     onClick={() =>
@@ -1170,9 +1214,13 @@ function EscalationStepsEditor({
                                             ...step,
                                             channels: active
                                                 ? step.channels.filter(
-                                                      (c) => c !== channel,
+                                                      (c) =>
+                                                          c !== channel.value,
                                                   )
-                                                : [...step.channels, channel],
+                                                : [
+                                                      ...step.channels,
+                                                      channel.value,
+                                                  ],
                                         })
                                     }
                                     aria-pressed={active}
@@ -1182,7 +1230,7 @@ function EscalationStepsEditor({
                                             : 'border-border text-fg-3 hover:text-fg-1'
                                     }`}
                                 >
-                                    {channel}
+                                    {channel.label}
                                 </button>
                             );
                         })}
@@ -1210,9 +1258,13 @@ function EscalationStepsEditor({
                         disabled={disabled}
                         className="h-8 w-64 text-xs"
                     />
-                    <label className="flex items-center gap-1.5 text-xs text-fg-2">
+                    <label
+                        htmlFor={`esc-step-${step.id}-attempts`}
+                        className="flex items-center gap-1.5 text-xs text-fg-2"
+                    >
                         Intentos
                         <Input
+                            id={`esc-step-${step.id}-attempts`}
                             type="number"
                             min="1"
                             value={step.attempts}
@@ -1281,7 +1333,7 @@ function EscalationCard({
 }: {
     config: EscalationConfigRow;
     conditionFields: ConditionFieldDef[];
-    channelTypes: string[];
+    channelTypes: { value: string; label: string }[];
     recipientOptions: TenantConfigProps['recipientOptions'];
     canManage: boolean;
     saving: boolean;
@@ -1404,8 +1456,8 @@ function ScheduleTab({
         return (
             <Card>
                 <CardContent className="py-4 text-xs text-fg-3">
-                    Sin perfiles de horario — la asignación on-call (P5) usa el
-                    fallback (primer admin del equipo). Los perfiles se crean al
+                    Sin perfiles de horario: la asignación on-call usa el
+                    respaldo (primer admin del equipo). Los perfiles se crean al
                     configurar la integración o por API.
                 </CardContent>
             </Card>
@@ -1494,7 +1546,7 @@ function ScheduleCard({
                     />
                 </div>
                 <JsonField
-                    label="Shift rules (turnos on-call que usa P5)"
+                    label="Reglas de turno (JSON)"
                     value={rawShifts}
                     onChange={setRawShifts}
                     disabled={!canManage}
@@ -1515,142 +1567,19 @@ function ScheduleCard({
     );
 }
 
-// ---- Channels tab (F5c) ----
-
-const CHANNEL_CONFIG_FIELDS: Record<string, { key: string; label: string }[]> =
-    {
-        slack: [{ key: 'slack_webhook_url', label: 'Webhook URL de Slack' }],
-        sms: [
-            { key: 'twilio_account_sid', label: 'Twilio Account SID' },
-            { key: 'twilio_auth_token', label: 'Twilio Auth Token' },
-            { key: 'from', label: 'Número emisor (E.164 o MG…)' },
-        ],
-        whatsapp: [
-            { key: 'twilio_account_sid', label: 'Twilio Account SID' },
-            { key: 'twilio_auth_token', label: 'Twilio Auth Token' },
-            { key: 'from', label: 'Emisor (whatsapp:+…)' },
-        ],
-        voice: [
-            { key: 'twilio_account_sid', label: 'Twilio Account SID' },
-            { key: 'twilio_auth_token', label: 'Twilio Auth Token' },
-            { key: 'from', label: 'Número de voz (E.164)' },
-        ],
-        push: [
-            {
-                key: 'firebase_credentials',
-                label: 'Credenciales Firebase (JSON)',
-            },
-        ],
-        webhook: [
-            { key: 'url', label: 'URL destino' },
-            { key: 'secret', label: 'Secreto HMAC' },
-        ],
-        email: [],
-        web: [],
-    };
+// ---- Channels tab (V2-B1) ----
+// La mensajería la opera SAM con credenciales de plataforma (env): el tenant
+// no configura canales ni credenciales — sólo apaga/enciende los canales SAM
+// para su propio equipo.
 
 function ChannelsTab({
     channels,
-    channelTypes,
     canManage,
 }: {
     channels: ChannelRow[];
-    channelTypes: string[];
     canManage: boolean;
 }) {
     const base = useTeamBase();
-    const [creating, setCreating] = useState(false);
-    const [submitting, setSubmitting] = useState(false);
-    const [errors, setErrors] = useState<Record<string, string>>({});
-    const [form, setForm] = useState({
-        code: '',
-        name: '',
-        channelType: 'slack',
-        config: {} as Record<string, string>,
-    });
-    const [testAddress, setTestAddress] = useState('');
-    const [testingId, setTestingId] = useState<number | null>(null);
-
-    const providerFor = (type: string): string =>
-        type === 'sms' || type === 'whatsapp' || type === 'voice'
-            ? 'twilio'
-            : type === 'push'
-              ? 'firebase'
-              : type === 'slack'
-                ? 'slack'
-                : type === 'webhook'
-                  ? 'webhook'
-                  : 'mail';
-
-    const create = async () => {
-        // D-01: guard contra doble click.
-        if (base === null || submitting) {
-            return;
-        }
-
-        const nextErrors: Record<string, string> = {};
-
-        if (form.code === '') {
-            nextErrors.code = 'El código es obligatorio.';
-        }
-
-        if (form.name === '') {
-            nextErrors.name = 'El nombre es obligatorio.';
-        }
-
-        if (Object.keys(nextErrors).length > 0) {
-            setErrors(nextErrors);
-
-            return;
-        }
-
-        setErrors({});
-        setSubmitting(true);
-
-        const result = await submit(
-            postJson(`${base}/channels`, {
-                code: form.code,
-                name: form.name,
-                provider: providerFor(form.channelType),
-                channel_type: form.channelType,
-                config_json: form.config,
-                is_active: true,
-            }),
-            'Canal creado.',
-        );
-
-        setSubmitting(false);
-
-        if (result.ok) {
-            setCreating(false);
-        } else {
-            setErrors(result.fieldErrors);
-        }
-    };
-
-    const toggleActive = (channel: ChannelRow) => {
-        if (base === null) {
-            return;
-        }
-
-        void submit(
-            putJson(`${base}/channels/${channel.id}`, {
-                is_active: !channel.isActive,
-            }),
-            channel.isActive ? 'Canal desactivado.' : 'Canal activado.',
-        );
-    };
-
-    const remove = (channel: ChannelRow) => {
-        if (base === null) {
-            return;
-        }
-
-        void submit(
-            deleteJson(`${base}/channels/${channel.id}`),
-            'Canal eliminado.',
-        );
-    };
 
     const toggleGlobal = (channel: ChannelRow) => {
         if (base === null) {
@@ -1667,174 +1596,28 @@ function ChannelsTab({
         );
     };
 
-    const testChannel = async (channel: ChannelRow) => {
-        if (base === null) {
-            return;
-        }
-
-        if (testAddress === '') {
-            toast.error(
-                'Indica el destino de prueba (email, teléfono, user id o URL).',
-            );
-
-            return;
-        }
-
-        setTestingId(channel.id);
-
-        try {
-            const response = await postJson(
-                `${base}/channels/${channel.id}/test`,
-                { address: testAddress },
-            );
-            const payload = (await response.json()) as {
-                data?: { success?: boolean; error?: string | null };
-            };
-
-            if (response.ok && payload.data?.success) {
-                toast.success('Mensaje de prueba enviado. Revisa el destino.');
-            } else {
-                toast.error(
-                    payload.data?.error ?? 'La prueba del canal falló.',
-                );
-            }
-        } catch {
-            toast.error('Error de red. Vuelve a intentarlo.');
-        } finally {
-            setTestingId(null);
-        }
-    };
-
-    const fields = CHANNEL_CONFIG_FIELDS[form.channelType] ?? [];
-
     return (
         <Card>
             <CardHeader>
-                <CardTitle className="flex items-center justify-between text-sm uppercase">
+                <CardTitle className="text-sm uppercase">
                     Canales de notificación ({channels.length})
-                    {canManage && (
-                        <Button
-                            size="sm"
-                            variant={creating ? 'ghost' : 'outline'}
-                            onClick={() => setCreating(!creating)}
-                        >
-                            {creating ? 'Cancelar' : 'Nuevo canal'}
-                        </Button>
-                    )}
                 </CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
-                {creating && (
-                    <div className="flex flex-col gap-2 rounded-md border border-border p-3">
-                        <div className="flex flex-wrap gap-2">
-                            <div className="flex flex-col gap-1">
-                                <Input
-                                    placeholder="code (ej. twilio_sms)"
-                                    value={form.code}
-                                    aria-invalid={Boolean(errors.code)}
-                                    onChange={(e) =>
-                                        setForm({
-                                            ...form,
-                                            code: e.target.value,
-                                        })
-                                    }
-                                    className="w-48 font-mono text-xs"
-                                />
-                                <InputError
-                                    message={errors.code}
-                                    className="max-w-48 text-xs"
-                                />
-                            </div>
-                            <div className="flex flex-col gap-1">
-                                <Input
-                                    placeholder="Nombre"
-                                    value={form.name}
-                                    aria-invalid={Boolean(errors.name)}
-                                    onChange={(e) =>
-                                        setForm({
-                                            ...form,
-                                            name: e.target.value,
-                                        })
-                                    }
-                                    className="w-56 text-xs"
-                                />
-                                <InputError
-                                    message={errors.name}
-                                    className="max-w-56 text-xs"
-                                />
-                            </div>
-                            <select
-                                value={form.channelType}
-                                onChange={(e) =>
-                                    setForm({
-                                        ...form,
-                                        channelType: e.target.value,
-                                        config: {},
-                                    })
-                                }
-                                className="rounded-md border border-border bg-surface-1 px-2 py-1.5 text-xs"
-                            >
-                                {channelTypes.map((type) => (
-                                    <option key={type} value={type}>
-                                        {type}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                        {fields.map((field) => (
-                            <div
-                                key={field.key}
-                                className="flex flex-col gap-1"
-                            >
-                                <Label className="text-xs">{field.label}</Label>
-                                <Input
-                                    type="password"
-                                    autoComplete="off"
-                                    value={form.config[field.key] ?? ''}
-                                    onChange={(e) =>
-                                        setForm({
-                                            ...form,
-                                            config: {
-                                                ...form.config,
-                                                [field.key]: e.target.value,
-                                            },
-                                        })
-                                    }
-                                    className="max-w-md font-mono text-xs"
-                                />
-                            </div>
-                        ))}
-                        <div>
-                            <Button
-                                size="sm"
-                                onClick={create}
-                                disabled={submitting}
-                            >
-                                {submitting ? 'Creando…' : 'Crear canal'}
-                            </Button>
-                        </div>
-                    </div>
-                )}
-
-                {canManage && channels.length > 0 && (
-                    <div className="flex items-center gap-2">
-                        <Label className="text-xs whitespace-nowrap">
-                            Destino de prueba
-                        </Label>
-                        <Input
-                            placeholder="email, +52…, user id o URL"
-                            value={testAddress}
-                            onChange={(e) => setTestAddress(e.target.value)}
-                            className="max-w-xs text-xs"
-                        />
-                    </div>
-                )}
+                <p className="text-xs text-fg-3">
+                    SAM opera la mensajería por ti (email, SMS, WhatsApp y
+                    llamadas): no necesitas configurar credenciales ni
+                    proveedores. Si no quieres recibir avisos por alguna vía,
+                    apágala para tu equipo.
+                </p>
 
                 {channels.length === 0 ? (
-                    <p className="text-xs text-fg-3">
-                        Sin canales — configura Slack, Twilio (SMS/WhatsApp) o
-                        FCM para que las notificaciones y B9 operen.
-                    </p>
+                    <EmptyState
+                        className="min-h-0 gap-0.5 px-0 py-4"
+                        icon={Radio}
+                        title="Sin canales disponibles"
+                        description="SAM aún no ha habilitado canales de mensajería para tu cuenta. Contacta a soporte."
+                    />
                 ) : (
                     <ul className="flex flex-col gap-2">
                         {channels.map((channel) => (
@@ -1850,13 +1633,6 @@ function ChannelsTab({
                                 </Badge>
                                 <span className="font-medium text-fg-1">
                                     {channel.name}
-                                </span>
-                                <span className="font-mono text-2xs text-fg-3">
-                                    {Object.entries(channel.configSummary)
-                                        .map(
-                                            ([key, value]) => `${key}=${value}`,
-                                        )
-                                        .join(' · ') || 'sin config'}
                                 </span>
                                 {channel.isGlobal && (
                                     <Badge
@@ -1896,36 +1672,6 @@ function ChannelsTab({
                                             {channel.enabledForTeam
                                                 ? 'Apagar para mi equipo'
                                                 : 'Encender'}
-                                        </Button>
-                                    </span>
-                                )}
-                                {canManage && !channel.isGlobal && (
-                                    <span className="ml-auto flex gap-1">
-                                        <Button
-                                            size="sm"
-                                            variant="outline"
-                                            disabled={testingId === channel.id}
-                                            onClick={() => testChannel(channel)}
-                                        >
-                                            Probar canal
-                                        </Button>
-                                        <Button
-                                            size="sm"
-                                            variant="ghost"
-                                            onClick={() =>
-                                                toggleActive(channel)
-                                            }
-                                        >
-                                            {channel.isActive
-                                                ? 'Desactivar'
-                                                : 'Activar'}
-                                        </Button>
-                                        <Button
-                                            size="sm"
-                                            variant="ghost"
-                                            onClick={() => remove(channel)}
-                                        >
-                                            Eliminar
                                         </Button>
                                     </span>
                                 )}
@@ -2047,9 +1793,13 @@ function BrandingTab({
                         </div>
                     )}
                     {canManage && (
-                        <label className="cursor-pointer text-xs text-fg-2 underline">
+                        <label
+                            htmlFor="tc-logo-upload"
+                            className="cursor-pointer text-xs text-fg-2 underline"
+                        >
                             {uploading ? 'Subiendo…' : 'Subir logo'}
                             <input
+                                id="tc-logo-upload"
                                 type="file"
                                 accept="image/*"
                                 className="hidden"
@@ -2168,7 +1918,7 @@ function VersionsTab({ versions }: { versions: VersionRow[] }) {
             <CardContent>
                 {versions.length === 0 ? (
                     <p className="text-xs text-fg-3">
-                        Aún sin versiones — se crean automáticamente al guardar
+                        Aún sin versiones: se crean automáticamente al guardar
                         cualquier configuración.
                     </p>
                 ) : (
@@ -2182,12 +1932,8 @@ function VersionsTab({ versions }: { versions: VersionRow[] }) {
                                     v{version.version}
                                 </span>
                                 <span className="text-fg-3">
-                                    {version.createdAt
-                                        ? new Date(
-                                              version.createdAt,
-                                          ).toLocaleString('es')
-                                        : '—'}{' '}
-                                    · {version.createdByType ?? '—'}
+                                    {formatDateTime(version.createdAt)} ·{' '}
+                                    {version.createdByType ?? '—'}
                                 </span>
                                 <Button
                                     size="sm"
@@ -2225,6 +1971,7 @@ export default function TenantConfigPage() {
     const page = usePage();
     const props = page.props as unknown as TenantConfigProps;
     const [tab, setTab] = useState<TabKey>('general');
+    const base = useTeamBase();
 
     return (
         <>
@@ -2255,6 +2002,14 @@ export default function TenantConfigPage() {
                             {item.label}
                         </button>
                     ))}
+                    {base && (
+                        <Link
+                            href={`${base}/slas`}
+                            className="px-3 py-2 text-sm text-fg-3 transition-colors hover:text-fg-1"
+                        >
+                            Tiempos de respuesta
+                        </Link>
+                    )}
                 </div>
 
                 {tab === 'general' && (
@@ -2294,7 +2049,6 @@ export default function TenantConfigPage() {
                 {tab === 'channels' && (
                     <ChannelsTab
                         channels={props.channels}
-                        channelTypes={props.channelTypes}
                         canManage={props.canManageChannels}
                     />
                 )}

@@ -9,6 +9,7 @@ use App\Domains\Context\Enums\MediaType;
 use App\Infrastructure\AI\Agents\MediaInspectorAgent;
 use App\Infrastructure\AI\Agents\SdkMediaAssessmentAgent;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Ai\Responses\Data\Meta;
 use Laravel\Ai\Responses\Data\Usage;
 use Laravel\Ai\Responses\TextResponse;
@@ -91,7 +92,37 @@ class EvaluateMediaViaSdkTest extends TestCase
         app(SdkMediaAssessmentAgent::class)->assess($this->makeInput());
     }
 
-    private function makeInput(): MediaAssessmentInput
+    /**
+     * Regression: event media is persisted on the `rustfs` disk (see
+     * RustFsObjectStorage), never on `filesystems.default`. The agent must
+     * look up the attachment there or it silently prompts with zero
+     * attachments and the model reports the media as unavailable.
+     */
+    public function test_attachment_is_built_from_the_rustfs_disk_not_the_default_disk(): void
+    {
+        Storage::fake('rustfs');
+        Storage::fake('local');
+        Storage::disk('rustfs')->put('media/panic-still.jpg', 'fake-jpeg-bytes');
+
+        MediaInspectorAgent::fake([
+            new TextResponse(
+                json_encode([
+                    'result' => 'confirms_event',
+                    'confidence_score' => 0.9,
+                    'summary_text' => 'Se observa al conductor en la cabina.',
+                    'extracted_signals' => [],
+                ], JSON_THROW_ON_ERROR),
+                new Usage(promptTokens: 100, completionTokens: 50),
+                new Meta(provider: 'openai', model: 'gpt-test'),
+            ),
+        ]);
+
+        app(SdkMediaAssessmentAgent::class)->assess($this->makeInput(storagePath: 'media/panic-still.jpg'));
+
+        MediaInspectorAgent::assertPrompted(fn ($prompt) => $prompt->attachments->isNotEmpty());
+    }
+
+    private function makeInput(?string $storagePath = null): MediaAssessmentInput
     {
         return new MediaAssessmentInput(
             teamId: 1,
@@ -99,7 +130,7 @@ class EvaluateMediaViaSdkTest extends TestCase
             mediaContextId: 20,
             mediaType: MediaType::Image,
             assessmentType: MediaAssessmentType::ImageCheck,
-            storagePath: null,
+            storagePath: $storagePath,
             mimeType: 'image/jpeg',
             sizeBytes: 2048,
             durationSeconds: null,

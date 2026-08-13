@@ -8,12 +8,15 @@ use App\Domains\Incidents\Actions\StartIncidentCallVerification;
 use App\Domains\Incidents\Enums\CallVerificationStatus;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentCallVerification;
+use App\Domains\Incidents\Support\IncidentSuppression;
 use App\Domains\Incidents\Support\VerificationCallTwiml;
 use App\Domains\Notifications\Channels\TwilioVoiceCaller;
 use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Models\NotificationChannel;
+use App\Domains\Notifications\Support\PlatformTwilioConfig;
 use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
+use App\Support\JobFailureReporter;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -33,6 +36,15 @@ class PlaceVerificationCallJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public const string USAGE_METER_CODE = 'voice_calls';
+
+    /**
+     * Distinguishable `metadata_json.failure_reason` used when a verification
+     * is closed by {@see IncidentSuppression} instead of a real call outcome.
+     * `StartIncidentCallVerification` reads this to tell "the incident got
+     * claimed mid-flight" apart from a genuinely concluded chain, so a fresh
+     * start after the incident is released is not blocked forever.
+     */
+    public const string SUPPRESSED_FAILURE_REASON = 'suppressed_human_control';
 
     public int $tries = 1;
 
@@ -65,8 +77,22 @@ class PlaceVerificationCallJob implements ShouldQueue
             return;
         }
 
+        // Somebody already claimed it or acknowledged it: a human is on it,
+        // no need to keep calling. Close the attempt terminally — leaving it
+        // Pending would make StartIncidentCallVerification treat it as
+        // in-flight forever and refuse to start a new chain once the
+        // incident is released.
+        if (IncidentSuppression::isUnderHumanControl($incident)) {
+            $verification->forceFill([
+                'status' => CallVerificationStatus::Failed,
+                'metadata_json' => ['failure_reason' => self::SUPPRESSED_FAILURE_REASON],
+            ])->save();
+
+            return;
+        }
+
         $channel = $this->resolveVoiceChannel((int) $verification->team_id);
-        $config = $channel?->config_json ?? [];
+        $config = PlatformTwilioConfig::merge($channel?->config_json ?? [], ChannelType::Voice);
         $from = $config['from'] ?? null;
         $sid = $config['twilio_account_sid'] ?? $config['account_sid'] ?? null;
         $token = $config['twilio_auth_token'] ?? $config['auth_token'] ?? null;
@@ -163,9 +189,8 @@ class PlaceVerificationCallJob implements ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
-        Log::warning('PlaceVerificationCallJob failed', [
+        JobFailureReporter::report(static::class, $exception, [
             'verification_id' => $this->verificationId,
-            'error' => $exception->getMessage(),
         ]);
     }
 }

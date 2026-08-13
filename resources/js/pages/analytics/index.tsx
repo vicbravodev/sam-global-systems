@@ -6,6 +6,8 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
+import { PageHeader } from '@/components/ui/page-header';
+import { formatDate, formatDateTime } from '@/lib/format';
 import { postJson, readErrorMessage } from '@/lib/sam-fetch';
 
 interface OverviewProp {
@@ -136,6 +138,36 @@ function KpisTab({
     hasReports: boolean;
     onShowReports: () => void;
 }) {
+    // B2: cuando no hay ni resumen ni KPIs, las dos cards mostraban
+    // empty-states casi idénticos apilados. Fusionar en uno solo.
+    const noOverview = overview === null || overview.data === null;
+
+    if (noOverview && kpis.length === 0) {
+        return (
+            <Card>
+                <CardContent className="py-2">
+                    <EmptyState
+                        icon={BarChart3}
+                        title="Todavía no hay métricas para este periodo"
+                        description="Los KPIs y el resumen del tenant se calculan automáticamente cada noche con la actividad de tu operación. En cuanto haya datos, aparecerán aquí; mientras tanto, el panel muestra la actividad en vivo."
+                        action={
+                            hasReports ? (
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={onShowReports}
+                                >
+                                    <FileBarChart2 size={13} />
+                                    Ver reportes disponibles
+                                </Button>
+                            ) : undefined
+                        }
+                    />
+                </CardContent>
+            </Card>
+        );
+    }
+
     return (
         <div className="flex flex-col gap-4">
             <Card>
@@ -144,11 +176,9 @@ function KpisTab({
                         Resumen del tenant
                         {overview?.periodStart && (
                             <span className="ml-2 font-normal text-fg-3 normal-case">
-                                {new Date(
-                                    overview.periodStart,
-                                ).toLocaleDateString('es')}
+                                {formatDate(overview.periodStart)}
                                 {overview.periodEnd &&
-                                    ` — ${new Date(overview.periodEnd).toLocaleDateString('es')}`}
+                                    ` — ${formatDate(overview.periodEnd)}`}
                             </span>
                         )}
                     </CardTitle>
@@ -210,7 +240,7 @@ function KpisTab({
                                         <td className="py-2 pr-4">
                                             {kpi.periodType}
                                             {kpi.periodStart &&
-                                                ` · ${new Date(kpi.periodStart).toLocaleDateString('es')}`}
+                                                ` · ${formatDate(kpi.periodStart)}`}
                                         </td>
                                         <td className="py-2 pr-4">
                                             {kpi.dimensionType
@@ -218,11 +248,7 @@ function KpisTab({
                                                 : 'global'}
                                         </td>
                                         <td className="py-2 pr-4 font-mono text-2xs whitespace-nowrap">
-                                            {kpi.calculatedAt
-                                                ? new Date(
-                                                      kpi.calculatedAt,
-                                                  ).toLocaleString('es')
-                                                : '—'}
+                                            {formatDateTime(kpi.calculatedAt)}
                                         </td>
                                     </tr>
                                 ))}
@@ -300,7 +326,7 @@ function ReportsTab({
                         <EmptyState
                             icon={FileBarChart2}
                             title="Todavía no hay reportes configurados"
-                            description="Aquí verás reportes descargables con la actividad de tu operación: incidentes, flota y consumo. El equipo de SAM los configura contigo — escríbenos y los activamos para tu cuenta."
+                            description="Aquí verás reportes descargables con la actividad de tu operación: incidentes, flota y consumo. El equipo de SAM los configura contigo. Escríbenos y los activamos para tu cuenta."
                         />
                     ) : (
                         reports.map((report) => (
@@ -391,11 +417,9 @@ function ReportsTab({
                                             {execution.status}
                                         </td>
                                         <td className="py-2 pr-4 font-mono text-2xs whitespace-nowrap">
-                                            {execution.finishedAt
-                                                ? new Date(
-                                                      execution.finishedAt,
-                                                  ).toLocaleString('es')
-                                                : '—'}
+                                            {formatDateTime(
+                                                execution.finishedAt,
+                                            )}
                                         </td>
                                         <td className="py-2 text-right">
                                             {execution.downloadable &&
@@ -436,14 +460,10 @@ export default function AnalyticsIndex() {
         <>
             <Head title="Analítica" />
             <div className="flex flex-col gap-4 p-5">
-                <div>
-                    <h1 className="text-md font-semibold text-fg-1">
-                        Analítica
-                    </h1>
-                    <p className="text-xs text-fg-3">
-                        KPIs operativos del tenant y reportes descargables.
-                    </p>
-                </div>
+                <PageHeader
+                    title="Analítica"
+                    description="KPIs operativos del tenant y reportes descargables."
+                />
 
                 <div className="flex flex-wrap gap-1 border-b border-border">
                     {TABS.map((item) => (

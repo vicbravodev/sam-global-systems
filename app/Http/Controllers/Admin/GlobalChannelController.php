@@ -43,7 +43,10 @@ class GlobalChannelController extends Controller
 
         return Inertia::render('admin/channels/index', [
             'channels' => $channels,
-            'channelTypes' => array_map(fn (ChannelType $type) => $type->value, ChannelType::cases()),
+            'channelTypes' => array_map(
+                fn (ChannelType $type) => ['value' => $type->value, 'label' => $type->label()],
+                ChannelType::cases(),
+            ),
         ]);
     }
 

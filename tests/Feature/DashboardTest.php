@@ -9,6 +9,7 @@ use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentPriority;
 use App\Domains\Integrations\Models\IntegrationProvider;
 use App\Domains\Integrations\Models\TenantIntegration;
+use App\Domains\Normalization\Models\EventType;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\Tenancy\Models\TenantUsageCounter;
 use App\Domains\Tenancy\Models\UsageMeter;
@@ -41,6 +42,22 @@ class DashboardTest extends TestCase
             ->get(route('dashboard', ['current_team' => $team->slug]));
 
         $response->assertOk();
+    }
+
+    public function test_dashboard_renders_with_an_empty_usage_panel(): void
+    {
+        // B3: el panel "Uso del plan" se renderiza siempre (con empty-state)
+        // aunque no haya contadores, para que la columna llene el alto.
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+
+        $response = $this
+            ->actingAs($user)
+            ->get(route('dashboard', ['current_team' => $team->slug]));
+
+        $response->assertOk()->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('dashboard')
+            ->has('usage', 0));
     }
 
     public function test_dashboard_renders_all_real_data_props(): void
@@ -315,6 +332,31 @@ class DashboardTest extends TestCase
                 'The oldest event must fall outside the 8-event stream window',
             );
         });
+    }
+
+    public function test_stream_shows_the_event_type_name_not_its_code(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+
+        $eventType = EventType::factory()->create([
+            'code' => 'device_offline',
+            'name' => 'Dispositivo sin conexión',
+        ]);
+
+        NormalizedEvent::factory()->create([
+            'team_id' => $team->id,
+            'event_type_id' => $eventType->id,
+            'occurred_at' => now()->subMinutes(1),
+        ]);
+
+        $response = $this
+            ->actingAs($user)
+            ->get(route('dashboard', ['current_team' => $team->slug]));
+
+        $response->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('stream.0.type', 'Dispositivo sin conexión')
+        );
     }
 
     public function test_integrations_count_only_events_of_last_24_hours_per_provider(): void

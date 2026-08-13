@@ -43,6 +43,7 @@ use App\Http\Controllers\Teams\TeamInvitationController;
 use App\Http\Controllers\Tenancy\BillingPageController;
 use App\Http\Controllers\Tenancy\BrandingController;
 use App\Http\Controllers\Tenancy\InvoiceReceiptController;
+use App\Http\Controllers\TenantConfig\IncidentSlaController;
 use App\Http\Controllers\TenantConfig\TenantAIProfileController;
 use App\Http\Controllers\TenantConfig\TenantConfigController;
 use App\Http\Controllers\TenantConfig\TenantConfigPageController;
@@ -140,6 +141,8 @@ Route::prefix('{current_team}')
         Route::post('incidents/{incident}/reclassify', [IncidentController::class, 'reclassify'])->name('incidents.reclassify');
         Route::post('incidents/{incident}/reopen', [IncidentController::class, 'reopen'])->name('incidents.reopen');
         Route::post('incidents/{incident}/acknowledge', [IncidentController::class, 'acknowledge'])->name('incidents.acknowledge');
+        Route::post('incidents/{incident}/claim', [IncidentController::class, 'claim'])->name('incidents.claim');
+        Route::post('incidents/{incident}/release', [IncidentController::class, 'release'])->name('incidents.release');
         Route::post('incidents/{incident}/media/request', [IncidentMediaRequestController::class, 'store'])->name('incidents.media.request');
         Route::post('incidents/{incident}/escalate', [IncidentController::class, 'escalate'])->name('incidents.escalate');
         Route::post('ai/evaluations/{evaluation}/reevaluate', [AIEvaluationController::class, 'reevaluate'])->name('ai.evaluations.reevaluate');
@@ -211,11 +214,14 @@ Route::prefix('{current_team}')
         Route::post('settings/tenant-config/escalation', [TenantEscalationConfigController::class, 'store'])->name('tenant-config.escalation.store');
         Route::put('settings/tenant-config/escalation/{escalationConfig}', [TenantEscalationConfigController::class, 'update'])->name('tenant-config.escalation.update');
         Route::put('settings/tenant-config/schedule/{scheduleProfile}', [TenantScheduleProfileController::class, 'update'])->name('tenant-config.schedule.update');
-        Route::post('settings/tenant-config/channels', [NotificationChannelController::class, 'store'])->name('tenant-config.channels.store');
-        Route::put('settings/tenant-config/channels/{channel}', [NotificationChannelController::class, 'update'])->name('tenant-config.channels.update');
-        Route::delete('settings/tenant-config/channels/{channel}', [NotificationChannelController::class, 'destroy'])->name('tenant-config.channels.destroy');
-        Route::post('settings/tenant-config/channels/{channel}/test', [NotificationChannelController::class, 'test'])->name('tenant-config.channels.test');
+        // La mensajería la opera SAM con credenciales de plataforma (env);
+        // los tenants no configuran canales — sólo los apagan/encienden (V2-B1).
         Route::post('settings/tenant-config/channels/{channel}/toggle', [NotificationChannelController::class, 'toggle'])->name('tenant-config.channels.toggle');
+
+        // Tarea 7: pantalla de tiempos de respuesta (SLA) por prioridad — consume
+        // el resolver de la Tarea 6 (ResolveIncidentSla / TenantIncidentSla).
+        Route::get('settings/tenant-config/slas', [IncidentSlaController::class, 'index'])->name('tenant-config.slas.index');
+        Route::put('settings/tenant-config/slas', [IncidentSlaController::class, 'update'])->name('tenant-config.slas.update');
 
         Route::get('settings/roles', [RoleController::class, 'index'])->name('access.roles.index');
         Route::post('settings/roles', [RoleController::class, 'store'])->name('access.roles.store');

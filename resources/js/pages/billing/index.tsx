@@ -5,7 +5,9 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { formatCurrency } from '@/lib/format';
+import { EmptyState } from '@/components/ui/empty-state';
+import { PageHeader } from '@/components/ui/page-header';
+import { formatCurrency, formatDate } from '@/lib/format';
 
 interface SubscriptionProp {
     planName: string | null;
@@ -70,6 +72,23 @@ function money(value: number, currency: string | null): string {
     return formatCurrency(value, currency);
 }
 
+function MetricCell({
+    label,
+    children,
+}: {
+    label: string;
+    children: React.ReactNode;
+}) {
+    return (
+        <div className="flex flex-col gap-1 bg-surface-1 px-4 py-3">
+            <span className="text-2xs tracking-caps text-fg-3 uppercase">
+                {label}
+            </span>
+            {children}
+        </div>
+    );
+}
+
 function UsageBar({ row }: { row: UsageRow }) {
     const ratio =
         row.included > 0 ? Math.min(1, row.consumed / row.included) : 0;
@@ -102,8 +121,7 @@ function ReceiptUploader({ invoice }: { invoice: InvoiceRow }) {
         return (
             <span className="text-2xs text-severity-low">
                 Pagada
-                {invoice.paidAt &&
-                    ` el ${new Date(invoice.paidAt).toLocaleDateString('es')}`}
+                {invoice.paidAt && ` el ${formatDate(invoice.paidAt)}`}
             </span>
         );
     }
@@ -139,7 +157,7 @@ function ReceiptUploader({ invoice }: { invoice: InvoiceRow }) {
 
             if (response.ok || response.status === 201) {
                 toast.success(
-                    'Comprobante enviado — el equipo de SAM lo verificará.',
+                    'Comprobante enviado. El equipo de SAM lo verificará.',
                 );
                 router.reload({ only: ['invoices'] });
             } else if (response.status === 403) {
@@ -198,7 +216,7 @@ export default function BillingIndex() {
 
     const mailtoHref = supportEmail
         ? `mailto:${supportEmail}?subject=${encodeURIComponent(
-              `Facturación — ${currentTeam?.name ?? 'mi equipo'}`,
+              `Facturación: ${currentTeam?.name ?? 'mi equipo'}`,
           )}`
         : null;
 
@@ -206,26 +224,21 @@ export default function BillingIndex() {
         <>
             <Head title="Facturación" />
             <div className="flex flex-col gap-4 p-5">
-                <div>
-                    <h1 className="text-md font-semibold text-fg-1">
-                        Facturación
-                    </h1>
-                    <p className="text-xs text-fg-3">
-                        Plan, consumo del periodo y facturas. El pago es por
-                        transferencia bancaria — contacta a soporte para cambios
-                        de plan.
-                    </p>
-                </div>
+                <PageHeader
+                    title="Facturación"
+                    description="Plan, consumo del periodo y facturas. El pago es por transferencia bancaria. Contacta a soporte para cambios de plan."
+                />
 
-                {/* Plan */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="text-sm uppercase">
-                            Plan actual
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="text-sm text-fg-2">
-                        {subscription === null ? (
+                {/* Plan — tira compacta de métricas (B1): en vez de una
+                    tarjeta a todo el ancho con una sola línea de texto. */}
+                {subscription === null ? (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="text-sm uppercase">
+                                Plan actual
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="text-sm text-fg-2">
                             <p className="text-fg-3">
                                 Tu equipo todavía no tiene un plan activo. El
                                 equipo de SAM lo activa al confirmar tu pago;{' '}
@@ -241,11 +254,30 @@ export default function BillingIndex() {
                                 )}{' '}
                                 si ya realizaste la transferencia.
                             </p>
-                        ) : (
-                            <div className="flex flex-wrap items-center gap-3">
-                                <span className="text-lg font-semibold text-fg-1">
+                        </CardContent>
+                    </Card>
+                ) : (
+                    <div className="flex flex-col gap-2">
+                        <div className="flex items-center justify-between">
+                            <h2 className="text-2xs font-semibold tracking-caps text-fg-3 uppercase">
+                                Plan actual
+                            </h2>
+                            {currentTeam && (
+                                <Link
+                                    href={`/settings/teams/${currentTeam.id}`}
+                                    className="text-xs text-primary hover:underline"
+                                >
+                                    Datos del equipo
+                                </Link>
+                            )}
+                        </div>
+                        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border md:grid-cols-4">
+                            <MetricCell label="Plan">
+                                <span className="text-base font-semibold text-fg-1">
                                     {subscription.planName ?? '—'}
                                 </span>
+                            </MetricCell>
+                            <MetricCell label="Estado">
                                 <Badge
                                     variant="outline"
                                     className={
@@ -256,35 +288,22 @@ export default function BillingIndex() {
                                 >
                                     {subscription.status}
                                 </Badge>
-                                {subscription.basePrice !== null && (
-                                    <span>
-                                        {money(
-                                            subscription.basePrice,
-                                            subscription.currency,
-                                        )}{' '}
-                                        / {subscription.billingCycle}
-                                    </span>
-                                )}
-                                {subscription.renewsAt && (
-                                    <span className="text-fg-3">
-                                        Renueva el{' '}
-                                        {new Date(
-                                            subscription.renewsAt,
-                                        ).toLocaleDateString('es')}
-                                    </span>
-                                )}
-                                {currentTeam && (
-                                    <Link
-                                        href={`/settings/teams/${currentTeam.id}`}
-                                        className="ml-auto text-xs text-primary hover:underline"
-                                    >
-                                        Datos del equipo
-                                    </Link>
-                                )}
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
+                            </MetricCell>
+                            <MetricCell label="Precio base">
+                                <span className="text-base font-semibold text-fg-1">
+                                    {subscription.basePrice !== null
+                                        ? `${money(subscription.basePrice, subscription.currency)} / ${subscription.billingCycle}`
+                                        : '—'}
+                                </span>
+                            </MetricCell>
+                            <MetricCell label="Próxima renovación">
+                                <span className="text-base font-semibold text-fg-1">
+                                    {formatDate(subscription.renewsAt)}
+                                </span>
+                            </MetricCell>
+                        </div>
+                    </div>
+                )}
 
                 {/* Usage */}
                 <Card>
@@ -430,17 +449,11 @@ export default function BillingIndex() {
                                             className="border-t border-border/50 text-fg-2"
                                         >
                                             <td className="py-2 pr-4 whitespace-nowrap">
-                                                {invoice.periodStart
-                                                    ? new Date(
-                                                          invoice.periodStart,
-                                                      ).toLocaleDateString('es')
-                                                    : '—'}
+                                                {formatDate(
+                                                    invoice.periodStart,
+                                                )}
                                                 {' — '}
-                                                {invoice.periodEnd
-                                                    ? new Date(
-                                                          invoice.periodEnd,
-                                                      ).toLocaleDateString('es')
-                                                    : '—'}
+                                                {formatDate(invoice.periodEnd)}
                                             </td>
                                             <td className="py-2 pr-4 tabular-nums">
                                                 {money(
@@ -481,49 +494,45 @@ export default function BillingIndex() {
                     </CardContent>
                 </Card>
 
-                {/* Contacto (F1.2): el pago es por transferencia bancaria,
-                    así que el camino accionable es humano, no un checkout. */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="text-sm uppercase">
-                            ¿Dudas con tu facturación?
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="flex flex-col gap-3 text-xs text-fg-2">
-                        <p>
-                            El pago de SAM es por transferencia bancaria: al
-                            cierre de cada periodo emitimos tu factura, realizas
-                            la transferencia y subes el comprobante en la tabla
-                            de arriba. Nuestro equipo confirma el pago y
-                            mantiene tu cuenta activa.
-                        </p>
+                {/* Contacto (F1.2 + B1): el pago es por transferencia
+                    bancaria, así que el camino accionable es humano, no un
+                    checkout. Franja delgada al pie, no una Card a todo el alto. */}
+                <div className="flex flex-col gap-3 rounded-lg border border-border bg-surface-1 px-4 py-3 text-xs text-fg-2 sm:flex-row sm:items-center sm:justify-between">
+                    {invoices.length > 0 ? (
                         <p className="text-fg-3">
-                            Si algo no cuadra — montos, consumo, estado del plan
-                            o los datos bancarios para transferir — escríbenos y
-                            lo resolvemos contigo.
+                            El pago es por transferencia: emitimos tu factura,
+                            subes el comprobante arriba y SAM confirma el pago.
+                            ¿Algo no cuadra con montos, consumo o datos
+                            bancarios? Escríbenos.
                         </p>
-                        <div className="flex flex-wrap items-center gap-2">
-                            {mailtoHref && (
-                                <Button size="sm" variant="outline" asChild>
-                                    <a href={mailtoHref}>
-                                        <Mail size={13} />
-                                        Escríbenos
-                                    </a>
-                                </Button>
-                            )}
-                            {currentTeam && (
-                                <Button size="sm" variant="ghost" asChild>
-                                    <Link
-                                        href={`/settings/teams/${currentTeam.id}`}
-                                    >
-                                        <Users size={13} />
-                                        Administrar mi equipo
-                                    </Link>
-                                </Button>
-                            )}
-                        </div>
-                    </CardContent>
-                </Card>
+                    ) : (
+                        <EmptyState
+                            className="min-h-0 items-start gap-0.5 px-0 py-0 text-left"
+                            title="Todavía no hay facturas"
+                            description="Cuando SAM emita tu primera factura aparecerá aquí con su botón para subir el comprobante de transferencia."
+                        />
+                    )}
+                    <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
+                        {mailtoHref && (
+                            <Button size="sm" variant="outline" asChild>
+                                <a href={mailtoHref}>
+                                    <Mail size={13} />
+                                    Escríbenos
+                                </a>
+                            </Button>
+                        )}
+                        {currentTeam && (
+                            <Button size="sm" variant="ghost" asChild>
+                                <Link
+                                    href={`/settings/teams/${currentTeam.id}`}
+                                >
+                                    <Users size={13} />
+                                    Administrar mi equipo
+                                </Link>
+                            </Button>
+                        )}
+                    </div>
+                </div>
             </div>
         </>
     );

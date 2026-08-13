@@ -76,7 +76,7 @@ const COLUMNS: DataTableColumn<DriverRow>[] = [
     },
     {
         key: 'asset',
-        header: 'Asset asignado',
+        header: 'Activo asignado',
         width: 'w-48',
         cell: (driver) => <AssetCell asset={driver.currentAsset} />,
     },

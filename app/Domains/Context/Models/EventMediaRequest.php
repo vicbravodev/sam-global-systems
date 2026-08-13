@@ -22,6 +22,7 @@ class EventMediaRequest extends Model
         'normalized_event_id',
         'provider_id',
         'request_type',
+        'sweep_only',
         'requested_at',
         'status',
         'response_metadata_json',
@@ -52,6 +53,7 @@ class EventMediaRequest extends Model
     {
         return [
             'request_type' => MediaRequestType::class,
+            'sweep_only' => 'boolean',
             'status' => MediaRequestStatus::class,
             'requested_at' => 'datetime',
             'expires_at' => 'datetime',

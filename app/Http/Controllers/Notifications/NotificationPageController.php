@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Notifications;
 
 use App\Domains\Notifications\Actions\MarkNotificationRead;
+use App\Domains\Notifications\Enums\DeliveryStatus;
 use App\Domains\Notifications\Enums\NotificationPriority;
 use App\Domains\Notifications\Enums\NotificationSourceType;
 use App\Domains\Notifications\Enums\NotificationStatus;
@@ -123,6 +124,14 @@ class NotificationPageController extends Controller
 
         if ((int) $notification->deliveries_count === 0) {
             return 'No se envió: no había ningún canal de notificación activo o permitido para este aviso.';
+        }
+
+        // Past this point deliveries_count > 0, so "no non-skipped delivery
+        // exists" means every channel was skipped for lack of a destination.
+        if (! $notification->deliveries()
+            ->where('status', '!=', DeliveryStatus::Skipped)
+            ->exists()) {
+            return 'No se envió: faltan datos de contacto (teléfono o email) para los canales seleccionados.';
         }
 
         return 'No se envió: el sistema la descartó antes de salir por algún canal.';

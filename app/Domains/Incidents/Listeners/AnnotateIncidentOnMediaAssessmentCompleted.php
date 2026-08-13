@@ -34,7 +34,7 @@ class AnnotateIncidentOnMediaAssessmentCompleted
                 incident: $incident,
                 entryType: TimelineEntryType::MediaAssessed,
                 actorType: TimelineActorType::Ai,
-                title: 'Media assessed: '.($assessment->result?->value ?? 'unknown'),
+                title: 'Media evaluada: '.($assessment->result?->value ?? 'desconocido'),
                 description: $assessment->summary_text,
                 payload: [
                     'assessment_id' => $assessment->id,

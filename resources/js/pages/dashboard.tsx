@@ -2,6 +2,8 @@ import { Head, Link, router, usePage } from '@inertiajs/react';
 import { ChevronRight, Gauge, RefreshCw } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import {
+    Kpi,
+    KpiStrip,
     MetaChip,
     ProviderTag,
     RealtimeStatus,
@@ -11,6 +13,7 @@ import {
 import type { RealtimeState } from '@/components/sam/realtime-status';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { useRealtimeConnection } from '@/hooks/use-realtime-connection';
 import type { TeamBroadcastDetail } from '@/hooks/use-team-broadcasts';
 import { TEAM_BROADCAST_EVENT_NAME } from '@/hooks/use-team-broadcasts';
@@ -88,7 +91,66 @@ export default function Dashboard() {
                     criticalCount={kpis.criticalOpen.value}
                     openCount={kpis.openIncidents.value}
                 />
-                <KpiGrid kpis={kpis} />
+                <KpiStrip className="shrink-0">
+                    <Kpi
+                        label="Incidentes abiertos"
+                        value={String(kpis.openIncidents.value)}
+                        delta={
+                            kpis.openIncidents.deltaPct !== null
+                                ? {
+                                      value: kpis.openIncidents.deltaPct,
+                                      invert: true,
+                                  }
+                                : undefined
+                        }
+                        sub={
+                            kpis.openIncidents.deltaPct === null
+                                ? 'sin datos de ayer'
+                                : undefined
+                        }
+                        sparkline={<Spark series={kpis.openIncidents.series} />}
+                    />
+                    <Kpi
+                        label="Críticos ahora"
+                        value={String(kpis.criticalOpen.value)}
+                        sub={`SLA promedio: ${formatSlaClock(kpis.criticalOpen.avgSlaRemainingSeconds)}`}
+                        sparkline={<Spark series={kpis.criticalOpen.series} />}
+                    />
+                    <Kpi
+                        label="SLA cumplido · 7 d"
+                        value={formatPercent(kpis.slaCompliance.value)}
+                        delta={
+                            kpis.slaCompliance.deltaPp !== null
+                                ? {
+                                      value: kpis.slaCompliance.deltaPp,
+                                      unit: 'pp',
+                                  }
+                                : undefined
+                        }
+                        sub={
+                            kpis.slaCompliance.deltaPp === null
+                                ? 'sin comparativa previa'
+                                : undefined
+                        }
+                    />
+                    <Kpi
+                        label="Precisión IA · 7 d"
+                        value={formatPercent(kpis.aiPrecision.value)}
+                        delta={
+                            kpis.aiPrecision.deltaPp !== null
+                                ? {
+                                      value: kpis.aiPrecision.deltaPp,
+                                      unit: 'pp',
+                                  }
+                                : undefined
+                        }
+                        sub={
+                            kpis.aiPrecision.deltaPp === null
+                                ? 'sin comparativa previa'
+                                : undefined
+                        }
+                    />
+                </KpiStrip>
                 {/* Jerarquía cockpit (F3.1): incidentes abiertos es el panel
                     dominante; el stream vive como columna lateral persistente. */}
                 <div className="grid items-start gap-4 lg:grid-cols-[2fr_1fr]">
@@ -162,12 +224,12 @@ function PageHead({
     );
 }
 
-interface SparklineProps {
+interface SparkProps {
     series: number[];
-    colorVar: string;
 }
 
-function Sparkline({ series, colorVar }: SparklineProps) {
+/** Mini sparkline bajo el valor de un Kpi. */
+function Spark({ series }: SparkProps) {
     const max = Math.max(...series);
     const min = Math.min(...series);
 
@@ -190,7 +252,7 @@ function Sparkline({ series, colorVar }: SparklineProps) {
 
     return (
         <svg
-            className="absolute right-3 bottom-3 opacity-55"
+            className="opacity-55"
             width="90"
             height="30"
             viewBox="0 0 90 30"
@@ -198,7 +260,7 @@ function Sparkline({ series, colorVar }: SparklineProps) {
         >
             <polyline
                 fill="none"
-                stroke={`var(${colorVar})`}
+                stroke="var(--fg-3)"
                 strokeWidth="1.5"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -208,73 +270,12 @@ function Sparkline({ series, colorVar }: SparklineProps) {
     );
 }
 
-interface KpiCardProps {
-    label: string;
-    value: string;
-    delta: string;
-    deltaColorClass: string;
-    series?: number[];
-    sparkColorVar?: string;
-    /** Sin muestra en el periodo: estado vacío explícito en vez de un número. */
-    empty?: boolean;
-}
-
-function KpiCard({
-    label,
-    value,
-    delta,
-    deltaColorClass,
-    series,
-    sparkColorVar,
-    empty = false,
-}: KpiCardProps) {
-    // Celda cockpit (F3.1): sin card individual; la fila de KPIs es una sola
-    // franja con hairlines entre celdas.
-    return (
-        <div className="relative overflow-hidden bg-surface-1 px-4 py-3">
-            <span className="sam-caps">{label}</span>
-            {empty ? (
-                <div className="flex h-[46px] items-center text-sm text-fg-3">
-                    Sin datos del periodo
-                </div>
-            ) : (
-                <>
-                    <div className="mt-1 font-mono text-2xl tracking-tight tabular-nums">
-                        {value}
-                    </div>
-                    <div
-                        className={cn(
-                            'mt-1 font-mono text-2xs tabular-nums',
-                            deltaColorClass,
-                        )}
-                    >
-                        {delta}
-                    </div>
-                </>
-            )}
-            {!empty && series && sparkColorVar ? (
-                <Sparkline series={series} colorVar={sparkColorVar} />
-            ) : null}
-        </div>
-    );
-}
-
 function formatPercent(value: number | null): string {
     if (value === null) {
         return '—';
     }
 
     return `${value.toLocaleString('es', { maximumFractionDigits: 1 })} %`;
-}
-
-function formatDeltaPp(deltaPp: number | null): string {
-    if (deltaPp === null) {
-        return 'sin comparativa previa';
-    }
-
-    const arrow = deltaPp >= 0 ? '↗' : '↘';
-
-    return `${arrow} ${Math.abs(deltaPp).toLocaleString('es', { maximumFractionDigits: 1 })} pp`;
 }
 
 function formatSlaClock(seconds: number | null): string {
@@ -287,68 +288,6 @@ function formatSlaClock(seconds: number | null): string {
     const rest = clamped % 60;
 
     return `${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}`;
-}
-
-function KpiGrid({ kpis }: { kpis: DashboardProps['kpis'] }) {
-    const openDelta =
-        kpis.openIncidents.deltaPct === null
-            ? 'sin datos de ayer'
-            : `${kpis.openIncidents.deltaPct >= 0 ? '↗' : '↘'} ${Math.abs(
-                  kpis.openIncidents.deltaPct,
-              ).toLocaleString('es', { maximumFractionDigits: 1 })} % vs ayer`;
-
-    return (
-        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border xl:grid-cols-4">
-            <KpiCard
-                label="Incidentes abiertos"
-                value={String(kpis.openIncidents.value)}
-                delta={openDelta}
-                deltaColorClass={
-                    kpis.openIncidents.deltaPct === null
-                        ? 'text-fg-3'
-                        : kpis.openIncidents.deltaPct > 0
-                          ? 'text-severity-critical'
-                          : 'text-severity-low'
-                }
-                series={kpis.openIncidents.series}
-                sparkColorVar="--fg-3"
-            />
-            <KpiCard
-                label="Críticos ahora"
-                value={String(kpis.criticalOpen.value)}
-                delta={`SLA promedio: ${formatSlaClock(
-                    kpis.criticalOpen.avgSlaRemainingSeconds,
-                )}`}
-                deltaColorClass="text-severity-high"
-                series={kpis.criticalOpen.series}
-                sparkColorVar="--fg-3"
-            />
-            <KpiCard
-                label="SLA cumplido · 7 d"
-                value={formatPercent(kpis.slaCompliance.value)}
-                delta={formatDeltaPp(kpis.slaCompliance.deltaPp)}
-                deltaColorClass={
-                    kpis.slaCompliance.deltaPp === null
-                        ? 'text-fg-3'
-                        : kpis.slaCompliance.deltaPp >= 0
-                          ? 'text-severity-low'
-                          : 'text-severity-high'
-                }
-                empty={kpis.slaCompliance.value === null}
-            />
-            <KpiCard
-                label="Precisión IA · 7 d"
-                value={formatPercent(kpis.aiPrecision.value)}
-                delta={formatDeltaPp(kpis.aiPrecision.deltaPp)}
-                deltaColorClass={
-                    kpis.aiPrecision.deltaPp === null
-                        ? 'text-fg-3'
-                        : 'text-confidence-high'
-                }
-                empty={kpis.aiPrecision.value === null}
-            />
-        </div>
-    );
 }
 
 function OpenIncidentsPanel({
@@ -577,10 +516,6 @@ function IntegrationsPanel({
 }
 
 function UsagePanel({ usage }: { usage: UsageCounterRow[] }) {
-    if (usage.length === 0) {
-        return null;
-    }
-
     return (
         <Card className="gap-0 overflow-hidden py-0">
             <CardHeader className="flex flex-row items-center justify-between border-b border-border px-4 py-3">
@@ -592,54 +527,69 @@ function UsagePanel({ usage }: { usage: UsageCounterRow[] }) {
                     {usage.length === 1 ? 'medidor' : 'medidores'}
                 </span>
             </CardHeader>
-            <CardContent className="grid gap-3 p-3 sm:grid-cols-2 xl:grid-cols-4">
-                {usage.map((counter) => {
-                    const hasOverage = counter.overage > 0;
-                    const fillPct = Math.min(counter.percentUsed ?? 0, 100);
+            {usage.length === 0 ? (
+                <CardContent className="p-3">
+                    {/* B3: el panel queda presente (en vez de return null) para
+                        que la columna izquierda llene el alto y no haya hueco. */}
+                    <EmptyState
+                        icon={Gauge}
+                        title="Sin consumo medido en este periodo todavía"
+                        description="Cuando tu operación genere actividad facturable (eventos, media, llamadas de verificación), el consumo del plan aparecerá aquí."
+                    />
+                </CardContent>
+            ) : (
+                <CardContent className="grid gap-3 p-3 sm:grid-cols-2 xl:grid-cols-4">
+                    {usage.map((counter) => {
+                        const hasOverage = counter.overage > 0;
+                        const fillPct = Math.min(counter.percentUsed ?? 0, 100);
 
-                    return (
-                        <div
-                            key={counter.meterCode}
-                            className="rounded-md border border-border bg-surface-2 p-3"
-                        >
-                            <div className="truncate text-sm font-semibold">
-                                {counter.meterName}
+                        return (
+                            <div
+                                key={counter.meterCode}
+                                className="rounded-md border border-border bg-surface-2 p-3"
+                            >
+                                <div className="truncate text-sm font-semibold">
+                                    {counter.meterName}
+                                </div>
+                                <div className="mt-1 font-mono text-xl tabular-nums">
+                                    {counter.consumed.toLocaleString('es')}
+                                    <span className="text-sm text-fg-3">
+                                        {' '}
+                                        /{' '}
+                                        {counter.included.toLocaleString(
+                                            'es',
+                                        )}{' '}
+                                        {counter.unit}
+                                    </span>
+                                </div>
+                                <div className="mt-2 h-1 overflow-hidden rounded-full bg-surface-3">
+                                    <div
+                                        className={cn(
+                                            'h-full rounded-full',
+                                            hasOverage
+                                                ? 'bg-severity-high'
+                                                : 'bg-primary',
+                                        )}
+                                        style={{ width: `${fillPct}%` }}
+                                    />
+                                </div>
+                                <div className="mt-2 flex items-center justify-between font-mono text-3xs text-fg-3">
+                                    <span>
+                                        {hasOverage
+                                            ? `+${counter.overage.toLocaleString('es')} excedente`
+                                            : formatPercent(
+                                                  counter.percentUsed,
+                                              )}
+                                    </span>
+                                    {counter.periodEnd ? (
+                                        <span>renueva {counter.periodEnd}</span>
+                                    ) : null}
+                                </div>
                             </div>
-                            <div className="mt-1 font-mono text-xl tabular-nums">
-                                {counter.consumed.toLocaleString('es')}
-                                <span className="text-sm text-fg-3">
-                                    {' '}
-                                    / {counter.included.toLocaleString(
-                                        'es',
-                                    )}{' '}
-                                    {counter.unit}
-                                </span>
-                            </div>
-                            <div className="mt-2 h-1 overflow-hidden rounded-full bg-surface-3">
-                                <div
-                                    className={cn(
-                                        'h-full rounded-full',
-                                        hasOverage
-                                            ? 'bg-severity-high'
-                                            : 'bg-primary',
-                                    )}
-                                    style={{ width: `${fillPct}%` }}
-                                />
-                            </div>
-                            <div className="mt-2 flex items-center justify-between font-mono text-3xs text-fg-3">
-                                <span>
-                                    {hasOverage
-                                        ? `+${counter.overage.toLocaleString('es')} excedente`
-                                        : formatPercent(counter.percentUsed)}
-                                </span>
-                                {counter.periodEnd ? (
-                                    <span>renueva {counter.periodEnd}</span>
-                                ) : null}
-                            </div>
-                        </div>
-                    );
-                })}
-            </CardContent>
+                        );
+                    })}
+                </CardContent>
+            )}
         </Card>
     );
 }

@@ -63,8 +63,14 @@ class AutomationPageController extends Controller
                 ])
                 ->all(),
             'options' => fn (): array => [
-                'actionTypes' => array_map(fn (ActionType $type) => $type->value, ActionType::cases()),
-                'triggerTypes' => array_map(fn (WorkflowTriggerType $type) => $type->value, WorkflowTriggerType::cases()),
+                'actionTypes' => array_map(
+                    fn (ActionType $type) => ['value' => $type->value, 'label' => $type->label()],
+                    ActionType::cases(),
+                ),
+                'triggerTypes' => array_map(
+                    fn (WorkflowTriggerType $type) => ['value' => $type->value, 'label' => $type->label()],
+                    WorkflowTriggerType::cases(),
+                ),
                 'statuses' => array_map(fn (WorkflowStatus $status) => $status->value, WorkflowStatus::cases()),
             ],
             'triggerConditionFields' => fn () => TriggerConditionCatalog::all(),

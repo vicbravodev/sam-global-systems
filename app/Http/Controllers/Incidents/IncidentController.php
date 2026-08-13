@@ -3,9 +3,11 @@
 namespace App\Http\Controllers\Incidents;
 
 use App\Domains\Incidents\Actions\AcknowledgeIncident;
+use App\Domains\Incidents\Actions\ClaimIncident;
 use App\Domains\Incidents\Actions\CreateManualIncident;
 use App\Domains\Incidents\Actions\EscalateIncident;
 use App\Domains\Incidents\Actions\ReclassifyIncident;
+use App\Domains\Incidents\Actions\ReleaseIncident;
 use App\Domains\Incidents\Enums\IncidentCreatorType;
 use App\Domains\Incidents\Enums\IncidentStatusCode;
 use App\Domains\Incidents\Models\Incident;
@@ -19,6 +21,7 @@ use App\Http\Requests\Incidents\UpdateIncidentRequest;
 use App\Models\Team;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 class IncidentController extends Controller
 {
@@ -148,6 +151,39 @@ class IncidentController extends Controller
         $updated = $acknowledge->execute($incident, $request->user()->id);
 
         return response()->json(['data' => $updated]);
+    }
+
+    /**
+     * Toma humana del incidente. El 409 distingue «llegaste tarde» de un
+     * fallo de permisos: el incidente existe y el usuario puede gestionarlo,
+     * pero otro monitorista ganó la carrera.
+     */
+    public function claim(Request $request, Team $current_team, Incident $incident, ClaimIncident $claim): JsonResponse
+    {
+        $this->authorize('update', $incident);
+
+        if (! $claim->execute($incident, $request->user())) {
+            return response()->json(
+                ['message' => 'Otro monitorista ya tomó este incidente.'],
+                SymfonyResponse::HTTP_CONFLICT,
+            );
+        }
+
+        return response()->json(['data' => $incident->fresh()]);
+    }
+
+    public function release(Request $request, Team $current_team, Incident $incident, ReleaseIncident $release): JsonResponse
+    {
+        $this->authorize('update', $incident);
+
+        if (! $release->execute($incident, $request->user())) {
+            return response()->json(
+                ['message' => 'Este incidente lo tiene otro monitorista.'],
+                SymfonyResponse::HTTP_CONFLICT,
+            );
+        }
+
+        return response()->json(['data' => $incident->fresh()]);
     }
 
     public function escalate(Request $request, Team $current_team, Incident $incident, EscalateIncident $escalate): JsonResponse

@@ -174,7 +174,7 @@
     /* Base surfaces (OKLCH, neutral grays — warm-leaning by 2°) */
     --background: oklch(0.985 0.002 260);
     --foreground: oklch(0.145 0.005 260);
-    --surface-1: oklch(1 0 0);
+    --surface-1: oklch(0.995 0.002 260);
     --surface-2: oklch(0.97 0.003 260);
     --surface-3: oklch(0.945 0.004 260);
     --muted: oklch(0.97 0.003 260);
@@ -436,6 +436,15 @@
     border-radius: var(--radius-sm);
     background: var(--surface-2);
     color: var(--fg-2);
+}
+
+/* Hide scrollbars on horizontally-scrollable strips (mobile tab/filter bars).
+   Keeps the strip scrollable by touch/trackpad without a visible track. */
+.scrollbar-none {
+    scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+    display: none;
 }
 
 /* -------------------- Realtime arrival flash -------------------- */

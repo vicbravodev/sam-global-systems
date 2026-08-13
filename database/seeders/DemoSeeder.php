@@ -137,16 +137,16 @@ class DemoSeeder extends Seeder
         foreach (['safety', 'emergency', 'compliance', 'operational', 'maintenance'] as $code) {
             $categories[$code] = EventCategory::query()->updateOrCreate(
                 ['code' => $code],
-                ['name' => Str::headline($code), 'description' => Str::headline($code).' events'],
+                ['name' => Str::headline($code), 'description' => 'Eventos de '.Str::headline($code)],
             );
         }
 
         $severities = [];
         foreach ([
-            ['code' => 'low', 'label' => 'Low', 'level' => 1, 'color' => '#22c55e', 'response_sla_seconds' => null],
-            ['code' => 'medium', 'label' => 'Medium', 'level' => 2, 'color' => '#f59e0b', 'response_sla_seconds' => 3600],
-            ['code' => 'high', 'label' => 'High', 'level' => 3, 'color' => '#f97316', 'response_sla_seconds' => 900],
-            ['code' => 'critical', 'label' => 'Critical', 'level' => 4, 'color' => '#ef4444', 'response_sla_seconds' => 300],
+            ['code' => 'low', 'label' => 'Baja', 'level' => 1, 'color' => '#22c55e', 'response_sla_seconds' => null],
+            ['code' => 'medium', 'label' => 'Media', 'level' => 2, 'color' => '#f59e0b', 'response_sla_seconds' => 3600],
+            ['code' => 'high', 'label' => 'Alta', 'level' => 3, 'color' => '#f97316', 'response_sla_seconds' => 900],
+            ['code' => 'critical', 'label' => 'Crítica', 'level' => 4, 'color' => '#ef4444', 'response_sla_seconds' => 300],
         ] as $def) {
             $severities[$def['code']] = EventSeverity::query()->updateOrCreate(
                 ['code' => $def['code']],
@@ -169,6 +169,7 @@ class DemoSeeder extends Seeder
             ['code' => 'camera_obstructed', 'name' => 'Camera Obstructed', 'category' => 'compliance', 'severity' => 'high'],
             ['code' => 'geofence_exit', 'name' => 'Geofence Exit', 'category' => 'operational', 'severity' => 'low'],
             ['code' => 'vehicle_idle', 'name' => 'Vehicle Idle', 'category' => 'operational', 'severity' => 'low'],
+            ['code' => 'unmapped', 'name' => 'Unmapped', 'category' => 'operational', 'severity' => 'low'],
         ];
 
         foreach ($types as $def) {
@@ -488,14 +489,14 @@ class DemoSeeder extends Seeder
         $types = IncidentType::query()->get()->keyBy('code');
 
         $samples = [
-            ['type' => 'panic_emergency', 'priority' => 'critical', 'status' => IncidentStatusCode::Open, 'title' => 'Panic button activated near downtown'],
-            ['type' => 'collision', 'priority' => 'critical', 'status' => IncidentStatusCode::Escalated, 'title' => 'Collision detected on Highway 15'],
-            ['type' => 'driver_fatigue', 'priority' => 'high', 'status' => IncidentStatusCode::InReview, 'title' => 'Driver fatigue alert (3rd this week)'],
-            ['type' => 'camera_obstructed', 'priority' => 'medium', 'status' => IncidentStatusCode::Open, 'title' => 'Camera obstructed on Van V-203'],
-            ['type' => 'route_deviation', 'priority' => 'medium', 'status' => IncidentStatusCode::InReview, 'title' => 'Vehicle off planned route'],
-            ['type' => 'geofence_breach', 'priority' => 'high', 'status' => IncidentStatusCode::Open, 'title' => 'Asset exited authorized zone'],
-            ['type' => 'suspicious_stop', 'priority' => 'medium', 'status' => IncidentStatusCode::Resolved, 'title' => 'Long unscheduled stop investigated'],
-            ['type' => 'panic_emergency', 'priority' => 'critical', 'status' => IncidentStatusCode::Closed, 'title' => 'Panic button false positive (training)'],
+            ['type' => 'panic_emergency', 'priority' => 'critical', 'status' => IncidentStatusCode::Open, 'title' => 'Botón de pánico activado cerca del centro'],
+            ['type' => 'collision', 'priority' => 'critical', 'status' => IncidentStatusCode::Escalated, 'title' => 'Colisión detectada en la Carretera 15'],
+            ['type' => 'driver_fatigue', 'priority' => 'high', 'status' => IncidentStatusCode::InReview, 'title' => 'Alerta de fatiga del conductor (3.ª esta semana)'],
+            ['type' => 'camera_obstructed', 'priority' => 'medium', 'status' => IncidentStatusCode::Open, 'title' => 'Cámara obstruida en la Van V-203'],
+            ['type' => 'route_deviation', 'priority' => 'medium', 'status' => IncidentStatusCode::InReview, 'title' => 'Vehículo fuera de la ruta planificada'],
+            ['type' => 'geofence_breach', 'priority' => 'high', 'status' => IncidentStatusCode::Open, 'title' => 'Activo salió de zona autorizada'],
+            ['type' => 'suspicious_stop', 'priority' => 'medium', 'status' => IncidentStatusCode::Resolved, 'title' => 'Parada larga no programada investigada'],
+            ['type' => 'panic_emergency', 'priority' => 'critical', 'status' => IncidentStatusCode::Closed, 'title' => 'Falso positivo de botón de pánico (capacitación)'],
         ];
 
         foreach ($samples as $i => $sample) {
@@ -543,11 +544,11 @@ class DemoSeeder extends Seeder
     private function createNotifications(Team $team, User $owner): void
     {
         $samples = [
-            ['type' => 'incident.created', 'priority' => NotificationPriority::Critical, 'status' => NotificationStatus::Sent, 'subject' => 'Critical: Panic button activated', 'preview' => 'Panic button activated on Truck T-101 near downtown.'],
-            ['type' => 'incident.created', 'priority' => NotificationPriority::High, 'status' => NotificationStatus::Sent, 'subject' => 'Driver fatigue alert', 'preview' => 'Carlos Hernández flagged for fatigue on shift hour 9.'],
-            ['type' => 'incident.status_changed', 'priority' => NotificationPriority::Normal, 'status' => NotificationStatus::Sent, 'subject' => 'Incident #3 moved to In Review', 'preview' => 'Driver fatigue case is now under review.'],
-            ['type' => 'action.executed', 'priority' => NotificationPriority::Normal, 'status' => NotificationStatus::Sent, 'subject' => 'Workflow executed: Notify supervisor', 'preview' => 'Automation completed for incident #1.'],
-            ['type' => 'incident.created', 'priority' => NotificationPriority::High, 'status' => NotificationStatus::Pending, 'subject' => 'Geofence breach', 'preview' => 'Van V-204 exited the warehouse perimeter.'],
+            ['type' => 'incident.created', 'priority' => NotificationPriority::Critical, 'status' => NotificationStatus::Sent, 'subject' => 'Crítico: botón de pánico activado', 'preview' => 'Botón de pánico activado en el Truck T-101 cerca del centro.'],
+            ['type' => 'incident.created', 'priority' => NotificationPriority::High, 'status' => NotificationStatus::Sent, 'subject' => 'Alerta de fatiga del conductor', 'preview' => 'Carlos Hernández marcado por fatiga en la hora 9 del turno.'],
+            ['type' => 'incident.status_changed', 'priority' => NotificationPriority::Normal, 'status' => NotificationStatus::Sent, 'subject' => 'Incidente #3 pasó a En revisión', 'preview' => 'El caso de fatiga del conductor está en revisión.'],
+            ['type' => 'action.executed', 'priority' => NotificationPriority::Normal, 'status' => NotificationStatus::Sent, 'subject' => 'Automatización ejecutada: Notificar al supervisor', 'preview' => 'Automatización completada para el incidente #1.'],
+            ['type' => 'incident.created', 'priority' => NotificationPriority::High, 'status' => NotificationStatus::Pending, 'subject' => 'Salida de geocerca', 'preview' => 'La Van V-204 salió del perímetro del almacén.'],
         ];
 
         foreach ($samples as $i => $sample) {

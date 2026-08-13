@@ -103,4 +103,47 @@ class ProfileUpdateTest extends TestCase
 
         $this->assertNotNull($user->fresh());
     }
+
+    public function test_valid_e164_phone_is_accepted(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+
+        $this->patch(route('profile.update'), [
+            'name' => $user->name,
+            'email' => $user->email,
+            'phone' => '+5215555550123',
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame('+5215555550123', $user->fresh()->phone);
+    }
+
+    public function test_malformed_phone_is_rejected(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+
+        $this->patch(route('profile.update'), [
+            'name' => $user->name,
+            'email' => $user->email,
+            'phone' => '4155551234',
+        ])->assertSessionHasErrors('phone');
+    }
+
+    public function test_changing_phone_nullifies_phone_verified_at(): void
+    {
+        $user = User::factory()->create([
+            'phone' => '+5215555550123',
+            'phone_verified_at' => now(),
+        ]);
+        $this->actingAs($user);
+
+        $this->patch(route('profile.update'), [
+            'name' => $user->name,
+            'email' => $user->email,
+            'phone' => '+5215555550999',
+        ])->assertSessionHasNoErrors();
+
+        $this->assertNull($user->fresh()->phone_verified_at);
+    }
 }

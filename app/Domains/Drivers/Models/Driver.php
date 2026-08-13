@@ -25,6 +25,7 @@ class Driver extends Model
         'last_name',
         'full_name',
         'employee_code',
+        'phone',
         'status',
         'metadata_json',
         'first_seen_at',

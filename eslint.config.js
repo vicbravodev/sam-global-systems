@@ -111,6 +111,11 @@ export default [
             'node_modules',
             'public',
             'bootstrap/ssr',
+            // Agent worktrees live under .claude/worktrees/ and carry a full
+            // copy of the app. Without this, linting from the main checkout
+            // walks into every open worktree and reports tens of thousands of
+            // errors that belong to another checkout entirely.
+            '.claude',
             'tailwind.config.js',
             'vite.config.ts',
             'resources/js/actions/**',

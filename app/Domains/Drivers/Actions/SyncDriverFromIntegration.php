@@ -6,6 +6,7 @@ use App\Domains\Drivers\Events\DriverDiscovered;
 use App\Domains\Drivers\Models\Driver;
 use App\Domains\Drivers\Models\DriverExternalReference;
 use App\Domains\Integrations\Models\TenantIntegration;
+use App\Support\PhoneNumber;
 
 class SyncDriverFromIntegration
 {
@@ -56,6 +57,7 @@ class SyncDriverFromIntegration
             'last_name' => $incomingLast,
             'full_name' => $fullName !== '' ? $fullName : $driver->full_name,
             'employee_code' => $driverData['employee_code'] ?? null,
+            'phone' => PhoneNumber::normalize($driverData['phone'] ?? null),
             'external_primary_id' => $driverData['external_id'],
             'metadata_json' => $driverData['metadata'] ?? null,
             'last_seen_at' => now(),
@@ -90,6 +92,7 @@ class SyncDriverFromIntegration
             'last_name' => $lastName,
             'full_name' => $fullName,
             'employee_code' => $driverData['employee_code'] ?? null,
+            'phone' => PhoneNumber::normalize($driverData['phone'] ?? null),
             'metadata_json' => $driverData['metadata'] ?? null,
             'first_seen_at' => now(),
             'last_seen_at' => now(),

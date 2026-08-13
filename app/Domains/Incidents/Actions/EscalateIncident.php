@@ -48,7 +48,7 @@ class EscalateIncident
                 entryType: TimelineEntryType::Escalated,
                 actorType: $escalatedByType === IncidentCreatorType::User ? TimelineActorType::User : TimelineActorType::System,
                 actorId: $escalatedById,
-                title: 'Incident escalated',
+                title: 'Incidente escalado',
                 description: $reason,
                 payload: [
                     'previous_status' => $previousStatusCode,

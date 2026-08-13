@@ -50,7 +50,7 @@ class UpdateIncidentPriorityJob implements ShouldQueue
             incident: $incident,
             entryType: TimelineEntryType::PriorityChanged,
             actorType: TimelineActorType::System,
-            title: 'Priority changed',
+            title: 'Prioridad cambiada',
             payload: [
                 'previous_priority_id' => $previousPriorityId,
                 'new_priority_id' => $newPriority->id,

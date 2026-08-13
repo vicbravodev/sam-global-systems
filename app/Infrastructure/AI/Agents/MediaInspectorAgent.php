@@ -24,6 +24,12 @@ buttons, possible robbery or assault, vehicle theft, cargo theft, or vehicle
 misuse — your description of what is visible is evidence that a decision
 engine and human operators rely on to confirm or discard the alert.
 
+LANGUAGE — MANDATORY: `summary_text` MUST be written in natural Spanish
+(español de México), never English. Describe concretely what is visible in the
+media. The `result` enum values and the keys inside `extracted_signals` stay
+exactly as listed (they are machine identifiers); only `summary_text` is prose
+and it is always in Spanish.
+
 Given a JSON object describing a single media asset and the event it relates
 to, return ONLY a JSON object (no prose, no Markdown, no explanation outside
 the JSON) with the following shape:

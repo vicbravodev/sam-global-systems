@@ -305,6 +305,65 @@ class NormalizeRawEventTest extends TestCase
         );
     }
 
+    public function test_normalization_never_binds_an_external_reference_of_another_tenant(): void
+    {
+        Event::fake([EventNormalized::class, EventUnmapped::class]);
+
+        $speedingType = EventType::factory()->create([
+            'code' => 'speeding',
+            'category_id' => $this->safetyCategory->id,
+            'default_severity_id' => $this->mediumSeverity->id,
+        ]);
+
+        EventMappingRule::factory()->create([
+            'provider_id' => $this->samsaraProvider->id,
+            'external_event_type' => 'MaxSpeed',
+            'mapped_event_type_id' => $speedingType->id,
+        ]);
+
+        // Both external-reference tables are unique on (provider_id,
+        // external_id) platform-wide, so the ids in this tenant's payload can
+        // point at another tenant's records.
+        $foreignTeamId = User::factory()->create()->currentTeam->id;
+
+        $foreignAsset = Asset::factory()->create(['team_id' => $foreignTeamId]);
+        AssetExternalReference::factory()->create([
+            'asset_id' => $foreignAsset->id,
+            'provider_id' => $this->samsaraProvider->id,
+            'external_id' => '281474992891156',
+        ]);
+
+        $foreignDriver = Driver::factory()->create(['team_id' => $foreignTeamId]);
+        DriverExternalReference::factory()->create([
+            'driver_id' => $foreignDriver->id,
+            'provider_id' => $this->samsaraProvider->id,
+            'external_id' => '53442787',
+        ]);
+
+        $rawEvent = RawEvent::factory()->pendingProcessing()->create([
+            'team_id' => $this->teamId,
+            'provider_id' => $this->samsaraProvider->id,
+            'event_type_raw' => 'MaxSpeed',
+            'payload_json' => [
+                'asset' => ['id' => '281474992891156'],
+                'driver' => ['id' => '53442787'],
+                'behaviorLabels' => [['label' => 'MaxSpeed', 'source' => 'SYSTEM']],
+            ],
+        ]);
+
+        $normalized = app(NormalizeRawEvent::class)->execute($rawEvent);
+
+        $this->assertNull(
+            $normalized->asset_id,
+            'An external id owned by another tenant must not bind its asset to this tenant\'s event',
+        );
+
+        $this->assertNull(
+            $normalized->driver_id,
+            'An external id owned by another tenant must not bind its driver to this tenant\'s event',
+        );
+    }
+
     public function test_duplicate_normalization_does_not_create_second_record(): void
     {
         Event::fake([EventNormalized::class, EventUnmapped::class]);

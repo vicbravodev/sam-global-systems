@@ -141,6 +141,45 @@ npm run types:check && npm run lint:check && npm run format:check
 php artisan wayfinder:generate    # regenerar tras cambiar rutas/controladores
 ```
 
+### Bootstrap de un worktree nuevo (OBLIGATORIO antes de correr gates)
+
+Un worktree recién creado bajo `.claude/worktrees/<slug>` **no es ejecutable tal cual**: `vendor/`, `.env` y los tipados generados de Wayfinder están gitignored y no se copian con el checkout. Síntomas: `php artisan` lanza `Failed opening required vendor/autoload.php`; `npm run types:check` / `npm run build` fallan con `Cannot find module '@/routes'` en **todas** las páginas; `php artisan serve` da HTTP 500 por sesión Redis/Valkey. Esto **no es** un bug de la tarea, es estado de worktree. Bootstrap (idempotente; ejecutar al entrar a un worktree nuevo, ANTES de tipos/lint/build/tests/preview):
+
+```bash
+MAIN="$(git worktree list --porcelain | grep -m1 '^worktree ' | cut -d' ' -f2)"   # checkout principal
+
+# 1. PHP: vendor no tiene traversal de directorios → symlink (rápido) o composer install.
+[ -e vendor ] || ln -s "$MAIN/vendor" vendor
+#    ⚠ El SYMLINK sirve para artisan/types/build/tests, pero ROMPE la cobertura
+#    local: el autoloader de Composer tiene rutas absolutas al checkout principal,
+#    así que las clases App\ se cargan desde MAIN y pcov (apuntando al app/ del
+#    worktree) reporta 0%. Para correr cobertura o pasar el pre-push hook hay que
+#    tener vendor REAL en el worktree: `rm -f vendor && composer install`
+#    (no toca composer.json). Alternativa puntual: `SKIP_COVERAGE=1 git push`
+#    sólo si el usuario lo autoriza (la cobertura real la valida CI igual).
+
+# 2. Env: .env gitignored.
+[ -f .env ] || cp "$MAIN/.env" .env
+
+# 3. Tipados Wayfinder (resources/js/{routes,actions,wayfinder}) gitignored.
+#    Con vendor ya enlazado:
+php artisan wayfinder:generate --with-form        # en worktrees SIEMPRE con --with-form
+#    (alternativa sin vendor: cp -R "$MAIN/resources/js/"{routes,actions,wayfinder} resources/js/)
+
+# node_modules NO requiere acción: Node resuelve subiendo directorios y encuentra el del checkout principal.
+```
+
+Tras el bootstrap, los gates corren normales (`npm run types:check && npm run lint:check && npm run format:check`, `npm run build`, `php artisan test --compact`). `git status` debe seguir mostrando SOLO los archivos de la tarea (todo lo anterior es gitignored).
+
+**Preview en navegador (verificación visual de UI):** la sesión apunta a Valkey/Postgres de Docker (hosts `valkey`/`pgsql`), inaccesibles fuera de compose. Para servir el build local sin Docker, overridear drivers en el comando de serve:
+
+```bash
+SESSION_DRIVER=file CACHE_STORE=file QUEUE_CONNECTION=sync DB_CONNECTION=sqlite DB_DATABASE=:memory: \
+  php artisan serve --port=<puerto>
+```
+
+Sirve el build de producción vía manifest, así que tras cada cambio de front hay que `npm run build` y recargar. Limpiar artefactos de preview (`.claude/launch.json` u otros no-entregables) antes de cerrar; `vendor`/`.env`/generados quedan (gitignored, aceleran el siguiente comando).
+
 ### Tests — qué exigir siempre
 
 - Un test por cada Action y cada Job crítico.
@@ -186,6 +225,11 @@ php artisan wayfinder:generate    # regenerar tras cambiar rutas/controladores
   - `git push --force` o `--force-with-lease` sobre cualquier rama sin petición explícita del usuario en ese turno.
 - **Ver CI es obligatorio antes de dar por cerrada una tarea con PR**: después de `git push` Claude espera al workflow (`gh run watch` / `gh pr checks --watch`) y reporta el resultado. Si CI falla por un cambio de Claude, Claude lo arregla y empuja un commit nuevo; no se da por terminada la tarea con CI rojo salvo que el usuario pida explícitamente ignorarlo.
 - **Limpieza de worktrees post-merge es obligatoria**: una vez que un PR creado por Claude está mergeado a `main` (verificable con `gh pr view <num> --json mergedAt,state`), Claude DEBE eliminar el worktree asociado y su rama local desde el repo principal: `git worktree remove .claude/worktrees/<slug>` seguido de `git branch -d claude/<slug>`. Si Claude está corriendo dentro del worktree que se acaba de mergear, no puede borrarlo desde dentro — debe avisarlo y dejar el comando preparado para que el usuario lo ejecute (o esperar al siguiente turno fuera del worktree). Al iniciar una tarea nueva, Claude revisa con `git worktree list` y poda los que correspondan a PRs ya mergeados. No dejar worktrees mergeados acumulándose: cada uno consume cientos de MB y contamina `git branch -a`. Excepción al uso prohibido de `git branch -D`: si la rama está mergeada (`git branch --merged main` la lista) puede usar `git branch -d` (lowercase, seguro); sólo si git rechaza con `-d` por sospecha de pérdida y el usuario lo autoriza explícitamente, usar `-D`.
+- **Auditar worktrees NO mergeados es igual de obligatorio**: la regla anterior sólo poda lo que ya entró. El fallo simétrico —y el caro— es el trabajo que se queda vivo y nunca llega a `main`. Al iniciar una tarea nueva, además de podar, Claude revisa si hay trabajo huérfano y lo reporta al usuario en vez de dejarlo pudrirse:
+  - `git -C <worktree> status --porcelain` en cada worktree → cambios sin commitear.
+  - `git branch --no-merged main` y `git branch -r --no-merged origin/main` → ramas con commits que nunca se mergearon, **incluidas las que no tienen worktree** (no salen en `git worktree list`, así que son invisibles si sólo se mira ahí).
+  - Una rama sin mergear cuyo PR está `CLOSED` suele estar abandonada a propósito: comprobarlo con `gh pr list --state all --head <rama>` antes de proponer nada.
+  Precedente: el 2026-08-09 aparecieron ~3.000 líneas en limbo (idempotencia de `DispatchNotification` sin commitear, contactabilidad E.164/OTP en una rama sin PR, y las primitivas de UI del Track A en una rama huérfana sin worktree), algunas de semanas atrás. Nada de eso era visible desde `git worktree list`.
 - **Excepción para tareas demostrativas**: si el usuario pide explícitamente en el turno actual publicar código que no pasa thresholds o checks (p.ej. para ver cómo se ve el reporte en GitHub), Claude puede hacer `git push` y `gh pr create` aunque el CI vaya a fallar, pero debe avisarlo en el mismo mensaje.
 - **Claude NO usa** `--no-verify`, `--no-gpg-sign`, `git reset --hard`, `git checkout .`, `git clean -fd`, `git branch -D`, `git rebase -i`, ni amends a commits ya publicados, salvo petición explícita del usuario en ese turno.
 - Si un hook de pre-commit o pre-push falla, Claude arregla la causa raíz y crea un commit NUEVO; no repite el commit con `--amend` ni salta el hook (salvo `SKIP_COVERAGE=1` en pushes demostrativos si el usuario lo autoriza).

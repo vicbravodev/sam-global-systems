@@ -1,4 +1,7 @@
 import { Head } from '@inertiajs/react';
+import { ScrollText } from 'lucide-react';
+import { EmptyState } from '@/components/ui/empty-state';
+import { formatDateTime } from '@/lib/format';
 
 interface AuditEntry {
     id: number;
@@ -12,24 +15,6 @@ interface AuditEntry {
 
 interface AdminAuditIndexProps {
     entries: AuditEntry[];
-}
-
-function formatDateTime(iso: string | null): string {
-    if (!iso) {
-        return '—';
-    }
-
-    const date = new Date(iso);
-
-    return Number.isNaN(date.getTime())
-        ? '—'
-        : date.toLocaleString('es', {
-              day: '2-digit',
-              month: '2-digit',
-              year: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit',
-          });
 }
 
 export default function AdminAuditIndex({ entries }: AdminAuditIndexProps) {
@@ -48,7 +33,11 @@ export default function AdminAuditIndex({ entries }: AdminAuditIndexProps) {
 
             <div className="flex-1 overflow-y-auto p-5">
                 {entries.length === 0 ? (
-                    <p className="text-sm text-fg-3">Sin eventos.</p>
+                    <EmptyState
+                        icon={ScrollText}
+                        title="Sin eventos de auditoría"
+                        description="Las acciones de seguridad y facturación cross-tenant aparecerán aquí a medida que ocurran."
+                    />
                 ) : (
                     <div className="overflow-hidden rounded-md border border-border">
                         <table className="w-full text-sm">

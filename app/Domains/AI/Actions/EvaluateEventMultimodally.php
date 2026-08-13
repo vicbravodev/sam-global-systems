@@ -40,6 +40,15 @@ class EvaluateEventMultimodally
             return collect();
         }
 
+        // Solo imágenes: el modelo no interpreta video ni audio, y enviarlos
+        // como documento base64 se paga sin obtener señal. El archivo excluido
+        // sigue siendo evidencia del incidente, no se borra.
+        $mediaContexts = $mediaContexts->filter(fn ($item) => in_array(
+            $item->media_type,
+            [MediaType::Image, MediaType::Snapshot, null],
+            true,
+        ))->values();
+
         /** @var Collection<int, AIMediaAssessment> $assessments */
         $assessments = collect();
 
@@ -78,7 +87,7 @@ class EvaluateEventMultimodally
                     'result' => MediaAssessmentResult::Unavailable,
                     'confidence_score' => 0.0,
                     'extracted_signals_json' => ['error' => $exception->getMessage()],
-                    'summary_text' => 'Multimodal agent failed: '.$exception->getMessage(),
+                    'summary_text' => 'Falló el agente multimodal: '.$exception->getMessage(),
                     'latency_ms' => null,
                     'input_tokens' => null,
                     'output_tokens' => null,

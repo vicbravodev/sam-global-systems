@@ -35,6 +35,17 @@ return [
         ],
     ],
 
+    // Twilio de plataforma (SMS / WhatsApp / voz): SAM opera la mensajería
+    // centralmente y la factura como servicio; los tenants no configuran nada.
+    // El `config_json` de un canal puede overridear estos valores llave a llave.
+    'twilio' => [
+        'account_sid' => env('TWILIO_ACCOUNT_SID'),
+        'auth_token' => env('TWILIO_AUTH_TOKEN'),
+        'sms_from' => env('TWILIO_SMS_FROM'),
+        'whatsapp_from' => env('TWILIO_WHATSAPP_FROM'),
+        'voice_from' => env('TWILIO_VOICE_FROM'),
+    ],
+
     'samsara' => [
         'base_url' => env('SAMSARA_BASE_URL', 'https://api.samsara.com'),
         'timeout' => (int) env('SAMSARA_TIMEOUT', 15),

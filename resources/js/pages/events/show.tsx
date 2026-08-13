@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { formatDateTime } from '@/lib/format';
 
 interface EventDetail {
     id: number;
@@ -30,6 +31,7 @@ interface EventShowProps {
         id: number;
         version: number;
         classification: string | null;
+        classificationLabel: string | null;
         confidenceScore: number | null;
         riskScore: number | null;
         priorityLevel: string | null;
@@ -38,6 +40,7 @@ interface EventShowProps {
     decision: {
         id: number;
         code: string | null;
+        outcomeLabel: string | null;
         reason: string | null;
         requiresHumanReview: boolean;
         decidedAt: string | null;
@@ -184,12 +187,8 @@ export default function EventShow() {
                                 `Evento #${event.id}`}
                         </h1>
                         <p className="text-xs text-fg-3">
-                            {event.occurredAt
-                                ? new Date(event.occurredAt).toLocaleString(
-                                      'es',
-                                  )
-                                : '—'}{' '}
-                            · {event.asset ?? 'Sin activo'} ·{' '}
+                            {formatDateTime(event.occurredAt)} ·{' '}
+                            {event.asset ?? 'Sin activo'} ·{' '}
                             {event.driver ?? 'Sin conductor'} ·{' '}
                             {event.provider ?? '—'}
                         </p>
@@ -226,7 +225,9 @@ export default function EventShow() {
                                     <li>
                                         Clasificación:{' '}
                                         <strong className="text-fg-1">
-                                            {evaluation.classification ?? '—'}
+                                            {evaluation.classificationLabel ??
+                                                evaluation.classification ??
+                                                '—'}
                                         </strong>{' '}
                                         (v{evaluation.version} ·{' '}
                                         {evaluation.mode ?? '—'})
@@ -264,7 +265,9 @@ export default function EventShow() {
                                     <li>
                                         Resultado:{' '}
                                         <strong className="text-fg-1">
-                                            {decision.code ?? '—'}
+                                            {decision.outcomeLabel ??
+                                                decision.code ??
+                                                '—'}
                                         </strong>
                                         {decision.requiresHumanReview && (
                                             <Badge
@@ -280,9 +283,7 @@ export default function EventShow() {
                                     </li>
                                     <li className="font-mono text-2xs text-fg-3">
                                         {decision.decidedAt
-                                            ? new Date(
-                                                  decision.decidedAt,
-                                              ).toLocaleString('es')
+                                            ? formatDateTime(decision.decidedAt)
                                             : ''}
                                     </li>
                                 </ul>

@@ -11,9 +11,6 @@ use App\Domains\Tenancy\Models\TenantBranding;
 use App\Domains\TenantConfig\Actions\ApplyDefaultTenantConfig;
 use App\Domains\TenantConfig\Actions\ResolveTenantAIProfile;
 use App\Domains\TenantConfig\Enums\AutomationLevel;
-use App\Domains\TenantConfig\Enums\FalsePositiveTolerance;
-use App\Domains\TenantConfig\Enums\MediaStrategy;
-use App\Domains\TenantConfig\Enums\RiskTolerance;
 use App\Domains\TenantConfig\Models\TenantAIProfile;
 use App\Domains\TenantConfig\Models\TenantConfigVersion;
 use App\Domains\TenantConfig\Models\TenantEscalationConfig;
@@ -96,11 +93,16 @@ class TenantConfigPageController extends Controller
                     'mediaStrategy' => $resolved->mediaStrategy->value,
                 ];
             },
+            // Sólo se manda el catálogo de automation_level: es el único
+            // campo de TenantAIProfile con control real en la UI (ver
+            // AiTab en settings/tenant-config.tsx). Los catálogos de
+            // risk_tolerance / false_positive_tolerance / media_strategy
+            // sólo alimentaban los <select> retirados (Tarea 12).
             'aiProfileOptions' => fn (): array => [
-                'riskTolerances' => array_map(fn (RiskTolerance $case) => $case->value, RiskTolerance::cases()),
-                'falsePositiveTolerances' => array_map(fn (FalsePositiveTolerance $case) => $case->value, FalsePositiveTolerance::cases()),
-                'automationLevels' => array_map(fn (AutomationLevel $case) => $case->value, AutomationLevel::cases()),
-                'mediaStrategies' => array_map(fn (MediaStrategy $case) => $case->value, MediaStrategy::cases()),
+                'automationLevels' => array_map(
+                    fn (AutomationLevel $case) => ['value' => $case->value, 'label' => $case->label()],
+                    AutomationLevel::cases(),
+                ),
             ],
             'notificationPolicies' => fn () => TenantNotificationPolicy::withoutGlobalScopes()
                 ->where('team_id', $current_team->id)
@@ -196,14 +198,11 @@ class TenantConfigPageController extends Controller
                         'isGlobal' => $channel->team_id === null,
                         // Per-tenant switch over SAM platform channels (V2-B1).
                         'enabledForTeam' => ! in_array($channel->id, $disabledGlobals, true),
-                        // Secrets stay server-side: only key names + masked tails
-                        // reach the browser (Roadmap F5c).
-                        'configSummary' => $this->maskConfig((array) ($channel->config_json ?? [])),
                     ])
                     ->all();
             },
             'channelTypes' => fn () => array_map(
-                fn (ChannelType $type) => $type->value,
+                fn (ChannelType $type) => ['value' => $type->value, 'label' => $type->label()],
                 ChannelType::cases(),
             ),
             'branding' => function () use ($current_team): array {
@@ -233,29 +232,5 @@ class TenantConfigPageController extends Controller
             'canManageChannels' => fn () => (bool) request()->user()?->can('manage', NotificationChannel::class),
             'canManage' => fn () => (bool) request()->user()?->can('update', TenantSetting::class),
         ]);
-    }
-
-    /**
-     * @param  array<string, mixed>  $config
-     * @return array<string, string>
-     */
-    private function maskConfig(array $config): array
-    {
-        $masked = [];
-
-        foreach ($config as $key => $value) {
-            if (! is_scalar($value)) {
-                $masked[(string) $key] = '•••';
-
-                continue;
-            }
-
-            $string = (string) $value;
-            $masked[(string) $key] = mb_strlen($string) > 8
-                ? '••••'.mb_substr($string, -4)
-                : '••••';
-        }
-
-        return $masked;
     }
 }
