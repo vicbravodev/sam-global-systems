@@ -68,7 +68,7 @@ class RecalculateDriverRiskProfilesJob implements ShouldQueue
     {
         $since = now()->subDays(self::WINDOW_DAYS);
 
-        $counts = NormalizedEvent::withoutGlobalScopes()
+        $counts = NormalizedEvent::query()
             ->where('driver_id', $driver->id)
             ->where('occurred_at', '>=', $since)
             ->join('event_types', 'event_types.id', '=', 'normalized_events.event_type_id')
@@ -76,7 +76,7 @@ class RecalculateDriverRiskProfilesJob implements ShouldQueue
             ->groupBy('event_types.code')
             ->pluck('total', 'code');
 
-        $incidentsCount = Incident::withoutGlobalScopes()
+        $incidentsCount = Incident::query()
             ->where('driver_id', $driver->id)
             ->where('opened_at', '>=', $since)
             ->count();

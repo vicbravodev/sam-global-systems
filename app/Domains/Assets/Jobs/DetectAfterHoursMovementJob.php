@@ -96,7 +96,7 @@ class DetectAfterHoursMovementJob implements ShouldQueue
         $localDate = now()->setTimezone($schedule->timezone)->toDateString();
         $deduplicationKey = sprintf('after_hours:%d:%s', $asset->id, $localDate);
 
-        $alreadyRaised = RawEvent::withoutGlobalScopes()
+        $alreadyRaised = RawEvent::query()
             ->where('team_id', $asset->team_id)
             ->where('deduplication_key', $deduplicationKey)
             ->exists();

@@ -13,6 +13,8 @@ class SyncCatalogOnIntegrationConnected
 {
     public function handle(IntegrationConnected $event): void
     {
+        // Lookup de entrada: el listener sólo tiene el id, y de la integración
+        // sale el tenant. Ver §2.1.
         $integration = TenantIntegration::withoutGlobalScopes()->find($event->integrationId);
 
         if ($integration === null) {

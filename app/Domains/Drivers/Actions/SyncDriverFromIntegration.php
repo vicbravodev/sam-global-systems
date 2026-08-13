@@ -7,6 +7,7 @@ use App\Domains\Drivers\Models\Driver;
 use App\Domains\Drivers\Models\DriverExternalReference;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Support\PhoneNumber;
+use App\Support\TenantContext;
 
 class SyncDriverFromIntegration
 {
@@ -15,17 +16,25 @@ class SyncDriverFromIntegration
      */
     public function execute(int $teamId, int $integrationId, array $driverData): Driver
     {
+        // Lookup de entrada: el sync llega con el id de la integración y de
+        // ahí sale el tenant, así que aquí todavía no puede haber scope.
         $integration = TenantIntegration::withoutGlobalScopes()->findOrFail($integrationId);
-        $providerId = $integration->provider_id;
-        $externalId = $driverData['external_id'];
 
-        $existingDriver = $this->resolveByExternalReference($providerId, $externalId);
+        // El resto trabaja dentro de ese tenant. Es una Action, no un job, así
+        // que se usa for() y no set(): el contexto del que llama se restaura
+        // al salir. Ver §2.1.
+        return TenantContext::for($integration->team_id, function () use ($integration, $teamId, $driverData) {
+            $providerId = $integration->provider_id;
+            $externalId = $driverData['external_id'];
 
-        if ($existingDriver) {
-            return $this->updateExistingDriver($existingDriver, $driverData, $providerId);
-        }
+            $existingDriver = $this->resolveByExternalReference($providerId, $externalId);
 
-        return $this->createNewDriver($teamId, $providerId, $driverData);
+            if ($existingDriver) {
+                return $this->updateExistingDriver($existingDriver, $driverData, $providerId);
+            }
+
+            return $this->createNewDriver($teamId, $providerId, $driverData);
+        });
     }
 
     private function resolveByExternalReference(int $providerId, string $externalId): ?Driver
@@ -38,7 +47,7 @@ class SyncDriverFromIntegration
             return null;
         }
 
-        return Driver::withoutGlobalScopes()->find($reference->driver_id);
+        return Driver::query()->find($reference->driver_id);
     }
 
     /**
@@ -85,7 +94,7 @@ class SyncDriverFromIntegration
             $fullName = (string) ($driverData['name'] ?? 'Unknown Driver');
         }
 
-        $driver = Driver::withoutGlobalScopes()->create([
+        $driver = Driver::query()->create([
             'team_id' => $teamId,
             'external_primary_id' => $driverData['external_id'],
             'first_name' => $firstName,
@@ -107,7 +116,7 @@ class SyncDriverFromIntegration
             'last_seen_at' => now(),
         ]);
 
-        $providerCode = TenantIntegration::withoutGlobalScopes()
+        $providerCode = TenantIntegration::query()
             ->where('provider_id', $providerId)
             ->first()
             ?->provider
