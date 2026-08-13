@@ -20,6 +20,7 @@ use App\Domains\Tenancy\Models\Plan;
 use App\Domains\Tenancy\Models\Subscription;
 use App\Models\Team;
 use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -282,6 +283,63 @@ class AnalyticsJobsHandleTest extends TestCase
         $this->assertSame('user', $calls[0]['requested_by']);
         $this->assertSame(42, $calls[0]['requested_by_id']);
         $this->assertSame(['from' => '2026-01-01'], $calls[0]['filters']);
+    }
+
+    public function test_generate_report_job_refuses_a_definition_from_another_team(): void
+    {
+        $teamA = Team::factory()->create();
+        $teamB = Team::factory()->create();
+
+        $definitionOfA = ReportDefinition::factory()->create(['team_id' => $teamA->id]);
+
+        $job = new GenerateReportJob(
+            reportDefinitionId: $definitionOfA->id,
+            teamId: $teamB->id,
+            outputFormat: ReportOutputFormat::Json->value,
+            requestedByType: ReportRequestedByType::User->value,
+        );
+
+        $this->expectException(ModelNotFoundException::class);
+
+        $job->handle(app(GenerateReport::class));
+    }
+
+    public function test_generate_report_job_accepts_a_platform_wide_definition(): void
+    {
+        $team = Team::factory()->create();
+        $definition = ReportDefinition::factory()->create(['team_id' => null]);
+
+        $calls = [];
+        $action = new class($calls) extends GenerateReport
+        {
+            /** @param array<int, int> $calls */
+            public function __construct(public array &$calls)
+            {
+                // Sin dependencias: sólo registra que se llegó a ejecutar.
+            }
+
+            public function execute(
+                ReportDefinition $definition,
+                int $teamId,
+                ReportOutputFormat $format,
+                ReportRequestedByType $requestedBy,
+                ?int $requestedById = null,
+                ?array $filters = null,
+            ): ReportExecution {
+                $this->calls[] = $definition->id;
+
+                return new ReportExecution;
+            }
+        };
+
+        (new GenerateReportJob(
+            reportDefinitionId: $definition->id,
+            teamId: $team->id,
+            outputFormat: ReportOutputFormat::Json->value,
+            requestedByType: ReportRequestedByType::User->value,
+        ))->handle($action);
+
+        $this->assertSame([$definition->id], $action->calls);
     }
 
     public function test_generate_report_job_uses_analytics_queue(): void
