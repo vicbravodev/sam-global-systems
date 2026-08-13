@@ -10,6 +10,7 @@ use App\Domains\TenantConfig\Models\TenantNotificationPolicy;
 use App\Domains\TenantConfig\Models\TenantRuleOverride;
 use App\Domains\TenantConfig\Models\TenantScheduleProfile;
 use App\Domains\TenantConfig\Models\TenantSetting;
+use App\Support\TenantContext;
 
 class SnapshotTenantConfig
 {
@@ -18,28 +19,30 @@ class SnapshotTenantConfig
         SettingUpdatedByType $createdByType = SettingUpdatedByType::System,
         ?int $createdById = null,
     ): TenantConfigVersion {
-        $version = (int) TenantConfigVersion::withoutGlobalScopes()
-            ->where('team_id', $teamId)
-            ->max('version') + 1;
+        return TenantContext::for($teamId, function () use ($teamId, $createdByType, $createdById) {
+            $version = (int) TenantConfigVersion::query()
+                ->where('team_id', $teamId)
+                ->max('version') + 1;
 
-        $snapshot = [
-            'version' => $version,
-            'captured_at' => now()->toIso8601String(),
-            'settings' => $this->collectSettings($teamId),
-            'rule_overrides' => $this->collectRuleOverrides($teamId),
-            'ai_profile' => $this->collectAIProfile($teamId),
-            'notification_policies' => $this->collectNotificationPolicies($teamId),
-            'escalation_configs' => $this->collectEscalationConfigs($teamId),
-            'schedule_profiles' => $this->collectScheduleProfiles($teamId),
-        ];
+            $snapshot = [
+                'version' => $version,
+                'captured_at' => now()->toIso8601String(),
+                'settings' => $this->collectSettings($teamId),
+                'rule_overrides' => $this->collectRuleOverrides($teamId),
+                'ai_profile' => $this->collectAIProfile($teamId),
+                'notification_policies' => $this->collectNotificationPolicies($teamId),
+                'escalation_configs' => $this->collectEscalationConfigs($teamId),
+                'schedule_profiles' => $this->collectScheduleProfiles($teamId),
+            ];
 
-        return TenantConfigVersion::withoutGlobalScopes()->create([
-            'team_id' => $teamId,
-            'version' => $version,
-            'snapshot_json' => $snapshot,
-            'created_by_type' => $createdByType,
-            'created_by_id' => $createdById,
-        ]);
+            return TenantConfigVersion::query()->create([
+                'team_id' => $teamId,
+                'version' => $version,
+                'snapshot_json' => $snapshot,
+                'created_by_type' => $createdByType,
+                'created_by_id' => $createdById,
+            ]);
+        });
     }
 
     /**
@@ -47,7 +50,7 @@ class SnapshotTenantConfig
      */
     private function collectSettings(int $teamId): array
     {
-        return TenantSetting::withoutGlobalScopes()
+        return TenantSetting::query()
             ->where('team_id', $teamId)
             ->get()
             ->mapWithKeys(fn (TenantSetting $setting): array => [
@@ -67,7 +70,7 @@ class SnapshotTenantConfig
      */
     private function collectRuleOverrides(int $teamId): array
     {
-        return TenantRuleOverride::withoutGlobalScopes()
+        return TenantRuleOverride::query()
             ->where('team_id', $teamId)
             ->get()
             ->map(fn (TenantRuleOverride $override): array => [
@@ -84,7 +87,7 @@ class SnapshotTenantConfig
      */
     private function collectAIProfile(int $teamId): ?array
     {
-        $profile = TenantAIProfile::withoutGlobalScopes()
+        $profile = TenantAIProfile::query()
             ->where('team_id', $teamId)
             ->first();
 
@@ -110,7 +113,7 @@ class SnapshotTenantConfig
      */
     private function collectNotificationPolicies(int $teamId): array
     {
-        return TenantNotificationPolicy::withoutGlobalScopes()
+        return TenantNotificationPolicy::query()
             ->where('team_id', $teamId)
             ->get()
             ->map(fn (TenantNotificationPolicy $policy): array => [
@@ -129,7 +132,7 @@ class SnapshotTenantConfig
      */
     private function collectEscalationConfigs(int $teamId): array
     {
-        return TenantEscalationConfig::withoutGlobalScopes()
+        return TenantEscalationConfig::query()
             ->where('team_id', $teamId)
             ->get()
             ->map(fn (TenantEscalationConfig $config): array => [
@@ -147,7 +150,7 @@ class SnapshotTenantConfig
      */
     private function collectScheduleProfiles(int $teamId): array
     {
-        return TenantScheduleProfile::withoutGlobalScopes()
+        return TenantScheduleProfile::query()
             ->where('team_id', $teamId)
             ->get()
             ->map(fn (TenantScheduleProfile $profile): array => [

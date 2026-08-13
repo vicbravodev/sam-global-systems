@@ -99,7 +99,7 @@ class ApplyDefaultTenantConfig
         $created = 0;
 
         foreach (self::defaultSettings() as $definition) {
-            $setting = TenantSetting::withoutGlobalScopes()->firstOrCreate(
+            $setting = TenantSetting::query()->firstOrCreate(
                 [
                     'team_id' => $team->id,
                     'setting_key' => $definition['key'],
@@ -134,7 +134,7 @@ class ApplyDefaultTenantConfig
      */
     private function seedDecisionRules(Team $team): int
     {
-        if (RuleSet::withoutGlobalScopes()->where('team_id', $team->id)->exists()) {
+        if (RuleSet::query()->where('team_id', $team->id)->exists()) {
             return 0;
         }
 
@@ -145,7 +145,7 @@ class ApplyDefaultTenantConfig
             return 0;
         }
 
-        $ruleSet = RuleSet::withoutGlobalScopes()->create([
+        $ruleSet = RuleSet::query()->create([
             'team_id' => $team->id,
             'code' => self::RULESET_CODE,
             'name' => 'Protocolo SAM (recomendado)',
@@ -156,7 +156,7 @@ class ApplyDefaultTenantConfig
             'applies_to_json' => null,
         ]);
 
-        DecisionRule::withoutGlobalScopes()->create([
+        DecisionRule::query()->create([
             'team_id' => $team->id,
             'ruleset_id' => $ruleSet->id,
             'code' => 'panic-false-alarm-review',
@@ -176,7 +176,7 @@ class ApplyDefaultTenantConfig
             'is_active' => true,
         ]);
 
-        DecisionRule::withoutGlobalScopes()->create([
+        DecisionRule::query()->create([
             'team_id' => $team->id,
             'ruleset_id' => $ruleSet->id,
             'code' => 'after-hours-movement-incident',
@@ -194,7 +194,7 @@ class ApplyDefaultTenantConfig
             'is_active' => true,
         ]);
 
-        DecisionRule::withoutGlobalScopes()->create([
+        DecisionRule::query()->create([
             'team_id' => $team->id,
             'ruleset_id' => $ruleSet->id,
             'code' => 'suspicious-stop-review',
@@ -212,7 +212,7 @@ class ApplyDefaultTenantConfig
             'is_active' => true,
         ]);
 
-        DecisionRule::withoutGlobalScopes()->create([
+        DecisionRule::query()->create([
             'team_id' => $team->id,
             'ruleset_id' => $ruleSet->id,
             'code' => 'panic-button-always-incident',
@@ -240,7 +240,7 @@ class ApplyDefaultTenantConfig
      */
     private function seedEscalationConfig(Team $team): bool
     {
-        $exists = TenantEscalationConfig::withoutGlobalScopes()
+        $exists = TenantEscalationConfig::query()
             ->where('team_id', $team->id)
             ->exists();
 
@@ -248,7 +248,7 @@ class ApplyDefaultTenantConfig
             return false;
         }
 
-        TenantEscalationConfig::withoutGlobalScopes()->create([
+        TenantEscalationConfig::query()->create([
             'team_id' => $team->id,
             'escalation_type' => 'incident_critical',
             'trigger_conditions_json' => [],

@@ -62,7 +62,7 @@ class AggregateUsageJob implements ShouldQueue
 
     private function aggregateForTeamMeter(Team $team, UsageMeter $meter): void
     {
-        $dailyData = UsageEvent::withoutGlobalScopes()
+        $dailyData = UsageEvent::query()
             ->where('team_id', $team->id)
             ->where('usage_meter_id', $meter->id)
             ->select([
@@ -74,7 +74,7 @@ class AggregateUsageJob implements ShouldQueue
             ->get();
 
         foreach ($dailyData as $row) {
-            UsageDailyAggregate::withoutGlobalScopes()->upsert(
+            UsageDailyAggregate::query()->upsert(
                 [
                     'team_id' => $team->id,
                     'usage_meter_id' => $meter->id,
@@ -97,14 +97,14 @@ class AggregateUsageJob implements ShouldQueue
         $periodStart = now()->startOfMonth();
         $periodEnd = now()->endOfMonth();
 
-        $totalConsumed = UsageEvent::withoutGlobalScopes()
+        $totalConsumed = UsageEvent::query()
             ->where('team_id', $team->id)
             ->where('usage_meter_id', $meter->id)
             ->where('occurred_at', '>=', $periodStart)
             ->where('occurred_at', '<=', $periodEnd)
             ->sum('quantity');
 
-        $subscription = Subscription::withoutGlobalScopes()
+        $subscription = Subscription::query()
             ->where('team_id', $team->id)
             ->whereIn('status', [
                 SubscriptionStatus::Trialing->value,
@@ -125,7 +125,7 @@ class AggregateUsageJob implements ShouldQueue
 
         $overageValue = max(0, $totalConsumed - $includedValue);
 
-        $previousCounter = TenantUsageCounter::withoutGlobalScopes()
+        $previousCounter = TenantUsageCounter::query()
             ->where('team_id', $team->id)
             ->where('usage_meter_id', $meter->id)
             ->whereDate('period_start', $periodStart->toDateString())
@@ -133,7 +133,7 @@ class AggregateUsageJob implements ShouldQueue
 
         $previousOverage = $previousCounter?->overage_value ?? 0;
 
-        TenantUsageCounter::withoutGlobalScopes()->upsert(
+        TenantUsageCounter::query()->upsert(
             [
                 'team_id' => $team->id,
                 'usage_meter_id' => $meter->id,

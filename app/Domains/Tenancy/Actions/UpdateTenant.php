@@ -26,7 +26,7 @@ class UpdateTenant
             $branding = array_intersect_key($attrs, array_flip($brandingKeys));
 
             if ($branding !== []) {
-                TenantBranding::withoutGlobalScopes()->updateOrCreate(
+                TenantBranding::query()->updateOrCreate(
                     ['team_id' => $team->id],
                     $branding,
                 );

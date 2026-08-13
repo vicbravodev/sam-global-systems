@@ -5,6 +5,7 @@ namespace App\Domains\Analytics\Actions;
 use App\Contracts\TenantConfig\TenantAnalyticsConfig;
 use App\Domains\Analytics\Enums\ReportExecutionStatus;
 use App\Domains\Analytics\Models\ReportExecution;
+use App\Support\TenantContext;
 use Illuminate\Support\Facades\Storage;
 
 class ExpireOldReports
@@ -15,26 +16,28 @@ class ExpireOldReports
 
     public function execute(int $teamId): int
     {
-        $retentionDays = $this->tenantConfig->reportRetentionDays($teamId);
-        $threshold = now()->subDays($retentionDays);
+        return TenantContext::for($teamId, function () use ($teamId) {
+            $retentionDays = $this->tenantConfig->reportRetentionDays($teamId);
+            $threshold = now()->subDays($retentionDays);
 
-        $candidates = ReportExecution::withoutGlobalScopes()
-            ->where('team_id', $teamId)
-            ->where('status', ReportExecutionStatus::Completed->value)
-            ->where('finished_at', '<', $threshold)
-            ->get();
+            $candidates = ReportExecution::query()
+                ->where('team_id', $teamId)
+                ->where('status', ReportExecutionStatus::Completed->value)
+                ->where('finished_at', '<', $threshold)
+                ->get();
 
-        foreach ($candidates as $execution) {
-            if ($execution->file_path) {
-                Storage::disk('rustfs')->delete($execution->file_path);
+            foreach ($candidates as $execution) {
+                if ($execution->file_path) {
+                    Storage::disk('rustfs')->delete($execution->file_path);
+                }
+
+                $execution->forceFill([
+                    'status' => ReportExecutionStatus::Expired->value,
+                    'file_path' => null,
+                ])->save();
             }
 
-            $execution->forceFill([
-                'status' => ReportExecutionStatus::Expired->value,
-                'file_path' => null,
-            ])->save();
-        }
-
-        return $candidates->count();
+            return $candidates->count();
+        });
     }
 }

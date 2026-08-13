@@ -25,7 +25,7 @@ class ChangeTenantPlan
         $plan = Plan::query()->where('code', $planCode)->firstOrFail();
 
         return DB::transaction(function () use ($team, $plan) {
-            $subscription = Subscription::withoutGlobalScopes()
+            $subscription = Subscription::query()
                 ->where('team_id', $team->id)
                 ->orderByDesc('starts_at')
                 ->first();
@@ -67,7 +67,7 @@ class ChangeTenantPlan
                 continue;
             }
 
-            $existing = TenantFeature::withoutGlobalScopes()
+            $existing = TenantFeature::query()
                 ->where('team_id', $team->id)
                 ->where('feature_key', $featureKey)
                 ->first();
@@ -76,7 +76,7 @@ class ChangeTenantPlan
                 continue;
             }
 
-            TenantFeature::withoutGlobalScopes()->updateOrCreate(
+            TenantFeature::query()->updateOrCreate(
                 ['team_id' => $team->id, 'feature_key' => $featureKey],
                 [
                     'enabled' => true,
