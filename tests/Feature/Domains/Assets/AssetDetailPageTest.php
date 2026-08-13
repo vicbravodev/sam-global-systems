@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Domains\Assets;
 
+use App\Domains\Assets\Enums\TelemetryType;
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Assets\Models\AssetDevice;
 use App\Domains\Assets\Models\AssetLocationSnapshot;
@@ -78,6 +79,7 @@ class AssetDetailPageTest extends TestCase
                         ->where('type.code', 'vehicle')
                         ->has('devices', 1)
                         ->where('devices.0.deviceType', 'dashcam')
+                        ->where('devices.0.label', 'Dashcam')
                         ->where('lastLocation.formattedLocation', 'Monterrey, NL')
                         ->where('externalPrimaryId', 'samsara-vehicle-9')
                         ->where('provider', 'Samsara')
@@ -133,6 +135,66 @@ class AssetDetailPageTest extends TestCase
                         ->has('recordedAt'),
                 )
                 ->where('telemetry.1.type', 'fuel'),
+        );
+    }
+
+    public function test_categorical_telemetry_is_rendered_in_spanish(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+
+        $asset = Asset::factory()->create(['team_id' => $team->id]);
+
+        // The poller stores the provider-neutral engine state; translation is the
+        // view layer's job, so the stored value stays 'running'.
+        AssetTelemetrySnapshot::factory()->create([
+            'asset_id' => $asset->id,
+            'telemetry_type' => TelemetryType::Ignition,
+            'data_json' => ['value' => 'running'],
+            'recorded_at' => now()->subMinutes(2),
+        ]);
+
+        $response = $this->actingAs($user)->get(route('assets.show', [
+            'current_team' => $team->slug,
+            'asset' => $asset->id,
+        ]));
+
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->where('telemetry.0.type', 'ignition')
+                ->where('telemetry.0.label', 'Ignición')
+                ->where('telemetry.0.data.value', 'Encendido'),
+        );
+
+        $this->assertSame(
+            'running',
+            AssetTelemetrySnapshot::where('asset_id', $asset->id)->firstOrFail()->data_json['value'],
+        );
+    }
+
+    public function test_numeric_telemetry_keeps_its_stored_value_and_unit(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+
+        $asset = Asset::factory()->create(['team_id' => $team->id]);
+
+        AssetTelemetrySnapshot::factory()->create([
+            'asset_id' => $asset->id,
+            'telemetry_type' => TelemetryType::Odometer,
+            'data_json' => ['value' => 14010.3, 'unit' => 'km'],
+            'recorded_at' => now()->subMinutes(2),
+        ]);
+
+        $response = $this->actingAs($user)->get(route('assets.show', [
+            'current_team' => $team->slug,
+            'asset' => $asset->id,
+        ]));
+
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->where('telemetry.0.data.value', 14010.3)
+                ->where('telemetry.0.data.unit', 'km'),
         );
     }
 

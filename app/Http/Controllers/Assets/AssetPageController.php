@@ -57,6 +57,33 @@ class AssetPageController extends Controller
     ];
 
     /**
+     * Spanish labels for categorical telemetry values, keyed by telemetry type.
+     * Numeric readings carry their own display-ready unit and need no map.
+     *
+     * @var array<string, array<string, string>>
+     */
+    private const TELEMETRY_VALUE_LABELS = [
+        'ignition' => [
+            'running' => 'Encendido',
+            'idle' => 'Ralentí',
+            'off' => 'Apagado',
+        ],
+    ];
+
+    /**
+     * Spanish labels for the device types the integration sync registers.
+     * Unknown types fall back to their raw code.
+     *
+     * @var array<string, string>
+     */
+    private const DEVICE_TYPE_LABELS = [
+        'gateway' => 'Gateway',
+        'camera' => 'Cámara',
+        'dashcam' => 'Dashcam',
+        'gps_tracker' => 'GPS',
+    ];
+
+    /**
      * Location snapshots shown in the detail history panel.
      */
     private const LOCATION_HISTORY_LIMIT = 20;
@@ -255,6 +282,7 @@ class AssetPageController extends Controller
                 ->map(fn (AssetDevice $device) => [
                     'id' => (int) $device->id,
                     'deviceType' => (string) $device->device_type,
+                    'label' => self::DEVICE_TYPE_LABELS[$device->device_type] ?? (string) $device->device_type,
                     'externalDeviceId' => $device->external_device_id,
                     'status' => $device->status->value,
                 ])
@@ -367,13 +395,34 @@ class AssetPageController extends Controller
                 return [
                     'type' => $type->value,
                     'label' => self::TELEMETRY_LABELS[$type->value] ?? $type->value,
-                    'data' => $snapshot->data_json,
+                    'data' => $this->localizeTelemetryData($type, $snapshot->data_json),
                     'recordedAt' => $snapshot->recorded_at->toIso8601String(),
                 ];
             })
             ->filter()
             ->values()
             ->all();
+    }
+
+    /**
+     * Render categorical readings (ignition) in Spanish. The stored payload stays
+     * provider-neutral — translation belongs to the view layer, not to the
+     * telemetry the poller writes.
+     *
+     * @param  array<string, mixed>|null  $data
+     * @return array<string, mixed>|null
+     */
+    private function localizeTelemetryData(TelemetryType $type, ?array $data): ?array
+    {
+        $labels = self::TELEMETRY_VALUE_LABELS[$type->value] ?? null;
+
+        if ($data === null || $labels === null || ! is_string($data['value'] ?? null)) {
+            return $data;
+        }
+
+        $data['value'] = $labels[$data['value']] ?? $data['value'];
+
+        return $data;
     }
 
     /**

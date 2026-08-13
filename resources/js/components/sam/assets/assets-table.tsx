@@ -20,7 +20,7 @@ function DevicesCell({ devices }: { devices: AssetRow['devices'] }) {
     return (
         <span className="flex items-center gap-1.5">
             <span className="truncate font-mono text-2xs text-fg-2">
-                {first.deviceType}
+                {first.label}
             </span>
             {rest.length > 0 && (
                 <Tooltip>
@@ -30,7 +30,7 @@ function DevicesCell({ devices }: { devices: AssetRow['devices'] }) {
                         </span>
                     </TooltipTrigger>
                     <TooltipContent side="top">
-                        {rest.map((device) => device.deviceType).join(' · ')}
+                        {rest.map((device) => device.label).join(' · ')}
                     </TooltipContent>
                 </Tooltip>
             )}

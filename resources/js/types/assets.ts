@@ -15,6 +15,8 @@ export interface AssetTypeSummary {
 export interface AssetDeviceSummary {
     id: number;
     deviceType: string;
+    /** Spanish label for `deviceType`; falls back to the raw code. */
+    label: string;
     externalDeviceId: string | null;
     status: string;
 }

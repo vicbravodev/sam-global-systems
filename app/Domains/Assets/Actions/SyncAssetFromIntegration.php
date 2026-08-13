@@ -18,6 +18,7 @@ class SyncAssetFromIntegration
     public function __construct(
         private ResolveAssetFromExternalId $resolveAsset,
         private ResolveAssetLimit $resolveAssetLimit,
+        private SyncAssetDevices $syncDevices,
     ) {}
 
     /**
@@ -32,12 +33,32 @@ class SyncAssetFromIntegration
         $existingAsset = $this->resolveAsset->execute($providerId, $externalId, $teamId);
 
         if ($existingAsset) {
-            return $this->updateExistingAsset($existingAsset, $assetData, $providerId);
+            $asset = $this->updateExistingAsset($existingAsset, $assetData, $providerId);
+        } else {
+            $this->assertExternalIdIsUnclaimed($teamId, $providerId, $externalId);
+            $asset = $this->createNewAsset($teamId, $integrationId, $providerId, $assetData);
         }
 
-        $this->assertExternalIdIsUnclaimed($teamId, $providerId, $externalId);
+        $this->reconcileDevices($asset, $providerId, $assetData);
 
-        return $this->createNewAsset($teamId, $integrationId, $providerId, $assetData);
+        return $asset;
+    }
+
+    /**
+     * Register the gateway/camera the provider reports for this asset. Only when
+     * `devices` is actually present: a provider that does not report devices at
+     * all must never be read as "this asset has no devices", which would detach
+     * the whole fleet on the next sync.
+     *
+     * @param  array<string, mixed>  $assetData
+     */
+    private function reconcileDevices(Asset $asset, int $providerId, array $assetData): void
+    {
+        if (! array_key_exists('devices', $assetData) || ! is_array($assetData['devices'])) {
+            return;
+        }
+
+        $this->syncDevices->execute($asset, $providerId, $assetData['devices']);
     }
 
     /**

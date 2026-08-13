@@ -717,6 +717,11 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
             'name' => Arr::get($vehicle, 'name'),
             'vin' => Arr::get($vehicle, 'vin'),
             'license_plate' => Arr::get($vehicle, 'licensePlate'),
+            // The hardware actually installed on the vehicle, keyed by serial so
+            // the sync can reconcile it across ticks. Always present (possibly
+            // empty) — an omitted key means "not reported" to the sync, which
+            // then leaves existing devices alone.
+            'devices' => $this->mapVehicleDevices($vehicle, $cameraSerial),
             // `has_camera` gates the panic-media auto-request listener and the
             // context signals — a vehicle with a paired CM dashcam reports its
             // serial here.
@@ -730,6 +735,44 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
             ], fn ($value) => $value !== null && $value !== ''),
             'raw' => $vehicle,
         ];
+    }
+
+    /**
+     * Devices installed on a vehicle: the telematics gateway and, when the
+     * vehicle is camera-equipped, the dashcam.
+     *
+     * Samsara reports the gateway serial both nested under `gateway` (with its
+     * model) and duplicated at the root as `serial`; the nested form wins and the
+     * root is the fallback for older payloads.
+     *
+     * @param  array<string, mixed>  $vehicle
+     * @return array<int, array{device_type: string, external_device_id: string, metadata: array<string, mixed>}>
+     */
+    private function mapVehicleDevices(array $vehicle, ?string $cameraSerial): array
+    {
+        $devices = [];
+
+        $gatewaySerial = Arr::get($vehicle, 'gateway.serial') ?? Arr::get($vehicle, 'serial');
+
+        if (is_string($gatewaySerial) && $gatewaySerial !== '') {
+            $devices[] = [
+                'device_type' => 'gateway',
+                'external_device_id' => $gatewaySerial,
+                'metadata' => array_filter([
+                    'model' => Arr::get($vehicle, 'gateway.model'),
+                ], fn ($value) => $value !== null && $value !== ''),
+            ];
+        }
+
+        if (is_string($cameraSerial) && $cameraSerial !== '') {
+            $devices[] = [
+                'device_type' => 'camera',
+                'external_device_id' => $cameraSerial,
+                'metadata' => [],
+            ];
+        }
+
+        return $devices;
     }
 
     /**

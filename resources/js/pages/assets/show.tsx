@@ -428,7 +428,7 @@ export default function AssetShow() {
                                 key={device.id}
                                 className="rounded-sm border border-border bg-surface-2 px-2 py-1 font-mono text-2xs text-fg-2"
                             >
-                                {device.deviceType}
+                                {device.label}
                                 {device.externalDeviceId && (
                                     <span className="text-fg-3">
                                         {' '}

@@ -17,16 +17,14 @@ class AttachDeviceTest extends TestCase
 
     private ?AssetType $sharedAssetType = null;
 
-    private function createAsset(): Asset
+    private function createAsset(?int $teamId = null): Asset
     {
-        $user = User::factory()->create();
-
         if (! $this->sharedAssetType) {
             $this->sharedAssetType = AssetType::factory()->vehicle()->create();
         }
 
         return Asset::withoutGlobalScopes()->create([
-            'team_id' => $user->currentTeam->id,
+            'team_id' => $teamId ?? User::factory()->create()->currentTeam->id,
             'asset_type_id' => $this->sharedAssetType->id,
             'name' => 'Device Test Vehicle',
             'status' => 'active',
@@ -73,8 +71,9 @@ class AttachDeviceTest extends TestCase
 
     public function test_it_detaches_device_from_previous_asset_on_reattach(): void
     {
+        // A dashcam physically moved between two of the tenant's own vehicles.
         $firstAsset = $this->createAsset();
-        $secondAsset = $this->createAsset();
+        $secondAsset = $this->createAsset($firstAsset->team_id);
         $provider = IntegrationProvider::factory()->samsara()->create();
 
         $action = app(AttachDeviceToAsset::class);
@@ -116,6 +115,47 @@ class AttachDeviceTest extends TestCase
             DeviceStatus::Active,
             $secondDevice->status,
             'New device attachment should have Active status',
+        );
+    }
+
+    public function test_reattaching_the_same_device_to_the_same_asset_is_idempotent(): void
+    {
+        $asset = $this->createAsset();
+        $provider = IntegrationProvider::factory()->samsara()->create();
+
+        $action = app(AttachDeviceToAsset::class);
+
+        $first = $action->execute($asset, 'gateway', $provider->id, 'GW-1', ['model' => 'VG34']);
+        $second = $action->execute($asset, 'gateway', $provider->id, 'GW-1', ['model' => 'VG55NA']);
+
+        $this->assertEquals(
+            $first->id,
+            $second->id,
+            'The provider replays its device list on every sync, so an already-attached '
+                .'device must be refreshed in place instead of adding a row per tick',
+        );
+
+        $this->assertDatabaseCount('asset_devices', 1);
+        $this->assertSame('VG55NA', $second->metadata_json['model']);
+        $this->assertEquals(DeviceStatus::Active, $second->fresh()->status);
+        $this->assertNull($second->fresh()->detached_at);
+    }
+
+    public function test_a_serial_collision_across_tenants_never_detaches_the_other_tenants_device(): void
+    {
+        $asset = $this->createAsset();
+        $foreignAsset = $this->createAsset();
+        $provider = IntegrationProvider::factory()->samsara()->create();
+
+        $action = app(AttachDeviceToAsset::class);
+
+        $foreignDevice = $action->execute($foreignAsset, 'gateway', $provider->id, 'GW-SHARED');
+        $action->execute($asset, 'gateway', $provider->id, 'GW-SHARED');
+
+        $this->assertTrue(
+            $foreignDevice->fresh()->isAttached(),
+            'asset_devices carries no team_id, so the previous-attachment lookup must be '
+                .'scoped by team — otherwise one tenant`s sync detaches another tenant`s device',
         );
     }
 }

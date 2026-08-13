@@ -28,6 +28,7 @@ class RecordAssetTelemetry
         float|string $value,
         ?string $unit = null,
         ?CarbonInterface $recordedAt = null,
+        ?string $sourceEventId = null,
     ): ?AssetTelemetrySnapshot {
         $recordedAt ??= now();
 
@@ -55,6 +56,9 @@ class RecordAssetTelemetry
             'telemetry_type' => $type,
             'data_json' => ['value' => $value, 'unit' => $unit],
             'recorded_at' => $recordedAt,
+            // Only set for readings harvested from an event, so the row can be
+            // traced back to what reported it; the stats poll leaves it null.
+            'source_event_id' => $sourceEventId,
         ]);
     }
 
