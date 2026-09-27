@@ -1,0 +1,75 @@
+{
+    "name": "Exceso de velocidad sostenido: 128 km/h en zona de 90 km/h durante 3 minutos",
+    "critical": false,
+    "expected_classifications": [
+        "real_event"
+    ],
+    "forbidden_classifications": [
+        "false_positive",
+        "noise"
+    ],
+    "input": {
+        "normalized_event": {
+            "id": 0,
+            "occurred_at": "2026-09-26T12:20:00-06:00",
+            "status": "normalized",
+            "payload": {
+                "event_type_code": "speeding",
+                "event_type_name": "Exceso de velocidad",
+                "severity": "medium",
+                "provider": "samsara",
+                "speed_kph": 128,
+                "speed_limit_kph": 90,
+                "duration_seconds": 190,
+                "location": {
+                    "description": "Autopista México-Puebla km 75",
+                    "lat": 19.2101,
+                    "lng": -98.7502
+                }
+            }
+        },
+        "context_signals": {
+            "is_in_sensitive_geofence": false,
+            "has_open_incident": false,
+            "has_prior_similar_incident": false,
+            "same_type_recent_recurrence": true,
+            "driver_has_recent_risk_events": true,
+            "camera_unavailable": false,
+            "gps_signal_weak": false,
+            "outside_operating_hours": false,
+            "asset_recently_stopped": false,
+            "asset_in_motion": true,
+            "driver_unresolved_previous_alert": false,
+            "has_visual_evidence": false,
+            "has_audio_evidence": false,
+            "video_pending": false,
+            "media_delayed": false,
+            "no_media_available": true,
+            "visual_confirmation_possible": false,
+            "external_resolved": false,
+            "parked_at_base": false,
+            "harsh_driving_near_event": false,
+            "nearby_safety_activity": false,
+            "gps_lost_in_motion": false
+        },
+        "operational_profile": {
+            "operating_hours": "06:00-22:00",
+            "base_name": "Base Tlalnepantla",
+            "route_type": "carretera de cuota"
+        },
+        "recent_history": {
+            "event_count": 4,
+            "recent_same_type_count": 2,
+            "nearby_safety_events_count": 0,
+            "nearby_safety_breakdown": {},
+            "harsh_driving_near_event": false
+        },
+        "tenant_profile": {
+            "automation_level": "assisted",
+            "monthly_token_limit": 2000000,
+            "daily_call_limit": 5000,
+            "preferred_model": null
+        },
+        "media_assessments": []
+    }
+}
