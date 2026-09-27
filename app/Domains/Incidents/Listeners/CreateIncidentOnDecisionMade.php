@@ -25,7 +25,7 @@ class CreateIncidentOnDecisionMade
         $decision = $event->decision;
         $outcome = DecisionOutcomeCode::tryFrom(strtoupper((string) $decision->outcome?->code));
 
-        if ($outcome === null || ! $outcome->createsIncident()) {
+        if ($outcome === null || ! $outcome->surfacesToOperators()) {
             return;
         }
 

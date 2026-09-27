@@ -7,6 +7,7 @@ use App\Domains\AI\Actions\EvaluateEventMultimodally;
 use App\Domains\AI\Actions\EvaluateEventWithAI;
 use App\Domains\AI\Actions\ResolveTenantAIProfile;
 use App\Domains\AI\Enums\EvaluationMode;
+use App\Domains\AI\Events\AIEvaluationCompleted;
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\AI\Models\AIMediaAssessment;
 use App\Domains\Context\Enums\MediaType;
@@ -19,6 +20,7 @@ use App\Models\Team;
 use App\Models\User;
 use Database\Seeders\AIMeterSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
 
 class TenantAIQuotaTest extends TestCase
@@ -99,6 +101,8 @@ class TenantAIQuotaTest extends TestCase
 
     public function test_critical_events_bypass_the_token_and_call_quota(): void
     {
+        // Solo interesa la evaluación: no correr decisiones/incidentes aguas abajo.
+        Event::fake([AIEvaluationCompleted::class]);
         config()->set('ai.quota.monthly_token_limit', 10);
         config()->set('ai.quota.daily_call_limit', 1);
         $team = Team::factory()->create();
