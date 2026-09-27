@@ -7,6 +7,7 @@ use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\Audit\Actions\RecordAuditEntry;
 use App\Domains\Audit\Enums\AuditActorType;
 use App\Domains\Audit\Enums\AuditCategory;
+use App\Support\TenantContext;
 
 /**
  * Registra el veredicto humano (human-in-the-loop) del operador sobre la
@@ -27,12 +28,24 @@ class RecordOperatorVerdict
      * @return AIEventEvaluation|null La evaluación etiquetada, o null si el evento aún no tiene evaluación de IA.
      */
     public function execute(
+        int $teamId,
         int $normalizedEventId,
         OperatorVerdict $verdict,
         ?int $userId = null,
         ?string $note = null,
     ): ?AIEventEvaluation {
-        $evaluation = AIEventEvaluation::withoutGlobalScopes()
+        return TenantContext::for($teamId, fn () => $this->record($teamId, $normalizedEventId, $verdict, $userId, $note));
+    }
+
+    private function record(
+        int $teamId,
+        int $normalizedEventId,
+        OperatorVerdict $verdict,
+        ?int $userId,
+        ?string $note,
+    ): ?AIEventEvaluation {
+        $evaluation = AIEventEvaluation::query()
+            ->where('team_id', $teamId)
             ->where('normalized_event_id', $normalizedEventId)
             ->orderByDesc('evaluation_version')
             ->orderByDesc('id')
