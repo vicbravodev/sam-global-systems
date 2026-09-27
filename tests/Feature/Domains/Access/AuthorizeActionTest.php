@@ -233,6 +233,8 @@ class AuthorizeActionTest extends TestCase
         $role = Role::factory()->create([
             'code' => $roleCode,
             'scope' => RoleScope::Tenant,
+            // Rol de sistema (team_id null): visible y asignable desde cualquier tenant.
+            'is_system' => true,
         ]);
 
         $permissionIds = [];

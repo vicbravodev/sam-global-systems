@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Actions\Teams\UpdateTeamMemberRole;
+use App\Domains\Access\Actions\AuthorizeAction;
 use App\Domains\Audit\Actions\RecordAuditEntry;
 use App\Domains\Audit\Enums\AuditActorType;
 use App\Domains\Audit\Enums\AuditCategory;
@@ -26,12 +28,22 @@ class TenantMemberController extends Controller
 
     public function store(Request $request, Team $team): RedirectResponse
     {
+        if (is_string($request->input('email'))) {
+            $request->merge(['email' => User::normalizeEmail($request->input('email'))]);
+        }
+
         $data = $request->validate([
-            'email' => ['required', 'email', 'exists:users,email'],
+            'email' => ['required', 'email'],
             'role' => ['required', Rule::in([TeamRole::Admin->value, TeamRole::Member->value])],
         ]);
 
-        $user = User::where('email', $data['email'])->firstOrFail();
+        $user = User::findByEmail($data['email']);
+
+        if ($user === null) {
+            throw ValidationException::withMessages([
+                'email' => __('validation.exists', ['attribute' => 'email']),
+            ]);
+        }
 
         if ($team->members()->where('users.id', $user->id)->exists()) {
             throw ValidationException::withMessages([
@@ -48,7 +60,7 @@ class TenantMemberController extends Controller
         return $this->back($team, 'Miembro añadido.');
     }
 
-    public function update(Request $request, Team $team, User $user): RedirectResponse
+    public function update(Request $request, Team $team, User $user, UpdateTeamMemberRole $updateTeamMemberRole): RedirectResponse
     {
         $data = $request->validate([
             'role' => ['required', Rule::in([TeamRole::Admin->value, TeamRole::Member->value])],
@@ -60,10 +72,7 @@ class TenantMemberController extends Controller
             ]);
         }
 
-        $team->memberships()
-            ->where('user_id', $user->id)
-            ->firstOrFail()
-            ->update(['role' => TeamRole::from($data['role'])]);
+        $updateTeamMemberRole->handle($team, $user, TeamRole::from($data['role']));
 
         $this->record($request, $team, 'tenant.member_role_changed',
             "Rol de {$user->email} en {$team->name} cambiado a {$data['role']}.",
@@ -80,11 +89,13 @@ class TenantMemberController extends Controller
             ]);
         }
 
-        $team->memberships()->where('user_id', $user->id)->delete();
+        DB::transaction(function () use ($team, $user) {
+            $team->memberships()->where('user_id', $user->id)->delete();
 
-        if ($user->isCurrentTeam($team) && $user->personalTeam()) {
-            $user->switchTeam($user->personalTeam());
-        }
+            $user->switchAwayFrom($team);
+        });
+
+        app(AuthorizeAction::class)->invalidateCache((int) $user->id, (int) $team->id);
 
         $this->record($request, $team, 'tenant.member_removed',
             "{$user->email} removido del tenant {$team->name}.",
@@ -93,7 +104,7 @@ class TenantMemberController extends Controller
         return $this->back($team, 'Miembro removido.');
     }
 
-    public function makeOwner(Request $request, Team $team, User $user): RedirectResponse
+    public function makeOwner(Request $request, Team $team, User $user, UpdateTeamMemberRole $updateTeamMemberRole): RedirectResponse
     {
         $membership = $team->memberships()->where('user_id', $user->id)->first();
 
@@ -103,18 +114,14 @@ class TenantMemberController extends Controller
             ]);
         }
 
-        DB::transaction(function () use ($team, $user) {
+        DB::transaction(function () use ($team, $user, $updateTeamMemberRole) {
             $currentOwner = $team->owner();
 
             if ($currentOwner && ! $currentOwner->is($user)) {
-                $team->memberships()
-                    ->where('user_id', $currentOwner->id)
-                    ->update(['role' => TeamRole::Admin]);
+                $updateTeamMemberRole->handle($team, $currentOwner, TeamRole::Admin);
             }
 
-            $team->memberships()
-                ->where('user_id', $user->id)
-                ->update(['role' => TeamRole::Owner]);
+            $updateTeamMemberRole->handle($team, $user, TeamRole::Owner);
         });
 
         $this->record($request, $team, 'tenant.owner_reassigned',

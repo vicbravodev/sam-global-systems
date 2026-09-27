@@ -16,7 +16,12 @@ class AssignRoleToMember
 
     public function execute(Membership $membership, string $roleCode): void
     {
-        $role = Role::where('code', $roleCode)->firstOrFail();
+        // Sólo roles de sistema o propios del team de la membresía: un rol
+        // personalizado de otro tenant no existe para éste.
+        $role = Role::query()
+            ->visibleToTeam((int) $membership->team_id)
+            ->where('code', $roleCode)
+            ->firstOrFail();
 
         if ($role->scope !== RoleScope::Tenant) {
             throw new InvalidArgumentException("Cannot assign a global-scope role [{$roleCode}] to a team member.");

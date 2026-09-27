@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Domains\TenantConfig\Actions\ApplyDefaultTenantConfig;
 use App\Models\Team;
+use Database\Seeders\Concerns\DevelopmentOnly;
 use Illuminate\Database\Seeder;
 
 /**
@@ -17,8 +18,14 @@ use Illuminate\Database\Seeder;
  */
 class SamsaraTestDecisionRulesSeeder extends Seeder
 {
+    use DevelopmentOnly;
+
     public function run(): void
     {
+        if ($this->skipInProduction()) {
+            return;
+        }
+
         $team = Team::query()->where('slug', 'serviexpress-jc')->first();
 
         if (! $team) {

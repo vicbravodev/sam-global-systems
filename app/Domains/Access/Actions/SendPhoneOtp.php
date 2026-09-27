@@ -43,9 +43,21 @@ class SendPhoneOtp
             return OtpResult::failure('no_sms_channel');
         }
 
+        if (! $this->withinDailyCaps((int) $user->id, $teamId)) {
+            $this->record($user, $teamId, 'phone_otp.send_failed', 'daily_limit');
+
+            return OtpResult::failure('daily_limit');
+        }
+
         $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
 
-        Cache::put(OtpCacheKeys::forUser((int) $user->id), ['code' => $code, 'attempts' => 0], OtpCacheKeys::TTL_SECONDS);
+        // El código queda atado al número al que se envía: si el usuario
+        // cambia de teléfono, el código viejo ya no verifica el nuevo.
+        Cache::put(
+            OtpCacheKeys::forUser((int) $user->id),
+            ['code' => $code, 'attempts' => 0, 'phone' => $phone],
+            OtpCacheKeys::TTL_SECONDS,
+        );
 
         $rendered = new RenderedNotification(
             channelType: ChannelType::Sms,
@@ -66,6 +78,29 @@ class SendPhoneOtp
         $this->record($user, $teamId, $result->success ? 'phone_otp.sent' : 'phone_otp.send_failed', $result->success ? 'sent' : 'delivery_failed');
 
         return $result->success ? OtpResult::success() : OtpResult::failure('delivery_failed');
+    }
+
+    /**
+     * Cuenta el envío contra los topes diarios (usuario y team) y dice si
+     * cabe. Las claves incluyen el team_id (§2.1) y caducan al acabar el día.
+     */
+    private function withinDailyCaps(int $userId, int $teamId): bool
+    {
+        $userKey = OtpCacheKeys::dailyForUser($userId);
+        $teamKey = OtpCacheKeys::dailyForTeam($teamId);
+
+        if ((int) Cache::get($userKey, 0) >= OtpCacheKeys::DAILY_PER_USER
+            || (int) Cache::get($teamKey, 0) >= OtpCacheKeys::DAILY_PER_TEAM) {
+            return false;
+        }
+
+        $expiresAt = now()->endOfDay();
+        Cache::add($userKey, 0, $expiresAt);
+        Cache::add($teamKey, 0, $expiresAt);
+        Cache::increment($userKey);
+        Cache::increment($teamKey);
+
+        return true;
     }
 
     private function record(User $user, int $teamId, string $action, string $outcome): void

@@ -60,12 +60,13 @@ class RoleTest extends TestCase
 
         $this->assertDatabaseHas('roles', [
             'name' => 'Night Shift',
-            'code' => 'night_shift',
+            'team_id' => $team->id,
+            'code' => Role::customCodeFor($team->id, 'night_shift'),
             'scope' => RoleScope::Tenant->value,
             'is_system' => false,
         ]);
 
-        $createdRole = Role::where('code', 'night_shift')->first();
+        $createdRole = Role::where('code', Role::customCodeFor($team->id, 'night_shift'))->first();
 
         $this->assertNotNull(
             $createdRole,

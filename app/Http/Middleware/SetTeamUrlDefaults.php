@@ -16,7 +16,9 @@ class SetTeamUrlDefaults
      */
     public function handle(Request $request, Closure $next): Response
     {
-        if ($currentTeam = $request->user()?->currentTeam) {
+        // currentTeam() valida membresía: un current_team_id obsoleto no debe
+        // colarse en las URLs generadas.
+        if ($request->user() && ($currentTeam = currentTeam())) {
             URL::defaults([
                 'current_team' => $currentTeam->slug,
                 'team' => $currentTeam->slug,

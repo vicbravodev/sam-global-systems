@@ -393,9 +393,7 @@ function EditRoleDialog({
                 <DialogHeader>
                     <DialogTitle>Editar rol</DialogTitle>
                     <DialogDescription>
-                        {role?.isSystem
-                            ? 'Los roles de sistema no se pueden renombrar; solo puedes ajustar sus permisos.'
-                            : 'Ajusta el nombre, la descripción y los permisos del rol.'}
+                        Ajusta el nombre, la descripción y los permisos del rol.
                     </DialogDescription>
                 </DialogHeader>
 
@@ -569,7 +567,7 @@ function RoleCard({ role, canManage, onEdit, onDelete }: RoleCardProps) {
                 <Badge variant={role.isSystem ? 'secondary' : 'outline'}>
                     {role.isSystem ? 'Sistema' : 'Personalizado'}
                 </Badge>
-                {canManage ? (
+                {canManage && role.editable ? (
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                             <Button
@@ -585,17 +583,13 @@ function RoleCard({ role, canManage, onEdit, onDelete }: RoleCardProps) {
                             <DropdownMenuItem onSelect={onEdit}>
                                 <Pencil size={13} /> Editar
                             </DropdownMenuItem>
-                            {!role.isSystem ? (
-                                <>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem
-                                        variant="destructive"
-                                        onSelect={onDelete}
-                                    >
-                                        <Trash2 size={13} /> Eliminar
-                                    </DropdownMenuItem>
-                                </>
-                            ) : null}
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                                variant="destructive"
+                                onSelect={onDelete}
+                            >
+                                <Trash2 size={13} /> Eliminar
+                            </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>
                 ) : null}
@@ -696,7 +690,7 @@ function MembersCard({
                                     {member.userEmail}
                                 </div>
                             </div>
-                            {canManage ? (
+                            {canManage && !member.locked ? (
                                 <div className="flex items-center gap-2">
                                     {updatingId === member.id ? (
                                         <Loader2

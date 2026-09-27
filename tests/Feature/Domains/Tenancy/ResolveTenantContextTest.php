@@ -19,7 +19,7 @@ class ResolveTenantContextTest extends TestCase
         $user = User::factory()->create();
         $team = Team::factory()->create();
         $team->members()->attach($user, ['role' => TeamRole::Owner->value]);
-        $user->update(['current_team_id' => $team->id]);
+        $user->forceFill(['current_team_id' => $team->id])->save();
         $user->load('currentTeam');
 
         $action = app(ResolveTenantContext::class);
@@ -35,7 +35,7 @@ class ResolveTenantContextTest extends TestCase
     public function test_it_throws_when_no_team_is_set(): void
     {
         $user = User::factory()->create();
-        $user->update(['current_team_id' => null]);
+        $user->forceFill(['current_team_id' => null])->save();
         $user->unsetRelation('currentTeam');
         $user->refresh();
 

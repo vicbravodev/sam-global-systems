@@ -26,18 +26,32 @@ class RolePolicy
         return $team && $this->authorizeAction->execute($user, 'users.manage', $team);
     }
 
+    /**
+     * Los roles de sistema son catálogo de plataforma: cambiarlos cambiaría los
+     * permisos de TODOS los tenants, así que sólo el super-admin puede. Un
+     * tenant sólo edita sus propios roles personalizados.
+     */
     public function update(User $user, Role $role): bool
     {
-        $team = currentTeam();
-
-        return $team && $this->authorizeAction->execute($user, 'users.manage', $team);
+        return $this->managesRole($user, $role);
     }
 
     public function delete(User $user, Role $role): bool
     {
+        return $this->managesRole($user, $role);
+    }
+
+    private function managesRole(User $user, Role $role): bool
+    {
+        if ($user->isSuperAdmin()) {
+            return true;
+        }
+
         $team = currentTeam();
 
-        return $team && $this->authorizeAction->execute($user, 'users.manage', $team);
+        return $team
+            && $role->isOwnedByTeam((int) $team->id)
+            && $this->authorizeAction->execute($user, 'users.manage', $team);
     }
 
     /**

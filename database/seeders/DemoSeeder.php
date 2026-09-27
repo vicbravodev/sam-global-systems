@@ -48,6 +48,7 @@ use App\Enums\TeamRole;
 use App\Models\Membership;
 use App\Models\Team;
 use App\Models\User;
+use Database\Seeders\Concerns\DevelopmentOnly;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -65,6 +66,8 @@ use Illuminate\Support\Str;
  */
 class DemoSeeder extends Seeder
 {
+    use DevelopmentOnly;
+
     private const TEAM_SLUG = 'sam-demo';
 
     private const TEAM_NAME = 'SAM Demo Fleet';
@@ -82,6 +85,10 @@ class DemoSeeder extends Seeder
 
     public function run(): void
     {
+        if ($this->skipInProduction()) {
+            return;
+        }
+
         $this->callPrerequisiteSeeders();
 
         DB::transaction(function () {
@@ -608,9 +615,11 @@ class DemoSeeder extends Seeder
                 'name' => 'Sam Super Admin',
                 'password' => Hash::make('password'),
                 'email_verified_at' => now(),
-                'global_role' => 'super_admin',
             ],
         );
+
+        // global_role no es asignable en masa: sólo vía forceFill.
+        $user->forceFill(['global_role' => 'super_admin'])->save();
 
         if (! $user->personalTeam()) {
             $personal = Team::query()->create([

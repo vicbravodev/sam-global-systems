@@ -12,7 +12,7 @@ class SetGlobalRole
 {
     public function execute(User $user, bool $superAdmin): User
     {
-        $user->update(['global_role' => $superAdmin ? 'super_admin' : null]);
+        $user->forceFill(['global_role' => $superAdmin ? 'super_admin' : null])->save();
 
         return $user;
     }

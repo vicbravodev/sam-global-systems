@@ -4,10 +4,12 @@ use App\Http\Middleware\EnsureSuperAdmin;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\SetTeamUrlDefaults;
+use App\Http\Middleware\TrustProxiesFromConfig;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
+use Illuminate\Http\Middleware\TrustProxies;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Symfony\Component\HttpFoundation\Response;
@@ -24,9 +26,15 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->encryptCookies(except: ['appearance', 'sidebar_state']);
 
         $middleware->validateCsrfTokens(except: [
-            'stripe/*',
             'webhooks/*',
         ]);
+
+        // TRUSTED_PROXIES (config/app.php): IPs/CIDRs del balanceador, o '*'.
+        $middleware->replace(TrustProxies::class, TrustProxiesFromConfig::class);
+
+        // Invalida las demás sesiones cuando cambia la contraseña (cambio o
+        // reset): compara el hash guardado en la sesión con el actual.
+        $middleware->authenticateSessions();
 
         $middleware->web(append: [
             HandleAppearance::class,

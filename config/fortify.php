@@ -144,7 +144,8 @@ return [
     */
 
     'features' => [
-        Features::registration(),
+        // Auto-registro público CERRADO: sólo el super-admin crea tenants y
+        // dueños (consola /admin). Los demás usuarios entran por invitación.
         Features::resetPasswords(),
         Features::emailVerification(),
         Features::twoFactorAuthentication([

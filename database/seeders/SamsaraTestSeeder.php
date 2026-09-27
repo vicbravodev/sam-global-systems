@@ -15,6 +15,7 @@ use App\Enums\TeamRole;
 use App\Models\Membership;
 use App\Models\Team;
 use App\Models\User;
+use Database\Seeders\Concerns\DevelopmentOnly;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -40,6 +41,8 @@ use Illuminate\Support\Facades\Hash;
  */
 class SamsaraTestSeeder extends Seeder
 {
+    use DevelopmentOnly;
+
     private const TEAM_SLUG = 'serviexpress-jc';
 
     private const TEAM_NAME = 'ServiExpress JC';
@@ -56,6 +59,10 @@ class SamsaraTestSeeder extends Seeder
 
     public function run(): void
     {
+        if ($this->skipInProduction()) {
+            return;
+        }
+
         // RBAC roles (tenant_admin, monitorista, ...) viven en AccessSeeder.
         $this->call(AccessSeeder::class);
 
