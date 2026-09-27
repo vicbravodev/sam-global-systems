@@ -38,9 +38,10 @@ class CreateIncidentFromEvent
     ) {}
 
     /**
-     * Creates a new incident triggered by a normalized event. If an open incident already exists
-     * for the same asset/driver inside the dedup window, links the event to that incident
-     * instead of creating a new one.
+     * Creates a new incident triggered by a normalized event. If an open incident of the same
+     * incident type already exists for the same asset/driver inside the dedup window, links the
+     * event to that incident instead of creating a new one (raising its priority if the new
+     * event is more severe).
      *
      * @param  array<string, mixed>  $context  Optional payload with `decision_id`, `priority_code`, `incident_type_code`, `title`, `summary`.
      */
@@ -48,7 +49,14 @@ class CreateIncidentFromEvent
     {
         return DB::transaction(function () use ($event, $context) {
             $teamId = (int) $event->team_id;
-            $existing = $this->findOpenDuplicate($event);
+            $incidentType = $this->resolveIncidentType($context['incident_type_code'] ?? null, $event);
+            $priority = $this->resolvePriority($context['priority_code'] ?? null, $incidentType);
+
+            // Solo se deduplica contra un incidente abierto DEL MISMO TIPO: un
+            // pánico no puede quedar absorbido como evento de soporte de, por
+            // ejemplo, un movimiento fuera de horario del mismo activo (sin
+            // IncidentCreated, sin notificaciones, sin subir prioridad).
+            $existing = $this->findOpenDuplicate($event, $incidentType);
 
             if ($existing !== null) {
                 $this->linkEventToIncident->execute(
@@ -57,11 +65,10 @@ class CreateIncidentFromEvent
                     EventRelationType::SupportingEvent,
                 );
 
+                $this->raisePriorityIfHigher($existing, $priority, $event);
+
                 return $existing;
             }
-
-            $incidentType = $this->resolveIncidentType($context['incident_type_code'] ?? null, $event);
-            $priority = $this->resolvePriority($context['priority_code'] ?? null, $incidentType);
             $openStatus = IncidentStatus::query()->where('code', IncidentStatusCode::Open->value)->firstOrFail();
 
             $sourceType = isset($context['decision_id'])
@@ -153,7 +160,40 @@ class CreateIncidentFromEvent
         });
     }
 
-    private function findOpenDuplicate(NormalizedEvent $event): ?Incident
+    /**
+     * Un evento de soporte más grave que el incidente al que se une sube la
+     * prioridad del incidente (nunca la baja) y lo deja en la línea de tiempo.
+     */
+    private function raisePriorityIfHigher(Incident $incident, IncidentPriority $candidate, NormalizedEvent $event): void
+    {
+        $current = IncidentPriority::query()->find($incident->incident_priority_id);
+
+        if ($current !== null && (int) $candidate->level <= (int) $current->level) {
+            return;
+        }
+
+        $incident->update(['incident_priority_id' => $candidate->id]);
+
+        $this->appendTimelineEntry->execute(
+            incident: $incident,
+            entryType: TimelineEntryType::PriorityChanged,
+            actorType: TimelineActorType::System,
+            title: 'Prioridad elevada por un nuevo evento',
+            description: sprintf(
+                'El evento #%d, vinculado a este incidente, es más grave: la prioridad sube de %s a %s.',
+                $event->id,
+                $current?->name ?? 'sin prioridad',
+                $candidate->name,
+            ),
+            payload: [
+                'previous_priority_id' => $current?->id,
+                'new_priority_id' => $candidate->id,
+                'normalized_event_id' => $event->id,
+            ],
+        );
+    }
+
+    private function findOpenDuplicate(NormalizedEvent $event, IncidentType $incidentType): ?Incident
     {
         if ($event->asset_id === null && $event->driver_id === null) {
             return null;
@@ -165,6 +205,7 @@ class CreateIncidentFromEvent
 
         return Incident::query()
             ->where('team_id', $event->team_id)
+            ->where('incident_type_id', $incidentType->id)
             ->whereHas('status', fn ($q) => $q->where('is_terminal', false))
             ->where('opened_at', '>=', $threshold)
             ->where(function ($q) use ($event) {

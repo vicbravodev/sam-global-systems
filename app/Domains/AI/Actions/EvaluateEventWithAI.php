@@ -51,7 +51,14 @@ class EvaluateEventWithAI
         // Veredicto visual del evento (si ya hay media evaluada): ajusta de
         // forma determinista confianza/riesgo/explicación en todas las rutas
         // no deterministas. En la primera evaluación aún no hay assessments.
-        $fusion = $this->mediaVerdictFusion->fuse($input->mediaAssessments);
+        // Se calcula por ruta porque la dirección del ajuste depende de la
+        // clasificación final (falso positivo vs evento real).
+        $isCriticalEvent = MediaVerdictFusion::isCriticalEvent($event);
+        $fuseMedia = fn (EventClassification $classification): ?array => $this->mediaVerdictFusion->fuse(
+            $input->mediaAssessments,
+            $classification,
+            $isCriticalEvent,
+        );
 
         $rulesDecision = $this->rulesRunner->evaluate($event, $snapshot?->signals_json ?? []);
 
@@ -80,9 +87,9 @@ class EvaluateEventWithAI
         }
 
         if ($this->quotaExceeded($event->team_id, $profile->monthlyTokenLimit)) {
-            return DB::transaction(function () use ($event, $version, $riskScore, $input, $fusion) {
+            return DB::transaction(function () use ($event, $version, $riskScore, $input, $fuseMedia) {
                 $fused = $this->applyFusion(
-                    $fusion,
+                    $fuseMedia(EventClassification::Unclear),
                     confidence: 0.5,
                     riskScore: $riskScore,
                     explanation: 'Cuota de IA del tenant agotada; se evalúa solo con reglas.',
@@ -115,17 +122,21 @@ class EvaluateEventWithAI
         } catch (Throwable $exception) {
             Log::warning('EventEvaluationAgent failed; falling back to rules_only', [
                 'normalized_event_id' => $event->id,
+                'error_class' => $exception::class,
                 'error' => $exception->getMessage(),
             ]);
 
-            return DB::transaction(function () use ($event, $version, $riskScore, $input, $exception, $fusion) {
+            return DB::transaction(function () use ($event, $version, $riskScore, $input, $exception, $fuseMedia) {
                 $fused = $this->applyFusion(
-                    $fusion,
+                    $fuseMedia(EventClassification::Unclear),
                     confidence: 0.4,
                     riskScore: $riskScore,
-                    explanation: 'Falló el agente de IA; se evalúa solo con reglas. Error: '.$exception->getMessage(),
+                    // El mensaje crudo de la excepción (URLs, cuerpos del
+                    // proveedor, claves) se queda en el log; al operador le
+                    // llega un texto genérico y en key_factors solo la clase.
+                    explanation: 'El análisis de IA no estuvo disponible; se evalúa solo con reglas.',
                     reasoningSteps: ['agent_error_fallback'],
-                    keyFactors: ['error' => $exception->getMessage()],
+                    keyFactors: ['error_class' => class_basename($exception)],
                 );
 
                 return $this->persistEvaluation(
@@ -149,6 +160,8 @@ class EvaluateEventWithAI
         }
 
         $finalRiskScore = round(max(0.0, min(1.0, $riskScore + $result->riskScoreDelta)), 2);
+
+        $fusion = $fuseMedia($result->classification);
 
         return DB::transaction(function () use ($event, $version, $result, $finalRiskScore, $input, $fusion) {
             $fused = $this->applyFusion(

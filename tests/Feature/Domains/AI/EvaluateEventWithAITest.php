@@ -94,6 +94,16 @@ class EvaluateEventWithAITest extends TestCase
             'evaluation_id' => $evaluation->id,
             'status' => 'error',
         ]);
+
+        // El mensaje crudo de la excepción nunca llega al operador.
+        $this->assertSame(
+            'El análisis de IA no estuvo disponible; se evalúa solo con reglas.',
+            $evaluation->explanation_text,
+        );
+        $this->assertStringNotContainsString('simulated failure', (string) $evaluation->explanation_text);
+        $this->assertStringNotContainsString('simulated failure', json_encode($evaluation->signals_json));
+        $this->assertSame('RuntimeException', $evaluation->signals_json['key_factors']['error_class'] ?? null);
+        $this->assertArrayNotHasKey('error', $evaluation->signals_json['key_factors']);
     }
 
     public function test_explanation_is_always_created_for_evaluations(): void
