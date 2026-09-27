@@ -25,8 +25,10 @@ use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
 use App\Models\Membership;
 use App\Models\User;
+use App\Support\TeamMembers;
 use App\Support\Templates\TemplateInterpolator;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class ExecuteAction
@@ -243,7 +245,7 @@ class ExecuteAction
         }
 
         return match ($execution->target_type) {
-            'user' => $this->userRecipients([(int) $target], $channelType),
+            'user' => $this->userRecipients($execution->team_id, [(int) $target], $channelType),
             'role' => $this->roleRecipients($execution->team_id, $target, $channelType),
             // 'email', 'phone', 'address' and anything else carrying a raw
             // address routes the literal target through the channel.
@@ -259,11 +261,23 @@ class ExecuteAction
      * @param  array<int, int>  $userIds
      * @return array<int, array<string, mixed>>
      */
-    private function userRecipients(array $userIds, ChannelType $channelType): array
+    private function userRecipients(int $teamId, array $userIds, ChannelType $channelType): array
     {
-        return User::query()
-            ->whereIn('id', $userIds)
-            ->get()
+        // Los ids de usuario son globales: sólo se notifica a miembros del
+        // team de la ejecución (como ResolveOnCallOperator::isMember). Un id
+        // ajeno se descarta y queda en el log.
+        $users = TeamMembers::scope(User::query()->whereIn('id', $userIds), $teamId)->get();
+
+        $skipped = array_values(array_diff($userIds, $users->modelKeys()));
+
+        if ($skipped !== []) {
+            Log::warning('automation.recipients.non_member_skipped', [
+                'team_id' => $teamId,
+                'user_ids' => $skipped,
+            ]);
+        }
+
+        return $users
             ->map(fn (User $user): array => [
                 // The push driver resolves device tokens by user id; every
                 // other channel addresses the user by email.
@@ -290,7 +304,7 @@ class ExecuteAction
             ->map(fn ($id): int => (int) $id)
             ->all();
 
-        return $this->userRecipients($userIds, $channelType);
+        return $this->userRecipients($teamId, $userIds, $channelType);
     }
 
     /**

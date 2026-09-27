@@ -19,6 +19,7 @@ use App\Domains\Incidents\Support\IncidentStatusPresenter;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
 use App\Models\User;
+use App\Support\TeamMembers;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\JsonResponse;
@@ -75,6 +76,7 @@ class IncidentInboxController extends Controller
                 // Los que tienen tomado un incidente se resuelven en la misma
                 // consulta que los asignados: la bandeja pinta ambos nombres.
                 ->concat($incidents->map(fn (Incident $incident) => $incident->claimed_by_user_id)),
+            $current_team->id,
         );
 
         return Inertia::render('incidents/index', [
@@ -278,7 +280,7 @@ class IncidentInboxController extends Controller
                 ->map(fn ($entry) => (int) $entry->actor_id))
             ->push($incident->claimed_by_user_id);
 
-        $users = $this->resolveUsers($userIds);
+        $users = $this->resolveUsers($userIds, (int) $incident->team_id);
 
         $detail = $this->presenter->toDetail($incident, $users);
         // Incluido también en la rama JSON: el panel de la bandeja muestra el
@@ -520,7 +522,7 @@ class IncidentInboxController extends Controller
      * @param  Collection<int, int|null>  $ids
      * @return Collection<int, User>
      */
-    private function resolveUsers(Collection $ids): Collection
+    private function resolveUsers(Collection $ids, int $teamId): Collection
     {
         // $ids puede llegar como Eloquent Collection "impura" (p. ej. tras
         // concat() sobre una EloquentCollection vacía): forzar a base
@@ -531,6 +533,11 @@ class IncidentInboxController extends Controller
             return collect();
         }
 
-        return User::query()->whereIn('id', $ids)->get()->keyBy('id');
+        // Sólo miembros del team (y super-admins que operan sobre él): los
+        // ids vienen de asignaciones/comentarios y no deben servir para
+        // enumerar nombres de usuarios de otros tenants.
+        return TeamMembers::scope(User::query()->whereIn('id', $ids), $teamId, includeSuperAdmins: true)
+            ->get()
+            ->keyBy('id');
     }
 }
