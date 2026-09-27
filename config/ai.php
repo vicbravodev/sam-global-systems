@@ -257,6 +257,16 @@ return [
     'media' => [
         'max_image_bytes' => (int) env('AI_MEDIA_MAX_IMAGE_BYTES', 8 * 1024 * 1024),
         'max_images_per_event' => (int) env('AI_MEDIA_MAX_IMAGES_PER_EVENT', 8),
+
+        // Provider media downloads (SecureMediaDownloader): https only, to
+        // these hosts (suffix match or `*` glob; comma-separated in env),
+        // streamed to a temp file under a hard size cap and timeout.
+        'allowed_download_hosts' => array_values(array_filter(array_map('trim', explode(',', (string) env(
+            'AI_MEDIA_ALLOWED_DOWNLOAD_HOSTS',
+            'samsara.com,samsara-*.s3.amazonaws.com,amazonaws.com,cloudfront.net',
+        ))))),
+        'max_download_bytes' => (int) env('AI_MEDIA_MAX_DOWNLOAD_BYTES', 200 * 1024 * 1024),
+        'download_timeout' => (int) env('AI_MEDIA_DOWNLOAD_TIMEOUT', 120),
     ],
 
 ];

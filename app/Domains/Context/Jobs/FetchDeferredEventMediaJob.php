@@ -9,6 +9,7 @@ use App\Domains\Assets\Models\Asset;
 use App\Domains\Assets\Models\AssetExternalReference;
 use App\Domains\Context\Actions\AttachImmediateEventMedia;
 use App\Domains\Context\Actions\RefreshContextMediaSnapshot;
+use App\Domains\Context\Enums\MediaDownloadOutcome;
 use App\Domains\Context\Enums\MediaRequestStatus;
 use App\Domains\Context\Enums\MediaRequestType;
 use App\Domains\Context\Events\EventMediaFailed;
@@ -18,6 +19,8 @@ use App\Domains\Ingestion\Models\RawEventAttachment;
 use App\Domains\Integrations\Enums\TenantIntegrationStatus;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Infrastructure\Storage\MediaDownloadException;
+use App\Infrastructure\Storage\SecureMediaDownloader;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -25,7 +28,6 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -376,12 +378,17 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         $pending = array_filter($items, fn (array $item) => $item['status'] === 'pending');
 
         $downloaded = 0;
+        $failedDownloads = 0;
 
         foreach ($available as $item) {
             $filename = 'deferred-'.$this->clipFilenameFor($item['input']);
 
-            if ($this->downloadMedia($event, $item, $storage, $filename, AttachmentType::Clip, 'video/mp4')) {
+            $outcome = $this->downloadMedia($event, $item, $storage, $filename, AttachmentType::Clip, 'video/mp4');
+
+            if ($outcome === MediaDownloadOutcome::Stored) {
                 $downloaded++;
+            } elseif ($outcome === MediaDownloadOutcome::Failed) {
+                $failedDownloads++;
             }
         }
 
@@ -390,8 +397,10 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         }
 
         // An empty item list means the provider could not be queried right now
-        // (transient): keep polling until the request's expiry closes the loop.
-        if ($pending !== [] || $items === []) {
+        // (transient), and a failed download means the clip is still waiting
+        // at the provider: keep polling until the request's expiry closes the
+        // loop instead of completing a request that stored nothing.
+        if ($pending !== [] || $items === [] || $failedDownloads > 0) {
             $request->forceFill(['status' => MediaRequestStatus::Processing])->save();
             $refreshSnapshot->execute($event->id);
 
@@ -464,8 +473,12 @@ class FetchDeferredEventMediaJob implements ShouldQueue
 
                 $item['offset_seconds'] = (int) $retrieval['offset_seconds'];
 
-                if ($this->downloadMedia($event, $item, $storage, $filename, AttachmentType::Snapshot, 'image/jpeg')) {
+                $outcome = $this->downloadMedia($event, $item, $storage, $filename, AttachmentType::Snapshot, 'image/jpeg');
+
+                if ($outcome === MediaDownloadOutcome::Stored) {
                     $downloaded++;
+                } elseif ($outcome === MediaDownloadOutcome::Failed) {
+                    $anyTransient = true;
                 }
             }
         }
@@ -549,7 +562,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
 
             $isVideo = str_starts_with((string) ($item['media_type'] ?? ''), 'video');
 
-            $stored = $this->downloadMedia(
+            $outcome = $this->downloadMedia(
                 $event,
                 $item,
                 $storage,
@@ -559,7 +572,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
                 'uploaded_media',
             );
 
-            if ($stored) {
+            if ($outcome === MediaDownloadOutcome::Stored) {
                 $downloaded++;
             }
         }
@@ -709,7 +722,11 @@ class FetchDeferredEventMediaJob implements ShouldQueue
     }
 
     /**
-     * @param  array{input: string|null, status: string, url: string|null, offset_seconds?: int, trigger_reason?: string|null}  $item
+     * Fetch one provider media item into storage through the hardened
+     * downloader (https + host allowlist, streamed, size-capped). Tri-state so
+     * a poll can tell "nothing new" apart from "download failed, retry".
+     *
+     * @param  array{input: string|null, status: string, url: string|null, offset_seconds?: int, trigger_reason?: string|null, start_time?: string|null}  $item
      */
     private function downloadMedia(
         NormalizedEvent $event,
@@ -719,7 +736,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         AttachmentType $type,
         string $defaultMimeType,
         string $source = 'deferred_retrieval',
-    ): bool {
+    ): MediaDownloadOutcome {
         $storagePath = "teams/{$event->team_id}/raw-events/{$event->raw_event_id}/{$filename}";
 
         // Re-polls list already-downloaded media as available again: skip the
@@ -739,31 +756,39 @@ class FetchDeferredEventMediaJob implements ShouldQueue
                 ],
             );
 
-            return false;
+            return MediaDownloadOutcome::AlreadyExists;
         }
 
         try {
-            $response = Http::timeout((int) config('services.samsara.media_download_timeout', 30))->get((string) $item['url']);
-        } catch (\Throwable $e) {
+            $download = app(SecureMediaDownloader::class)->download((string) $item['url']);
+        } catch (MediaDownloadException $e) {
             Log::warning('Deferred media download failed', [
                 'normalized_event_id' => $event->id,
                 'input' => $item['input'],
                 'error' => $e->getMessage(),
             ]);
 
-            return false;
+            return MediaDownloadOutcome::Failed;
         }
 
-        if (! $response->successful() || $response->body() === '') {
-            return false;
+        $mimeType = $this->resolveMimeType($download->contentType, $filename, $defaultMimeType);
+
+        try {
+            $stream = $download->stream();
+
+            try {
+                $storage->put($storagePath, $stream, [
+                    'visibility' => 'private',
+                    'ContentType' => $mimeType,
+                ]);
+            } finally {
+                if (is_resource($stream)) {
+                    fclose($stream);
+                }
+            }
+        } finally {
+            $download->cleanup();
         }
-
-        $mimeType = $this->resolveMimeType($response->header('Content-Type'), $filename, $defaultMimeType);
-
-        $storage->put($storagePath, $response->body(), [
-            'visibility' => 'private',
-            'ContentType' => $mimeType,
-        ]);
 
         $metadata = ['source' => $source, 'input' => $item['input']];
 
@@ -775,6 +800,12 @@ class FetchDeferredEventMediaJob implements ShouldQueue
             $metadata['trigger_reason'] = (string) $item['trigger_reason'];
         }
 
+        // Capture instant of uploaded media: lets the vision model know how
+        // far from the event the frame was taken.
+        if (! empty($item['start_time']) && is_string($item['start_time'])) {
+            $metadata['start_time'] = $item['start_time'];
+        }
+
         RawEventAttachment::firstOrCreate(
             [
                 'raw_event_id' => $event->raw_event_id,
@@ -783,12 +814,12 @@ class FetchDeferredEventMediaJob implements ShouldQueue
             [
                 'attachment_type' => $type,
                 'mime_type' => $mimeType,
-                'size_bytes' => strlen($response->body()),
+                'size_bytes' => $download->size,
                 'metadata_json' => $metadata,
             ],
         );
 
-        return true;
+        return MediaDownloadOutcome::Stored;
     }
 
     /**
