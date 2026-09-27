@@ -7,16 +7,22 @@ use App\Domains\AI\Actions\EvaluateEventWithAI;
 use App\Domains\AI\Actions\ReevaluateEventWithNewEvidence;
 use App\Domains\AI\Actions\ResolveTenantAIProfile;
 use App\Domains\AI\Enums\EvaluationMode;
+use App\Domains\AI\Enums\EventClassification;
 use App\Domains\AI\Enums\ReevaluationTrigger;
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\AI\Models\AIMediaAssessment;
+use App\Domains\AI\Support\MediaVerdictFusion;
 use App\Domains\Context\Actions\BuildEventContext;
 use App\Domains\Context\Models\EventMediaContext;
+use App\Domains\Decisions\Jobs\RunDecisionEngineJob;
+use App\Domains\Normalization\Models\EventCategory;
+use App\Domains\Normalization\Models\EventSeverity;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Models\Team;
 use App\Models\User;
 use Database\Seeders\AIMeterSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Bus;
 use Tests\TestCase;
 
 /**
@@ -239,5 +245,131 @@ class MediaVerdictFusionTest extends TestCase
 
         $this->assertEqualsWithDelta(0.85, (float) $reevaluation->confidence_score, 0.001);
         $this->assertSame(EvaluationMode::AiText, $reevaluation->evaluation_mode);
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private static function verdicts(string ...$results): array
+    {
+        return array_map(fn (string $result): array => ['result' => $result, 'extracted_signals' => []], $results);
+    }
+
+    public function test_contradicting_media_raises_confidence_when_ai_said_false_positive(): void
+    {
+        $fusion = app(MediaVerdictFusion::class)->fuse(
+            self::verdicts('contradicts_event', 'contradicts_event'),
+            EventClassification::FalsePositive,
+        );
+
+        $this->assertEqualsWithDelta(0.15, $fusion['confidenceDelta'], 0.001);
+        $this->assertEqualsWithDelta(-0.15, $fusion['riskDelta'], 0.001);
+    }
+
+    public function test_confirming_media_lowers_confidence_when_ai_said_false_positive(): void
+    {
+        $fusion = app(MediaVerdictFusion::class)->fuse(
+            self::verdicts('confirms_event'),
+            EventClassification::Noise,
+        );
+
+        $this->assertEqualsWithDelta(-0.10, $fusion['confidenceDelta'], 0.001);
+        $this->assertEqualsWithDelta(0.10, $fusion['riskDelta'], 0.001);
+        $this->assertStringContainsString('confirma', $fusion['sentence']);
+    }
+
+    public function test_a_single_confirmation_dominates_a_majority_of_contradictions(): void
+    {
+        $fusion = app(MediaVerdictFusion::class)->fuse(
+            self::verdicts('contradicts_event', 'contradicts_event', 'contradicts_event', 'confirms_event'),
+            EventClassification::RealEvent,
+        );
+
+        $this->assertEqualsWithDelta(0.10, $fusion['confidenceDelta'], 0.001);
+        $this->assertEqualsWithDelta(0.10, $fusion['riskDelta'], 0.001);
+        $this->assertSame(1, $fusion['keyFactors']['media_confirms_count']);
+        $this->assertSame(3, $fusion['keyFactors']['media_contradicts_count']);
+    }
+
+    public function test_visible_threat_counts_as_confirmation_even_if_the_result_contradicts(): void
+    {
+        $fusion = app(MediaVerdictFusion::class)->fuse(
+            [
+                ['result' => 'contradicts_event', 'extracted_signals' => ['visible_threat' => true]],
+                ['result' => 'contradicts_event', 'extracted_signals' => []],
+            ],
+            EventClassification::RealEvent,
+        );
+
+        $this->assertEqualsWithDelta(0.10, $fusion['riskDelta'], 0.001);
+        $this->assertSame(1, $fusion['keyFactors']['media_visible_threat_count']);
+        $this->assertStringContainsString('amenaza visible', $fusion['sentence']);
+    }
+
+    public function test_contradicting_media_never_lowers_risk_of_a_critical_event(): void
+    {
+        $fusion = app(MediaVerdictFusion::class)->fuse(
+            self::verdicts('contradicts_event', 'contradicts_event'),
+            EventClassification::RealEvent,
+            isCriticalEvent: true,
+        );
+
+        $this->assertSame(0.0, $fusion['riskDelta']);
+        $this->assertSame(0.0, $fusion['confidenceDelta']);
+        $this->assertStringContainsString('sin confirmación visual', $fusion['sentence']);
+    }
+
+    public function test_critical_detection_by_severity_or_emergency_category(): void
+    {
+        $team = User::factory()->create()->currentTeam;
+        $medium = EventSeverity::factory()->medium()->create();
+
+        $critical = NormalizedEvent::factory()->create([
+            'team_id' => $team->id,
+            'event_severity_id' => EventSeverity::factory()->critical()->create()->id,
+        ]);
+        $emergency = NormalizedEvent::factory()->create([
+            'team_id' => $team->id,
+            'event_severity_id' => $medium->id,
+            'event_category_id' => EventCategory::factory()->emergency()->create()->id,
+        ]);
+        $ordinary = NormalizedEvent::factory()->create([
+            'team_id' => $team->id,
+            'event_severity_id' => $medium->id,
+        ]);
+
+        $this->assertTrue(MediaVerdictFusion::isCriticalEvent($critical));
+        $this->assertTrue(MediaVerdictFusion::isCriticalEvent($emergency));
+        $this->assertFalse(MediaVerdictFusion::isCriticalEvent($ordinary));
+    }
+
+    public function test_reevaluation_of_a_critical_event_with_contradicting_media_keeps_its_risk(): void
+    {
+        // Solo interesa la evaluación, no el motor de decisiones aguas abajo.
+        Bus::fake([RunDecisionEngineJob::class]);
+
+        $team = User::factory()->create()->currentTeam;
+
+        $event = NormalizedEvent::factory()->create([
+            'team_id' => $team->id,
+            'event_severity_id' => EventSeverity::factory()->critical()->create()->id,
+            'payload_normalized_json' => ['severity' => 'critical'],
+        ]);
+
+        app(BuildEventContext::class)->execute($event);
+        $baseline = app(EvaluateEventWithAI::class)->execute($event->fresh());
+
+        AIMediaAssessment::factory()->contradicts()->create([
+            'evaluation_id' => $baseline->id,
+            'event_media_context_id' => $this->makeMedia($event)->id,
+        ]);
+
+        $reevaluation = app(ReevaluateEventWithNewEvidence::class)->execute(
+            $event->fresh(),
+            ReevaluationTrigger::MediaArrived,
+        );
+
+        $this->assertEqualsWithDelta((float) $baseline->risk_score, (float) $reevaluation->risk_score, 0.001);
+        $this->assertStringContainsString('sin confirmación visual', $reevaluation->explanation_text);
     }
 }
