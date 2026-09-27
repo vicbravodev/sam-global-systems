@@ -8,6 +8,7 @@ use App\Http\Requests\Settings\TwoFactorAuthenticationRequest;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
+use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use Inertia\Response;
 use Laravel\Fortify\Features;
@@ -52,6 +53,10 @@ class SecurityController extends Controller implements HasMiddleware
         $request->user()->update([
             'password' => $request->password,
         ]);
+
+        // Cierra las demás sesiones (AuthenticateSession compara el hash) y
+        // conserva la actual.
+        Auth::logoutOtherDevices($request->password);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Password updated.')]);
 

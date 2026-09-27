@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\TeamRole;
 use Database\Factories\TeamInvitationFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -28,6 +29,19 @@ class TeamInvitation extends Model
                 $invitation->code = Str::random(64);
             }
         });
+    }
+
+    /**
+     * El email invitado se guarda normalizado igual que el de User, para que
+     * la comparación al aceptar no dependa de mayúsculas.
+     *
+     * @return Attribute<string, string|null>
+     */
+    protected function email(): Attribute
+    {
+        return Attribute::make(
+            set: fn (?string $value) => User::normalizeEmail($value),
+        );
     }
 
     /**

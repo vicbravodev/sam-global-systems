@@ -208,7 +208,7 @@ class TeamTest extends TestCase
         $betaTeam = Team::factory()->create(['name' => 'Beta Team']);
         $betaTeam->members()->attach($user, ['role' => TeamRole::Owner->value]);
 
-        $user->update(['current_team_id' => $zuluTeam->id]);
+        $user->forceFill(['current_team_id' => $zuluTeam->id])->save();
 
         $response = $this
             ->actingAs($user)
@@ -232,7 +232,7 @@ class TeamTest extends TestCase
         $team = Team::factory()->create(['name' => 'Zulu Team']);
         $team->members()->attach($user, ['role' => TeamRole::Owner->value]);
 
-        $user->update(['current_team_id' => $team->id]);
+        $user->forceFill(['current_team_id' => $team->id])->save();
 
         $response = $this
             ->actingAs($user)
@@ -256,7 +256,7 @@ class TeamTest extends TestCase
         $team = Team::factory()->create();
         $team->members()->attach($user, ['role' => TeamRole::Owner->value]);
 
-        $user->update(['current_team_id' => $personalTeam->id]);
+        $user->forceFill(['current_team_id' => $personalTeam->id])->save();
 
         $response = $this
             ->actingAs($user)
@@ -282,8 +282,8 @@ class TeamTest extends TestCase
         $team->members()->attach($owner, ['role' => TeamRole::Owner->value]);
         $team->members()->attach($member, ['role' => TeamRole::Member->value]);
 
-        $owner->update(['current_team_id' => $team->id]);
-        $member->update(['current_team_id' => $team->id]);
+        $owner->forceFill(['current_team_id' => $team->id])->save();
+        $member->forceFill(['current_team_id' => $team->id])->save();
 
         $response = $this
             ->actingAs($owner)

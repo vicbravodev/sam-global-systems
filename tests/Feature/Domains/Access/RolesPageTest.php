@@ -130,13 +130,16 @@ class RolesPageTest extends TestCase
             ])
             ->assertSessionHasNoErrors();
 
-        $this->assertDatabaseHas('roles', ['code' => 'mi-rol']);
+        $this->assertDatabaseHas('roles', [
+            'code' => Role::customCodeFor($user->currentTeam->id, 'mi-rol'),
+            'team_id' => $user->currentTeam->id,
+        ]);
     }
 
     public function test_update_syncs_permissions_on_custom_role(): void
     {
         $user = $this->userWithRole('tenant_admin');
-        $role = Role::factory()->create(['code' => 'custom_ops', 'is_system' => false]);
+        $role = Role::factory()->create(['code' => 'custom_ops', 'is_system' => false, 'team_id' => $user->currentTeam->id]);
 
         $response = $this->actingAs($user)->put(
             route('access.roles.update', [
@@ -176,10 +179,14 @@ class RolesPageTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_update_can_sync_permissions_of_system_role_without_name(): void
+    public function test_update_cannot_sync_permissions_of_system_role(): void
     {
+        // Los roles de sistema son globales: sincronizar sus permisos desde un
+        // tenant cambiaría los permisos de TODOS los tenants. Son de sólo
+        // lectura para los tenants (sólo el super-admin los ajusta).
         $user = $this->userWithRole('tenant_admin');
         $role = Role::where('code', 'viewer')->firstOrFail();
+        $before = $role->permissions()->pluck('code')->sort()->values()->all();
 
         $this->actingAs($user)
             ->put(route('access.roles.update', [
@@ -188,18 +195,15 @@ class RolesPageTest extends TestCase
             ]), [
                 'permissions' => ['incidents.view', 'audit.view'],
             ])
-            ->assertRedirect();
+            ->assertForbidden();
 
-        $this->assertEqualsCanonicalizing(
-            ['incidents.view', 'audit.view'],
-            $role->permissions()->pluck('code')->all(),
-        );
+        $this->assertSame($before, $role->permissions()->pluck('code')->sort()->values()->all());
     }
 
     public function test_destroy_deletes_custom_role(): void
     {
         $user = $this->userWithRole('tenant_admin');
-        $role = Role::factory()->create(['code' => 'disposable', 'is_system' => false]);
+        $role = Role::factory()->create(['code' => 'disposable', 'is_system' => false, 'team_id' => $user->currentTeam->id]);
 
         $this->actingAs($user)
             ->delete(route('access.roles.destroy', [
@@ -214,7 +218,7 @@ class RolesPageTest extends TestCase
     public function test_destroy_is_forbidden_without_users_manage(): void
     {
         $user = $this->userWithRole('viewer');
-        $role = Role::factory()->create(['code' => 'disposable', 'is_system' => false]);
+        $role = Role::factory()->create(['code' => 'disposable', 'is_system' => false, 'team_id' => $user->currentTeam->id]);
 
         $this->actingAs($user)
             ->delete(route('access.roles.destroy', [

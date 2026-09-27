@@ -25,6 +25,14 @@ class VerifyPhoneOtp
             return $this->fail($user, $teamId, 'expired');
         }
 
+        // El código sólo verifica el número al que se envió. Si el teléfono
+        // cambió desde entonces (o la entrada no trae número), no vale.
+        if (! isset($entry['phone']) || ! hash_equals((string) $entry['phone'], trim((string) $user->phone))) {
+            Cache::forget($key);
+
+            return $this->fail($user, $teamId, 'phone_changed');
+        }
+
         if (($entry['attempts'] ?? 0) >= OtpCacheKeys::MAX_ATTEMPTS) {
             Cache::forget($key);
 
@@ -32,7 +40,7 @@ class VerifyPhoneOtp
         }
 
         if (! hash_equals((string) $entry['code'], trim($code))) {
-            Cache::put($key, ['code' => $entry['code'], 'attempts' => ($entry['attempts'] ?? 0) + 1], OtpCacheKeys::TTL_SECONDS);
+            Cache::put($key, [...$entry, 'attempts' => ($entry['attempts'] ?? 0) + 1], OtpCacheKeys::TTL_SECONDS);
 
             return $this->fail($user, $teamId, 'invalid_code');
         }

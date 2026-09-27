@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Access;
 
 use App\Domains\Access\Actions\AssignRoleToMember;
+use App\Domains\Access\Actions\GuardRoleDelegation;
 use App\Domains\Access\Models\Role;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Access\UpdateMemberRoleRequest;
@@ -17,6 +18,7 @@ class MemberRoleController extends Controller
         Team $current_team,
         Membership $membership,
         AssignRoleToMember $assignRoleToMember,
+        GuardRoleDelegation $guard,
     ): RedirectResponse {
         $this->authorize('assignRole', Role::class);
 
@@ -24,6 +26,16 @@ class MemberRoleController extends Controller
         // membership that does not belong to the current team (404 so the
         // existence of other teams' memberships is not leaked).
         abort_if($membership->team_id !== $current_team->id, 404);
+
+        $role = Role::query()
+            ->visibleToTeam((int) $current_team->id)
+            ->where('code', $request->validated('role_code'))
+            ->firstOrFail();
+
+        // Anti-escalada: ni propietarios, ni uno mismo, ni conceder más de
+        // lo que el actor tiene.
+        $guard->assertCanChangeMembership($request->user(), $membership);
+        $guard->assertCanGrantRole($request->user(), $current_team, $role);
 
         $assignRoleToMember->execute($membership, $request->validated('role_code'));
 

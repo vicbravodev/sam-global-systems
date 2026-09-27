@@ -85,12 +85,36 @@ trait HasTeams
             return false;
         }
 
-        $this->update(['current_team_id' => $team->id]);
+        $this->forceFill(['current_team_id' => $team->id])->save();
         $this->setRelation('currentTeam', $team);
 
         URL::defaults(['current_team' => $team->slug]);
 
         return true;
+    }
+
+    /**
+     * Si el team actual es el dado, mueve al usuario a otro team al que
+     * pertenezca (el personal primero) o deja current_team_id en null. Se usa
+     * al quitar una membresía o borrar un tenant: un current_team_id colgando
+     * de un team ajeno o borrado no debe sobrevivir.
+     */
+    public function switchAwayFrom(Team $team): void
+    {
+        if ((int) $this->current_team_id !== (int) $team->id) {
+            return;
+        }
+
+        $next = $this->teams()
+            ->where('teams.id', '!=', $team->id)
+            ->orderByDesc('teams.is_personal')
+            ->orderByRaw('LOWER(teams.name)')
+            ->first();
+
+        $this->forceFill(['current_team_id' => $next?->id])->save();
+        // Sin URL::defaults: se llama también sobre OTROS usuarios (miembros
+        // quitados, tenants borrados) y no debe alterar las URLs del actor.
+        $this->setRelation('currentTeam', $next);
     }
 
     /**
@@ -102,7 +126,7 @@ trait HasTeams
      */
     public function forceSwitchTeam(Team $team): void
     {
-        $this->update(['current_team_id' => $team->id]);
+        $this->forceFill(['current_team_id' => $team->id])->save();
         $this->setRelation('currentTeam', $team);
 
         URL::defaults(['current_team' => $team->slug, 'team' => $team->slug]);

@@ -80,6 +80,10 @@ class TenantController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        if (is_string($request->input('owner_email'))) {
+            $request->merge(['owner_email' => User::normalizeEmail($request->input('owner_email'))]);
+        }
+
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'plan_code' => ['nullable', 'string', 'exists:plans,code'],
@@ -87,7 +91,7 @@ class TenantController extends Controller
             'owner_name' => ['nullable', 'string', 'max:255'],
         ]);
 
-        $owner = User::where('email', $data['owner_email'])->first()
+        $owner = User::findByEmail($data['owner_email'])
             ?? $this->provisionOwner($data);
 
         $team = $this->createTenant->execute(

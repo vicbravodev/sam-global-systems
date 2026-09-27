@@ -1,8 +1,10 @@
 import { Form, Head, Link, usePage } from '@inertiajs/react';
+import { useState } from 'react';
 import ProfileController from '@/actions/App/Http/Controllers/Settings/ProfileController';
 import DeleteUser from '@/components/delete-user';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
+import PasswordInput from '@/components/password-input';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -17,6 +19,10 @@ export default function Profile({
     status?: string;
 }) {
     const { auth } = usePage().props;
+    const [email, setEmail] = useState(auth.user.email);
+    // Cambiar el correo (identidad de login) exige la contraseña actual.
+    const emailChanged =
+        email.trim().toLowerCase() !== auth.user.email.toLowerCase();
 
     return (
         <>
@@ -68,7 +74,8 @@ export default function Profile({
                                     id="email"
                                     type="email"
                                     className="mt-1 block w-full"
-                                    defaultValue={auth.user.email}
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
                                     name="email"
                                     required
                                     autoComplete="username"
@@ -80,6 +87,28 @@ export default function Profile({
                                     message={errors.email}
                                 />
                             </div>
+
+                            {emailChanged && (
+                                <div className="grid gap-2">
+                                    <Label htmlFor="current_password">
+                                        Contraseña actual
+                                    </Label>
+
+                                    <PasswordInput
+                                        id="current_password"
+                                        name="current_password"
+                                        className="mt-1 block w-full"
+                                        required
+                                        autoComplete="current-password"
+                                        placeholder="Confirma tu contraseña para cambiar el correo"
+                                    />
+
+                                    <InputError
+                                        className="mt-2"
+                                        message={errors.current_password}
+                                    />
+                                </div>
+                            )}
 
                             {mustVerifyEmail &&
                                 auth.user.email_verified_at === null && (

@@ -3,6 +3,7 @@
 namespace App\Concerns;
 
 use App\Models\Team;
+use App\Support\CurrentTeamResolver;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -16,6 +17,10 @@ trait BelongsToTenant
         static::addGlobalScope('tenant', function (Builder $builder) {
             if ($teamId = currentTeamId()) {
                 $builder->where($builder->getModel()->getTable().'.team_id', $teamId);
+            } elseif (CurrentTeamResolver::shouldFailClosed()) {
+                // Usuario autenticado sin team válido: fail closed, nunca un
+                // query sin filtro de tenant.
+                $builder->whereRaw('1 = 0');
             }
         });
 

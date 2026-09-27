@@ -1,6 +1,8 @@
 <?php
 
 use App\Models\Team;
+use App\Models\User;
+use App\Support\CurrentTeamResolver;
 use App\Support\TenantContext;
 
 if (! function_exists('currentTeamId')) { // @codeCoverageIgnore
@@ -14,7 +16,15 @@ if (! function_exists('currentTeamId')) { // @codeCoverageIgnore
             return null;
         }
 
-        return TenantContext::id() ?? auth()->user()?->currentTeam?->id;
+        if (($id = TenantContext::id()) !== null) {
+            return $id;
+        }
+
+        $user = auth()->user();
+
+        // current_team_id sólo vale si el usuario sigue siendo miembro de ese
+        // team (o es super-admin). Ver CurrentTeamResolver.
+        return $user instanceof User ? CurrentTeamResolver::idFor($user) : null;
     }
 }
 

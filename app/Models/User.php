@@ -9,18 +9,56 @@ use App\Domains\Notifications\Models\UserPushToken;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 
-#[Fillable(['name', 'email', 'phone', 'password', 'current_team_id', 'global_role'])]
+// global_role y current_team_id NO son asignables en masa: se escriben sólo
+// con forceFill desde SetGlobalRole / switchTeam / forceSwitchTeam.
+#[Fillable(['name', 'email', 'phone', 'password'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
     use HasFactory, HasTeams, Notifiable, TwoFactorAuthenticatable;
+
+    /**
+     * Normaliza un email para guardarlo o buscarlo: sin espacios y en
+     * minúsculas. En Postgres `unique(email)` distingue mayúsculas, así que
+     * sin esto «Foo@x.com» y «foo@x.com» serían dos cuentas distintas.
+     */
+    public static function normalizeEmail(?string $email): ?string
+    {
+        return $email === null ? null : mb_strtolower(trim($email));
+    }
+
+    /**
+     * Busca un usuario por email sin distinguir mayúsculas (cubre filas
+     * históricas guardadas antes de la normalización).
+     */
+    public static function findByEmail(?string $email): ?self
+    {
+        $normalized = self::normalizeEmail($email);
+
+        if ($normalized === null || $normalized === '') {
+            return null;
+        }
+
+        return self::query()->whereRaw('lower(email) = ?', [$normalized])->first();
+    }
+
+    /**
+     * @return Attribute<string, string|null>
+     */
+    protected function email(): Attribute
+    {
+        return Attribute::make(
+            set: fn (?string $value) => self::normalizeEmail($value),
+        );
+    }
 
     public function isSuperAdmin(): bool
     {

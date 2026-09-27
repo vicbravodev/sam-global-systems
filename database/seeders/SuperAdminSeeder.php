@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Domains\Tenancy\Actions\SetGlobalRole;
 use App\Models\User;
+use Database\Seeders\Concerns\DevelopmentOnly;
 use Illuminate\Database\Seeder;
 
 /**
@@ -24,10 +25,16 @@ use Illuminate\Database\Seeder;
  */
 class SuperAdminSeeder extends Seeder
 {
+    use DevelopmentOnly;
+
     public const SUPER_ADMIN_EMAIL = 'admin@serviexpress.test';
 
     public function run(SetGlobalRole $setGlobalRole): void
     {
+        if ($this->skipInProduction()) {
+            return;
+        }
+
         $user = User::query()->where('email', self::SUPER_ADMIN_EMAIL)->first();
 
         if ($user === null) {

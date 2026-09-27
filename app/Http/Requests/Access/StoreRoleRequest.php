@@ -2,6 +2,9 @@
 
 namespace App\Http\Requests\Access;
 
+use App\Domains\Access\Models\Role;
+use App\Models\Team;
+use Closure;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreRoleRequest extends FormRequest
@@ -12,7 +15,7 @@ class StoreRoleRequest extends FormRequest
     }
 
     /**
-     * @return array<string, array<string>>
+     * @return array<string, array<mixed>>
      */
     public function rules(): array
     {
@@ -25,7 +28,16 @@ class StoreRoleRequest extends FormRequest
                 'string',
                 'max:255',
                 'regex:/^[a-z0-9]+(?:[-_][a-z0-9]+)*$/',
-                'unique:roles,code',
+                // Único por tenant: el código real se guarda namespaceado
+                // (Role::customCodeFor) para no chocar con otros tenants.
+                function (string $attribute, mixed $value, Closure $fail): void {
+                    $team = $this->route('current_team');
+
+                    if ($team instanceof Team && is_string($value)
+                        && Role::query()->where('code', Role::customCodeFor((int) $team->id, $value))->exists()) {
+                        $fail('Ya existe un rol con este código en tu empresa.');
+                    }
+                },
             ],
             'description' => ['nullable', 'string', 'max:1000'],
             'permissions' => ['required', 'array', 'min:1'],

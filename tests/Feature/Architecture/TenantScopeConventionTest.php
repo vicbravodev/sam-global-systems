@@ -143,6 +143,7 @@ class TenantScopeConventionTest extends TestCase
         EventDeduplicationKey::class => 'El aislamiento efectivo viene de event_source_id; team_id se copia del RawEvent.',
         NotificationChannel::class => 'Canal gestionado por SAM (team_id null) que el tenant sólo activa/desactiva.',
         NotificationTemplate::class => 'Plantilla de plataforma, overrideable por tenant.',
+        Role::class => 'Rol de sistema (team_id null, sólo lo cambia el super-admin) o rol personalizado del tenant. Consultar con visibleToTeam().',
     ];
 
     /**
@@ -154,7 +155,6 @@ class TenantScopeConventionTest extends TestCase
     private const PLATFORM_CATALOG = [
         AIModelVersion::class,
         Permission::class,
-        Role::class,
         MetricDefinition::class,
         AssetType::class,
         DecisionOutcome::class,

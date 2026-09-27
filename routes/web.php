@@ -40,7 +40,7 @@ use App\Http\Controllers\Normalization\MappingRuleController;
 use App\Http\Controllers\Notifications\NotificationChannelController;
 use App\Http\Controllers\Notifications\NotificationPageController;
 use App\Http\Controllers\Search\CommandPaletteController;
-use App\Http\Controllers\Teams\TeamInvitationController;
+use App\Http\Controllers\Teams\InvitationAcceptanceController;
 use App\Http\Controllers\Tenancy\BillingPageController;
 use App\Http\Controllers\Tenancy\BrandingController;
 use App\Http\Controllers\Tenancy\InvoiceReceiptController;
@@ -54,16 +54,26 @@ use App\Http\Controllers\TenantConfig\TenantRuleOverrideController;
 use App\Http\Controllers\TenantConfig\TenantScheduleProfileController;
 use App\Http\Middleware\EnsureTeamMembership;
 use Illuminate\Support\Facades\Route;
-use Laravel\Fortify\Features;
 
-Route::inertia('/', 'welcome', [
-    'canRegister' => Features::enabled(Features::registration()),
-])->name('home');
+Route::inertia('/', 'welcome')->name('home');
 
 // User-level settings routes are registered BEFORE the {current_team} group:
 // their literal `settings/...` paths must win over the team-slug wildcard
 // (otherwise `/settings/notifications` would bind current_team = "settings").
 require __DIR__.'/settings.php';
+
+// Invitaciones: única puerta de entrada de usuarios nuevos (el auto-registro
+// está cerrado). El GET sólo muestra la página; aceptar y registrarse son POST.
+// Van ANTES del grupo {current_team} para que el comodín no las capture.
+Route::get('invitations/{invitation}', [InvitationAcceptanceController::class, 'show'])
+    ->middleware('throttle:30,1')
+    ->name('invitations.show');
+Route::post('invitations/{invitation}/register', [InvitationAcceptanceController::class, 'register'])
+    ->middleware('throttle:6,1')
+    ->name('invitations.register');
+Route::post('invitations/{invitation}/accept', [InvitationAcceptanceController::class, 'accept'])
+    ->middleware(['auth', 'throttle:6,1'])
+    ->name('invitations.accept');
 
 // The super-admin console is declared BEFORE the tenant wildcard group so
 // `/admin/...` never gets swallowed by `/{current_team}/...` routes.
@@ -231,7 +241,3 @@ Route::prefix('{current_team}')
         Route::delete('settings/roles/{role}', [RoleController::class, 'destroy'])->name('access.roles.destroy');
         Route::put('settings/members/{membership}/role', [MemberRoleController::class, 'update'])->name('access.members.role.update');
     });
-
-Route::middleware(['auth'])->group(function () {
-    Route::get('invitations/{invitation}/accept', [TeamInvitationController::class, 'accept'])->name('invitations.accept');
-});

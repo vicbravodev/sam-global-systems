@@ -123,12 +123,7 @@ const SEGMENTS = [
     'Operaciones 24/7',
 ];
 
-export default function Welcome({
-    canRegister = true,
-}: {
-    canRegister?: boolean;
-}) {
-    void canRegister;
+export default function Welcome() {
     const { auth, currentTeam } = usePage().props;
     const dashboardUrl = currentTeam ? dashboard(currentTeam.slug) : '/';
 

@@ -43,11 +43,21 @@ class OperatorController extends Controller
 
     public function store(Request $request, SetGlobalRole $setGlobalRole): RedirectResponse
     {
+        if (is_string($request->input('email'))) {
+            $request->merge(['email' => User::normalizeEmail($request->input('email'))]);
+        }
+
         $data = $request->validate([
-            'email' => ['required', 'email', 'exists:users,email'],
+            'email' => ['required', 'email'],
         ]);
 
-        $user = User::where('email', $data['email'])->firstOrFail();
+        $user = User::findByEmail($data['email']);
+
+        if ($user === null) {
+            throw ValidationException::withMessages([
+                'email' => __('validation.exists', ['attribute' => 'email']),
+            ]);
+        }
 
         if ($user->isSuperAdmin()) {
             throw ValidationException::withMessages([

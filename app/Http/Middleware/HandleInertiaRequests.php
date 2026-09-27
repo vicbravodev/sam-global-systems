@@ -42,18 +42,23 @@ class HandleInertiaRequests extends Middleware
     public function share(Request $request): array
     {
         $user = $request->user();
+        // Team actual validado (membresía o super-admin): `current_team_id` es
+        // sólo una preferencia y puede apuntar a un team del que ya no es miembro.
+        $team = fn () => $user ? currentTeam() : null;
 
         return [
             ...parent::share($request),
             'name' => config('app.name'),
             'auth' => [
-                'user' => $user,
+                // Sin relaciones: resolver el team actual carga `currentTeam` en el
+                // modelo y no debe viajar al navegador (puede ser un team ajeno).
+                'user' => $user?->withoutRelations(),
                 'permissions' => fn () => $user
-                    ? app(AuthorizeAction::class)->resolvePermissions($user, $user->currentTeam)
+                    ? app(AuthorizeAction::class)->resolvePermissions($user, $team())
                     : [],
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
-            'currentTeam' => fn () => $user?->currentTeam ? $user->toUserTeam($user->currentTeam) : null,
+            'currentTeam' => fn () => ($current = $team()) ? $user->toUserTeam($current) : null,
             'teams' => fn () => $user?->toUserTeams(includeCurrent: true) ?? [],
             // Surfaces the impersonation banner: a super-admin whose current team
             // is one they do NOT belong to is, by definition, impersonating it.
@@ -72,8 +77,8 @@ class HandleInertiaRequests extends Middleware
                 ? $this->adminBadges()
                 : null,
             // Tenant-scoped counters for the workspace sidebar badges.
-            'navBadges' => fn () => $user?->current_team_id
-                ? $this->navBadges($user->current_team_id)
+            'navBadges' => fn () => ($current = $team())
+                ? $this->navBadges($current->id)
                 : null,
         ];
     }

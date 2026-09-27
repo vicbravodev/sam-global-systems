@@ -3,13 +3,22 @@
 namespace App\Http\Requests\Teams;
 
 use App\Enums\TeamRole;
+use App\Models\User;
 use App\Rules\UniqueTeamInvitation;
+use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 class CreateTeamInvitationRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        if (is_string($this->input('email'))) {
+            $this->merge(['email' => User::normalizeEmail($this->input('email'))]);
+        }
+    }
+
     /**
      * Get the validation rules that apply to the request.
      *
@@ -29,7 +38,21 @@ class CreateTeamInvitationRequest extends FormRequest
                 'max:255',
                 new UniqueTeamInvitation($this->route('team')),
             ],
-            'role' => ['required', 'string', Rule::enum(TeamRole::class)],
+            // Nunca `owner`: la propiedad sólo la reasigna el super-admin. Y
+            // nadie concede un rol por encima del suyo.
+            'role' => [
+                'required',
+                'string',
+                Rule::in(array_column(TeamRole::assignable(), 'value')),
+                function (string $attribute, mixed $value, Closure $fail): void {
+                    $requested = TeamRole::tryFrom((string) $value);
+                    $own = $this->user()?->teamRole($this->route('team'));
+
+                    if ($requested !== null && ($own === null || ! $own->isAtLeast($requested))) {
+                        $fail('No puedes invitar con un rol superior al tuyo.');
+                    }
+                },
+            ],
         ];
     }
 
