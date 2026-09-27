@@ -10,6 +10,7 @@ use App\Domains\Integrations\Models\IntegrationProvider;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Log;
 use Tests\TestCase;
 
 class DriverSyncHandlerServiceTest extends TestCase
@@ -52,5 +53,34 @@ class DriverSyncHandlerServiceTest extends TestCase
             'provider_id' => $provider->id,
             'external_id' => 'drv-1',
         ]);
+    }
+
+    public function test_it_skips_and_logs_a_driver_whose_external_id_belongs_to_another_tenant(): void
+    {
+        Log::spy();
+
+        $provider = IntegrationProvider::factory()->samsara()->create();
+        $ownerTeam = User::factory()->create()->currentTeam;
+        $ownedDriver = Driver::factory()->create(['team_id' => $ownerTeam->id, 'full_name' => 'Owner Driver']);
+        DriverExternalReference::factory()->create([
+            'driver_id' => $ownedDriver->id,
+            'provider_id' => $provider->id,
+            'external_id' => 'drv-shared',
+        ]);
+
+        $intruder = TenantIntegration::factory()->create([
+            'team_id' => User::factory()->create()->currentTeam->id,
+            'provider_id' => $provider->id,
+        ]);
+
+        app(DriverSyncHandler::class)->syncFromIntegration(
+            $intruder->team_id,
+            $intruder->id,
+            ['external_id' => 'drv-shared', 'name' => 'Hijacker'],
+        );
+
+        $this->assertSame('Owner Driver', $ownedDriver->fresh()->full_name);
+        $this->assertSame(0, Driver::withoutGlobalScopes()->where('team_id', $intruder->team_id)->count());
+        Log::shouldHaveReceived('warning')->once();
     }
 }

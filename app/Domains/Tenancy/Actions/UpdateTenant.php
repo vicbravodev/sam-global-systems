@@ -4,6 +4,7 @@ namespace App\Domains\Tenancy\Actions;
 
 use App\Domains\Tenancy\Models\TenantBranding;
 use App\Models\Team;
+use App\Support\TenantContext;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -26,10 +27,12 @@ class UpdateTenant
             $branding = array_intersect_key($attrs, array_flip($brandingKeys));
 
             if ($branding !== []) {
-                TenantBranding::query()->updateOrCreate(
+                // Entrar en el tenant objetivo: desde /admin el scope filtraría
+                // por el team del operador y crearía una segunda fila. §2.1.
+                TenantContext::for($team->id, fn () => TenantBranding::query()->updateOrCreate(
                     ['team_id' => $team->id],
                     $branding,
-                );
+                ));
             }
 
             return $team->fresh();

@@ -137,7 +137,10 @@ class AuthorizeAction
             return true;
         }
 
-        $subscription = Subscription::query()
+        // Explicit team lookup, independent of the ambient tenant scope: the
+        // target team may differ from the current one (or from a queued
+        // TenantContext), and a scoped miss here would fail OPEN.
+        $subscription = Subscription::withoutGlobalScopes()
             ->where('team_id', $team->id)
             ->latest('starts_at')
             ->first();
@@ -153,7 +156,8 @@ class AuthorizeAction
     {
         $module = $this->extractModule($permissionCode);
 
-        $feature = TenantFeature::query()
+        // Same as above: explicit team, never the ambient scope (fail-open).
+        $feature = TenantFeature::withoutGlobalScopes()
             ->where('team_id', $team->id)
             ->where('feature_key', $module)
             ->first();
