@@ -200,4 +200,21 @@ return [
 
     'skip_evaluation_categories' => ['safety', 'maintenance'],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Vision (Media Assessment) Limits
+    |--------------------------------------------------------------------------
+    |
+    | Images are validated by magic bytes (jpeg/png/webp/gif) and size before
+    | any model call; invalid or oversize files are recorded as `low_quality`
+    | at no cost. A burst of stills around a panic is capped per event so a
+    | single alert cannot fan out into dozens of paid vision calls.
+    |
+    */
+
+    'media' => [
+        'max_image_bytes' => (int) env('AI_MEDIA_MAX_IMAGE_BYTES', 8 * 1024 * 1024),
+        'max_images_per_event' => (int) env('AI_MEDIA_MAX_IMAGES_PER_EVENT', 8),
+    ],
+
 ];

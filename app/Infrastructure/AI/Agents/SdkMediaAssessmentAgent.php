@@ -2,13 +2,16 @@
 
 namespace App\Infrastructure\AI\Agents;
 
+use App\Contracts\AI\Exceptions\MediaFileMissingException;
+use App\Contracts\AI\Exceptions\MediaFileRejectedException;
 use App\Contracts\AI\MediaAssessmentAgent;
 use App\Domains\AI\Data\MediaAssessmentInput;
 use App\Domains\AI\Data\MediaAssessmentOutput;
 use App\Domains\AI\Enums\MediaAssessmentResult;
+use App\Domains\AI\Support\ImageSignature;
 use App\Domains\AI\Support\ModelPricing;
 use Illuminate\Support\Facades\Storage;
-use Laravel\Ai\Files\Document;
+use Laravel\Ai\Files\Base64Image;
 use Laravel\Ai\Files\Image;
 use Laravel\Ai\Responses\AgentResponse;
 use RuntimeException;
@@ -64,27 +67,48 @@ class SdkMediaAssessmentAgent implements MediaAssessmentAgent
     }
 
     /**
-     * @return array<int, Image|Document>
+     * Resolve and validate the image BEFORE any model call. A missing file
+     * aborts without persisting (it may still land); a file that is not a
+     * supported image by magic bytes, or exceeds `ai.media.max_image_bytes`,
+     * is rejected so the caller records it as `low_quality` at no cost. The
+     * image is sent with the mime detected from its bytes, never the
+     * reported one.
+     *
+     * @return array<int, Base64Image>
      */
     private function buildAttachments(MediaAssessmentInput $input): array
     {
-        if ($input->storagePath === null) {
-            return [];
+        if ($input->storagePath === null || $input->storagePath === '') {
+            throw MediaFileMissingException::forPath($input->storagePath);
         }
 
-        $diskName = $this->resolveDiskName();
-        $disk = Storage::disk($diskName);
+        $disk = Storage::disk($this->resolveDiskName());
 
         if (! $disk->exists($input->storagePath)) {
-            return [];
+            throw MediaFileMissingException::forPath($input->storagePath);
         }
 
-        $mime = strtolower((string) $input->mimeType);
+        $maxBytes = max(1, (int) config('ai.media.max_image_bytes', 8 * 1024 * 1024));
+        $size = (int) $disk->size($input->storagePath);
 
-        return match (true) {
-            str_starts_with($mime, 'image/') => [Image::fromStorage($input->storagePath, $diskName)],
-            default => [Document::fromStorage($input->storagePath, $diskName)],
-        };
+        if ($size > $maxBytes) {
+            throw new MediaFileRejectedException(
+                'oversize',
+                sprintf('La imagen pesa %d bytes y excede el máximo de %d bytes.', $size, $maxBytes),
+            );
+        }
+
+        $contents = (string) $disk->get($input->storagePath);
+        $mimeType = ImageSignature::detect($contents);
+
+        if ($contents === '' || $mimeType === null) {
+            throw new MediaFileRejectedException(
+                'invalid_image',
+                'El archivo no es una imagen JPEG, PNG, WebP o GIF válida.',
+            );
+        }
+
+        return [Image::fromBase64(base64_encode($contents), $mimeType)];
     }
 
     /**

@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Domains\AI;
 
+use App\Contracts\AI\Exceptions\MediaFileMissingException;
+use App\Contracts\AI\Exceptions\MediaFileRejectedException;
 use App\Domains\AI\Data\MediaAssessmentInput;
 use App\Domains\AI\Enums\MediaAssessmentResult;
 use App\Domains\AI\Enums\MediaAssessmentType;
@@ -20,6 +22,19 @@ use Tests\TestCase;
 class EvaluateMediaViaSdkTest extends TestCase
 {
     use RefreshDatabase;
+
+    /** Minimal JPEG header: enough for the magic-byte validation. */
+    private const string JPEG_BYTES = "\xFF\xD8\xFF\xE0\x00\x10JFIF\x00fake-jpeg-body";
+
+    private const string DEFAULT_PATH = 'media/still.jpg';
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        Storage::fake('rustfs');
+        Storage::disk('rustfs')->put(self::DEFAULT_PATH, self::JPEG_BYTES);
+    }
 
     public function test_wrapper_parses_structured_json_response_into_assessment_output(): void
     {
@@ -104,7 +119,7 @@ class EvaluateMediaViaSdkTest extends TestCase
     {
         Storage::fake('rustfs');
         Storage::fake('local');
-        Storage::disk('rustfs')->put('media/panic-still.jpg', 'fake-jpeg-bytes');
+        Storage::disk('rustfs')->put('media/panic-still.jpg', self::JPEG_BYTES);
 
         MediaInspectorAgent::fake([
             new TextResponse(
@@ -177,7 +192,64 @@ class EvaluateMediaViaSdkTest extends TestCase
         $this->assertSame(0.72, $output->confidenceScore);
     }
 
-    private function makeInput(?string $storagePath = null): MediaAssessmentInput
+    public function test_missing_file_throws_without_calling_the_model(): void
+    {
+        MediaInspectorAgent::fake();
+
+        try {
+            app(SdkMediaAssessmentAgent::class)->assess($this->makeInput(storagePath: 'media/does-not-exist.jpg'));
+            $this->fail('Expected MediaFileMissingException');
+        } catch (MediaFileMissingException) {
+            // expected
+        }
+
+        MediaInspectorAgent::assertNeverPrompted();
+    }
+
+    public function test_non_image_bytes_are_rejected_without_calling_the_model(): void
+    {
+        MediaInspectorAgent::fake();
+        Storage::disk('rustfs')->put('media/error-page.jpg', '<html>403 Forbidden</html>');
+
+        try {
+            app(SdkMediaAssessmentAgent::class)->assess($this->makeInput(storagePath: 'media/error-page.jpg'));
+            $this->fail('Expected MediaFileRejectedException');
+        } catch (MediaFileRejectedException $exception) {
+            $this->assertSame('invalid_image', $exception->reason);
+        }
+
+        MediaInspectorAgent::assertNeverPrompted();
+    }
+
+    public function test_oversize_image_is_rejected_without_calling_the_model(): void
+    {
+        config()->set('ai.media.max_image_bytes', 10);
+        MediaInspectorAgent::fake();
+
+        try {
+            app(SdkMediaAssessmentAgent::class)->assess($this->makeInput());
+            $this->fail('Expected MediaFileRejectedException');
+        } catch (MediaFileRejectedException $exception) {
+            $this->assertSame('oversize', $exception->reason);
+        }
+
+        MediaInspectorAgent::assertNeverPrompted();
+    }
+
+    public function test_image_is_sent_with_the_mime_detected_from_its_bytes(): void
+    {
+        Storage::disk('rustfs')->put('media/still-octet.bin', "\x89PNG\r\n\x1A\nfake-png");
+
+        MediaInspectorAgent::fake([
+            json_encode(['result' => 'inconclusive', 'confidence_score' => 0.4], JSON_THROW_ON_ERROR),
+        ]);
+
+        app(SdkMediaAssessmentAgent::class)->assess($this->makeInput(storagePath: 'media/still-octet.bin'));
+
+        MediaInspectorAgent::assertPrompted(fn ($prompt) => $prompt->attachments->first()?->mimeType() === 'image/png');
+    }
+
+    private function makeInput(?string $storagePath = self::DEFAULT_PATH): MediaAssessmentInput
     {
         return new MediaAssessmentInput(
             teamId: 1,
