@@ -53,6 +53,14 @@ class EvaluateDecisionRules
 
             $priority = $this->mapPriority($eval, $resolved['requiresHumanReview']);
 
+            // Un evento crítico nunca sale con prioridad por debajo de High,
+            // aunque la IA lo haya puntuado como falso positivo de baja
+            // prioridad (el piso de seguridad ya lo subió a INCIDENT).
+            if (in_array($priority, [DecisionPriority::Low, DecisionPriority::Normal], true)
+                && $this->resolveDecisionOutcome->isCriticalSeverity($eval)) {
+                $priority = DecisionPriority::High;
+            }
+
             $decision = Decision::create([
                 'normalized_event_id' => $eval->normalized_event_id,
                 'team_id' => $eval->team_id,

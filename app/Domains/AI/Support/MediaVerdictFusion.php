@@ -2,6 +2,9 @@
 
 namespace App\Domains\AI\Support;
 
+use App\Domains\AI\Enums\EventClassification;
+use App\Domains\Normalization\Models\NormalizedEvent;
+
 /**
  * Fusión determinista del veredicto visual en la evaluación del evento.
  *
@@ -11,10 +14,20 @@ namespace App\Domains\AI\Support;
  * explicación, deltas de confianza/riesgo y contadores para key_factors.
  * Solo actúa cuando hay veredictos decisivos (confirma/contradice); con
  * media inconclusa o sin media no cambia nada.
+ *
+ * Reglas de seguridad:
+ * - Una sola media que confirma el evento (o que ve una amenaza visible)
+ *   domina sobre cualquier número de medias que lo contradicen: una cámara
+ *   que no ve nada no borra a otra que sí vio algo.
+ * - El delta de confianza respeta la dirección de la clasificación: si la IA
+ *   dijo falso positivo/ruido/duplicado, las imágenes que contradicen el
+ *   evento REFUERZAN esa conclusión y las que lo confirman la DEBILITAN.
+ * - En eventos críticos (severidad `critical` o categoría `emergency`) que
+ *   las imágenes no confirmen nunca baja el riesgo: solo se anota.
  */
 class MediaVerdictFusion
 {
-    private const CONFIDENCE_DELTA_CONTRADICTS = -0.15;
+    private const CONFIDENCE_DELTA_CONTRADICTS = 0.15;
 
     private const RISK_DELTA_CONTRADICTS = -0.15;
 
@@ -22,11 +35,29 @@ class MediaVerdictFusion
 
     private const RISK_DELTA_CONFIRMS = 0.10;
 
+    /** @var list<string> */
+    private const CRITICAL_SEVERITY_CODES = ['critical'];
+
+    /** @var list<string> */
+    private const CRITICAL_CATEGORY_CODES = ['emergency'];
+
+    /**
+     * ¿El evento es de los que nunca pueden perder riesgo por falta de
+     * confirmación visual?
+     */
+    public static function isCriticalEvent(NormalizedEvent $event): bool
+    {
+        $event->loadMissing(['eventSeverity', 'eventCategory']);
+
+        return in_array($event->eventSeverity?->code, self::CRITICAL_SEVERITY_CODES, true)
+            || in_array($event->eventCategory?->code, self::CRITICAL_CATEGORY_CODES, true);
+    }
+
     /**
      * @param  list<array<string, mixed>>  $mediaAssessments
      * @return array{step: string, sentence: string, confidenceDelta: float, riskDelta: float, keyFactors: array<string, int>}|null
      */
-    public function fuse(array $mediaAssessments): ?array
+    public function fuse(array $mediaAssessments, EventClassification $classification, bool $isCriticalEvent = false): ?array
     {
         $assessed = count($mediaAssessments);
 
@@ -34,13 +65,24 @@ class MediaVerdictFusion
             return null;
         }
 
-        $results = array_count_values(array_map(
-            fn (array $assessment): string => (string) ($assessment['result'] ?? ''),
-            $mediaAssessments,
-        ));
+        $confirms = 0;
+        $contradicts = 0;
+        $visibleThreats = 0;
 
-        $contradicts = (int) ($results['contradicts_event'] ?? 0);
-        $confirms = (int) ($results['confirms_event'] ?? 0);
+        foreach ($mediaAssessments as $assessment) {
+            $result = (string) ($assessment['result'] ?? '');
+            $visibleThreat = ($assessment['extracted_signals']['visible_threat'] ?? null) === true;
+
+            if ($visibleThreat) {
+                $visibleThreats++;
+            }
+
+            if ($result === 'confirms_event' || $visibleThreat) {
+                $confirms++;
+            } elseif ($result === 'contradicts_event') {
+                $contradicts++;
+            }
+        }
 
         if ($contradicts === 0 && $confirms === 0) {
             return null;
@@ -50,55 +92,73 @@ class MediaVerdictFusion
             'media_assessed_count' => $assessed,
             'media_confirms_count' => $confirms,
             'media_contradicts_count' => $contradicts,
+            'media_visible_threat_count' => $visibleThreats,
         ];
 
-        if ($contradicts > $confirms) {
-            $sentence = sprintf(
-                'Análisis visual: %d de %d %s evaluadas contradicen el evento.',
-                $contradicts,
-                $assessed,
-                $assessed === 1 ? 'media' : 'medias',
-            );
+        // La IA concluyó que el evento no es real: la dirección de la
+        // confianza se invierte respecto a la del evento.
+        $dismissive = in_array($classification, [
+            EventClassification::FalsePositive,
+            EventClassification::Noise,
+            EventClassification::Duplicate,
+        ], true);
 
-            return [
-                'step' => $sentence,
-                'sentence' => $sentence,
-                'confidenceDelta' => self::CONFIDENCE_DELTA_CONTRADICTS,
-                'riskDelta' => self::RISK_DELTA_CONTRADICTS,
-                'keyFactors' => $keyFactors,
-            ];
-        }
+        $medias = $assessed === 1 ? 'media evaluada' : 'medias evaluadas';
 
-        if ($confirms > $contradicts) {
+        if ($confirms > 0) {
             $sentence = sprintf(
-                'Análisis visual: %d de %d %s evaluadas confirman el evento.',
+                'Análisis visual: %d de %d %s %s el evento%s.',
                 $confirms,
                 $assessed,
-                $assessed === 1 ? 'media' : 'medias',
+                $medias,
+                $confirms === 1 ? 'confirma' : 'confirman',
+                $visibleThreats > 0 ? ' (amenaza visible)' : '',
             );
+
+            if ($dismissive) {
+                $sentence .= ' Contradice la clasificación de la IA como '.mb_strtolower($classification->label()).'.';
+            }
 
             return [
                 'step' => $sentence,
                 'sentence' => $sentence,
-                'confidenceDelta' => self::CONFIDENCE_DELTA_CONFIRMS,
+                'confidenceDelta' => $dismissive ? -self::CONFIDENCE_DELTA_CONFIRMS : self::CONFIDENCE_DELTA_CONFIRMS,
                 'riskDelta' => self::RISK_DELTA_CONFIRMS,
                 'keyFactors' => $keyFactors,
             ];
         }
 
-        // Empate de veredictos decisivos: se informa sin mover los números.
+        if ($isCriticalEvent) {
+            $sentence = sprintf(
+                'Análisis visual: sin confirmación visual (%d de %d %s no muestran el evento); '
+                .'al ser un evento crítico no se reduce el riesgo.',
+                $contradicts,
+                $assessed,
+                $medias,
+            );
+
+            return [
+                'step' => $sentence,
+                'sentence' => $sentence,
+                'confidenceDelta' => 0.0,
+                'riskDelta' => 0.0,
+                'keyFactors' => $keyFactors,
+            ];
+        }
+
         $sentence = sprintf(
-            'Análisis visual: veredictos divididos (%d contradicen, %d confirman de %d evaluadas).',
+            'Análisis visual: %d de %d %s %s el evento.',
             $contradicts,
-            $confirms,
             $assessed,
+            $medias,
+            $contradicts === 1 ? 'contradice' : 'contradicen',
         );
 
         return [
             'step' => $sentence,
             'sentence' => $sentence,
-            'confidenceDelta' => 0.0,
-            'riskDelta' => 0.0,
+            'confidenceDelta' => $dismissive ? self::CONFIDENCE_DELTA_CONTRADICTS : -self::CONFIDENCE_DELTA_CONTRADICTS,
+            'riskDelta' => self::RISK_DELTA_CONTRADICTS,
             'keyFactors' => $keyFactors,
         ];
     }

@@ -69,6 +69,7 @@ class AssessPendingMediaOnEvaluationCompleted
             return;
         }
 
-        EvaluateEventMediaJob::dispatch($evaluation->id, $pendingMediaIds);
+        // Se dispara dentro de la transacción de EvaluateEventWithAI.
+        EvaluateEventMediaJob::dispatch($evaluation->id, $pendingMediaIds)->afterCommit();
     }
 }

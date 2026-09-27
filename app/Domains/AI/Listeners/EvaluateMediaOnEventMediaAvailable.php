@@ -26,7 +26,7 @@ class EvaluateMediaOnEventMediaAvailable
             EvaluateEventMediaJob::dispatch(
                 $evaluation->id,
                 [$event->media->id],
-            );
+            )->afterCommit();
         });
     }
 }

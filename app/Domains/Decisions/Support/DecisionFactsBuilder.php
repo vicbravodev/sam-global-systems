@@ -90,11 +90,16 @@ class DecisionFactsBuilder
     }
 
     /**
-     * Latest multimodal media assessment for the event, if any — lets tenant
+     * Veredicto visual agregado del evento, en el peor caso — lets tenant
      * rules react to what the footage showed (e.g. clear_cabin). Resolved
      * across every evaluation version of the same normalized event: deferred
      * media is assessed under the evaluation that was current when it landed,
      * while re-evaluations create fresh versions that must still see it.
+     *
+     * La evidencia alarmante domina: si CUALQUIER media confirmó el evento o
+     * vio una amenaza visible, el hecho es `confirms_event` aunque la última
+     * cámara no mostrara nada; si ninguna confirma pero alguna contradice,
+     * `contradicts_event`; si no, el veredicto más reciente.
      */
     private function resolveMediaAssessment(AIEventEvaluation $eval): ?string
     {
@@ -102,17 +107,37 @@ class DecisionFactsBuilder
             ->where('normalized_event_id', $eval->normalized_event_id)
             ->select('id');
 
-        $result = AIMediaAssessment::query()
+        $assessments = AIMediaAssessment::query()
             ->whereIn('evaluation_id', $evaluationIds)
             ->orderByDesc('assessed_at')
             ->orderByDesc('id')
-            ->value('result');
+            ->get(['result', 'extracted_signals_json']);
 
-        if ($result instanceof MediaAssessmentResult) {
-            return $result->value;
+        if ($assessments->isEmpty()) {
+            return null;
         }
 
-        return is_string($result) && $result !== '' ? $result : null;
+        $results = $assessments->map(function (AIMediaAssessment $assessment): ?string {
+            $result = $assessment->result;
+
+            if ((($assessment->extracted_signals_json ?? [])['visible_threat'] ?? null) === true) {
+                return MediaAssessmentResult::ConfirmsEvent->value;
+            }
+
+            if ($result instanceof MediaAssessmentResult) {
+                return $result->value;
+            }
+
+            return is_string($result) && $result !== '' ? $result : null;
+        });
+
+        foreach ([MediaAssessmentResult::ConfirmsEvent, MediaAssessmentResult::ContradictsEvent] as $dominant) {
+            if ($results->contains($dominant->value)) {
+                return $dominant->value;
+            }
+        }
+
+        return $results->first();
     }
 
     /**
