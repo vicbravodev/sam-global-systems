@@ -28,6 +28,10 @@ return Application::configure(basePath: dirname(__DIR__))
             'webhooks/*',
         ]);
 
+        // Invalida las demás sesiones cuando cambia la contraseña (cambio o
+        // reset): compara el hash guardado en la sesión con el actual.
+        $middleware->authenticateSessions();
+
         $middleware->web(append: [
             HandleAppearance::class,
             HandleInertiaRequests::class,
