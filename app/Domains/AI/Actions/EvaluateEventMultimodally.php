@@ -15,6 +15,7 @@ use App\Domains\AI\Models\AIInferenceLog;
 use App\Domains\AI\Models\AIMediaAssessment;
 use App\Domains\AI\Support\MediaCaptureContext;
 use App\Domains\AI\Support\RetryableAIError;
+use App\Domains\AI\Support\TenantAIQuota;
 use App\Domains\Context\Enums\MediaType;
 use App\Domains\Context\Models\EventMediaContext;
 use App\Domains\Normalization\Models\NormalizedEvent;
@@ -30,6 +31,8 @@ class EvaluateEventMultimodally
     public function __construct(
         private readonly MediaAssessmentAgent $agent,
         private readonly RecordUsageEvent $recordUsageEvent,
+        private readonly TenantAIQuota $quota,
+        private readonly ResolveTenantAIProfile $resolveTenantProfile,
     ) {}
 
     /**
@@ -44,7 +47,9 @@ class EvaluateEventMultimodally
      *   final attempt, where it is recorded as `unavailable` like any other
      *   non-retryable error.
      *
-     * At most `ai.media.max_images_per_event` images are assessed per event.
+     * At most `ai.media.max_images_per_event` images are assessed per event,
+     * and none while the tenant is over its AI quota (critical events bypass
+     * the quota, like text evaluation).
      *
      * @param  Collection<int, EventMediaContext>  $mediaContexts
      * @param  bool  $finalAttempt  False while the calling job still has retries left.
@@ -77,6 +82,7 @@ class EvaluateEventMultimodally
 
         $retryableFailure = null;
         $remainingSlots = $this->remainingImageSlots($evaluation);
+        $profile = $this->resolveTenantProfile->execute((int) $evaluation->team_id);
 
         foreach ($mediaContexts as $media) {
             $existing = AIMediaAssessment::query()
@@ -95,6 +101,16 @@ class EvaluateEventMultimodally
                     'evaluation_id' => $evaluation->id,
                     'event_media_context_id' => $media->id,
                     'max_images_per_event' => $this->maxImagesPerEvent(),
+                ]);
+
+                continue;
+            }
+
+            // Misma cuota que el texto: un evento crítico siempre pasa.
+            if ($event !== null && $this->quota->blocks($event, $profile)) {
+                Log::info('Media assessment skipped: tenant AI quota exceeded', [
+                    'evaluation_id' => $evaluation->id,
+                    'event_media_context_id' => $media->id,
                 ]);
 
                 continue;

@@ -202,6 +202,23 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Tenant AI Quota
+    |--------------------------------------------------------------------------
+    |
+    | Per-tenant guard against floods of non-critical events: monthly tokens
+    | (in + out) and daily AI calls. Over quota, non-critical events fall back
+    | to rules-only and their images are not sent to the vision model.
+    | Critical-severity events ALWAYS reach the model regardless of quota.
+    |
+    */
+
+    'quota' => [
+        'monthly_token_limit' => (int) env('AI_QUOTA_MONTHLY_TOKEN_LIMIT', 5_000_000),
+        'daily_call_limit' => (int) env('AI_QUOTA_DAILY_CALL_LIMIT', 2_000),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Vision (Media Assessment) Limits
     |--------------------------------------------------------------------------
     |
