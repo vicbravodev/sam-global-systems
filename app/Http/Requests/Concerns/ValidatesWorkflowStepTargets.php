@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Concerns;
 
+use App\Support\Http\OutboundUrlGuard;
 use App\Support\TeamMembers;
 use Closure;
 
@@ -10,6 +11,9 @@ use Closure;
  * assign_incident, que usa target_reference como id del asignado) debe
  * apuntar a un miembro del team: los ids de usuario son globales y, sin esto,
  * un tenant manda datos de sus incidentes a usuarios de otro.
+ *
+ * Un paso call_webhook usa target_reference como URL: debe pasar
+ * OutboundUrlGuard (SSRF).
  */
 trait ValidatesWorkflowStepTargets
 {
@@ -24,6 +28,14 @@ trait ValidatesWorkflowStepTargets
 
             $index = (int) explode('.', $attribute)[1];
             $step = (array) $this->input("steps_json.{$index}", []);
+
+            if (($step['action_type'] ?? null) === 'call_webhook') {
+                if (! is_string($value) || ! app(OutboundUrlGuard::class)->isSafe($value)) {
+                    $fail('La URL debe ser https y apuntar a un servidor público.');
+                }
+
+                return;
+            }
 
             $targetsUser = ($step['target_type'] ?? null) === 'user'
                 || (($step['action_type'] ?? null) === 'assign_incident' && in_array($step['target_type'] ?? null, [null, '', 'user'], true));

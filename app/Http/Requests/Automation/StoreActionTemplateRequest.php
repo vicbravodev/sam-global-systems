@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Automation;
 
 use App\Domains\Automation\Enums\ActionType;
+use App\Rules\SafeOutboundUrl;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -27,6 +28,8 @@ class StoreActionTemplateRequest extends FormRequest
             'body_template' => ['nullable', 'string'],
             'parameters_schema_json' => ['nullable', 'array'],
             'config_json' => ['nullable', 'array'],
+            // La URL del webhook la controla el tenant: nada de red interna.
+            'config_json.url' => ['nullable', 'string', 'max:2048', new SafeOutboundUrl],
             'is_active' => ['nullable', 'boolean'],
         ];
     }

@@ -25,14 +25,20 @@ use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
 use App\Models\Membership;
 use App\Models\User;
+use App\Support\Http\OutboundUrlGuard;
 use App\Support\TeamMembers;
 use App\Support\Templates\TemplateInterpolator;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class ExecuteAction
 {
+    private const WEBHOOK_MAX_TIMEOUT_SECONDS = 10;
+
+    private const WEBHOOK_MAX_BODY_BYTES = 2048;
+
     public function __construct(
         private ResolveActionTemplate $resolveActionTemplate,
         private readonly SendNotification $sendNotificationAction,
@@ -41,6 +47,7 @@ class ExecuteAction
         private readonly RequestIncidentReview $requestIncidentReviewAction,
         private readonly RecordUsageEvent $recordUsageEvent,
         private readonly TemplateInterpolator $interpolator,
+        private readonly OutboundUrlGuard $outboundUrlGuard,
     ) {}
 
     /**
@@ -134,10 +141,33 @@ class ExecuteAction
             throw new \RuntimeException('Webhook action requires a target URL.');
         }
 
-        $timeoutSeconds = (int) ($config['timeout_seconds'] ?? 30);
+        // URL controlada por el tenant: SSRF. El guard rechaza la red interna
+        // (también vía DNS) y devuelve las IPs validadas para fijarlas en la
+        // conexión; sin redirecciones, timeout acotado y respuesta truncada.
+        $target = $this->outboundUrlGuard->assertSafe($url);
+
+        $timeoutSeconds = min(self::WEBHOOK_MAX_TIMEOUT_SECONDS, max(1, (int) ($config['timeout_seconds'] ?? self::WEBHOOK_MAX_TIMEOUT_SECONDS)));
         $payload = $execution->payload_json ?? [];
 
-        $response = Http::timeout($timeoutSeconds)->post($url, $payload);
+        try {
+            $response = Http::withOptions($target->httpOptions())
+                ->connectTimeout(min(5, $timeoutSeconds))
+                ->timeout($timeoutSeconds)
+                ->post($url, $payload);
+        } catch (ConnectionException $exception) {
+            // El mensaje de cURL describe la red (IPs, puertos): se registra,
+            // pero al tenant le llega uno genérico.
+            Log::warning('automation.webhook.connection_failed', [
+                'action_execution_id' => $execution->id,
+                'error' => $exception->getMessage(),
+            ]);
+
+            throw new \RuntimeException('No se pudo conectar con el webhook.');
+        }
+
+        if ($response->redirect()) {
+            throw new \RuntimeException("Webhook returned a redirect ({$response->status()}); redirects are not followed.");
+        }
 
         if ($response->failed()) {
             throw new \RuntimeException("Webhook returned status {$response->status()}");
@@ -145,8 +175,23 @@ class ExecuteAction
 
         return [
             'status' => $response->status(),
-            'body' => $response->json() ?? $response->body(),
+            'body' => $this->truncatedBody($response->body()),
         ];
+    }
+
+    /**
+     * Sólo se guarda un extracto de la respuesta: el cuerpo lo controla un
+     * tercero y termina en response_json / logs visibles en la UI.
+     */
+    private function truncatedBody(string $body): mixed
+    {
+        if (strlen($body) <= self::WEBHOOK_MAX_BODY_BYTES) {
+            $decoded = json_decode($body, true);
+
+            return json_last_error() === JSON_ERROR_NONE ? $decoded : $body;
+        }
+
+        return mb_strcut($body, 0, self::WEBHOOK_MAX_BODY_BYTES).'…';
     }
 
     /**
