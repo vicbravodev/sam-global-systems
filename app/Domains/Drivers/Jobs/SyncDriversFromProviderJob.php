@@ -3,6 +3,7 @@
 namespace App\Domains\Drivers\Jobs;
 
 use App\Domains\Drivers\Actions\SyncDriverFromIntegration;
+use App\Domains\Drivers\Exceptions\DriverExternalReferenceConflictException;
 use App\Domains\Integrations\Contracts\ProviderAdapter;
 use App\Domains\Integrations\Models\TenantIntegration;
 use Illuminate\Bus\Queueable;
@@ -35,11 +36,18 @@ class SyncDriversFromProviderJob implements ShouldQueue
         $result = $providerAdapter->sync($this->integration, 'drivers');
 
         foreach ($result['drivers'] ?? [] as $driverData) {
-            $syncDriver->execute(
-                $this->integration->team_id,
-                $this->integration->id,
-                $driverData,
-            );
+            try {
+                $syncDriver->execute(
+                    $this->integration->team_id,
+                    $this->integration->id,
+                    $driverData,
+                );
+            } catch (DriverExternalReferenceConflictException $e) {
+                // The provider handed us an external id another tenant already
+                // owns: skip that driver rather than touching their data, and
+                // keep syncing the rest of the batch.
+                $e->logSkipped();
+            }
         }
     }
 
