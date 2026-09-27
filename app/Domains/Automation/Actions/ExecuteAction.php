@@ -25,7 +25,7 @@ use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
 use App\Models\Membership;
 use App\Models\User;
-use Illuminate\Support\Facades\Blade;
+use App\Support\Templates\TemplateInterpolator;
 use Illuminate\Support\Facades\Http;
 use Throwable;
 
@@ -38,6 +38,7 @@ class ExecuteAction
         private readonly EscalateIncident $escalateIncidentAction,
         private readonly RequestIncidentReview $requestIncidentReviewAction,
         private readonly RecordUsageEvent $recordUsageEvent,
+        private readonly TemplateInterpolator $interpolator,
     ) {}
 
     /**
@@ -386,15 +387,14 @@ class ExecuteAction
     }
 
     /**
+     * Plantilla editable por el tenant: sólo se interpolan variables, nunca se
+     * compila con Blade (sería ejecución de código en el servidor).
+     *
      * @param  array<string, mixed>  $variables
      */
     private function renderTemplate(string $template, array $variables): string
     {
-        try {
-            return (string) Blade::render($template, $variables);
-        } catch (Throwable) {
-            return $template;
-        }
+        return $this->interpolator->render($template, $variables);
     }
 
     private function recordActionUsage(ActionExecution $execution): void
