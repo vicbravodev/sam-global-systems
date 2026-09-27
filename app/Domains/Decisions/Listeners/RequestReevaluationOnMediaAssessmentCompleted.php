@@ -5,9 +5,11 @@ namespace App\Domains\Decisions\Listeners;
 use App\Domains\AI\Enums\ReevaluationTrigger;
 use App\Domains\AI\Events\MediaAssessmentCompleted;
 use App\Domains\AI\Jobs\ReevaluateEventJob;
+use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\AI\Models\AIMediaAssessment;
 use App\Domains\Decisions\Models\Decision;
 use App\Domains\Incidents\Models\Incident;
+use App\Support\TenantContext;
 
 /**
  * Closes the multimodal loop (Roadmap B8): deferred camera footage lands
@@ -25,9 +27,16 @@ class RequestReevaluationOnMediaAssessmentCompleted
             return;
         }
 
+        // El resto del listener corre dentro del tenant de la evaluación: la
+        // decisión, el incidente y el job son suyos. Ver §2.1.
+        TenantContext::for($evaluation->team_id, fn () => $this->reopenPipeline($event, $evaluation));
+    }
+
+    private function reopenPipeline(MediaAssessmentCompleted $event, AIEventEvaluation $evaluation): void
+    {
         // Inline media: no decision exists yet, so the upcoming engine run
         // already sees the assessment via the `media_assessment` fact.
-        $decisionExists = Decision::withoutGlobalScopes()
+        $decisionExists = Decision::query()
             ->where('ai_evaluation_id', $evaluation->id)
             ->exists();
 
@@ -50,7 +59,7 @@ class RequestReevaluationOnMediaAssessmentCompleted
 
         // A terminally-closed incident is history; annotate (Incidents domain)
         // but never re-run the engine for it.
-        $incident = Incident::withoutGlobalScopes()
+        $incident = Incident::query()
             ->where('related_event_id', $evaluation->normalized_event_id)
             ->orderByDesc('id')
             ->first();

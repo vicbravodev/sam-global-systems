@@ -5,6 +5,7 @@ namespace App\Domains\AI\Jobs;
 use App\Domains\AI\Actions\EvaluateEventMultimodally;
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\Context\Models\EventMediaContext;
+use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -47,16 +48,20 @@ class EvaluateEventMediaJob implements ShouldQueue
             return;
         }
 
-        $mediaContexts = EventMediaContext::withoutGlobalScopes()
-            ->where('normalized_event_id', $evaluation->normalized_event_id)
-            ->whereIn('id', $mediaIds)
-            ->get();
+        // Entra en el tenant de la evaluación: la media y el análisis son suyos.
+        // Ver §2.1.
+        TenantContext::for($evaluation->team_id, function () use ($evaluation, $mediaIds, $multimodal) {
+            $mediaContexts = EventMediaContext::query()
+                ->where('normalized_event_id', $evaluation->normalized_event_id)
+                ->whereIn('id', $mediaIds)
+                ->get();
 
-        if ($mediaContexts->isEmpty()) {
-            return;
-        }
+            if ($mediaContexts->isEmpty()) {
+                return;
+            }
 
-        $multimodal->execute($evaluation, $mediaContexts);
+            $multimodal->execute($evaluation, $mediaContexts);
+        });
     }
 
     public function failed(\Throwable $exception): void

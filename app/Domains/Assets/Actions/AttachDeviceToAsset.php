@@ -77,7 +77,7 @@ class AttachDeviceToAsset
         $query = AssetDevice::where('external_device_id', $externalDeviceId)
             ->where('status', '!=', DeviceStatus::Detached)
             ->whereNull('detached_at')
-            ->whereIn('asset_id', Asset::withoutGlobalScopes()
+            ->whereIn('asset_id', Asset::query()
                 ->where('team_id', $asset->team_id)
                 ->select('id'));
 

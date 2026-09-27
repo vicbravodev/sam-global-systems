@@ -93,7 +93,7 @@ class IngestSafetyEvent
      */
     private function isKnownDuplicate(TenantIntegration $integration, string $deduplicationKey): bool
     {
-        return RawEvent::withoutGlobalScopes()
+        return RawEvent::query()
             ->where('team_id', $integration->team_id)
             ->where('deduplication_key', $deduplicationKey)
             ->exists();

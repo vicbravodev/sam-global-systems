@@ -27,7 +27,7 @@ class BillingPageController extends Controller
             // transfer, so the page must offer a human path, not a checkout.
             'supportEmail' => fn (): ?string => config('mail.from.address'),
             'subscription' => function () use ($current_team): ?array {
-                $subscription = Subscription::withoutGlobalScopes()
+                $subscription = Subscription::query()
                     ->where('team_id', $current_team->id)
                     ->with('plan')
                     ->orderByDesc('id')
@@ -50,7 +50,7 @@ class BillingPageController extends Controller
                     'trialEndsAt' => $subscription->trial_ends_at?->toIso8601String(),
                 ];
             },
-            'features' => fn () => TenantFeature::withoutGlobalScopes()
+            'features' => fn () => TenantFeature::query()
                 ->where('team_id', $current_team->id)
                 ->orderBy('feature_key')
                 ->get()
@@ -61,7 +61,7 @@ class BillingPageController extends Controller
                     'limits' => $feature->limits_json,
                 ])
                 ->all(),
-            'usage' => fn () => TenantUsageCounter::withoutGlobalScopes()
+            'usage' => fn () => TenantUsageCounter::query()
                 ->where('team_id', $current_team->id)
                 ->where('period_end', '>=', now())
                 ->with('usageMeter')
@@ -78,7 +78,7 @@ class BillingPageController extends Controller
                     'periodEnd' => $counter->period_end?->toIso8601String(),
                 ])
                 ->all(),
-            'invoices' => fn () => InvoiceSnapshot::withoutGlobalScopes()
+            'invoices' => fn () => InvoiceSnapshot::query()
                 ->where('team_id', $current_team->id)
                 ->orderByDesc('period_start')
                 ->limit(24)

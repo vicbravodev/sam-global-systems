@@ -34,7 +34,7 @@ class GetPriorSimilarIncidents
         $occurredAt = Carbon::instance($normalizedEvent->occurred_at ?? now());
         $threshold = $occurredAt->copy()->subDays($days);
 
-        return Incident::withoutGlobalScopes()
+        return Incident::query()
             ->where('team_id', $teamId)
             ->whereHas('status', fn ($q) => $q->where('is_terminal', true))
             ->whereBetween('opened_at', [$threshold, $occurredAt])

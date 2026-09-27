@@ -11,6 +11,7 @@ use App\Domains\Notifications\Events\NotificationDelivered;
 use App\Domains\Notifications\Events\NotificationFailed;
 use App\Domains\Notifications\Models\NotificationDelivery;
 use App\Domains\Tenancy\Actions\RecordUsageEvent;
+use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -75,6 +76,10 @@ class RetryNotificationDeliveryJob implements ShouldQueue
         if ($delivery === null || $delivery->status === DeliveryStatus::Delivered) {
             return;
         }
+
+        // Trabaja dentro del tenant de la entrega: el lookup de entrada no
+        // puede estar scopeado, todo lo que sigue sí. Ver §2.1.
+        TenantContext::set($delivery->team_id);
 
         $delivery->update([
             'status' => DeliveryStatus::Sending,

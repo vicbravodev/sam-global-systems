@@ -10,15 +10,18 @@ trait BelongsToTenant
 {
     public static function bootBelongsToTenant(): void
     {
+        // currentTeamId() resuelve el tenant del TenantContext primero y del
+        // usuario autenticado después, así que este scope también filtra en
+        // colas, listeners y comandos — donde antes era un no-op. Ver §2.1.
         static::addGlobalScope('tenant', function (Builder $builder) {
-            if ($team = currentTeam()) {
-                $builder->where($builder->getModel()->getTable().'.team_id', $team->id);
+            if ($teamId = currentTeamId()) {
+                $builder->where($builder->getModel()->getTable().'.team_id', $teamId);
             }
         });
 
         static::creating(function ($model) {
-            if (! $model->team_id && $team = currentTeam()) {
-                $model->team_id = $team->id;
+            if (! $model->team_id && $teamId = currentTeamId()) {
+                $model->team_id = $teamId;
             }
         });
     }

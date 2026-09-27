@@ -55,11 +55,11 @@ class BuildAIInputContext
      */
     private function mediaVerdicts(NormalizedEvent $event): array
     {
-        $evaluationIds = AIEventEvaluation::withoutGlobalScopes()
+        $evaluationIds = AIEventEvaluation::query()
             ->where('normalized_event_id', $event->id)
             ->select('id');
 
-        return AIMediaAssessment::withoutGlobalScopes()
+        return AIMediaAssessment::query()
             ->whereIn('evaluation_id', $evaluationIds)
             ->orderByDesc('assessed_at')
             ->orderByDesc('id')

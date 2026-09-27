@@ -4,6 +4,7 @@ namespace App\Domains\TenantConfig\Actions;
 
 use App\Domains\Incidents\Models\IncidentPriority;
 use App\Domains\TenantConfig\Models\TenantIncidentSla;
+use App\Support\TenantContext;
 
 class ResolveIncidentSla
 {
@@ -13,17 +14,19 @@ class ResolveIncidentSla
      */
     public function execute(int $teamId, int $incidentPriorityId): ?int
     {
-        $override = TenantIncidentSla::withoutGlobalScopes()
-            ->where('team_id', $teamId)
-            ->where('incident_priority_id', $incidentPriorityId)
-            ->first();
+        return TenantContext::for($teamId, function () use ($teamId, $incidentPriorityId) {
+            $override = TenantIncidentSla::query()
+                ->where('team_id', $teamId)
+                ->where('incident_priority_id', $incidentPriorityId)
+                ->first();
 
-        if ($override !== null && $override->sla_seconds !== null) {
-            return $override->sla_seconds;
-        }
+            if ($override !== null && $override->sla_seconds !== null) {
+                return $override->sla_seconds;
+            }
 
-        return IncidentPriority::query()
-            ->whereKey($incidentPriorityId)
-            ->value('sla_seconds');
+            return IncidentPriority::query()
+                ->whereKey($incidentPriorityId)
+                ->value('sla_seconds');
+        });
     }
 }

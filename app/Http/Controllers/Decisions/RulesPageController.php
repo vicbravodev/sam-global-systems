@@ -132,7 +132,7 @@ class RulesPageController extends Controller
                     ->map(fn (EventCategory $category) => ['value' => (string) $category->id, 'label' => (string) $category->name])
                     ->all(),
             ],
-            'overrides' => fn () => TenantRuleOverride::withoutGlobalScopes()
+            'overrides' => fn () => TenantRuleOverride::query()
                 ->where('team_id', $current_team->id)
                 ->orderBy('base_rule_code')
                 ->get()

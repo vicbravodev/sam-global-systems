@@ -21,7 +21,7 @@ class IncidentEventLinkController extends Controller
     ): JsonResponse {
         $this->authorize('linkEvent', $incident);
 
-        $event = NormalizedEvent::withoutGlobalScopes()
+        $event = NormalizedEvent::query()
             ->where('id', $request->validated('normalized_event_id'))
             ->where('team_id', $current_team->id)
             ->firstOrFail();

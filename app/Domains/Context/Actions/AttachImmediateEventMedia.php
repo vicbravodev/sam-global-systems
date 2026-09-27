@@ -79,7 +79,7 @@ class AttachImmediateEventMedia
         $sizeBytes = $this->storage->size($canonicalPath) ?? $attachment->size_bytes;
         $mimeType = $attachment->mime_type ?? $this->storage->mimeType($canonicalPath);
 
-        $fileObject = FileObject::withoutGlobalScopes()->firstOrCreate(
+        $fileObject = FileObject::query()->firstOrCreate(
             [
                 'bucket' => config('filesystems.disks.rustfs.bucket', 'sam'),
                 'object_key' => $canonicalPath,
@@ -99,7 +99,7 @@ class AttachImmediateEventMedia
             ],
         );
 
-        $media = EventMediaContext::withoutGlobalScopes()->firstOrCreate(
+        $media = EventMediaContext::query()->firstOrCreate(
             [
                 'normalized_event_id' => $normalizedEvent->id,
                 'storage_path' => $canonicalPath,
@@ -125,7 +125,7 @@ class AttachImmediateEventMedia
             EventMediaAvailable::dispatch($media, $normalizedEvent);
         }
 
-        FileObject::withoutGlobalScopes()
+        FileObject::query()
             ->whereKey($fileObject->id)
             ->update([
                 'fileable_type' => EventMediaContext::class,

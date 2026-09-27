@@ -59,7 +59,7 @@ class LoadRecentAssetHistory
             return $this->emptyWindow($windowStart, $windowEnd);
         }
 
-        $events = NormalizedEvent::withoutGlobalScopes()
+        $events = NormalizedEvent::query()
             ->where('asset_id', $assetId)
             ->whereBetween('occurred_at', [$windowStart, $windowEnd])
             ->with(['eventSeverity', 'eventType'])
@@ -124,7 +124,7 @@ class LoadRecentAssetHistory
         int $correlationMinutes,
         ?int $excludeEventId,
     ): array {
-        $events = NormalizedEvent::withoutGlobalScopes()
+        $events = NormalizedEvent::query()
             ->where('asset_id', $assetId)
             ->when($excludeEventId !== null, fn ($query) => $query->whereKeyNot($excludeEventId))
             ->whereBetween('occurred_at', [
@@ -166,7 +166,7 @@ class LoadRecentAssetHistory
             return 0;
         }
 
-        return NormalizedEvent::withoutGlobalScopes()
+        return NormalizedEvent::query()
             ->where('asset_id', $assetId)
             ->where('event_type_id', $panicTypeId)
             ->whereBetween('occurred_at', [$windowEnd->copy()->subDay(), $windowEnd])

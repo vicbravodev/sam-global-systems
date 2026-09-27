@@ -29,7 +29,7 @@ class ResolveAssetFromExternalId
             return null;
         }
 
-        return Asset::withoutGlobalScopes()
+        return Asset::query()
             ->where('team_id', $teamId)
             ->find($reference->asset_id);
     }

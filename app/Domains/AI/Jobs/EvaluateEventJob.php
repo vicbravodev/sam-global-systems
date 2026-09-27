@@ -6,6 +6,7 @@ use App\Domains\AI\Actions\EvaluateEventWithAI;
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\AI\Support\AIEvaluationGate;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -52,14 +53,18 @@ class EvaluateEventJob implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        if (AIEventEvaluation::withoutGlobalScopes()
-            ->where('normalized_event_id', $normalizedEvent->id)
-            ->exists()
-        ) {
-            return;
-        }
+        // Entra en el tenant del evento: la evaluación lee el perfil de IA del
+        // tenant, su contexto y su cuota. Ver §2.1.
+        TenantContext::for($normalizedEvent->team_id, function () use ($normalizedEvent, $evaluateEventWithAI) {
+            if (AIEventEvaluation::query()
+                ->where('normalized_event_id', $normalizedEvent->id)
+                ->exists()
+            ) {
+                return;
+            }
 
-        $evaluateEventWithAI->execute($normalizedEvent);
+            $evaluateEventWithAI->execute($normalizedEvent);
+        });
     }
 
     public function failed(\Throwable $exception): void

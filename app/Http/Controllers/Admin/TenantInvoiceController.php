@@ -9,6 +9,7 @@ use App\Domains\Tenancy\Enums\InvoiceStatus;
 use App\Domains\Tenancy\Models\InvoiceSnapshot;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
+use App\Support\TenantContext;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
@@ -57,9 +58,13 @@ class TenantInvoiceController extends Controller
      */
     private function invoiceFor(Team $team, int $invoiceId): InvoiceSnapshot
     {
-        return InvoiceSnapshot::withoutGlobalScopes()
-            ->where('team_id', $team->id)
-            ->findOrFail($invoiceId);
+        // El operador abre la factura de OTRO tenant: se entra en el suyo,
+        // que es lo que el scope global necesita para no chocar con el team
+        // actual del admin. Ver §2.1.
+        return TenantContext::for(
+            $team->id,
+            fn () => InvoiceSnapshot::query()->findOrFail($invoiceId),
+        );
     }
 
     private function record(Request $request, Team $team, InvoiceSnapshot $invoice, string $action, string $summary): void

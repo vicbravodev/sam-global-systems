@@ -15,7 +15,7 @@ class TenantEscalationConfigController extends Controller
     {
         $this->authorize('viewAny', TenantEscalationConfig::class);
 
-        $configs = TenantEscalationConfig::withoutGlobalScopes()
+        $configs = TenantEscalationConfig::query()
             ->where('team_id', $current_team->id)
             ->orderBy('escalation_type')
             ->get();
@@ -27,7 +27,7 @@ class TenantEscalationConfigController extends Controller
     {
         $this->authorize('create', TenantEscalationConfig::class);
 
-        $config = TenantEscalationConfig::withoutGlobalScopes()->create([
+        $config = TenantEscalationConfig::query()->create([
             'team_id' => $current_team->id,
             'escalation_type' => $request->validated('escalation_type'),
             'trigger_conditions_json' => $request->validated('trigger_conditions'),

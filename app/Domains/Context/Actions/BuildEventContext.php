@@ -100,12 +100,12 @@ class BuildEventContext
                 'outside_operating_hours' => $schedule->isPersisted && ! $schedule->withinOperatingHours,
             ]);
 
-            $existing = EventContextSnapshot::withoutGlobalScopes()
+            $existing = EventContextSnapshot::query()
                 ->where('normalized_event_id', $normalizedEvent->id)
                 ->first();
             $nextVersion = $existing ? ((int) $existing->context_version + 1) : 1;
 
-            $snapshot = EventContextSnapshot::withoutGlobalScopes()->updateOrCreate(
+            $snapshot = EventContextSnapshot::query()->updateOrCreate(
                 ['normalized_event_id' => $normalizedEvent->id],
                 [
                     'team_id' => $normalizedEvent->team_id,
@@ -262,7 +262,7 @@ class BuildEventContext
     private function persistRelatedIncidentLinks(NormalizedEvent $normalizedEvent, array $incidents): void
     {
         if ($incidents === []) {
-            EventRelatedIncidentLink::withoutGlobalScopes()
+            EventRelatedIncidentLink::query()
                 ->where('normalized_event_id', $normalizedEvent->id)
                 ->delete();
 
@@ -278,7 +278,7 @@ class BuildEventContext
 
             $relation = $this->resolveRelationType($normalizedEvent, $incident);
 
-            EventRelatedIncidentLink::withoutGlobalScopes()->updateOrCreate(
+            EventRelatedIncidentLink::query()->updateOrCreate(
                 [
                     'normalized_event_id' => $normalizedEvent->id,
                     'incident_id' => $incidentId,

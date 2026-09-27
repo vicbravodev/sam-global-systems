@@ -13,6 +13,7 @@ use App\Domains\Analytics\Models\MetricDefinition;
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Tenancy\Models\UsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
+use App\Support\TenantContext;
 use Carbon\CarbonInterface;
 
 class CalculateKPI
@@ -31,53 +32,55 @@ class CalculateKPI
         ?DimensionType $dimensionType = null,
         ?string $dimensionReference = null,
     ): KpiRecord {
-        $value = $this->computeValue(
-            $metric,
-            $teamId,
-            $periodStart,
-            $periodEnd,
-            $dimensionType,
-            $dimensionReference,
-        );
+        return TenantContext::for($teamId, function () use ($metric, $teamId, $period, $periodStart, $periodEnd, $dimensionType, $dimensionReference) {
+            $value = $this->computeValue(
+                $metric,
+                $teamId,
+                $periodStart,
+                $periodEnd,
+                $dimensionType,
+                $dimensionReference,
+            );
 
-        $query = KpiRecord::withoutGlobalScopes()
-            ->where('team_id', $teamId)
-            ->where('kpi_code', $metric->code)
-            ->where('period_type', $period->value)
-            ->where('period_start', $periodStart)
-            ->where('period_end', $periodEnd);
+            $query = KpiRecord::query()
+                ->where('team_id', $teamId)
+                ->where('kpi_code', $metric->code)
+                ->where('period_type', $period->value)
+                ->where('period_start', $periodStart)
+                ->where('period_end', $periodEnd);
 
-        $dimensionType !== null
-            ? $query->where('dimension_type', $dimensionType->value)
-            : $query->whereNull('dimension_type');
+            $dimensionType !== null
+                ? $query->where('dimension_type', $dimensionType->value)
+                : $query->whereNull('dimension_type');
 
-        $dimensionReference !== null
-            ? $query->where('dimension_reference', $dimensionReference)
-            : $query->whereNull('dimension_reference');
+            $dimensionReference !== null
+                ? $query->where('dimension_reference', $dimensionReference)
+                : $query->whereNull('dimension_reference');
 
-        $record = $query->first();
+            $record = $query->first();
 
-        $payload = [
-            'team_id' => $teamId,
-            'kpi_code' => $metric->code,
-            'period_type' => $period->value,
-            'period_start' => $periodStart,
-            'period_end' => $periodEnd,
-            'dimension_type' => $dimensionType?->value,
-            'dimension_reference' => $dimensionReference,
-            'value' => $value,
-            'unit' => $metric->unit,
-            'metadata_json' => null,
-            'calculated_at' => now(),
-        ];
+            $payload = [
+                'team_id' => $teamId,
+                'kpi_code' => $metric->code,
+                'period_type' => $period->value,
+                'period_start' => $periodStart,
+                'period_end' => $periodEnd,
+                'dimension_type' => $dimensionType?->value,
+                'dimension_reference' => $dimensionReference,
+                'value' => $value,
+                'unit' => $metric->unit,
+                'metadata_json' => null,
+                'calculated_at' => now(),
+            ];
 
-        if ($record) {
-            $record->forceFill($payload)->save();
+            if ($record) {
+                $record->forceFill($payload)->save();
 
-            return $record;
-        }
+                return $record;
+            }
 
-        return KpiRecord::withoutGlobalScopes()->create($payload);
+            return KpiRecord::query()->create($payload);
+        });
     }
 
     private function computeValue(
@@ -109,7 +112,7 @@ class CalculateKPI
         ?DimensionType $dimensionType,
         ?string $dimensionReference,
     ): float {
-        $query = AIEventEvaluation::withoutGlobalScopes()
+        $query = AIEventEvaluation::query()
             ->where('team_id', $teamId)
             ->whereBetween('evaluated_at', [$from, $to]);
 
@@ -122,7 +125,7 @@ class CalculateKPI
 
     private function aiAverageConfidence(int $teamId, CarbonInterface $from, CarbonInterface $to): float
     {
-        $avg = AIEventEvaluation::withoutGlobalScopes()
+        $avg = AIEventEvaluation::query()
             ->where('team_id', $teamId)
             ->whereBetween('evaluated_at', [$from, $to])
             ->whereNotNull('confidence_score')
@@ -145,7 +148,7 @@ class CalculateKPI
 
     private function activeAssetsCount(int $teamId): float
     {
-        return (float) Asset::withoutGlobalScopes()
+        return (float) Asset::query()
             ->where('team_id', $teamId)
             ->count();
     }
@@ -162,7 +165,7 @@ class CalculateKPI
             return 0.0;
         }
 
-        $query = UsageEvent::withoutGlobalScopes()
+        $query = UsageEvent::query()
             ->where('team_id', $teamId)
             ->where('usage_meter_id', $meter->id)
             ->whereBetween('occurred_at', [$from, $to]);

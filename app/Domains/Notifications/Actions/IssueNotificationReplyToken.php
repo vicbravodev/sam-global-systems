@@ -23,7 +23,7 @@ class IssueNotificationReplyToken
         ChannelType $channelType,
         int $incidentId,
     ): NotificationReplyToken {
-        $existing = NotificationReplyToken::withoutGlobalScopes()
+        $existing = NotificationReplyToken::query()
             ->where('team_id', $notification->team_id)
             ->where('incident_id', $incidentId)
             ->where('address', $recipient->address)
@@ -60,7 +60,7 @@ class IssueNotificationReplyToken
             for ($i = 0; $i < 4; $i++) {
                 $token .= $alphabet[random_int(0, strlen($alphabet) - 1)];
             }
-        } while (NotificationReplyToken::withoutGlobalScopes()->where('token', $token)->exists());
+        } while (NotificationReplyToken::query()->where('token', $token)->exists());
 
         return $token;
     }

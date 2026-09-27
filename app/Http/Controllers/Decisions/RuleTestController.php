@@ -36,7 +36,7 @@ class RuleTestController extends Controller
             'conditions_json' => ['required', 'array', new ValidConditionTree],
         ]);
 
-        $eval = AIEventEvaluation::withoutGlobalScopes()
+        $eval = AIEventEvaluation::query()
             ->where('team_id', $current_team->id)
             ->orderByDesc('id')
             ->first();
@@ -45,7 +45,7 @@ class RuleTestController extends Controller
             return response()->json(['result' => 'no_events']);
         }
 
-        $context = EventContextSnapshot::withoutGlobalScopes()
+        $context = EventContextSnapshot::query()
             ->where('normalized_event_id', $eval->normalized_event_id)
             ->first();
 
@@ -71,7 +71,7 @@ class RuleTestController extends Controller
             'external_conditions_json' => ['required', 'array', new ValidFlatConditions],
         ]);
 
-        $rawEvent = RawEvent::withoutGlobalScopes()
+        $rawEvent = RawEvent::query()
             ->where('team_id', $current_team->id)
             ->orderByDesc('id')
             ->first();

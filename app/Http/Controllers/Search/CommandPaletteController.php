@@ -22,7 +22,7 @@ class CommandPaletteController extends Controller
 
         $query = trim((string) $request->query('q', ''));
 
-        $incidents = Incident::withoutGlobalScopes()
+        $incidents = Incident::query()
             ->where('team_id', $current_team->id)
             ->with(['priority', 'status', 'currentAssignment'])
             ->when($query !== '', function ($builder) use ($query) {

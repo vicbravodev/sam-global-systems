@@ -5,6 +5,7 @@ namespace App\Domains\TenantConfig\Actions;
 use App\Contracts\TenantConfig\TenantScheduleResolver;
 use App\Domains\TenantConfig\Data\ResolvedSchedule;
 use App\Domains\TenantConfig\Models\TenantScheduleProfile;
+use App\Support\TenantContext;
 use Carbon\CarbonImmutable;
 use DateTimeInterface;
 
@@ -22,37 +23,39 @@ class ResolveTenantSchedule implements TenantScheduleResolver
 
     public function resolve(int $teamId, ?DateTimeInterface $at = null): ResolvedSchedule
     {
-        $profile = TenantScheduleProfile::withoutGlobalScopes()
-            ->where('team_id', $teamId)
-            ->where('is_active', true)
-            ->first();
+        return TenantContext::for($teamId, function () use ($teamId, $at) {
+            $profile = TenantScheduleProfile::query()
+                ->where('team_id', $teamId)
+                ->where('is_active', true)
+                ->first();
 
-        $at = $at !== null ? CarbonImmutable::instance($at) : CarbonImmutable::now();
+            $at = $at !== null ? CarbonImmutable::instance($at) : CarbonImmutable::now();
 
-        if ($profile === null) {
+            if ($profile === null) {
+                return new ResolvedSchedule(
+                    teamId: $teamId,
+                    profileCode: 'system_default',
+                    timezone: 'UTC',
+                    evaluatedAt: $at,
+                    withinOperatingHours: true,
+                    afterHoursBehavior: null,
+                    isPersisted: false,
+                );
+            }
+
+            $localized = $at->setTimezone($profile->timezone);
+            $within = $this->isWithinOperatingHours($profile, $localized);
+
             return new ResolvedSchedule(
                 teamId: $teamId,
-                profileCode: 'system_default',
-                timezone: 'UTC',
-                evaluatedAt: $at,
-                withinOperatingHours: true,
-                afterHoursBehavior: null,
-                isPersisted: false,
+                profileCode: $profile->profile_code,
+                timezone: $profile->timezone,
+                evaluatedAt: $localized,
+                withinOperatingHours: $within,
+                afterHoursBehavior: $within ? null : $profile->after_hours_behavior_json,
+                isPersisted: true,
             );
-        }
-
-        $localized = $at->setTimezone($profile->timezone);
-        $within = $this->isWithinOperatingHours($profile, $localized);
-
-        return new ResolvedSchedule(
-            teamId: $teamId,
-            profileCode: $profile->profile_code,
-            timezone: $profile->timezone,
-            evaluatedAt: $localized,
-            withinOperatingHours: $within,
-            afterHoursBehavior: $within ? null : $profile->after_hours_behavior_json,
-            isPersisted: true,
-        );
+        });
     }
 
     private function isWithinOperatingHours(TenantScheduleProfile $profile, CarbonImmutable $localized): bool

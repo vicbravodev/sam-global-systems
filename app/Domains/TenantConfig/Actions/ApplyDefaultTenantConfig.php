@@ -13,6 +13,7 @@ use App\Domains\TenantConfig\Enums\SettingValueType;
 use App\Domains\TenantConfig\Models\TenantEscalationConfig;
 use App\Domains\TenantConfig\Models\TenantSetting;
 use App\Models\Team;
+use App\Support\TenantContext;
 
 /**
  * SAM Default Config Pack (Roadmap V2-A5): the monitoring protocol SAM tuned
@@ -44,24 +45,29 @@ class ApplyDefaultTenantConfig
      */
     public function execute(Team $team): array
     {
-        $summary = [
-            'settings_created' => $this->seedSettings($team),
-            'rules_created' => $this->seedDecisionRules($team),
-            'escalation_created' => $this->seedEscalationConfig($team),
-            'snapshot_version' => null,
-        ];
+        // Siempre dentro del tenant objetivo: lo invocan el listener de
+        // TenantCreated (desde /admin, con otro team actual), un comando y la
+        // página de config. Ver CLAUDE.md §2.1.
+        return TenantContext::for($team->id, function () use ($team) {
+            $summary = [
+                'settings_created' => $this->seedSettings($team),
+                'rules_created' => $this->seedDecisionRules($team),
+                'escalation_created' => $this->seedEscalationConfig($team),
+                'snapshot_version' => null,
+            ];
 
-        if ($summary['settings_created'] > 0 || $summary['rules_created'] > 0 || $summary['escalation_created']) {
-            $version = $this->snapshotTenantConfig->execute($team->id, SettingUpdatedByType::System);
+            if ($summary['settings_created'] > 0 || $summary['rules_created'] > 0 || $summary['escalation_created']) {
+                $version = $this->snapshotTenantConfig->execute($team->id, SettingUpdatedByType::System);
 
-            $snapshot = $version->snapshot_json;
-            $snapshot['label'] = self::PACK_LABEL_PREFIX.self::PACK_VERSION;
-            $version->forceFill(['snapshot_json' => $snapshot])->save();
+                $snapshot = $version->snapshot_json;
+                $snapshot['label'] = self::PACK_LABEL_PREFIX.self::PACK_VERSION;
+                $version->forceFill(['snapshot_json' => $snapshot])->save();
 
-            $summary['snapshot_version'] = $version->version;
-        }
+                $summary['snapshot_version'] = $version->version;
+            }
 
-        return $summary;
+            return $summary;
+        });
     }
 
     /**
@@ -99,7 +105,7 @@ class ApplyDefaultTenantConfig
         $created = 0;
 
         foreach (self::defaultSettings() as $definition) {
-            $setting = TenantSetting::withoutGlobalScopes()->firstOrCreate(
+            $setting = TenantSetting::query()->firstOrCreate(
                 [
                     'team_id' => $team->id,
                     'setting_key' => $definition['key'],
@@ -134,7 +140,7 @@ class ApplyDefaultTenantConfig
      */
     private function seedDecisionRules(Team $team): int
     {
-        if (RuleSet::withoutGlobalScopes()->where('team_id', $team->id)->exists()) {
+        if (RuleSet::query()->where('team_id', $team->id)->exists()) {
             return 0;
         }
 
@@ -145,7 +151,7 @@ class ApplyDefaultTenantConfig
             return 0;
         }
 
-        $ruleSet = RuleSet::withoutGlobalScopes()->create([
+        $ruleSet = RuleSet::query()->create([
             'team_id' => $team->id,
             'code' => self::RULESET_CODE,
             'name' => 'Protocolo SAM (recomendado)',
@@ -156,7 +162,7 @@ class ApplyDefaultTenantConfig
             'applies_to_json' => null,
         ]);
 
-        DecisionRule::withoutGlobalScopes()->create([
+        DecisionRule::query()->create([
             'team_id' => $team->id,
             'ruleset_id' => $ruleSet->id,
             'code' => 'panic-false-alarm-review',
@@ -176,7 +182,7 @@ class ApplyDefaultTenantConfig
             'is_active' => true,
         ]);
 
-        DecisionRule::withoutGlobalScopes()->create([
+        DecisionRule::query()->create([
             'team_id' => $team->id,
             'ruleset_id' => $ruleSet->id,
             'code' => 'after-hours-movement-incident',
@@ -194,7 +200,7 @@ class ApplyDefaultTenantConfig
             'is_active' => true,
         ]);
 
-        DecisionRule::withoutGlobalScopes()->create([
+        DecisionRule::query()->create([
             'team_id' => $team->id,
             'ruleset_id' => $ruleSet->id,
             'code' => 'suspicious-stop-review',
@@ -212,7 +218,7 @@ class ApplyDefaultTenantConfig
             'is_active' => true,
         ]);
 
-        DecisionRule::withoutGlobalScopes()->create([
+        DecisionRule::query()->create([
             'team_id' => $team->id,
             'ruleset_id' => $ruleSet->id,
             'code' => 'panic-button-always-incident',
@@ -240,7 +246,7 @@ class ApplyDefaultTenantConfig
      */
     private function seedEscalationConfig(Team $team): bool
     {
-        $exists = TenantEscalationConfig::withoutGlobalScopes()
+        $exists = TenantEscalationConfig::query()
             ->where('team_id', $team->id)
             ->exists();
 
@@ -248,7 +254,7 @@ class ApplyDefaultTenantConfig
             return false;
         }
 
-        TenantEscalationConfig::withoutGlobalScopes()->create([
+        TenantEscalationConfig::query()->create([
             'team_id' => $team->id,
             'escalation_type' => 'incident_critical',
             'trigger_conditions_json' => [],

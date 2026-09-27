@@ -10,35 +10,38 @@ use App\Domains\TenantConfig\Enums\MediaStrategy;
 use App\Domains\TenantConfig\Enums\RiskTolerance;
 use App\Domains\TenantConfig\Models\TenantAIProfile;
 use App\Domains\TenantConfig\Support\CacheKeys;
+use App\Support\TenantContext;
 use Illuminate\Support\Facades\Cache;
 
 class ResolveTenantAIProfile implements TenantAIProfileResolver
 {
     public function resolve(int $teamId): ResolvedAIProfile
     {
-        $cacheKey = CacheKeys::aiProfile($teamId);
+        return TenantContext::for($teamId, function () use ($teamId) {
+            $cacheKey = CacheKeys::aiProfile($teamId);
 
-        return Cache::remember($cacheKey, CacheKeys::TTL_SECONDS, function () use ($teamId) {
-            $profile = TenantAIProfile::withoutGlobalScopes()
-                ->where('team_id', $teamId)
-                ->where('is_active', true)
-                ->first();
+            return Cache::remember($cacheKey, CacheKeys::TTL_SECONDS, function () use ($teamId) {
+                $profile = TenantAIProfile::query()
+                    ->where('team_id', $teamId)
+                    ->where('is_active', true)
+                    ->first();
 
-            if ($profile === null) {
-                return $this->defaultProfile($teamId);
-            }
+                if ($profile === null) {
+                    return $this->defaultProfile($teamId);
+                }
 
-            return new ResolvedAIProfile(
-                teamId: $teamId,
-                profileCode: $profile->profile_code,
-                riskTolerance: $profile->risk_tolerance,
-                falsePositiveTolerance: $profile->false_positive_tolerance,
-                automationLevel: $profile->automation_level,
-                mediaStrategy: $profile->media_strategy,
-                promptOverrides: $profile->prompt_overrides_json,
-                humanReviewPolicy: $profile->human_review_policy_json,
-                isPersisted: true,
-            );
+                return new ResolvedAIProfile(
+                    teamId: $teamId,
+                    profileCode: $profile->profile_code,
+                    riskTolerance: $profile->risk_tolerance,
+                    falsePositiveTolerance: $profile->false_positive_tolerance,
+                    automationLevel: $profile->automation_level,
+                    mediaStrategy: $profile->media_strategy,
+                    promptOverrides: $profile->prompt_overrides_json,
+                    humanReviewPolicy: $profile->human_review_policy_json,
+                    isPersisted: true,
+                );
+            });
         });
     }
 

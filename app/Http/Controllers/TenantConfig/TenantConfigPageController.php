@@ -59,7 +59,7 @@ class TenantConfigPageController extends Controller
         $this->authorize('viewAny', TenantSetting::class);
 
         return Inertia::render('settings/tenant-config', [
-            'settings' => fn () => TenantSetting::withoutGlobalScopes()
+            'settings' => fn () => TenantSetting::query()
                 ->where('team_id', $current_team->id)
                 ->orderBy('setting_group')
                 ->orderBy('setting_key')
@@ -79,7 +79,7 @@ class TenantConfigPageController extends Controller
 
                 // The resolver returns effective values (with defaults); the
                 // persisted row carries name/description for the form.
-                $persisted = TenantAIProfile::withoutGlobalScopes()
+                $persisted = TenantAIProfile::query()
                     ->where('team_id', $current_team->id)
                     ->first();
 
@@ -104,7 +104,7 @@ class TenantConfigPageController extends Controller
                     AutomationLevel::cases(),
                 ),
             ],
-            'notificationPolicies' => fn () => TenantNotificationPolicy::withoutGlobalScopes()
+            'notificationPolicies' => fn () => TenantNotificationPolicy::query()
                 ->where('team_id', $current_team->id)
                 ->orderBy('policy_code')
                 ->get()
@@ -118,7 +118,7 @@ class TenantConfigPageController extends Controller
                     'isActive' => (bool) $policy->is_active,
                 ])
                 ->all(),
-            'escalationConfigs' => fn () => TenantEscalationConfig::withoutGlobalScopes()
+            'escalationConfigs' => fn () => TenantEscalationConfig::query()
                 ->where('team_id', $current_team->id)
                 ->orderBy('escalation_type')
                 ->get()
@@ -147,7 +147,7 @@ class TenantConfigPageController extends Controller
                     ])
                     ->all(),
             ],
-            'scheduleProfiles' => fn () => TenantScheduleProfile::withoutGlobalScopes()
+            'scheduleProfiles' => fn () => TenantScheduleProfile::query()
                 ->where('team_id', $current_team->id)
                 ->orderBy('profile_code')
                 ->get()
@@ -161,7 +161,7 @@ class TenantConfigPageController extends Controller
                     'isActive' => (bool) $profile->is_active,
                 ])
                 ->all(),
-            'versions' => fn () => TenantConfigVersion::withoutGlobalScopes()
+            'versions' => fn () => TenantConfigVersion::query()
                 ->where('team_id', $current_team->id)
                 ->orderByDesc('version')
                 ->limit(15)
@@ -175,7 +175,7 @@ class TenantConfigPageController extends Controller
                 ])
                 ->all(),
             'channels' => function () use ($current_team): array {
-                $disabledGlobals = TenantChannelToggle::withoutGlobalScopes()
+                $disabledGlobals = TenantChannelToggle::query()
                     ->where('team_id', $current_team->id)
                     ->where('enabled', false)
                     ->pluck('notification_channel_id')
@@ -206,7 +206,7 @@ class TenantConfigPageController extends Controller
                 ChannelType::cases(),
             ),
             'branding' => function () use ($current_team): array {
-                $branding = TenantBranding::withoutGlobalScopes()
+                $branding = TenantBranding::query()
                     ->where('team_id', $current_team->id)
                     ->first();
 

@@ -184,7 +184,7 @@ class EventsPageController extends Controller
      */
     private function evaluation(NormalizedEvent $event): ?array
     {
-        $evaluation = AIEventEvaluation::withoutGlobalScopes()
+        $evaluation = AIEventEvaluation::query()
             ->where('normalized_event_id', $event->id)
             ->orderByDesc('evaluation_version')
             ->first();
@@ -210,7 +210,7 @@ class EventsPageController extends Controller
      */
     private function decision(NormalizedEvent $event): ?array
     {
-        $decision = Decision::withoutGlobalScopes()
+        $decision = Decision::query()
             ->where('normalized_event_id', $event->id)
             ->orderByDesc('id')
             ->first();
@@ -236,7 +236,7 @@ class EventsPageController extends Controller
      */
     private function incident(NormalizedEvent $event): ?array
     {
-        $incident = Incident::withoutGlobalScopes()
+        $incident = Incident::query()
             ->where('related_event_id', $event->id)
             ->orderByDesc('id')
             ->with(['status', 'priority'])

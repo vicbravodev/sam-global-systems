@@ -49,14 +49,14 @@ class AssessPendingMediaOnEvaluationCompleted
         $assessedMediaIds = AIMediaAssessment::query()
             ->whereIn(
                 'evaluation_id',
-                AIEventEvaluation::withoutGlobalScopes()
+                AIEventEvaluation::query()
                     ->where('normalized_event_id', $eventId)
                     ->select('id'),
             )
             ->pluck('event_media_context_id')
             ->all();
 
-        $pendingMediaIds = EventMediaContext::withoutGlobalScopes()
+        $pendingMediaIds = EventMediaContext::query()
             ->where('normalized_event_id', $eventId)
             ->when($assessedMediaIds !== [], fn ($query) => $query->whereNotIn('id', $assessedMediaIds))
             // Mismo filtro que EvaluateEventMultimodally — mantener en sincronía.

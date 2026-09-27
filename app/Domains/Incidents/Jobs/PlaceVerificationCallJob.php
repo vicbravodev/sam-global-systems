@@ -17,6 +17,7 @@ use App\Domains\Notifications\Support\PlatformTwilioConfig;
 use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
 use App\Support\JobFailureReporter;
+use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -66,7 +67,11 @@ class PlaceVerificationCallJob implements ShouldQueue
             return;
         }
 
-        $incident = Incident::withoutGlobalScopes()->find($verification->incident_id);
+        // Trabaja dentro del tenant del propio registro: el lookup de
+        // entrada no puede estar scopeado, todo lo que sigue sí. Ver §2.1.
+        TenantContext::set($verification->team_id);
+
+        $incident = Incident::query()->find($verification->incident_id);
 
         if ($incident === null || $incident->isTerminal()) {
             $verification->forceFill([

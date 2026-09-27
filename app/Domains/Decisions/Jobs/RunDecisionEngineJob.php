@@ -6,6 +6,7 @@ use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\Decisions\Actions\EvaluateDecisionRules;
 use App\Domains\Decisions\Models\Decision;
 use App\Support\JobFailureReporter;
+use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -45,15 +46,19 @@ class RunDecisionEngineJob implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        $existing = Decision::withoutGlobalScopes()
-            ->where('ai_evaluation_id', $eval->id)
-            ->exists();
+        // Entra en el tenant de la evaluación: el motor lee las reglas y la
+        // política de escalación del tenant. Ver §2.1.
+        TenantContext::for($eval->team_id, function () use ($eval, $evaluateDecisionRules) {
+            $existing = Decision::query()
+                ->where('ai_evaluation_id', $eval->id)
+                ->exists();
 
-        if ($existing) {
-            return;
-        }
+            if ($existing) {
+                return;
+            }
 
-        $evaluateDecisionRules->execute($eval);
+            $evaluateDecisionRules->execute($eval);
+        });
     }
 
     public function failed(\Throwable $exception): void

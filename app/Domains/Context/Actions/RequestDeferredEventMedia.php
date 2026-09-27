@@ -36,7 +36,7 @@ class RequestDeferredEventMedia
         MediaRequestType $type,
         bool $sweepOnly = false,
     ): EventMediaRequest {
-        $existing = EventMediaRequest::withoutGlobalScopes()
+        $existing = EventMediaRequest::query()
             ->where('normalized_event_id', $normalizedEvent->id)
             ->where('request_type', $type)
             ->where('sweep_only', $sweepOnly)
@@ -51,7 +51,7 @@ class RequestDeferredEventMedia
             return $existing;
         }
 
-        $request = EventMediaRequest::withoutGlobalScopes()->create([
+        $request = EventMediaRequest::query()->create([
             'team_id' => $normalizedEvent->team_id,
             'normalized_event_id' => $normalizedEvent->id,
             'provider_id' => $normalizedEvent->provider_id,

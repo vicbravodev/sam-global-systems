@@ -78,7 +78,7 @@ class NormalizeRawEvent
     ): NormalizedEvent {
         $severity = $eventType->defaultSeverity ?? EventSeverity::query()->orderBy('level')->firstOrFail();
 
-        $normalizedEvent = NormalizedEvent::withoutGlobalScopes()->updateOrCreate(
+        $normalizedEvent = NormalizedEvent::query()->updateOrCreate(
             ['raw_event_id' => $rawEvent->id],
             [
                 'team_id' => $rawEvent->team_id,
@@ -112,7 +112,7 @@ class NormalizeRawEvent
     {
         $assetId = (int) Arr::get($payload, 'internal.asset_id');
 
-        $belongs = Asset::withoutGlobalScopes()
+        $belongs = Asset::query()
             ->whereKey($assetId)
             ->where('team_id', $rawEvent->team_id)
             ->exists();
@@ -125,7 +125,7 @@ class NormalizeRawEvent
         string $externalEventType,
         ?int $providerId,
     ): NormalizedEvent {
-        $normalizedEvent = NormalizedEvent::withoutGlobalScopes()->updateOrCreate(
+        $normalizedEvent = NormalizedEvent::query()->updateOrCreate(
             ['raw_event_id' => $rawEvent->id],
             [
                 'team_id' => $rawEvent->team_id,
@@ -163,7 +163,7 @@ class NormalizeRawEvent
         $assetId = $this->resolveAssetId($rawEvent->provider_id, $rawEvent->team_id, $payload);
         $driverId = $this->resolveDriverId($rawEvent->provider_id, $rawEvent->team_id, $payload);
 
-        $normalizedEvent = NormalizedEvent::withoutGlobalScopes()->updateOrCreate(
+        $normalizedEvent = NormalizedEvent::query()->updateOrCreate(
             ['raw_event_id' => $rawEvent->id],
             [
                 'team_id' => $rawEvent->team_id,
@@ -223,7 +223,7 @@ class NormalizeRawEvent
         // (provider_id, external_id) is unique platform-wide, so a payload id
         // can point at another tenant's asset. Isolation must not depend on
         // how the provider allocates its identifiers.
-        $belongs = Asset::withoutGlobalScopes()
+        $belongs = Asset::query()
             ->whereKey($reference->asset_id)
             ->where('team_id', $teamId)
             ->exists();
@@ -262,7 +262,7 @@ class NormalizeRawEvent
 
         // Same platform-wide unique key as the asset references above: verify
         // the driver belongs to the tenant that owns the event.
-        $belongs = Driver::withoutGlobalScopes()
+        $belongs = Driver::query()
             ->whereKey($reference->driver_id)
             ->where('team_id', $teamId)
             ->exists();

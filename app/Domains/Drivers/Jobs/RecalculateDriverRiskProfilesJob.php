@@ -12,6 +12,7 @@ use App\Domains\Notifications\Actions\SendNotification;
 use App\Domains\Notifications\Enums\NotificationPriority;
 use App\Domains\Notifications\Enums\NotificationSourceType;
 use App\Domains\Notifications\Enums\NotificationTriggeredByType;
+use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -48,21 +49,26 @@ class RecalculateDriverRiskProfilesJob implements ShouldQueue
 
     public function handle(SendNotification $sendNotification): void
     {
-        Driver::withoutGlobalScopes()
+        // Recorre todos los tenants a propósito, pero recalcula cada conductor
+        // dentro del contexto de SU tenant. Ver §2.1.
+        TenantContext::withoutTenant(fn () => Driver::query()
             ->whereNotNull('team_id')
             ->with('riskProfile')
             ->chunkById(200, function ($drivers) use ($sendNotification) {
                 foreach ($drivers as $driver) {
-                    $this->recalculate($driver, $sendNotification);
+                    TenantContext::for(
+                        $driver->team_id,
+                        fn () => $this->recalculate($driver, $sendNotification),
+                    );
                 }
-            });
+            }));
     }
 
     private function recalculate(Driver $driver, SendNotification $sendNotification): void
     {
         $since = now()->subDays(self::WINDOW_DAYS);
 
-        $counts = NormalizedEvent::withoutGlobalScopes()
+        $counts = NormalizedEvent::query()
             ->where('driver_id', $driver->id)
             ->where('occurred_at', '>=', $since)
             ->join('event_types', 'event_types.id', '=', 'normalized_events.event_type_id')
@@ -70,7 +76,7 @@ class RecalculateDriverRiskProfilesJob implements ShouldQueue
             ->groupBy('event_types.code')
             ->pluck('total', 'code');
 
-        $incidentsCount = Incident::withoutGlobalScopes()
+        $incidentsCount = Incident::query()
             ->where('driver_id', $driver->id)
             ->where('opened_at', '>=', $since)
             ->count();

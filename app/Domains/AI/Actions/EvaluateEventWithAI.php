@@ -40,7 +40,7 @@ class EvaluateEventWithAI
 
     public function execute(NormalizedEvent $event, ?int $version = null): AIEventEvaluation
     {
-        $snapshot = EventContextSnapshot::withoutGlobalScopes()
+        $snapshot = EventContextSnapshot::query()
             ->where('normalized_event_id', $event->id)
             ->first();
 
@@ -339,7 +339,7 @@ class EvaluateEventWithAI
 
     private function nextVersion(int $normalizedEventId): int
     {
-        return (int) AIEventEvaluation::withoutGlobalScopes()
+        return (int) AIEventEvaluation::query()
             ->where('normalized_event_id', $normalizedEventId)
             ->max('evaluation_version') + 1;
     }
@@ -355,7 +355,7 @@ class EvaluateEventWithAI
             return false;
         }
 
-        $consumed = (int) UsageEvent::withoutGlobalScopes()
+        $consumed = (int) UsageEvent::query()
             ->where('team_id', $teamId)
             ->whereIn('usage_meter_id', $meterIds)
             ->where('billing_period_key', $periodKey)

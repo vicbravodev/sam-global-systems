@@ -4,10 +4,13 @@ namespace Tests\Feature\Domains\Drivers;
 
 use App\Domains\Drivers\Actions\SyncDriverFromIntegration;
 use App\Domains\Drivers\Events\DriverDiscovered;
+use App\Domains\Drivers\Exceptions\DriverExternalReferenceConflictException;
 use App\Domains\Drivers\Models\Driver;
+use App\Domains\Drivers\Models\DriverExternalReference;
 use App\Domains\Integrations\Models\IntegrationProvider;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Models\User;
+use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
@@ -221,5 +224,65 @@ class SyncDriverFromIntegrationTest extends TestCase
             'external_id' => 'ext-phone-3', 'name' => 'Jane Roe',
         ]);
         $this->assertSame('+14155551234', $driver->fresh()->phone);
+    }
+
+    public function test_it_refuses_to_claim_a_driver_owned_by_another_tenant(): void
+    {
+        Event::fake([DriverDiscovered::class]);
+
+        [, $teamA, $provider, $integrationA] = $this->createSetup();
+        $ownedDriver = Driver::factory()->create([
+            'team_id' => $teamA->id,
+            'full_name' => 'Tenant A Driver',
+            'external_primary_id' => 'shared-ext',
+        ]);
+        DriverExternalReference::factory()->create([
+            'driver_id' => $ownedDriver->id,
+            'provider_id' => $provider->id,
+            'external_id' => 'shared-ext',
+        ]);
+
+        $teamB = User::factory()->create()->currentTeam;
+        $integrationB = TenantIntegration::factory()->create([
+            'team_id' => $teamB->id,
+            'provider_id' => $provider->id,
+        ]);
+
+        try {
+            app(SyncDriverFromIntegration::class)->execute($teamB->id, $integrationB->id, [
+                'external_id' => 'shared-ext',
+                'name' => 'Hijacker',
+            ]);
+            $this->fail('Expected DriverExternalReferenceConflictException');
+        } catch (DriverExternalReferenceConflictException $e) {
+            $this->assertSame($teamB->id, $e->teamId);
+            $this->assertSame('shared-ext', $e->externalId);
+        }
+
+        $this->assertSame('Tenant A Driver', $ownedDriver->fresh()->full_name);
+        $this->assertSame(0, Driver::withoutGlobalScopes()->where('team_id', $teamB->id)->count());
+        Event::assertNotDispatched(DriverDiscovered::class);
+    }
+
+    public function test_it_updates_its_own_driver_even_when_run_inside_another_tenant_context(): void
+    {
+        Event::fake([DriverDiscovered::class]);
+
+        [, $team, , $integration] = $this->createSetup();
+        $action = app(SyncDriverFromIntegration::class);
+
+        $original = $action->execute($team->id, $integration->id, ['external_id' => 'own-ext', 'name' => 'Old Name']);
+
+        $otherTeam = User::factory()->create()->currentTeam;
+
+        $updated = TenantContext::for($otherTeam->id, fn () => $action->execute(
+            $team->id,
+            $integration->id,
+            ['external_id' => 'own-ext', 'name' => 'New Name'],
+        ));
+
+        $this->assertSame($original->id, $updated->id);
+        $this->assertSame('New Name', $updated->full_name);
+        $this->assertSame(1, Driver::withoutGlobalScopes()->where('team_id', $team->id)->count());
     }
 }

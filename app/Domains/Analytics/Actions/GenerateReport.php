@@ -15,6 +15,7 @@ use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Domains\Tenancy\Models\FileObject;
 use App\Domains\Tenancy\Models\TenantBranding;
 use App\Models\Team;
+use App\Support\TenantContext;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Facades\Storage;
 
@@ -41,60 +42,62 @@ class GenerateReport
         ?int $requestedById = null,
         ?array $filters = null,
     ): ReportExecution {
-        $execution = ReportExecution::withoutGlobalScopes()->create([
-            'report_definition_id' => $definition->id,
-            'team_id' => $teamId,
-            'requested_by_type' => $requestedBy->value,
-            'requested_by_id' => $requestedById,
-            'filters_json' => $filters,
-            'status' => ReportExecutionStatus::Running->value,
-            'output_format' => $format->value,
-            'started_at' => now(),
-        ]);
+        return TenantContext::for($teamId, function () use ($definition, $teamId, $format, $requestedBy, $requestedById, $filters) {
+            $execution = ReportExecution::query()->create([
+                'report_definition_id' => $definition->id,
+                'team_id' => $teamId,
+                'requested_by_type' => $requestedBy->value,
+                'requested_by_id' => $requestedById,
+                'filters_json' => $filters,
+                'status' => ReportExecutionStatus::Running->value,
+                'output_format' => $format->value,
+                'started_at' => now(),
+            ]);
 
-        try {
-            $resultSnapshot = $this->buildResultSnapshot($definition, $teamId);
-            [$filePath, $fileObjectId] = $this->writeOutput($execution, $definition, $format, $resultSnapshot);
+            try {
+                $resultSnapshot = $this->buildResultSnapshot($definition, $teamId);
+                [$filePath, $fileObjectId] = $this->writeOutput($execution, $definition, $format, $resultSnapshot);
 
-            $execution->forceFill([
-                'status' => ReportExecutionStatus::Completed->value,
-                'finished_at' => now(),
-                'result_snapshot_json' => $resultSnapshot,
-                'file_path' => $filePath,
-                'output_file_object_id' => $fileObjectId,
-            ])->save();
-        } catch (\Throwable $e) {
-            $execution->forceFill([
-                'status' => ReportExecutionStatus::Failed->value,
-                'finished_at' => now(),
-                'error_message' => $e->getMessage(),
-            ])->save();
+                $execution->forceFill([
+                    'status' => ReportExecutionStatus::Completed->value,
+                    'finished_at' => now(),
+                    'result_snapshot_json' => $resultSnapshot,
+                    'file_path' => $filePath,
+                    'output_file_object_id' => $fileObjectId,
+                ])->save();
+            } catch (\Throwable $e) {
+                $execution->forceFill([
+                    'status' => ReportExecutionStatus::Failed->value,
+                    'finished_at' => now(),
+                    'error_message' => $e->getMessage(),
+                ])->save();
 
-            throw $e;
-        }
+                throw $e;
+            }
 
-        $this->recordUsageEvent->execute(
-            teamId: $teamId,
-            meterCode: 'generated_reports',
-            quantity: 1,
-            eventKey: "report_exec_{$execution->id}",
-        );
+            $this->recordUsageEvent->execute(
+                teamId: $teamId,
+                meterCode: 'generated_reports',
+                quantity: 1,
+                eventKey: "report_exec_{$execution->id}",
+            );
 
-        ReportGenerated::dispatch(
-            $teamId,
-            $execution->id,
-            $definition->report_type->value,
-            $format->value,
-        );
+            ReportGenerated::dispatch(
+                $teamId,
+                $execution->id,
+                $definition->report_type->value,
+                $format->value,
+            );
 
-        broadcast(new ReportReadyBroadcast(
-            teamId: $teamId,
-            reportExecutionId: $execution->id,
-            reportName: $definition->name,
-            outputFormat: $format->value,
-        ));
+            broadcast(new ReportReadyBroadcast(
+                teamId: $teamId,
+                reportExecutionId: $execution->id,
+                reportName: $definition->name,
+                outputFormat: $format->value,
+            ));
 
-        return $execution->refresh();
+            return $execution->refresh();
+        });
     }
 
     /**
@@ -104,7 +107,7 @@ class GenerateReport
     {
         $metricCodes = (array) ($definition->metrics_json ?? []);
 
-        $kpiQuery = KpiRecord::withoutGlobalScopes()
+        $kpiQuery = KpiRecord::query()
             ->where('team_id', $teamId)
             ->orderByDesc('period_start');
 
@@ -211,7 +214,7 @@ class GenerateReport
      */
     private function resolveBranding(int $teamId, ?string $fallbackName): array
     {
-        $branding = TenantBranding::withoutGlobalScopes()
+        $branding = TenantBranding::query()
             ->where('team_id', $teamId)
             ->first();
 
@@ -229,7 +232,7 @@ class GenerateReport
         string $contents,
         ReportOutputFormat $format,
     ): int {
-        $fileObject = FileObject::withoutGlobalScopes()->create([
+        $fileObject = FileObject::query()->create([
             'team_id' => $execution->team_id,
             'bucket' => config('filesystems.disks.rustfs.bucket', self::FILE_OBJECT_BUCKET_DEFAULT),
             'object_key' => $path,

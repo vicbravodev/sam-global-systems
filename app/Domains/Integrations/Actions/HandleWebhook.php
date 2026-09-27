@@ -28,7 +28,7 @@ class HandleWebhook
     ): WebhookEvent {
         $integration = $endpoint->tenantIntegration;
 
-        $webhookEvent = WebhookEvent::withoutGlobalScopes()->create([
+        $webhookEvent = WebhookEvent::query()->create([
             'team_id' => $integration->team_id,
             'provider_id' => $integration->provider_id,
             'event_type' => $eventType,

@@ -31,7 +31,7 @@ class ResolveOnCallOperator
 {
     public function execute(int $teamId, ?DateTimeInterface $at = null): ?int
     {
-        $profile = TenantScheduleProfile::withoutGlobalScopes()
+        $profile = TenantScheduleProfile::query()
             ->where('team_id', $teamId)
             ->where('is_active', true)
             ->first();
