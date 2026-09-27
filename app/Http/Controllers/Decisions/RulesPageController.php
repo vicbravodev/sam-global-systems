@@ -147,6 +147,8 @@ class RulesPageController extends Controller
                 ->all(),
             'overrideTypes' => fn () => array_map(fn (RuleOverrideType $type) => $type->value, RuleOverrideType::cases()),
             'canManageDecisionRules' => fn () => (bool) request()->user()?->can('create', DecisionRule::class),
+            // Las reglas de mapeo son globales: sólo el super-admin las edita.
+            'canManageMappingRules' => fn () => (bool) request()->user()?->can('create', EventMappingRule::class),
             'canManageOverrides' => fn () => (bool) request()->user()?->can('create', TenantRuleOverride::class),
         ]);
     }

@@ -153,6 +153,7 @@ class EvaluateEventMultimodally
                 Log::warning('MediaAssessmentAgent failed; recording unavailable assessment', [
                     'evaluation_id' => $evaluation->id,
                     'event_media_context_id' => $media->id,
+                    'error_class' => $exception::class,
                     'error' => $exception->getMessage(),
                 ]);
 
@@ -163,8 +164,9 @@ class EvaluateEventMultimodally
                     'assessment_type' => $assessmentType,
                     'result' => MediaAssessmentResult::Unavailable,
                     'confidence_score' => 0.0,
-                    'extracted_signals_json' => ['error' => $exception->getMessage()],
-                    'summary_text' => 'Falló el agente multimodal: '.$exception->getMessage(),
+                    // Mensaje crudo solo en el log; el operador ve un texto genérico.
+                    'extracted_signals_json' => ['error_class' => class_basename($exception)],
+                    'summary_text' => 'El análisis visual no estuvo disponible para esta media.',
                     'latency_ms' => null,
                     'input_tokens' => null,
                     'output_tokens' => null,

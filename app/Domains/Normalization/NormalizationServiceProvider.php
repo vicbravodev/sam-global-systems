@@ -5,7 +5,9 @@ namespace App\Domains\Normalization;
 use App\Contracts\Normalization\NormalizedEventStatsQuery;
 use App\Domains\Ingestion\Events\RawEventProcessed;
 use App\Domains\Normalization\Listeners\NormalizeOnRawEventProcessed;
+use App\Domains\Normalization\Models\EventMappingRule;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Domains\Normalization\Policies\EventMappingRulePolicy;
 use App\Domains\Normalization\Policies\NormalizedEventPolicy;
 use App\Domains\Normalization\Queries\DbNormalizedEventStatsQuery;
 use Illuminate\Support\Facades\Event;
@@ -22,6 +24,7 @@ class NormalizationServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Gate::policy(NormalizedEvent::class, NormalizedEventPolicy::class);
+        Gate::policy(EventMappingRule::class, EventMappingRulePolicy::class);
 
         Event::listen(RawEventProcessed::class, NormalizeOnRawEventProcessed::class);
     }

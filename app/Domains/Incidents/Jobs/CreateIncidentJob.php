@@ -2,6 +2,8 @@
 
 namespace App\Domains\Incidents\Jobs;
 
+use App\Domains\Decisions\Models\Decision;
+use App\Domains\Incidents\Actions\ApplyReevaluationToIncident;
 use App\Domains\Incidents\Actions\CreateIncidentFromEvent;
 use App\Domains\Incidents\Actions\RequestIncidentReview;
 use App\Domains\Incidents\Enums\IncidentCreatorType;
@@ -44,8 +46,11 @@ class CreateIncidentJob implements ShouldBeUnique, ShouldQueue
 
     public function handle(
         CreateIncidentFromEvent $createIncidentFromEvent,
+        ?ApplyReevaluationToIncident $applyReevaluation = null,
         ?RequestIncidentReview $requestReview = null,
     ): void {
+        $applyReevaluation ??= app(ApplyReevaluationToIncident::class);
+
         $event = NormalizedEvent::withoutGlobalScopes()->find($this->normalizedEventId);
 
         if ($event === null) {
@@ -55,6 +60,23 @@ class CreateIncidentJob implements ShouldBeUnique, ShouldQueue
         // Trabaja dentro del tenant del propio registro: el lookup de
         // entrada no puede estar scopeado, todo lo que sigue sí. Ver §2.1.
         TenantContext::set($event->team_id);
+
+        // Reevaluación de un evento que ya tiene incidente (v2+ de la IA):
+        // se actualiza ese incidente en vez de abrir otro. Cubre también los
+        // eventos sin activo/conductor, que el dedup por ventana no agrupa.
+        $existing = $applyReevaluation->findExistingFor($event);
+
+        if ($existing !== null) {
+            $decision = isset($this->context['decision_id'])
+                ? Decision::query()->where('team_id', $event->team_id)->find($this->context['decision_id'])
+                : null;
+
+            if ($decision !== null) {
+                $applyReevaluation->execute($existing, $decision);
+            }
+
+            return;
+        }
 
         $incident = $createIncidentFromEvent->execute($event, $this->context);
 

@@ -9,6 +9,7 @@ use App\Domains\Incidents\Enums\TimelineEntryType;
 use App\Domains\Incidents\Events\IncidentAssigned;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentAssignment;
+use App\Support\TeamMembers;
 use Illuminate\Support\Facades\DB;
 
 class AssignIncident
@@ -25,6 +26,8 @@ class AssignIncident
         IncidentCreatorType $assignedByType = IncidentCreatorType::System,
         ?int $assignedById = null,
     ): IncidentAssignment {
+        $this->guardAssignee($incident, $assigneeType, $assigneeId);
+
         return DB::transaction(function () use ($incident, $assigneeType, $assigneeId, $role, $assignedByType, $assignedById) {
             IncidentAssignment::query()
                 ->where('incident_id', $incident->id)
@@ -59,5 +62,27 @@ class AssignIncident
 
             return $assignment;
         });
+    }
+
+    /**
+     * Los ids de usuario y de team son globales: nunca asignar un incidente a
+     * alguien de otro tenant (le daría acceso a sus datos y notificaciones).
+     * Un super-admin sí puede figurar como asignado (soporte de SAM).
+     */
+    private function guardAssignee(Incident $incident, AssigneeType $assigneeType, int $assigneeId): void
+    {
+        $teamId = (int) $incident->team_id;
+
+        $valid = match ($assigneeType) {
+            AssigneeType::User => TeamMembers::isAssignable($teamId, $assigneeId),
+            AssigneeType::Team, AssigneeType::Queue => $assigneeId === $teamId,
+            AssigneeType::AutomatedHandler => true,
+        };
+
+        if (! $valid) {
+            throw new \InvalidArgumentException(
+                "Assignee {$assigneeType->value} #{$assigneeId} does not belong to team {$teamId}."
+            );
+        }
     }
 }

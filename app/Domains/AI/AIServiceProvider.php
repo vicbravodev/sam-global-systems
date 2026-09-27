@@ -11,10 +11,12 @@ use App\Domains\AI\Listeners\AssessPendingMediaOnEvaluationCompleted;
 use App\Domains\AI\Listeners\BroadcastAIEvaluationCompleted;
 use App\Domains\AI\Listeners\EvaluateMediaOnEventMediaAvailable;
 use App\Domains\AI\Listeners\EvaluateOnEventContextBuilt;
+use App\Domains\AI\Listeners\RecordOperatorVerdictOnIncidentResolved;
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\AI\Policies\AIEvaluationPolicy;
 use App\Domains\Context\Events\EventContextBuilt;
 use App\Domains\Context\Events\EventMediaAvailable;
+use App\Domains\Incidents\Events\IncidentResolved;
 use App\Infrastructure\AI\Agents\SdkEventEvaluationAgent;
 use App\Infrastructure\AI\Agents\SdkMediaAssessmentAgent;
 use App\Infrastructure\AI\Listeners\AIUsageListener;
@@ -55,6 +57,8 @@ class AIServiceProvider extends ServiceProvider
         // Backfill assessments for media that persisted before this evaluation
         // existed (extraction and text evaluation race on separate queues).
         Event::listen(AIEvaluationCompleted::class, AssessPendingMediaOnEvaluationCompleted::class);
+        // "Descartar como falso positivo" = etiqueta humana para la IA.
+        Event::listen(IncidentResolved::class, RecordOperatorVerdictOnIncidentResolved::class);
 
         // Laravel's dispatcher does not fire parent-class listeners for
         // child events, so we register against both `AgentPrompted` and

@@ -156,7 +156,11 @@ class EvaluateEventMultimodallyTest extends TestCase
             'event_media_context_id' => $media->id,
             'result' => MediaAssessmentResult::Unavailable->value,
             'model_used' => 'media-agent:error',
+            'summary_text' => 'El análisis visual no estuvo disponible para esta media.',
         ]);
+
+        $assessment = AIMediaAssessment::query()->where('evaluation_id', $evaluation->id)->firstOrFail();
+        $this->assertSame(['error_class' => 'RuntimeException'], $assessment->extracted_signals_json);
     }
 
     public function test_empty_media_collection_is_a_no_op(): void

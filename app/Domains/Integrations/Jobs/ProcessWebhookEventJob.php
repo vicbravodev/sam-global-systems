@@ -6,6 +6,7 @@ use App\Contracts\RawEventIngestion;
 use App\Domains\Integrations\Actions\ValidateWebhookSignature;
 use App\Domains\Integrations\Models\WebhookEndpoint;
 use App\Domains\Integrations\Models\WebhookEvent;
+use App\Models\Team;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -32,6 +33,13 @@ class ProcessWebhookEventJob implements ShouldQueue
         ValidateWebhookSignature $validateSignature,
         RawEventIngestion $rawEventIngestion,
     ): void {
+        // Eventos encolados antes de dar de baja al tenant: no se ingieren.
+        if (! Team::query()->whereKey($this->webhookEvent->team_id)->exists()) {
+            $this->webhookEvent->markAsFailed('Tenant dado de baja: evento descartado.');
+
+            return;
+        }
+
         $this->webhookEvent->markAsProcessing();
 
         $payload = $this->webhookEvent->payload_json;

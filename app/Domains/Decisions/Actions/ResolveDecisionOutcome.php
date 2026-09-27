@@ -12,10 +12,19 @@ use App\Domains\Decisions\Enums\DecisionSourceType;
 use App\Domains\Decisions\Models\Decision;
 use App\Domains\Decisions\Models\DecisionOutcome;
 use App\Domains\Decisions\Models\DecisionRule;
+use App\Domains\Normalization\Models\NormalizedEvent;
 use Illuminate\Support\Collection;
 
 class ResolveDecisionOutcome
 {
+    /**
+     * Códigos de `event_severities` cuyo evento nunca puede quedar por debajo
+     * de INCIDENT (pánico, colisión, vuelco, manipulación del equipo...).
+     *
+     * @var list<string>
+     */
+    public const CRITICAL_SEVERITY_FLOOR_CODES = ['critical'];
+
     public function __construct(
         private readonly TenantDecisionRulesResolver $rulesResolver,
     ) {}
@@ -26,7 +35,73 @@ class ResolveDecisionOutcome
      */
     public function execute(AIEventEvaluation $eval, Collection $matchedRules): array
     {
-        return $this->guardMediaContradiction($eval, $this->resolve($eval, $matchedRules));
+        $resolved = $this->guardMediaContradiction($eval, $this->resolve($eval, $matchedRules));
+
+        // El piso de seguridad va AL FINAL: ninguna regla (ni stop_processing),
+        // override de tenant, confianza baja ni fallback del agente puede
+        // dejar un evento crítico por debajo de INCIDENT.
+        return $this->applyCriticalSeverityFloor($eval, $resolved);
+    }
+
+    /**
+     * ¿El evento de esta evaluación tiene una severidad sujeta al piso de
+     * seguridad? Lo usa también EvaluateDecisionRules para la prioridad.
+     */
+    public function isCriticalSeverity(AIEventEvaluation $eval): bool
+    {
+        $severityCode = NormalizedEvent::query()
+            ->with('eventSeverity')
+            ->find($eval->normalized_event_id)
+            ?->eventSeverity
+            ?->code;
+
+        return $severityCode !== null
+            && in_array($severityCode, self::CRITICAL_SEVERITY_FLOOR_CODES, true);
+    }
+
+    /**
+     * IGNORE, LOG_ONLY, ALERT y REQUIRE_HUMAN_REVIEW suben a INCIDENT; ESCALATE
+     * se queda. Única excepción: REQUIRE_HUMAN_REVIEW elegido por una regla
+     * configurada (p. ej. la regla opt-in de falsa alarma de pánico resuelta
+     * en base, roadmap B6-P7), que ya garantiza que un humano lo revise. Una
+     * revisión humana que sale de la IA (unclear, confianza baja, fallo del
+     * agente) o del guard de contradicción de media sí sube a INCIDENT.
+     *
+     * @param  array{outcome: DecisionOutcome, sourceType: DecisionSourceType, sourceRule: ?DecisionRule, reason: string, requiresHumanReview: bool}  $resolved
+     * @return array{outcome: DecisionOutcome, sourceType: DecisionSourceType, sourceRule: ?DecisionRule, reason: string, requiresHumanReview: bool}
+     */
+    private function applyCriticalSeverityFloor(AIEventEvaluation $eval, array $resolved): array
+    {
+        $code = DecisionOutcomeCode::tryFrom((string) $resolved['outcome']->code);
+
+        if ($code !== null && $code->createsIncident()) {
+            return $resolved;
+        }
+
+        $ruleChoseReview = $code === DecisionOutcomeCode::RequireHumanReview
+            && $resolved['sourceRule'] !== null
+            && in_array($resolved['sourceType'], [DecisionSourceType::Rule, DecisionSourceType::TenantPolicy], true);
+
+        if ($ruleChoseReview || ! $this->isCriticalSeverity($eval)) {
+            return $resolved;
+        }
+
+        $incident = DecisionOutcome::firstOrCreate(
+            ['code' => DecisionOutcomeCode::Incident->value],
+            ['name' => 'Incident', 'is_terminal' => false],
+        );
+
+        return [
+            'outcome' => $incident,
+            'sourceType' => DecisionSourceType::Fallback,
+            // La regla original eligió un desenlace sin incidente: su política
+            // de escalación no aplica al piso.
+            'sourceRule' => null,
+            'reason' => 'Piso de seguridad: evento de severidad crítica elevado de '
+                .$resolved['outcome']->code.' a '.DecisionOutcomeCode::Incident->value
+                .'. Motivo original: '.$resolved['reason'],
+            'requiresHumanReview' => $resolved['requiresHumanReview'],
+        ];
     }
 
     /**

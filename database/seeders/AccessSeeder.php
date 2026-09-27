@@ -95,7 +95,7 @@ class AccessSeeder extends Seeder
             'context.view',
             'geofences.view', 'geofences.manage',
             'reports.view', 'reports.export',
-            'ai.analysis.view',
+            'ai.analysis.view', 'ai.analysis.execute',
             'config.view',
             'users.view',
             'audit.view',
@@ -111,6 +111,8 @@ class AccessSeeder extends Seeder
             'geofences.view',
             'decisions.view',
             'notifications.view',
+            // Botón de feedback/reevaluación de la IA en el detalle del incidente.
+            'ai.analysis.execute',
         ],
         'analyst' => [
             'reports.view', 'reports.export',

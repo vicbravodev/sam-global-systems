@@ -25,10 +25,16 @@ class EvaluateOnEventContextBuilt
         }
 
         // El job se despacha dentro del tenant del evento para que viaje en su
-        // contexto hasta el worker. Ver §2.1.
+        // contexto hasta el worker. Ver §2.1. El closure es de bloque a propósito:
+        // PendingDispatch encola al destruirse y debe hacerlo DENTRO del tenant,
+        // no después de que TenantContext::for() restaure el contexto previo.
+        // afterCommit: EventContextBuilt se emite dentro de la transacción de
+        // BuildEventContext; sin él el worker puede no ver aún el snapshot.
         TenantContext::for(
             $normalizedEvent->team_id,
-            fn () => EvaluateEventJob::dispatch($normalizedEvent->id),
+            function () use ($normalizedEvent): void {
+                EvaluateEventJob::dispatch($normalizedEvent->id)->afterCommit();
+            },
         );
     }
 }

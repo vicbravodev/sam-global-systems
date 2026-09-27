@@ -1,0 +1,64 @@
+{
+    "name": "Evento desconocido del proveedor sin telemetría ni contexto útil",
+    "critical": false,
+    "expected_classifications": [
+        "unclear",
+        "pending_evidence"
+    ],
+    "forbidden_classifications": [
+        "real_event"
+    ],
+    "input": {
+        "normalized_event": {
+            "id": 0,
+            "occurred_at": "2026-09-25T10:00:00-06:00",
+            "status": "normalized",
+            "payload": {
+                "event_type_code": "unmapped",
+                "event_type_name": "Evento no mapeado",
+                "severity": "low",
+                "provider": "samsara",
+                "raw_type": "vendorCustomAlert42"
+            }
+        },
+        "context_signals": {
+            "is_in_sensitive_geofence": false,
+            "has_open_incident": false,
+            "has_prior_similar_incident": false,
+            "same_type_recent_recurrence": false,
+            "driver_has_recent_risk_events": false,
+            "camera_unavailable": false,
+            "gps_signal_weak": false,
+            "outside_operating_hours": false,
+            "asset_recently_stopped": false,
+            "asset_in_motion": false,
+            "driver_unresolved_previous_alert": false,
+            "has_visual_evidence": false,
+            "has_audio_evidence": false,
+            "video_pending": false,
+            "media_delayed": false,
+            "no_media_available": true,
+            "visual_confirmation_possible": false,
+            "external_resolved": false,
+            "parked_at_base": false,
+            "harsh_driving_near_event": false,
+            "nearby_safety_activity": false,
+            "gps_lost_in_motion": false
+        },
+        "operational_profile": {},
+        "recent_history": {
+            "event_count": 0,
+            "recent_same_type_count": 0,
+            "nearby_safety_events_count": 0,
+            "nearby_safety_breakdown": {},
+            "harsh_driving_near_event": false
+        },
+        "tenant_profile": {
+            "automation_level": "assisted",
+            "monthly_token_limit": 2000000,
+            "daily_call_limit": 5000,
+            "preferred_model": null
+        },
+        "media_assessments": []
+    }
+}
