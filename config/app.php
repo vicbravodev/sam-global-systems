@@ -69,6 +69,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Trusted Proxies
+    |--------------------------------------------------------------------------
+    |
+    | IPs/CIDRs (separadas por coma) de los proxies/balanceadores delante de la
+    | app, o '*' para confiar en el salto inmediato. Vacío = ninguno. Necesario
+    | detrás de un LB TLS para que la firma de Twilio (fullUrl) y los throttles
+    | por IP vean al cliente real. Ver App\Http\Middleware\TrustProxiesFromConfig.
+    |
+    */
+
+    'trusted_proxies' => env('TRUSTED_PROXIES'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Locale Configuration
     |--------------------------------------------------------------------------
     |
