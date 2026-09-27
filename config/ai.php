@@ -219,7 +219,8 @@ return [
         'vehicle_idle',
         'driving_context',
         'defensive_driving',
-        'unmapped',
+        // 'unmapped' NO se omite a propósito: puede ser una alerta nueva del
+        // proveedor aún sin regla de mapeo y no debe descartarse en silencio.
         'no_seatbelt',
         'hos_violation',
         'smoking_drinking',

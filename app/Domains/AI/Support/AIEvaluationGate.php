@@ -11,7 +11,8 @@ use App\Domains\Normalization\Models\NormalizedEvent;
  * provider (e.g. Samsara safety events: harsh braking, speeding, distraction)
  * skip AI evaluation — re-classifying them would be redundant and paid. So do
  * low-value event types (`ai.skip_evaluation_event_types`: geofence
- * entry/exit, idling, driving context, unmapped…), matched by event type code
+ * entry/exit, idling, driving context…; never `unmapped`, which may be a new
+ * provider alert still lacking a mapping rule), matched by event type code
  * regardless of category. Skipped events are still persisted and feed
  * correlation for high-value incidents (panic, jamming) via the Context
  * domain.

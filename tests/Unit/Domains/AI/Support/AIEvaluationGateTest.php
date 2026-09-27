@@ -54,11 +54,11 @@ class AIEvaluationGateTest extends TestCase
     {
         $gate = new AIEvaluationGate([]);
 
-        foreach (['geofence_entry', 'geofence_exit', 'vehicle_idle', 'driving_context', 'defensive_driving', 'unmapped', 'no_seatbelt', 'hos_violation', 'smoking_drinking'] as $code) {
+        foreach (['geofence_entry', 'geofence_exit', 'vehicle_idle', 'driving_context', 'defensive_driving', 'no_seatbelt', 'hos_violation', 'smoking_drinking'] as $code) {
             $this->assertFalse($gate->shouldEvaluate($this->eventWithType($code, null)), $code);
         }
 
-        foreach (['panic_button', 'collision', 'tampering', 'after_hours_movement', 'suspicious_stop'] as $code) {
+        foreach (['panic_button', 'collision', 'tampering', 'after_hours_movement', 'suspicious_stop', 'unmapped'] as $code) {
             $this->assertTrue($gate->shouldEvaluate($this->eventWithType($code, null)), $code);
         }
     }
