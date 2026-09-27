@@ -8,6 +8,7 @@ use App\Domains\Decisions\Events\DecisionMade;
 use App\Domains\Incidents\Events\IncidentCreated;
 use App\Domains\Incidents\Listeners\AnnotateIncidentOnMediaAssessmentCompleted;
 use App\Domains\Incidents\Listeners\ApplyExternalResolutionOnEventNormalized;
+use App\Domains\Incidents\Listeners\ApplyReevaluationOnDecisionMade;
 use App\Domains\Incidents\Listeners\AssignOnCallOnIncidentCreated;
 use App\Domains\Incidents\Listeners\CreateIncidentOnDecisionMade;
 use App\Domains\Incidents\Listeners\StartCallVerificationOnIncidentCreated;
@@ -31,6 +32,8 @@ class IncidentsServiceProvider extends ServiceProvider
         Gate::policy(Incident::class, IncidentPolicy::class);
 
         Event::listen(DecisionMade::class, CreateIncidentOnDecisionMade::class);
+        // Reevaluaciones (v2+): actualizan el incidente del evento, no duplican.
+        Event::listen(DecisionMade::class, ApplyReevaluationOnDecisionMade::class);
         Event::listen(EventNormalized::class, ApplyExternalResolutionOnEventNormalized::class);
         Event::listen(IncidentCreated::class, AssignOnCallOnIncidentCreated::class);
         Event::listen(IncidentCreated::class, StartCallVerificationOnIncidentCreated::class);

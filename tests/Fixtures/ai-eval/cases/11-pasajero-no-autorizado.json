@@ -1,0 +1,86 @@
+{
+    "name": "Pasajero no autorizado detectado por la cámara de cabina",
+    "critical": false,
+    "expected_classifications": [
+        "real_event"
+    ],
+    "forbidden_classifications": [
+        "false_positive",
+        "noise"
+    ],
+    "expected_media_result": "confirms_event",
+    "input": {
+        "normalized_event": {
+            "id": 0,
+            "occurred_at": "2026-09-25T16:12:00-06:00",
+            "status": "normalized",
+            "payload": {
+                "event_type_code": "unauthorized_passenger",
+                "event_type_name": "Pasajero no autorizado",
+                "severity": "medium",
+                "provider": "samsara",
+                "speed_kph": 60,
+                "location": {
+                    "description": "Carretera Monterrey-Saltillo km 12",
+                    "lat": 25.6301,
+                    "lng": -100.4502
+                }
+            }
+        },
+        "context_signals": {
+            "is_in_sensitive_geofence": false,
+            "has_open_incident": false,
+            "has_prior_similar_incident": false,
+            "same_type_recent_recurrence": false,
+            "driver_has_recent_risk_events": false,
+            "camera_unavailable": false,
+            "gps_signal_weak": false,
+            "outside_operating_hours": false,
+            "asset_recently_stopped": false,
+            "asset_in_motion": true,
+            "driver_unresolved_previous_alert": false,
+            "has_visual_evidence": true,
+            "has_audio_evidence": false,
+            "video_pending": false,
+            "media_delayed": false,
+            "no_media_available": false,
+            "visual_confirmation_possible": true,
+            "external_resolved": false,
+            "parked_at_base": false,
+            "harsh_driving_near_event": false,
+            "nearby_safety_activity": false,
+            "gps_lost_in_motion": false
+        },
+        "operational_profile": {
+            "operating_hours": "06:00-22:00",
+            "base_name": "Base Tlalnepantla",
+            "route_type": "carretera federal"
+        },
+        "recent_history": {
+            "event_count": 1,
+            "recent_same_type_count": 0,
+            "nearby_safety_events_count": 0,
+            "nearby_safety_breakdown": {},
+            "harsh_driving_near_event": false
+        },
+        "tenant_profile": {
+            "automation_level": "assisted",
+            "monthly_token_limit": 2000000,
+            "daily_call_limit": 5000,
+            "preferred_model": null
+        },
+        "media_assessments": [
+            {
+                "media_type": "snapshot",
+                "camera": "driver_facing",
+                "result": "confirms_event",
+                "confidence": 0.84,
+                "summary": "Se observa a una segunda persona en el asiento del copiloto, sin uniforme de la empresa.",
+                "extracted_signals": {
+                    "passenger_detected": true,
+                    "persons_visible_count": 2
+                }
+            }
+        ]
+    }
+}

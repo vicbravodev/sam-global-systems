@@ -38,7 +38,10 @@ class EvaluateEventWithAI
         private readonly RecordUsageEvent $recordUsageEvent,
     ) {}
 
-    public function execute(NormalizedEvent $event, ?int $version = null): AIEventEvaluation
+    /**
+     * @param  array<string, mixed>|null  $operatorFeedback  Feedback humano (veredictos del operador y motivos del diálogo "Feedback") que debe llegar al modelo; lo arma `OperatorFeedbackCollector`.
+     */
+    public function execute(NormalizedEvent $event, ?int $version = null, ?array $operatorFeedback = null): AIEventEvaluation
     {
         $snapshot = EventContextSnapshot::query()
             ->where('normalized_event_id', $event->id)
@@ -46,6 +49,7 @@ class EvaluateEventWithAI
 
         $profile = $this->resolveTenantProfile->execute($event->team_id);
         $input = $this->buildInputContext->execute($event, $snapshot, $profile);
+        $input = $this->withOperatorFeedback($input, $operatorFeedback);
         $riskScore = $this->calculateRiskScore->execute($event, $snapshot);
 
         // Veredicto visual del evento (si ya hay media evaluada): ajusta de
@@ -199,6 +203,30 @@ class EvaluateEventWithAI
 
             return $evaluation;
         });
+    }
+
+    /**
+     * Inyecta el feedback del operador en el input del agente bajo
+     * `recent_history.operator_feedback`, sin tocar el DTO: se reconstruye con
+     * todas sus propiedades públicas (incluidas las que se añadan en el
+     * futuro) y sólo se amplía `recentHistory`. Así viaja en el payload JSON
+     * que ve el modelo y queda en el snapshot del inference log.
+     *
+     * @param  array<string, mixed>|null  $operatorFeedback
+     */
+    private function withOperatorFeedback(AIInputContext $input, ?array $operatorFeedback): AIInputContext
+    {
+        if ($operatorFeedback === null || $operatorFeedback === []) {
+            return $input;
+        }
+
+        $properties = get_object_vars($input);
+        $properties['recentHistory'] = [
+            ...$input->recentHistory,
+            'operator_feedback' => $operatorFeedback,
+        ];
+
+        return new AIInputContext(...$properties);
     }
 
     /**

@@ -1,0 +1,72 @@
+{
+    "name": "Pánico resuelto con la unidad estacionada dentro de su base, sin movimiento ni media alarmante",
+    "critical": false,
+    "expected_classifications": [
+        "false_positive",
+        "unclear"
+    ],
+    "forbidden_classifications": [],
+    "input": {
+        "normalized_event": {
+            "id": 0,
+            "occurred_at": "2026-09-20T14:05:00-06:00",
+            "status": "normalized",
+            "payload": {
+                "event_type_code": "panic_button",
+                "event_type_name": "Botón de pánico",
+                "severity": "critical",
+                "provider": "samsara",
+                "is_resolved": true,
+                "speed_kph": 0,
+                "location": {
+                    "description": "Base Tlalnepantla, patio de maniobras",
+                    "lat": 19.5401,
+                    "lng": -99.1954
+                }
+            }
+        },
+        "context_signals": {
+            "is_in_sensitive_geofence": false,
+            "has_open_incident": false,
+            "has_prior_similar_incident": false,
+            "same_type_recent_recurrence": false,
+            "driver_has_recent_risk_events": false,
+            "camera_unavailable": false,
+            "gps_signal_weak": false,
+            "outside_operating_hours": false,
+            "asset_recently_stopped": true,
+            "asset_in_motion": false,
+            "driver_unresolved_previous_alert": false,
+            "has_visual_evidence": false,
+            "has_audio_evidence": false,
+            "video_pending": false,
+            "media_delayed": false,
+            "no_media_available": true,
+            "visual_confirmation_possible": false,
+            "external_resolved": true,
+            "parked_at_base": true,
+            "harsh_driving_near_event": false,
+            "nearby_safety_activity": false,
+            "gps_lost_in_motion": false
+        },
+        "operational_profile": {
+            "operating_hours": "06:00-22:00",
+            "base_name": "Base Tlalnepantla",
+            "route_type": "urbana"
+        },
+        "recent_history": {
+            "event_count": 1,
+            "recent_same_type_count": 0,
+            "nearby_safety_events_count": 0,
+            "nearby_safety_breakdown": {},
+            "harsh_driving_near_event": false
+        },
+        "tenant_profile": {
+            "automation_level": "assisted",
+            "monthly_token_limit": 2000000,
+            "daily_call_limit": 5000,
+            "preferred_model": null
+        },
+        "media_assessments": []
+    }
+}

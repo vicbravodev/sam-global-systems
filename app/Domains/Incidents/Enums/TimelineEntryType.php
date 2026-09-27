@@ -24,4 +24,5 @@ enum TimelineEntryType: string
     case EventLinked = 'event_linked';
     case MediaAssessed = 'media_assessed';
     case VerificationCall = 'verification_call';
+    case AiReevaluated = 'ai_reevaluated';
 }

@@ -1,4 +1,11 @@
-import { ChevronDown, ChevronRight, Loader2, Sparkles } from 'lucide-react';
+import {
+    ChevronDown,
+    ChevronRight,
+    Loader2,
+    Sparkles,
+    UserCheck,
+    UserX,
+} from 'lucide-react';
 import { useState } from 'react';
 import { ConfidenceBar } from '@/components/sam';
 import { Button } from '@/components/ui/button';
@@ -35,6 +42,42 @@ const DECISION_LABEL: Record<AiDecision, string> = {
     info: 'Evento informativo',
     discard: 'Descartado',
 };
+
+const OPERATOR_VERDICT_LABEL: Record<'confirmed' | 'false_positive', string> = {
+    confirmed: 'Confirmado por operador',
+    false_positive: 'Falso positivo (operador)',
+};
+
+function OperatorVerdictBadge({ incident }: { incident: IncidentDetail }) {
+    const verdict = incident.aiOperatorVerdict ?? null;
+
+    if (verdict === null) {
+        return null;
+    }
+
+    const confirmed = verdict === 'confirmed';
+    const Icon = confirmed ? UserCheck : UserX;
+
+    return (
+        <span
+            data-testid="ai-operator-verdict"
+            className={cn(
+                'mb-2 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-3xs font-semibold',
+                confirmed
+                    ? 'border-health-ok/40 bg-health-ok/10 text-health-ok'
+                    : 'border-status-discarded/40 bg-status-discarded/10 text-status-discarded',
+            )}
+            title={
+                incident.aiOperatorVerdictAt
+                    ? `Registrado el ${formatDateTime(incident.aiOperatorVerdictAt)}`
+                    : undefined
+            }
+        >
+            <Icon size={11} strokeWidth={1.75} />
+            {OPERATOR_VERDICT_LABEL[verdict]}
+        </span>
+    );
+}
 
 const MODE_LABEL: Record<string, string> = {
     rules_only: 'solo reglas',
@@ -297,6 +340,8 @@ export function AiEvaluationCard({
             >
                 {DECISION_LABEL[incident.aiDecision]}
             </div>
+
+            <OperatorVerdictBadge incident={incident} />
 
             <p
                 className={cn(

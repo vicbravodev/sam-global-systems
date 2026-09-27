@@ -258,11 +258,8 @@ export function IncidentActionsProvider({
             confirmAi: () =>
                 run(
                     'confirm-ai',
-                    base ? `${base}/comments` : null,
-                    {
-                        comment: 'Evaluación de IA confirmada por el operador.',
-                        visibility: 'audit_only',
-                    },
+                    base ? `${base}/ai-verdict` : null,
+                    { verdict: 'confirmed' },
                     'Evaluación IA confirmada.',
                 ),
             feedbackAi: (reason) => {

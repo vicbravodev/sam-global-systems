@@ -1,0 +1,78 @@
+{
+    "name": "Pánico con frenado brusco y giro evasivo dos minutos antes en el mismo vehículo",
+    "critical": true,
+    "expected_classifications": [
+        "real_event"
+    ],
+    "forbidden_classifications": [
+        "false_positive",
+        "noise",
+        "duplicate"
+    ],
+    "input": {
+        "normalized_event": {
+            "id": 0,
+            "occurred_at": "2026-09-21T02:15:00-06:00",
+            "status": "normalized",
+            "payload": {
+                "event_type_code": "panic_button",
+                "event_type_name": "Botón de pánico",
+                "severity": "critical",
+                "provider": "samsara",
+                "is_resolved": false,
+                "speed_kph": 12,
+                "location": {
+                    "description": "Carretera Puebla-Orizaba km 188, Esperanza",
+                    "lat": 18.8566,
+                    "lng": -97.369
+                }
+            }
+        },
+        "context_signals": {
+            "is_in_sensitive_geofence": false,
+            "has_open_incident": false,
+            "has_prior_similar_incident": false,
+            "same_type_recent_recurrence": false,
+            "driver_has_recent_risk_events": false,
+            "camera_unavailable": false,
+            "gps_signal_weak": false,
+            "outside_operating_hours": true,
+            "asset_recently_stopped": true,
+            "asset_in_motion": false,
+            "driver_unresolved_previous_alert": false,
+            "has_visual_evidence": false,
+            "has_audio_evidence": false,
+            "video_pending": false,
+            "media_delayed": false,
+            "no_media_available": true,
+            "visual_confirmation_possible": false,
+            "external_resolved": false,
+            "parked_at_base": false,
+            "harsh_driving_near_event": true,
+            "nearby_safety_activity": true,
+            "gps_lost_in_motion": false
+        },
+        "operational_profile": {
+            "operating_hours": "06:00-22:00",
+            "base_name": "Base Tlalnepantla",
+            "route_type": "carretera federal"
+        },
+        "recent_history": {
+            "event_count": 3,
+            "recent_same_type_count": 0,
+            "nearby_safety_events_count": 2,
+            "nearby_safety_breakdown": {
+                "harsh_brake": 1,
+                "harsh_turn": 1
+            },
+            "harsh_driving_near_event": true
+        },
+        "tenant_profile": {
+            "automation_level": "assisted",
+            "monthly_token_limit": 2000000,
+            "daily_call_limit": 5000,
+            "preferred_model": null
+        },
+        "media_assessments": []
+    }
+}

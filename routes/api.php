@@ -23,6 +23,7 @@ use App\Http\Controllers\Decisions\DecisionController;
 use App\Http\Controllers\Decisions\DecisionRuleController;
 use App\Http\Controllers\Decisions\EscalationPolicyController;
 use App\Http\Controllers\Drivers\DriverController;
+use App\Http\Controllers\Incidents\IncidentAIVerdictController;
 use App\Http\Controllers\Incidents\IncidentAssignmentController;
 use App\Http\Controllers\Incidents\IncidentCommentController;
 use App\Http\Controllers\Incidents\IncidentController;
@@ -139,6 +140,7 @@ Route::prefix('{current_team}')
         Route::post('incidents/{incident}/evidence', [IncidentEvidenceController::class, 'store'])->name('api.incidents.evidence.store');
         Route::post('incidents/{incident}/comments', [IncidentCommentController::class, 'store'])->name('api.incidents.comments.store');
         Route::post('incidents/{incident}/resolve', [IncidentResolutionController::class, 'resolve'])->name('api.incidents.resolve');
+        Route::post('incidents/{incident}/ai-verdict', [IncidentAIVerdictController::class, 'store'])->name('api.incidents.ai-verdict');
         Route::post('incidents/{incident}/close', [IncidentResolutionController::class, 'close'])->name('api.incidents.close');
         Route::post('incidents/{incident}/reclassify', [IncidentController::class, 'reclassify'])->name('api.incidents.reclassify');
         Route::post('incidents/{incident}/reopen', [IncidentController::class, 'reopen'])->name('api.incidents.reopen');
