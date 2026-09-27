@@ -42,6 +42,8 @@ class AgentPromptRulesTest extends TestCase
             'field driver without identity' => ['operational risk only (no identity)'],
             'field operational profile' => ['`operational_profile`'],
             'field incidents' => ['prior_similar_count'],
+            'operator feedback' => ['`recent_history.operator_feedback`'],
+            'operator confirmation never downgraded' => ['"confirmed" verdict must NEVER be downgraded'],
         ];
     }
 

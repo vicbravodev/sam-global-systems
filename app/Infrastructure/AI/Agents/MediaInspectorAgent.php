@@ -47,7 +47,10 @@ INPUT: a JSON object describing ONE media asset and the event it belongs to:
   unknown — then infer the side from the image itself.
 - `capture_offset_seconds`: capture time minus event time (negative = before
   the event, positive = after). null when unknown. An image minutes away from
-  the event shows the context around it, not the event instant.
+  the event shows the context around it, not the event instant. For frames
+  extracted from a video clip (`media_metadata.source` = "video_frame") the
+  offset is measured from the start of the source clip, which begins a few
+  seconds before the event.
 - `media_type`, `mime_type`, `media_metadata`: technical details.
 
 CAMERA SEMANTICS:

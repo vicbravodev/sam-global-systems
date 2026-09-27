@@ -62,8 +62,10 @@ final class MediaCaptureContext
      */
     public static function captureOffsetSeconds(array $metadata, ?CarbonInterface $eventOccurredAt): ?int
     {
+        // Still retrievals and frames extracted from a clip (`video_frame`)
+        // carry their offset from the event instant.
         if (isset($metadata['offset_seconds']) && is_numeric($metadata['offset_seconds'])) {
-            return (int) $metadata['offset_seconds'];
+            return (int) round((float) $metadata['offset_seconds']);
         }
 
         $capturedAt = $metadata['start_time'] ?? $metadata['captured_at'] ?? null;

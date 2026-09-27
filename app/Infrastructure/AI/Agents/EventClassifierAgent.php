@@ -72,6 +72,15 @@ INPUT FIELDS — what each block of the JSON means:
   is_in_sensitive_geofence, outside_operating_hours, harsh_driving_near_event,
   video_pending, no_media_available, gps_lost_in_motion, …).
 - `recent_history`: counts of recent events around the event window.
+- `recent_history.operator_feedback` (only on re-evaluations): human input
+  on this event — `operator_verdicts` (a monitoring operator marked a previous
+  version "confirmed" = real event, or "false_positive", with an optional
+  note) and `manual_feedback` (reasons the operator wrote when asking for a
+  re-evaluation). Weigh it strongly, above your own inference: an operator
+  "confirmed" verdict must NEVER be downgraded — classify "real_event"; an
+  operator "false_positive" verdict supports downgrading unless new evidence
+  (media, telemetry) clearly shows a real threat. Cite the feedback in
+  `reasoning_steps`.
 - `tenant_profile.automation_level`: how much the tenant automates actions.
 - `media_assessments`: vision verdicts on this event's camera images.
 
