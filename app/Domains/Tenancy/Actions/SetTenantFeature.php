@@ -6,6 +6,7 @@ use App\Domains\Tenancy\Enums\FeatureSource;
 use App\Domains\Tenancy\Events\TenantFeatureChanged;
 use App\Domains\Tenancy\Models\TenantFeature;
 use App\Models\Team;
+use App\Support\TenantContext;
 
 /**
  * Toggles a tenant feature (and optionally its limits) as a manual override.
@@ -19,10 +20,13 @@ class SetTenantFeature
      */
     public function execute(Team $team, string $featureKey, bool $enabled, ?array $limits = null): TenantFeature
     {
-        $feature = TenantFeature::query()->firstOrNew([
+        // Entrar en el tenant objetivo: desde /admin el usuario tiene su propio
+        // team actual y el scope no vería la feature existente (→ insert
+        // duplicado contra el unique (team_id, feature_key)). Ver §2.1.
+        $feature = TenantContext::for($team->id, fn () => TenantFeature::query()->firstOrNew([
             'team_id' => $team->id,
             'feature_key' => $featureKey,
-        ]);
+        ]));
 
         $feature->enabled = $enabled;
         $feature->source = FeatureSource::ManualOverride;

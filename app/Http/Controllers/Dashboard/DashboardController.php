@@ -16,6 +16,7 @@ use App\Domains\Tenancy\Models\TenantUsageCounter;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
 use App\Models\User;
+use App\Support\TeamMembers;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -220,7 +221,7 @@ class DashboardController extends Controller
             $incidents = $critical->concat($rest);
         }
 
-        $users = $this->assigneeUsers($incidents);
+        $users = $this->assigneeUsers($incidents, $team->id);
 
         return $incidents
             ->map(fn (Incident $incident) => $this->presenter->toRow($incident, $users, $now))
@@ -231,7 +232,7 @@ class DashboardController extends Controller
      * @param  Collection<int, Incident>  $incidents
      * @return Collection<int, User>
      */
-    private function assigneeUsers(Collection $incidents): Collection
+    private function assigneeUsers(Collection $incidents, int $teamId): Collection
     {
         $userIds = $incidents
             ->map(fn (Incident $incident) => $incident->currentAssignment)
@@ -245,7 +246,11 @@ class DashboardController extends Controller
             return collect();
         }
 
-        return User::query()->whereIn('id', $userIds)->get()->keyBy('id');
+        // Sólo miembros del team (y super-admins): una asignación con un id
+        // ajeno no debe servir para leer nombres de otros tenants.
+        return TeamMembers::scope(User::query()->whereIn('id', $userIds), $teamId, includeSuperAdmins: true)
+            ->get()
+            ->keyBy('id');
     }
 
     /**

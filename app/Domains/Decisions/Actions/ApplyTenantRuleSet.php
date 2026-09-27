@@ -35,8 +35,11 @@ class ApplyTenantRuleSet
 
         $facts = $this->factsBuilder->build($eval, $context);
 
+        // Un ruleset global puede contener reglas añadidas por varios tenants:
+        // sólo cuentan las globales (team_id null) y las del team del evento.
         $rules = DecisionRule::query()
             ->where('ruleset_id', $ruleSet->id)
+            ->where(fn ($q) => $q->whereNull('team_id')->orWhere('team_id', $teamId))
             ->where('is_active', true)
             ->orderByDesc('priority')
             ->orderBy('id')

@@ -25,12 +25,20 @@ use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
 use App\Models\Membership;
 use App\Models\User;
-use Illuminate\Support\Facades\Blade;
+use App\Support\Http\OutboundUrlGuard;
+use App\Support\TeamMembers;
+use App\Support\Templates\TemplateInterpolator;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class ExecuteAction
 {
+    private const WEBHOOK_MAX_TIMEOUT_SECONDS = 10;
+
+    private const WEBHOOK_MAX_BODY_BYTES = 2048;
+
     public function __construct(
         private ResolveActionTemplate $resolveActionTemplate,
         private readonly SendNotification $sendNotificationAction,
@@ -38,6 +46,8 @@ class ExecuteAction
         private readonly EscalateIncident $escalateIncidentAction,
         private readonly RequestIncidentReview $requestIncidentReviewAction,
         private readonly RecordUsageEvent $recordUsageEvent,
+        private readonly TemplateInterpolator $interpolator,
+        private readonly OutboundUrlGuard $outboundUrlGuard,
     ) {}
 
     /**
@@ -131,10 +141,33 @@ class ExecuteAction
             throw new \RuntimeException('Webhook action requires a target URL.');
         }
 
-        $timeoutSeconds = (int) ($config['timeout_seconds'] ?? 30);
+        // URL controlada por el tenant: SSRF. El guard rechaza la red interna
+        // (también vía DNS) y devuelve las IPs validadas para fijarlas en la
+        // conexión; sin redirecciones, timeout acotado y respuesta truncada.
+        $target = $this->outboundUrlGuard->assertSafe($url);
+
+        $timeoutSeconds = min(self::WEBHOOK_MAX_TIMEOUT_SECONDS, max(1, (int) ($config['timeout_seconds'] ?? self::WEBHOOK_MAX_TIMEOUT_SECONDS)));
         $payload = $execution->payload_json ?? [];
 
-        $response = Http::timeout($timeoutSeconds)->post($url, $payload);
+        try {
+            $response = Http::withOptions($target->httpOptions())
+                ->connectTimeout(min(5, $timeoutSeconds))
+                ->timeout($timeoutSeconds)
+                ->post($url, $payload);
+        } catch (ConnectionException $exception) {
+            // El mensaje de cURL describe la red (IPs, puertos): se registra,
+            // pero al tenant le llega uno genérico.
+            Log::warning('automation.webhook.connection_failed', [
+                'action_execution_id' => $execution->id,
+                'error' => $exception->getMessage(),
+            ]);
+
+            throw new \RuntimeException('No se pudo conectar con el webhook.');
+        }
+
+        if ($response->redirect()) {
+            throw new \RuntimeException("Webhook returned a redirect ({$response->status()}); redirects are not followed.");
+        }
 
         if ($response->failed()) {
             throw new \RuntimeException("Webhook returned status {$response->status()}");
@@ -142,8 +175,23 @@ class ExecuteAction
 
         return [
             'status' => $response->status(),
-            'body' => $response->json() ?? $response->body(),
+            'body' => $this->truncatedBody($response->body()),
         ];
+    }
+
+    /**
+     * Sólo se guarda un extracto de la respuesta: el cuerpo lo controla un
+     * tercero y termina en response_json / logs visibles en la UI.
+     */
+    private function truncatedBody(string $body): mixed
+    {
+        if (strlen($body) <= self::WEBHOOK_MAX_BODY_BYTES) {
+            $decoded = json_decode($body, true);
+
+            return json_last_error() === JSON_ERROR_NONE ? $decoded : $body;
+        }
+
+        return mb_strcut($body, 0, self::WEBHOOK_MAX_BODY_BYTES).'…';
     }
 
     /**
@@ -242,7 +290,7 @@ class ExecuteAction
         }
 
         return match ($execution->target_type) {
-            'user' => $this->userRecipients([(int) $target], $channelType),
+            'user' => $this->userRecipients($execution->team_id, [(int) $target], $channelType),
             'role' => $this->roleRecipients($execution->team_id, $target, $channelType),
             // 'email', 'phone', 'address' and anything else carrying a raw
             // address routes the literal target through the channel.
@@ -258,11 +306,23 @@ class ExecuteAction
      * @param  array<int, int>  $userIds
      * @return array<int, array<string, mixed>>
      */
-    private function userRecipients(array $userIds, ChannelType $channelType): array
+    private function userRecipients(int $teamId, array $userIds, ChannelType $channelType): array
     {
-        return User::query()
-            ->whereIn('id', $userIds)
-            ->get()
+        // Los ids de usuario son globales: sólo se notifica a miembros del
+        // team de la ejecución (como ResolveOnCallOperator::isMember). Un id
+        // ajeno se descarta y queda en el log.
+        $users = TeamMembers::scope(User::query()->whereIn('id', $userIds), $teamId)->get();
+
+        $skipped = array_values(array_diff($userIds, $users->modelKeys()));
+
+        if ($skipped !== []) {
+            Log::warning('automation.recipients.non_member_skipped', [
+                'team_id' => $teamId,
+                'user_ids' => $skipped,
+            ]);
+        }
+
+        return $users
             ->map(fn (User $user): array => [
                 // The push driver resolves device tokens by user id; every
                 // other channel addresses the user by email.
@@ -289,7 +349,7 @@ class ExecuteAction
             ->map(fn ($id): int => (int) $id)
             ->all();
 
-        return $this->userRecipients($userIds, $channelType);
+        return $this->userRecipients($teamId, $userIds, $channelType);
     }
 
     /**
@@ -386,15 +446,14 @@ class ExecuteAction
     }
 
     /**
+     * Plantilla editable por el tenant: sólo se interpolan variables, nunca se
+     * compila con Blade (sería ejecución de código en el servidor).
+     *
      * @param  array<string, mixed>  $variables
      */
     private function renderTemplate(string $template, array $variables): string
     {
-        try {
-            return (string) Blade::render($template, $variables);
-        } catch (Throwable) {
-            return $template;
-        }
+        return $this->interpolator->render($template, $variables);
     }
 
     private function recordActionUsage(ActionExecution $execution): void

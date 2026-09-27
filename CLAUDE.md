@@ -70,59 +70,16 @@ Todo código de negocio nuevo vive bajo `app/Domains/{Dominio}/` con subdirs: `A
 
 ---
 
-## 3. Estado de implementación (auditoría al 2026-04-29)
+## 3. Estado de implementación
 
-> **Nota de vigencia:** la tabla de abajo es de la auditoría 2026-04-29 y describe el cierre de V1 (specs 01–16). El estado real medido el **2026-08-13** es **1602 tests · 6001 assertions · ~67s**, con V1 cerrado y V2 ("SAM Monitorista") en curso — el roadmap vivo y los gaps G1–G9 están en [`docs/ROADMAP.md`](docs/ROADMAP.md). Ante discrepancia, manda el código.
+Specs 01–16 e infra I1/I2/I3 implementados. Para el estado real, mira el código (`app/Domains/`,
+`tests/Feature/Domains/`) y el git log — **manda el código**.
 
-**~624 tests passing · ~1480 assertions · corrida local ~17s** (medición 2026-04-29, desactualizada — ver nota arriba). Specs 01–16 e infra I1/I2/I3 implementados y mergeados. PR de cierre de gaps post-spec-16 cubre el wiring TenantConfig→consumidores, listener typing, y refresh de docs.
+**Únicos pendientes conocidos:** Policies de Tenancy (Subscription/TenantBranding/TenantFeature), a crear
+junto con `BillingController`/`BrandingController` (spec 01 §9, aún no existen). El contrato `KeyValueStore`
+es YAGNI confirmado: Laravel `Cache::` ya abstrae Valkey.
 
-| Spec | Dominio | Estado | Tests | Notas |
-|------|---------|--------|-------|-------|
-| I1 | Storage (RustFS) | ✅ Cerrado | `tests/Feature/Infrastructure/Storage/`, `tests/Feature/Domains/Tenancy/FileObjectTest.php` | Contract `ObjectStorage` con `temporaryUrl()` / `mimeType()`. Modelo `FileObject` + migración + factory. |
-| I2 | Broadcasting (Soketi) | ✅ Cerrado | `tests/Feature/Broadcasting/ChannelAuthorizationTest.php` | Canales `accounts.{teamId}`, `jobs.{jobId}`, `users.{userId}`, `incidents.{incidentId}` (presencia) registrados en [`routes/channels.php`](routes/channels.php). |
-| I3 | Valkey/KV | ✅ Cerrado | `tests/Feature/Http/Webhooks/WebhookRateLimitTest.php`, `tests/Feature/Http/Api/ApiRateLimitTest.php` | Throttles `webhooks` (300/min por IP) y `api` (60/min por tenant). |
-| 01 | Tenancy | ✅ COMPLETADO | `tests/Feature/Domains/Tenancy/*` | Plan/Subscription/TenantFeature/TenantBranding/UsageMeter/UsageEvent/UsageDailyAggregate/TenantUsageCounter/BillingRate/InvoiceSnapshot/**FileObject**. Scheduler `AggregateUsageJob`. |
-| 02 | Access | ✅ COMPLETADO | `tests/Feature/Domains/Access/*` | Role/Permission/UserPreference + pivot. AssignRole / AuthorizeAction / SyncRolePermissions. |
-| 03 | Integrations | ✅ COMPLETADO | `tests/Feature/Domains/Integrations/*` | Adapter pattern, webhook handler con throttle `300/min`, policy. |
-| 04 | Assets | ✅ COMPLETADO | `tests/Feature/Domains/Assets/*` | AssetType/Asset/Device/ExternalRef/Location+Telemetry. Broadcasting `AssetLocationUpdatedBroadcast` + `AssetStatusChangedBroadcast`. |
-| 05 | Drivers | ✅ COMPLETADO | `tests/Feature/Domains/Drivers/*` | Driver + Assignments + Contacts + Documents + RiskProfile + StatusLog. `DriverPolicy` aplicada en los 6 endpoints. |
-| 06 | Ingestion | ✅ COMPLETADO | `tests/Feature/Domains/Ingestion/*` | RawEvent + EventSource + Dedup + Attachments. Job `PollExternalProviderJob` en cola `ingestion`. |
-| 07 | Normalization | ✅ COMPLETADO | `tests/Feature/Domains/Normalization/*` | EventCategory/Severity/Type/MappingRule + NormalizedEvent. Seeder base. |
-| 08 | Context | ✅ COMPLETADO | `tests/Feature/Domains/Context/*`, `tests/Unit/Domains/Context/Support/*` | Snapshots, geofences, perfil operacional, `EnrichContextJob`. PR #1 cerró el core; PR #2 añade el pipeline de media: `EventMediaContext` + `EventMediaRequest` + `EventRelatedIncidentLink`, `AttachImmediateEventMedia` + `RequestDeferredEventMedia`, `ExtractEventMediaJob` + `FetchDeferredEventMediaJob` (cola `context`), `EventMediaController` (`GET /events/{id}/media`, `POST /events/{id}/media/request`), `EventMediaContextPolicy`. Listener `ExtractMediaOnContextBuilt` dispara la extracción tras `EventContextBuilt`; `RefreshContextMediaSnapshot` proyecta la inventario en `media_snapshot_json` y bumpea `context_version`. |
-| 09 | AI (core) | ✅ PR #1 | `tests/Feature/Domains/AI/*` | Pipeline rules → heuristics → ai_text → fusión → explicación → acciones. 7 tablas. `EvaluateEventJob` en `ai-evaluation`. Listener `EvaluateOnEventContextBuilt`. `TenantAIProfile` ahora resuelto vía spec 16. **SDK Laravel AI y multimodal diferidos a PR #2.** |
-| 10 | Decisions | ✅ COMPLETADO | `tests/Feature/Domains/Decisions/*` | Decision/DecisionRule/EscalationPolicy/RuleSet/DecisionOutcome/DecisionTrace/DecisionOverride. Listener `RunDecisionEngineOnAIEvaluationCompleted`. Broadcasting `DecisionMade`. PR #8. |
-| 11 | Incidents | ✅ COMPLETADO | `tests/Feature/Domains/Incidents/*` | Incident + Type/Status/Priority + Comment/Resolution/Evidence/Timeline + EventLink. Listener `CreateIncidentOnDecisionMade` (typed). Canal presencia `incidents.{incidentId}`. PR #13. |
-| 12 | Automation | ✅ COMPLETADO | `tests/Feature/Domains/Automation/*` | AutomationWorkflow + WorkflowStep + ActionTemplate + ActionExecution + WorkflowExecution. Listeners `TriggerAutomationOnDecisionMade` / `OnIncidentCreated` / `OnIncidentEscalated` (typed). Broadcasting `ActionExecuted` / `ActionFailed`. PR #10. |
-| 13 | Notifications | ✅ COMPLETADO | `tests/Feature/Domains/Notifications/*` | Notification + NotificationChannel + NotificationTemplate + NotificationPreference. Listeners `NotifyOnIncidentCreated` / `NotifyOnIncidentStatusChanged` / `NotifyOnActionExecuted` (typed). Drivers Email/Web reales; SMS/Push/Whatsapp/Slack/Webhook = `NullNotificationDriver`. PR #12. |
-| 14 | Audit | ✅ COMPLETADO | `tests/Feature/Domains/Audit/*` | AuditLog/AuditCategory/AuditSeverity. PR #14. |
-| 15 | Analytics | ✅ COMPLETADO | `tests/Feature/Domains/Analytics/*` | KpiRecord/AnalyticsSnapshot/ReportDefinition/ReportExecution. `BuildAnalyticsSnapshotJob`, `ExpireOldReports`. **Render PDF/XLSX diferido (`SPEC-15-PDF-DEFERRED`).** PR #9. |
-| 16 | TenantConfig | ✅ COMPLETADO | `tests/Feature/Domains/TenantConfig/*` | TenantSetting/TenantRuleOverride/TenantNotificationPolicy/TenantAIProfile/TenantEscalationConfig/TenantScheduleProfile/TenantConfigVersion. Resolvers cubren `TenantConfig`/`TenantAIProfile`/`TenantNotificationPolicy` (singular y plural)/`TenantSchedule`/`TenantRuleOverride`/`TenantDecisionRules`/`TenantAutomationPolicies`/`TenantAnalyticsConfig`. PR #11 + post-spec-16 wiring. |
-
-### 3.1 Huecos críticos cerrados
-
-| Hueco | Cómo se cerró | Archivos clave |
-|-------|----------------|----------------|
-| TenantConfig (spec 16) bindeaba sólo 5 contratos; otros 4 quedaban en Null impls dispersas | `TenantConfigServiceProvider` ahora bindea `TenantDecisionRulesResolver`, `TenantAutomationPoliciesResolver`, `TenantNotificationPoliciesResolver`, `TenantAnalyticsConfig` a Actions reales en `app/Domains/TenantConfig/Actions/Resolve*`. Bindings Null borrados de Decisions/Automation/Notifications/Analytics; archivos Null orfanados eliminados. | [`app/Domains/TenantConfig/TenantConfigServiceProvider.php`](app/Domains/TenantConfig/TenantConfigServiceProvider.php), [`app/Domains/TenantConfig/Actions/`](app/Domains/TenantConfig/Actions/) |
-| Listener fantasma `NotifyOnActionExecutionCompleted` apuntando a evento inexistente | Renombrado a `NotifyOnActionExecuted`, tipado contra `ActionExecuted`, registrado en `NotificationsServiceProvider`. | [`app/Domains/Notifications/Listeners/NotifyOnActionExecuted.php`](app/Domains/Notifications/Listeners/NotifyOnActionExecuted.php) |
-| Listeners cross-domain registrados por FQCN-string como workaround (specs 10/11/12 ya existen) | Listeners tipados con clases reales (`DecisionMade`, `IncidentCreated`, `IncidentStatusChanged`, `IncidentClosed`, `ActionExecuted`); providers usan `Event::listen(Event::class, Listener::class)`; helpers de reflection borrados; tests usan eventos reales con factories. | `app/Domains/Automation/AutomationServiceProvider.php`, `app/Domains/Notifications/NotificationsServiceProvider.php`, `app/Domains/Incidents/IncidentsServiceProvider.php`, listeners bajo cada dominio. |
-| Contracts y Null impls referenciaban `SPEC-XX-DEFERRED` para specs que ya shipearon | Comentarios reformulados; sin Null impls residuales en este eje. | `app/Contracts/Decisions/DecisionMetricsQuery.php`, `app/Contracts/Incidents/IncidentMetricsQuery.php`, `app/Contracts/Audit/AuditLogQuery.php`. |
-| Decision / Incident / Audit metrics queries seguían bindeadas a Null | Cada dominio dueño expone una query DB-backed con scope `team_id` y filtros por ventana temporal: `DbDecisionMetricsQuery`, `DbIncidentMetricsQuery`, `DbAuditLogQuery`. Los bindings viven en cada `*ServiceProvider` del dominio dueño; Analytics ya no bindea contratos cross-domain. | [`app/Domains/Decisions/Queries/DbDecisionMetricsQuery.php`](app/Domains/Decisions/Queries/DbDecisionMetricsQuery.php), [`app/Domains/Incidents/Queries/DbIncidentMetricsQuery.php`](app/Domains/Incidents/Queries/DbIncidentMetricsQuery.php), [`app/Domains/Audit/Queries/DbAuditLogQuery.php`](app/Domains/Audit/Queries/DbAuditLogQuery.php) |
-| `ObjectStorage` contract incompleto (I1 §3) | `temporaryUrl()` y `mimeType()` añadidos; firmas alineadas al spec. | [`app/Contracts/ObjectStorage.php`](app/Contracts/ObjectStorage.php), [`app/Infrastructure/Storage/RustFsObjectStorage.php`](app/Infrastructure/Storage/RustFsObjectStorage.php) |
-| Webhook público sin throttle / API tenant sin throttle | `RateLimiter::for('webhooks'|'api', ...)` + `throttle:` middleware en las rutas. | [`app/Providers/FortifyServiceProvider.php`](app/Providers/FortifyServiceProvider.php), [`routes/api.php`](routes/api.php) |
-| `DriverController` sin authorize (spec 05 §10) | `DriverPolicy` + `$this->authorize(...)` en los 6 endpoints. | [`app/Domains/Drivers/Policies/DriverPolicy.php`](app/Domains/Drivers/Policies/DriverPolicy.php), [`app/Http/Controllers/Drivers/DriverController.php`](app/Http/Controllers/Drivers/DriverController.php) |
-| Spec 13 PR #2: drivers SMS/Push/Whatsapp/Slack/Webhook fuera (caían a `NullNotificationDriver`) | Implementados drivers reales: `Webhook` (HTTP+HMAC-SHA256), `Slack` (incoming webhook + Blocks), `Whatsapp`+`Sms` (Twilio via `TwilioMessenger` wrapper), `Push` (FCM via `FcmMessenger` + `FcmSendReport` DTO). El contrato `NotificationDriver::send()` recibe ahora el `NotificationChannel` para leer `config_json`. Cifrado at-rest de secrets vía `EncryptedChannelConfigCast`. Tabla `user_push_tokens` + modelo + relación con `User`. | [`app/Domains/Notifications/Channels/`](app/Domains/Notifications/Channels/), [`app/Domains/Notifications/Support/EncryptedChannelConfigCast.php`](app/Domains/Notifications/Support/EncryptedChannelConfigCast.php), [`app/Domains/Notifications/Models/UserPushToken.php`](app/Domains/Notifications/Models/UserPushToken.php), [`database/migrations/2026_05_07_120000_create_user_push_tokens_table.php`](database/migrations/2026_05_07_120000_create_user_push_tokens_table.php) |
-
-**Diferidos — TODOS CERRADOS (PRs #18–#24, verificado en código el 2026-06-09):**
-
-- ~~`SPEC-09-SDK-DEFERRED`~~ — cerrado: `laravel/ai ^0.6.7` instalado; `SdkEventEvaluationAgent` y `SdkMediaAssessmentAgent` bindeados condicionalmente en [`app/Domains/AI/AIServiceProvider.php`](app/Domains/AI/AIServiceProvider.php) (fallback a `Null*` solo si el SDK no está configurado).
-- ~~`SPEC-09-MULTIMODAL-DEFERRED`~~ — cerrado: `ai_media_assessments` + `EvaluateEventMediaJob` shippeados.
-- ~~`SPEC-15-PDF-DEFERRED`~~ — cerrado: render real PDF (DomPDF) y XLSX en [`app/Domains/Analytics/Actions/GenerateReport.php`](app/Domains/Analytics/Actions/GenerateReport.php).
-- ~~Authz `jobs.{jobId}`~~ — cerrado: modelo `Job` de Tenancy + verificación de membership en [`routes/channels.php`](routes/channels.php).
-- ~~Echo frontend wiring~~ — cerrado: `resources/js/echo.ts` + hooks `use-team-broadcasts`/`use-echo-channel`; la bandeja de incidentes ya consume realtime.
-- **Policies Tenancy** (Subscription/TenantBranding/TenantFeature) — único pendiente real; crearlas junto con `BillingController`/`BrandingController` (spec 01 §9, aún no existen).
-- **Contrato `KeyValueStore`** — YAGNI confirmado: Laravel `Cache::` ya abstrae Valkey.
-
-**Roadmap vivo de next steps (frontend + backend): [`docs/ROADMAP.md`](docs/ROADMAP.md).** Ante discrepancia entre esta tabla de estado y el código, manda el código.
+**Roadmap vivo de next steps (frontend + backend): [`docs/ROADMAP.md`](docs/ROADMAP.md).**
 
 ---
 
@@ -176,42 +133,10 @@ php artisan wayfinder:generate    # regenerar tras cambiar rutas/controladores
 
 ### Bootstrap de un worktree nuevo (OBLIGATORIO antes de correr gates)
 
-Un worktree recién creado bajo `.claude/worktrees/<slug>` **no es ejecutable tal cual**: `vendor/`, `.env` y los tipados generados de Wayfinder están gitignored y no se copian con el checkout. Síntomas: `php artisan` lanza `Failed opening required vendor/autoload.php`; `npm run types:check` / `npm run build` fallan con `Cannot find module '@/routes'` en **todas** las páginas; `php artisan serve` da HTTP 500 por sesión Redis/Valkey. Esto **no es** un bug de la tarea, es estado de worktree. Bootstrap (idempotente; ejecutar al entrar a un worktree nuevo, ANTES de tipos/lint/build/tests/preview):
-
-```bash
-MAIN="$(git worktree list --porcelain | grep -m1 '^worktree ' | cut -d' ' -f2)"   # checkout principal
-
-# 1. PHP: vendor no tiene traversal de directorios → symlink (rápido) o composer install.
-[ -e vendor ] || ln -s "$MAIN/vendor" vendor
-#    ⚠ El SYMLINK sirve para artisan/types/build/tests, pero ROMPE la cobertura
-#    local: el autoloader de Composer tiene rutas absolutas al checkout principal,
-#    así que las clases App\ se cargan desde MAIN y pcov (apuntando al app/ del
-#    worktree) reporta 0%. Para correr cobertura o pasar el pre-push hook hay que
-#    tener vendor REAL en el worktree: `rm -f vendor && composer install`
-#    (no toca composer.json). Alternativa puntual: `SKIP_COVERAGE=1 git push`
-#    sólo si el usuario lo autoriza (la cobertura real la valida CI igual).
-
-# 2. Env: .env gitignored.
-[ -f .env ] || cp "$MAIN/.env" .env
-
-# 3. Tipados Wayfinder (resources/js/{routes,actions,wayfinder}) gitignored.
-#    Con vendor ya enlazado:
-php artisan wayfinder:generate --with-form        # en worktrees SIEMPRE con --with-form
-#    (alternativa sin vendor: cp -R "$MAIN/resources/js/"{routes,actions,wayfinder} resources/js/)
-
-# node_modules NO requiere acción: Node resuelve subiendo directorios y encuentra el del checkout principal.
-```
-
-Tras el bootstrap, los gates corren normales (`npm run types:check && npm run lint:check && npm run format:check`, `npm run build`, `php artisan test --compact`). `git status` debe seguir mostrando SOLO los archivos de la tarea (todo lo anterior es gitignored).
-
-**Preview en navegador (verificación visual de UI):** la sesión apunta a Valkey/Postgres de Docker (hosts `valkey`/`pgsql`), inaccesibles fuera de compose. Para servir el build local sin Docker, overridear drivers en el comando de serve:
-
-```bash
-SESSION_DRIVER=file CACHE_STORE=file QUEUE_CONNECTION=sync DB_CONNECTION=sqlite DB_DATABASE=:memory: \
-  php artisan serve --port=<puerto>
-```
-
-Sirve el build de producción vía manifest, así que tras cada cambio de front hay que `npm run build` y recargar. Limpiar artefactos de preview (`.claude/launch.json` u otros no-entregables) antes de cerrar; `vendor`/`.env`/generados quedan (gitignored, aceleran el siguiente comando).
+Un worktree recién creado bajo `.claude/worktrees/<slug>` **no es ejecutable tal cual** (`vendor/`, `.env`
+y los tipados de Wayfinder están gitignored). Procedimiento completo, gotchas y cómo servir un preview
+local sin Docker: **skill `worktree-bootstrap`** (`.claude/skills/worktree-bootstrap/SKILL.md`) — invocarla
+ANTES de tipos/lint/build/tests/preview en un worktree nuevo.
 
 ### Tests — qué exigir siempre
 
@@ -334,24 +259,11 @@ Atajo equivalente: `composer ci:check` (ver [`composer.json`](composer.json) scr
 
 Reglas para el agente programado (cloud) que corre en runs recurrentes (~cada 2 h) trabajando el [`ROADMAP.md`](ROADMAP.md) de la raíz (cola de tareas de la rutina — NO confundir con [`docs/ROADMAP.md`](docs/ROADMAP.md), que es el roadmap de producto y sigue mandando como fuente de prioridades). El prompt maestro vive en [`ROUTINE_PROMPT.md`](ROUTINE_PROMPT.md); el entorno se prepara con [`.claude/setup.sh`](.claude/setup.sh).
 
-### 8.1 Stack (detectado, no asumir otro)
-
-Laravel 13 · PHP 8.5 · **PHPUnit 12 (NO Pest)** · Pint (preset `laravel`) · **PHPStan NO instalado** (no instalarlo: la regla §6 prohíbe tocar `composer.json`) · Inertia v3 + **React 19** (no Vue) + TypeScript · Tailwind v4 · Vite 8 + Wayfinder · Tests con **sqlite `:memory:`** (configurado en `phpunit.xml`; no requieren Postgres ni Valkey).
-
-### 8.2 Comandos canónicos (los ÚNICOS válidos)
-
-| Acción | Comando |
-|--------|---------|
-| Formatear PHP (tras cada cambio) | `vendor/bin/pint --dirty --format agent` |
-| Verificar estilo PHP (gate final, como CI) | `vendor/bin/pint --test` *(solo verificación de cierre; para arreglar, usar el de arriba)* |
-| Tests (filtrado, durante desarrollo) | `php artisan test --compact --filter=NombreDelTest` |
-| Tests (suite completa, gate de cierre) | `php artisan test --compact` |
-| Cobertura (umbral local 75/80/95) | `php artisan test --coverage-clover=coverage.xml --compact && php scripts/check-coverage.php coverage.xml --mode=local` *(requiere pcov/xdebug; si no hay driver, reportarlo y seguir — CI la exige igual)* |
-| Front: tipos / lint / formato | `npm run types:check && npm run lint:check && npm run format:check` |
-| Front: build de producción | `npm run build` |
-| Regenerar tipos Wayfinder (tras cambiar rutas/controladores) | `php artisan wayfinder:generate` (también ocurre dentro de `npm run build` vía plugin Vite) |
-
-**No existe `phpstan analyse` en este repo.** Los gates de calidad son: Pint + PHPUnit + cobertura (`scripts/check-coverage.php`) + `tsc` + ESLint + Prettier + build de Vite.
+Comandos y stack: ver §1 (stack) y §4 (comandos canónicos) — la rutina no usa comandos distintos.
+Excepción: el gate de cierre de estilo es `vendor/bin/pint --test` (solo verificación; para arreglar,
+`vendor/bin/pint --dirty --format agent`). Cobertura: `php artisan test --coverage-clover=coverage.xml
+--compact && php scripts/check-coverage.php coverage.xml --mode=local` (requiere pcov/xdebug; si no hay
+driver, reportarlo y seguir — CI la exige igual). **No existe `phpstan analyse` en este repo.**
 
 ### 8.3 Branch policy (dura)
 

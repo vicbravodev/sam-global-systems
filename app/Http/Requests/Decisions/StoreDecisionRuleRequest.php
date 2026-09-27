@@ -32,7 +32,8 @@ class StoreDecisionRuleRequest extends FormRequest
             'priority' => ['nullable', 'integer', 'min:0', 'max:255'],
             'conditions_json' => ['required', 'array', new ValidConditionTree],
             'outcome_override' => ['nullable', 'integer', 'exists:decision_outcomes,id'],
-            'escalation_policy_id' => ['nullable', 'integer', 'exists:escalation_policies,id'],
+            // La política de escalamiento debe ser del mismo tenant.
+            'escalation_policy_id' => ['nullable', 'integer', Rule::exists('escalation_policies', 'id')->where('team_id', $this->currentTeamId())],
             'stop_processing' => ['nullable', 'boolean'],
             'is_active' => ['nullable', 'boolean'],
         ];

@@ -3,11 +3,13 @@
 namespace App\Domains\Drivers\Actions;
 
 use App\Domains\Drivers\Events\DriverDiscovered;
+use App\Domains\Drivers\Exceptions\DriverExternalReferenceConflictException;
 use App\Domains\Drivers\Models\Driver;
 use App\Domains\Drivers\Models\DriverExternalReference;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Support\PhoneNumber;
 use App\Support\TenantContext;
+use Illuminate\Support\Facades\DB;
 
 class SyncDriverFromIntegration
 {
@@ -25,19 +27,31 @@ class SyncDriverFromIntegration
         // al salir. Ver §2.1.
         return TenantContext::for($integration->team_id, function () use ($integration, $teamId, $driverData) {
             $providerId = $integration->provider_id;
-            $externalId = $driverData['external_id'];
+            $externalId = (string) $driverData['external_id'];
 
-            $existingDriver = $this->resolveByExternalReference($providerId, $externalId);
+            $existingDriver = $this->resolveByExternalReference($providerId, $externalId, $teamId);
 
             if ($existingDriver) {
                 return $this->updateExistingDriver($existingDriver, $driverData, $providerId);
             }
 
-            return $this->createNewDriver($teamId, $providerId, $driverData);
+            // Antes de crear NADA: si la referencia existe y no resolvió a un
+            // driver de este team, es de otro tenant. Crear el driver primero
+            // dejaba un huérfano en este team al chocar el unique de la
+            // referencia, y abortaba el resto del lote.
+            $this->assertExternalIdIsUnclaimed($teamId, $providerId, $externalId);
+
+            return DB::transaction(fn () => $this->createNewDriver($teamId, $providerId, $driverData));
         });
     }
 
-    private function resolveByExternalReference(int $providerId, string $externalId): ?Driver
+    /**
+     * `driver_external_references` es único por (provider_id, external_id) en
+     * toda la plataforma: un id externo apunta a UN driver de cualquier tenant.
+     * La resolución filtra explícitamente por `$teamId` (sin depender del
+     * scope ambiente), así que una referencia de otro tenant resuelve a null.
+     */
+    private function resolveByExternalReference(int $providerId, string $externalId, int $teamId): ?Driver
     {
         $reference = DriverExternalReference::where('provider_id', $providerId)
             ->where('external_id', $externalId)
@@ -47,7 +61,25 @@ class SyncDriverFromIntegration
             return null;
         }
 
-        return Driver::query()->find($reference->driver_id);
+        return Driver::withoutGlobalScopes()
+            ->where('team_id', $teamId)
+            ->find($reference->driver_id);
+    }
+
+    /**
+     * El resolver sólo devuelve drivers de `$teamId`: si aun así hay una
+     * referencia registrada, el id externo es de otro tenant. Se rechaza en
+     * voz alta en vez de pisar su driver o chocar contra el índice único.
+     */
+    private function assertExternalIdIsUnclaimed(int $teamId, int $providerId, string $externalId): void
+    {
+        $claimed = DriverExternalReference::where('provider_id', $providerId)
+            ->where('external_id', $externalId)
+            ->exists();
+
+        if ($claimed) {
+            throw new DriverExternalReferenceConflictException($teamId, $providerId, $externalId);
+        }
     }
 
     /**

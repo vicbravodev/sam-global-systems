@@ -217,7 +217,10 @@ class RulesPageTest extends TestCase
     {
         $existing = EventMappingRule::factory()->create();
 
-        $response = $this->actingAs($this->user)->postJson(
+        // Las reglas de mapeo son globales: sólo el super-admin las muta.
+        $admin = User::factory()->create(['global_role' => 'super_admin']);
+
+        $response = $this->actingAs($admin)->postJson(
             route('rules.mapping.store', ['current_team' => $this->team->slug]),
             [
                 'provider_id' => $existing->provider_id,
@@ -256,7 +259,10 @@ class RulesPageTest extends TestCase
     {
         $existing = EventMappingRule::factory()->create();
 
-        $response = $this->actingAs($this->user)->postJson(
+        // Las reglas de mapeo son globales: sólo el super-admin las muta.
+        $admin = User::factory()->create(['global_role' => 'super_admin']);
+
+        $response = $this->actingAs($admin)->postJson(
             route('rules.mapping.store', ['current_team' => $this->team->slug]),
             [
                 'provider_id' => $existing->provider_id,

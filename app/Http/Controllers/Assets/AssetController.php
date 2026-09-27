@@ -16,6 +16,8 @@ class AssetController extends Controller
 {
     public function index(Request $request, Team $current_team): JsonResponse
     {
+        $this->authorize('viewAny', Asset::class);
+
         $query = Asset::with('assetType')
             ->where('team_id', $current_team->id);
 
@@ -45,6 +47,8 @@ class AssetController extends Controller
 
     public function show(Team $current_team, Asset $asset): JsonResponse
     {
+        $this->authorize('view', $asset);
+
         $asset->load(['assetType', 'devices', 'latestLocation']);
 
         return response()->json(['data' => $asset]);
@@ -52,7 +56,11 @@ class AssetController extends Controller
 
     public function locationHistory(Request $request, Team $current_team, Asset $asset): JsonResponse
     {
-        $snapshots = AssetLocationSnapshot::where('asset_id', $asset->id)
+        $this->authorize('view', $asset);
+
+        // Las snapshots no llevan team_id: cuelgan del activo, ya autorizado.
+        $snapshots = AssetLocationSnapshot::query()
+            ->where('asset_id', $asset->id)
             ->orderByDesc('recorded_at')
             ->cursorPaginate($request->integer('per_page', 50));
 
@@ -61,7 +69,11 @@ class AssetController extends Controller
 
     public function telemetry(Request $request, Team $current_team, Asset $asset): JsonResponse
     {
-        $query = AssetTelemetrySnapshot::where('asset_id', $asset->id);
+        $this->authorize('view', $asset);
+
+        // Las snapshots no llevan team_id: cuelgan del activo, ya autorizado.
+        $query = AssetTelemetrySnapshot::query()
+            ->where('asset_id', $asset->id);
 
         if ($request->filled('type')) {
             $telemetryType = TelemetryType::tryFrom($request->input('type'));

@@ -20,7 +20,11 @@ class DecisionRuleController extends Controller
             ->where(function ($q) use ($current_team) {
                 $q->whereNull('team_id')->orWhere('team_id', $current_team->id);
             })
-            ->with(['rules' => fn ($q) => $q->orderByDesc('priority')])
+            // Un ruleset global puede contener reglas que otros tenants le
+            // añadieron: sólo se exponen las globales y las propias.
+            ->with(['rules' => fn ($q) => $q
+                ->where(fn ($q) => $q->whereNull('team_id')->orWhere('team_id', $current_team->id))
+                ->orderByDesc('priority')])
             ->get();
 
         return response()->json(['data' => $rulesets]);
@@ -38,7 +42,9 @@ class DecisionRuleController extends Controller
             ->firstOrFail();
 
         $rule = DecisionRule::create([
-            'team_id' => $ruleset->team_id ?? $current_team->id,
+            // Siempre del tenant, aunque el ruleset sea global: ApplyTenantRuleSet
+            // sólo aplica a un team las reglas globales y las suyas.
+            'team_id' => $current_team->id,
             'ruleset_id' => $ruleset->id,
             'code' => (string) $request->string('code'),
             'name' => (string) $request->string('name'),
