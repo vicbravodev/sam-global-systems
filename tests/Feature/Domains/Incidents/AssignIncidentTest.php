@@ -10,6 +10,7 @@ use App\Domains\Incidents\Events\IncidentAssigned;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentAssignment;
 use App\Domains\Incidents\Models\IncidentTimeline;
+use App\Enums\TeamRole;
 use App\Models\User;
 use Database\Seeders\IncidentsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -34,10 +35,15 @@ class AssignIncidentTest extends TestCase
         $team = $user->currentTeam;
         $incident = Incident::factory()->create(['team_id' => $team->id]);
 
+        // Los asignados deben ser miembros del team del incidente.
+        [$ana, $beto] = User::factory()->count(2)->create()->all();
+        $team->members()->attach($ana, ['role' => TeamRole::Member->value]);
+        $team->members()->attach($beto, ['role' => TeamRole::Member->value]);
+
         $first = app(AssignIncident::class)->execute(
             incident: $incident,
             assigneeType: AssigneeType::User,
-            assigneeId: 100,
+            assigneeId: $ana->id,
             assignedByType: IncidentCreatorType::User,
             assignedById: $user->id,
         );
@@ -45,7 +51,7 @@ class AssignIncidentTest extends TestCase
         $second = app(AssignIncident::class)->execute(
             incident: $incident,
             assigneeType: AssigneeType::User,
-            assigneeId: 101,
+            assigneeId: $beto->id,
             assignedByType: IncidentCreatorType::User,
             assignedById: $user->id,
         );

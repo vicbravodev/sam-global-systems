@@ -15,6 +15,7 @@ use App\Domains\Notifications\Channels\TwilioMessenger;
 use App\Domains\Notifications\Models\Notification;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Tenancy\Models\UsageEvent;
+use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Models\User;
 use Database\Seeders\AutomationMeterSeeder;
@@ -131,6 +132,7 @@ class ExecuteActionBridgesTest extends TestCase
     {
         $incident = Incident::factory()->open()->create(['team_id' => $this->team->id]);
         $assignee = User::factory()->create();
+        $this->team->members()->attach($assignee, ['role' => TeamRole::Member->value]);
 
         $execution = $this->makeExecution(ActionType::AssignIncident, [
             'incident_id' => $incident->id,
