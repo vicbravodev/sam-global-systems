@@ -16,7 +16,9 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 
-#[Fillable(['name', 'email', 'phone', 'password', 'current_team_id', 'global_role'])]
+// global_role y current_team_id NO son asignables en masa: se escriben sólo
+// con forceFill desde SetGlobalRole / switchTeam / forceSwitchTeam.
+#[Fillable(['name', 'email', 'phone', 'password'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
 class User extends Authenticatable
 {

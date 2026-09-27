@@ -608,9 +608,11 @@ class DemoSeeder extends Seeder
                 'name' => 'Sam Super Admin',
                 'password' => Hash::make('password'),
                 'email_verified_at' => now(),
-                'global_role' => 'super_admin',
             ],
         );
+
+        // global_role no es asignable en masa: sólo vía forceFill.
+        $user->forceFill(['global_role' => 'super_admin'])->save();
 
         if (! $user->personalTeam()) {
             $personal = Team::query()->create([
