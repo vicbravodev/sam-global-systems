@@ -2,11 +2,23 @@
 
 namespace App\Http\Requests\Normalization;
 
+use App\Domains\Normalization\Models\EventMappingRule;
 use App\Support\Conditions\ValidFlatConditions;
 use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateMappingRuleRequest extends FormRequest
 {
+    /**
+     * Reglas globales de plataforma: sólo el super-admin las muta.
+     */
+    public function authorize(): bool
+    {
+        $rule = $this->route('mappingRule');
+
+        return $rule instanceof EventMappingRule
+            && (bool) $this->user()?->can('update', $rule);
+    }
+
     /**
      * @return array<string, mixed>
      */

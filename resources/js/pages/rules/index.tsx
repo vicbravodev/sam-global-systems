@@ -98,6 +98,8 @@ interface RulesPageProps {
     overrideTypes: string[];
     conditionFields: ConditionFieldDef[];
     canManageDecisionRules: boolean;
+    // Las reglas de mapeo son globales de plataforma: sólo super-admin.
+    canManageMappingRules: boolean;
     canManageOverrides: boolean;
 }
 
@@ -1312,7 +1314,7 @@ export default function RulesIndex() {
                     <MappingRulesTab
                         rules={props.mappingRules}
                         options={props.mappingOptions}
-                        canManage={props.canManageDecisionRules}
+                        canManage={props.canManageMappingRules}
                     />
                 )}
             </div>
