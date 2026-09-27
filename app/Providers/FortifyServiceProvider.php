@@ -10,6 +10,7 @@ use App\Http\Responses\TwoFactorLoginResponse;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
@@ -44,6 +45,23 @@ class FortifyServiceProvider extends ServiceProvider
         $this->configureActions();
         $this->configureViews();
         $this->configureRateLimiting();
+        $this->throttlePasswordResetRoutes();
+    }
+
+    /**
+     * Fortify no expone limiter para forgot-password / reset-password: se lo
+     * añadimos a sus rutas una vez registradas (sin throttle permitían spam de
+     * correos de reset y fuerza bruta de tokens).
+     */
+    private function throttlePasswordResetRoutes(): void
+    {
+        $this->app->booted(function () {
+            $routes = Route::getRoutes();
+            $routes->refreshNameLookups();
+
+            $routes->getByName('password.email')?->middleware('throttle:password-reset-link');
+            $routes->getByName('password.update')?->middleware('throttle:password-reset');
+        });
     }
 
     /**
@@ -98,8 +116,27 @@ class FortifyServiceProvider extends ServiceProvider
             return Limit::perMinute(5)->by($throttleKey);
         });
 
+        // Bucket por endpoint (= por tenant) + techo holgado por IP. Todo el
+        // tráfico de Samsara llega desde pocas IPs: un único bucket por IP
+        // haría que el flood de un tenant descartara pánicos de los demás.
         RateLimiter::for('webhooks', function (Request $request) {
-            return Limit::perMinute(300)->by($request->ip());
+            $endpoint = $request->route('endpoint_url');
+
+            return [
+                Limit::perMinute(600)->by('endpoint:'.(is_string($endpoint) ? $endpoint : $request->path())),
+                Limit::perMinute(3000)->by('ip:'.$request->ip()),
+            ];
+        });
+
+        RateLimiter::for('password-reset-link', function (Request $request) {
+            return [
+                Limit::perMinute(5)->by('ip:'.$request->ip()),
+                Limit::perHour(10)->by('email:'.Str::lower((string) $request->input('email'))),
+            ];
+        });
+
+        RateLimiter::for('password-reset', function (Request $request) {
+            return Limit::perMinute(5)->by('ip:'.$request->ip());
         });
 
         RateLimiter::for('api', function (Request $request) {
