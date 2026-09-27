@@ -255,6 +255,10 @@ export interface IncidentDetail extends MockIncident {
     aiMode: string | null;
     aiEvaluatedAt: string | null;
     aiReasoningSteps: string[];
+    /** Veredicto humano sobre la evaluación de IA (human-in-the-loop). */
+    aiOperatorVerdict?: 'confirmed' | 'false_positive' | null;
+    aiOperatorVerdictLabel?: string | null;
+    aiOperatorVerdictAt?: string | null;
     resolution: IncidentResolutionInfo | null;
     /** Presente en el payload del panel (JSON) y de la página completa. */
     mediaSummary?: IncidentMediaSummary | null;

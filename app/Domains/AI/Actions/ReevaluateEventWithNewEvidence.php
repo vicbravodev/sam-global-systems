@@ -7,12 +7,14 @@ use App\Domains\AI\Enums\ReevaluationTrigger;
 use App\Domains\AI\Events\AIReevaluationRequested;
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\AI\Models\AIReevaluationRequest;
+use App\Domains\AI\Support\OperatorFeedbackCollector;
 use App\Domains\Normalization\Models\NormalizedEvent;
 
 class ReevaluateEventWithNewEvidence
 {
     public function __construct(
         private readonly EvaluateEventWithAI $evaluateEventWithAI,
+        private readonly OperatorFeedbackCollector $operatorFeedback,
     ) {}
 
     /**
@@ -32,7 +34,12 @@ class ReevaluateEventWithNewEvidence
 
         $request->update(['status' => ReevaluationStatus::Processing]);
 
-        $evaluation = $this->evaluateEventWithAI->execute($event);
+        // El feedback humano (veredictos del operador + motivos del diálogo
+        // "Feedback", incluido el de esta misma solicitud) viaja al modelo.
+        $evaluation = $this->evaluateEventWithAI->execute(
+            $event,
+            operatorFeedback: $this->operatorFeedback->collect($event),
+        );
 
         $request->update([
             'status' => ReevaluationStatus::Completed,

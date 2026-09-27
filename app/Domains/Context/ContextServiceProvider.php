@@ -4,8 +4,10 @@ namespace App\Domains\Context;
 
 use App\Domains\Context\Actions\ResolveGeofenceContext;
 use App\Domains\Context\Events\EventContextBuilt;
+use App\Domains\Context\Events\EventMediaAvailable;
 use App\Domains\Context\Listeners\EnrichContextOnEventNormalized;
 use App\Domains\Context\Listeners\ExtractMediaOnContextBuilt;
+use App\Domains\Context\Listeners\ExtractVideoFramesOnMediaAvailable;
 use App\Domains\Context\Listeners\RequestPanicMediaOnContextBuilt;
 use App\Domains\Context\Models\EventContextSnapshot;
 use App\Domains\Context\Models\EventMediaContext;
@@ -34,6 +36,8 @@ class ContextServiceProvider extends ServiceProvider
         Event::listen(EventNormalized::class, EnrichContextOnEventNormalized::class);
         Event::listen(EventContextBuilt::class, ExtractMediaOnContextBuilt::class);
         Event::listen(EventContextBuilt::class, RequestPanicMediaOnContextBuilt::class);
+        // Clips -> fotogramas JPEG para el modelo de visión.
+        Event::listen(EventMediaAvailable::class, ExtractVideoFramesOnMediaAvailable::class);
 
         Geofence::saved(fn (Geofence $geofence) => ResolveGeofenceContext::invalidateCacheForTeam($geofence->team_id));
         Geofence::deleted(fn (Geofence $geofence) => ResolveGeofenceContext::invalidateCacheForTeam($geofence->team_id));

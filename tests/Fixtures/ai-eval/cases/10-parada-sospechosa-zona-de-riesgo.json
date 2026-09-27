@@ -1,0 +1,76 @@
+{
+    "name": "Parada no programada de 25 minutos dentro de una geocerca de zona de riesgo",
+    "critical": true,
+    "expected_classifications": [
+        "real_event",
+        "unclear"
+    ],
+    "forbidden_classifications": [
+        "false_positive",
+        "noise"
+    ],
+    "input": {
+        "normalized_event": {
+            "id": 0,
+            "occurred_at": "2026-09-24T20:30:00-06:00",
+            "status": "normalized",
+            "payload": {
+                "event_type_code": "suspicious_stop",
+                "event_type_name": "Parada sospechosa",
+                "severity": "high",
+                "provider": "samsara",
+                "stop_duration_minutes": 25,
+                "speed_kph": 0,
+                "geofence": "Zona de riesgo - Texmelucan",
+                "location": {
+                    "description": "San Martín Texmelucan, Puebla",
+                    "lat": 19.2843,
+                    "lng": -98.4382
+                }
+            }
+        },
+        "context_signals": {
+            "is_in_sensitive_geofence": true,
+            "has_open_incident": false,
+            "has_prior_similar_incident": true,
+            "same_type_recent_recurrence": false,
+            "driver_has_recent_risk_events": false,
+            "camera_unavailable": false,
+            "gps_signal_weak": false,
+            "outside_operating_hours": false,
+            "asset_recently_stopped": true,
+            "asset_in_motion": false,
+            "driver_unresolved_previous_alert": false,
+            "has_visual_evidence": false,
+            "has_audio_evidence": false,
+            "video_pending": false,
+            "media_delayed": false,
+            "no_media_available": true,
+            "visual_confirmation_possible": false,
+            "external_resolved": false,
+            "parked_at_base": false,
+            "harsh_driving_near_event": false,
+            "nearby_safety_activity": false,
+            "gps_lost_in_motion": false
+        },
+        "operational_profile": {
+            "operating_hours": "06:00-22:00",
+            "base_name": "Base Tlalnepantla",
+            "route_type": "carretera federal"
+        },
+        "recent_history": {
+            "event_count": 2,
+            "recent_same_type_count": 0,
+            "nearby_safety_events_count": 0,
+            "nearby_safety_breakdown": {},
+            "harsh_driving_near_event": false
+        },
+        "tenant_profile": {
+            "automation_level": "assisted",
+            "monthly_token_limit": 2000000,
+            "daily_call_limit": 5000,
+            "preferred_model": null
+        },
+        "media_assessments": []
+    }
+}

@@ -113,6 +113,9 @@ class IncidentInboxPresenter
             'aiMode' => $evaluation?->evaluation_mode?->value,
             'aiEvaluatedAt' => $evaluation?->evaluated_at?->toIso8601String(),
             'aiReasoningSteps' => $this->reasoningSteps($evaluation),
+            'aiOperatorVerdict' => $evaluation?->operator_verdict?->value,
+            'aiOperatorVerdictLabel' => $evaluation?->operator_verdict?->label(),
+            'aiOperatorVerdictAt' => $evaluation?->operator_verdict_at?->toIso8601String(),
             'resolution' => $this->resolution($incident),
             'timeline' => $incident->timeline
                 ->map(fn (IncidentTimeline $entry) => $this->timelineEntry($entry, $users))
