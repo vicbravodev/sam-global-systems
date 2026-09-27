@@ -78,7 +78,7 @@ class PhoneVerificationTest extends TestCase
     {
         $user = User::factory()->create(['phone' => '+5215555550123']);
         $this->actingAs($user);
-        Cache::put(OtpCacheKeys::forUser($user->id), ['code' => '123456', 'attempts' => 0], 300);
+        Cache::put(OtpCacheKeys::forUser($user->id), ['code' => '123456', 'attempts' => 0, 'phone' => '+5215555550123'], 300);
 
         $this->patch(route('phone-verification.verify'), ['code' => '123456'])->assertSessionHasNoErrors();
 
@@ -90,7 +90,7 @@ class PhoneVerificationTest extends TestCase
     {
         $user = User::factory()->create(['phone' => '+5215555550123']);
         $this->actingAs($user);
-        Cache::put(OtpCacheKeys::forUser($user->id), ['code' => '123456', 'attempts' => 0], 300);
+        Cache::put(OtpCacheKeys::forUser($user->id), ['code' => '123456', 'attempts' => 0, 'phone' => '+5215555550123'], 300);
 
         $this->patch(route('phone-verification.verify'), ['code' => '000000'])->assertSessionHas('errors');
 
@@ -103,7 +103,7 @@ class PhoneVerificationTest extends TestCase
         // Drive the action directly to avoid the route's 5/min throttle.
         $user = User::factory()->create(['phone' => '+5215555550123']);
         $team = $user->currentTeam;
-        Cache::put(OtpCacheKeys::forUser($user->id), ['code' => '123456', 'attempts' => 0], 300);
+        Cache::put(OtpCacheKeys::forUser($user->id), ['code' => '123456', 'attempts' => 0, 'phone' => '+5215555550123'], 300);
 
         $action = app(VerifyPhoneOtp::class);
 

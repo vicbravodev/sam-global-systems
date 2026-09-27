@@ -47,6 +47,8 @@ class PhoneVerificationController extends Controller
             'expired' => 'El código expiró. Solicita uno nuevo.',
             'too_many_attempts' => 'Demasiados intentos. Solicita un código nuevo.',
             'invalid_code' => 'El código no es correcto.',
+            'phone_changed' => 'El teléfono cambió desde que se envió el código. Solicita uno nuevo.',
+            'daily_limit' => 'Alcanzaste el límite diario de códigos. Intenta de nuevo mañana.',
             default => 'No se pudo completar la verificación.',
         };
     }
