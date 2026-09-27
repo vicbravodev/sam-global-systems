@@ -28,6 +28,8 @@ class AssignRoleToMemberTest extends TestCase
         $role = Role::factory()->create([
             'code' => 'supervisor',
             'scope' => RoleScope::Tenant,
+            // Rol de sistema (team_id null): visible y asignable desde cualquier tenant.
+            'is_system' => true,
         ]);
 
         $membership = Membership::where('user_id', $user->id)
@@ -62,6 +64,8 @@ class AssignRoleToMemberTest extends TestCase
         Role::factory()->create([
             'code' => 'super_admin',
             'scope' => RoleScope::Global,
+            // Rol de sistema (team_id null): visible y asignable desde cualquier tenant.
+            'is_system' => true,
         ]);
 
         $membership = Membership::where('user_id', $user->id)
@@ -85,6 +89,8 @@ class AssignRoleToMemberTest extends TestCase
         Role::factory()->create([
             'code' => 'tenant_admin',
             'scope' => RoleScope::Tenant,
+            // Rol de sistema (team_id null): visible y asignable desde cualquier tenant.
+            'is_system' => true,
         ]);
 
         $membership = Membership::where('user_id', $user->id)
@@ -113,6 +119,8 @@ class AssignRoleToMemberTest extends TestCase
         Role::factory()->create([
             'code' => 'viewer',
             'scope' => RoleScope::Tenant,
+            // Rol de sistema (team_id null): visible y asignable desde cualquier tenant.
+            'is_system' => true,
         ]);
 
         $membership = Membership::where('user_id', $user->id)
@@ -141,6 +149,8 @@ class AssignRoleToMemberTest extends TestCase
         $role = Role::factory()->create([
             'code' => 'analyst',
             'scope' => RoleScope::Tenant,
+            // Rol de sistema (team_id null): visible y asignable desde cualquier tenant.
+            'is_system' => true,
         ]);
 
         $membership = Membership::where('user_id', $user->id)

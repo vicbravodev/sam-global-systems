@@ -296,6 +296,8 @@ export interface RoleRow {
     code: string;
     description: string | null;
     isSystem: boolean;
+    /** El usuario puede editar/borrar este rol (sólo roles propios del tenant). */
+    editable: boolean;
     permissions: string[];
 }
 
@@ -306,6 +308,8 @@ export interface TeamMemberRow {
     roleCode: string | null;
     roleName: string | null;
     legacyRole: string | null;
+    /** Propietario o uno mismo: su rol no se cambia desde aquí. */
+    locked: boolean;
 }
 
 // ---- Incident full-page detail (F9) ----
