@@ -29,7 +29,7 @@ class NotificationChannelController extends Controller
             'enabled' => ['required', 'boolean'],
         ]);
 
-        $toggle = TenantChannelToggle::withoutGlobalScopes()->updateOrCreate(
+        $toggle = TenantChannelToggle::query()->updateOrCreate(
             [
                 'team_id' => $current_team->id,
                 'notification_channel_id' => $channel->id,

@@ -26,7 +26,7 @@ class EvaluateDecisionRules
 
     public function execute(AIEventEvaluation $eval, ?EventContextSnapshot $context = null): Decision
     {
-        $existing = Decision::withoutGlobalScopes()
+        $existing = Decision::query()
             ->where('ai_evaluation_id', $eval->id)
             ->first();
 
@@ -34,7 +34,7 @@ class EvaluateDecisionRules
             return $existing;
         }
 
-        $context ??= EventContextSnapshot::withoutGlobalScopes()
+        $context ??= EventContextSnapshot::query()
             ->where('normalized_event_id', $eval->normalized_event_id)
             ->first();
 

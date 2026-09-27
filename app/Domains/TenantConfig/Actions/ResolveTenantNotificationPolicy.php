@@ -6,41 +6,44 @@ use App\Contracts\TenantConfig\TenantNotificationPolicyResolver;
 use App\Domains\TenantConfig\Data\ResolvedNotificationPolicy;
 use App\Domains\TenantConfig\Models\TenantNotificationPolicy;
 use App\Domains\TenantConfig\Support\CacheKeys;
+use App\Support\TenantContext;
 use Illuminate\Support\Facades\Cache;
 
 class ResolveTenantNotificationPolicy implements TenantNotificationPolicyResolver
 {
     public function resolve(int $teamId, ?string $notificationType = null, ?string $priority = null): ResolvedNotificationPolicy
     {
-        $cacheKey = CacheKeys::notificationPolicy($teamId, $notificationType, $priority);
+        return TenantContext::for($teamId, function () use ($teamId, $notificationType, $priority) {
+            $cacheKey = CacheKeys::notificationPolicy($teamId, $notificationType, $priority);
 
-        return Cache::remember($cacheKey, CacheKeys::TTL_SECONDS, function () use ($teamId, $notificationType, $priority) {
-            $query = TenantNotificationPolicy::withoutGlobalScopes()
-                ->where('team_id', $teamId)
-                ->where('is_active', true);
+            return Cache::remember($cacheKey, CacheKeys::TTL_SECONDS, function () use ($teamId, $notificationType, $priority) {
+                $query = TenantNotificationPolicy::query()
+                    ->where('team_id', $teamId)
+                    ->where('is_active', true);
 
-            $candidates = $query->get();
+                $candidates = $query->get();
 
-            $match = $candidates
-                ->sortByDesc(fn (TenantNotificationPolicy $policy): int => $this->matchSpecificity($policy, $notificationType, $priority))
-                ->first(fn (TenantNotificationPolicy $policy): bool => $this->matches($policy, $notificationType, $priority));
+                $match = $candidates
+                    ->sortByDesc(fn (TenantNotificationPolicy $policy): int => $this->matchSpecificity($policy, $notificationType, $priority))
+                    ->first(fn (TenantNotificationPolicy $policy): bool => $this->matches($policy, $notificationType, $priority));
 
-            if ($match === null) {
-                return $this->defaultPolicy($teamId, $notificationType, $priority);
-            }
+                if ($match === null) {
+                    return $this->defaultPolicy($teamId, $notificationType, $priority);
+                }
 
-            return new ResolvedNotificationPolicy(
-                teamId: $teamId,
-                policyCode: $match->policy_code,
-                notificationType: $match->notification_type,
-                priority: $match->priority,
-                allowedChannels: (array) ($match->allowed_channels_json ?? []),
-                fallbackChannels: (array) ($match->fallback_channels_json ?? []),
-                recipientRules: $match->recipient_rules_json,
-                quietHours: $match->quiet_hours_json,
-                escalationRules: $match->escalation_rules_json,
-                isPersisted: true,
-            );
+                return new ResolvedNotificationPolicy(
+                    teamId: $teamId,
+                    policyCode: $match->policy_code,
+                    notificationType: $match->notification_type,
+                    priority: $match->priority,
+                    allowedChannels: (array) ($match->allowed_channels_json ?? []),
+                    fallbackChannels: (array) ($match->fallback_channels_json ?? []),
+                    recipientRules: $match->recipient_rules_json,
+                    quietHours: $match->quiet_hours_json,
+                    escalationRules: $match->escalation_rules_json,
+                    isPersisted: true,
+                );
+            });
         });
     }
 

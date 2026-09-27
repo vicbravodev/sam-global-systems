@@ -19,7 +19,7 @@ class RefreshContextMediaSnapshot
      */
     public function execute(int $normalizedEventId): ?EventContextSnapshot
     {
-        $snapshot = EventContextSnapshot::withoutGlobalScopes()
+        $snapshot = EventContextSnapshot::query()
             ->where('normalized_event_id', $normalizedEventId)
             ->first();
 
@@ -27,7 +27,7 @@ class RefreshContextMediaSnapshot
             return null;
         }
 
-        $media = EventMediaContext::withoutGlobalScopes()
+        $media = EventMediaContext::query()
             ->where('normalized_event_id', $normalizedEventId)
             ->get();
 

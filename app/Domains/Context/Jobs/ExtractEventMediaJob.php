@@ -5,6 +5,7 @@ namespace App\Domains\Context\Jobs;
 use App\Domains\Context\Actions\AttachImmediateEventMedia;
 use App\Domains\Context\Actions\RefreshContextMediaSnapshot;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -47,9 +48,17 @@ class ExtractEventMediaJob implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        $created = $attachImmediate->execute($normalizedEvent);
+        $created = TenantContext::for($normalizedEvent->team_id, function () use (
+            $normalizedEvent,
+            $attachImmediate,
+            $refreshSnapshot,
+        ) {
+            $created = $attachImmediate->execute($normalizedEvent);
 
-        $refreshSnapshot->execute($normalizedEvent->id);
+            $refreshSnapshot->execute($normalizedEvent->id);
+
+            return $created;
+        });
 
         Log::info('ExtractEventMediaJob processed event media', [
             'normalized_event_id' => $this->normalizedEventId,

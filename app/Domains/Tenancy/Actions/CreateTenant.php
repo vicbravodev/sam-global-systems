@@ -14,6 +14,7 @@ use App\Domains\Tenancy\Models\TenantFeature;
 use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Models\User;
+use App\Support\TenantContext;
 
 class CreateTenant
 {
@@ -31,26 +32,32 @@ class CreateTenant
             'role' => TeamRole::Owner->value,
         ]);
 
-        if ($planCode) {
-            $plan = Plan::where('code', $planCode)->firstOrFail();
+        // Todo lo que cuelga del tenant recién creado (suscripción, features,
+        // branding y los listeners de TenantCreated) corre DENTRO de él: el
+        // caller es la consola de super-admin, cuyo usuario tiene otro team
+        // actual que el scope global aplicaría. Ver CLAUDE.md §2.1.
+        TenantContext::for($team->id, function () use ($team, $owner, $planCode) {
+            if ($planCode) {
+                $plan = Plan::where('code', $planCode)->firstOrFail();
 
-            Subscription::withoutGlobalScopes()->create([
+                Subscription::query()->create([
+                    'team_id' => $team->id,
+                    'plan_id' => $plan->id,
+                    'status' => SubscriptionStatus::Trialing,
+                    'billing_cycle' => $plan->billing_cycle ?? BillingCycle::Monthly,
+                    'starts_at' => now(),
+                    'trial_ends_at' => now()->addDays(14),
+                ]);
+
+                $this->seedDefaultFeatures($team, $plan);
+            }
+
+            TenantBranding::query()->create([
                 'team_id' => $team->id,
-                'plan_id' => $plan->id,
-                'status' => SubscriptionStatus::Trialing,
-                'billing_cycle' => $plan->billing_cycle ?? BillingCycle::Monthly,
-                'starts_at' => now(),
-                'trial_ends_at' => now()->addDays(14),
             ]);
 
-            $this->seedDefaultFeatures($team, $plan);
-        }
-
-        TenantBranding::withoutGlobalScopes()->create([
-            'team_id' => $team->id,
-        ]);
-
-        TenantCreated::dispatch($team, $owner);
+            TenantCreated::dispatch($team, $owner);
+        });
 
         return $team;
     }
@@ -60,7 +67,7 @@ class CreateTenant
         $billingRates = BillingRate::where('plan_id', $plan->id)->get();
 
         foreach ($billingRates as $rate) {
-            TenantFeature::withoutGlobalScopes()->create([
+            TenantFeature::query()->create([
                 'team_id' => $team->id,
                 'feature_key' => $rate->usageMeter->code,
                 'enabled' => true,

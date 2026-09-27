@@ -10,6 +10,7 @@ use App\Domains\TenantConfig\Enums\SettingUpdatedByType;
 use App\Domains\TenantConfig\Events\TenantAIProfileChanged;
 use App\Domains\TenantConfig\Models\TenantAIProfile;
 use App\Domains\TenantConfig\Support\CacheKeys;
+use App\Support\TenantContext;
 use Illuminate\Support\Facades\Cache;
 
 class UpdateTenantAIProfile
@@ -36,34 +37,36 @@ class UpdateTenantAIProfile
         SettingUpdatedByType $updatedByType = SettingUpdatedByType::System,
         ?int $updatedById = null,
     ): TenantAIProfile {
-        $profile = TenantAIProfile::withoutGlobalScopes()
-            ->updateOrCreate(
-                ['team_id' => $teamId],
-                [
-                    'profile_code' => $profileCode,
-                    'name' => $name,
-                    'description' => $description,
-                    'prompt_overrides_json' => $promptOverrides,
-                    'risk_tolerance' => $riskTolerance,
-                    'false_positive_tolerance' => $falsePositiveTolerance,
-                    'automation_level' => $automationLevel,
-                    'media_strategy' => $mediaStrategy,
-                    'human_review_policy_json' => $humanReviewPolicy,
-                    'is_active' => true,
-                ],
+        return TenantContext::for($teamId, function () use ($teamId, $profileCode, $name, $description, $riskTolerance, $falsePositiveTolerance, $automationLevel, $mediaStrategy, $promptOverrides, $humanReviewPolicy, $updatedByType, $updatedById) {
+            $profile = TenantAIProfile::query()
+                ->updateOrCreate(
+                    ['team_id' => $teamId],
+                    [
+                        'profile_code' => $profileCode,
+                        'name' => $name,
+                        'description' => $description,
+                        'prompt_overrides_json' => $promptOverrides,
+                        'risk_tolerance' => $riskTolerance,
+                        'false_positive_tolerance' => $falsePositiveTolerance,
+                        'automation_level' => $automationLevel,
+                        'media_strategy' => $mediaStrategy,
+                        'human_review_policy_json' => $humanReviewPolicy,
+                        'is_active' => true,
+                    ],
+                );
+
+            Cache::forget(CacheKeys::aiProfile($teamId));
+
+            TenantAIProfileChanged::dispatch(
+                $teamId,
+                $automationLevel,
+                $riskTolerance,
+                $mediaStrategy,
             );
 
-        Cache::forget(CacheKeys::aiProfile($teamId));
+            $this->snapshotTenantConfig->execute($teamId, $updatedByType, $updatedById);
 
-        TenantAIProfileChanged::dispatch(
-            $teamId,
-            $automationLevel,
-            $riskTolerance,
-            $mediaStrategy,
-        );
-
-        $this->snapshotTenantConfig->execute($teamId, $updatedByType, $updatedById);
-
-        return $profile->refresh();
+            return $profile->refresh();
+        });
     }
 }

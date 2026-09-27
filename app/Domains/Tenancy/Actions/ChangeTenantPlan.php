@@ -11,6 +11,7 @@ use App\Domains\Tenancy\Models\Plan;
 use App\Domains\Tenancy\Models\Subscription;
 use App\Domains\Tenancy\Models\TenantFeature;
 use App\Models\Team;
+use App\Support\TenantContext;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -24,8 +25,12 @@ class ChangeTenantPlan
     {
         $plan = Plan::query()->where('code', $planCode)->firstOrFail();
 
-        return DB::transaction(function () use ($team, $plan) {
-            $subscription = Subscription::withoutGlobalScopes()
+        // Se entra en el tenant OBJETIVO: el caller típico es la consola de
+        // super-admin, cuyo usuario tiene su propio team actual, y el scope
+        // global filtraría por ese team — no encontraría la suscripción del
+        // tenant y crearía una segunda activa. Ver CLAUDE.md §2.1.
+        return TenantContext::for($team->id, fn () => DB::transaction(function () use ($team, $plan) {
+            $subscription = Subscription::query()
                 ->where('team_id', $team->id)
                 ->orderByDesc('starts_at')
                 ->first();
@@ -47,7 +52,7 @@ class ChangeTenantPlan
             TenantSubscriptionChanged::dispatch($team->id, 'plan_changed', $plan->code);
 
             return $subscription->load('plan');
-        });
+        }));
     }
 
     /**
@@ -67,7 +72,7 @@ class ChangeTenantPlan
                 continue;
             }
 
-            $existing = TenantFeature::withoutGlobalScopes()
+            $existing = TenantFeature::query()
                 ->where('team_id', $team->id)
                 ->where('feature_key', $featureKey)
                 ->first();
@@ -76,7 +81,7 @@ class ChangeTenantPlan
                 continue;
             }
 
-            TenantFeature::withoutGlobalScopes()->updateOrCreate(
+            TenantFeature::query()->updateOrCreate(
                 ['team_id' => $team->id, 'feature_key' => $featureKey],
                 [
                     'enabled' => true,

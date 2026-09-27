@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Integrations;
 use App\Domains\Integrations\Actions\HandleWebhook;
 use App\Domains\Integrations\Models\WebhookEndpoint;
 use App\Http\Controllers\Controller;
+use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -15,6 +16,11 @@ class WebhookController extends Controller
         $endpoint = WebhookEndpoint::where('url', $endpoint_url)
             ->where('status', 'active')
             ->firstOrFail();
+
+        // El webhook es público: no hay sesión, así que el tenant sale del
+        // endpoint. Fijarlo aquí hace que todo lo que se despache desde la
+        // ingesta viaje ya dentro del tenant correcto. Ver §2.1.
+        TenantContext::set($endpoint->tenantIntegration?->team_id);
 
         $eventType = $request->input('event_type', 'unknown');
         $payload = $request->all();

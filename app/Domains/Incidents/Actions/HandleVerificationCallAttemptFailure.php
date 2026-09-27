@@ -42,7 +42,7 @@ class HandleVerificationCallAttemptFailure
             'metadata_json' => $metadata,
         ])->save();
 
-        $incident = Incident::withoutGlobalScopes()->find($verification->incident_id);
+        $incident = Incident::query()->find($verification->incident_id);
 
         if ($incident === null || $incident->isTerminal()) {
             return;

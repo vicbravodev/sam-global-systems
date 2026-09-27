@@ -37,59 +37,49 @@ Todo código de negocio nuevo vive bajo `app/Domains/{Dominio}/` con subdirs: `A
 
 **Convenciones de nombres (del Master Guide §8):** Modelos singular PascalCase, tablas plural snake_case, columnas JSON sufijadas `_json`, actions `Verbo+Sustantivo`, jobs `...Job`, eventos en pasado, broadcasting events con sufijo `Broadcast` solo si hay que desambiguar.
 
+### 2.1 Tenant scope OBLIGATORIO en toda feature (regla dura, no negociable)
+
+**Ninguna feature se da por terminada si su dato no está scopeado a un tenant.** SAM es multi-tenant: una fuga cross-tenant es el peor bug que este producto puede tener — expone la operación de un cliente a otro. No es un "nice to have" de seguridad, es requisito de aceptación como lo son los tests.
+
+**Por qué existe esta regla:** el scope global de `BelongsToTenant` sólo filtraba si `currentTeam()` devolvía algo, y `currentTeam()` era `auth()->user()?->currentTeam`. En jobs, listeners, comandos y scheduler no hay usuario autenticado, así que **el scope era un no-op justo en el pipeline que ES el producto**. De ahí salieron `c64334a` (assets resueltos por external id de otro tenant) y `3695360` (normalización vinculando activo/conductor de otro tenant), ninguna detectada por los tests de aislamiento de entonces.
+
+**Cómo está resuelto ahora ([`App\Support\TenantContext`](app/Support/TenantContext.php)):** el tenant activo vive en el `Context` de Laravel, que se deshidrata en el payload del job al despachar y se rehidrata en el worker. `currentTeamId()` lo lee primero y cae al usuario autenticado después. El scope global **sí** filtra en colas, y `withoutGlobalScopes()` pasó de 308 llamadas a 50.
+
+**Los cuatro patrones, y cuándo usa cada uno:**
+
+| Situación | Patrón |
+|---|---|
+| Job o listener que entra por un id | Lookup de entrada **sin scope** (es como descubre su tenant) y `TenantContext::set($model->team_id)` justo después. `set()` no restaura, y no hace falta: `Context::hydrate()` hace `flush()` al arrancar cada job. |
+| Action, query o servicio que recibe `int $teamId` | `TenantContext::for($teamId, fn () => ...)`. Nunca `set()`: una Action corre dentro del flujo de otro y debe devolver el contexto como estaba. |
+| Trabajo de plataforma que cruza tenants a propósito (fan-out del scheduler, consola de operador, agregados de facturación) | `TenantContext::withoutTenant(fn () => ...)`, y dentro `TenantContext::for($row->team_id, ...)` por cada tenant. Deja la intención escrita en vez de esconderla tras un bypass. |
+| Todo lo demás | `Model::query()` a secas. Sin contexto se comporta igual que antes; con contexto, filtra. |
+
+**Checklist obligatorio por feature (todo lo aplicable, sin excepciones):**
+
+1. **Tabla**: `foreignId('team_id')->constrained()->cascadeOnDelete()` + índice. `nullable()` **sólo** si el registro puede ser un catálogo global de plataforma (`team_id = null`), y en ese caso hay que documentarlo en la migración con un comentario.
+2. **Modelo**: `use App\Concerns\BelongsToTenant`. Si el modelo es del tipo "global o de tenant" (`team_id` nullable), **NO** lleva el trait, y entonces toda consulta debe usar el idiom explícito `->where('team_id', $teamId)` con fallback `->whereNull('team_id')` — ver [`ResolveActionTemplate`](app/Domains/Automation/Actions/ResolveActionTemplate.php) como plantilla. Ninguna de las dos opciones es "no hacer nada".
+3. **Toda query fuera de HTTP** (Action, Job, Listener, Command, Query, seeder de tenant) corre **dentro de un `TenantContext`**, según la tabla de patrones de arriba. Un `withoutGlobalScopes()` nuevo necesita justificarse: sólo valen el lookup de entrada por el que un job descubre su tenant, la escritura de ingesta y las filas de plataforma (`team_id` null). Cualquier otro es un error de revisión.
+4. **Resolución por identificador externo o de proveedor** (`external_id`, `provider_id`, ids de payload de webhook, ids de Samsara): **siempre** verificar que el registro resuelto pertenece al team del evento antes de usarlo. Los ids de proveedor son únicos platform-wide, no por tenant — el aislamiento nunca puede depender de cómo el proveedor asigna sus ids.
+5. **Jobs y eventos**: propagar `team_id` explícito en el constructor/payload. Nunca reconstruir el tenant desde `currentTeam()` dentro de un job. Si un job recibe a la vez un id de recurso y un `teamId`, debe validar que concuerdan y abortar si no.
+6. **Endpoint nuevo**: ruta bajo `/{current_team}/...` con `EnsureTeamMembership` + `$this->authorize(...)` con una Policy que compruebe el team, no sólo el permiso. Si el modelo bindeado por ruta no lleva el trait, la Policy es la ÚNICA barrera: tiene que comparar `team_id` explícitamente.
+7. **Caché / claves KV / locks / nombres de archivo en storage**: la clave incluye el `team_id`. Una clave de caché compartida entre tenants es una fuga igual de grave que una query mal filtrada.
+8. **Tests (bloqueante, sin esto la feature no está hecha):** además del `TenantIsolationTest` de scope del dominio, **cada feature nueva aporta un test de fuga sobre su propio camino real**, con el trait [`Tests\Concerns\AssertsTenantIsolation`](tests/Concerns/AssertsTenantIsolation.php): `$this->assertNoTenantLeak($teamB, fn () => ...)` ejecuta la Action/Job/endpoint dentro de B y falla si tocó datos de A (escritura) o devolvió modelos ajenos (lectura). Plantilla: [`NormalizeEventJobTenantLeakTest`](tests/Feature/Domains/Normalization/NormalizeEventJobTenantLeakTest.php). Un test que sólo hace `actingAs($userA); assertSame(2, Model::count())` prueba el scope global de Laravel, no tu feature — no cuenta.
+9. **Factories**: un modelo hijo se crea en el MISMO tenant que su padre. Una factory que le pone un `Team::factory()` propio a cada relación fabrica datos que en producción no existen y enmascara fallos de aislamiento (pasó con `NormalizedEventFactory`, que creaba el `RawEvent` en otro team).
+
+**Al revisar o cerrar un PR, si algún punto aplicable del checklist no está cubierto, el PR no se cierra.** Ante la duda entre filtrar de más o de menos: filtrar de más.
+
 ---
 
-## 3. Estado de implementación (auditoría al 2026-04-29)
+## 3. Estado de implementación
 
-**~624 tests passing · ~1480 assertions · corrida local ~17s.** Specs 01–16 e infra I1/I2/I3 implementados y mergeados. PR de cierre de gaps post-spec-16 cubre el wiring TenantConfig→consumidores, listener typing, y refresh de docs.
+Specs 01–16 e infra I1/I2/I3 implementados. Para el estado real, mira el código (`app/Domains/`,
+`tests/Feature/Domains/`) y el git log — **manda el código**.
 
-| Spec | Dominio | Estado | Tests | Notas |
-|------|---------|--------|-------|-------|
-| I1 | Storage (RustFS) | ✅ Cerrado | `tests/Feature/Infrastructure/Storage/`, `tests/Feature/Domains/Tenancy/FileObjectTest.php` | Contract `ObjectStorage` con `temporaryUrl()` / `mimeType()`. Modelo `FileObject` + migración + factory. |
-| I2 | Broadcasting (Soketi) | ✅ Cerrado | `tests/Feature/Broadcasting/ChannelAuthorizationTest.php` | Canales `accounts.{teamId}`, `jobs.{jobId}`, `users.{userId}`, `incidents.{incidentId}` (presencia) registrados en [`routes/channels.php`](routes/channels.php). |
-| I3 | Valkey/KV | ✅ Cerrado | `tests/Feature/Http/Webhooks/WebhookRateLimitTest.php`, `tests/Feature/Http/Api/ApiRateLimitTest.php` | Throttles `webhooks` (300/min por IP) y `api` (60/min por tenant). |
-| 01 | Tenancy | ✅ COMPLETADO | `tests/Feature/Domains/Tenancy/*` | Plan/Subscription/TenantFeature/TenantBranding/UsageMeter/UsageEvent/UsageDailyAggregate/TenantUsageCounter/BillingRate/InvoiceSnapshot/**FileObject**. Scheduler `AggregateUsageJob`. |
-| 02 | Access | ✅ COMPLETADO | `tests/Feature/Domains/Access/*` | Role/Permission/UserPreference + pivot. AssignRole / AuthorizeAction / SyncRolePermissions. |
-| 03 | Integrations | ✅ COMPLETADO | `tests/Feature/Domains/Integrations/*` | Adapter pattern, webhook handler con throttle `300/min`, policy. |
-| 04 | Assets | ✅ COMPLETADO | `tests/Feature/Domains/Assets/*` | AssetType/Asset/Device/ExternalRef/Location+Telemetry. Broadcasting `AssetLocationUpdatedBroadcast` + `AssetStatusChangedBroadcast`. |
-| 05 | Drivers | ✅ COMPLETADO | `tests/Feature/Domains/Drivers/*` | Driver + Assignments + Contacts + Documents + RiskProfile + StatusLog. `DriverPolicy` aplicada en los 6 endpoints. |
-| 06 | Ingestion | ✅ COMPLETADO | `tests/Feature/Domains/Ingestion/*` | RawEvent + EventSource + Dedup + Attachments. Job `PollExternalProviderJob` en cola `ingestion`. |
-| 07 | Normalization | ✅ COMPLETADO | `tests/Feature/Domains/Normalization/*` | EventCategory/Severity/Type/MappingRule + NormalizedEvent. Seeder base. |
-| 08 | Context | ✅ COMPLETADO | `tests/Feature/Domains/Context/*`, `tests/Unit/Domains/Context/Support/*` | Snapshots, geofences, perfil operacional, `EnrichContextJob`. PR #1 cerró el core; PR #2 añade el pipeline de media: `EventMediaContext` + `EventMediaRequest` + `EventRelatedIncidentLink`, `AttachImmediateEventMedia` + `RequestDeferredEventMedia`, `ExtractEventMediaJob` + `FetchDeferredEventMediaJob` (cola `context`), `EventMediaController` (`GET /events/{id}/media`, `POST /events/{id}/media/request`), `EventMediaContextPolicy`. Listener `ExtractMediaOnContextBuilt` dispara la extracción tras `EventContextBuilt`; `RefreshContextMediaSnapshot` proyecta la inventario en `media_snapshot_json` y bumpea `context_version`. |
-| 09 | AI (core) | ✅ PR #1 | `tests/Feature/Domains/AI/*` | Pipeline rules → heuristics → ai_text → fusión → explicación → acciones. 7 tablas. `EvaluateEventJob` en `ai-evaluation`. Listener `EvaluateOnEventContextBuilt`. `TenantAIProfile` ahora resuelto vía spec 16. **SDK Laravel AI y multimodal diferidos a PR #2.** |
-| 10 | Decisions | ✅ COMPLETADO | `tests/Feature/Domains/Decisions/*` | Decision/DecisionRule/EscalationPolicy/RuleSet/DecisionOutcome/DecisionTrace/DecisionOverride. Listener `RunDecisionEngineOnAIEvaluationCompleted`. Broadcasting `DecisionMade`. PR #8. |
-| 11 | Incidents | ✅ COMPLETADO | `tests/Feature/Domains/Incidents/*` | Incident + Type/Status/Priority + Comment/Resolution/Evidence/Timeline + EventLink. Listener `CreateIncidentOnDecisionMade` (typed). Canal presencia `incidents.{incidentId}`. PR #13. |
-| 12 | Automation | ✅ COMPLETADO | `tests/Feature/Domains/Automation/*` | AutomationWorkflow + WorkflowStep + ActionTemplate + ActionExecution + WorkflowExecution. Listeners `TriggerAutomationOnDecisionMade` / `OnIncidentCreated` / `OnIncidentEscalated` (typed). Broadcasting `ActionExecuted` / `ActionFailed`. PR #10. |
-| 13 | Notifications | ✅ COMPLETADO | `tests/Feature/Domains/Notifications/*` | Notification + NotificationChannel + NotificationTemplate + NotificationPreference. Listeners `NotifyOnIncidentCreated` / `NotifyOnIncidentStatusChanged` / `NotifyOnActionExecuted` (typed). Drivers Email/Web reales; SMS/Push/Whatsapp/Slack/Webhook = `NullNotificationDriver`. PR #12. |
-| 14 | Audit | ✅ COMPLETADO | `tests/Feature/Domains/Audit/*` | AuditLog/AuditCategory/AuditSeverity. PR #14. |
-| 15 | Analytics | ✅ COMPLETADO | `tests/Feature/Domains/Analytics/*` | KpiRecord/AnalyticsSnapshot/ReportDefinition/ReportExecution. `BuildAnalyticsSnapshotJob`, `ExpireOldReports`. **Render PDF/XLSX diferido (`SPEC-15-PDF-DEFERRED`).** PR #9. |
-| 16 | TenantConfig | ✅ COMPLETADO | `tests/Feature/Domains/TenantConfig/*` | TenantSetting/TenantRuleOverride/TenantNotificationPolicy/TenantAIProfile/TenantEscalationConfig/TenantScheduleProfile/TenantConfigVersion. Resolvers cubren `TenantConfig`/`TenantAIProfile`/`TenantNotificationPolicy` (singular y plural)/`TenantSchedule`/`TenantRuleOverride`/`TenantDecisionRules`/`TenantAutomationPolicies`/`TenantAnalyticsConfig`. PR #11 + post-spec-16 wiring. |
+**Únicos pendientes conocidos:** Policies de Tenancy (Subscription/TenantBranding/TenantFeature), a crear
+junto con `BillingController`/`BrandingController` (spec 01 §9, aún no existen). El contrato `KeyValueStore`
+es YAGNI confirmado: Laravel `Cache::` ya abstrae Valkey.
 
-### 3.1 Huecos críticos cerrados
-
-| Hueco | Cómo se cerró | Archivos clave |
-|-------|----------------|----------------|
-| TenantConfig (spec 16) bindeaba sólo 5 contratos; otros 4 quedaban en Null impls dispersas | `TenantConfigServiceProvider` ahora bindea `TenantDecisionRulesResolver`, `TenantAutomationPoliciesResolver`, `TenantNotificationPoliciesResolver`, `TenantAnalyticsConfig` a Actions reales en `app/Domains/TenantConfig/Actions/Resolve*`. Bindings Null borrados de Decisions/Automation/Notifications/Analytics; archivos Null orfanados eliminados. | [`app/Domains/TenantConfig/TenantConfigServiceProvider.php`](app/Domains/TenantConfig/TenantConfigServiceProvider.php), [`app/Domains/TenantConfig/Actions/`](app/Domains/TenantConfig/Actions/) |
-| Listener fantasma `NotifyOnActionExecutionCompleted` apuntando a evento inexistente | Renombrado a `NotifyOnActionExecuted`, tipado contra `ActionExecuted`, registrado en `NotificationsServiceProvider`. | [`app/Domains/Notifications/Listeners/NotifyOnActionExecuted.php`](app/Domains/Notifications/Listeners/NotifyOnActionExecuted.php) |
-| Listeners cross-domain registrados por FQCN-string como workaround (specs 10/11/12 ya existen) | Listeners tipados con clases reales (`DecisionMade`, `IncidentCreated`, `IncidentStatusChanged`, `IncidentClosed`, `ActionExecuted`); providers usan `Event::listen(Event::class, Listener::class)`; helpers de reflection borrados; tests usan eventos reales con factories. | `app/Domains/Automation/AutomationServiceProvider.php`, `app/Domains/Notifications/NotificationsServiceProvider.php`, `app/Domains/Incidents/IncidentsServiceProvider.php`, listeners bajo cada dominio. |
-| Contracts y Null impls referenciaban `SPEC-XX-DEFERRED` para specs que ya shipearon | Comentarios reformulados; sin Null impls residuales en este eje. | `app/Contracts/Decisions/DecisionMetricsQuery.php`, `app/Contracts/Incidents/IncidentMetricsQuery.php`, `app/Contracts/Audit/AuditLogQuery.php`. |
-| Decision / Incident / Audit metrics queries seguían bindeadas a Null | Cada dominio dueño expone una query DB-backed con scope `team_id` y filtros por ventana temporal: `DbDecisionMetricsQuery`, `DbIncidentMetricsQuery`, `DbAuditLogQuery`. Los bindings viven en cada `*ServiceProvider` del dominio dueño; Analytics ya no bindea contratos cross-domain. | [`app/Domains/Decisions/Queries/DbDecisionMetricsQuery.php`](app/Domains/Decisions/Queries/DbDecisionMetricsQuery.php), [`app/Domains/Incidents/Queries/DbIncidentMetricsQuery.php`](app/Domains/Incidents/Queries/DbIncidentMetricsQuery.php), [`app/Domains/Audit/Queries/DbAuditLogQuery.php`](app/Domains/Audit/Queries/DbAuditLogQuery.php) |
-| `ObjectStorage` contract incompleto (I1 §3) | `temporaryUrl()` y `mimeType()` añadidos; firmas alineadas al spec. | [`app/Contracts/ObjectStorage.php`](app/Contracts/ObjectStorage.php), [`app/Infrastructure/Storage/RustFsObjectStorage.php`](app/Infrastructure/Storage/RustFsObjectStorage.php) |
-| Webhook público sin throttle / API tenant sin throttle | `RateLimiter::for('webhooks'|'api', ...)` + `throttle:` middleware en las rutas. | [`app/Providers/FortifyServiceProvider.php`](app/Providers/FortifyServiceProvider.php), [`routes/api.php`](routes/api.php) |
-| `DriverController` sin authorize (spec 05 §10) | `DriverPolicy` + `$this->authorize(...)` en los 6 endpoints. | [`app/Domains/Drivers/Policies/DriverPolicy.php`](app/Domains/Drivers/Policies/DriverPolicy.php), [`app/Http/Controllers/Drivers/DriverController.php`](app/Http/Controllers/Drivers/DriverController.php) |
-| Spec 13 PR #2: drivers SMS/Push/Whatsapp/Slack/Webhook fuera (caían a `NullNotificationDriver`) | Implementados drivers reales: `Webhook` (HTTP+HMAC-SHA256), `Slack` (incoming webhook + Blocks), `Whatsapp`+`Sms` (Twilio via `TwilioMessenger` wrapper), `Push` (FCM via `FcmMessenger` + `FcmSendReport` DTO). El contrato `NotificationDriver::send()` recibe ahora el `NotificationChannel` para leer `config_json`. Cifrado at-rest de secrets vía `EncryptedChannelConfigCast`. Tabla `user_push_tokens` + modelo + relación con `User`. | [`app/Domains/Notifications/Channels/`](app/Domains/Notifications/Channels/), [`app/Domains/Notifications/Support/EncryptedChannelConfigCast.php`](app/Domains/Notifications/Support/EncryptedChannelConfigCast.php), [`app/Domains/Notifications/Models/UserPushToken.php`](app/Domains/Notifications/Models/UserPushToken.php), [`database/migrations/2026_05_07_120000_create_user_push_tokens_table.php`](database/migrations/2026_05_07_120000_create_user_push_tokens_table.php) |
-
-**Diferidos — TODOS CERRADOS (PRs #18–#24, verificado en código el 2026-06-09):**
-
-- ~~`SPEC-09-SDK-DEFERRED`~~ — cerrado: `laravel/ai ^0.6.7` instalado; `SdkEventEvaluationAgent` y `SdkMediaAssessmentAgent` bindeados condicionalmente en [`app/Domains/AI/AIServiceProvider.php`](app/Domains/AI/AIServiceProvider.php) (fallback a `Null*` solo si el SDK no está configurado).
-- ~~`SPEC-09-MULTIMODAL-DEFERRED`~~ — cerrado: `ai_media_assessments` + `EvaluateEventMediaJob` shippeados.
-- ~~`SPEC-15-PDF-DEFERRED`~~ — cerrado: render real PDF (DomPDF) y XLSX en [`app/Domains/Analytics/Actions/GenerateReport.php`](app/Domains/Analytics/Actions/GenerateReport.php).
-- ~~Authz `jobs.{jobId}`~~ — cerrado: modelo `Job` de Tenancy + verificación de membership en [`routes/channels.php`](routes/channels.php).
-- ~~Echo frontend wiring~~ — cerrado: `resources/js/echo.ts` + hooks `use-team-broadcasts`/`use-echo-channel`; la bandeja de incidentes ya consume realtime.
-- **Policies Tenancy** (Subscription/TenantBranding/TenantFeature) — único pendiente real; crearlas junto con `BillingController`/`BrandingController` (spec 01 §9, aún no existen).
-- **Contrato `KeyValueStore`** — YAGNI confirmado: Laravel `Cache::` ya abstrae Valkey.
-
-**Roadmap vivo de next steps (frontend + backend): [`docs/ROADMAP.md`](docs/ROADMAP.md).** Ante discrepancia entre esta tabla de estado y el código, manda el código.
+**Roadmap vivo de next steps (frontend + backend): [`docs/ROADMAP.md`](docs/ROADMAP.md).**
 
 ---
 
@@ -143,47 +133,15 @@ php artisan wayfinder:generate    # regenerar tras cambiar rutas/controladores
 
 ### Bootstrap de un worktree nuevo (OBLIGATORIO antes de correr gates)
 
-Un worktree recién creado bajo `.claude/worktrees/<slug>` **no es ejecutable tal cual**: `vendor/`, `.env` y los tipados generados de Wayfinder están gitignored y no se copian con el checkout. Síntomas: `php artisan` lanza `Failed opening required vendor/autoload.php`; `npm run types:check` / `npm run build` fallan con `Cannot find module '@/routes'` en **todas** las páginas; `php artisan serve` da HTTP 500 por sesión Redis/Valkey. Esto **no es** un bug de la tarea, es estado de worktree. Bootstrap (idempotente; ejecutar al entrar a un worktree nuevo, ANTES de tipos/lint/build/tests/preview):
-
-```bash
-MAIN="$(git worktree list --porcelain | grep -m1 '^worktree ' | cut -d' ' -f2)"   # checkout principal
-
-# 1. PHP: vendor no tiene traversal de directorios → symlink (rápido) o composer install.
-[ -e vendor ] || ln -s "$MAIN/vendor" vendor
-#    ⚠ El SYMLINK sirve para artisan/types/build/tests, pero ROMPE la cobertura
-#    local: el autoloader de Composer tiene rutas absolutas al checkout principal,
-#    así que las clases App\ se cargan desde MAIN y pcov (apuntando al app/ del
-#    worktree) reporta 0%. Para correr cobertura o pasar el pre-push hook hay que
-#    tener vendor REAL en el worktree: `rm -f vendor && composer install`
-#    (no toca composer.json). Alternativa puntual: `SKIP_COVERAGE=1 git push`
-#    sólo si el usuario lo autoriza (la cobertura real la valida CI igual).
-
-# 2. Env: .env gitignored.
-[ -f .env ] || cp "$MAIN/.env" .env
-
-# 3. Tipados Wayfinder (resources/js/{routes,actions,wayfinder}) gitignored.
-#    Con vendor ya enlazado:
-php artisan wayfinder:generate --with-form        # en worktrees SIEMPRE con --with-form
-#    (alternativa sin vendor: cp -R "$MAIN/resources/js/"{routes,actions,wayfinder} resources/js/)
-
-# node_modules NO requiere acción: Node resuelve subiendo directorios y encuentra el del checkout principal.
-```
-
-Tras el bootstrap, los gates corren normales (`npm run types:check && npm run lint:check && npm run format:check`, `npm run build`, `php artisan test --compact`). `git status` debe seguir mostrando SOLO los archivos de la tarea (todo lo anterior es gitignored).
-
-**Preview en navegador (verificación visual de UI):** la sesión apunta a Valkey/Postgres de Docker (hosts `valkey`/`pgsql`), inaccesibles fuera de compose. Para servir el build local sin Docker, overridear drivers en el comando de serve:
-
-```bash
-SESSION_DRIVER=file CACHE_STORE=file QUEUE_CONNECTION=sync DB_CONNECTION=sqlite DB_DATABASE=:memory: \
-  php artisan serve --port=<puerto>
-```
-
-Sirve el build de producción vía manifest, así que tras cada cambio de front hay que `npm run build` y recargar. Limpiar artefactos de preview (`.claude/launch.json` u otros no-entregables) antes de cerrar; `vendor`/`.env`/generados quedan (gitignored, aceleran el siguiente comando).
+Un worktree recién creado bajo `.claude/worktrees/<slug>` **no es ejecutable tal cual** (`vendor/`, `.env`
+y los tipados de Wayfinder están gitignored). Procedimiento completo, gotchas y cómo servir un preview
+local sin Docker: **skill `worktree-bootstrap`** (`.claude/skills/worktree-bootstrap/SKILL.md`) — invocarla
+ANTES de tipos/lint/build/tests/preview en un worktree nuevo.
 
 ### Tests — qué exigir siempre
 
 - Un test por cada Action y cada Job crítico.
-- Un `TenantIsolationTest` por dominio que verifique que `BelongsToTenant` scope aísla queries entre teams distintos.
+- Un `TenantIsolationTest` por dominio que verifique que `BelongsToTenant` scope aísla queries entre teams distintos. **Eso es el piso, no el techo**: además, cada feature aporta su propio test de fuga cross-tenant sobre su camino real (Action/Job/endpoint), según §2.1 punto 8.
 - Tests de idempotencia en cualquier cosa que reciba `event_key` / signature / webhook (duplicates no deben crear side-effects).
 - Usar factories; nunca `Model::create()` manual en tests.
 - Para Storage: `Storage::fake('rustfs')`. Para eventos: `Event::fake([...Broadcast::class])`.
@@ -208,6 +166,8 @@ Sirve el build de producción vía manifest, así que tras cada cambio de front 
 - No reemplazar modelos existentes (`User`, `Team`, `Membership`, `TeamInvitation`) — extender.
 - No usar Redis Cluster — Horizon no lo soporta y Valkey corre standalone.
 - No inventar un modelo `Tenant`: `Team` = tenant.
+- **No shipear una feature sin scope de tenant** (tabla, modelo, queries, jobs, endpoints, caché y tests) — checklist completo en §2.1. No confiar en que el scope global de `BelongsToTenant` cubre código que corre en colas: ahí no hay usuario autenticado y el scope no filtra nada.
+- No usar `withoutGlobalScopes()` sin un `where('team_id', ...)` explícito en la misma cadena de query.
 - No añadir `axios` de forma manual al frontend (Inertia v3 lo removió); usar `useHttp` / `useForm`.
 - No mockear la base de datos en tests de feature — usar `RefreshDatabase` + factories reales.
 - No crear docs en `docs/` ni `README` nuevos sin que el usuario lo pida explícitamente.
@@ -299,24 +259,11 @@ Atajo equivalente: `composer ci:check` (ver [`composer.json`](composer.json) scr
 
 Reglas para el agente programado (cloud) que corre en runs recurrentes (~cada 2 h) trabajando el [`ROADMAP.md`](ROADMAP.md) de la raíz (cola de tareas de la rutina — NO confundir con [`docs/ROADMAP.md`](docs/ROADMAP.md), que es el roadmap de producto y sigue mandando como fuente de prioridades). El prompt maestro vive en [`ROUTINE_PROMPT.md`](ROUTINE_PROMPT.md); el entorno se prepara con [`.claude/setup.sh`](.claude/setup.sh).
 
-### 8.1 Stack (detectado, no asumir otro)
-
-Laravel 13 · PHP 8.5 · **PHPUnit 12 (NO Pest)** · Pint (preset `laravel`) · **PHPStan NO instalado** (no instalarlo: la regla §6 prohíbe tocar `composer.json`) · Inertia v3 + **React 19** (no Vue) + TypeScript · Tailwind v4 · Vite 8 + Wayfinder · Tests con **sqlite `:memory:`** (configurado en `phpunit.xml`; no requieren Postgres ni Valkey).
-
-### 8.2 Comandos canónicos (los ÚNICOS válidos)
-
-| Acción | Comando |
-|--------|---------|
-| Formatear PHP (tras cada cambio) | `vendor/bin/pint --dirty --format agent` |
-| Verificar estilo PHP (gate final, como CI) | `vendor/bin/pint --test` *(solo verificación de cierre; para arreglar, usar el de arriba)* |
-| Tests (filtrado, durante desarrollo) | `php artisan test --compact --filter=NombreDelTest` |
-| Tests (suite completa, gate de cierre) | `php artisan test --compact` |
-| Cobertura (umbral local 75/80/95) | `php artisan test --coverage-clover=coverage.xml --compact && php scripts/check-coverage.php coverage.xml --mode=local` *(requiere pcov/xdebug; si no hay driver, reportarlo y seguir — CI la exige igual)* |
-| Front: tipos / lint / formato | `npm run types:check && npm run lint:check && npm run format:check` |
-| Front: build de producción | `npm run build` |
-| Regenerar tipos Wayfinder (tras cambiar rutas/controladores) | `php artisan wayfinder:generate` (también ocurre dentro de `npm run build` vía plugin Vite) |
-
-**No existe `phpstan analyse` en este repo.** Los gates de calidad son: Pint + PHPUnit + cobertura (`scripts/check-coverage.php`) + `tsc` + ESLint + Prettier + build de Vite.
+Comandos y stack: ver §1 (stack) y §4 (comandos canónicos) — la rutina no usa comandos distintos.
+Excepción: el gate de cierre de estilo es `vendor/bin/pint --test` (solo verificación; para arreglar,
+`vendor/bin/pint --dirty --format agent`). Cobertura: `php artisan test --coverage-clover=coverage.xml
+--compact && php scripts/check-coverage.php coverage.xml --mode=local` (requiere pcov/xdebug; si no hay
+driver, reportarlo y seguir — CI la exige igual). **No existe `phpstan analyse` en este repo.**
 
 ### 8.3 Branch policy (dura)
 

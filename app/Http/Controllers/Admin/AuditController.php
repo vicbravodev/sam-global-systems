@@ -6,6 +6,7 @@ use App\Domains\Audit\Enums\AuditCategory;
 use App\Domains\Audit\Models\AuditLog;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
+use App\Support\TenantContext;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -18,12 +19,13 @@ class AuditController extends Controller
 {
     public function index(): Response
     {
-        $logs = AuditLog::withoutGlobalScopes()
+        // Bitácora de la consola de operador: cruza tenants a propósito.
+        $logs = TenantContext::withoutTenant(fn () => AuditLog::query()
             ->whereIn('category', [AuditCategory::Security, AuditCategory::Billing])
             ->orderByDesc('occurred_at')
             ->orderByDesc('id')
             ->limit(150)
-            ->get();
+            ->get());
 
         $teamNames = Team::withTrashed()
             ->whereIn('id', $logs->pluck('team_id')->filter()->unique()->all())

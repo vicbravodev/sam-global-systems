@@ -14,7 +14,7 @@ class TenantConfigVersionController extends Controller
     {
         $this->authorize('viewAny', TenantConfigVersion::class);
 
-        $versions = TenantConfigVersion::withoutGlobalScopes()
+        $versions = TenantConfigVersion::query()
             ->where('team_id', $current_team->id)
             ->orderByDesc('version')
             ->paginate($request->integer('per_page', 15));

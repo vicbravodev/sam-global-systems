@@ -12,6 +12,7 @@ use App\Domains\Assets\Models\AssetType;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Domains\Tenancy\Actions\ResolveAssetLimit;
 use App\Domains\Tenancy\Events\UsageLimitExceeded;
+use App\Support\TenantContext;
 
 class SyncAssetFromIntegration
 {
@@ -26,22 +27,30 @@ class SyncAssetFromIntegration
      */
     public function execute(int $teamId, int $integrationId, array $assetData): Asset
     {
+        // Lookup de entrada: el sync llega con el id de la integración y de
+        // ahí sale el tenant, así que aquí todavía no puede haber scope.
         $integration = TenantIntegration::withoutGlobalScopes()->findOrFail($integrationId);
-        $providerId = $integration->provider_id;
-        $externalId = $assetData['external_id'];
 
-        $existingAsset = $this->resolveAsset->execute($providerId, $externalId, $teamId);
+        // El resto trabaja dentro de ese tenant. Es una Action, no un job, así
+        // que se usa for() y no set(): el contexto del que llama se restaura
+        // al salir. Ver §2.1.
+        return TenantContext::for($integration->team_id, function () use ($integration, $teamId, $integrationId, $assetData) {
+            $providerId = $integration->provider_id;
+            $externalId = $assetData['external_id'];
 
-        if ($existingAsset) {
-            $asset = $this->updateExistingAsset($existingAsset, $assetData, $providerId);
-        } else {
-            $this->assertExternalIdIsUnclaimed($teamId, $providerId, $externalId);
-            $asset = $this->createNewAsset($teamId, $integrationId, $providerId, $assetData);
-        }
+            $existingAsset = $this->resolveAsset->execute($providerId, $externalId, $teamId);
 
-        $this->reconcileDevices($asset, $providerId, $assetData);
+            if ($existingAsset) {
+                $asset = $this->updateExistingAsset($existingAsset, $assetData, $providerId);
+            } else {
+                $this->assertExternalIdIsUnclaimed($teamId, $providerId, $externalId);
+                $asset = $this->createNewAsset($teamId, $integrationId, $providerId, $assetData);
+            }
 
-        return $asset;
+            $this->reconcileDevices($asset, $providerId, $assetData);
+
+            return $asset;
+        });
     }
 
     /**
@@ -111,7 +120,7 @@ class SyncAssetFromIntegration
 
         $assetType = $this->resolveAssetType($assetData['asset_type_code'] ?? 'vehicle');
 
-        $asset = Asset::withoutGlobalScopes()->create([
+        $asset = Asset::query()->create([
             'team_id' => $teamId,
             'asset_type_id' => $assetType->id,
             'provider_id' => $providerId,
@@ -162,7 +171,7 @@ class SyncAssetFromIntegration
             return;
         }
 
-        $current = Asset::withoutGlobalScopes()
+        $current = Asset::query()
             ->where('team_id', $teamId)
             ->where('status', '!=', AssetStatus::Inactive)
             ->count();

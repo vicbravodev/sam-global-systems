@@ -5,6 +5,7 @@ namespace App\Domains\Automation\Jobs;
 use App\Domains\Automation\Actions\RetryFailedAction;
 use App\Domains\Automation\Enums\ActionExecutionStatus;
 use App\Domains\Automation\Models\ActionExecution;
+use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -24,15 +25,20 @@ class RetryActionExecutionJob implements ShouldQueue
     {
         $this->onQueue('automation');
 
-        ActionExecution::withoutGlobalScopes()
+        // Barrido de plataforma: recorre todos los tenants a propósito, pero
+        // reintenta cada ejecución dentro del contexto del suyo. Ver §2.1.
+        TenantContext::withoutTenant(fn () => ActionExecution::query()
             ->where('status', ActionExecutionStatus::Failed)
             ->whereNotNull('team_id')
             ->orderBy('id')
             ->chunkById(50, function ($executions) use ($retryFailedAction): void {
                 foreach ($executions as $execution) {
-                    $retryFailedAction->execute($execution);
+                    TenantContext::for(
+                        $execution->team_id,
+                        fn () => $retryFailedAction->execute($execution),
+                    );
                 }
-            });
+            }));
     }
 
     public function failed(\Throwable $exception): void

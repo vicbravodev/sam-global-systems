@@ -124,7 +124,7 @@ class ResolveDecisionOutcome
             return $resolved;
         }
 
-        $hadActionableDecision = Decision::withoutGlobalScopes()
+        $hadActionableDecision = Decision::query()
             ->where('normalized_event_id', $eval->normalized_event_id)
             ->whereIn('decision_code', [
                 DecisionOutcomeCode::Alert->value,
@@ -155,7 +155,7 @@ class ResolveDecisionOutcome
 
     private function latestMediaAssessmentResult(AIEventEvaluation $eval): ?MediaAssessmentResult
     {
-        $evaluationIds = AIEventEvaluation::withoutGlobalScopes()
+        $evaluationIds = AIEventEvaluation::query()
             ->where('normalized_event_id', $eval->normalized_event_id)
             ->select('id');
 

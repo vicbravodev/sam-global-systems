@@ -18,6 +18,7 @@ use App\Domains\Ingestion\Models\RawEventAttachment;
 use App\Domains\Integrations\Enums\TenantIntegrationStatus;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -119,7 +120,28 @@ class FetchDeferredEventMediaJob implements ShouldQueue
             return;
         }
 
-        $event = NormalizedEvent::withoutGlobalScopes()->find($request->normalized_event_id);
+        // El job entra por su propio id: resuelve el tenant de la petición y
+        // procesa dentro de él, para que la búsqueda de integración, activo y
+        // media quede scopeada. Ver §2.1.
+        TenantContext::for($request->team_id, fn () => $this->process(
+            $request,
+            $mediaAdapter,
+            $storage,
+            $attachImmediate,
+            $refreshSnapshot,
+            $tenantConfig,
+        ));
+    }
+
+    private function process(
+        EventMediaRequest $request,
+        MediaRetrievalAdapter $mediaAdapter,
+        ObjectStorage $storage,
+        AttachImmediateEventMedia $attachImmediate,
+        RefreshContextMediaSnapshot $refreshSnapshot,
+        TenantConfigResolver $tenantConfig,
+    ): void {
+        $event = NormalizedEvent::query()->find($request->normalized_event_id);
 
         if ($event === null) {
             $this->markFailed($request, MediaRequestStatus::Failed, 'Normalized event no longer exists.');
@@ -597,7 +619,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
             return false;
         }
 
-        $metadata = Asset::withoutGlobalScopes()->find($event->asset_id)?->metadata_json;
+        $metadata = Asset::query()->find($event->asset_id)?->metadata_json;
 
         return is_array($metadata)
             && array_key_exists('has_camera', $metadata)
@@ -814,7 +836,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
             ->get();
 
         foreach ($references as $reference) {
-            $integration = TenantIntegration::withoutGlobalScopes()
+            $integration = TenantIntegration::query()
                 ->where('team_id', $event->team_id)
                 ->where('provider_id', $reference->provider_id)
                 ->where('status', TenantIntegrationStatus::Active)

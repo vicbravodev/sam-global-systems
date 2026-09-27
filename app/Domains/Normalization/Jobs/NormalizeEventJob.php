@@ -5,6 +5,7 @@ namespace App\Domains\Normalization\Jobs;
 use App\Domains\Ingestion\Enums\RawEventStatus;
 use App\Domains\Ingestion\Models\RawEvent;
 use App\Domains\Normalization\Actions\NormalizeRawEvent;
+use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -45,9 +46,14 @@ class NormalizeEventJob implements ShouldQueue
             return;
         }
 
-        $rawEvent->markAsProcessing();
+        // Se mete en el tenant del evento antes de normalizar: la resolución de
+        // activo y conductor por id de proveedor ocurre aquí dentro, y es donde
+        // se coló la fuga que arregló 3695360. Ver §2.1.
+        TenantContext::for($rawEvent->team_id, function () use ($rawEvent, $normalizeRawEvent) {
+            $rawEvent->markAsProcessing();
 
-        $normalizeRawEvent->execute($rawEvent);
+            $normalizeRawEvent->execute($rawEvent);
+        });
     }
 
     public function failed(\Throwable $exception): void

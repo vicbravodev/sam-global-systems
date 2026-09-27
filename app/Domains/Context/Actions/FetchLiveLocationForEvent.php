@@ -115,7 +115,7 @@ class FetchLiveLocationForEvent
             ->get();
 
         foreach ($references as $reference) {
-            $integration = TenantIntegration::withoutGlobalScopes()
+            $integration = TenantIntegration::query()
                 ->where('team_id', $teamId)
                 ->where('provider_id', $reference->provider_id)
                 ->where('status', TenantIntegrationStatus::Active)

@@ -23,7 +23,7 @@ class TenantNotificationPolicyController extends Controller
     {
         $this->authorize('viewAny', TenantNotificationPolicy::class);
 
-        $policies = TenantNotificationPolicy::withoutGlobalScopes()
+        $policies = TenantNotificationPolicy::query()
             ->where('team_id', $current_team->id)
             ->orderBy('policy_code')
             ->get();
@@ -38,7 +38,7 @@ class TenantNotificationPolicyController extends Controller
         $persisted = DB::transaction(function () use ($request, $current_team) {
             $items = [];
             foreach ($request->validated('policies') as $payload) {
-                $items[] = TenantNotificationPolicy::withoutGlobalScopes()->updateOrCreate(
+                $items[] = TenantNotificationPolicy::query()->updateOrCreate(
                     [
                         'team_id' => $current_team->id,
                         'policy_code' => $payload['policy_code'],

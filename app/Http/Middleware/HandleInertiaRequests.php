@@ -6,6 +6,7 @@ use App\Domains\Access\Actions\AuthorizeAction;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Tenancy\Enums\SubscriptionStatus;
 use App\Domains\Tenancy\Models\Subscription;
+use App\Support\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Inertia\Middleware;
@@ -85,13 +86,9 @@ class HandleInertiaRequests extends Middleware
         return Cache::remember(
             "nav-badges:{$teamId}",
             now()->addMinute(),
-            fn (): array => [
-                'inbox' => Incident::query()
-                    ->withoutGlobalScopes()
-                    ->where('team_id', $teamId)
-                    ->open()
-                    ->count(),
-            ],
+            fn (): array => TenantContext::for($teamId, fn (): array => [
+                'inbox' => Incident::query()->open()->count(),
+            ]),
         );
     }
 
@@ -100,12 +97,13 @@ class HandleInertiaRequests extends Middleware
      */
     private function adminBadges(): array
     {
-        $counts = Subscription::query()
-            ->withoutGlobalScopes()
+        // Badges de la consola de operador: cuentan tenants, así que cruzan
+        // todos a propósito. Ver §2.1.
+        $counts = TenantContext::withoutTenant(fn () => Subscription::query()
             ->whereIn('status', [SubscriptionStatus::PastDue, SubscriptionStatus::Trialing])
             ->selectRaw('status, count(*) as aggregate')
             ->groupBy('status')
-            ->pluck('aggregate', 'status');
+            ->pluck('aggregate', 'status'));
 
         return [
             'tenantsPastDue' => (int) ($counts[SubscriptionStatus::PastDue->value] ?? 0),

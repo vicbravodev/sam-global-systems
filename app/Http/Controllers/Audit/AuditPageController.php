@@ -64,7 +64,7 @@ class AuditPageController extends Controller
             'to' => $request->filled('to') ? $request->string('to')->toString() : null,
         ];
 
-        $query = AuditLog::withoutGlobalScopes()
+        $query = AuditLog::query()
             ->where('team_id', $current_team->id);
 
         if ($filters['q'] !== null && $filters['q'] !== '') {
@@ -123,7 +123,7 @@ class AuditPageController extends Controller
                 'categories' => array_map(fn (AuditCategory $category) => $category->value, AuditCategory::cases()),
                 'actorTypes' => array_map(fn (AuditActorType $type) => $type->value, AuditActorType::cases()),
             ],
-            'events' => fn () => DomainEventLog::withoutGlobalScopes()
+            'events' => fn () => DomainEventLog::query()
                 ->where('team_id', $current_team->id)
                 ->orderByDesc('occurred_at')
                 ->orderByDesc('id')

@@ -32,7 +32,7 @@ class SendNotification
         ?int $templateId = null,
         bool $dispatchJob = true,
     ): Notification {
-        $existing = Notification::withoutGlobalScopes()
+        $existing = Notification::query()
             ->where('team_id', $teamId)
             ->where('event_key', $eventKey)
             ->first();

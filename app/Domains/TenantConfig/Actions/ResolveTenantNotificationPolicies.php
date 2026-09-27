@@ -18,7 +18,7 @@ class ResolveTenantNotificationPolicies implements TenantNotificationPoliciesRes
             CacheKeys::notificationPoliciesGlobal($team->id),
             CacheKeys::TTL_SECONDS,
             function () use ($team): TenantNotificationPolicyData {
-                $row = TenantNotificationPolicy::withoutGlobalScopes()
+                $row = TenantNotificationPolicy::query()
                     ->where('team_id', $team->id)
                     ->where('policy_code', 'default')
                     ->where('is_active', true)

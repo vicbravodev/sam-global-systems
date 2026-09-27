@@ -20,7 +20,7 @@ class ResolveDriverOperationalContext
             return null;
         }
 
-        $driver = Driver::withoutGlobalScopes()
+        $driver = Driver::query()
             ->with(['currentAssignment.asset', 'riskProfile'])
             ->find($driverId);
 
@@ -31,7 +31,7 @@ class ResolveDriverOperationalContext
         $windowEnd = Carbon::instance($eventOccurredAt);
         $windowStart = $windowEnd->copy()->subMinutes(60);
 
-        $recentRiskEventsCount = NormalizedEvent::withoutGlobalScopes()
+        $recentRiskEventsCount = NormalizedEvent::query()
             ->where('driver_id', $driverId)
             ->whereBetween('occurred_at', [$windowStart, $windowEnd])
             ->whereHas('eventSeverity', fn ($q) => $q->whereIn('code', ['high', 'critical']))

@@ -42,7 +42,7 @@ class StartIncidentCallVerification
             return null;
         }
 
-        $existing = IncidentCallVerification::withoutGlobalScopes()
+        $existing = IncidentCallVerification::query()
             ->where('incident_id', $incident->id)
             ->orderByDesc('attempt')
             ->first();
@@ -79,7 +79,7 @@ class StartIncidentCallVerification
             return null;
         }
 
-        $verification = IncidentCallVerification::withoutGlobalScopes()->firstOrCreate(
+        $verification = IncidentCallVerification::query()->firstOrCreate(
             [
                 'incident_id' => $incident->id,
                 'attempt' => $attempt,
@@ -112,7 +112,7 @@ class StartIncidentCallVerification
             }
         }
 
-        $config = TenantEscalationConfig::withoutGlobalScopes()
+        $config = TenantEscalationConfig::query()
             ->where('team_id', $teamId)
             ->where('is_active', true)
             ->first();

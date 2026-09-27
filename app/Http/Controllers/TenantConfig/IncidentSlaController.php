@@ -25,7 +25,7 @@ class IncidentSlaController extends Controller
     {
         $this->authorize('viewAny', TenantSetting::class);
 
-        $overrides = TenantIncidentSla::withoutGlobalScopes()
+        $overrides = TenantIncidentSla::query()
             ->where('team_id', $current_team->id)
             ->pluck('sla_seconds', 'incident_priority_id');
 
@@ -57,7 +57,7 @@ class IncidentSlaController extends Controller
         ]);
 
         foreach ($data['slas'] as $row) {
-            TenantIncidentSla::withoutGlobalScopes()->updateOrCreate(
+            TenantIncidentSla::query()->updateOrCreate(
                 [
                     'team_id' => $current_team->id,
                     'incident_priority_id' => $row['incident_priority_id'],
