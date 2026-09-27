@@ -4,13 +4,15 @@ namespace App\Http\Requests\Automation;
 
 use App\Domains\Automation\Enums\WorkflowStatus;
 use App\Domains\Automation\Enums\WorkflowTriggerType;
-use App\Models\Team;
+use App\Http\Requests\Concerns\ValidatesWorkflowStepTargets;
 use App\Support\Conditions\ValidFlatConditions;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 class StoreAutomationWorkflowRequest extends FormRequest
 {
+    use ValidatesWorkflowStepTargets;
+
     public function authorize(): bool
     {
         return true;
@@ -42,7 +44,7 @@ class StoreAutomationWorkflowRequest extends FormRequest
             'steps_json.*.delay_seconds' => ['nullable', 'integer', 'min:0'],
             'steps_json.*.order' => ['nullable', 'integer', 'min:1'],
             'steps_json.*.target_type' => ['nullable', 'string', 'max:100'],
-            'steps_json.*.target_reference' => ['nullable', 'string', 'max:255'],
+            'steps_json.*.target_reference' => ['nullable', 'string', 'max:255', $this->stepTargetRule()],
             'is_active' => ['nullable', 'boolean'],
         ];
     }
@@ -55,18 +57,5 @@ class StoreAutomationWorkflowRequest extends FormRequest
         return [
             'code.unique' => 'Ya existe un workflow con este código en tu equipo.',
         ];
-    }
-
-    private function currentTeamId(): ?int
-    {
-        $team = $this->route('current_team');
-
-        if ($team instanceof Team) {
-            return $team->id;
-        }
-
-        return is_string($team)
-            ? Team::query()->where('slug', $team)->value('id')
-            : null;
     }
 }

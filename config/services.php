@@ -28,6 +28,13 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    // Webhooks salientes de automatización (URL que controla el tenant):
+    // OutboundUrlGuard exige https salvo que esto lo permita (sólo pensado
+    // para local/testing).
+    'outbound_webhooks' => [
+        'allow_http' => (bool) env('OUTBOUND_WEBHOOKS_ALLOW_HTTP', in_array(env('APP_ENV'), ['local', 'testing'], true)),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),

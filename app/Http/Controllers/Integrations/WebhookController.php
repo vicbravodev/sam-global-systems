@@ -13,8 +13,11 @@ class WebhookController extends Controller
 {
     public function handle(Request $request, string $endpoint_url, HandleWebhook $handleWebhook): JsonResponse
     {
+        // Un tenant dado de baja (soft-delete) deja de recibir webhooks: su
+        // endpoint responde como si no existiera.
         $endpoint = WebhookEndpoint::where('url', $endpoint_url)
             ->where('status', 'active')
+            ->whereHas('tenantIntegration.team')
             ->firstOrFail();
 
         // El webhook es público: no hay sesión, así que el tenant sale del

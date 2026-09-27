@@ -34,6 +34,7 @@ class PollSamsaraSafetyEventsJob implements ShouldQueue
         // que se despache desde ahí viaje ya scopeado. Ver §2.1.
         TenantContext::withoutTenant(fn () => TenantIntegration::query()
             ->where('status', TenantIntegrationStatus::Active)
+            ->ofLiveTeam()
             ->with('provider')
             ->each(fn (TenantIntegration $integration) => TenantContext::for($integration->team_id, function () use ($integration): void {
                 if ($this->shouldPoll($integration)) {

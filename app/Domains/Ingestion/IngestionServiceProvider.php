@@ -5,8 +5,11 @@ namespace App\Domains\Ingestion;
 use App\Contracts\NullImplementations\NullObjectStorage;
 use App\Contracts\ObjectStorage;
 use App\Contracts\RawEventIngestion;
+use App\Domains\Ingestion\Models\RawEvent;
+use App\Domains\Ingestion\Policies\RawEventPolicy;
 use App\Domains\Ingestion\Services\RawEventIngestionService;
 use App\Infrastructure\Storage\RustFsObjectStorage;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 
 class IngestionServiceProvider extends ServiceProvider
@@ -26,6 +29,6 @@ class IngestionServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        //
+        Gate::policy(RawEvent::class, RawEventPolicy::class);
     }
 }

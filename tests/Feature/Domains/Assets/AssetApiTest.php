@@ -9,12 +9,21 @@ use App\Domains\Assets\Models\AssetLocationSnapshot;
 use App\Domains\Assets\Models\AssetTelemetrySnapshot;
 use App\Domains\Assets\Models\AssetType;
 use App\Models\User;
+use Database\Seeders\AccessSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class AssetApiTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // La api autoriza con Policies (assets.view / context.view).
+        $this->seed(AccessSeeder::class);
+    }
 
     private function createSetup(): array
     {

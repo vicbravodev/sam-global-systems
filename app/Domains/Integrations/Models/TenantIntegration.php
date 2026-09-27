@@ -6,6 +6,7 @@ use App\Concerns\BelongsToTenant;
 use App\Domains\Integrations\Enums\AuthType;
 use App\Domains\Integrations\Enums\TenantIntegrationStatus;
 use Database\Factories\Domains\Integrations\TenantIntegrationFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -67,6 +68,17 @@ class TenantIntegration extends Model
     public function webhookEndpoint(): HasOne
     {
         return $this->hasOne(WebhookEndpoint::class, 'tenant_integration_id');
+    }
+
+    /**
+     * Sólo integraciones de tenants vivos: un team dado de baja (soft-delete)
+     * no debe seguir ingiriendo por los pollers del scheduler.
+     *
+     * @param  Builder<TenantIntegration>  $query
+     */
+    public function scopeOfLiveTeam(Builder $query): void
+    {
+        $query->whereHas('team');
     }
 
     public function isActive(): bool

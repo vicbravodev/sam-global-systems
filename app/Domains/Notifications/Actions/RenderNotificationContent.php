@@ -7,11 +7,14 @@ use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Models\Notification;
 use App\Domains\Notifications\Models\NotificationRecipient;
 use App\Domains\Notifications\Models\NotificationTemplate;
-use Illuminate\Support\Facades\Blade;
-use Illuminate\Support\Str;
+use App\Support\Templates\TemplateInterpolator;
 
 class RenderNotificationContent
 {
+    public function __construct(
+        private readonly TemplateInterpolator $interpolator,
+    ) {}
+
     public function execute(
         Notification $notification,
         NotificationRecipient $recipient,
@@ -56,31 +59,14 @@ class RenderNotificationContent
     }
 
     /**
+     * Las plantillas las edita el tenant: nunca se compilan con Blade (sería
+     * ejecución de código). Sólo se interpolan variables; el correo escapa el
+     * HTML al pintar el cuerpo (GenericNotificationMail).
+     *
      * @param  array<string, mixed>  $variables
      */
     private function render(string $template, array $variables): string
     {
-        try {
-            return (string) Blade::render($template, $variables);
-        } catch (\Throwable) {
-            return $this->fallbackInterpolate($template, $variables);
-        }
-    }
-
-    /**
-     * @param  array<string, mixed>  $variables
-     */
-    private function fallbackInterpolate(string $template, array $variables): string
-    {
-        return (string) preg_replace_callback(
-            '/\{\{\s*\$?([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/',
-            function (array $matches) use ($variables) {
-                $key = $matches[1];
-                $value = $variables[$key] ?? '';
-
-                return is_scalar($value) ? (string) $value : Str::of(json_encode($value))->limit(200);
-            },
-            $template,
-        );
+        return $this->interpolator->render($template, $variables);
     }
 }
