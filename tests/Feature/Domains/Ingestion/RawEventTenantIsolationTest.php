@@ -6,6 +6,7 @@ use App\Domains\Ingestion\Actions\StoreRawEvent;
 use App\Domains\Ingestion\Events\RawEventReceived;
 use App\Domains\Ingestion\Models\RawEvent;
 use App\Models\User;
+use Database\Seeders\AccessSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
@@ -13,6 +14,14 @@ use Tests\TestCase;
 class RawEventTenantIsolationTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // La api autoriza con Policies (assets.view / context.view).
+        $this->seed(AccessSeeder::class);
+    }
 
     public function test_raw_event_scoped_to_team(): void
     {
