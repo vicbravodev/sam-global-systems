@@ -12,6 +12,7 @@ use App\Domains\Tenancy\Models\TenantFeature;
 use App\Domains\Tenancy\Models\UsageMeter;
 use App\Models\Team;
 use App\Models\User;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -194,6 +195,16 @@ class AdminConsoleCrossTenantTest extends TestCase
         $this->assertSame('Admin Brand', TenantBranding::withoutGlobalScopes()
             ->where('team_id', $adminTeam->id)
             ->value('display_name'));
+    }
+
+    public function test_tenant_branding_is_unique_per_team_at_the_database_level(): void
+    {
+        $tenant = $this->tenant();
+        TenantBranding::factory()->create(['team_id' => $tenant->id]);
+
+        $this->expectException(UniqueConstraintViolationException::class);
+
+        TenantBranding::factory()->create(['team_id' => $tenant->id]);
     }
 
     public function test_show_page_renders_the_target_tenants_data_not_the_admins(): void
