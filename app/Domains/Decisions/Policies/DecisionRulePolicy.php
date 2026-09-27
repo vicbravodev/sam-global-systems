@@ -26,12 +26,21 @@ class DecisionRulePolicy
         return $team && $this->authorizeAction->execute($user, 'decisions.rules.manage', $team);
     }
 
+    /**
+     * Las reglas globales (team_id null) son de plataforma y aplican a todos
+     * los tenants: sólo el super-admin las edita. Un tenant sólo muta las
+     * suyas.
+     */
     public function update(User $user, DecisionRule $rule): bool
     {
+        if ($rule->team_id === null) {
+            return $user->isSuperAdmin();
+        }
+
         $team = currentTeam();
 
         return $team
-            && ($rule->team_id === null || $rule->team_id === $team->id)
+            && (int) $rule->team_id === $team->id
             && $this->authorizeAction->execute($user, 'decisions.rules.manage', $team);
     }
 
