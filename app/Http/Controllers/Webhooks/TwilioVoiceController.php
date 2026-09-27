@@ -18,6 +18,8 @@ use App\Domains\Incidents\Enums\TimelineEntryType;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentCallVerification;
 use App\Domains\Incidents\Support\VerificationCallTwiml;
+use App\Domains\Notifications\Enums\ChannelType;
+use App\Domains\Notifications\Support\PlatformTwilioConfig;
 use App\Http\Controllers\Controller;
 use App\Support\TenantContext;
 use Illuminate\Http\Request;
@@ -184,7 +186,11 @@ class TwilioVoiceController extends Controller
 
         abort_if($row === null, 404, 'Unknown verification.');
 
-        $config = $row->channel?->config_json ?? [];
+        // Igual que PlaceVerificationCallJob: el canal de voz de plataforma
+        // no guarda credenciales, vienen de TWILIO_* vía PlatformTwilioConfig.
+        $config = $row->channel !== null
+            ? PlatformTwilioConfig::merge($row->channel->config_json ?? [], ChannelType::Voice)
+            : [];
         $authToken = $config['twilio_auth_token'] ?? $config['auth_token'] ?? null;
 
         if (! is_string($authToken) || $authToken === '') {

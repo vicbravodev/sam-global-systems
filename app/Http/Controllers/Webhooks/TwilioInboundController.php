@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Webhooks;
 
 use App\Domains\Notifications\Actions\ProcessInboundReply;
+use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Models\NotificationChannel;
+use App\Domains\Notifications\Support\PlatformTwilioConfig;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -26,7 +28,9 @@ class TwilioInboundController extends Controller
             abort(403, 'Unknown Twilio number.');
         }
 
-        $config = $channel->config_json ?? [];
+        // Igual que los drivers salientes: las credenciales de plataforma
+        // (TWILIO_*) rellenan lo que el config_json del canal no trae.
+        $config = $this->effectiveConfig($channel);
         $authToken = $config['twilio_auth_token'] ?? $config['auth_token'] ?? null;
 
         if (! is_string($authToken) || $authToken === '') {
@@ -58,6 +62,13 @@ class TwilioInboundController extends Controller
      * The `To` of an inbound message is one of our Twilio senders — match it
      * against the configured `from` of active twilio channels. config_json is
      * encrypted at rest, so the match happens in PHP, not SQL.
+     *
+     * Primero gana un canal con `from` propio en su config_json (override
+     * explícito). Si ninguno, el número es de plataforma: se compara contra
+     * los canales de plataforma (team_id null) con la config efectiva de
+     * PlatformTwilioConfig — sus credenciales viven en TWILIO_*, no en la
+     * fila. Un canal de tenant sin `from` propio comparte el número de
+     * plataforma y no debe capturar las respuestas de todos los tenants.
      */
     private function resolveChannel(string $to): ?NotificationChannel
     {
@@ -67,15 +78,30 @@ class TwilioInboundController extends Controller
             return null;
         }
 
-        return NotificationChannel::query()
+        $channels = NotificationChannel::query()
             ->where('provider', 'twilio')
             ->where('is_active', true)
-            ->get()
-            ->first(function (NotificationChannel $channel) use ($normalized): bool {
-                $from = (string) (($channel->config_json ?? [])['from'] ?? '');
+            ->orderBy('id')
+            ->get();
 
-                return $from !== '' && $this->normalize($from) === $normalized;
-            });
+        $matches = fn (array $config): bool => ($from = (string) ($config['from'] ?? '')) !== ''
+            && $this->normalize($from) === $normalized;
+
+        return $channels->first(fn (NotificationChannel $channel): bool => $matches($channel->config_json ?? []))
+            ?? $channels
+                ->filter(fn (NotificationChannel $channel): bool => $channel->team_id === null)
+                ->first(fn (NotificationChannel $channel): bool => $matches($this->effectiveConfig($channel)));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function effectiveConfig(NotificationChannel $channel): array
+    {
+        return PlatformTwilioConfig::merge(
+            $channel->config_json ?? [],
+            $channel->channel_type ?? ChannelType::Sms,
+        );
     }
 
     private function normalize(string $address): string
