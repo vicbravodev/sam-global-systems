@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Actions\Teams\UpdateTeamMemberRole;
+use App\Domains\Access\Actions\AuthorizeAction;
 use App\Domains\Audit\Actions\RecordAuditEntry;
 use App\Domains\Audit\Enums\AuditActorType;
 use App\Domains\Audit\Enums\AuditCategory;
@@ -88,11 +89,13 @@ class TenantMemberController extends Controller
             ]);
         }
 
-        $team->memberships()->where('user_id', $user->id)->delete();
+        DB::transaction(function () use ($team, $user) {
+            $team->memberships()->where('user_id', $user->id)->delete();
 
-        if ($user->isCurrentTeam($team) && $user->personalTeam()) {
-            $user->switchTeam($user->personalTeam());
-        }
+            $user->switchAwayFrom($team);
+        });
+
+        app(AuthorizeAction::class)->invalidateCache((int) $user->id, (int) $team->id);
 
         $this->record($request, $team, 'tenant.member_removed',
             "{$user->email} removido del tenant {$team->name}.",

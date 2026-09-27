@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Teams;
 
 use App\Actions\Teams\UpdateTeamMemberRole;
+use App\Domains\Access\Actions\AuthorizeAction;
 use App\Domains\Access\Actions\GuardRoleDelegation;
 use App\Enums\TeamRole;
 use App\Http\Controllers\Controller;
@@ -12,6 +13,7 @@ use App\Models\Team;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 
@@ -44,20 +46,27 @@ class TeamMemberController extends Controller
     /**
      * Remove the specified team member.
      */
-    public function destroy(Request $request, Team $team, User $user, GuardRoleDelegation $guard): RedirectResponse
-    {
+    public function destroy(
+        Request $request,
+        Team $team,
+        User $user,
+        GuardRoleDelegation $guard,
+        AuthorizeAction $authorizeAction,
+    ): RedirectResponse {
         Gate::authorize('removeMember', $team);
 
         // Ningún propietario (no sólo el primero) se quita desde el tenant.
         $guard->assertCanChangeMembership($request->user(), $this->membership($team, $user));
 
-        $team->memberships()
-            ->where('user_id', $user->id)
-            ->delete();
+        DB::transaction(function () use ($team, $user, $authorizeAction) {
+            $team->memberships()
+                ->where('user_id', $user->id)
+                ->delete();
 
-        if ($user->isCurrentTeam($team)) {
-            $user->switchTeam($user->personalTeam());
-        }
+            $user->switchAwayFrom($team);
+
+            $authorizeAction->invalidateCache((int) $user->id, (int) $team->id);
+        });
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Member removed.')]);
 

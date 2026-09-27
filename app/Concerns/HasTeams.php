@@ -94,6 +94,30 @@ trait HasTeams
     }
 
     /**
+     * Si el team actual es el dado, mueve al usuario a otro team al que
+     * pertenezca (el personal primero) o deja current_team_id en null. Se usa
+     * al quitar una membresía o borrar un tenant: un current_team_id colgando
+     * de un team ajeno o borrado no debe sobrevivir.
+     */
+    public function switchAwayFrom(Team $team): void
+    {
+        if ((int) $this->current_team_id !== (int) $team->id) {
+            return;
+        }
+
+        $next = $this->teams()
+            ->where('teams.id', '!=', $team->id)
+            ->orderByDesc('teams.is_personal')
+            ->orderByRaw('LOWER(teams.name)')
+            ->first();
+
+        $this->forceFill(['current_team_id' => $next?->id])->save();
+        // Sin URL::defaults: se llama también sobre OTROS usuarios (miembros
+        // quitados, tenants borrados) y no debe alterar las URLs del actor.
+        $this->setRelation('currentTeam', $next);
+    }
+
+    /**
      * Switch to the given team without checking membership.
      *
      * Reserved for super-admin impersonation: a SaaS operator is not a member
