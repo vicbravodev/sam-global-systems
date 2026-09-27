@@ -9,6 +9,7 @@ use App\Models\Team;
 use App\Models\User;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Testing\AssertableInertia;
 use Tests\TestCase;
 
 /**
@@ -135,5 +136,21 @@ class StaleCurrentTeamTest extends TestCase
 
         // Explicit platform-wide work stays possible.
         $this->assertSame(2, TenantContext::withoutTenant(fn () => Asset::query()->count()));
+    }
+
+    public function test_shared_props_ignore_a_current_team_the_user_no_longer_belongs_to(): void
+    {
+        $user = User::factory()->create();
+        $ownTeam = $this->tenantWith($user);
+        $foreign = Team::factory()->create(['name' => 'Tenant ajeno secreto']);
+        $user->forceFill(['current_team_id' => $foreign->id])->save();
+
+        $this->actingAs($user->fresh())
+            ->get(route('teams.edit', $ownTeam))
+            ->assertOk()
+            ->assertDontSee('Tenant ajeno secreto')
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->where('currentTeam', fn ($team) => $team === null || $team['id'] !== $foreign->id)
+                ->missing('auth.user.current_team'));
     }
 }
