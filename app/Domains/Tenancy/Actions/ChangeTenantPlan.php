@@ -11,6 +11,7 @@ use App\Domains\Tenancy\Models\Plan;
 use App\Domains\Tenancy\Models\Subscription;
 use App\Domains\Tenancy\Models\TenantFeature;
 use App\Models\Team;
+use App\Support\TenantContext;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -24,7 +25,11 @@ class ChangeTenantPlan
     {
         $plan = Plan::query()->where('code', $planCode)->firstOrFail();
 
-        return DB::transaction(function () use ($team, $plan) {
+        // Se entra en el tenant OBJETIVO: el caller típico es la consola de
+        // super-admin, cuyo usuario tiene su propio team actual, y el scope
+        // global filtraría por ese team — no encontraría la suscripción del
+        // tenant y crearía una segunda activa. Ver CLAUDE.md §2.1.
+        return TenantContext::for($team->id, fn () => DB::transaction(function () use ($team, $plan) {
             $subscription = Subscription::query()
                 ->where('team_id', $team->id)
                 ->orderByDesc('starts_at')
@@ -47,7 +52,7 @@ class ChangeTenantPlan
             TenantSubscriptionChanged::dispatch($team->id, 'plan_changed', $plan->code);
 
             return $subscription->load('plan');
-        });
+        }));
     }
 
     /**
