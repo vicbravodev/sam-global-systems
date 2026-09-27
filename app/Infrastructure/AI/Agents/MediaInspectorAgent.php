@@ -2,7 +2,10 @@
 
 namespace App\Infrastructure\AI\Agents;
 
+use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Illuminate\JsonSchema\Types\Type;
 use Laravel\Ai\Contracts\Agent;
+use Laravel\Ai\Contracts\HasStructuredOutput;
 use Laravel\Ai\Promptable;
 use Stringable;
 
@@ -11,8 +14,11 @@ use Stringable;
  * a single media asset (image, snapshot, clip, audio) attached to a normalized
  * event.
  */
-class MediaInspectorAgent implements Agent
+class MediaInspectorAgent implements Agent, HasStructuredOutput
 {
+    /** @var list<string> */
+    public const array RESULTS = ['confirms_event', 'contradicts_event', 'inconclusive', 'low_quality', 'unavailable'];
+
     use Promptable;
 
     public function instructions(): Stringable|string
@@ -64,5 +70,33 @@ If the media is missing, corrupted, or otherwise not interpretable, prefer
 "low_quality" or "unavailable" rather than guessing. Never include any field
 outside this schema.
 INSTRUCTIONS;
+    }
+
+    /**
+     * Native structured-output schema. The fixed signals are nullable; any
+     * extra signal travels in `additional_signals` as `{name, value}` pairs
+     * (the SDK disables free-form object keys).
+     *
+     * @return array<string, Type>
+     */
+    public function schema(JsonSchema $schema): array
+    {
+        return [
+            'result' => $schema->string()->enum(self::RESULTS)->required(),
+            'confidence_score' => $schema->number()->min(0)->max(1)->required(),
+            'summary_text' => $schema->string()->description('Una oración en español.')->required(),
+            'extracted_signals' => $schema->object([
+                'persons_visible_count' => $schema->integer()->nullable()->required(),
+                'passenger_detected' => $schema->boolean()->nullable()->required(),
+                'driver_visible' => $schema->boolean()->nullable()->required(),
+                'visible_threat' => $schema->boolean()->nullable()->required(),
+                'cabin_appears_normal' => $schema->boolean()->nullable()->required(),
+                'vehicle_moving' => $schema->boolean()->nullable()->required(),
+                'additional_signals' => $schema->array()->items($schema->object([
+                    'name' => $schema->string()->required(),
+                    'value' => $schema->string()->required(),
+                ]))->required(),
+            ])->required(),
+        ];
     }
 }

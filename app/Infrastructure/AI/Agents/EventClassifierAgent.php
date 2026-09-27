@@ -2,7 +2,10 @@
 
 namespace App\Infrastructure\AI\Agents;
 
+use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Illuminate\JsonSchema\Types\Type;
 use Laravel\Ai\Contracts\Agent;
+use Laravel\Ai\Contracts\HasStructuredOutput;
 use Laravel\Ai\Promptable;
 use Stringable;
 
@@ -13,8 +16,11 @@ use Stringable;
  * The instructions force a strict JSON output schema so the wrapper can parse
  * the response without prompt-engineering at call time.
  */
-class EventClassifierAgent implements Agent
+class EventClassifierAgent implements Agent, HasStructuredOutput
 {
+    /** @var list<string> */
+    public const array CLASSIFICATIONS = ['real_event', 'false_positive', 'noise', 'duplicate', 'unclear', 'pending_evidence'];
+
     use Promptable;
 
     public function instructions(): Stringable|string
@@ -78,5 +84,27 @@ strongly toward "real_event". Never claim visual confirmation is impossible
 when `media_assessments` is non-empty — describe what the images showed.
 Never include any field outside this schema.
 INSTRUCTIONS;
+    }
+
+    /**
+     * Native structured-output schema. Objects cannot carry free-form keys
+     * (the SDK disables `additionalProperties`), so `key_factors` travels as
+     * a list of `{name, value}` pairs and is folded back into a map.
+     *
+     * @return array<string, Type>
+     */
+    public function schema(JsonSchema $schema): array
+    {
+        return [
+            'classification' => $schema->string()->enum(self::CLASSIFICATIONS)->required(),
+            'confidence_score' => $schema->number()->min(0)->max(1)->required(),
+            'risk_score_delta' => $schema->number()->min(-1)->max(1)->required(),
+            'explanation_summary' => $schema->string()->description('Una oración en español.')->required(),
+            'reasoning_steps' => $schema->array()->items($schema->string())->required(),
+            'key_factors' => $schema->array()->items($schema->object([
+                'name' => $schema->string()->required(),
+                'value' => $schema->string()->required(),
+            ]))->required(),
+        ];
     }
 }

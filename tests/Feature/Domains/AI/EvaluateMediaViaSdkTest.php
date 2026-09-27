@@ -9,7 +9,9 @@ use App\Domains\Context\Enums\MediaType;
 use App\Infrastructure\AI\Agents\MediaInspectorAgent;
 use App\Infrastructure\AI\Agents\SdkMediaAssessmentAgent;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\JsonSchema\JsonSchemaTypeFactory;
 use Illuminate\Support\Facades\Storage;
+use Laravel\Ai\Contracts\HasStructuredOutput;
 use Laravel\Ai\Responses\Data\Meta;
 use Laravel\Ai\Responses\Data\Usage;
 use Laravel\Ai\Responses\TextResponse;
@@ -120,6 +122,59 @@ class EvaluateMediaViaSdkTest extends TestCase
         app(SdkMediaAssessmentAgent::class)->assess($this->makeInput(storagePath: 'media/panic-still.jpg'));
 
         MediaInspectorAgent::assertPrompted(fn ($prompt) => $prompt->attachments->isNotEmpty());
+    }
+
+    public function test_inspector_declares_structured_output_schema(): void
+    {
+        $agent = new MediaInspectorAgent;
+
+        $this->assertInstanceOf(HasStructuredOutput::class, $agent);
+        $this->assertSame(
+            ['result', 'confidence_score', 'summary_text', 'extracted_signals'],
+            array_keys($agent->schema(new JsonSchemaTypeFactory)),
+        );
+    }
+
+    public function test_wrapper_consumes_native_structured_response_and_flattens_signals(): void
+    {
+        MediaInspectorAgent::fake([[
+            'result' => 'confirms_event',
+            'confidence_score' => 0.9,
+            'summary_text' => 'Se observa a una persona desconocida junto al conductor.',
+            'extracted_signals' => [
+                'persons_visible_count' => 2,
+                'passenger_detected' => true,
+                'driver_visible' => true,
+                'visible_threat' => null,
+                'cabin_appears_normal' => false,
+                'vehicle_moving' => false,
+                'additional_signals' => [['name' => 'hands_raised', 'value' => 'true']],
+            ],
+        ]]);
+
+        $output = app(SdkMediaAssessmentAgent::class)->assess($this->makeInput());
+
+        $this->assertSame(MediaAssessmentResult::ConfirmsEvent, $output->result);
+        $this->assertSame(2, $output->extractedSignals['persons_visible_count']);
+        $this->assertSame('true', $output->extractedSignals['hands_raised']);
+        $this->assertArrayNotHasKey('additional_signals', $output->extractedSignals);
+    }
+
+    public function test_wrapper_tolerates_fences_percentage_confidence_and_unknown_result(): void
+    {
+        MediaInspectorAgent::fake([
+            "```json\n".json_encode([
+                'result' => 'threat_detected',
+                'confidence_score' => 72,
+                'summary_text' => 'Imagen nocturna borrosa.',
+                'extracted_signals' => [],
+            ], JSON_THROW_ON_ERROR)."\n```",
+        ]);
+
+        $output = app(SdkMediaAssessmentAgent::class)->assess($this->makeInput());
+
+        $this->assertSame(MediaAssessmentResult::Inconclusive, $output->result);
+        $this->assertSame(0.72, $output->confidenceScore);
     }
 
     private function makeInput(?string $storagePath = null): MediaAssessmentInput
