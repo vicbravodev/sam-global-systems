@@ -57,6 +57,15 @@ trait ProfileValidationRules
             $userId === null
                 ? Rule::unique(User::class)
                 : Rule::unique(User::class)->ignore($userId),
+            // `unique` compara tal cual; en Postgres eso distingue mayúsculas.
+            // Este chequeo cubre filas históricas con mayúsculas.
+            function (string $attribute, mixed $value, \Closure $fail) use ($userId): void {
+                $existing = is_string($value) ? User::findByEmail($value) : null;
+
+                if ($existing !== null && $existing->id !== $userId) {
+                    $fail(__('validation.unique', ['attribute' => $attribute]));
+                }
+            },
         ];
     }
 }

@@ -26,12 +26,22 @@ class TenantMemberController extends Controller
 
     public function store(Request $request, Team $team): RedirectResponse
     {
+        if (is_string($request->input('email'))) {
+            $request->merge(['email' => User::normalizeEmail($request->input('email'))]);
+        }
+
         $data = $request->validate([
-            'email' => ['required', 'email', 'exists:users,email'],
+            'email' => ['required', 'email'],
             'role' => ['required', Rule::in([TeamRole::Admin->value, TeamRole::Member->value])],
         ]);
 
-        $user = User::where('email', $data['email'])->firstOrFail();
+        $user = User::findByEmail($data['email']);
+
+        if ($user === null) {
+            throw ValidationException::withMessages([
+                'email' => __('validation.exists', ['attribute' => 'email']),
+            ]);
+        }
 
         if ($team->members()->where('users.id', $user->id)->exists()) {
             throw ValidationException::withMessages([

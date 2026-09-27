@@ -24,6 +24,9 @@ class ResetUserPassword implements ResetsUserPasswords
 
         $user->forceFill([
             'password' => $input['password'],
+            // Completar el reset con el token que llegó por correo prueba la
+            // posesión del buzón: el email queda verificado.
+            'email_verified_at' => $user->email_verified_at ?? now(),
         ])->save();
     }
 }
