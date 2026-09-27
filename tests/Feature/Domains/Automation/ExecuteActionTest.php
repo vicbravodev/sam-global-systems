@@ -17,11 +17,20 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
+use Tests\Concerns\FakesHostResolution;
 use Tests\TestCase;
 
 class ExecuteActionTest extends TestCase
 {
-    use RefreshDatabase;
+    use FakesHostResolution, RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // OutboundUrlGuard resuelve el host antes de llamar al webhook.
+        $this->fakeDns(['example.test' => ['93.184.216.34']]);
+    }
 
     public function test_send_email_action_records_completed_status_and_log(): void
     {

@@ -6,11 +6,14 @@ use App\Contracts\AssetSyncHandler;
 use App\Domains\Assets\Commands\RecordAssetUsageMeters;
 use App\Domains\Assets\Listeners\PollLocationsOnIntegrationConnected;
 use App\Domains\Assets\Listeners\RecordTelemetryOnEventNormalized;
+use App\Domains\Assets\Models\Asset;
+use App\Domains\Assets\Policies\AssetPolicy;
 use App\Domains\Assets\Services\AssetSyncHandlerService;
 use App\Domains\Integrations\Events\IntegrationConnected;
 use App\Domains\Normalization\Events\EventNormalized;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 
 class AssetsServiceProvider extends ServiceProvider
@@ -22,6 +25,8 @@ class AssetsServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        Gate::policy(Asset::class, AssetPolicy::class);
+
         if ($this->app->runningInConsole()) {
             $this->commands([
                 RecordAssetUsageMeters::class,

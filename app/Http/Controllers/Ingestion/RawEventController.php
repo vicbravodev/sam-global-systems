@@ -4,14 +4,18 @@ namespace App\Http\Controllers\Ingestion;
 
 use App\Domains\Ingestion\Models\RawEvent;
 use App\Http\Controllers\Controller;
+use App\Models\Team;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class RawEventController extends Controller
 {
-    public function index(Request $request): JsonResponse
+    public function index(Request $request, Team $current_team): JsonResponse
     {
+        $this->authorize('viewAny', RawEvent::class);
+
         $query = RawEvent::query()
+            ->where('team_id', $current_team->id)
             ->with('eventSource')
             ->orderByDesc('received_at');
 

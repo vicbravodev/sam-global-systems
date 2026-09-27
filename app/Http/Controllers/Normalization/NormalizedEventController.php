@@ -4,14 +4,18 @@ namespace App\Http\Controllers\Normalization;
 
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Http\Controllers\Controller;
+use App\Models\Team;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class NormalizedEventController extends Controller
 {
-    public function index(Request $request): JsonResponse
+    public function index(Request $request, Team $current_team): JsonResponse
     {
+        $this->authorize('viewAny', NormalizedEvent::class);
+
         $query = NormalizedEvent::query()
+            ->where('team_id', $current_team->id)
             ->with(['eventType', 'eventCategory', 'eventSeverity'])
             ->orderByDesc('occurred_at');
 
@@ -48,8 +52,10 @@ class NormalizedEventController extends Controller
         return response()->json($events);
     }
 
-    public function show(NormalizedEvent $normalizedEvent): JsonResponse
+    public function show(Team $current_team, NormalizedEvent $normalizedEvent): JsonResponse
     {
+        $this->authorize('view', $normalizedEvent);
+
         $normalizedEvent->load([
             'rawEvent',
             'eventType.category',
@@ -63,9 +69,12 @@ class NormalizedEventController extends Controller
         return response()->json($normalizedEvent);
     }
 
-    public function unmapped(Request $request): JsonResponse
+    public function unmapped(Request $request, Team $current_team): JsonResponse
     {
+        $this->authorize('viewAny', NormalizedEvent::class);
+
         $events = NormalizedEvent::query()
+            ->where('team_id', $current_team->id)
             ->unmapped()
             ->with(['rawEvent', 'provider'])
             ->orderByDesc('occurred_at')

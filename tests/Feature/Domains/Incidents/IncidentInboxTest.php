@@ -18,6 +18,7 @@ use App\Domains\Incidents\Models\IncidentPriority;
 use App\Domains\Incidents\Models\IncidentStatus;
 use App\Domains\Incidents\Models\IncidentTimeline;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Enums\TeamRole;
 use App\Models\User;
 use Database\Seeders\AccessSeeder;
 use Database\Seeders\IncidentsSeeder;
@@ -211,6 +212,7 @@ class IncidentInboxTest extends TestCase
         ]);
 
         $assignee = User::factory()->create(['name' => 'María Gómez']);
+        $team->members()->attach($assignee, ['role' => TeamRole::Member->value]);
         IncidentAssignment::factory()->create([
             'incident_id' => $incident->id,
             'assigned_to_type' => AssigneeType::User,
