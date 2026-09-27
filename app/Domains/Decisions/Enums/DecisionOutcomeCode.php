@@ -19,10 +19,14 @@ enum DecisionOutcomeCode: string
         };
     }
 
+    /**
+     * Outcomes that surface to operators as an incident. Review and alert
+     * outcomes open low-urgency incidents so they are never silently lost.
+     */
     public function createsIncident(): bool
     {
         return match ($this) {
-            self::Incident, self::Escalate => true,
+            self::Incident, self::Escalate, self::RequireHumanReview, self::Alert => true,
             default => false,
         };
     }
