@@ -42,7 +42,7 @@ class EvaluateEventJob implements ShouldBeUnique, ShouldQueue
     public function handle(EvaluateEventWithAI $evaluateEventWithAI, AIEvaluationGate $gate): void
     {
         $normalizedEvent = NormalizedEvent::withoutGlobalScopes()
-            ->with('eventCategory')
+            ->with(['eventCategory', 'eventType'])
             ->find($this->normalizedEventId);
 
         if ($normalizedEvent === null) {

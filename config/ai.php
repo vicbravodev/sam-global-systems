@@ -202,6 +202,31 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Event Types Excluded From AI Evaluation
+    |--------------------------------------------------------------------------
+    |
+    | Low-value event types skipped by event type code, whatever their
+    | category. NOTE: the decision engine runs on `AIEvaluationCompleted`, so
+    | a skipped event gets no decision and no incident (same as the skipped
+    | categories above) — remove a type here if a tenant's decision rules
+    | must act on it.
+    |
+    */
+
+    'skip_evaluation_event_types' => [
+        'geofence_entry',
+        'geofence_exit',
+        'vehicle_idle',
+        'driving_context',
+        'defensive_driving',
+        'unmapped',
+        'no_seatbelt',
+        'hos_violation',
+        'smoking_drinking',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Tenant AI Quota
     |--------------------------------------------------------------------------
     |
