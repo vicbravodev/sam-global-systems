@@ -122,6 +122,7 @@ class EvaluateEventWithAI
         } catch (Throwable $exception) {
             Log::warning('EventEvaluationAgent failed; falling back to rules_only', [
                 'normalized_event_id' => $event->id,
+                'error_class' => $exception::class,
                 'error' => $exception->getMessage(),
             ]);
 
@@ -130,9 +131,12 @@ class EvaluateEventWithAI
                     $fuseMedia(EventClassification::Unclear),
                     confidence: 0.4,
                     riskScore: $riskScore,
-                    explanation: 'Falló el agente de IA; se evalúa solo con reglas. Error: '.$exception->getMessage(),
+                    // El mensaje crudo de la excepción (URLs, cuerpos del
+                    // proveedor, claves) se queda en el log; al operador le
+                    // llega un texto genérico y en key_factors solo la clase.
+                    explanation: 'El análisis de IA no estuvo disponible; se evalúa solo con reglas.',
                     reasoningSteps: ['agent_error_fallback'],
-                    keyFactors: ['error' => $exception->getMessage()],
+                    keyFactors: ['error_class' => class_basename($exception)],
                 );
 
                 return $this->persistEvaluation(
