@@ -48,6 +48,7 @@ use App\Enums\TeamRole;
 use App\Models\Membership;
 use App\Models\Team;
 use App\Models\User;
+use Database\Seeders\Concerns\DevelopmentOnly;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -65,6 +66,8 @@ use Illuminate\Support\Str;
  */
 class DemoSeeder extends Seeder
 {
+    use DevelopmentOnly;
+
     private const TEAM_SLUG = 'sam-demo';
 
     private const TEAM_NAME = 'SAM Demo Fleet';
@@ -82,6 +85,10 @@ class DemoSeeder extends Seeder
 
     public function run(): void
     {
+        if ($this->skipInProduction()) {
+            return;
+        }
+
         $this->callPrerequisiteSeeders();
 
         DB::transaction(function () {

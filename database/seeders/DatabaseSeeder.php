@@ -31,6 +31,15 @@ class DatabaseSeeder extends Seeder
         // Samsara mapping rules so replayed/live webhook events normalize.
         $this->call(NormalizationSeeder::class);
 
+        // Todo lo de abajo es de desarrollo/prueba (cuentas con contraseña
+        // conocida y un super-admin): nunca en producción. Los catálogos de
+        // arriba sí se siembran en producción.
+        if (app()->isProduction()) {
+            $this->command?->warn('Producción: se omiten los seeders de demo/prueba (SamsaraTest*, SuperAdmin).');
+
+            return;
+        }
+
         // Single dev tenant (ServiExpress JC) + panic_button→incident ruleset.
         $this->call(SamsaraTestSeeder::class);
         $this->call(SamsaraTestDecisionRulesSeeder::class);
