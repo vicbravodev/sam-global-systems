@@ -4,13 +4,11 @@ namespace App\Http\Controllers\Teams;
 
 use App\Enums\TeamRole;
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Teams\AcceptTeamInvitationRequest;
 use App\Http\Requests\Teams\CreateTeamInvitationRequest;
 use App\Models\Team;
 use App\Models\TeamInvitation;
 use App\Notifications\Teams\TeamInvitation as TeamInvitationNotification;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Notification;
 use Inertia\Inertia;
@@ -53,30 +51,5 @@ class TeamInvitationController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Invitation cancelled.')]);
 
         return to_route('teams.edit', ['team' => $team->slug]);
-    }
-
-    /**
-     * Accept the invitation.
-     */
-    public function accept(AcceptTeamInvitationRequest $request, TeamInvitation $invitation): RedirectResponse
-    {
-        $user = $request->user();
-
-        DB::transaction(function () use ($user, $invitation) {
-            $team = $invitation->team;
-
-            $membership = $team->memberships()->firstOrCreate(
-                ['user_id' => $user->id],
-                ['role' => $invitation->role],
-            );
-
-            $wasRecentlyCreated = $membership->wasRecentlyCreated;
-
-            $invitation->update(['accepted_at' => now()]);
-
-            $user->switchTeam($team);
-        });
-
-        return to_route('dashboard');
     }
 }

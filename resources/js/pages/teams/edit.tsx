@@ -273,7 +273,7 @@ export default function TeamEdit({
                         <div className="space-y-3">
                             {invitations.map((invitation) => (
                                 <div
-                                    key={invitation.code}
+                                    key={invitation.id}
                                     data-test="invitation-row"
                                     className="flex items-center justify-between rounded-lg border p-4"
                                 >

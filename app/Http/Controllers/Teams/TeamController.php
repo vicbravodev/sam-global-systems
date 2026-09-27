@@ -73,8 +73,11 @@ class TeamController extends Controller
             'invitations' => $team->invitations()
                 ->whereNull('accepted_at')
                 ->get()
+                // El `code` es el secreto del enlace de invitación: con él
+                // cualquiera acepta en nombre del invitado. Nunca se envía al
+                // navegador; la UI identifica la invitación por id.
                 ->map(fn ($invitation) => [
-                    'code' => $invitation->code,
+                    'id' => $invitation->id,
                     'email' => $invitation->email,
                     'role' => $invitation->role->value,
                     'role_label' => $invitation->role->label(),

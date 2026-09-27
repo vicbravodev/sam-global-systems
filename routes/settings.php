@@ -53,6 +53,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::delete('settings/teams/{team}/members/{user}', [TeamMemberController::class, 'destroy'])->name('teams.members.destroy');
 
         Route::post('settings/teams/{team}/invitations', [TeamInvitationController::class, 'store'])->name('teams.invitations.store');
-        Route::delete('settings/teams/{team}/invitations/{invitation}', [TeamInvitationController::class, 'destroy'])->name('teams.invitations.destroy');
+        Route::delete('settings/teams/{team}/invitations/{invitation:id}', [TeamInvitationController::class, 'destroy'])->name('teams.invitations.destroy');
     });
 });
