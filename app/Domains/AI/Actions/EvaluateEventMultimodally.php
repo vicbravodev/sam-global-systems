@@ -11,8 +11,10 @@ use App\Domains\AI\Events\MediaAssessmentCompleted;
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\AI\Models\AIInferenceLog;
 use App\Domains\AI\Models\AIMediaAssessment;
+use App\Domains\AI\Support\MediaCaptureContext;
 use App\Domains\Context\Enums\MediaType;
 use App\Domains\Context\Models\EventMediaContext;
+use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
 use Illuminate\Support\Collection;
@@ -49,6 +51,8 @@ class EvaluateEventMultimodally
             true,
         ))->values();
 
+        $event = $evaluation->normalizedEvent()->with(['eventType', 'eventSeverity'])->first();
+
         /** @var Collection<int, AIMediaAssessment> $assessments */
         $assessments = collect();
 
@@ -68,7 +72,7 @@ class EvaluateEventMultimodally
             }
 
             $assessmentType = $this->resolveAssessmentType($media->media_type);
-            $input = $this->buildInput($evaluation, $media, $assessmentType);
+            $input = $this->buildInput($evaluation, $event, $media, $assessmentType);
 
             try {
                 $output = $this->agent->assess($input);
@@ -150,9 +154,12 @@ class EvaluateEventMultimodally
 
     private function buildInput(
         AIEventEvaluation $evaluation,
+        ?NormalizedEvent $event,
         EventMediaContext $media,
         MediaAssessmentType $assessmentType,
     ): MediaAssessmentInput {
+        $metadata = (array) ($media->metadata_json ?? []);
+
         return new MediaAssessmentInput(
             teamId: $evaluation->team_id,
             evaluationId: $evaluation->id,
@@ -163,13 +170,19 @@ class EvaluateEventMultimodally
             mimeType: $media->mime_type,
             sizeBytes: $media->size_bytes,
             durationSeconds: $media->duration_seconds,
-            mediaMetadata: (array) ($media->metadata_json ?? []),
+            mediaMetadata: $metadata,
             eventContext: [
                 'normalized_event_id' => $evaluation->normalized_event_id,
+                'event_type_code' => $event?->eventType?->code,
+                'event_type_name' => $event?->eventType?->name,
+                'severity' => $event?->eventSeverity?->code,
+                'occurred_at' => $event?->occurred_at?->toIso8601String(),
                 'evaluation_version' => $evaluation->evaluation_version,
                 'classification' => $evaluation->classification?->value,
                 'risk_score' => $evaluation->risk_score,
             ],
+            cameraSide: MediaCaptureContext::cameraSide($metadata),
+            captureOffsetSeconds: MediaCaptureContext::captureOffsetSeconds($metadata, $event?->occurred_at),
         );
     }
 
