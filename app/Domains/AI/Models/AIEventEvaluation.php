@@ -6,6 +6,7 @@ use App\Concerns\BelongsToTenant;
 use App\Domains\AI\Enums\EvaluationMode;
 use App\Domains\AI\Enums\EvaluationPriority;
 use App\Domains\AI\Enums\EventClassification;
+use App\Domains\AI\Enums\OperatorVerdict;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use Database\Factories\Domains\AI\AIEventEvaluationFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -38,6 +39,10 @@ class AIEventEvaluation extends Model
         'evidence_summary_json',
         'model_used',
         'evaluated_at',
+        'operator_verdict',
+        'operator_verdict_by',
+        'operator_verdict_at',
+        'operator_verdict_note',
     ];
 
     /**
@@ -113,6 +118,8 @@ class AIEventEvaluation extends Model
             'signals_json' => 'array',
             'evidence_summary_json' => 'array',
             'evaluated_at' => 'datetime',
+            'operator_verdict' => OperatorVerdict::class,
+            'operator_verdict_at' => 'datetime',
         ];
     }
 
