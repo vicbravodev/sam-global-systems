@@ -8,6 +8,7 @@ use App\Domains\Incidents\Enums\AssigneeType;
 use App\Domains\Incidents\Events\IncidentCreated;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Notifications\Actions\SendNotification;
+use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Enums\NotificationPriority;
 use App\Domains\Notifications\Enums\NotificationSourceType;
 use App\Domains\Notifications\Enums\NotificationTriggeredByType;
@@ -18,8 +19,10 @@ use App\Models\User;
  *
  * The on-call comes from the active TenantScheduleProfile's shift rules; when
  * none is configured the incident stays unassigned, exactly as before. A
- * critical incident additionally sends a directed Critical notification to
- * the assignee so it reaches them on every channel they have configured.
+ * critical incident additionally tells the assignee, in-app only, that it is
+ * theirs: the out-of-band critical alert (SMS/push) already reaches them
+ * through the team-wide `incident.created` notification, and a second SMS for
+ * the same incident only costs money and trains people to ignore alerts.
  */
 class AssignOnCallOnIncidentCreated
 {
@@ -81,6 +84,7 @@ class AssignOnCallOnIncidentCreated
                 'incident_type' => $incident->type?->code,
                 'severity' => $incident->priority?->code,
                 'incident_title' => $incident->title,
+                'force_channels' => [ChannelType::Web->value],
                 'recipients' => [
                     [
                         'recipient_type' => 'user',
