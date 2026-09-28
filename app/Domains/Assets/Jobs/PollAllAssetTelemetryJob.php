@@ -15,15 +15,16 @@ use Illuminate\Queue\SerializesModels;
  * Scheduled orchestrator: fans out a {@see PollAssetTelemetryJob} for every
  * active integration due for a diagnostics refresh.
  *
- * Mirrors {@see PollAllAssetLocationsJob} but on a slower default cadence:
- * fuel moves by the percent and the odometer by the kilometre, so polling them
- * as often as GPS would cost requests without adding readings.
+ * Mirrors {@see PollAllAssetLocationsJob}, on the same one-minute default: an
+ * ignition change or a fuel drop is operational signal, and unchanged readings
+ * are dropped before they reach the database, so the faster cadence costs two
+ * provider requests per minute rather than rows.
  */
 class PollAllAssetTelemetryJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public const DEFAULT_INTERVAL_MINUTES = 15;
+    public const DEFAULT_INTERVAL_MINUTES = 1;
 
     public function __construct()
     {
@@ -61,6 +62,7 @@ class PollAllAssetTelemetryJob implements ShouldQueue
         $interval = max(1, (int) ($sync['telemetry_interval_minutes'] ?? self::DEFAULT_INTERVAL_MINUTES));
         $lastPoll = $integration->last_telemetry_poll_at;
 
-        return $lastPoll === null || $lastPoll->lte(now()->subMinutes($interval));
+        return $lastPoll === null
+            || $lastPoll->lte(now()->subSeconds($interval * 60 - PollAllAssetLocationsJob::DUE_GRACE_SECONDS));
     }
 }

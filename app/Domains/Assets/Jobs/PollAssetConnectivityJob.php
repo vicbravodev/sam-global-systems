@@ -2,7 +2,7 @@
 
 namespace App\Domains\Assets\Jobs;
 
-use App\Domains\Assets\Actions\ResolveAssetFromExternalId;
+use App\Domains\Assets\Actions\ResolveAssetsFromExternalIds;
 use App\Domains\Integrations\Contracts\ProviderAdapter;
 use App\Domains\Integrations\Models\TenantIntegration;
 use Illuminate\Bus\Queueable;
@@ -43,30 +43,31 @@ class PollAssetConnectivityJob implements ShouldBeUnique, ShouldQueue
         $this->onQueue('sync');
     }
 
-    public function handle(ProviderAdapter $providerAdapter, ResolveAssetFromExternalId $resolveAsset): void
+    public function handle(ProviderAdapter $providerAdapter, ResolveAssetsFromExternalIds $resolveAssets): void
     {
-        $readings = $providerAdapter->fetchDeviceConnectivity($this->integration);
+        $readings = [];
+
+        foreach ($providerAdapter->fetchDeviceConnectivity($this->integration) as $reading) {
+            $externalId = (string) ($reading['external_id'] ?? '');
+
+            if ($externalId !== '') {
+                $readings[$externalId] = $reading;
+            }
+        }
+
         $polledAt = now();
 
-        foreach ($readings as $reading) {
-            $externalId = $reading['external_id'] ?? null;
+        // Tenant-scoped on purpose: (provider, external_id) is unique
+        // platform-wide, so without the team filter a poll could land on
+        // another tenant's asset.
+        $assets = $resolveAssets->execute(
+            $this->integration->provider_id,
+            array_map('strval', array_keys($readings)),
+            $this->integration->team_id,
+        );
 
-            if ($externalId === null || $externalId === '') {
-                continue;
-            }
-
-            // Tenant-scoped on purpose: (provider, external_id) is unique
-            // platform-wide, so without the team filter a poll could land on
-            // another tenant's asset.
-            $asset = $resolveAsset->execute(
-                $this->integration->provider_id,
-                (string) $externalId,
-                $this->integration->team_id,
-            );
-
-            if ($asset === null) {
-                continue;
-            }
+        foreach ($assets as $externalId => $asset) {
+            $reading = $readings[$externalId];
 
             $asset->forceFill([
                 'device_last_connected_at' => isset($reading['last_connected_at'])

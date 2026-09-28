@@ -9,8 +9,10 @@ use App\Domains\Integrations\Enums\TenantIntegrationStatus;
 use App\Domains\Integrations\Models\IntegrationProvider;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Models\Team;
+use Illuminate\Bus\UniqueLock;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
 
 class PollAllAssetLocationsJobTest extends TestCase
@@ -70,5 +72,56 @@ class PollAllAssetLocationsJobTest extends TestCase
         (new PollAllAssetLocationsJob)->handle();
 
         Bus::assertNotDispatched(PollAssetLocationsJob::class);
+    }
+
+    public function test_the_default_one_minute_interval_survives_the_jitter_of_the_tick(): void
+    {
+        Bus::fake([PollAssetLocationsJob::class, PollAssetConnectivityJob::class]);
+
+        // The previous poll started a few seconds after its tick, so the next
+        // tick finds it slightly less than a minute old. It must still be due,
+        // or a one-minute cadence silently degrades to two.
+        $this->makeIntegration(['last_location_poll_at' => now()->subSeconds(52)]);
+
+        (new PollAllAssetLocationsJob)->handle();
+
+        Bus::assertDispatchedTimes(PollAssetLocationsJob::class, 1);
+    }
+
+    public function test_device_connectivity_is_polled_on_its_own_slower_cadence(): void
+    {
+        Bus::fake([PollAssetLocationsJob::class, PollAssetConnectivityJob::class]);
+        Cache::flush();
+
+        $integration = $this->makeIntegration(['last_location_poll_at' => null]);
+
+        // Positions every minute, the gateway heartbeat once per window.
+        foreach (range(1, 3) as $minute) {
+            (new PollAllAssetLocationsJob)->handle();
+            $this->finishPolls($integration);
+            $this->travel(1)->minutes();
+        }
+
+        Bus::assertDispatchedTimes(PollAssetLocationsJob::class, 3);
+        Bus::assertDispatchedTimes(PollAssetConnectivityJob::class, 1);
+
+        $this->finishPolls($integration);
+        $this->travel(PollAllAssetLocationsJob::CONNECTIVITY_INTERVAL_MINUTES)->minutes();
+        (new PollAllAssetLocationsJob)->handle();
+
+        Bus::assertDispatchedTimes(PollAssetConnectivityJob::class, 2);
+    }
+
+    /**
+     * Stands in for the faked polls having run: a finished job releases its
+     * unique lock, which Bus::fake never does on its own.
+     */
+    private function finishPolls(TenantIntegration $integration): void
+    {
+        $lock = new UniqueLock(Cache::driver());
+        $lock->release(new PollAssetLocationsJob($integration));
+        $lock->release(new PollAssetConnectivityJob($integration));
+
+        $integration->update(['last_location_poll_at' => null]);
     }
 }
