@@ -2,6 +2,7 @@
 
 namespace App\Domains\Tenancy\Jobs;
 
+use App\Domains\Tenancy\Enums\AggregationType;
 use App\Domains\Tenancy\Enums\SubscriptionStatus;
 use App\Domains\Tenancy\Events\UsageLimitExceeded;
 use App\Domains\Tenancy\Events\UsageUpdatedBroadcast;
@@ -12,11 +13,13 @@ use App\Domains\Tenancy\Models\UsageDailyAggregate;
 use App\Domains\Tenancy\Models\UsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
 use App\Models\Team;
+use Carbon\CarbonInterface;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 
 class AggregateUsageJob implements ShouldQueue
@@ -27,8 +30,14 @@ class AggregateUsageJob implements ShouldQueue
 
     public array $backoff = [1, 5, 10];
 
+    /**
+     * @param  string|null  $forMonth  Any date inside the billing month to
+     *                                 (re)compute. Null = the current month. A past month is how the
+     *                                 invoicing run closes the previous period before invoicing it.
+     */
     public function __construct(
         public ?int $teamId = null,
+        public ?string $forMonth = null,
     ) {
         $this->onQueue('billing');
     }
@@ -60,11 +69,28 @@ class AggregateUsageJob implements ShouldQueue
         });
     }
 
+    private function periodStart(): CarbonInterface
+    {
+        $reference = $this->forMonth !== null ? Date::parse($this->forMonth) : now();
+
+        return $reference->copy()->startOfMonth();
+    }
+
+    private function isClosedPeriod(): bool
+    {
+        return $this->periodStart()->lt(now()->startOfMonth());
+    }
+
     private function aggregateForTeamMeter(Team $team, UsageMeter $meter): void
     {
+        $periodStart = $this->periodStart();
+        $periodEnd = $periodStart->copy()->endOfMonth();
+
         $dailyData = UsageEvent::query()
             ->where('team_id', $team->id)
             ->where('usage_meter_id', $meter->id)
+            ->where('occurred_at', '>=', $periodStart)
+            ->where('occurred_at', '<=', $periodEnd)
             ->select([
                 DB::raw('DATE(occurred_at) as day'),
                 DB::raw('SUM(quantity) as quantity_sum'),
@@ -89,20 +115,32 @@ class AggregateUsageJob implements ShouldQueue
             );
         }
 
-        $this->recalculateCounter($team, $meter);
+        $this->recalculateCounter($team, $meter, $periodStart, $periodEnd);
     }
 
-    private function recalculateCounter(Team $team, UsageMeter $meter): void
+    /**
+     * Period consumption honouring the meter's aggregation type: a Sum meter
+     * accumulates (messages, AI calls), a Max meter is a gauge sampled daily
+     * (monitored assets, cameras) whose billable value is the peak, never the
+     * sum of the daily samples.
+     */
+    private function periodConsumption(Team $team, UsageMeter $meter, CarbonInterface $periodStart, CarbonInterface $periodEnd): int
     {
-        $periodStart = now()->startOfMonth();
-        $periodEnd = now()->endOfMonth();
-
-        $totalConsumed = UsageEvent::query()
+        $query = UsageEvent::query()
             ->where('team_id', $team->id)
             ->where('usage_meter_id', $meter->id)
             ->where('occurred_at', '>=', $periodStart)
-            ->where('occurred_at', '<=', $periodEnd)
-            ->sum('quantity');
+            ->where('occurred_at', '<=', $periodEnd);
+
+        return (int) match ($meter->aggregation_type) {
+            AggregationType::Max => $query->max('quantity') ?? 0,
+            AggregationType::Sum, AggregationType::UniqueCount => $query->sum('quantity'),
+        };
+    }
+
+    private function recalculateCounter(Team $team, UsageMeter $meter, CarbonInterface $periodStart, CarbonInterface $periodEnd): void
+    {
+        $totalConsumed = $this->periodConsumption($team, $meter, $periodStart, $periodEnd);
 
         $subscription = Subscription::query()
             ->where('team_id', $team->id)
@@ -150,6 +188,12 @@ class AggregateUsageJob implements ShouldQueue
             ['consumed_value', 'included_value', 'overage_value', 'last_calculated_at', 'updated_at'],
         );
 
+        // Live alerts belong to the running month; closing a past period for
+        // invoicing must not re-announce limits or push realtime updates.
+        if ($this->isClosedPeriod()) {
+            return;
+        }
+
         if ($overageValue > 0 && $previousOverage === 0) {
             UsageLimitExceeded::dispatch(
                 $team->id,
@@ -169,8 +213,8 @@ class AggregateUsageJob implements ShouldQueue
         int $includedValue,
         int $overageValue,
         ?TenantUsageCounter $previousCounter,
-        $periodStart,
-        $periodEnd,
+        CarbonInterface $periodStart,
+        CarbonInterface $periodEnd,
     ): void {
         if (! $previousCounter) {
             return;
