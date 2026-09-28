@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Domains\Audit;
 
+use App\Domains\Audit\Enums\AuditActorType;
 use App\Domains\Audit\Enums\AuditCategory;
 use App\Domains\Audit\Models\AuditLog;
 use App\Domains\Audit\Models\DomainEventLog;
@@ -10,6 +11,7 @@ use App\Models\User;
 use Database\Seeders\AccessSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
+use Tests\Concerns\AssertsTenantIsolation;
 use Tests\TestCase;
 
 /**
@@ -17,7 +19,7 @@ use Tests\TestCase;
  */
 class AuditPageTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsTenantIsolation, RefreshDatabase;
 
     private User $user;
 
@@ -126,5 +128,73 @@ class AuditPageTest extends TestCase
         $response->assertInertia(
             fn (Assert $page) => $page->has('logs', 0)->has('events', 0),
         );
+    }
+
+    public function test_system_noise_is_hidden_by_default_and_shown_with_toggle(): void
+    {
+        AuditLog::factory()->create([
+            'team_id' => $this->team->id,
+            'action' => 'tenancy.usage_recorded',
+            'category' => AuditCategory::Billing,
+        ]);
+        AuditLog::factory()->create([
+            'team_id' => $this->team->id,
+            'action' => 'incident.resolved',
+            'category' => AuditCategory::Domain,
+        ]);
+
+        $this->actingAs($this->user)
+            ->get(route('audit.show', ['current_team' => $this->team->slug]))
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('audit/index')
+                ->has('logs', 1)
+                ->where('logs.0.action', 'incident.resolved')
+                ->where('logs.0.actionLabel', 'Incidente resuelto')
+                ->where('logs.0.categoryLabel', 'Operación')
+                ->where('filters.system', false));
+
+        $this->actingAs($this->user)
+            ->get(route('audit.show', ['current_team' => $this->team->slug, 'system' => 1]))
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('logs', 2)
+                ->where('filters.system', true));
+    }
+
+    public function test_team_entity_and_user_actor_are_shown_by_name(): void
+    {
+        AuditLog::factory()->create([
+            'team_id' => $this->team->id,
+            'entity_type' => 'App\\Models\\Team',
+            'entity_id' => $this->team->id,
+            'actor_type' => AuditActorType::User,
+            'actor_id' => $this->user->id,
+        ]);
+
+        $this->actingAs($this->user)
+            ->get(route('audit.show', ['current_team' => $this->team->slug]))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('logs.0.entityLabel', $this->team->name)
+                ->where('logs.0.entityId', null)
+                ->where('logs.0.actorLabel', $this->user->name));
+    }
+
+    public function test_actor_names_never_resolve_users_of_another_tenant(): void
+    {
+        $outsider = User::factory()->create(['name' => 'Usuario Ajeno']);
+        AuditLog::factory()->create([
+            'team_id' => $this->team->id,
+            'actor_type' => AuditActorType::User,
+            'actor_id' => $outsider->id,
+        ]);
+        AuditLog::factory()->create(['team_id' => $outsider->currentTeam->id]);
+
+        $response = $this->assertNoTenantLeak($this->team, fn () => $this->actingAs($this->user)
+            ->get(route('audit.show', ['current_team' => $this->team->slug])));
+
+        $response->assertOk();
+        $response->assertInertia(fn (Assert $page) => $page
+            ->has('logs', 1)
+            ->where('logs.0.actorLabel', 'Usuario #'.$outsider->id));
+        $this->assertStringNotContainsString('Usuario Ajeno', $response->getContent());
     }
 }

@@ -182,6 +182,75 @@ class InvoicePaymentLifecycleTest extends TestCase
         )->assertStatus(422);
     }
 
+    public function test_void_invoice_cannot_be_marked_paid_nor_voided_again(): void
+    {
+        $admin = User::factory()->create(['global_role' => 'super_admin']);
+
+        $invoice = InvoiceSnapshot::factory()->create([
+            'team_id' => $this->team->id,
+            'status' => InvoiceStatus::Void,
+        ]);
+
+        foreach (['admin.tenants.invoices.mark-paid', 'admin.tenants.invoices.void'] as $route) {
+            $this->actingAs($admin)->post(route($route, [
+                'team' => $this->team->slug,
+                'invoice' => $invoice->id,
+            ]))->assertStatus(422);
+        }
+
+        $invoice->refresh();
+        $this->assertSame(InvoiceStatus::Void, $invoice->status);
+        $this->assertNull($invoice->paid_at);
+    }
+
+    public function test_receipt_is_rejected_on_void_or_running_draft_invoice(): void
+    {
+        Storage::fake('rustfs');
+
+        $void = InvoiceSnapshot::factory()->create([
+            'team_id' => $this->team->id,
+            'status' => InvoiceStatus::Void,
+        ]);
+        $runningDraft = InvoiceSnapshot::factory()->create([
+            'team_id' => $this->team->id,
+            'status' => InvoiceStatus::Draft,
+            'period_start' => now()->startOfMonth()->toDateString(),
+            'period_end' => now()->endOfMonth()->toDateString(),
+        ]);
+
+        foreach ([$void, $runningDraft] as $invoice) {
+            $this->actingAs($this->user)->post(
+                route('billing.invoices.receipt', [
+                    'current_team' => $this->team->slug,
+                    'invoice' => $invoice->id,
+                ]),
+                ['receipt' => UploadedFile::fake()->create('t.pdf', 10, 'application/pdf')],
+            )->assertStatus(422);
+
+            $this->assertNull($invoice->refresh()->payment_receipt_file_object_id);
+        }
+    }
+
+    public function test_receipt_is_accepted_on_draft_of_a_closed_period(): void
+    {
+        Storage::fake('rustfs');
+
+        $invoice = InvoiceSnapshot::factory()->create([
+            'team_id' => $this->team->id,
+            'status' => InvoiceStatus::Draft,
+            'period_start' => now()->subMonth()->startOfMonth()->toDateString(),
+            'period_end' => now()->subMonth()->endOfMonth()->toDateString(),
+        ]);
+
+        $this->actingAs($this->user)->post(
+            route('billing.invoices.receipt', [
+                'current_team' => $this->team->slug,
+                'invoice' => $invoice->id,
+            ]),
+            ['receipt' => UploadedFile::fake()->create('t.pdf', 10, 'application/pdf')],
+        )->assertCreated();
+    }
+
     public function test_regular_user_cannot_use_admin_invoice_actions(): void
     {
         $invoice = InvoiceSnapshot::factory()->create(['team_id' => $this->team->id]);

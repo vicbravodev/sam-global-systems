@@ -1,20 +1,41 @@
 /**
- * Formatos regionales centralizados (es). Usar SIEMPRE estos helpers en vez
- * de toLocaleString/Intl dispersos para que toda la superficie formatee
- * fechas, números y moneda igual.
+ * Formatos regionales centralizados (es-MX). Usar SIEMPRE estos helpers en
+ * vez de toLocaleString/Intl dispersos para que toda la superficie formatee
+ * fechas, números y moneda igual: 1,234.5 · 12.5 % · 9 jun 2026.
  */
 
-export const APP_LOCALE = 'es';
+export const APP_LOCALE = 'es-MX';
 
 /** Moneda por defecto del producto (billing local por transferencia). */
 export const DEFAULT_CURRENCY = 'MXN';
 
-/** 1 234,5 — número con separador de miles y decimales opcionales. */
+/** 1,234.5 — número con separador de miles y decimales opcionales. */
 export function formatNumber(
     value: number,
     options?: Intl.NumberFormatOptions,
 ): string {
     return value.toLocaleString(APP_LOCALE, options);
+}
+
+/** Número compacto para contadores grandes: 223.3 mil, 1.2 M. */
+export function formatCompact(value: number): string {
+    return value.toLocaleString(APP_LOCALE, {
+        notation: 'compact',
+        maximumFractionDigits: 1,
+    });
+}
+
+/**
+ * Porcentaje. `value` es una proporción (0..1) salvo que `alreadyPercent`
+ * indique que ya viene en escala 0..100: formatPercent(0.944) → "94.4 %".
+ */
+export function formatPercent(
+    value: number,
+    { alreadyPercent = false, digits = 1 } = {},
+): string {
+    const pct = alreadyPercent ? value : value * 100;
+
+    return `${pct.toLocaleString(APP_LOCALE, { maximumFractionDigits: digits })} %`;
 }
 
 /** Importe monetario: "1,234.50 MXN". La moneda viene del backend si existe. */
@@ -25,7 +46,32 @@ export function formatCurrency(
     return `${value.toLocaleString(APP_LOCALE, {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
-    })} ${currency ?? DEFAULT_CURRENCY}`.trim();
+    })} ${(currency ?? DEFAULT_CURRENCY).toUpperCase()}`.trim();
+}
+
+const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/**
+ * Convierte a Date. Las fechas sin hora ("2026-06-30") se interpretan como
+ * día de calendario local: `new Date('2026-06-30')` las tomaría como
+ * medianoche UTC y en México se mostrarían un día antes.
+ */
+export function toDate(value: string | Date): Date {
+    if (value instanceof Date) {
+        return value;
+    }
+
+    const dateOnly = DATE_ONLY.exec(value);
+
+    if (dateOnly) {
+        return new Date(
+            Number(dateOnly[1]),
+            Number(dateOnly[2]) - 1,
+            Number(dateOnly[3]),
+        );
+    }
+
+    return new Date(value);
 }
 
 /** Fecha corta: "9 jun 2026". */
@@ -34,7 +80,7 @@ export function formatDate(iso: string | Date | null | undefined): string {
         return '—';
     }
 
-    const date = typeof iso === 'string' ? new Date(iso) : iso;
+    const date = toDate(iso);
 
     if (Number.isNaN(date.getTime())) {
         return '—';
@@ -53,7 +99,7 @@ export function formatDateTime(iso: string | Date | null | undefined): string {
         return '—';
     }
 
-    const date = typeof iso === 'string' ? new Date(iso) : iso;
+    const date = toDate(iso);
 
     if (Number.isNaN(date.getTime())) {
         return '—';

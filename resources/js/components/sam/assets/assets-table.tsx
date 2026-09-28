@@ -10,6 +10,7 @@ import {
     TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { formatNumber } from '@/lib/format';
+import { assetTypeLabel } from '@/lib/labels';
 import { relativeLabel } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import type { AssetRow } from '@/types/assets';
@@ -170,7 +171,16 @@ const COLUMNS: DataTableColumn<AssetRow>[] = [
                             )}
                         </span>
                         <span className="truncate text-3xs text-fg-3">
-                            {[asset.code, title, asset.type?.name]
+                            {[
+                                asset.code,
+                                title,
+                                asset.type
+                                    ? assetTypeLabel(
+                                          asset.type.code,
+                                          asset.type.name,
+                                      )
+                                    : null,
+                            ]
                                 .filter(Boolean)
                                 .join(' · ') || '—'}
                         </span>

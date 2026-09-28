@@ -28,6 +28,7 @@ import type {
     IncidentMediaRequestSummary,
     IncidentMediaRetrieval,
 } from '@/types/sam';
+import { useIncidentActions } from './incident-actions-context';
 import { mediaResultLabel } from './media-verdict';
 
 const PENDING_REQUEST_STATUSES = ['pending', 'sent', 'processing'];
@@ -156,6 +157,7 @@ export function MediaStrip({
             }
         ).currentTeam?.slug ?? null;
 
+    const { can } = useIncidentActions();
     const [openIndex, setOpenIndex] = useState<number | null>(null);
     const [requesting, setRequesting] = useState(false);
 
@@ -246,7 +248,7 @@ export function MediaStrip({
                     >
                         Video del dispositivo expirado
                     </span>
-                ) : (
+                ) : can.requestMedia ? (
                     <Button
                         size="sm"
                         variant="outline"
@@ -256,7 +258,7 @@ export function MediaStrip({
                         <Camera size={12} />
                         Solicitar media
                     </Button>
-                )}
+                ) : null}
             </div>
 
             {media.length === 0 ? (

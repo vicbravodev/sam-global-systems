@@ -28,7 +28,7 @@ import {
 import { cn } from '@/lib/utils';
 import { dashboard } from '@/routes';
 import { index as adminTenantsIndex } from '@/routes/admin/tenants';
-import type { NavBadges } from '@/types/sam';
+import type { NavBadges, NavPermissions } from '@/types/sam';
 
 interface NavItemConfig {
     label: string;
@@ -36,6 +36,8 @@ interface NavItemConfig {
     href: string;
     badge?: keyof NavBadges;
     pulseWhenInactive?: boolean;
+    /** Permiso de sección requerido; sin él la entrada no se muestra. */
+    can?: keyof NavPermissions;
 }
 
 interface NavGroup {
@@ -129,6 +131,7 @@ export function OpsSidebar({ navBadges, mobile = false }: OpsSidebarProps) {
     const teamSlug = currentTeam?.slug ?? '';
     const isSuperAdmin = page.props.auth?.user?.global_role === 'super_admin';
     const copilotEnabled = Boolean(page.props.copilot?.enabled);
+    const nav = page.props.nav;
 
     const logoInitials = teamName
         .split(' ')
@@ -151,6 +154,7 @@ export function OpsSidebar({ navBadges, mobile = false }: OpsSidebarProps) {
                     },
                     {
                         label: 'Incidentes',
+                        can: 'incidents',
                         icon: Inbox,
                         href: `/${teamSlug}/incidents`,
                         badge: 'inbox',
@@ -158,6 +162,7 @@ export function OpsSidebar({ navBadges, mobile = false }: OpsSidebarProps) {
                     },
                     {
                         label: 'Eventos',
+                        can: 'events',
                         icon: History,
                         href: `/${teamSlug}/events`,
                     },
@@ -178,6 +183,7 @@ export function OpsSidebar({ navBadges, mobile = false }: OpsSidebarProps) {
                     },
                     {
                         label: 'Conductores',
+                        can: 'drivers',
                         icon: Users,
                         href: `/${teamSlug}/drivers`,
                     },
@@ -199,16 +205,19 @@ export function OpsSidebar({ navBadges, mobile = false }: OpsSidebarProps) {
                         : []),
                     {
                         label: 'Reglas',
+                        can: 'rules',
                         icon: Workflow,
                         href: `/${teamSlug}/rules`,
                     },
                     {
                         label: 'Automatizaciones',
+                        can: 'automation',
                         icon: Radar,
                         href: `/${teamSlug}/automation`,
                     },
                     {
                         label: 'Analítica',
+                        can: 'analytics',
                         icon: BarChart3,
                         href: `/${teamSlug}/analytics`,
                     },
@@ -219,21 +228,25 @@ export function OpsSidebar({ navBadges, mobile = false }: OpsSidebarProps) {
                 items: [
                     {
                         label: 'Integraciones',
+                        can: 'integrations',
                         icon: Plug,
                         href: `/${teamSlug}/integrations`,
                     },
                     {
                         label: 'Bandeja de notificaciones',
+                        can: 'notifications',
                         icon: Bell,
                         href: `/${teamSlug}/notifications`,
                     },
                     {
                         label: 'Auditoría',
+                        can: 'audit',
                         icon: FileClock,
                         href: `/${teamSlug}/audit`,
                     },
                     {
                         label: 'Facturación',
+                        can: 'billing',
                         icon: Receipt,
                         href: `/${teamSlug}/billing`,
                     },
@@ -243,7 +256,11 @@ export function OpsSidebar({ navBadges, mobile = false }: OpsSidebarProps) {
                         // sueltas y solapadas.
                         label: 'Ajustes',
                         icon: Settings,
-                        href: `/${teamSlug}/settings/tenant-config`,
+                        // Sin permiso de configuración del tenant, Ajustes abre
+                        // la cuenta personal (siempre accesible).
+                        href: nav?.tenantConfig
+                            ? `/${teamSlug}/settings/tenant-config`
+                            : '/settings/profile',
                     },
                 ],
             },
@@ -263,8 +280,18 @@ export function OpsSidebar({ navBadges, mobile = false }: OpsSidebarProps) {
             });
         }
 
-        return groups;
-    }, [dashboardHref, teamSlug, isSuperAdmin, copilotEnabled]);
+        // Solo las secciones que el rol puede abrir: evita enlaces a páginas
+        // que responden 403.
+        return groups
+            .map((group) => ({
+                ...group,
+                items: group.items.filter(
+                    (item) =>
+                        item.can === undefined || nav?.[item.can] === true,
+                ),
+            }))
+            .filter((group) => group.items.length > 0);
+    }, [dashboardHref, teamSlug, isSuperAdmin, copilotEnabled, nav]);
 
     // Un único ítem activo: entre todos los hrefs de nav, el candidato cuyo
     // segmento de ruta coincide (path === href o path.startsWith(href + '/'))

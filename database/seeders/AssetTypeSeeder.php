@@ -13,25 +13,25 @@ class AssetTypeSeeder extends Seeder
     private const ASSET_TYPES = [
         [
             'code' => 'vehicle',
-            'name' => 'Vehicle',
+            'name' => 'Vehículo',
             'category' => 'vehicle',
             'capabilities_json' => ['gps', 'diagnostics', 'fuel', 'speed', 'ignition'],
         ],
         [
             'code' => 'trailer',
-            'name' => 'Trailer',
+            'name' => 'Remolque',
             'category' => 'trailer',
             'capabilities_json' => ['gps', 'temperature', 'door_sensor'],
         ],
         [
             'code' => 'camera',
-            'name' => 'Camera',
+            'name' => 'Cámara',
             'category' => 'camera',
             'capabilities_json' => ['video', 'motion_detection', 'night_vision'],
         ],
         [
             'code' => 'gps_device',
-            'name' => 'GPS Device',
+            'name' => 'Dispositivo GPS',
             'category' => 'gps_device',
             'capabilities_json' => ['gps', 'geofencing', 'battery'],
         ],

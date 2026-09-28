@@ -1,5 +1,5 @@
 import type { Auth } from '@/types/auth';
-import type { NavBadges } from '@/types/sam';
+import type { NavBadges, NavPermissions } from '@/types/sam';
 import type { AdminBadges, Impersonation, Team } from '@/types/teams';
 
 declare module '@inertiajs/core' {
@@ -13,6 +13,7 @@ declare module '@inertiajs/core' {
             impersonation: Impersonation | null;
             adminBadges: AdminBadges | null;
             navBadges: NavBadges | null;
+            nav: NavPermissions | null;
             copilot: { enabled: boolean; canViewUsage: boolean } | null;
             [key: string]: unknown;
         };

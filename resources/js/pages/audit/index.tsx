@@ -24,9 +24,12 @@ const ALL_OPTION = '__all__';
 interface AuditLogRow {
     id: number;
     action: string;
+    actionLabel: string;
     category: string | null;
+    categoryLabel: string | null;
     actorType: string | null;
     actorId: number | null;
+    actorLabel: string | null;
     entityType: string | null;
     entityId: number | null;
     entityLabel: string | null;
@@ -48,6 +51,12 @@ interface AuditFilters {
     actor_type: string | null;
     from: string | null;
     to: string | null;
+    system: boolean;
+}
+
+interface FilterOption {
+    value: string;
+    label: string;
 }
 
 interface AuditPageProps {
@@ -60,8 +69,8 @@ interface AuditPageProps {
     };
     filters: AuditFilters;
     filterOptions: {
-        categories: string[];
-        actorTypes: string[];
+        categories: FilterOption[];
+        actorTypes: FilterOption[];
     };
     events: DomainEventRow[];
 }
@@ -79,6 +88,7 @@ const EMPTY_FILTERS: AuditFilters = {
     actor_type: null,
     from: null,
     to: null,
+    system: false,
 };
 
 const LOG_COLUMNS: DataTableColumn<AuditLogRow>[] = [
@@ -98,7 +108,9 @@ const LOG_COLUMNS: DataTableColumn<AuditLogRow>[] = [
         header: 'Acción',
         sortValue: (log) => log.action,
         cell: (log) => (
-            <span className="font-mono text-2xs text-fg-1">{log.action}</span>
+            <span className="text-xs text-fg-1" title={log.action}>
+                {log.actionLabel}
+            </span>
         ),
     },
     {
@@ -107,19 +119,16 @@ const LOG_COLUMNS: DataTableColumn<AuditLogRow>[] = [
         sortValue: (log) => log.category,
         cell: (log) => (
             <Badge variant="outline" className="text-3xs text-fg-3">
-                {log.category ?? '—'}
+                {log.categoryLabel ?? '—'}
             </Badge>
         ),
     },
     {
         key: 'actor',
         header: 'Actor',
-        sortValue: (log) => log.actorType,
+        sortValue: (log) => log.actorLabel,
         cell: (log) => (
-            <span className="text-xs text-fg-2">
-                {log.actorType ?? '—'}
-                {log.actorId !== null && ` #${log.actorId}`}
-            </span>
+            <span className="text-xs text-fg-2">{log.actorLabel ?? '—'}</span>
         ),
     },
     {
@@ -199,6 +208,7 @@ export default function AuditIndex() {
                 actor_type: next.actor_type ?? undefined,
                 from: next.from ?? undefined,
                 to: next.to ?? undefined,
+                system: next.system ? 1 : undefined,
                 page: undefined,
             },
         });
@@ -231,7 +241,9 @@ export default function AuditIndex() {
         router.reload({ only: ['logs', 'pagination'], data: { page: target } });
     }, []);
 
-    const hasActive = Object.values(filters).some((value) => value !== null);
+    const hasActive = (
+        ['q', 'category', 'actor_type', 'from', 'to'] as const
+    ).some((key) => filters[key] !== null);
 
     return (
         <>
@@ -298,10 +310,10 @@ export default function AuditIndex() {
                                     {filterOptions.categories.map(
                                         (category) => (
                                             <SelectItem
-                                                key={category}
-                                                value={category}
+                                                key={category.value}
+                                                value={category.value}
                                             >
-                                                {category}
+                                                {category.label}
                                             </SelectItem>
                                         ),
                                     )}
@@ -328,8 +340,11 @@ export default function AuditIndex() {
                                         Actor: todos
                                     </SelectItem>
                                     {filterOptions.actorTypes.map((actor) => (
-                                        <SelectItem key={actor} value={actor}>
-                                            {actor}
+                                        <SelectItem
+                                            key={actor.value}
+                                            value={actor.value}
+                                        >
+                                            {actor.label}
                                         </SelectItem>
                                     ))}
                                 </SelectContent>
@@ -364,12 +379,29 @@ export default function AuditIndex() {
                                 }
                                 className="rounded-md border border-border bg-surface-1 px-2 py-1 text-xs text-fg-2"
                             />
+                            <label className="flex cursor-pointer items-center gap-1.5 text-xs text-fg-2">
+                                <input
+                                    type="checkbox"
+                                    checked={filters.system}
+                                    onChange={(event) =>
+                                        applyFilters({
+                                            ...filters,
+                                            system: event.target.checked,
+                                        })
+                                    }
+                                    className="accent-primary"
+                                />
+                                Mostrar actividad automática del sistema
+                            </label>
                             {hasActive && (
                                 <button
                                     type="button"
                                     onClick={() => {
                                         setSearch('');
-                                        applyFilters(EMPTY_FILTERS);
+                                        applyFilters({
+                                            ...EMPTY_FILTERS,
+                                            system: filters.system,
+                                        });
                                     }}
                                     className="flex items-center gap-1 text-xs text-fg-3 hover:text-fg-1"
                                 >

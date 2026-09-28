@@ -14,7 +14,7 @@ class ContextMeterSeeder extends Seeder
         UsageMeter::query()->updateOrCreate(
             ['code' => 'media_requests'],
             [
-                'name' => 'Media Requests',
+                'name' => 'Solicitudes de video',
                 'description' => 'Number of deferred camera media retrievals requested from providers.',
                 'unit' => 'count',
                 'aggregation_type' => AggregationType::Sum,

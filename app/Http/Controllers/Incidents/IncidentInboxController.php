@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Incidents;
 
 use App\Contracts\ObjectStorage;
+use App\Domains\Access\Actions\AuthorizeAction;
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\AI\Models\AIMediaAssessment;
 use App\Domains\Context\Enums\IncidentRelationType;
@@ -101,7 +102,30 @@ class IncidentInboxController extends Controller
             'filterOptions' => fn () => $this->filterOptions($current_team),
             'members' => fn () => $this->members($current_team),
             'reclassifyOptions' => fn () => $this->reclassifyOptions(),
+            'can' => $this->abilities($request->user(), $current_team),
         ]);
+    }
+
+    /**
+     * Acciones que el rol del usuario permite sobre los incidentes del tenant,
+     * para que la UI oculte o deshabilite lo que el servidor rechazaría con
+     * 403. Son las mismas claves de permiso que chequean IncidentPolicy,
+     * EventMediaContextPolicy::request y AIEvaluationPolicy::reevaluate; el
+     * estado del incidente (terminal o no) lo sigue resolviendo la UI.
+     *
+     * @return array{manage: bool, resolve: bool, close: bool, requestMedia: bool, reevaluate: bool}
+     */
+    private function abilities(User $user, Team $team): array
+    {
+        $authorize = app(AuthorizeAction::class);
+
+        return [
+            'manage' => $authorize->execute($user, 'incidents.manage', $team),
+            'resolve' => $authorize->execute($user, 'incidents.resolve', $team),
+            'close' => $authorize->execute($user, 'incidents.close', $team),
+            'requestMedia' => $authorize->execute($user, 'context.view', $team),
+            'reevaluate' => $authorize->execute($user, 'ai.analysis.execute', $team),
+        ];
     }
 
     /**
@@ -322,6 +346,7 @@ class IncidentInboxController extends Controller
             'communications' => fn () => $this->communications($request, $incident),
             'members' => fn () => $this->members($current_team),
             'reclassifyOptions' => fn () => $this->reclassifyOptions(),
+            'can' => $this->abilities($request->user(), $current_team),
         ]);
     }
 

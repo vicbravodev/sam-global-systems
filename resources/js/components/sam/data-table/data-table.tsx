@@ -378,25 +378,32 @@ export function DataTable<T>({
                                           Seleccionar
                                       </label>
                                   )}
-                                  {columns.map((column) => (
-                                      <div
-                                          key={column.key}
-                                          className="flex items-start justify-between gap-3"
-                                      >
-                                          <span className="shrink-0 text-2xs tracking-caps text-fg-3 uppercase">
-                                              {column.header}
-                                          </span>
-                                          <span
-                                              className={cn(
-                                                  'min-w-0 text-right text-sm',
-                                                  column.numeric &&
-                                                      'font-mono tabular-nums',
-                                              )}
+                                  {/* Etiquetas en una columna de ancho fijo y
+                                      valores alineados a la izquierda en la
+                                      segunda: todas las filas de la tarjeta
+                                      arrancan en la misma x, sea cual sea el
+                                      ancho de cada valor. */}
+                                  <dl className="grid grid-cols-[7.5rem_minmax(0,1fr)] items-baseline gap-x-3 gap-y-1.5">
+                                      {columns.map((column) => (
+                                          <div
+                                              key={column.key}
+                                              className="contents"
                                           >
-                                              {column.cell(row)}
-                                          </span>
-                                      </div>
-                                  ))}
+                                              <dt className="truncate text-2xs tracking-caps text-fg-3 uppercase">
+                                                  {column.header}
+                                              </dt>
+                                              <dd
+                                                  className={cn(
+                                                      'flex min-w-0 flex-wrap items-center gap-1 text-left text-sm',
+                                                      column.numeric &&
+                                                          'font-mono tabular-nums',
+                                                  )}
+                                              >
+                                                  {column.cell(row)}
+                                              </dd>
+                                          </div>
+                                      ))}
+                                  </dl>
                               </div>
                           );
                       })}

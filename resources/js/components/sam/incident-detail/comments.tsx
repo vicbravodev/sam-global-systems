@@ -127,6 +127,9 @@ function CommentComposer() {
 // ---- CommentsSection ----
 
 export function CommentsSection({ incident }: { incident: IncidentDetail }) {
+    // Comentar exige incidents.manage (IncidentPolicy::comment).
+    const { can } = useIncidentActions();
+
     return (
         <section>
             <h3 className="mb-3 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
@@ -162,7 +165,13 @@ export function CommentsSection({ incident }: { incident: IncidentDetail }) {
                 </div>
             )}
 
-            <CommentComposer />
+            {can.manage ? (
+                <CommentComposer />
+            ) : (
+                incident.comments.length === 0 && (
+                    <p className="text-xs text-fg-3">Sin comentarios.</p>
+                )
+            )}
         </section>
     );
 }

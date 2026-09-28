@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { SeverityBadge } from '@/components/sam';
 import { formatDateTime } from '@/lib/format';
+import { eventTypeLabel } from '@/lib/labels';
 import { formatClock } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import type { IncidentDetail } from '@/types/sam';
@@ -108,9 +109,7 @@ export function EventFacts({ incident }: { incident: IncidentDetail }) {
     if (!EMPTY(incident.eventType)) {
         rows.push({
             key: 'Tipo de evento',
-            value: (
-                <span className="font-mono text-2xs">{incident.eventType}</span>
-            ),
+            value: eventTypeLabel(incident.eventType),
         });
     }
 
@@ -331,7 +330,7 @@ export function LinkedEvents({ incident }: { incident: IncidentDetail }) {
                             {formatClock(link.tsIso)}
                         </span>
                         <span className="font-mono text-2xs text-fg-1">
-                            #{link.eventId} {link.eventType}
+                            #{link.eventId} {eventTypeLabel(link.eventType)}
                         </span>
                         {link.severity && (
                             <SeverityBadge level={link.severity} />

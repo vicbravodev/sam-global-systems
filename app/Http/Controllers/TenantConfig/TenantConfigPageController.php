@@ -4,9 +4,11 @@ namespace App\Http\Controllers\TenantConfig;
 
 use App\Contracts\ObjectStorage;
 use App\Domains\Automation\Support\TriggerConditionCatalog;
-use App\Domains\Notifications\Enums\ChannelType;
+use App\Domains\Notifications\Models\Notification;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Models\TenantChannelToggle;
+use App\Domains\Notifications\Support\NotificationTypeLabels;
+use App\Domains\Notifications\Support\ProvidedChannels;
 use App\Domains\Tenancy\Models\TenantBranding;
 use App\Domains\TenantConfig\Actions\ApplyDefaultTenantConfig;
 use App\Domains\TenantConfig\Actions\ResolveTenantAIProfile;
@@ -197,9 +199,11 @@ class TenantConfigPageController extends Controller
                     ])
                     ->all();
             },
-            'channelTypes' => fn () => array_map(
-                fn (ChannelType $type) => ['value' => $type->value, 'label' => $type->label()],
-                ChannelType::cases(),
+            // Sólo los canales que SAM entrega: Push/Slack/Webhook no tienen
+            // canal de plataforma y no deben ofrecerse en políticas ni escalación.
+            'channelTypes' => fn () => app(ProvidedChannels::class)->options(),
+            'notificationTypeOptions' => fn () => app(NotificationTypeLabels::class)->options(
+                $this->notificationTypes($current_team),
             ),
             'branding' => function () use ($current_team): array {
                 $branding = TenantBranding::query()
@@ -228,5 +232,38 @@ class TenantConfigPageController extends Controller
             'canManageChannels' => fn () => (bool) request()->user()?->can('toggleGlobal', NotificationChannel::class),
             'canManage' => fn () => (bool) request()->user()?->can('update', TenantSetting::class),
         ]);
+    }
+
+    /**
+     * Tipos de notificación seleccionables en una política: el catálogo base,
+     * los que el tenant ya emitió y los que sus políticas ya usan.
+     *
+     * @return array<int, string>
+     */
+    private function notificationTypes(Team $team): array
+    {
+        $observed = Notification::query()
+            ->where('team_id', $team->id)
+            ->distinct()
+            ->pluck('notification_type')
+            ->all();
+
+        $configured = TenantNotificationPolicy::query()
+            ->where('team_id', $team->id)
+            ->whereNotNull('notification_type')
+            ->pluck('notification_type')
+            ->all();
+
+        $types = array_values(array_unique(array_filter([
+            'incident.created',
+            'incident.sla_breached',
+            'incident.assigned.on_call',
+            ...$observed,
+            ...$configured,
+        ], fn ($type): bool => is_string($type) && $type !== '')));
+
+        sort($types);
+
+        return $types;
     }
 }

@@ -124,6 +124,7 @@ function ClaimedBadge({ assignee }: { assignee: MockAssignee }) {
  * sus iniciales — porque soltarlo es potestad de quien lo tomó. Un
  * incidente terminal nunca admite toma: si alguien lo tuvo tomado se
  * conserva la insignia informativa, pero el botón Tomar/Soltar desaparece.
+ * Sin `onClaimToggle` (rol sin incidents.manage) tampoco hay botón.
  */
 function ClaimControl({
     incident,
@@ -133,7 +134,7 @@ function ClaimControl({
 }: {
     incident: MockIncident;
     currentUserId: number | null;
-    onClaimToggle: () => void;
+    onClaimToggle?: () => void;
     busy: boolean;
 }) {
     const claimedByMe =
@@ -147,6 +148,12 @@ function ClaimControl({
 
     if (incident.claimedBy !== null && !claimedByMe) {
         return <ClaimedBadge assignee={incident.claimedBy} />;
+    }
+
+    if (onClaimToggle === undefined) {
+        return incident.claimedBy ? (
+            <ClaimedBadge assignee={incident.claimedBy} />
+        ) : null;
     }
 
     return (
@@ -186,7 +193,8 @@ interface IncidentRowProps {
     claimBusy: boolean;
     onClick: () => void;
     onToggle: () => void;
-    onClaimToggle: () => void;
+    /** Ausente cuando el rol no puede tomar incidentes. */
+    onClaimToggle?: () => void;
 }
 
 const DENSITY_H: Record<InboxDensity, string> = {
@@ -434,7 +442,8 @@ interface IncidentCardProps {
     claimBusy: boolean;
     onClick: () => void;
     onToggle: () => void;
-    onClaimToggle: () => void;
+    /** Ausente cuando el rol no puede tomar incidentes. */
+    onClaimToggle?: () => void;
 }
 
 export function IncidentCard({

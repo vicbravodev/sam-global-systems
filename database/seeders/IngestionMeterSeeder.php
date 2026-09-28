@@ -14,7 +14,7 @@ class IngestionMeterSeeder extends Seeder
         UsageMeter::query()->updateOrCreate(
             ['code' => 'ingested_events'],
             [
-                'name' => 'Ingested Events',
+                'name' => 'Eventos recibidos',
                 'description' => 'Number of provider events ingested via polling feeds.',
                 'unit' => 'count',
                 'aggregation_type' => AggregationType::Sum,

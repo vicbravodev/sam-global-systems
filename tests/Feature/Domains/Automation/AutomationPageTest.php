@@ -10,12 +10,14 @@ use App\Domains\Automation\Enums\ActionType;
 use App\Domains\Automation\Enums\WorkflowTriggerType;
 use App\Domains\Automation\Models\ActionExecution;
 use App\Domains\Automation\Models\AutomationWorkflow;
+use App\Domains\Automation\Queries\WorkflowRunStats;
 use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Models\User;
 use Database\Seeders\AccessSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
+use Tests\Concerns\AssertsTenantIsolation;
 use Tests\TestCase;
 
 /**
@@ -24,6 +26,7 @@ use Tests\TestCase;
  */
 class AutomationPageTest extends TestCase
 {
+    use AssertsTenantIsolation;
     use RefreshDatabase;
 
     private User $user;
@@ -73,6 +76,9 @@ class AutomationPageTest extends TestCase
                 ->has('workflows.0.steps', 1)
                 ->has('executions', 1)
                 ->where('executions.0.status', 'failed')
+                ->where('executions.0.statusLabel', 'Fallida')
+                ->where('executions.0.targetLabel', 'Rol: Administrador del tenant')
+                ->where('workflows.0.stepTargets', ['Rol: Administrador del tenant'])
                 ->has('options.actionTypes')
                 ->has('options.triggerTypes')
                 ->where('options.actionTypes.0', ['value' => 'send_email', 'label' => 'Enviar correo'])
@@ -293,5 +299,92 @@ class AutomationPageTest extends TestCase
         ]);
 
         return [$user, $team];
+    }
+
+    public function test_steps_show_human_target_labels(): void
+    {
+        $operator = User::factory()->create(['name' => 'Ana Operadora']);
+        $this->team->members()->attach($operator, ['role' => TeamRole::Member->value]);
+        $outsider = User::factory()->create(['name' => 'Persona Ajena']);
+
+        AutomationWorkflow::factory()
+            ->withSteps([
+                ['order' => 1, 'action_type' => 'send_sms', 'target_type' => 'role', 'target_reference' => 'admin'],
+                ['order' => 2, 'action_type' => 'assign_incident', 'target_type' => 'user', 'target_reference' => (string) $operator->id],
+                ['order' => 3, 'action_type' => 'create_ticket', 'target_type' => 'external', 'target_reference' => 'mesa-de-ayuda'],
+                // Un id de usuario de otro tenant nunca revela su nombre.
+                ['order' => 4, 'action_type' => 'send_email', 'target_type' => 'user', 'target_reference' => (string) $outsider->id, 'delay_seconds' => 300],
+            ])
+            ->create(['team_id' => $this->team->id]);
+
+        $this->actingAs($this->user)
+            ->get(route('automation.show', ['current_team' => $this->team->slug]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('workflows.0.stepTargets', [
+                    'Rol: Administrador',
+                    'Ana Operadora',
+                    'Contacto externo: Mesa de ayuda',
+                    'Usuario que ya no es miembro',
+                ]));
+    }
+
+    public function test_page_exposes_last_run_stats_per_workflow(): void
+    {
+        $workflow = AutomationWorkflow::factory()->create(['team_id' => $this->team->id]);
+        $idle = AutomationWorkflow::factory()->create(['team_id' => $this->team->id]);
+
+        // Fuera de la ventana de 30 días: no entra en los conteos.
+        ActionExecution::factory()->create([
+            'team_id' => $this->team->id,
+            'automation_workflow_id' => $workflow->id,
+            'status' => ActionExecutionStatus::Failed,
+            'created_at' => now()->subDays(45),
+        ]);
+        ActionExecution::factory()->create([
+            'team_id' => $this->team->id,
+            'automation_workflow_id' => $workflow->id,
+            'status' => ActionExecutionStatus::Failed,
+            'created_at' => now()->subDays(2),
+        ]);
+        ActionExecution::factory()->create([
+            'team_id' => $this->team->id,
+            'automation_workflow_id' => $workflow->id,
+            'status' => ActionExecutionStatus::Completed,
+            'executed_at' => now()->subHour(),
+        ]);
+
+        $this->actingAs($this->user)
+            ->get(route('automation.show', ['current_team' => $this->team->slug]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where("runStats.{$workflow->id}.lastStatus", 'completed')
+                ->where("runStats.{$workflow->id}.runs30d", 2)
+                ->where("runStats.{$workflow->id}.failed30d", 1)
+                ->missing("runStats.{$idle->id}"));
+    }
+
+    public function test_run_stats_do_not_leak_other_tenant_executions(): void
+    {
+        $otherTeam = User::factory()->create()->currentTeam;
+        $otherWorkflow = AutomationWorkflow::factory()->create(['team_id' => $otherTeam->id]);
+        ActionExecution::factory()->count(3)->create([
+            'team_id' => $otherTeam->id,
+            'automation_workflow_id' => $otherWorkflow->id,
+        ]);
+
+        $workflow = AutomationWorkflow::factory()->create(['team_id' => $this->team->id]);
+        ActionExecution::factory()->create([
+            'team_id' => $this->team->id,
+            'automation_workflow_id' => $workflow->id,
+        ]);
+
+        $stats = $this->assertNoTenantLeak(
+            $this->team,
+            fn () => app(WorkflowRunStats::class)->forTeam($this->team->id),
+        );
+
+        $this->assertSame([$workflow->id], array_keys($stats));
+        $this->assertSame(1, $stats[$workflow->id]['runs30d']);
     }
 }

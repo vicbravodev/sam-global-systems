@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import InputError from '@/components/input-error';
 import { ConditionBuilder } from '@/components/sam/condition-builder';
 import type { ConditionFieldDef } from '@/components/sam/condition-builder';
+import { ConfirmDialog } from '@/components/sam/confirm-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,7 +26,8 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { formatDateTime } from '@/lib/format';
+import { formatDateTime, formatNumber } from '@/lib/format';
+import { channelLabel, humanizeCode } from '@/lib/labels';
 import {
     postJson,
     putJson,
@@ -129,7 +131,9 @@ interface TenantConfigProps {
     versions: VersionRow[];
     channels: ChannelRow[];
     branding: BrandingProp;
+    /** Canales que SAM entrega (ProvidedChannels): sólo éstos se ofrecen. */
     channelTypes: { value: string; label: string }[];
+    notificationTypeOptions: { value: string; label: string }[];
     canManageChannels: boolean;
     canManage: boolean;
 }
@@ -147,16 +151,182 @@ const TABS = [
 
 type TabKey = (typeof TABS)[number]['key'];
 
-const CHANNEL_OPTIONS = [
-    'email',
-    'web',
-    'sms',
-    'whatsapp',
-    'voice',
-    'push',
-    'slack',
-    'webhook',
-];
+/** Canales de los que depende el aviso de un botón de pánico. */
+const PANIC_CRITICAL_CHANNELS = new Set(['sms', 'voice']);
+
+const ESCALATION_TYPE_LABELS: Record<string, string> = {
+    incident_critical: 'Incidentes críticos',
+    incident_high: 'Incidentes de prioridad alta',
+    sla_breach: 'SLA vencido',
+    panic: 'Botón de pánico',
+};
+
+/** Filtra una lista de canales deseados a los que SAM entrega. */
+function providedOr(provided: { value: string }[], wanted: string[]): string[] {
+    const available = new Set(provided.map((channel) => channel.value));
+    const kept = wanted.filter((channel) => available.has(channel));
+
+    return kept.length > 0 ? kept : [...available].slice(0, 1);
+}
+
+const WEEKDAYS = [
+    { value: 'monday', short: 'L', label: 'Lunes' },
+    { value: 'tuesday', short: 'M', label: 'Martes' },
+    { value: 'wednesday', short: 'X', label: 'Miércoles' },
+    { value: 'thursday', short: 'J', label: 'Jueves' },
+    { value: 'friday', short: 'V', label: 'Viernes' },
+    { value: 'saturday', short: 'S', label: 'Sábado' },
+    { value: 'sunday', short: 'D', label: 'Domingo' },
+] as const;
+
+/** Guardia editable en el formulario (formato de ResolveOnCallOperator). */
+interface OnCallShiftDraft {
+    id: number;
+    userId: string;
+    days: string[];
+    start: string;
+    end: string;
+}
+
+interface OnCallDraft {
+    shifts: OnCallShiftDraft[];
+    fallbackUserId: string;
+}
+
+let onCallDraftId = 0;
+
+const ON_CALL_SHIFT_KEYS = new Set(['user_id', 'days', 'start', 'end']);
+const ON_CALL_ROOT_KEYS = new Set(['on_call', 'fallback_on_call_user_id']);
+
+/**
+ * Convierte `shift_rules_json` al formulario. Devuelve null si la estructura
+ * no es la que usa la asignación on-call ({on_call: [...], fallback...}): en
+ * ese caso se edita en JSON para no perder datos.
+ */
+function parseOnCall(rules: unknown): OnCallDraft | null {
+    if (
+        rules === null ||
+        rules === undefined ||
+        (Array.isArray(rules) && rules.length === 0)
+    ) {
+        return { shifts: [], fallbackUserId: '' };
+    }
+
+    if (typeof rules !== 'object' || Array.isArray(rules)) {
+        return null;
+    }
+
+    const record = rules as Record<string, unknown>;
+
+    if (Object.keys(record).some((key) => !ON_CALL_ROOT_KEYS.has(key))) {
+        return null;
+    }
+
+    const rawShifts = record.on_call ?? [];
+
+    if (!Array.isArray(rawShifts)) {
+        return null;
+    }
+
+    const shifts: OnCallShiftDraft[] = [];
+
+    for (const raw of rawShifts) {
+        if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+            return null;
+        }
+
+        const shift = raw as Record<string, unknown>;
+
+        if (Object.keys(shift).some((key) => !ON_CALL_SHIFT_KEYS.has(key))) {
+            return null;
+        }
+
+        shifts.push({
+            id: ++onCallDraftId,
+            userId: shift.user_id === undefined ? '' : String(shift.user_id),
+            days: Array.isArray(shift.days)
+                ? shift.days.map((day) => String(day).toLowerCase())
+                : [],
+            start: typeof shift.start === 'string' ? shift.start : '',
+            end: typeof shift.end === 'string' ? shift.end : '',
+        });
+    }
+
+    const fallback = record.fallback_on_call_user_id;
+
+    return {
+        shifts,
+        fallbackUserId:
+            fallback === undefined || fallback === null ? '' : String(fallback),
+    };
+}
+
+function serializeOnCall(draft: OnCallDraft): Record<string, unknown> {
+    const onCall = draft.shifts
+        .filter((shift) => shift.userId !== '')
+        .map((shift) => {
+            const out: Record<string, unknown> = {
+                user_id: Number(shift.userId),
+            };
+
+            if (shift.days.length > 0 && shift.days.length < 7) {
+                out.days = shift.days;
+            }
+
+            if (shift.start !== '' && shift.end !== '') {
+                out.start = shift.start;
+                out.end = shift.end;
+            }
+
+            return out;
+        });
+
+    const result: Record<string, unknown> = { on_call: onCall };
+
+    if (draft.fallbackUserId !== '') {
+        result.fallback_on_call_user_id = Number(draft.fallbackUserId);
+    }
+
+    return result;
+}
+
+/** Valor centinela del <Select> para "cualquier tipo de notificación". */
+const ANY_NOTIFICATION_TYPE = '__any__';
+
+const SETTING_GROUP_LABELS: Record<string, string> = {
+    operational: 'Operación',
+    notification: 'Notificaciones',
+    ai: 'IA',
+    escalation: 'Escalación',
+    branding: 'Marca',
+    schedule: 'Horarios',
+    compliance: 'Cumplimiento',
+};
+
+/** Valor de un ajuste para lectura: Sí/No, números es-MX, listas separadas. */
+function formatSettingValue(value: unknown): string {
+    if (value === null || value === undefined || value === '') {
+        return '—';
+    }
+
+    if (typeof value === 'boolean') {
+        return value ? 'Sí' : 'No';
+    }
+
+    if (typeof value === 'number') {
+        return formatNumber(value);
+    }
+
+    if (typeof value === 'string') {
+        return value;
+    }
+
+    if (Array.isArray(value)) {
+        return value.map((item) => formatSettingValue(item)).join(', ');
+    }
+
+    return JSON.stringify(value);
+}
 
 const MEDIA_AUTO_REQUEST_KEY = 'media.auto_request_on_critical';
 const PANIC_AUTO_CLOSE_KEY = 'panic.auto_close_on_external_resolution';
@@ -374,6 +544,15 @@ function GeneralTab({
             description:
                 'Minutos sin conexión del dispositivo con la unidad detenida antes de alertar (0 la desactiva).',
         },
+        'branding.report_footer': {
+            label: 'Pie de página de reportes',
+            description: 'Texto al final de los reportes generados.',
+        },
+        'compliance.evidence_retention_days': {
+            label: 'Retención de evidencia',
+            description:
+                'Días que se conservan videos e imágenes de los incidentes.',
+        },
         'monitoring.stop_alert_minutes': {
             label: 'Alerta de parada sospechosa',
             description:
@@ -447,9 +626,6 @@ function GeneralTab({
                                 Consume cuota de retrievals del proveedor
                                 (apagado por defecto).
                             </span>
-                            <span className="block font-mono text-3xs text-fg-3">
-                                {MEDIA_AUTO_REQUEST_KEY}
-                            </span>
                         </span>
                     </label>
 
@@ -467,16 +643,13 @@ function GeneralTab({
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="annotate">
-                                    Solo anotar (annotate)
+                                    Solo anotar en el incidente
                                 </SelectItem>
                                 <SelectItem value="close">
-                                    Cerrar incidente (close)
+                                    Cerrar el incidente
                                 </SelectItem>
                             </SelectContent>
                         </Select>
-                        <span className="block font-mono text-3xs text-fg-3">
-                            {PANIC_AUTO_CLOSE_KEY}
-                        </span>
                     </div>
 
                     <div className="flex flex-col gap-1">
@@ -496,9 +669,6 @@ function GeneralTab({
                             message={stalenessError ?? undefined}
                             className="text-xs"
                         />
-                        <span className="block font-mono text-3xs text-fg-3">
-                            {LIVE_LOCATION_KEY}
-                        </span>
                     </div>
 
                     <div className="flex flex-col gap-1">
@@ -533,9 +703,6 @@ function GeneralTab({
                             se avisan dentro de SAM: sin correo, SMS, WhatsApp
                             ni llamadas.
                         </span>
-                        <span className="block font-mono text-3xs text-fg-3">
-                            {MIN_SEVERITY_KEY}
-                        </span>
                     </div>
 
                     {canManage && (
@@ -569,10 +736,10 @@ function GeneralTab({
                             <table className="w-full min-w-[32rem] text-left text-xs">
                                 <thead className="text-2xs text-fg-3 uppercase">
                                     <tr>
-                                        <th className="py-1 pr-4">Setting</th>
+                                        <th className="py-1 pr-4">Ajuste</th>
                                         <th className="py-1 pr-4">Grupo</th>
                                         <th className="py-1 pr-4">Valor</th>
-                                        <th className="py-1">v</th>
+                                        <th className="py-1">Versión</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -584,24 +751,33 @@ function GeneralTab({
                                                 key={s.id}
                                                 className="border-t border-border/50 text-fg-2"
                                             >
-                                                <td className="py-2 pr-4">
+                                                <td
+                                                    className="py-2 pr-4"
+                                                    title={s.key}
+                                                >
                                                     <span className="block text-fg-1">
-                                                        {known?.label ?? s.key}
+                                                        {known?.label ??
+                                                            humanizeCode(
+                                                                s.key
+                                                                    .split('.')
+                                                                    .pop(),
+                                                            )}
                                                     </span>
                                                     {known && (
                                                         <span className="block text-2xs text-fg-3">
                                                             {known.description}
                                                         </span>
                                                     )}
-                                                    <span className="block font-mono text-3xs text-fg-3">
-                                                        {s.key}
-                                                    </span>
                                                 </td>
                                                 <td className="py-2 pr-4">
-                                                    {s.group}
+                                                    {SETTING_GROUP_LABELS[
+                                                        s.group ?? ''
+                                                    ] ?? humanizeCode(s.group)}
                                                 </td>
-                                                <td className="py-2 pr-4 font-mono text-2xs">
-                                                    {JSON.stringify(s.value)}
+                                                <td className="py-2 pr-4 text-2xs">
+                                                    {formatSettingValue(
+                                                        s.value,
+                                                    )}
                                                 </td>
                                                 <td className="py-2">
                                                     {s.version}
@@ -746,9 +922,13 @@ function AiTab({
 
 function NotificationsTab({
     policies,
+    channelTypes,
+    typeOptions,
     canManage,
 }: {
     policies: NotificationPolicyRow[];
+    channelTypes: { value: string; label: string }[];
+    typeOptions: { value: string; label: string }[];
     canManage: boolean;
 }) {
     const base = useTeamBase();
@@ -837,8 +1017,8 @@ function NotificationsTab({
             <CardContent className="flex flex-col gap-4">
                 {drafts.length === 0 && (
                     <p className="text-xs text-fg-3">
-                        Sin políticas: aplican los defaults del sistema (email +
-                        web; críticos añaden sms/push).
+                        Sin políticas: aplican los valores del sistema (correo +
+                        web; los críticos añaden SMS).
                     </p>
                 )}
                 {drafts.map((policy, index) => (
@@ -865,27 +1045,49 @@ function NotificationsTab({
                                 }
                                 className="w-52 font-mono text-xs"
                             />
-                            <Input
-                                value={policy.notificationType ?? ''}
-                                placeholder="notification_type (opcional)"
+                            <Select
+                                value={
+                                    policy.notificationType ??
+                                    ANY_NOTIFICATION_TYPE
+                                }
                                 disabled={!canManage}
-                                onChange={(e) =>
+                                onValueChange={(value) =>
                                     setDrafts((prev) =>
                                         prev.map((p, i) =>
                                             i === index
                                                 ? {
                                                       ...p,
                                                       notificationType:
-                                                          e.target.value === ''
+                                                          value ===
+                                                          ANY_NOTIFICATION_TYPE
                                                               ? null
-                                                              : e.target.value,
+                                                              : value,
                                                   }
                                                 : p,
                                         ),
                                     )
                                 }
-                                className="w-56 text-xs"
-                            />
+                            >
+                                <SelectTrigger
+                                    aria-label="Tipo de notificación"
+                                    className="h-9 w-72 text-xs"
+                                >
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value={ANY_NOTIFICATION_TYPE}>
+                                        Cualquier notificación
+                                    </SelectItem>
+                                    {typeOptions.map((option) => (
+                                        <SelectItem
+                                            key={option.value}
+                                            value={option.value}
+                                        >
+                                            {option.label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                             <label
                                 htmlFor={`tc-policy-active-${index}`}
                                 className="flex items-center gap-1 text-xs text-fg-2"
@@ -909,7 +1111,7 @@ function NotificationsTab({
                                         )
                                     }
                                 />
-                                activa
+                                Activa
                             </label>
                             {canManage && policy.id === 0 && (
                                 <Button
@@ -924,24 +1126,24 @@ function NotificationsTab({
                             )}
                         </div>
                         <div className="flex flex-wrap gap-3">
-                            {CHANNEL_OPTIONS.map((channel) => (
+                            {channelTypes.map((channel) => (
                                 <label
-                                    key={channel}
-                                    htmlFor={`tc-policy-${index}-channel-${channel}`}
+                                    key={channel.value}
+                                    htmlFor={`tc-policy-${index}-channel-${channel.value}`}
                                     className="flex items-center gap-1 text-xs text-fg-2"
                                 >
                                     <input
-                                        id={`tc-policy-${index}-channel-${channel}`}
+                                        id={`tc-policy-${index}-channel-${channel.value}`}
                                         type="checkbox"
                                         checked={policy.allowedChannels.includes(
-                                            channel,
+                                            channel.value,
                                         )}
                                         disabled={!canManage}
                                         onChange={() =>
-                                            toggleChannel(index, channel)
+                                            toggleChannel(index, channel.value)
                                         }
                                     />
-                                    {channel}
+                                    {channel.label}
                                 </label>
                             ))}
                         </div>
@@ -1056,12 +1258,12 @@ function EscalationTab({
                 steps: [
                     {
                         delay_minutes: 5,
-                        channels: ['sms', 'push'],
+                        channels: providedOr(channelTypes, ['sms', 'voice']),
                         recipient: 'team_lead',
                     },
                     {
                         delay_minutes: 15,
-                        channels: ['sms', 'email'],
+                        channels: providedOr(channelTypes, ['sms', 'email']),
                         recipient: 'tenant_admin',
                     },
                 ],
@@ -1430,15 +1632,20 @@ function EscalationCard({
     return (
         <Card>
             <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-sm uppercase">
-                    {config.escalationType}
+                <CardTitle
+                    className="flex items-center gap-2 text-sm"
+                    title={config.escalationType}
+                >
+                    {ESCALATION_TYPE_LABELS[
+                        config.escalationType.toLowerCase()
+                    ] ?? humanizeCode(config.escalationType)}
                     <Badge
                         variant="outline"
                         className={
                             config.isActive ? 'text-severity-low' : 'text-fg-3'
                         }
                     >
-                        {config.isActive ? 'activa' : 'inactiva'}
+                        {config.isActive ? 'Activa' : 'Inactiva'}
                     </Badge>
                 </CardTitle>
             </CardHeader>
@@ -1469,12 +1676,12 @@ function EscalationCard({
                     ) : (
                         <>
                             <p className="text-2xs text-fg-3">
-                                Estructura avanzada: estos steps usan campos que
-                                el editor visual no representa. Edítalos en
+                                Estructura avanzada: estos niveles usan campos
+                                que el editor visual no representa. Edítalos en
                                 JSON; no se perderá ningún dato.
                             </p>
                             <JsonField
-                                label="Steps (JSON)"
+                                label="Niveles (JSON)"
                                 value={raw}
                                 onChange={setRaw}
                                 disabled={!canManage}
@@ -1496,9 +1703,11 @@ function EscalationCard({
 
 function ScheduleTab({
     profiles,
+    users,
     canManage,
 }: {
     profiles: ScheduleProfileRow[];
+    users: TenantConfigProps['recipientOptions']['users'];
     canManage: boolean;
 }) {
     const base = useTeamBase();
@@ -1518,19 +1727,10 @@ function ScheduleTab({
 
     const save = async (
         profile: ScheduleProfileRow,
-        rawShifts: string,
+        shiftRules: Record<string, unknown> | unknown[] | null,
         timezone: string,
     ) => {
-        if (base === null) {
-            return;
-        }
-
-        const shiftRules = parseJson(
-            rawShifts,
-            `shift_rules de ${profile.profileCode}`,
-        );
-
-        if (shiftRules === null) {
+        if (base === null || shiftRules === null) {
             return;
         }
 
@@ -1551,6 +1751,7 @@ function ScheduleTab({
                 <ScheduleCard
                     key={profile.id}
                     profile={profile}
+                    users={users}
                     canManage={canManage}
                     saving={saving}
                     onSave={save}
@@ -1562,29 +1763,50 @@ function ScheduleTab({
 
 function ScheduleCard({
     profile,
+    users,
     canManage,
     saving,
     onSave,
 }: {
     profile: ScheduleProfileRow;
+    users: TenantConfigProps['recipientOptions']['users'];
     canManage: boolean;
     saving: boolean;
     onSave: (
         profile: ScheduleProfileRow,
-        rawShifts: string,
+        shiftRules: Record<string, unknown> | unknown[] | null,
         timezone: string,
     ) => Promise<void>;
 }) {
     const [timezone, setTimezone] = useState(profile.timezone);
+    const [draft, setDraft] = useState<OnCallDraft | null>(() =>
+        parseOnCall(profile.shiftRules),
+    );
     const [rawShifts, setRawShifts] = useState(
         JSON.stringify(profile.shiftRules ?? [], null, 2),
     );
 
+    const save = () => {
+        if (draft !== null) {
+            void onSave(profile, serializeOnCall(draft), timezone);
+
+            return;
+        }
+
+        void onSave(
+            profile,
+            parseJson(rawShifts, `las reglas de ${profile.profileCode}`),
+            timezone,
+        );
+    };
+
     return (
         <Card>
             <CardHeader>
-                <CardTitle className="text-sm uppercase">
-                    {profile.profileCode}
+                <CardTitle className="text-sm" title={profile.profileCode}>
+                    {profile.profileCode === 'default'
+                        ? 'Horario principal'
+                        : humanizeCode(profile.profileCode)}
                 </CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
@@ -1597,25 +1819,239 @@ function ScheduleCard({
                         className="w-72"
                     />
                 </div>
-                <JsonField
-                    label="Reglas de turno (JSON)"
-                    value={rawShifts}
-                    onChange={setRawShifts}
-                    disabled={!canManage}
-                />
+                {draft !== null ? (
+                    <OnCallEditor
+                        draft={draft}
+                        users={users}
+                        disabled={!canManage}
+                        onChange={setDraft}
+                    />
+                ) : (
+                    <>
+                        <p className="text-2xs text-fg-3">
+                            Estas reglas usan una estructura que el formulario
+                            no representa. Edítalas en JSON; no se perderá
+                            ningún dato. Para la asignación automática de la
+                            guardia, usa el formato{' '}
+                            <code className="font-mono">
+                                {'{"on_call": [...]}'}
+                            </code>
+                            .
+                        </p>
+                        <JsonField
+                            label="Reglas de turno (JSON)"
+                            value={rawShifts}
+                            onChange={setRawShifts}
+                            disabled={!canManage}
+                        />
+                    </>
+                )}
                 {canManage && (
                     <div>
-                        <Button
-                            size="sm"
-                            onClick={() => onSave(profile, rawShifts, timezone)}
-                            disabled={saving}
-                        >
+                        <Button size="sm" onClick={save} disabled={saving}>
                             Guardar horario
                         </Button>
                     </div>
                 )}
             </CardContent>
         </Card>
+    );
+}
+
+const NO_USER = '__none__';
+
+function OnCallEditor({
+    draft,
+    users,
+    disabled,
+    onChange,
+}: {
+    draft: OnCallDraft;
+    users: TenantConfigProps['recipientOptions']['users'];
+    disabled: boolean;
+    onChange: (draft: OnCallDraft) => void;
+}) {
+    const replace = (index: number, shift: OnCallShiftDraft) => {
+        const shifts = [...draft.shifts];
+        shifts[index] = shift;
+        onChange({ ...draft, shifts });
+    };
+
+    const toggleDay = (index: number, day: string) => {
+        const shift = draft.shifts[index];
+
+        replace(index, {
+            ...shift,
+            days: shift.days.includes(day)
+                ? shift.days.filter((d) => d !== day)
+                : [...shift.days, day],
+        });
+    };
+
+    const addShift = () =>
+        onChange({
+            ...draft,
+            shifts: [
+                ...draft.shifts,
+                {
+                    id: ++onCallDraftId,
+                    userId: '',
+                    days: [],
+                    start: '08:00',
+                    end: '20:00',
+                },
+            ],
+        });
+
+    const userSelect = (
+        id: string,
+        value: string,
+        onValue: (value: string) => void,
+        emptyLabel: string,
+    ) => (
+        <Select
+            value={value === '' ? NO_USER : value}
+            disabled={disabled}
+            onValueChange={(next) => onValue(next === NO_USER ? '' : next)}
+        >
+            <SelectTrigger id={id} className="h-8 w-56 text-xs">
+                <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+                <SelectItem value={NO_USER}>{emptyLabel}</SelectItem>
+                {users.map((user) => (
+                    <SelectItem key={user.value} value={user.value}>
+                        {user.label}
+                    </SelectItem>
+                ))}
+            </SelectContent>
+        </Select>
+    );
+
+    return (
+        <div className="flex flex-col gap-2">
+            <Label className="text-xs">Guardias</Label>
+            <p className="text-2xs text-fg-3">
+                Se asigna el primer turno que coincide con el día y la hora del
+                incidente. Sin días marcados, aplica todos los días; un turno
+                que cruza la medianoche (22:00 a 06:00) también vale.
+            </p>
+            {draft.shifts.length === 0 && (
+                <p className="text-xs text-fg-3">
+                    Sin guardias: los incidentes van al responsable de respaldo.
+                </p>
+            )}
+            {draft.shifts.map((shift, index) => (
+                <div
+                    key={shift.id}
+                    className="flex flex-wrap items-center gap-2 rounded-md bg-surface-1 p-2"
+                >
+                    {userSelect(
+                        `oncall-${shift.id}-user`,
+                        shift.userId,
+                        (userId) => replace(index, { ...shift, userId }),
+                        'Elige a la persona',
+                    )}
+                    <div
+                        className="flex items-center gap-1"
+                        role="group"
+                        aria-label="Días"
+                    >
+                        {WEEKDAYS.map((day) => {
+                            const active = shift.days.includes(day.value);
+
+                            return (
+                                <button
+                                    key={day.value}
+                                    type="button"
+                                    disabled={disabled}
+                                    title={day.label}
+                                    aria-label={day.label}
+                                    aria-pressed={active}
+                                    onClick={() => toggleDay(index, day.value)}
+                                    className={`grid size-7 place-items-center rounded-md border text-2xs font-medium transition-colors ${
+                                        active
+                                            ? 'border-primary bg-primary/15 text-fg-1'
+                                            : 'border-border text-fg-3 hover:text-fg-1'
+                                    }`}
+                                >
+                                    {day.short}
+                                </button>
+                            );
+                        })}
+                    </div>
+                    <label className="flex items-center gap-1.5 text-xs text-fg-2">
+                        De
+                        <Input
+                            type="time"
+                            value={shift.start}
+                            disabled={disabled}
+                            onChange={(e) =>
+                                replace(index, {
+                                    ...shift,
+                                    start: e.target.value,
+                                })
+                            }
+                            className="h-8 w-28 text-xs tabular-nums"
+                        />
+                        a
+                        <Input
+                            type="time"
+                            value={shift.end}
+                            disabled={disabled}
+                            onChange={(e) =>
+                                replace(index, {
+                                    ...shift,
+                                    end: e.target.value,
+                                })
+                            }
+                            className="h-8 w-28 text-xs tabular-nums"
+                        />
+                    </label>
+                    {!disabled && (
+                        <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="ml-auto h-7 text-xs text-fg-3 hover:text-severity-critical"
+                            onClick={() =>
+                                onChange({
+                                    ...draft,
+                                    shifts: draft.shifts.filter(
+                                        (_, i) => i !== index,
+                                    ),
+                                })
+                            }
+                        >
+                            Quitar
+                        </Button>
+                    )}
+                </div>
+            ))}
+            {!disabled && (
+                <div>
+                    <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={addShift}
+                    >
+                        Añadir guardia
+                    </Button>
+                </div>
+            )}
+            <div className="mt-1 flex flex-col gap-1">
+                <Label htmlFor="oncall-fallback" className="text-xs">
+                    Responsable de respaldo
+                </Label>
+                {userSelect(
+                    'oncall-fallback',
+                    draft.fallbackUserId,
+                    (fallbackUserId) => onChange({ ...draft, fallbackUserId }),
+                    'Primer administrador del equipo',
+                )}
+            </div>
+        </div>
     );
 }
 
@@ -1632,13 +2068,15 @@ function ChannelsTab({
     canManage: boolean;
 }) {
     const base = useTeamBase();
+    // Apagar SMS o voz deja sin aviso al botón de pánico: se confirma antes.
+    const [confirming, setConfirming] = useState<ChannelRow | null>(null);
 
     const toggleGlobal = (channel: ChannelRow) => {
         if (base === null) {
             return;
         }
 
-        void submit(
+        return submit(
             postJson(`${base}/channels/${channel.id}/toggle`, {
                 enabled: !channel.enabledForTeam,
             }),
@@ -1677,11 +2115,8 @@ function ChannelsTab({
                                 key={channel.id}
                                 className="flex flex-wrap items-center gap-2 rounded-md border border-border p-2.5 text-xs"
                             >
-                                <Badge
-                                    variant="outline"
-                                    className="font-mono text-3xs"
-                                >
-                                    {channel.channelType}
+                                <Badge variant="outline" className="text-3xs">
+                                    {channelLabel(channel.channelType)}
                                 </Badge>
                                 <span className="font-medium text-fg-1">
                                     {channel.name}
@@ -1702,19 +2137,31 @@ function ChannelsTab({
                                     }
                                 >
                                     {!channel.isActive
-                                        ? 'inactivo'
+                                        ? 'Inactivo'
                                         : channel.enabledForTeam
-                                          ? 'activo'
-                                          : 'apagado para tu equipo'}
+                                          ? 'Activo'
+                                          : 'Apagado para tu equipo'}
                                 </Badge>
                                 {canManage && (
                                     <span className="ml-auto">
                                         <Button
                                             size="sm"
                                             variant="outline"
-                                            onClick={() =>
-                                                toggleGlobal(channel)
-                                            }
+                                            onClick={() => {
+                                                if (
+                                                    channel.enabledForTeam &&
+                                                    PANIC_CRITICAL_CHANNELS.has(
+                                                        channel.channelType ??
+                                                            '',
+                                                    )
+                                                ) {
+                                                    setConfirming(channel);
+
+                                                    return;
+                                                }
+
+                                                void toggleGlobal(channel);
+                                            }}
                                         >
                                             {channel.enabledForTeam
                                                 ? 'Apagar para mi equipo'
@@ -1726,6 +2173,20 @@ function ChannelsTab({
                         ))}
                     </ul>
                 )}
+                <ConfirmDialog
+                    open={confirming !== null}
+                    title={`¿Apagar ${confirming ? channelLabel(confirming.channelType) : ''} para tu equipo?`}
+                    description="Las alertas del botón de pánico dependen de este canal: la llamada de verificación y los avisos urgentes a tu equipo salen por SMS y voz. Si lo apagas, un pánico real puede quedar sin aviso fuera de SAM."
+                    confirmLabel="Apagar de todos modos"
+                    onConfirm={async () => {
+                        if (confirming) {
+                            await toggleGlobal(confirming);
+                        }
+
+                        setConfirming(null);
+                    }}
+                    onOpenChange={(open) => !open && setConfirming(null)}
+                />
             </CardContent>
         </Card>
     );
@@ -2034,13 +2495,18 @@ export default function TenantConfigPage() {
                     </p>
                 </div>
 
-                <div className="flex flex-wrap gap-1 border-b border-border">
+                <div
+                    role="tablist"
+                    className="-mx-1 flex gap-1 overflow-x-auto border-b border-border px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                >
                     {TABS.map((item) => (
                         <button
                             key={item.key}
                             type="button"
+                            role="tab"
+                            aria-selected={tab === item.key}
                             onClick={() => setTab(item.key)}
-                            className={`px-3 py-2 text-sm transition-colors ${
+                            className={`shrink-0 px-3 py-2 text-sm whitespace-nowrap transition-colors ${
                                 tab === item.key
                                     ? 'border-b-2 border-primary font-medium text-fg-1'
                                     : 'text-fg-3 hover:text-fg-1'
@@ -2052,7 +2518,7 @@ export default function TenantConfigPage() {
                     {base && (
                         <Link
                             href={`${base}/slas`}
-                            className="px-3 py-2 text-sm text-fg-3 transition-colors hover:text-fg-1"
+                            className="shrink-0 px-3 py-2 text-sm whitespace-nowrap text-fg-3 transition-colors hover:text-fg-1"
                         >
                             Tiempos de respuesta
                         </Link>
@@ -2075,6 +2541,8 @@ export default function TenantConfigPage() {
                 {tab === 'notifications' && (
                     <NotificationsTab
                         policies={props.notificationPolicies}
+                        channelTypes={props.channelTypes}
+                        typeOptions={props.notificationTypeOptions ?? []}
                         canManage={props.canManage}
                     />
                 )}
@@ -2090,6 +2558,7 @@ export default function TenantConfigPage() {
                 {tab === 'schedule' && (
                     <ScheduleTab
                         profiles={props.scheduleProfiles}
+                        users={props.recipientOptions.users}
                         canManage={props.canManage}
                     />
                 )}

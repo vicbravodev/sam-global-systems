@@ -34,6 +34,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { TEAM_BROADCAST_EVENT_NAME } from '@/hooks/use-team-broadcasts';
 import type { TeamBroadcastDetail } from '@/hooks/use-team-broadcasts';
 import { formatDate, formatDateTime, formatNumber } from '@/lib/format';
+import {
+    assetTypeLabel,
+    connectivityLabel,
+    CONNECTIVITY_LABELS,
+    sourceLabel,
+} from '@/lib/labels';
 import { isFresh, minutesSince } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import type {
@@ -104,7 +110,12 @@ function telemetryValue(data: TelemetryEntry['data']): {
             : null;
 
     if (typeof raw === 'string') {
-        return { value: ENGINE_STATE_LABELS[raw] ?? raw, unit };
+        return {
+            value:
+                ENGINE_STATE_LABELS[raw] ??
+                (raw in CONNECTIVITY_LABELS ? connectivityLabel(raw) : raw),
+            unit,
+        };
     }
 
     if (typeof raw === 'number') {
@@ -166,7 +177,14 @@ function AssetHero({
                             <span className="font-mono">{asset.code}</span>
                         )}
                         {title && <span className="text-fg-2">{title}</span>}
-                        {asset.type?.name && <span>{asset.type.name}</span>}
+                        {asset.type && (
+                            <span>
+                                {assetTypeLabel(
+                                    asset.type.code,
+                                    asset.type.name,
+                                )}
+                            </span>
+                        )}
                         {asset.provider && (
                             <span>
                                 vía{' '}
@@ -513,7 +531,12 @@ function VehicleCard({ asset }: { asset: AssetShowProps['asset'] }) {
                 <span className="font-mono text-xs">{vehicle.vin}</span>
             ) : null,
         ],
-        ['Tipo', asset.type?.name ?? null],
+        [
+            'Tipo',
+            asset.type
+                ? assetTypeLabel(asset.type.code, asset.type.name)
+                : null,
+        ],
         ['Proveedor', asset.provider ?? null],
         [
             'ID en proveedor',
@@ -747,7 +770,7 @@ function LocationHistoryCard({ history }: { history: LocationHistoryEntry[] }) {
                                                 : '—'}
                                         </td>
                                         <td className="px-2.5 py-2 font-mono text-3xs text-fg-3">
-                                            {entry.source}
+                                            {sourceLabel(entry.source)}
                                         </td>
                                     </tr>
                                 ))}

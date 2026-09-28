@@ -7,6 +7,8 @@ use App\Domains\Automation\Enums\WorkflowStatus;
 use App\Domains\Automation\Enums\WorkflowTriggerType;
 use App\Domains\Automation\Models\ActionExecution;
 use App\Domains\Automation\Models\AutomationWorkflow;
+use App\Domains\Automation\Queries\WorkflowRunStats;
+use App\Domains\Automation\Support\AutomationTargetLabels;
 use App\Domains\Automation\Support\TriggerConditionCatalog;
 use App\Enums\TeamRole;
 use App\Http\Controllers\Controller;
@@ -25,6 +27,11 @@ class AutomationPageController extends Controller
     {
         $this->authorize('viewAny', AutomationWorkflow::class);
 
+        $targets = null;
+        $targetLabels = function () use (&$targets, $current_team): AutomationTargetLabels {
+            return $targets ??= new AutomationTargetLabels($current_team);
+        };
+
         return Inertia::render('automation/index', [
             'workflows' => fn () => AutomationWorkflow::query()
                 ->where('team_id', $current_team->id)
@@ -39,9 +46,20 @@ class AutomationPageController extends Controller
                     'triggerConditions' => $workflow->trigger_conditions_json,
                     'status' => $workflow->status?->value,
                     'steps' => (array) ($workflow->steps_json ?? []),
+                    // Etiqueta humana del destino de cada paso, en el mismo orden.
+                    'stepTargets' => array_map(
+                        fn ($step): string => is_array($step)
+                            ? $targetLabels()->label(
+                                isset($step['target_type']) ? (string) $step['target_type'] : null,
+                                isset($step['target_reference']) ? (string) $step['target_reference'] : null,
+                            )
+                            : '—',
+                        array_values((array) ($workflow->steps_json ?? [])),
+                    ),
                     'isActive' => (bool) $workflow->is_active,
                 ])
                 ->all(),
+            'runStats' => fn () => app(WorkflowRunStats::class)->forTeam($current_team->id),
             'executions' => fn () => ActionExecution::query()
                 ->where('team_id', $current_team->id)
                 ->orderByDesc('id')
@@ -54,6 +72,8 @@ class AutomationPageController extends Controller
                     'executionMode' => $execution->execution_mode?->value,
                     'targetType' => $execution->target_type,
                     'targetReference' => $execution->target_reference,
+                    'targetLabel' => $targetLabels()->label($execution->target_type, $execution->target_reference),
+                    'statusLabel' => $execution->status?->label(),
                     'incidentId' => $execution->incident_id !== null ? (int) $execution->incident_id : null,
                     'attempts' => (int) $execution->attempts,
                     'errorMessage' => $execution->error_message,

@@ -51,10 +51,10 @@ class NormalizationSeeder extends Seeder
     private function seedSeverities(): array
     {
         $definitions = [
-            ['code' => 'low', 'label' => 'Low', 'level' => 1, 'color' => '#22c55e', 'response_sla_seconds' => null],
-            ['code' => 'medium', 'label' => 'Medium', 'level' => 2, 'color' => '#f59e0b', 'response_sla_seconds' => 3600],
-            ['code' => 'high', 'label' => 'High', 'level' => 3, 'color' => '#f97316', 'response_sla_seconds' => 900],
-            ['code' => 'critical', 'label' => 'Critical', 'level' => 4, 'color' => '#ef4444', 'response_sla_seconds' => 300],
+            ['code' => 'low', 'label' => 'Baja', 'level' => 1, 'color' => '#22c55e', 'response_sla_seconds' => null],
+            ['code' => 'medium', 'label' => 'Media', 'level' => 2, 'color' => '#f59e0b', 'response_sla_seconds' => 3600],
+            ['code' => 'high', 'label' => 'Alta', 'level' => 3, 'color' => '#f97316', 'response_sla_seconds' => 900],
+            ['code' => 'critical', 'label' => 'Crítica', 'level' => 4, 'color' => '#ef4444', 'response_sla_seconds' => 300],
         ];
 
         $severities = [];

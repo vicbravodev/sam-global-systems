@@ -7,7 +7,14 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
-import { formatCurrency, formatDate } from '@/lib/format';
+import { formatCurrency, formatDate, formatNumber } from '@/lib/format';
+import {
+    featureLabel,
+    invoiceStatusLabel,
+    meterLabel,
+    meterUnitLabel,
+    subscriptionStatusLabel,
+} from '@/lib/labels';
 
 interface SubscriptionProp {
     planName: string | null;
@@ -15,7 +22,9 @@ interface SubscriptionProp {
     basePrice: number | null;
     currency: string | null;
     billingCycle: string;
+    billingCycleLabel: string | null;
     status: string;
+    statusLabel: string | null;
     renewsAt: string | null;
 }
 
@@ -23,11 +32,18 @@ interface FeatureRow {
     key: string;
     enabled: boolean;
     source: string;
+    sourceLabel: string | null;
     limits: Record<string, unknown> | null;
 }
 
 interface UsageRow {
     meterCode: string | null;
+    /** El plan factura este medidor (tiene tarifa). */
+    billed: boolean;
+    /** El excedente tiene precio: sólo entonces se marca en rojo. */
+    overageCharged: boolean;
+    /** Conteo por canal cuyo costo va en la línea de mensajería (Twilio). */
+    billedVia: 'messaging' | null;
     meterName: string | null;
     unit: string | null;
     /** Cost-plus meters (Twilio messaging): amount to be charged, in USD. */
@@ -48,6 +64,9 @@ interface InvoiceRow {
     total: number;
     currency: string | null;
     status: string;
+    statusLabel: string | null;
+    /** Emitida (o borrador de periodo cerrado) y sin pagar. */
+    awaitsPayment: boolean;
     paidAt: string | null;
     hasReceipt: boolean;
     paymentNote: string | null;
@@ -113,15 +132,6 @@ interface BillingPageProps {
     fleet: FleetCounts;
 }
 
-const INVOICE_STATUS_LABEL: Record<string, string> = {
-    draft: 'Borrador',
-    finalized: 'Por pagar',
-    invoiced: 'Por pagar',
-    paid: 'Pagada',
-    disputed: 'En revisión',
-    void: 'Anulada',
-};
-
 const LINE_LABEL: Record<string, string> = {
     monitored_asset_days: 'Tractos vigilados (por día)',
     ai_calls: 'Evaluaciones de IA',
@@ -130,9 +140,20 @@ const LINE_LABEL: Record<string, string> = {
 
 const SUBSCRIPTION_STATUS_COLOR: Record<string, string> = {
     active: 'text-severity-low',
-    trial: 'text-severity-medium',
+    trialing: 'text-severity-medium',
+    past_due: 'text-severity-high',
     suspended: 'text-severity-critical',
-    cancelled: 'text-fg-3',
+    canceled: 'text-fg-3',
+    expired: 'text-fg-3',
+};
+
+const INVOICE_STATUS_COLOR: Record<string, string> = {
+    paid: 'text-severity-low',
+    invoiced: 'text-severity-medium',
+    finalized: 'text-severity-medium',
+    disputed: 'text-severity-high',
+    void: 'text-fg-3',
+    draft: 'text-fg-3',
 };
 
 function money(value: number, currency: string | null): string {
@@ -315,7 +336,7 @@ function MonitoringCard({
 function UsageBar({ row }: { row: UsageRow }) {
     const ratio =
         row.included > 0 ? Math.min(1, row.consumed / row.included) : 0;
-    const over = row.overage > 0;
+    const over = row.overageCharged && row.overage > 0;
 
     return (
         <div className="h-1.5 w-40 overflow-hidden rounded bg-surface-2">
@@ -345,6 +366,20 @@ function ReceiptUploader({ invoice }: { invoice: InvoiceRow }) {
             <span className="text-2xs text-severity-low">
                 Pagada
                 {invoice.paidAt && ` el ${formatDate(invoice.paidAt)}`}
+            </span>
+        );
+    }
+
+    // Sólo una factura pendiente de pago admite comprobante: un borrador del
+    // periodo en curso es una vista previa y una anulada no se cobra.
+    if (!invoice.awaitsPayment) {
+        return (
+            <span className="text-2xs text-fg-3">
+                {invoice.status === 'void'
+                    ? 'Sin cobro'
+                    : invoice.status === 'draft'
+                      ? 'Periodo en curso'
+                      : '—'}
             </span>
         );
     }
@@ -525,14 +560,20 @@ export default function BillingIndex() {
                                         ] ?? 'text-fg-3'
                                     }
                                 >
-                                    {subscription.status}
+                                    {subscription.statusLabel ??
+                                        subscriptionStatusLabel(
+                                            subscription.status,
+                                        )}
                                 </Badge>
                             </MetricCell>
                             <MetricCell label="Tope contratado">
                                 <span className="text-base font-semibold text-fg-1">
-                                    {terms.included_assets === null
+                                    {/* Mismo tope que "Tractos vigilados": el de
+                                        los términos o, sin términos, el del plan. */}
+                                    {(estimate.cap ?? terms.included_assets) ===
+                                    null
                                         ? 'Sin tope'
-                                        : `${terms.included_assets} tractos`}
+                                        : `${formatNumber(estimate.cap ?? terms.included_assets ?? 0)} tractos`}
                                 </span>
                             </MetricCell>
                             <MetricCell label="Próxima renovación">
@@ -562,7 +603,7 @@ export default function BillingIndex() {
                             <table className="w-full text-left text-xs">
                                 <thead className="text-2xs text-fg-3 uppercase">
                                     <tr>
-                                        <th className="py-1.5 pr-4">Meter</th>
+                                        <th className="py-1.5 pr-4">Medidor</th>
                                         <th className="py-1.5 pr-4">
                                             Consumido
                                         </th>
@@ -586,21 +627,28 @@ export default function BillingIndex() {
                                                     {LINE_LABEL[
                                                         row.meterCode ?? ''
                                                     ] ??
-                                                        row.meterName ??
-                                                        row.meterCode}
+                                                        meterLabel(
+                                                            row.meterCode,
+                                                            row.meterName,
+                                                        )}
                                                 </span>
-                                                {row.amount === null && (
-                                                    <span className="ml-1 text-2xs text-fg-3">
-                                                        ({row.unit})
-                                                    </span>
-                                                )}
+                                                {row.amount === null &&
+                                                    row.unit && (
+                                                        <span className="ml-1 text-2xs text-fg-3">
+                                                            (
+                                                            {meterUnitLabel(
+                                                                row.unit,
+                                                            )}
+                                                            )
+                                                        </span>
+                                                    )}
                                             </td>
                                             {row.amount !== null ? (
                                                 <>
                                                     <td className="py-2 pr-4 font-medium text-fg-1 tabular-nums">
                                                         {money(
                                                             row.amount,
-                                                            'usd',
+                                                            'USD',
                                                         )}
                                                     </td>
                                                     <td
@@ -611,26 +659,46 @@ export default function BillingIndex() {
                                                         mensajes y llamadas
                                                     </td>
                                                 </>
+                                            ) : !row.billed ? (
+                                                // Medidor informativo: el plan no
+                                                // lo factura, así que no hay
+                                                // excedente que cobrar.
+                                                <>
+                                                    <td className="py-2 pr-4 tabular-nums">
+                                                        {formatNumber(
+                                                            row.consumed,
+                                                        )}
+                                                    </td>
+                                                    <td
+                                                        className="py-2 pr-4 text-2xs text-fg-3"
+                                                        colSpan={3}
+                                                    >
+                                                        {row.billedVia ===
+                                                        'messaging'
+                                                            ? 'Se cobra en Mensajería y llamadas (costo real)'
+                                                            : 'No incluido · sin costo'}
+                                                    </td>
+                                                </>
                                             ) : (
                                                 <>
                                                     <td className="py-2 pr-4 tabular-nums">
-                                                        {row.consumed.toLocaleString(
-                                                            'es',
+                                                        {formatNumber(
+                                                            row.consumed,
                                                         )}
                                                     </td>
                                                     <td className="py-2 pr-4 tabular-nums">
-                                                        {row.included.toLocaleString(
-                                                            'es',
+                                                        {formatNumber(
+                                                            row.included,
                                                         )}
                                                     </td>
                                                     <td className="py-2 pr-4">
                                                         <UsageBar row={row} />
                                                     </td>
                                                     <td
-                                                        className={`py-2 pr-4 tabular-nums ${row.overage > 0 ? 'font-semibold text-severity-critical' : ''}`}
+                                                        className={`py-2 pr-4 tabular-nums ${row.overageCharged && row.overage > 0 ? 'font-semibold text-severity-critical' : ''}`}
                                                     >
-                                                        {row.overage.toLocaleString(
-                                                            'es',
+                                                        {formatNumber(
+                                                            row.overage,
                                                         )}
                                                     </td>
                                                 </>
@@ -663,13 +731,19 @@ export default function BillingIndex() {
                                     <Badge
                                         key={feature.key}
                                         variant="outline"
+                                        title={
+                                            feature.enabled
+                                                ? (feature.sourceLabel ??
+                                                  undefined)
+                                                : 'Desactivada'
+                                        }
                                         className={
                                             feature.enabled
                                                 ? 'text-severity-low'
                                                 : 'text-fg-3 line-through'
                                         }
                                     >
-                                        {feature.key}
+                                        {featureLabel(feature.key)}
                                     </Badge>
                                 ))}
                             </div>
@@ -741,15 +815,14 @@ export default function BillingIndex() {
                                                 <Badge
                                                     variant="outline"
                                                     className={
-                                                        invoice.status ===
-                                                        'paid'
-                                                            ? 'text-severity-low'
-                                                            : 'text-fg-3'
+                                                        INVOICE_STATUS_COLOR[
+                                                            invoice.status
+                                                        ] ?? 'text-fg-3'
                                                     }
                                                 >
-                                                    {INVOICE_STATUS_LABEL[
-                                                        invoice.status
-                                                    ] ?? invoice.status}
+                                                    {invoiceStatusLabel(
+                                                        invoice.status,
+                                                    )}
                                                 </Badge>
                                             </td>
                                             <td className="py-2 pr-4">

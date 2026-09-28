@@ -28,13 +28,15 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { formatDateTime } from '@/lib/format';
+import { formatDateTime, formatNumber } from '@/lib/format';
+import { delayLabel } from '@/lib/labels';
 import {
     deleteJson,
     postJson,
     putJson,
     readErrorPayload,
 } from '@/lib/sam-fetch';
+import { relativeLabel } from '@/lib/time';
 
 // ---- Types ----
 
@@ -57,7 +59,16 @@ interface WorkflowRow {
     triggerConditions: Record<string, unknown> | null;
     status: string | null;
     steps: WorkflowStep[];
+    /** Destino legible de cada paso (mismo orden que `steps`). */
+    stepTargets: string[];
     isActive: boolean;
+}
+
+interface WorkflowRunStat {
+    lastRunAt: string | null;
+    lastStatus: string | null;
+    runs30d: number;
+    failed30d: number;
 }
 
 interface ExecutionRow {
@@ -67,6 +78,8 @@ interface ExecutionRow {
     executionMode: string | null;
     targetType: string | null;
     targetReference: string | null;
+    targetLabel: string;
+    statusLabel: string | null;
     incidentId: number | null;
     attempts: number;
     errorMessage: string | null;
@@ -77,6 +90,7 @@ interface ExecutionRow {
 
 interface AutomationPageProps {
     workflows: WorkflowRow[];
+    runStats: Record<number, WorkflowRunStat>;
     executions: ExecutionRow[];
     options: {
         actionTypes: { value: string; label: string }[];
@@ -105,6 +119,54 @@ const TARGET_TYPES = [
     { value: 'phone', label: 'Teléfono' },
     { value: 'url', label: 'URL' },
 ] as const;
+
+const STATUS_LABEL: Record<string, string> = {
+    completed: 'Completada',
+    failed: 'Fallida',
+    running: 'En curso',
+    pending: 'Por confirmar',
+    queued: 'En cola',
+    retrying: 'Reintentando',
+    cancelled: 'Cancelada',
+};
+
+/** "Última ejecución hace 3 h (Completada) · 12 acciones en 30 días · 1 fallida". */
+function RunStatsLine({ stat }: { stat: WorkflowRunStat | undefined }) {
+    if (!stat || stat.lastRunAt === null) {
+        return (
+            <p className="mt-3 text-2xs text-fg-3">
+                Sin ejecuciones registradas.
+            </p>
+        );
+    }
+
+    return (
+        <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-2xs text-fg-3">
+            <span title={formatDateTime(stat.lastRunAt)}>
+                Última ejecución {relativeLabel(stat.lastRunAt)}
+            </span>
+            {stat.lastStatus && (
+                <span className={STATUS_COLOR[stat.lastStatus] ?? 'text-fg-3'}>
+                    ({STATUS_LABEL[stat.lastStatus] ?? stat.lastStatus})
+                </span>
+            )}
+            <span aria-hidden="true">·</span>
+            <span>
+                {formatNumber(stat.runs30d)}{' '}
+                {stat.runs30d === 1 ? 'acción' : 'acciones'} en 30 días
+            </span>
+            {stat.failed30d > 0 && (
+                <>
+                    <span aria-hidden="true">·</span>
+                    <span className="text-severity-critical">
+                        {formatNumber(stat.failed30d)}{' '}
+                        {stat.failed30d === 1 ? 'fallida' : 'fallidas'}
+                    </span>
+                </>
+            )}
+        </p>
+    );
+}
 
 const STATUS_COLOR: Record<string, string> = {
     completed: 'text-severity-low',
@@ -665,12 +727,14 @@ function EditWorkflowDialog({
 
 function WorkflowsTab({
     workflows,
+    runStats,
     options,
     triggerConditionFields,
     teamTargets,
     canManage,
 }: {
     workflows: WorkflowRow[];
+    runStats: AutomationPageProps['runStats'];
     options: AutomationPageProps['options'];
     triggerConditionFields: Record<string, ConditionFieldDef[]>;
     teamTargets: AutomationPageProps['teamTargets'];
@@ -788,7 +852,7 @@ function WorkflowsTab({
                                         : 'text-fg-3'
                                 }
                             >
-                                {workflow.isActive ? 'activo' : 'inactivo'}
+                                {workflow.isActive ? 'Activa' : 'Inactiva'}
                             </Badge>
                             <span className="ml-auto flex gap-1.5">
                                 {canManage &&
@@ -857,18 +921,18 @@ function WorkflowsTab({
                                             : '—'}
                                     </Badge>
                                     <span className="text-fg-3">→</span>
-                                    {String(step.target_type ?? '')}{' '}
-                                    <span className="font-mono text-2xs">
-                                        {String(step.target_reference ?? '')}
+                                    <span className="text-fg-1">
+                                        {workflow.stepTargets[index] ?? '—'}
                                     </span>
                                     {Number(step.delay_seconds ?? 0) > 0 && (
                                         <span className="text-fg-3">
-                                            (+{String(step.delay_seconds)}s)
+                                            ({delayLabel(step.delay_seconds)})
                                         </span>
                                     )}
                                 </li>
                             ))}
                         </ol>
+                        <RunStatsLine stat={runStats[workflow.id]} />
                     </CardContent>
                 </Card>
             ))}
@@ -901,9 +965,11 @@ function WorkflowsTab({
 
 function ExecutionsTab({
     executions,
+    actionTypes,
     canManage,
 }: {
     executions: ExecutionRow[];
+    actionTypes: AutomationPageProps['options']['actionTypes'];
     canManage: boolean;
 }) {
     const base = useTeamBase();
@@ -961,27 +1027,31 @@ function ExecutionsTab({
                                     <td className="py-2 pr-4 font-mono text-2xs">
                                         {execution.id}
                                     </td>
-                                    <td className="py-2 pr-4 font-mono text-2xs">
-                                        {execution.actionType}
+                                    <td className="py-2 pr-4">
+                                        {labelFor(
+                                            actionTypes,
+                                            execution.actionType,
+                                        )}
                                         {execution.isStub && (
                                             <Badge
                                                 variant="outline"
                                                 className="ml-1 text-3xs text-fg-3"
                                             >
-                                                stub
+                                                simulada
                                             </Badge>
                                         )}
                                     </td>
                                     <td className="py-2 pr-4">
-                                        {execution.targetType}:{' '}
-                                        <span className="font-mono text-2xs">
-                                            {execution.targetReference ?? '—'}
-                                        </span>
+                                        {execution.targetLabel}
                                     </td>
                                     <td
                                         className={`py-2 pr-4 ${STATUS_COLOR[execution.status ?? ''] ?? 'text-fg-3'}`}
                                     >
-                                        {execution.status}
+                                        {execution.statusLabel ??
+                                            STATUS_LABEL[
+                                                execution.status ?? ''
+                                            ] ??
+                                            '—'}
                                     </td>
                                     <td className="py-2 pr-4 tabular-nums">
                                         {execution.attempts}
@@ -1084,6 +1154,7 @@ export default function AutomationIndex() {
                 {tab === 'workflows' && (
                     <WorkflowsTab
                         workflows={props.workflows}
+                        runStats={props.runStats ?? {}}
                         options={props.options}
                         triggerConditionFields={props.triggerConditionFields}
                         teamTargets={props.teamTargets}
@@ -1093,6 +1164,7 @@ export default function AutomationIndex() {
                 {tab === 'executions' && (
                     <ExecutionsTab
                         executions={props.executions}
+                        actionTypes={props.options.actionTypes}
                         canManage={props.canManage}
                     />
                 )}

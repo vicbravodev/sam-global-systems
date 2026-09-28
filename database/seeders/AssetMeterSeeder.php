@@ -14,7 +14,7 @@ class AssetMeterSeeder extends Seeder
         $meters = [
             [
                 'code' => 'monitored_assets',
-                'name' => 'Monitored Assets',
+                'name' => 'Activos monitoreados',
                 'description' => 'Number of non-inactive assets monitored/synced for the tenant.',
                 'unit' => 'asset',
                 'aggregation_type' => AggregationType::Max,
@@ -32,7 +32,7 @@ class AssetMeterSeeder extends Seeder
             ],
             [
                 'code' => 'active_cameras',
-                'name' => 'Active Cameras',
+                'name' => 'Cámaras activas',
                 'description' => 'Daily peak of active cameras: active camera devices attached to non-inactive assets plus stand-alone camera assets without an attached camera device.',
                 'unit' => 'camera',
                 'aggregation_type' => AggregationType::Max,

@@ -59,7 +59,8 @@ interface InboxGroupedProps {
     onToggle: (id: string) => void;
     currentUserId: number | null;
     claimPendingId: number | null;
-    onClaimToggle: (incident: MockIncident) => void;
+    /** Ausente cuando el rol no puede tomar incidentes. */
+    onClaimToggle?: (incident: MockIncident) => void;
 }
 
 export function InboxGrouped({
@@ -143,8 +144,10 @@ export function InboxGrouped({
                                         }
                                         onClick={() => onSelect(incident.id)}
                                         onToggle={() => onToggle(incident.id)}
-                                        onClaimToggle={() =>
-                                            onClaimToggle(incident)
+                                        onClaimToggle={
+                                            onClaimToggle
+                                                ? () => onClaimToggle(incident)
+                                                : undefined
                                         }
                                     />
                                 ))}

@@ -31,6 +31,7 @@ import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
 import { formatDateTime } from '@/lib/format';
+import { priorityLabel, providerDescriptionLabel } from '@/lib/labels';
 import { formatClock, dayLabel, minutesSince } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import type {
@@ -127,7 +128,13 @@ function EventCell({ event }: { event: EventRow }) {
                         `Evento #${event.id}`}
                 </span>
                 <span className="truncate text-3xs text-fg-3">
-                    {[event.category, event.description]
+                    {[
+                        event.category,
+                        providerDescriptionLabel(
+                            event.description,
+                            event.eventType,
+                        ),
+                    ]
                         .filter(Boolean)
                         .join(' · ') || '—'}
                 </span>
@@ -350,7 +357,7 @@ function FilterBar({
                     allLabel="Todas"
                     options={[...options.severities].reverse().map((o) => ({
                         value: o.value,
-                        label: o.label,
+                        label: priorityLabel(o.code),
                         dot: SEVERITY_DOT[toSeverity(o.code)],
                     }))}
                 />
