@@ -163,6 +163,11 @@ class TriggerConditionCatalog
             IncidentTypeCode::GeofenceBreach->value => 'Salida de geocerca',
             IncidentTypeCode::DriverFatigue->value => 'Fatiga del conductor',
             IncidentTypeCode::SuspiciousStop->value => 'Parada sospechosa',
+            IncidentTypeCode::EmergencyAlert->value => 'Alerta de emergencia',
+            IncidentTypeCode::SafetyViolation->value => 'Violación de seguridad',
+            IncidentTypeCode::ComplianceViolation->value => 'Violación de cumplimiento',
+            IncidentTypeCode::OperationalAlert->value => 'Alerta operativa',
+            IncidentTypeCode::Other->value => 'Otro',
         ];
 
         return self::optionsFromLabels(IncidentTypeCode::cases(), $labels);

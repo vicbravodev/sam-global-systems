@@ -39,17 +39,27 @@ class EstimatePeriodCharges
             $terms = $this->resolveTerms->execute($teamId);
             $cap = $this->resolveAssetLimit->execute($teamId);
 
-            [$assetDays, $daysRecorded] = $this->assetDaysSoFar($teamId, $periodStart, $today);
+            [$assetDays, $daysRecorded, $todaySampled] = $this->assetDaysSoFar($teamId, $periodStart, $today);
             $monitoredNow = Asset::query()->where('team_id', $teamId)->monitored()->count();
-            $remainingDays = max(0, $daysInPeriod - $daysRecorded);
+            $daysElapsed = (int) $periodStart->diffInDays($today) + 1;
+            // Sólo se proyectan los días que aún pueden muestrearse: hoy si la
+            // muestra nocturna no ha corrido y los que faltan del mes. Un día
+            // ya pasado sin muestra (alta a mitad de mes, scheduler caído) no
+            // entra en la factura, así que tampoco en la proyección.
+            $remainingDays = (int) $today->diffInDays($periodEnd) + ($todaySampled ? 0 : 1);
             $projectedAssetDays = $assetDays + $monitoredNow * $remainingDays;
 
             $toDate = AssetDayPricing::assetDayLine($terms, $assetDays, $daysInPeriod, $cap);
             $projected = AssetDayPricing::assetDayLine($terms, $projectedAssetDays, $daysInPeriod, $cap);
 
+            // El uso justo de IA se mide contra el promedio de unidades de TODO
+            // el mes, no contra lo acumulado a hoy: a media mes casi toda
+            // evaluación parecería "extra" y el cargo desaparecería al cierre.
+            // "A hoy" es el extra ya comprometido: lo que excede la bolsa que
+            // el mes dará con las unidades vigiladas ahora.
             $aiCalls = $this->sum($teamId, AssetDayPricing::AI_METER_CODE, $periodStart, $periodEnd);
-            $aiToDate = AssetDayPricing::aiLine($terms, $aiCalls, (float) $toDate['average_assets']);
             $aiProjected = AssetDayPricing::aiLine($terms, $aiCalls, (float) $projected['average_assets']);
+            $aiToDate = $aiProjected;
 
             $emergencyDays = $this->sum($teamId, AssetDayPricing::UNMONITORED_EMERGENCY_METER_CODE, $periodStart, $periodEnd);
             $emergency = AssetDayPricing::unmonitoredEmergencyLine($emergencyDays, (float) $toDate['daily_rate']);
@@ -68,6 +78,8 @@ class EstimatePeriodCharges
                 'periodEnd' => $periodEnd->toDateString(),
                 'daysInPeriod' => $daysInPeriod,
                 'daysRecorded' => $daysRecorded,
+                'daysElapsed' => $daysElapsed,
+                'remainingDays' => $remainingDays,
                 'currency' => $terms->currency,
                 'unitPrice' => $toDate['unit_price'],
                 'dailyRate' => $toDate['daily_rate'],
@@ -77,8 +89,13 @@ class EstimatePeriodCharges
                 'assetDays' => $assetDays,
                 'assetDaysExtra' => $toDate['overage'],
                 'projectedAssetDays' => $projectedAssetDays,
+                'projectedAssetDaysExtra' => $projected['overage'],
                 'assetsToDate' => $toDate['amount'],
                 'assetsProjected' => $projected['amount'],
+                // Parte de lo anterior que corresponde a unidades por encima
+                // del tope (tope suave: se cobran al mismo precio por día).
+                'assetsExtraToDate' => $toDate['overage_cost'],
+                'assetsExtraProjected' => $projected['overage_cost'],
                 'aiCalls' => $aiCalls,
                 'aiIncluded' => $aiProjected['included'],
                 'aiOverage' => $aiProjected['overage'],
@@ -99,14 +116,14 @@ class EstimatePeriodCharges
     }
 
     /**
-     * @return array{0: int, 1: int} tracto-días acumulados y días con muestra
+     * @return array{0: int, 1: int, 2: bool} tracto-días acumulados, días con muestra y si hoy ya tiene muestra
      */
     private function assetDaysSoFar(int $teamId, CarbonImmutable $periodStart, CarbonImmutable $today): array
     {
         $meterId = UsageMeter::query()->where('code', AssetDayPricing::METER_CODE)->value('id');
 
         if ($meterId === null) {
-            return [0, 0];
+            return [0, 0, false];
         }
 
         $row = UsageEvent::query()
@@ -116,10 +133,13 @@ class EstimatePeriodCharges
             ->where('occurred_at', '<=', $today->endOfDay())
             // Una fila por unidad y día (cobro por uso): los días con cierre son
             // las fechas distintas, no las filas.
-            ->selectRaw('COALESCE(SUM(quantity), 0) as days, COUNT(DISTINCT DATE(occurred_at)) as samples')
+            ->selectRaw('COALESCE(SUM(quantity), 0) as days, COUNT(DISTINCT DATE(occurred_at)) as samples, MAX(occurred_at) as last_sample')
             ->first();
 
-        return [(int) ($row->days ?? 0), (int) ($row->samples ?? 0)];
+        $todaySampled = $row?->last_sample !== null
+            && CarbonImmutable::parse($row->last_sample)->greaterThanOrEqualTo($today);
+
+        return [(int) ($row->days ?? 0), (int) ($row->samples ?? 0), $todaySampled];
     }
 
     /**

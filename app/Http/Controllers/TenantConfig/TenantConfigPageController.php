@@ -87,7 +87,7 @@ class TenantConfigPageController extends Controller
 
                 return [
                     'profileCode' => $resolved->profileCode,
-                    'name' => $persisted?->name ?? 'Perfil del tenant',
+                    'name' => $persisted?->name ?? 'Perfil de la empresa',
                     'description' => $persisted?->description,
                     'riskTolerance' => $resolved->riskTolerance->value,
                     'falsePositiveTolerance' => $resolved->falsePositiveTolerance->value,

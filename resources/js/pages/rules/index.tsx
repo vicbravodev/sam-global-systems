@@ -1,1332 +1,197 @@
-import { Head, router, usePage } from '@inertiajs/react';
-import { ArrowRightLeft, Scale } from 'lucide-react';
+import { Head, usePage } from '@inertiajs/react';
+import {
+    BellOff,
+    CircleAlert,
+    Plus,
+    PowerOff,
+    Scale,
+    UserSearch,
+} from 'lucide-react';
 import { useState } from 'react';
-import { toast } from 'sonner';
-import InputError from '@/components/input-error';
-import {
-    ConditionBuilder,
-    RuleTestPanel,
-} from '@/components/sam/condition-builder';
-import type { ConditionFieldDef } from '@/components/sam/condition-builder';
-import { Badge } from '@/components/ui/badge';
+import { PulseStat, PulseStrip } from '@/components/sam/pulse-strip';
+import { DecisionRulesTab } from '@/components/sam/rules/decision-rules-tab';
+import type { DecisionFilter } from '@/components/sam/rules/decision-rules-tab';
+import { MappingRulesTab } from '@/components/sam/rules/mapping-rules-tab';
+import type {
+    DecisionSummary,
+    RulesPageProps,
+} from '@/components/sam/rules/types';
+import { TabBar } from '@/components/sam/tab-bar';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { EmptyState } from '@/components/ui/empty-state';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { PageHeader } from '@/components/ui/page-header';
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
-import { decisionOutcomeLabel, priorityLabel } from '@/lib/labels';
-import { postJson, putJson, readErrorPayload } from '@/lib/sam-fetch';
 
-// Sentinel para representar "sin selección" en los <Select> del DS: Radix
-// no permite SelectItem con value="", así que un value vacío real (ninguno
-// / default) se traduce a/desde este string en el handler.
-const NONE_OPTION = '__none__';
+// La pestaña de ajustes por cuenta (TenantRuleOverride) sigue fuera de la
+// navegación: se guardan pero nada los aplica al evaluar (ver
+// ApplyTenantRuleOverrides). Controlador, rutas y datos se quedan para cuando
+// exista consumidor real.
+type TabKey = 'decision' | 'mapping';
 
-// ---- Types ----
-
-interface DecisionRuleRow {
-    id: number;
-    code: string;
-    name: string;
-    description: string | null;
-    scope: string | null;
-    priority: number;
-    conditions: Record<string, unknown> | null;
-    outcomeCode: string | null;
-    outcomeLabel: string | null;
-    outcomeId: number | null;
-    stopProcessing: boolean;
-    isActive: boolean;
-    isGlobal: boolean;
-    rulesetId: number;
-    rulesetCode: string | null;
-}
-
-interface MappingRuleRow {
-    id: number;
-    providerId: number;
-    provider: string | null;
-    externalEventType: string;
-    hasConditions: boolean;
-    mappedEventTypeId: number;
-    mappedEventType: string | null;
-    mappedSeverity: string | null;
-    priority: number;
-    isActive: boolean;
-}
-
-interface OverrideRow {
-    id: number;
-    baseRuleCode: string;
-    overrideType: string | null;
-    config: Record<string, unknown> | null;
-    reason: string | null;
-    isActive: boolean;
-}
-
-interface Option {
-    value: string;
-    label: string;
-}
-
-interface RulesPageProps {
-    decisionRules: DecisionRuleRow[];
-    rulesets: {
-        id: number;
-        code: string;
-        name: string;
-        isDefault: boolean;
-        isGlobal: boolean;
-    }[];
-    outcomes: { id: number; code: string; name: string; label: string }[];
-    scopes: Option[];
-    mappingRules: MappingRuleRow[];
-    mappingOptions: {
-        providers: Option[];
-        eventTypes: Option[];
-        severities: Option[];
-        categories: Option[];
-    };
-    overrides: OverrideRow[];
-    overrideTypes: string[];
-    conditionFields: ConditionFieldDef[];
-    canManageDecisionRules: boolean;
-    // Las reglas de mapeo son globales de plataforma: sólo super-admin.
-    canManageMappingRules: boolean;
-    canManageOverrides: boolean;
-}
-
-// Tarea 12: la pestaña "Overrides del tenant" se retiró de la navegación —
-// se guardan (TenantRuleOverride) pero nada invoca
-// TenantRuleOverrideApplier al evaluar reglas (ver
-// app/Domains/TenantConfig/Actions/ApplyTenantRuleOverrides.php). El
-// controlador, las rutas y los datos se quedan para cuando exista
-// consumidor real.
-const TABS = [
-    { key: 'decision', label: 'Reglas de decisión' },
-    { key: 'mapping', label: 'Mapeo de eventos' },
-] as const;
-
-type TabKey = (typeof TABS)[number]['key'];
-
-function useTeamBase(): string | null {
-    const page = usePage();
-    const slug =
-        (
-            page.props as unknown as {
-                currentTeam?: { slug?: string | null } | null;
-            }
-        ).currentTeam?.slug ?? null;
-
-    return slug ? `/${slug}/rules` : null;
-}
-
-interface SubmitResult {
-    ok: boolean;
-    /** Primer mensaje por campo del `errors` de Laravel (D-04). */
-    fieldErrors: Record<string, string>;
-}
-
-async function submit(
-    promise: Promise<Response>,
-    successMessage: string,
-): Promise<SubmitResult> {
-    try {
-        const response = await promise;
-
-        if (response.ok || response.status === 201) {
-            toast.success(successMessage);
-            router.reload();
-
-            return { ok: true, fieldErrors: {} };
-        }
-
-        if (response.status === 403) {
-            toast.error('No tienes permisos para esta acción.');
-
-            return { ok: false, fieldErrors: {} };
-        }
-
-        const { message, fieldErrors } = await readErrorPayload(response);
-
-        toast.error(
-            Object.values(fieldErrors)[0] ??
-                message ??
-                'No se pudo guardar la regla.',
-        );
-
-        return { ok: false, fieldErrors };
-    } catch {
-        toast.error('Error de red. Vuelve a intentarlo.');
-    }
-
-    return { ok: false, fieldErrors: {} };
-}
-
-function ActiveBadge({ active }: { active: boolean }) {
-    return (
-        <Badge
-            variant="outline"
-            className={active ? 'text-severity-low' : 'text-fg-3'}
-        >
-            {active ? 'Activa' : 'Inactiva'}
-        </Badge>
-    );
-}
-
-// ---- Decision rule conditions editor (expanded row) ----
-
-function RuleConditionsEditor({
-    rule,
-    fields,
-    outcomes,
-    canEdit,
+function DecisionPulse({
+    summary,
+    filter,
+    onFilter,
 }: {
-    rule: DecisionRuleRow;
-    fields: ConditionFieldDef[];
-    outcomes: RulesPageProps['outcomes'];
-    canEdit: boolean;
+    summary: DecisionSummary;
+    filter: DecisionFilter | null;
+    onFilter: (filter: DecisionFilter | null) => void;
 }) {
-    const base = useTeamBase();
-    const [conditions, setConditions] = useState<Record<string, unknown>>(
-        rule.conditions ?? {},
-    );
-    // D-10: nombre/descripción/prioridad/outcome ahora son editables; `code`
-    // sigue siendo inmutable (identidad de la regla) y se avisa en la UI.
-    const [meta, setMeta] = useState({
-        name: rule.name,
-        description: rule.description ?? '',
-        priority: String(rule.priority),
-        outcomeId: rule.outcomeId === null ? '' : String(rule.outcomeId),
-    });
-    const [saving, setSaving] = useState(false);
-    const [jsonError, setJsonError] = useState<string | null>(null);
-    const [errors, setErrors] = useState<Record<string, string>>({});
-
-    const metaDirty =
-        meta.name !== rule.name ||
-        meta.description !== (rule.description ?? '') ||
-        meta.priority !== String(rule.priority) ||
-        meta.outcomeId !==
-            (rule.outcomeId === null ? '' : String(rule.outcomeId));
-    const dirty =
-        metaDirty ||
-        JSON.stringify(conditions) !== JSON.stringify(rule.conditions ?? {});
-
-    const save = async () => {
-        if (base === null || saving) {
-            return;
-        }
-
-        // D-05: con JSON inválido en modo avanzado no se guarda nada (antes
-        // se mandaban silenciosamente las condiciones previas del builder).
-        if (jsonError !== null) {
-            setErrors({
-                conditions_json: 'JSON inválido: corrígelo antes de guardar.',
-            });
-
-            return;
-        }
-
-        if (meta.name.trim() === '') {
-            setErrors({ name: 'El nombre es obligatorio.' });
-
-            return;
-        }
-
-        setErrors({});
-        setSaving(true);
-
-        const result = await submit(
-            putJson(`${base}/decision/${rule.id}`, {
-                name: meta.name,
-                description: meta.description === '' ? null : meta.description,
-                priority: Number(meta.priority) || 0,
-                outcome_override:
-                    meta.outcomeId === '' ? null : Number(meta.outcomeId),
-                conditions_json: conditions,
-            }),
-            'Regla guardada.',
-        );
-
-        if (!result.ok) {
-            setErrors(result.fieldErrors);
-        }
-
-        setSaving(false);
-    };
+    const count = (...codes: string[]) =>
+        codes.reduce((sum, code) => sum + (summary.byOutcome[code] ?? 0), 0);
+    const toggle = (value: DecisionFilter) => () =>
+        onFilter(filter === value ? null : value);
+    const off = summary.total - summary.active;
 
     return (
-        <div className="flex flex-col gap-3">
-            {canEdit ? (
-                <div className="flex flex-wrap gap-2">
-                    <div className="flex flex-col gap-1">
-                        <Label
-                            htmlFor={`rule-${rule.id}-code`}
-                            className="text-2xs text-fg-3 uppercase"
-                        >
-                            Código (no editable)
-                        </Label>
-                        <Input
-                            id={`rule-${rule.id}-code`}
-                            value={rule.code}
-                            disabled
-                            title="El código identifica la regla y no se puede cambiar."
-                            className="w-48 font-mono text-xs"
-                        />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                        <Label
-                            htmlFor={`rule-${rule.id}-name`}
-                            className="text-2xs text-fg-3 uppercase"
-                        >
-                            Nombre
-                        </Label>
-                        <Input
-                            id={`rule-${rule.id}-name`}
-                            value={meta.name}
-                            aria-invalid={Boolean(errors.name)}
-                            onChange={(e) =>
-                                setMeta({ ...meta, name: e.target.value })
-                            }
-                            className="w-64 text-xs"
-                        />
-                        <InputError
-                            message={errors.name}
-                            className="max-w-64 text-xs"
-                        />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                        <Label
-                            htmlFor={`rule-${rule.id}-priority`}
-                            className="text-2xs text-fg-3 uppercase"
-                        >
-                            Prioridad
-                        </Label>
-                        <Input
-                            id={`rule-${rule.id}-priority`}
-                            type="number"
-                            value={meta.priority}
-                            aria-invalid={Boolean(errors.priority)}
-                            onChange={(e) =>
-                                setMeta({ ...meta, priority: e.target.value })
-                            }
-                            className="w-24 text-xs"
-                        />
-                        <InputError
-                            message={errors.priority}
-                            className="text-xs"
-                        />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                        <Label
-                            htmlFor={`rule-${rule.id}-outcome`}
-                            className="text-2xs text-fg-3 uppercase"
-                        >
-                            Resultado
-                        </Label>
-                        <Select
-                            value={
-                                meta.outcomeId === ''
-                                    ? NONE_OPTION
-                                    : meta.outcomeId
-                            }
-                            onValueChange={(value) =>
-                                setMeta({
-                                    ...meta,
-                                    outcomeId:
-                                        value === NONE_OPTION ? '' : value,
-                                })
-                            }
-                        >
-                            <SelectTrigger
-                                id={`rule-${rule.id}-outcome`}
-                                className="h-9"
-                            >
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value={NONE_OPTION}>
-                                    Resultado: sin cambio
-                                </SelectItem>
-                                {outcomes.map((outcome) => (
-                                    <SelectItem
-                                        key={outcome.id}
-                                        value={String(outcome.id)}
-                                    >
-                                        {outcome.label ?? outcome.code}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                        <InputError
-                            message={errors.outcome_override}
-                            className="text-xs"
-                        />
-                    </div>
-                    <div className="flex w-full flex-col gap-1">
-                        <Label
-                            htmlFor={`rule-${rule.id}-description`}
-                            className="text-2xs text-fg-3 uppercase"
-                        >
-                            Descripción
-                        </Label>
-                        <Input
-                            id={`rule-${rule.id}-description`}
-                            value={meta.description}
-                            onChange={(e) =>
-                                setMeta({
-                                    ...meta,
-                                    description: e.target.value,
-                                })
-                            }
-                            className="max-w-xl text-xs"
-                        />
-                    </div>
-                </div>
-            ) : (
-                <p className="text-2xs text-fg-3">
-                    Regla global: solo lectura para tu tenant. Usa un override
-                    del tenant para ajustar su comportamiento.
-                </p>
-            )}
-            <span className="text-2xs text-fg-3 uppercase">Condiciones</span>
-            <ConditionBuilder
-                variant="tree"
-                fields={fields}
-                value={conditions}
-                onChange={(next) => {
-                    setConditions(next);
-                    setErrors({});
-                }}
-                onJsonErrorChange={setJsonError}
-                disabled={!canEdit}
+        <PulseStrip>
+            <PulseStat
+                label="Encendidas"
+                value={summary.active}
+                hint={`de ${summary.total} ${summary.total === 1 ? 'regla' : 'reglas'}`}
+                icon={Scale}
+                tone="ok"
+                onClick={toggle('active')}
+                active={filter === 'active'}
             />
-            <InputError message={errors.conditions_json} className="text-xs" />
-            {base !== null && (
-                <RuleTestPanel
-                    endpoint={`${base}/test-decision`}
-                    payload={() => ({ conditions_json: conditions })}
-                />
-            )}
-            {canEdit && (
-                <div>
-                    <Button
-                        size="sm"
-                        onClick={save}
-                        disabled={!dirty || saving}
-                    >
-                        {saving ? 'Guardando…' : 'Guardar regla'}
-                    </Button>
-                </div>
-            )}
-        </div>
+            <PulseStat
+                label="Abren incidente"
+                value={count('INCIDENT', 'ESCALATE')}
+                hint="van directo a la bandeja"
+                icon={CircleAlert}
+                tone="critical"
+                onClick={toggle('incident')}
+                active={filter === 'incident'}
+            />
+            <PulseStat
+                label="Piden revisión"
+                value={count('REQUIRE_HUMAN_REVIEW')}
+                hint="una persona decide"
+                icon={UserSearch}
+                tone="warn"
+                onClick={toggle('review')}
+                active={filter === 'review'}
+            />
+            <PulseStat
+                label="Avisan o descartan"
+                value={count('ALERT', 'LOG_ONLY', 'IGNORE')}
+                hint="urgencia baja o sin aviso"
+                icon={BellOff}
+                onClick={toggle('other')}
+                active={filter === 'other'}
+            />
+            <PulseStat
+                label="Apagadas"
+                value={off}
+                hint={off === 0 ? 'todas funcionan' : 'no se revisan'}
+                icon={PowerOff}
+                tone={off > 0 ? 'warn' : 'neutral'}
+                onClick={toggle('off')}
+                active={filter === 'off'}
+            />
+        </PulseStrip>
     );
 }
-
-// ---- Decision rules tab ----
-
-function DecisionRulesTab({
-    rules,
-    rulesets,
-    outcomes,
-    scopes,
-    conditionFields,
-    canManage,
-}: {
-    rules: DecisionRuleRow[];
-    rulesets: RulesPageProps['rulesets'];
-    outcomes: RulesPageProps['outcomes'];
-    scopes: RulesPageProps['scopes'];
-    conditionFields: ConditionFieldDef[];
-    canManage: boolean;
-}) {
-    const base = useTeamBase();
-    const [expanded, setExpanded] = useState<number | null>(null);
-    const [creating, setCreating] = useState(false);
-    const [submitting, setSubmitting] = useState(false);
-    const [errors, setErrors] = useState<Record<string, string>>({});
-    const [jsonError, setJsonError] = useState<string | null>(null);
-    const [form, setForm] = useState({
-        code: '',
-        name: '',
-        scope: 'tenant',
-        priority: '100',
-        outcomeId: '',
-        stopProcessing: false,
-    });
-    const [conditions, setConditions] = useState<Record<string, unknown>>({
-        all: [
-            {
-                field: 'event_type_code',
-                operator: 'eq',
-                value: 'panic_button',
-            },
-        ],
-    });
-
-    const toggleActive = (rule: DecisionRuleRow) => {
-        if (base === null) {
-            return;
-        }
-
-        void submit(
-            putJson(`${base}/decision/${rule.id}`, {
-                is_active: !rule.isActive,
-            }),
-            rule.isActive ? 'Regla desactivada.' : 'Regla activada.',
-        );
-    };
-
-    const create = async () => {
-        // D-01: guard contra doble click — no se emite un segundo POST
-        // mientras el primero sigue en vuelo.
-        if (base === null || submitting) {
-            return;
-        }
-
-        // D-05: el JSON inválido del modo avanzado bloquea el submit en vez
-        // de mandar silenciosamente las condiciones previas del builder.
-        if (jsonError !== null) {
-            setErrors({
-                conditions_json:
-                    'JSON inválido: corrígelo antes de crear la regla.',
-            });
-
-            return;
-        }
-
-        const ruleset =
-            rulesets.find((set) => !set.isGlobal && set.isDefault) ??
-            rulesets[0];
-
-        if (!ruleset) {
-            toast.error('No hay ruleset disponible para crear reglas.');
-
-            return;
-        }
-
-        setErrors({});
-        setSubmitting(true);
-
-        const result = await submit(
-            postJson(`${base}/decision`, {
-                ruleset_id: ruleset.id,
-                code: form.code,
-                name: form.name,
-                scope: form.scope,
-                priority: Number(form.priority) || 100,
-                conditions_json: conditions,
-                outcome_override:
-                    form.outcomeId === '' ? null : Number(form.outcomeId),
-                stop_processing: form.stopProcessing,
-                is_active: true,
-            }),
-            'Regla creada.',
-        );
-
-        setSubmitting(false);
-
-        if (result.ok) {
-            setCreating(false);
-        } else {
-            setErrors(result.fieldErrors);
-        }
-    };
-
-    // Errores que no corresponden a ningún campo visible del form (p. ej.
-    // ruleset_id) — se muestran como bloque persistente, no solo toast.
-    const knownFields = [
-        'code',
-        'name',
-        'scope',
-        'priority',
-        'outcome_override',
-        'conditions_json',
-    ];
-    const otherErrors = Object.entries(errors).filter(
-        ([field]) => !knownFields.includes(field),
-    );
-
-    return (
-        <div className="flex flex-col gap-4">
-            <Card>
-                <CardHeader>
-                    <CardTitle className="flex items-center justify-between text-sm uppercase">
-                        Reglas de decisión ({rules.length})
-                        {canManage && (rules.length > 0 || creating) && (
-                            <Button
-                                size="sm"
-                                variant={creating ? 'ghost' : 'outline'}
-                                onClick={() => setCreating(!creating)}
-                            >
-                                {creating ? 'Cancelar' : 'Nueva regla'}
-                            </Button>
-                        )}
-                    </CardTitle>
-                </CardHeader>
-                <CardContent>
-                    {creating && (
-                        <div className="mb-4 flex flex-col gap-2 rounded-md border border-border p-3">
-                            <div className="flex flex-wrap gap-2">
-                                <div className="flex flex-col gap-1">
-                                    <Label
-                                        htmlFor="rule-new-code"
-                                        className="text-2xs text-fg-3 uppercase"
-                                    >
-                                        Código
-                                    </Label>
-                                    <Input
-                                        id="rule-new-code"
-                                        placeholder="code (ej. panic-vip)"
-                                        value={form.code}
-                                        aria-invalid={Boolean(errors.code)}
-                                        onChange={(e) =>
-                                            setForm({
-                                                ...form,
-                                                code: e.target.value,
-                                            })
-                                        }
-                                        className="w-48 font-mono text-xs"
-                                    />
-                                    <InputError
-                                        message={errors.code}
-                                        className="max-w-48 text-xs"
-                                    />
-                                </div>
-                                <div className="flex flex-col gap-1">
-                                    <Label
-                                        htmlFor="rule-new-name"
-                                        className="text-2xs text-fg-3 uppercase"
-                                    >
-                                        Nombre
-                                    </Label>
-                                    <Input
-                                        id="rule-new-name"
-                                        placeholder="Nombre"
-                                        value={form.name}
-                                        aria-invalid={Boolean(errors.name)}
-                                        onChange={(e) =>
-                                            setForm({
-                                                ...form,
-                                                name: e.target.value,
-                                            })
-                                        }
-                                        className="w-64 text-xs"
-                                    />
-                                    <InputError
-                                        message={errors.name}
-                                        className="max-w-64 text-xs"
-                                    />
-                                </div>
-                                <div className="flex flex-col gap-1">
-                                    <Label
-                                        htmlFor="rule-new-scope"
-                                        className="text-2xs text-fg-3 uppercase"
-                                    >
-                                        Ámbito
-                                    </Label>
-                                    <Select
-                                        value={form.scope}
-                                        onValueChange={(value) =>
-                                            setForm({
-                                                ...form,
-                                                scope: value,
-                                            })
-                                        }
-                                    >
-                                        <SelectTrigger
-                                            id="rule-new-scope"
-                                            className="h-9"
-                                        >
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {scopes.map((scope) => (
-                                                <SelectItem
-                                                    key={scope.value}
-                                                    value={scope.value}
-                                                >
-                                                    {scope.label}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                    <InputError
-                                        message={errors.scope}
-                                        className="text-xs"
-                                    />
-                                </div>
-                                <div className="flex flex-col gap-1">
-                                    <Label
-                                        htmlFor="rule-new-priority"
-                                        className="text-2xs text-fg-3 uppercase"
-                                    >
-                                        Prioridad
-                                    </Label>
-                                    <Input
-                                        id="rule-new-priority"
-                                        type="number"
-                                        placeholder="prioridad"
-                                        value={form.priority}
-                                        aria-invalid={Boolean(errors.priority)}
-                                        onChange={(e) =>
-                                            setForm({
-                                                ...form,
-                                                priority: e.target.value,
-                                            })
-                                        }
-                                        className="w-24 text-xs"
-                                    />
-                                    <InputError
-                                        message={errors.priority}
-                                        className="text-xs"
-                                    />
-                                </div>
-                                <div className="flex flex-col gap-1">
-                                    <Label
-                                        htmlFor="rule-new-outcome"
-                                        className="text-2xs text-fg-3 uppercase"
-                                    >
-                                        Resultado
-                                    </Label>
-                                    <Select
-                                        value={
-                                            form.outcomeId === ''
-                                                ? NONE_OPTION
-                                                : form.outcomeId
-                                        }
-                                        onValueChange={(value) =>
-                                            setForm({
-                                                ...form,
-                                                outcomeId:
-                                                    value === NONE_OPTION
-                                                        ? ''
-                                                        : value,
-                                            })
-                                        }
-                                    >
-                                        <SelectTrigger
-                                            id="rule-new-outcome"
-                                            className="h-9"
-                                        >
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value={NONE_OPTION}>
-                                                Resultado: sin cambio
-                                            </SelectItem>
-                                            {outcomes.map((outcome) => (
-                                                <SelectItem
-                                                    key={outcome.id}
-                                                    value={String(outcome.id)}
-                                                >
-                                                    {outcome.label ??
-                                                        outcome.code}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                    <InputError
-                                        message={errors.outcome_override}
-                                        className="text-xs"
-                                    />
-                                </div>
-                                <label
-                                    htmlFor="rule-new-stop"
-                                    className="flex items-center gap-1 text-xs text-fg-2"
-                                >
-                                    <input
-                                        id="rule-new-stop"
-                                        type="checkbox"
-                                        checked={form.stopProcessing}
-                                        onChange={(e) =>
-                                            setForm({
-                                                ...form,
-                                                stopProcessing:
-                                                    e.target.checked,
-                                            })
-                                        }
-                                    />
-                                    Detener evaluación (no evaluar reglas
-                                    siguientes)
-                                </label>
-                            </div>
-                            <span className="text-xs text-fg-3">
-                                Condiciones
-                            </span>
-                            <ConditionBuilder
-                                variant="tree"
-                                fields={conditionFields}
-                                value={conditions}
-                                onChange={setConditions}
-                                onJsonErrorChange={setJsonError}
-                            />
-                            <InputError
-                                message={errors.conditions_json}
-                                className="text-xs"
-                            />
-                            {base !== null && (
-                                <RuleTestPanel
-                                    endpoint={`${base}/test-decision`}
-                                    payload={() => ({
-                                        conditions_json: conditions,
-                                    })}
-                                />
-                            )}
-                            {otherErrors.length > 0 && (
-                                <ul className="flex flex-col gap-0.5">
-                                    {otherErrors.map(([field, message]) => (
-                                        <li key={field}>
-                                            <InputError
-                                                message={message}
-                                                className="text-xs"
-                                            />
-                                        </li>
-                                    ))}
-                                </ul>
-                            )}
-                            <div>
-                                <Button
-                                    size="sm"
-                                    onClick={create}
-                                    disabled={submitting}
-                                >
-                                    {submitting ? 'Creando…' : 'Crear regla'}
-                                </Button>
-                            </div>
-                        </div>
-                    )}
-
-                    {rules.length === 0 ? (
-                        <EmptyState
-                            icon={Scale}
-                            title="Todavía no hay reglas de decisión"
-                            description="Las reglas de decisión definen qué resultado aplica según las condiciones de un evento. Créalas para automatizar la clasificación."
-                            action={
-                                canManage && !creating ? (
-                                    <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => setCreating(true)}
-                                    >
-                                        Nueva regla
-                                    </Button>
-                                ) : undefined
-                            }
-                        />
-                    ) : (
-                        <table className="w-full text-left text-xs">
-                            <thead className="text-2xs text-fg-3 uppercase">
-                                <tr>
-                                    <th className="py-1.5 pr-4">Prioridad</th>
-                                    <th className="py-1.5 pr-4">Código</th>
-                                    <th className="py-1.5 pr-4">Nombre</th>
-                                    <th className="py-1.5 pr-4">Resultado</th>
-                                    <th className="py-1.5 pr-4">Origen</th>
-                                    <th className="py-1.5 pr-4">Estado</th>
-                                    <th className="py-1.5 pr-4" />
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {rules.map((rule) => (
-                                    <>
-                                        <tr
-                                            key={rule.id}
-                                            onClick={() =>
-                                                setExpanded(
-                                                    expanded === rule.id
-                                                        ? null
-                                                        : rule.id,
-                                                )
-                                            }
-                                            className="cursor-pointer border-t border-border/50 text-fg-2 hover:bg-surface-1"
-                                        >
-                                            <td className="py-2 pr-4 tabular-nums">
-                                                {rule.priority}
-                                            </td>
-                                            <td className="py-2 pr-4 font-mono text-2xs">
-                                                {rule.code}
-                                            </td>
-                                            <td className="py-2 pr-4 text-fg-1">
-                                                {rule.name}
-                                                {rule.stopProcessing && (
-                                                    <Badge
-                                                        variant="outline"
-                                                        className="ml-1.5 text-3xs text-fg-3"
-                                                        title="Si coincide, no se evalúan las reglas siguientes"
-                                                    >
-                                                        Detiene evaluación
-                                                    </Badge>
-                                                )}
-                                            </td>
-                                            <td className="py-2 pr-4">
-                                                {rule.outcomeLabel ??
-                                                    decisionOutcomeLabel(
-                                                        rule.outcomeCode,
-                                                    )}
-                                            </td>
-                                            <td className="py-2 pr-4">
-                                                {rule.isGlobal
-                                                    ? 'De plataforma'
-                                                    : 'Del tenant'}
-                                            </td>
-                                            <td className="py-2 pr-4">
-                                                <ActiveBadge
-                                                    active={rule.isActive}
-                                                />
-                                            </td>
-                                            <td className="py-2 text-right">
-                                                {canManage &&
-                                                    !rule.isGlobal && (
-                                                        <Button
-                                                            size="sm"
-                                                            variant="ghost"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                toggleActive(
-                                                                    rule,
-                                                                );
-                                                            }}
-                                                        >
-                                                            {rule.isActive
-                                                                ? 'Desactivar'
-                                                                : 'Activar'}
-                                                        </Button>
-                                                    )}
-                                            </td>
-                                        </tr>
-                                        {expanded === rule.id && (
-                                            <tr key={`${rule.id}-detail`}>
-                                                <td
-                                                    colSpan={7}
-                                                    className="bg-surface-1 px-3 py-3"
-                                                >
-                                                    <RuleConditionsEditor
-                                                        rule={rule}
-                                                        fields={conditionFields}
-                                                        outcomes={outcomes}
-                                                        canEdit={
-                                                            canManage &&
-                                                            !rule.isGlobal
-                                                        }
-                                                    />
-                                                </td>
-                                            </tr>
-                                        )}
-                                    </>
-                                ))}
-                            </tbody>
-                        </table>
-                    )}
-                </CardContent>
-            </Card>
-        </div>
-    );
-}
-
-// ---- Mapping rules tab ----
-
-function MappingRulesTab({
-    rules,
-    options,
-    canManage,
-}: {
-    rules: MappingRuleRow[];
-    options: RulesPageProps['mappingOptions'];
-    canManage: boolean;
-}) {
-    const base = useTeamBase();
-    const [creating, setCreating] = useState(false);
-    const [submitting, setSubmitting] = useState(false);
-    const [errors, setErrors] = useState<Record<string, string>>({});
-    const [form, setForm] = useState({
-        providerId: '',
-        externalEventType: '',
-        eventTypeId: '',
-        severityId: '',
-        priority: '100',
-    });
-    const [conditions, setConditions] = useState<Record<string, unknown>>({});
-
-    const toggleActive = (rule: MappingRuleRow) => {
-        if (base === null) {
-            return;
-        }
-
-        void submit(
-            putJson(`${base}/mapping/${rule.id}`, {
-                is_active: !rule.isActive,
-            }),
-            rule.isActive ? 'Regla desactivada.' : 'Regla activada.',
-        );
-    };
-
-    const create = async () => {
-        // D-01: guard contra doble click.
-        if (base === null || submitting) {
-            return;
-        }
-
-        if (
-            form.providerId === '' ||
-            form.externalEventType === '' ||
-            form.eventTypeId === ''
-        ) {
-            toast.error('Proveedor, evento externo y tipo son obligatorios.');
-
-            return;
-        }
-
-        setErrors({});
-        setSubmitting(true);
-
-        const result = await submit(
-            postJson(`${base}/mapping`, {
-                provider_id: Number(form.providerId),
-                external_event_type: form.externalEventType,
-                external_conditions_json:
-                    Object.keys(conditions).length > 0 ? conditions : null,
-                mapped_event_type_id: Number(form.eventTypeId),
-                mapped_severity_id:
-                    form.severityId === '' ? null : Number(form.severityId),
-                priority: Number(form.priority) || 100,
-                is_active: true,
-            }),
-            'Regla de mapeo creada.',
-        );
-
-        setSubmitting(false);
-
-        if (result.ok) {
-            setCreating(false);
-        } else {
-            setErrors(result.fieldErrors);
-        }
-    };
-
-    return (
-        <Card>
-            <CardHeader>
-                <CardTitle className="flex items-center justify-between text-sm uppercase">
-                    Reglas de mapeo ({rules.length})
-                    {canManage && (rules.length > 0 || creating) && (
-                        <Button
-                            size="sm"
-                            variant={creating ? 'ghost' : 'outline'}
-                            onClick={() => setCreating(!creating)}
-                        >
-                            {creating ? 'Cancelar' : 'Nueva regla'}
-                        </Button>
-                    )}
-                </CardTitle>
-            </CardHeader>
-            <CardContent>
-                {creating && (
-                    <div className="mb-4 flex flex-wrap items-center gap-2 rounded-md border border-border p-3">
-                        <Select
-                            value={form.providerId}
-                            onValueChange={(value) =>
-                                setForm({ ...form, providerId: value })
-                            }
-                        >
-                            <SelectTrigger
-                                aria-label="Proveedor"
-                                className="h-9"
-                            >
-                                <SelectValue placeholder="Proveedor…" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {options.providers.map((option) => (
-                                    <SelectItem
-                                        key={option.value}
-                                        value={option.value}
-                                    >
-                                        {option.label}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                        <Input
-                            aria-label="Evento externo del proveedor"
-                            placeholder="evento externo (behaviorLabel)"
-                            value={form.externalEventType}
-                            onChange={(e) =>
-                                setForm({
-                                    ...form,
-                                    externalEventType: e.target.value,
-                                })
-                            }
-                            className="w-60 font-mono text-xs"
-                        />
-                        <span className="text-fg-3">→</span>
-                        <Select
-                            value={form.eventTypeId}
-                            onValueChange={(value) =>
-                                setForm({
-                                    ...form,
-                                    eventTypeId: value,
-                                })
-                            }
-                        >
-                            <SelectTrigger
-                                aria-label="Tipo de evento"
-                                className="h-9"
-                            >
-                                <SelectValue placeholder="Tipo de evento…" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {options.eventTypes.map((option) => (
-                                    <SelectItem
-                                        key={option.value}
-                                        value={option.value}
-                                    >
-                                        {option.label}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                        <Select
-                            value={
-                                form.severityId === ''
-                                    ? NONE_OPTION
-                                    : form.severityId
-                            }
-                            onValueChange={(value) =>
-                                setForm({
-                                    ...form,
-                                    severityId:
-                                        value === NONE_OPTION ? '' : value,
-                                })
-                            }
-                        >
-                            <SelectTrigger
-                                aria-label="Severidad"
-                                className="h-9"
-                            >
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value={NONE_OPTION}>
-                                    Severidad: predeterminada
-                                </SelectItem>
-                                {options.severities.map((option) => (
-                                    <SelectItem
-                                        key={option.value}
-                                        value={option.value}
-                                    >
-                                        {priorityLabel(
-                                            option.label.toLowerCase(),
-                                        )}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                        <Input
-                            type="number"
-                            aria-label="Prioridad"
-                            value={form.priority}
-                            onChange={(e) =>
-                                setForm({ ...form, priority: e.target.value })
-                            }
-                            className="w-24 text-xs"
-                        />
-                        <div className="w-full">
-                            <span className="mb-2 block text-xs text-fg-3">
-                                Condiciones sobre el payload (opcional)
-                            </span>
-                            <ConditionBuilder
-                                variant="flat-equality"
-                                fields={[]}
-                                allowUnknownFields
-                                value={conditions}
-                                onChange={setConditions}
-                            />
-                            {base !== null &&
-                                Object.keys(conditions).length > 0 && (
-                                    <RuleTestPanel
-                                        className="mt-2"
-                                        endpoint={`${base}/test-mapping`}
-                                        payload={() => ({
-                                            external_conditions_json:
-                                                conditions,
-                                        })}
-                                    />
-                                )}
-                        </div>
-                        {Object.keys(errors).length > 0 && (
-                            <ul className="flex w-full flex-col gap-0.5">
-                                {Object.entries(errors).map(
-                                    ([field, message]) => (
-                                        <li key={field}>
-                                            <InputError
-                                                message={message}
-                                                className="text-xs"
-                                            />
-                                        </li>
-                                    ),
-                                )}
-                            </ul>
-                        )}
-                        <Button
-                            size="sm"
-                            onClick={create}
-                            disabled={submitting}
-                        >
-                            {submitting ? 'Creando…' : 'Crear'}
-                        </Button>
-                    </div>
-                )}
-
-                {rules.length === 0 ? (
-                    <EmptyState
-                        icon={ArrowRightLeft}
-                        title="Todavía no hay reglas de mapeo"
-                        description="Las reglas de mapeo traducen eventos externos del proveedor a los tipos y severidades de SAM. Créalas para clasificar automáticamente."
-                        action={
-                            canManage && !creating ? (
-                                <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => setCreating(true)}
-                                >
-                                    Nueva regla
-                                </Button>
-                            ) : undefined
-                        }
-                    />
-                ) : (
-                    <table className="w-full text-left text-xs">
-                        <thead className="text-2xs text-fg-3 uppercase">
-                            <tr>
-                                <th className="py-1.5 pr-4">Prioridad</th>
-                                <th className="py-1.5 pr-4">Proveedor</th>
-                                <th className="py-1.5 pr-4">Evento externo</th>
-                                <th className="py-1.5 pr-4">→ Tipo</th>
-                                <th className="py-1.5 pr-4">Severidad</th>
-                                <th className="py-1.5 pr-4">Estado</th>
-                                <th className="py-1.5 pr-4" />
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {rules.map((rule) => (
-                                <tr
-                                    key={rule.id}
-                                    className="border-t border-border/50 text-fg-2"
-                                >
-                                    <td className="py-2 pr-4 tabular-nums">
-                                        {rule.priority}
-                                    </td>
-                                    <td className="py-2 pr-4">
-                                        {rule.provider}
-                                    </td>
-                                    <td className="py-2 pr-4 font-mono text-2xs">
-                                        {rule.externalEventType}
-                                        {rule.hasConditions && (
-                                            <Badge
-                                                variant="outline"
-                                                className="ml-1 text-3xs text-fg-3"
-                                            >
-                                                con condiciones
-                                            </Badge>
-                                        )}
-                                    </td>
-                                    <td className="py-2 pr-4 text-fg-1">
-                                        {rule.mappedEventType}
-                                    </td>
-                                    <td className="py-2 pr-4">
-                                        {rule.mappedSeverity
-                                            ? priorityLabel(
-                                                  rule.mappedSeverity.toLowerCase(),
-                                              )
-                                            : 'Predeterminada'}
-                                    </td>
-                                    <td className="py-2 pr-4">
-                                        <ActiveBadge active={rule.isActive} />
-                                    </td>
-                                    <td className="py-2 text-right">
-                                        {canManage && (
-                                            <Button
-                                                size="sm"
-                                                variant="ghost"
-                                                onClick={() =>
-                                                    toggleActive(rule)
-                                                }
-                                            >
-                                                {rule.isActive
-                                                    ? 'Desactivar'
-                                                    : 'Activar'}
-                                            </Button>
-                                        )}
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                )}
-            </CardContent>
-        </Card>
-    );
-}
-
-// ---- Page ----
 
 export default function RulesIndex() {
-    const page = usePage();
-    const props = page.props as unknown as RulesPageProps;
+    const props = usePage().props as unknown as RulesPageProps;
     const [tab, setTab] = useState<TabKey>('decision');
+    const [filter, setFilter] = useState<DecisionFilter | null>(null);
+    const [creatingDecision, setCreatingDecision] = useState(false);
+    const [creatingMapping, setCreatingMapping] = useState(false);
+
+    const summary = props.decisionSummary;
+    const canCreate =
+        tab === 'decision'
+            ? props.canManageDecisionRules
+            : props.canManageMappingRules;
 
     return (
         <>
             <Head title="Reglas" />
-            <div className="flex flex-col gap-4 p-5">
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                 <PageHeader
                     title="Reglas"
-                    description="Motor de decisiones y mapeo de eventos del proveedor."
+                    description="Deciden qué pasa con cada evento: si abre un incidente, si pide revisión de una persona o si se ignora."
+                    meta={
+                        <span className="text-xs text-fg-3">
+                            <span className="font-medium text-fg-1">
+                                {summary.active}
+                            </span>{' '}
+                            {summary.active === 1
+                                ? 'regla encendida'
+                                : 'reglas encendidas'}
+                        </span>
+                    }
+                    actions={
+                        canCreate ? (
+                            <Button
+                                size="sm"
+                                onClick={() =>
+                                    tab === 'decision'
+                                        ? setCreatingDecision(true)
+                                        : setCreatingMapping(true)
+                                }
+                            >
+                                <Plus className="size-3.5" />
+                                {tab === 'decision'
+                                    ? 'Nueva regla'
+                                    : 'Nueva traducción'}
+                            </Button>
+                        ) : undefined
+                    }
+                    className="shrink-0 border-b border-border bg-surface-1 px-5 py-3"
                 />
 
-                <div className="flex flex-wrap gap-1 border-b border-border">
-                    {TABS.map((item) => (
-                        <button
-                            key={item.key}
-                            type="button"
-                            onClick={() => setTab(item.key)}
-                            className={`px-3 py-2 text-sm transition-colors ${
-                                tab === item.key
-                                    ? 'border-b-2 border-primary font-medium text-fg-1'
-                                    : 'text-fg-3 hover:text-fg-1'
-                            }`}
-                        >
-                            {item.label}
-                        </button>
-                    ))}
-                </div>
-
                 {tab === 'decision' && (
-                    <DecisionRulesTab
-                        rules={props.decisionRules}
-                        rulesets={props.rulesets}
-                        outcomes={props.outcomes}
-                        scopes={props.scopes}
-                        conditionFields={props.conditionFields}
-                        canManage={props.canManageDecisionRules}
+                    <DecisionPulse
+                        summary={summary}
+                        filter={filter}
+                        onFilter={setFilter}
                     />
                 )}
-                {tab === 'mapping' && (
-                    <MappingRulesTab
-                        rules={props.mappingRules}
-                        options={props.mappingOptions}
-                        canManage={props.canManageMappingRules}
-                    />
-                )}
+
+                <TabBar
+                    aria-label="Secciones de reglas"
+                    value={tab}
+                    onChange={(key) => setTab(key as TabKey)}
+                    items={[
+                        {
+                            key: 'decision',
+                            label: 'Reglas',
+                            count: summary.total,
+                        },
+                        {
+                            key: 'mapping',
+                            label: 'Traducción de alertas',
+                            count: props.mappingSummary.total,
+                        },
+                    ]}
+                    className="shrink-0 px-5"
+                />
+
+                <div className="min-h-0 flex-1 overflow-y-auto">
+                    {tab === 'decision' ? (
+                        <DecisionRulesTab
+                            rules={props.decisionRules}
+                            rulesets={props.rulesets}
+                            outcomes={props.outcomes}
+                            fields={props.conditionFields}
+                            canManage={props.canManageDecisionRules}
+                            filter={filter}
+                            onClearFilter={() => setFilter(null)}
+                            creating={creatingDecision}
+                            onCreatingChange={setCreatingDecision}
+                        />
+                    ) : (
+                        <MappingRulesTab
+                            rules={props.mappingRules}
+                            summary={props.mappingSummary}
+                            options={props.mappingOptions}
+                            canManage={props.canManageMappingRules}
+                            creating={creatingMapping}
+                            onCreatingChange={setCreatingMapping}
+                        />
+                    )}
+                </div>
             </div>
         </>
     );

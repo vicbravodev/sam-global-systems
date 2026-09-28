@@ -48,4 +48,12 @@ return [
     // = precio plano `unit_price`. Ejemplo:
     // [['from' => 1, 'to' => 25, 'unit_price' => 500], ['from' => 26, 'to' => 100, 'unit_price' => 450], ['from' => 101, 'to' => null, 'unit_price' => 400]]
     'volume_tiers' => [],
+
+    // Datos para la transferencia bancaria que ve el cliente en su página de
+    // facturación. Si falta la CLABE la página sólo ofrece el contacto.
+    'transfer' => [
+        'beneficiary' => env('BILLING_TRANSFER_BENEFICIARY'),
+        'bank' => env('BILLING_TRANSFER_BANK'),
+        'clabe' => env('BILLING_TRANSFER_CLABE'),
+    ],
 ];

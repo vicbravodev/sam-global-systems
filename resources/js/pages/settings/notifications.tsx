@@ -1,10 +1,15 @@
 import { Head, router } from '@inertiajs/react';
-import { BellOff, Check } from 'lucide-react';
+import { Bell, Check } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import Heading from '@/components/heading';
+import { FormCard } from '@/components/sam/field';
+import { ChipToggle } from '@/components/sam/settings/controls';
+import {
+    SettingsPage,
+    SettingsSection,
+} from '@/components/sam/settings/settings-page';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
-import { cn } from '@/lib/utils';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Switch } from '@/components/ui/switch';
 import { update as updatePreferences } from '@/routes/notification-preferences';
 
 interface PreferenceEntry {
@@ -80,71 +85,65 @@ function PreferenceRow({
         );
     };
 
+    const mutedId = `pref-${type}-muted`;
+
     return (
-        <div className="rounded-md border border-border p-4">
-            <div className="flex items-center justify-between gap-2">
-                <div className="flex min-w-0 items-center gap-2">
-                    <span
+        <li className="flex flex-col gap-3 px-5 py-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0">
+                    <p
                         className="truncate text-sm font-medium text-fg-1"
                         title={type}
                     >
                         {label}
-                    </span>
-                    {!configured && (
-                        <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-3xs text-muted-foreground">
-                            Sin configurar
-                        </span>
-                    )}
+                    </p>
+                    <p className="text-2xs text-fg-3">
+                        {configured
+                            ? 'Con tu preferencia'
+                            : 'Usa la regla de tu equipo hasta que la cambies'}
+                    </p>
                 </div>
                 <Button
                     size="sm"
+                    variant={dirty ? 'default' : 'outline'}
                     onClick={save}
                     disabled={!dirty || saving || channels.length === 0}
                 >
-                    <Check className="h-3.5 w-3.5" />
+                    <Check className="size-3.5" />
                     Guardar
                 </Button>
             </div>
 
-            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2">
+            <div className="flex flex-wrap items-center gap-1.5">
+                <span className="mr-1 text-xs text-fg-3">Recibir por</span>
                 {channelOptions.map((option) => (
-                    <label
+                    <ChipToggle
                         key={option.value}
-                        htmlFor={`pref-${type}-channel-${option.value}`}
-                        className="flex cursor-pointer items-center gap-2 text-xs"
+                        active={channels.includes(option.value)}
+                        onToggle={() => toggleChannel(option.value)}
                     >
-                        <Checkbox
-                            id={`pref-${type}-channel-${option.value}`}
-                            checked={channels.includes(option.value)}
-                            onCheckedChange={() => toggleChannel(option.value)}
-                        />
                         {option.label}
-                    </label>
+                    </ChipToggle>
                 ))}
             </div>
 
-            <label
-                htmlFor={`pref-${type}-muted`}
-                className={cn(
-                    'mt-3 flex w-fit cursor-pointer items-center gap-2 text-xs',
-                    muted && 'text-muted-foreground',
-                )}
-            >
-                <Checkbox
-                    id={`pref-${type}-muted`}
+            <div className="flex items-center gap-2.5">
+                <Switch
+                    id={mutedId}
                     checked={muted}
-                    onCheckedChange={(checked) => setMuted(checked === true)}
+                    onCheckedChange={setMuted}
                 />
-                <BellOff className="h-3.5 w-3.5" />
-                Silenciar (prioridad baja y normal)
-            </label>
+                <label htmlFor={mutedId} className="text-xs text-fg-2">
+                    Silenciar los de prioridad baja y normal
+                </label>
+            </div>
 
-            {channels.length === 0 && (
-                <p className="mt-2 text-2xs text-muted-foreground">
-                    Selecciona al menos un canal para guardar.
+            {channels.length === 0 ? (
+                <p className="text-2xs text-severity-high">
+                    Elige al menos una vía para guardar.
                 </p>
-            )}
-        </div>
+            ) : null}
+        </li>
     );
 }
 
@@ -178,39 +177,53 @@ export default function NotificationsSettings({
 
     return (
         <>
-            <Head title="Preferencias de notificación" />
-
-            <h1 className="sr-only">Preferencias de notificación</h1>
-
-            <div className="space-y-6">
-                <Heading
-                    variant="small"
-                    title="Preferencias de notificación"
-                    description={
-                        teamName
-                            ? `Elige por qué canales recibir cada tipo de notificación en ${teamName}. Sin preferencia, aplica la política del equipo.`
-                            : 'Elige por qué canales recibir cada tipo de notificación. Sin preferencia, aplica la política del equipo.'
-                    }
-                />
-
-                <div className="space-y-3">
-                    {types.map((type) => {
-                        const pref = byType.get(type);
-
-                        return (
-                            <PreferenceRow
-                                key={`${type}:${pref?.id ?? 'new'}:${pref ? pref.allowedChannels.join(',') : ''}:${pref?.muted ?? false}`}
-                                type={type}
-                                label={typeLabels[type] ?? type}
-                                initialChannels={pref?.allowedChannels ?? []}
-                                initialMuted={pref?.muted ?? false}
-                                configured={pref !== undefined}
-                                channelOptions={channelOptions}
+            <Head title="Mis avisos" />
+            <SettingsPage
+                title="Mis avisos"
+                description={
+                    teamName
+                        ? `Cómo te llegan a ti los avisos de ${teamName}. No cambia lo que reciben los demás.`
+                        : 'Cómo te llegan a ti los avisos. No cambia lo que reciben los demás.'
+                }
+            >
+                <SettingsSection
+                    title="Por tipo de aviso"
+                    description="Mientras no guardes una preferencia, se aplica la regla de tu equipo."
+                >
+                    {types.length === 0 ? (
+                        <FormCard>
+                            <EmptyState
+                                className="py-6"
+                                icon={Bell}
+                                title="Aún no hay avisos que ajustar"
+                                description="Cuando tu equipo empiece a recibir avisos, aquí podrás elegir por dónde te llega cada uno."
                             />
-                        );
-                    })}
-                </div>
-            </div>
+                        </FormCard>
+                    ) : (
+                        <FormCard className="gap-0 p-0">
+                            <ul className="divide-y divide-border">
+                                {types.map((type) => {
+                                    const pref = byType.get(type);
+
+                                    return (
+                                        <PreferenceRow
+                                            key={`${type}:${pref?.id ?? 'new'}:${pref ? pref.allowedChannels.join(',') : ''}:${pref?.muted ?? false}`}
+                                            type={type}
+                                            label={typeLabels[type] ?? type}
+                                            initialChannels={
+                                                pref?.allowedChannels ?? []
+                                            }
+                                            initialMuted={pref?.muted ?? false}
+                                            configured={pref !== undefined}
+                                            channelOptions={channelOptions}
+                                        />
+                                    );
+                                })}
+                            </ul>
+                        </FormCard>
+                    )}
+                </SettingsSection>
+            </SettingsPage>
         </>
     );
 }

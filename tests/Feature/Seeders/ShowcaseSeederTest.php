@@ -48,6 +48,12 @@ class ShowcaseSeederTest extends TestCase
     {
         parent::setUp();
 
+        // El showcase es determinista por fecha, pero cuántos incidentes
+        // siguen abiertos depende de la hora ("ahora" corta las vidas que
+        // aún no terminan): con el reloj real el test pasaba o fallaba
+        // según la hora a la que corriera. Se fija a media mañana.
+        $this->travelTo(CarbonImmutable::parse('2026-09-28 11:00:00'));
+
         Storage::fake('rustfs');
         $this->seed(DatabaseSeeder::class);
     }
@@ -108,7 +114,7 @@ class ShowcaseSeederTest extends TestCase
             "{$base}/billing" => ['billing/index', fn (AssertableInertia $p) => $p->whereNot('subscription', null)->where('features', $nonEmpty)->where('usage', $nonEmpty)->where('invoices', fn ($i) => count($i) >= 3)
                 ->where('usage', fn ($u) => collect($u)->contains(fn ($row) => $row['meterCode'] === 'messaging_cost_micros' && $row['amount'] > 0))
                 ->where('invoices', fn ($i) => collect($i)->contains(fn ($inv) => collect($inv['breakdown'] ?? [])->contains(fn ($line) => ($line['billing_model'] ?? null) === 'cost_plus' && $line['overage_cost'] > 0)))],
-            "{$base}/analytics" => ['analytics/index', fn (AssertableInertia $p) => $p->whereNot('overview', null)->where('metrics', $nonEmpty)->where('reports', $nonEmpty)->where('executions', $nonEmpty)],
+            "{$base}/analytics" => ['analytics/index', fn (AssertableInertia $p) => $p->where('fleet.monitored', fn ($n) => $n > 0)->where('metrics', $nonEmpty)->where('reports', $nonEmpty)->where('executions', $nonEmpty)],
             "{$base}/copilot" => ['copilot/index', fn (AssertableInertia $p) => $p->where('conversations', $nonEmpty)],
             "{$base}/copilot/usage?days=30" => ['copilot/usage', fn (AssertableInertia $p) => $p->has('usage')],
             "{$base}/settings/tenant-config" => ['settings/tenant-config', fn (AssertableInertia $p) => $p->whereNot('aiProfile', null)->where('notificationPolicies', $nonEmpty)->where('scheduleProfiles', $nonEmpty)->where('versions', $nonEmpty)],

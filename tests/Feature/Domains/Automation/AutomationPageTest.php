@@ -5,12 +5,15 @@ namespace Tests\Feature\Domains\Automation;
 use App\Domains\Access\Enums\RoleScope;
 use App\Domains\Access\Models\Permission;
 use App\Domains\Access\Models\Role;
+use App\Domains\Automation\Enums\ActionExecutionSourceType;
 use App\Domains\Automation\Enums\ActionExecutionStatus;
 use App\Domains\Automation\Enums\ActionType;
 use App\Domains\Automation\Enums\WorkflowTriggerType;
 use App\Domains\Automation\Models\ActionExecution;
 use App\Domains\Automation\Models\AutomationWorkflow;
+use App\Domains\Automation\Models\WorkflowExecution;
 use App\Domains\Automation\Queries\WorkflowRunStats;
+use App\Domains\Incidents\Models\Incident;
 use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Models\User;
@@ -386,5 +389,146 @@ class AutomationPageTest extends TestCase
 
         $this->assertSame([$workflow->id], array_keys($stats));
         $this->assertSame(1, $stats[$workflow->id]['runs30d']);
+    }
+
+    public function test_summary_counts_workflows_and_executions_of_the_window(): void
+    {
+        AutomationWorkflow::factory()->create(['team_id' => $this->team->id, 'is_active' => true, 'status' => 'active']);
+        // is_active sin status activo no corre (scope `active()`): cuenta como inactiva.
+        AutomationWorkflow::factory()->create(['team_id' => $this->team->id, 'is_active' => true, 'status' => 'draft']);
+        AutomationWorkflow::factory()->inactive()->create(['team_id' => $this->team->id]);
+
+        ActionExecution::factory()->failed()->create(['team_id' => $this->team->id]);
+        ActionExecution::factory()->status(ActionExecutionStatus::Completed)->count(2)->create(['team_id' => $this->team->id]);
+        ActionExecution::factory()->status(ActionExecutionStatus::Retrying)->create(['team_id' => $this->team->id]);
+        // Fuera de la ventana: no cuenta…
+        ActionExecution::factory()->failed()->create(['team_id' => $this->team->id, 'created_at' => now()->subDays(40)]);
+        // …salvo que siga esperando confirmación.
+        ActionExecution::factory()->requiresConfirmation()->create(['team_id' => $this->team->id, 'created_at' => now()->subDays(40)]);
+
+        // Otro tenant nunca suma.
+        $other = User::factory()->create()->currentTeam;
+        AutomationWorkflow::factory()->create(['team_id' => $other->id]);
+        ActionExecution::factory()->failed()->count(3)->create(['team_id' => $other->id]);
+
+        $this->actingAs($this->user)
+            ->get(route('automation.show', ['current_team' => $this->team->slug, 'execution_status' => 'failed']))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('automation/index')
+                ->where('summary.workflows', ['total' => 3, 'active' => 1, 'inactive' => 2])
+                ->where('summary.executions.total', 5)
+                ->where('summary.executions.failed', 1)
+                ->where('summary.executions.pending', 1)
+                ->where('summary.executions.completed', 2)
+                ->where('summary.executions.in_progress', 1)
+                ->where('summary.executions.cancelled', 0)
+                // El filtro activo acota la lista, no el resumen.
+                ->where('executionFilters.status', 'failed')
+                ->has('executions', 1)
+                ->where('executions.0.status', 'failed'));
+    }
+
+    public function test_executions_can_be_filtered_by_automation(): void
+    {
+        $workflow = AutomationWorkflow::factory()->create(['team_id' => $this->team->id, 'name' => 'Aviso de pánico']);
+        $other = AutomationWorkflow::factory()->create(['team_id' => $this->team->id]);
+
+        ActionExecution::factory()->create(['team_id' => $this->team->id, 'automation_workflow_id' => $workflow->id]);
+        ActionExecution::factory()->create(['team_id' => $this->team->id, 'automation_workflow_id' => $other->id]);
+
+        $this->actingAs($this->user)
+            ->get(route('automation.show', ['current_team' => $this->team->slug, 'execution_workflow' => $workflow->id]))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('executionFilters.workflow', $workflow->id)
+                ->has('executions', 1)
+                ->where('executions.0.workflowId', $workflow->id)
+                ->where('executions.0.workflowName', 'Aviso de pánico'));
+    }
+
+    public function test_executions_resolve_the_incident_of_the_workflow_run(): void
+    {
+        $workflow = AutomationWorkflow::factory()->create(['team_id' => $this->team->id]);
+        $incident = Incident::factory()->create(['team_id' => $this->team->id, 'title' => 'Botón de pánico']);
+
+        $run = WorkflowExecution::factory()->create([
+            'team_id' => $this->team->id,
+            'automation_workflow_id' => $workflow->id,
+            'source_type' => ActionExecutionSourceType::Incident->value,
+            'source_reference_id' => (string) $incident->id,
+        ]);
+
+        // Paso creado antes del arreglo: sin incident_id, sólo el run.
+        ActionExecution::factory()->create([
+            'team_id' => $this->team->id,
+            'automation_workflow_id' => $workflow->id,
+            'source_type' => ActionExecutionSourceType::Workflow,
+            'source_reference_id' => (string) $run->id,
+        ]);
+
+        $this->actingAs($this->user)
+            ->get(route('automation.show', ['current_team' => $this->team->slug]))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('executions.0.incidentId', $incident->id)
+                ->where('executions.0.incidentReference', $incident->reference())
+                ->where('executions.0.incidentTitle', 'Botón de pánico'));
+    }
+
+    public function test_executions_never_reveal_another_tenant_incident_or_automation(): void
+    {
+        $other = User::factory()->create()->currentTeam;
+        $foreignWorkflow = AutomationWorkflow::factory()->create(['team_id' => $other->id, 'name' => 'Ajena']);
+        $foreignIncident = Incident::factory()->create(['team_id' => $other->id, 'title' => 'Incidente ajeno']);
+        $foreignRun = WorkflowExecution::factory()->create([
+            'team_id' => $other->id,
+            'automation_workflow_id' => $foreignWorkflow->id,
+            'source_type' => ActionExecutionSourceType::Incident->value,
+            'source_reference_id' => (string) $foreignIncident->id,
+        ]);
+
+        // Filas propias que apuntan (por corrupción o ids adivinados) a datos ajenos.
+        ActionExecution::factory()->create([
+            'team_id' => $this->team->id,
+            'automation_workflow_id' => $foreignWorkflow->id,
+            'source_type' => ActionExecutionSourceType::Workflow,
+            'source_reference_id' => (string) $foreignRun->id,
+        ]);
+        ActionExecution::factory()->create([
+            'team_id' => $this->team->id,
+            'incident_id' => $foreignIncident->id,
+        ]);
+        ActionExecution::factory()->failed()->create(['team_id' => $other->id]);
+
+        $response = $this->assertNoTenantLeak($this->team, fn () => $this->actingAs($this->user)->get(
+            route('automation.show', ['current_team' => $this->team->slug, 'execution_workflow' => $foreignWorkflow->id]),
+        ));
+
+        $response->assertOk()->assertInertia(fn (Assert $page) => $page
+            // Un id de automatización ajeno en el filtro se ignora.
+            ->where('executionFilters.workflow', null)
+            ->has('executions', 2)
+            ->where('executions.0.incidentId', null)
+            ->where('executions.0.incidentReference', null)
+            ->where('executions.1.incidentId', null)
+            ->where('executions.1.workflowName', null)
+            ->where('summary.executions.total', 2)
+            ->where('summary.workflows.total', 0));
+    }
+
+    public function test_steps_expose_bare_recipient_names(): void
+    {
+        AutomationWorkflow::factory()
+            ->withSteps([
+                ['order' => 1, 'action_type' => 'send_whatsapp', 'target_type' => 'role', 'target_reference' => 'admin'],
+                ['order' => 2, 'action_type' => 'escalate'],
+                ['order' => 3, 'action_type' => 'send_email', 'target_type' => 'email', 'target_reference' => 'ops@cliente.mx'],
+            ])
+            ->create(['team_id' => $this->team->id]);
+
+        $this->actingAs($this->user)
+            ->get(route('automation.show', ['current_team' => $this->team->slug]))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('workflows.0.stepRecipients', ['Administrador', null, 'ops@cliente.mx'])
+                ->where('workflows.0.stepTargets', ['Rol: Administrador', '—', 'Correo: ops@cliente.mx']));
     }
 }

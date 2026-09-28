@@ -98,6 +98,21 @@ class BillingPageController extends Controller
             // Contact point for billing questions (F1.2): payment is by bank
             // transfer, so the page must offer a human path, not a checkout.
             'supportEmail' => fn (): ?string => config('mail.from.address'),
+            // Platform bank details for the transfer (config/billing.php);
+            // null until the CLABE is configured, then the page shows them.
+            'transfer' => function (): ?array {
+                $clabe = config('billing.transfer.clabe');
+
+                if (! is_string($clabe) || trim($clabe) === '') {
+                    return null;
+                }
+
+                return [
+                    'beneficiary' => config('billing.transfer.beneficiary'),
+                    'bank' => config('billing.transfer.bank'),
+                    'clabe' => trim($clabe),
+                ];
+            },
             'subscription' => function () use ($subscription): ?array {
                 if ($subscription === null) {
                     return null;

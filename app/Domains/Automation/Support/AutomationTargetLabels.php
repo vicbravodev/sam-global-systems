@@ -52,21 +52,42 @@ class AutomationTargetLabels
 
     public function label(?string $type, ?string $reference): string
     {
-        $reference = trim((string) $reference);
+        $name = $this->name($type, $reference);
 
-        if ($reference === '') {
+        if ($name === null) {
             return '—';
         }
 
         return match ($type) {
-            'role' => 'Rol: '.(TeamRole::tryFrom($reference)?->label()
+            'role' => 'Rol: '.$name,
+            'user' => $name,
+            'email' => 'Correo: '.$name,
+            'phone' => 'Teléfono: '.$name,
+            'url' => 'URL: '.$name,
+            default => 'Contacto externo: '.$name,
+        };
+    }
+
+    /**
+     * Sólo el nombre del destino, sin el prefijo de tipo ("Monitorista",
+     * "Ana Operadora", "ops@cliente.mx"): la UI lo compone en frases como
+     * "WhatsApp a Monitorista". Null cuando el paso no tiene destino.
+     */
+    public function name(?string $type, ?string $reference): ?string
+    {
+        $reference = trim((string) $reference);
+
+        if ($reference === '') {
+            return null;
+        }
+
+        return match ($type) {
+            'role' => TeamRole::tryFrom($reference)?->label()
                 ?? $this->roles[$reference]
-                ?? Str::headline($reference)),
+                ?? Str::headline($reference),
             'user' => $this->users[$reference] ?? 'Usuario que ya no es miembro',
-            'email' => 'Correo: '.$reference,
-            'phone' => 'Teléfono: '.$reference,
-            'url' => 'URL: '.$reference,
-            default => 'Contacto externo: '.($this->templates[$reference] ?? Str::ucfirst(str_replace(['-', '_'], ' ', $reference))),
+            'email', 'phone', 'url' => $reference,
+            default => $this->templates[$reference] ?? Str::ucfirst(str_replace(['-', '_'], ' ', $reference)),
         };
     }
 }
