@@ -13,6 +13,7 @@ use App\Domains\Tenancy\Models\TenantFeature;
 use App\Domains\Tenancy\Models\TenantUsageCounter;
 use App\Domains\Tenancy\Models\UsageMeter;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -221,6 +222,7 @@ class BillingShowcaseSeeder extends ShowcaseStep
             ->groupBy('day')->select($day('requested_at'), DB::raw('count(*) as qty'))->pluck('qty', 'day')->all();
 
         // Medidores de activos: una foto diaria, igual que assets:record-usage-meters.
+        EloquentCollection::make($this->ctx->assets->all())->loadMissing('assetType');
         $monitored = $this->ctx->assets->filter(fn ($a) => $a->status?->value !== 'inactive')->count();
         $cameras = $this->ctx->assets->filter(fn ($a) => $a->status?->value !== 'inactive' && $a->assetType?->category?->value === 'camera')->count();
 

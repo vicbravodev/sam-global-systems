@@ -13,6 +13,7 @@ use App\Domains\Decisions\Models\Decision;
 use App\Domains\Decisions\Models\DecisionOutcome;
 use App\Domains\Decisions\Models\DecisionRule;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
 
 class ResolveDecisionOutcome
@@ -110,6 +111,10 @@ class ResolveDecisionOutcome
      */
     private function resolve(AIEventEvaluation $eval, Collection $matchedRules): array
     {
+        // One query for every matched rule's outcome instead of one per rule.
+        // (The matched set arrives as a plain collection of rule models.)
+        EloquentCollection::make($matchedRules->all())->loadMissing('outcomeOverride');
+
         $policy = $this->rulesResolver->resolve($eval->team_id);
 
         $confidence = (float) ($eval->confidence_score ?? 0.0);
