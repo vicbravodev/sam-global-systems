@@ -101,6 +101,30 @@ function buildSingleMarker(
     return el;
 }
 
+// A reused marker (same key = same members) still has to follow status
+// changes: its color, and a single asset's label, were set at build time.
+function refreshMarkerElement(
+    marker: maplibregl.Marker,
+    members: AssetMarker[],
+    statusLabels: Record<string, string>,
+): void {
+    const el = marker.getElement();
+    const color = STATUS_COLORS[dominantStatus(members)];
+
+    if (el.style.backgroundColor !== color) {
+        el.style.backgroundColor = color;
+    }
+
+    if (members.length === 1) {
+        const label = markerLabel(members[0], statusLabels);
+
+        if (el.title !== label) {
+            el.title = label;
+            el.setAttribute('aria-label', label);
+        }
+    }
+}
+
 function buildClusterMarker(
     cluster: Cluster,
     statusLabels: Record<string, string>,
@@ -186,28 +210,66 @@ export function LiveMap({ markers, statusLabels, onSelect }: LiveMapProps) {
             const rendered = renderedRef.current;
 
             const clusters: Cluster[] = [];
+            // Cluster anchors (projected once) bucketed in a grid of
+            // CLUSTER_PIXEL_RADIUS cells: any anchor within the radius of a
+            // point lies in the point's cell or one of its 8 neighbours. Same
+            // greedy result as scanning every cluster (the earliest one in
+            // range wins), in O(N) instead of O(N²) projections per redraw.
+            const anchors: { x: number; y: number }[] = [];
+            const grid = new Map<string, number[]>();
+            const cellOf = (value: number) =>
+                Math.floor(value / CLUSTER_PIXEL_RADIUS);
 
             all.forEach((asset) => {
                 const point = map.project([asset.longitude, asset.latitude]);
-                const target = clusters.find((c) => {
-                    const cp = map.project([c.longitude, c.latitude]);
+                const cx = cellOf(point.x);
+                const cy = cellOf(point.y);
+                let target = -1;
 
-                    return (
-                        Math.hypot(cp.x - point.x, cp.y - point.y) <
-                        CLUSTER_PIXEL_RADIUS
-                    );
-                });
+                for (let dx = -1; dx <= 1; dx++) {
+                    for (let dy = -1; dy <= 1; dy++) {
+                        for (const index of grid.get(`${cx + dx}:${cy + dy}`) ??
+                            []) {
+                            if (target !== -1 && index >= target) {
+                                continue;
+                            }
 
-                if (target) {
-                    target.members.push(asset);
-                } else {
-                    clusters.push({
-                        key: '',
-                        longitude: asset.longitude,
-                        latitude: asset.latitude,
-                        members: [asset],
-                    });
+                            const anchor = anchors[index];
+
+                            if (
+                                Math.hypot(
+                                    anchor.x - point.x,
+                                    anchor.y - point.y,
+                                ) < CLUSTER_PIXEL_RADIUS
+                            ) {
+                                target = index;
+                            }
+                        }
+                    }
                 }
+
+                if (target !== -1) {
+                    clusters[target].members.push(asset);
+
+                    return;
+                }
+
+                const cellKey = `${cx}:${cy}`;
+                const bucket = grid.get(cellKey);
+
+                if (bucket) {
+                    bucket.push(clusters.length);
+                } else {
+                    grid.set(cellKey, [clusters.length]);
+                }
+
+                anchors.push({ x: point.x, y: point.y });
+                clusters.push({
+                    key: '',
+                    longitude: asset.longitude,
+                    latitude: asset.latitude,
+                    members: [asset],
+                });
             });
 
             clusters.forEach((c) => {
@@ -250,9 +312,9 @@ export function LiveMap({ markers, statusLabels, onSelect }: LiveMapProps) {
                                 .addTo(map);
                             rendered.set(key, marker);
                         } else {
-                            rendered
-                                .get(key)!
-                                .setLngLat([fanned.lng, fanned.lat]);
+                            const marker = rendered.get(key)!;
+                            marker.setLngLat([fanned.lng, fanned.lat]);
+                            refreshMarkerElement(marker, [asset], labels);
                         }
                     });
 
@@ -262,9 +324,9 @@ export function LiveMap({ markers, statusLabels, onSelect }: LiveMapProps) {
                 liveKeys.add(cluster.key);
 
                 if (rendered.has(cluster.key)) {
-                    rendered
-                        .get(cluster.key)!
-                        .setLngLat([cluster.longitude, cluster.latitude]);
+                    const marker = rendered.get(cluster.key)!;
+                    marker.setLngLat([cluster.longitude, cluster.latitude]);
+                    refreshMarkerElement(marker, cluster.members, labels);
 
                     return;
                 }

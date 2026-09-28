@@ -16,6 +16,10 @@ const TEAM_EVENTS: TeamBroadcastEvent[] = [
     'action.executed',
     'incidents.created',
     'incidents.updated',
+    // Batched live positions from the telematics feed (every few seconds).
+    // Only the live map consumes them, patching markers in memory: never
+    // route this event into a router.reload handler.
+    'fleet.positions_updated',
 ];
 
 export type TeamBroadcastDetail<

@@ -40,6 +40,9 @@ const RELOAD_KEYS_BY_EVENT: Record<string, string[]> = {
 
 const RELOAD_DEBOUNCE_MS = 2000;
 
+// The KPI strip is a two-week aggregate: a live event barely moves it.
+const KPI_MIN_INTERVAL_MS = 30000;
+
 export default function Dashboard() {
     const page = usePage();
     const { kpis, incidents, stream, integrations, usage } =
@@ -47,11 +50,65 @@ export default function Dashboard() {
     const teamSlug = page.props.currentTeam?.slug ?? null;
 
     // Coalesce bursts of broadcasts into one partial reload with the union
-    // of the affected prop keys.
+    // of the affected prop keys. `kpis` (two-week aggregates) refreshes at
+    // most every KPI_MIN_INTERVAL_MS on its own timer, and nothing reloads
+    // while the tab is hidden: pending keys are flushed when it comes back.
     const pendingKeys = useRef<Set<string>>(new Set());
     const timer = useRef<number | null>(null);
+    const kpiPending = useRef(false);
+    const kpiTimer = useRef<number | null>(null);
+    const lastKpiReload = useRef(0);
 
     useEffect(() => {
+        lastKpiReload.current = Date.now();
+
+        const hidden = () => document.visibilityState === 'hidden';
+
+        const flushKeys = () => {
+            timer.current = null;
+
+            if (hidden() || pendingKeys.current.size === 0) {
+                return;
+            }
+
+            const only = [...pendingKeys.current];
+            pendingKeys.current.clear();
+            router.reload({ only });
+        };
+
+        const flushKpis = () => {
+            kpiTimer.current = null;
+
+            if (hidden() || !kpiPending.current) {
+                return;
+            }
+
+            kpiPending.current = false;
+            lastKpiReload.current = Date.now();
+            router.reload({ only: ['kpis'] });
+        };
+
+        const scheduleKeys = () => {
+            if (timer.current === null) {
+                timer.current = window.setTimeout(
+                    flushKeys,
+                    RELOAD_DEBOUNCE_MS,
+                );
+            }
+        };
+
+        const scheduleKpis = () => {
+            if (kpiTimer.current !== null) {
+                return;
+            }
+
+            const wait = Math.max(
+                RELOAD_DEBOUNCE_MS,
+                KPI_MIN_INTERVAL_MS - (Date.now() - lastKpiReload.current),
+            );
+            kpiTimer.current = window.setTimeout(flushKpis, wait);
+        };
+
         const handler = (event: Event) => {
             const detail = (event as CustomEvent<TeamBroadcastDetail>).detail;
             const keys = RELOAD_KEYS_BY_EVENT[detail?.event ?? ''];
@@ -60,27 +117,53 @@ export default function Dashboard() {
                 return;
             }
 
-            keys.forEach((key) => pendingKeys.current.add(key));
+            keys.forEach((key) => {
+                if (key === 'kpis') {
+                    kpiPending.current = true;
+                } else {
+                    pendingKeys.current.add(key);
+                }
+            });
 
-            if (timer.current !== null) {
+            if (pendingKeys.current.size > 0) {
+                scheduleKeys();
+            }
+
+            if (kpiPending.current) {
+                scheduleKpis();
+            }
+        };
+
+        const onVisibilityChange = () => {
+            if (hidden()) {
                 return;
             }
 
-            timer.current = window.setTimeout(() => {
-                const only = [...pendingKeys.current];
-                pendingKeys.current.clear();
-                timer.current = null;
-                router.reload({ only });
-            }, RELOAD_DEBOUNCE_MS);
+            if (pendingKeys.current.size > 0) {
+                scheduleKeys();
+            }
+
+            if (kpiPending.current) {
+                scheduleKpis();
+            }
         };
 
         window.addEventListener(TEAM_BROADCAST_EVENT_NAME, handler);
+        document.addEventListener('visibilitychange', onVisibilityChange);
 
         return () => {
             window.removeEventListener(TEAM_BROADCAST_EVENT_NAME, handler);
+            document.removeEventListener(
+                'visibilitychange',
+                onVisibilityChange,
+            );
 
             if (timer.current !== null) {
                 window.clearTimeout(timer.current);
+            }
+
+            if (kpiTimer.current !== null) {
+                window.clearTimeout(kpiTimer.current);
             }
         };
     }, []);

@@ -79,6 +79,19 @@ export type IncidentUpdatedPayload = {
     updated_at: string;
 };
 
+/** One chunk (≤ 200 assets) of a telematics feed cycle. */
+export type FleetPositionsUpdatedPayload = {
+    positions: {
+        asset_id: number;
+        latitude: number;
+        longitude: number;
+        speed_kph: number | null;
+        heading: number | null;
+        recorded_at: string;
+        moving: boolean | null;
+    }[];
+};
+
 export type TeamBroadcastEventMap = {
     'asset.location_updated': AssetLocationUpdatedPayload;
     'asset.status_changed': AssetStatusChangedPayload;
@@ -89,6 +102,7 @@ export type TeamBroadcastEventMap = {
     'action.executed': ActionExecutedPayload;
     'incidents.created': IncidentCreatedPayload;
     'incidents.updated': IncidentUpdatedPayload;
+    'fleet.positions_updated': FleetPositionsUpdatedPayload;
 };
 
 export type TeamBroadcastEvent = keyof TeamBroadcastEventMap;

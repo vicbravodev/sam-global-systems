@@ -85,6 +85,7 @@ export default function AssetsMap() {
     // whole point of the live map. A debounced partial reload only fires when
     // an unknown asset_id shows up (an asset just got its first position).
     const reloadTimer = useRef<number | null>(null);
+    const reloadRequestedFor = useRef<Set<number>>(new Set());
 
     const scheduleReload = useCallback(() => {
         if (reloadTimer.current !== null) {
@@ -123,6 +124,43 @@ export default function AssetsMap() {
                               }
                             : m,
                     );
+                });
+            } else if (detail?.event === 'fleet.positions_updated') {
+                const positions = (
+                    detail as TeamBroadcastDetail<'fleet.positions_updated'>
+                ).payload.positions;
+                const byAsset = new Map(positions.map((p) => [p.asset_id, p]));
+
+                setMarkers((prev) => {
+                    const known = new Set(prev.map((m) => m.id));
+
+                    // An asset reporting its first position is not on the map
+                    // yet: reload once for it, never on every feed tick.
+                    const firstSeen = positions.some(
+                        (p) =>
+                            !known.has(p.asset_id) &&
+                            !reloadRequestedFor.current.has(p.asset_id),
+                    );
+
+                    if (firstSeen) {
+                        positions.forEach((p) =>
+                            reloadRequestedFor.current.add(p.asset_id),
+                        );
+                        scheduleReload();
+                    }
+
+                    return prev.map((m) => {
+                        const position = byAsset.get(m.id);
+
+                        return position
+                            ? {
+                                  ...m,
+                                  latitude: position.latitude,
+                                  longitude: position.longitude,
+                                  recordedAt: position.recorded_at,
+                              }
+                            : m;
+                    });
                 });
             } else if (detail?.event === 'asset.status_changed') {
                 const payload = detail.payload as unknown as StatusPayload;
