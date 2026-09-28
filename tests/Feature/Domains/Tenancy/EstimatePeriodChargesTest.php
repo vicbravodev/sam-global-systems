@@ -70,6 +70,72 @@ class EstimatePeriodChargesTest extends TestCase
         $this->assertSame(71, $estimate['aiOverage']);
         $this->assertEqualsWithDelta(142.0, $estimate['aiProjected'], 0.01);
         $this->assertEqualsWithDelta(880.0 + 142.0, $estimate['totalProjected'], 0.01);
+        // La IA extra "a hoy" es la ya comprometida contra la bolsa del mes,
+        // no contra lo acumulado: no aparece un cargo que el cierre borraría.
+        $this->assertEqualsWithDelta(142.0, $estimate['aiToDate'], 0.01);
+        $this->assertEqualsWithDelta(40.0 + 142.0, $estimate['totalToDate'], 0.01);
+        // El tope suave: 1 unidad arriba de 2 × 28 días restantes = 28 tracto-días extra.
+        $this->assertSame(28, $estimate['projectedAssetDaysExtra']);
+        $this->assertEqualsWithDelta(280.0, $estimate['assetsExtraProjected'], 0.01);
+        $this->assertSame(0, $estimate['assetDaysExtra']);
+        $this->assertSame(3, $estimate['daysElapsed']);
+        $this->assertSame(28, $estimate['remainingDays']);
+    }
+
+    public function test_past_days_without_a_sample_are_not_projected(): void
+    {
+        // Alta a mitad de mes (o muestra nocturna caída): los días ya pasados
+        // sin muestra no se facturan, así que tampoco se proyectan.
+        $team = Team::factory()->create();
+        TenantBillingTerms::factory()->create([
+            'team_id' => $team->id,
+            'unit_price' => 300,
+            'included_assets' => null,
+            'ai_fair_use_per_asset' => 60,
+            'ai_overage_unit_price' => 5,
+        ]);
+        $ai = UsageMeter::factory()->create(['code' => 'ai_calls']);
+        UsageEvent::factory()->create([
+            'team_id' => $team->id,
+            'usage_meter_id' => $ai->id,
+            'quantity' => 100,
+            'occurred_at' => '2026-09-10 10:00:00',
+        ]);
+        Asset::factory()->count(3)->create(['team_id' => $team->id]);
+
+        $estimate = app(EstimatePeriodCharges::class)->execute($team->id, CarbonImmutable::parse('2026-09-28'));
+
+        $this->assertSame(0, $estimate['assetDays']);
+        $this->assertSame(0, $estimate['daysRecorded']);
+        $this->assertSame(28, $estimate['daysElapsed']);
+        // Hoy (sin muestra aún) + 29 + 30.
+        $this->assertSame(3, $estimate['remainingDays']);
+        $this->assertSame(9, $estimate['projectedAssetDays']);
+        $this->assertEqualsWithDelta(90.0, $estimate['assetsProjected'], 0.01);
+        // Bolsa: 60 × (9/30 = 0.3) = 18 incluidas; 82 extra × 5 = 410, igual a hoy y al cierre.
+        $this->assertSame(18, $estimate['aiIncluded']);
+        $this->assertEqualsWithDelta(410.0, $estimate['aiToDate'], 0.01);
+        $this->assertEqualsWithDelta(410.0, $estimate['aiProjected'], 0.01);
+        $this->assertEqualsWithDelta(410.0, $estimate['totalToDate'], 0.01);
+    }
+
+    public function test_today_is_not_projected_twice_once_its_sample_exists(): void
+    {
+        $team = Team::factory()->create();
+        TenantBillingTerms::factory()->create(['team_id' => $team->id, 'unit_price' => 300]);
+        $meter = UsageMeter::query()->where('code', 'monitored_asset_days')->sole();
+        UsageEvent::factory()->create([
+            'team_id' => $team->id,
+            'usage_meter_id' => $meter->id,
+            'quantity' => 2,
+            'occurred_at' => '2026-09-28 00:00:05',
+        ]);
+        Asset::factory()->count(2)->create(['team_id' => $team->id]);
+
+        $estimate = app(EstimatePeriodCharges::class)->execute($team->id, CarbonImmutable::parse('2026-09-28 15:00'));
+
+        $this->assertSame(2, $estimate['remainingDays']);
+        $this->assertSame(2 + 2 * 2, $estimate['projectedAssetDays']);
     }
 
     public function test_the_estimate_only_reads_the_tenants_own_usage_and_fleet(): void
