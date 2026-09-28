@@ -23,6 +23,7 @@ use App\Domains\Notifications\Enums\NotificationStatus;
 use App\Domains\Notifications\Enums\NotificationTriggeredByType;
 use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
+use App\Domains\Tenancy\Support\TenantCanSend;
 use App\Models\Membership;
 use App\Models\User;
 use App\Support\Http\OutboundUrlGuard;
@@ -56,6 +57,12 @@ class ExecuteAction
      */
     public function execute(ActionExecution $execution): ActionExecution
     {
+        $blocked = TenantCanSend::blockedReason($execution->team_id);
+
+        if ($blocked !== null) {
+            return $this->cancel($execution, "Tenant cannot send: {$blocked}.");
+        }
+
         $execution->status = ActionExecutionStatus::Running;
         $execution->attempts = $execution->attempts + 1;
         $execution->save();
@@ -97,6 +104,26 @@ class ExecuteAction
 
             return $execution;
         }
+    }
+
+    /**
+     * Cierra una ejecución que ya no debe correr, dejando el motivo en la
+     * propia ejecución y en su log (nunca se descarta en silencio).
+     */
+    public function cancel(ActionExecution $execution, string $reason): ActionExecution
+    {
+        $execution->status = ActionExecutionStatus::Cancelled;
+        $execution->error_message = $reason;
+        $execution->save();
+
+        ActionExecutionLog::create([
+            'action_execution_id' => $execution->id,
+            'log_type' => ActionLogType::Info,
+            'message' => $reason,
+            'payload_json' => null,
+        ]);
+
+        return $execution;
     }
 
     /**
@@ -327,6 +354,10 @@ class ExecuteAction
                 // The push driver resolves device tokens by user id; every
                 // other channel addresses the user by email.
                 'address' => $channelType === ChannelType::Push ? (string) $user->id : (string) $user->email,
+                'email' => (string) $user->email,
+                // SMS/WhatsApp salen al teléfono verificado; sin él la entrega
+                // queda registrada como skipped (sin dirección), no se inventa.
+                'phone' => $user->verifiedPhone(),
                 'name' => $user->name,
                 'recipient_type' => 'user',
                 'recipient_reference_id' => (string) $user->id,

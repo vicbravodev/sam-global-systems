@@ -162,6 +162,7 @@ const CHANNEL_OPTIONS = [
 const MEDIA_AUTO_REQUEST_KEY = 'media.auto_request_on_critical';
 const PANIC_AUTO_CLOSE_KEY = 'panic.auto_close_on_external_resolution';
 const LIVE_LOCATION_KEY = 'context.live_location_staleness_seconds';
+const MIN_SEVERITY_KEY = 'notifications.out_of_band_min_severity';
 
 function useTeamBase(): string | null {
     const page = usePage();
@@ -239,6 +240,9 @@ function GeneralTab({
         String(byKey(LIVE_LOCATION_KEY)?.value ?? '120'),
     );
     const [stalenessError, setStalenessError] = useState<string | null>(null);
+    const [minSeverity, setMinSeverity] = useState(
+        String(byKey(MIN_SEVERITY_KEY)?.value ?? 'medium'),
+    );
     const [saving, setSaving] = useState(false);
 
     const save = async () => {
@@ -282,6 +286,12 @@ function GeneralTab({
                         value_type: 'number',
                         value: parsedStaleness,
                     },
+                    {
+                        setting_key: MIN_SEVERITY_KEY,
+                        setting_group: 'notification',
+                        value_type: 'string',
+                        value: minSeverity,
+                    },
                 ],
             }),
             'Configuración guardada.',
@@ -301,6 +311,7 @@ function GeneralTab({
                 MEDIA_AUTO_REQUEST_KEY,
                 PANIC_AUTO_CLOSE_KEY,
                 LIVE_LOCATION_KEY,
+                MIN_SEVERITY_KEY,
             ].includes(s.key),
     );
 
@@ -488,6 +499,43 @@ function GeneralTab({
                         />
                         <span className="block font-mono text-3xs text-fg-3">
                             {LIVE_LOCATION_KEY}
+                        </span>
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                        <Label className="text-xs">
+                            Severidad mínima para avisar fuera de la app
+                        </Label>
+                        <Select
+                            value={minSeverity}
+                            disabled={!canManage}
+                            onValueChange={setMinSeverity}
+                        >
+                            <SelectTrigger className="h-9 w-64">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="low">
+                                    Todas (incluida baja)
+                                </SelectItem>
+                                <SelectItem value="medium">
+                                    Media o superior (recomendado)
+                                </SelectItem>
+                                <SelectItem value="high">
+                                    Alta o superior
+                                </SelectItem>
+                                <SelectItem value="critical">
+                                    Solo críticas
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <span className="block text-2xs text-fg-3">
+                            Por debajo de este nivel, los incidentes nuevos solo
+                            se avisan dentro de SAM: sin correo, SMS, WhatsApp
+                            ni llamadas.
+                        </span>
+                        <span className="block font-mono text-3xs text-fg-3">
+                            {MIN_SEVERITY_KEY}
                         </span>
                     </div>
 

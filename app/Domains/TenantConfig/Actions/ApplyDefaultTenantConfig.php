@@ -7,6 +7,7 @@ use App\Domains\Decisions\Enums\RuleScope;
 use App\Domains\Decisions\Models\DecisionOutcome;
 use App\Domains\Decisions\Models\DecisionRule;
 use App\Domains\Decisions\Models\RuleSet;
+use App\Domains\Notifications\Listeners\NotifyOnIncidentCreated;
 use App\Domains\TenantConfig\Enums\SettingGroup;
 use App\Domains\TenantConfig\Enums\SettingUpdatedByType;
 use App\Domains\TenantConfig\Enums\SettingValueType;
@@ -99,6 +100,9 @@ class ApplyDefaultTenantConfig
             // A parked vehicle's gateway may sleep: longer grace before alerting.
             ['key' => 'monitoring.offline_parked_alert_minutes', 'group' => SettingGroup::Operational, 'type' => SettingValueType::Number, 'value' => 180],
             ['key' => 'monitoring.stop_alert_minutes', 'group' => SettingGroup::Operational, 'type' => SettingValueType::Number, 'value' => 10],
+            // Below this incident severity the team only gets an in-app notice
+            // (no email/SMS/WhatsApp/voice): low-severity alerts stay quiet.
+            ['key' => NotifyOnIncidentCreated::SETTING_MIN_SEVERITY, 'group' => SettingGroup::Notification, 'type' => SettingValueType::String, 'value' => NotifyOnIncidentCreated::DEFAULT_MIN_SEVERITY],
         ];
     }
 
