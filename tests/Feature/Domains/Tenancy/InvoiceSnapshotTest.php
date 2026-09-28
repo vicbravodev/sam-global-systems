@@ -82,7 +82,13 @@ class InvoiceSnapshotTest extends TestCase
         $breakdown = $snapshot->breakdown_json;
 
         $this->assertIsArray($breakdown, 'Breakdown should be a JSON array');
-        $this->assertCount(2, $breakdown, 'Breakdown should contain an entry for each metered dimension');
+        // Tracto-día + IA (uso justo) + Twilio (meter sembrado por migración) +
+        // plan (api_requests) + términos. ai_calls se factura por uso justo del
+        // tenant, no por la tarifa del plan.
+        $this->assertEqualsCanonicalizing(
+            ['monitored_asset_days', 'ai_calls', 'messaging_cost_micros', 'api_requests', '_terms'],
+            collect($breakdown)->pluck('meter_code')->all(),
+        );
 
         $apiEntry = collect($breakdown)->firstWhere('meter_code', 'api_requests');
         $this->assertNotNull($apiEntry, 'Breakdown should include api_requests meter entry');
@@ -93,18 +99,26 @@ class InvoiceSnapshotTest extends TestCase
         $aiEntry = collect($breakdown)->firstWhere('meter_code', 'ai_calls');
         $this->assertNotNull($aiEntry, 'Breakdown should include ai_calls meter entry');
         $this->assertEquals(75, $aiEntry['consumed'], 'AI calls consumed should be 75');
+        $this->assertSame('fair_use', $aiEntry['billing_model']);
+        // Sin tracto-días vigilados el uso justo incluido es 0: las 75
+        // evaluaciones son excedente al precio de plataforma.
+        $this->assertEquals(75, $aiEntry['overage']);
 
-        $expectedOverageTotal = (200 * 0.01) + (25 * 0.50);
-        $this->assertEquals(
+        $expectedOverageTotal = (200 * 0.01) + (75 * (float) config('billing.ai_overage_unit_price'));
+        $this->assertEqualsWithDelta(
             $expectedOverageTotal,
             (float) $snapshot->overage_total,
+            0.01,
             'Invoice overage total should sum all meter overage costs',
         );
 
-        $this->assertEquals(
-            99.00 + $expectedOverageTotal,
+        // El plan ya no aporta precio base: sin tracto-días el subtotal es 0.
+        $this->assertEquals(0.0, (float) $snapshot->subtotal);
+        $this->assertEqualsWithDelta(
+            $expectedOverageTotal,
             (float) $snapshot->total,
-            'Invoice total should be base price plus overage total',
+            0.01,
+            'Invoice total is the asset-day line plus overage total',
         );
     }
 

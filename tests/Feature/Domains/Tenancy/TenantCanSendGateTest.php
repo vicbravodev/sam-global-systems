@@ -37,7 +37,7 @@ use Tests\TestCase;
 
 /**
  * P1-13: tenants suspendidos/cancelados/expirados no generan envíos con
- * coste; trialing y past_due sí. Lo bloqueado queda cancelado con motivo.
+ * coste; active y past_due sí. Lo bloqueado queda cancelado con motivo.
  */
 class TenantCanSendGateTest extends TestCase
 {
@@ -46,7 +46,6 @@ class TenantCanSendGateTest extends TestCase
     public function test_policy_per_subscription_status(): void
     {
         $this->assertTrue(TenantCanSend::allows($this->teamWith(null)->id), 'sin suscripción envía');
-        $this->assertTrue(TenantCanSend::allows($this->teamWith('trialing')->id));
         $this->assertTrue(TenantCanSend::allows($this->teamWith('active')->id));
         $this->assertTrue(TenantCanSend::allows($this->teamWith('pastDue')->id));
 

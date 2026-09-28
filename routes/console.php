@@ -43,7 +43,7 @@ Schedule::job(new CalculateDailyKPIsJob)->dailyAt('03:00')->onOneServer();
 Schedule::job(new PruneDeduplicationKeysJob)->dailyAt('03:15')->onOneServer();
 
 // ExpireOldReports (spec 15) is a per-tenant Action, not a console command:
-// this job fans it out across every team with an active/trialing/past-due
+// this job fans it out across every team with an active/past-due
 // subscription, same pattern as CalculateDailyKPIsJob/BuildAnalyticsSnapshotJob.
 // Without this, report retention policy was written but never enforced —
 // expired report files never got deleted from storage.

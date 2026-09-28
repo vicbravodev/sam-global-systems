@@ -43,10 +43,11 @@ class CreateTenant
                 Subscription::query()->create([
                     'team_id' => $team->id,
                     'plan_id' => $plan->id,
-                    'status' => SubscriptionStatus::Trialing,
+                    // Sin periodo de prueba (decisión 2026-09-28): el tenant
+                    // nace activo y se factura por tracto-día desde el alta.
+                    'status' => SubscriptionStatus::Active,
                     'billing_cycle' => $plan->billing_cycle ?? BillingCycle::Monthly,
                     'starts_at' => now(),
-                    'trial_ends_at' => now()->addDays(14),
                 ]);
 
                 $this->seedDefaultFeatures($team, $plan);

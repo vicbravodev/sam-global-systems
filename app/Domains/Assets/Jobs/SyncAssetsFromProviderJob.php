@@ -2,9 +2,9 @@
 
 namespace App\Domains\Assets\Jobs;
 
+use App\Domains\Assets\Actions\NotifyPendingAssets;
 use App\Domains\Assets\Actions\SyncAssetFromIntegration;
 use App\Domains\Assets\Exceptions\AssetExternalReferenceConflictException;
-use App\Domains\Assets\Exceptions\AssetLimitReachedException;
 use App\Domains\Integrations\Contracts\ProviderAdapter;
 use App\Domains\Integrations\Models\TenantIntegration;
 use Illuminate\Bus\Queueable;
@@ -33,26 +33,34 @@ class SyncAssetsFromProviderJob implements ShouldQueue
     public function handle(
         ProviderAdapter $providerAdapter,
         SyncAssetFromIntegration $syncAsset,
+        NotifyPendingAssets $notifyPending,
     ): void {
         $result = $providerAdapter->sync($this->integration, 'assets');
+        $discovered = 0;
 
         foreach ($result['assets'] ?? [] as $assetData) {
             try {
-                $syncAsset->execute(
+                $asset = $syncAsset->execute(
                     $this->integration->team_id,
                     $this->integration->id,
                     $assetData,
                 );
-            } catch (AssetLimitReachedException) {
-                // Tenant is at its asset cap: skip net-new assets and keep
-                // processing the rest of the batch instead of failing the job.
-                continue;
+
+                if ($asset->wasRecentlyCreated) {
+                    $discovered++;
+                }
             } catch (AssetExternalReferenceConflictException) {
                 // The provider handed us an external id another tenant already
                 // owns: skip that asset rather than touching their data, and
                 // keep syncing the rest of the batch.
                 continue;
             }
+        }
+
+        // Una sola notificación por corrida de sync (no una por unidad): el
+        // cliente decide cuáles enciende sabiendo cuánto cupo le queda.
+        if ($discovered > 0) {
+            $notifyPending->execute((int) $this->integration->team_id, $discovered);
         }
     }
 

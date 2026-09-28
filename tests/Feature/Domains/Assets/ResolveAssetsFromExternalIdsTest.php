@@ -79,4 +79,31 @@ class ResolveAssetsFromExternalIdsTest extends TestCase
         $this->assertCount(30, $resolved);
         $this->assertCount(2, DB::getQueryLog());
     }
+
+    public function test_it_omits_units_the_tenant_is_not_monitoring(): void
+    {
+        $team = Team::factory()->create();
+        $provider = IntegrationProvider::factory()->create();
+
+        $this->linkAsset($team, $provider, 'on');
+        $pending = Asset::factory()->pendingMonitoring()->create(['team_id' => $team->id]);
+        AssetExternalReference::factory()->create([
+            'asset_id' => $pending->id,
+            'provider_id' => $provider->id,
+            'external_id' => 'pending',
+        ]);
+        $excluded = Asset::factory()->excluded()->create(['team_id' => $team->id]);
+        AssetExternalReference::factory()->create([
+            'asset_id' => $excluded->id,
+            'provider_id' => $provider->id,
+            'external_id' => 'excluded',
+        ]);
+
+        $resolved = app(ResolveAssetsFromExternalIds::class)
+            ->execute($provider->id, ['on', 'pending', 'excluded'], $team->id);
+
+        // A poll never spends provider quota, storage or alerts on a unit the
+        // client has not switched on: only monitored assets resolve.
+        $this->assertSame(['on'], array_keys($resolved));
+    }
 }

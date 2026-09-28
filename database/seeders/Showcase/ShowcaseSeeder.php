@@ -64,7 +64,7 @@ class ShowcaseSeeder extends Seeder
 
     public const EXTRA_TENANTS = [
         ['slug' => 'transportes-del-norte', 'name' => 'Transportes del Norte', 'plan' => 'enterprise', 'status' => 'active'],
-        ['slug' => 'logistica-bajio', 'name' => 'Logística Bajío', 'plan' => 'starter', 'status' => 'trialing'],
+        ['slug' => 'logistica-bajio', 'name' => 'Logística Bajío', 'plan' => 'starter', 'status' => 'active'],
         ['slug' => 'fletes-express-sur', 'name' => 'Fletes Express del Sur', 'plan' => 'pro', 'status' => 'past_due'],
     ];
 

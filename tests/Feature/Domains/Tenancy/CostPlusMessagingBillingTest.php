@@ -66,8 +66,13 @@ class CostPlusMessagingBillingTest extends TestCase
         $this->assertSame('cost_plus', $line['billing_model']);
         $this->assertEqualsWithDelta(12.345678, $line['provider_cost'], 0.000001);
         $this->assertEqualsWithDelta(30.0, $line['markup_percent'], 0.001);
-        $this->assertEqualsWithDelta(16.0494, $line['overage_cost'], 0.0001);
-        $this->assertEqualsWithDelta(99 + 16.0494, (float) $snapshot->total, 0.01);
+        $this->assertEqualsWithDelta(16.0494, $line['charged_usd'], 0.0001);
+        // Términos de plataforma en MXN: el costo USD se traslada con el tipo
+        // de cambio configurado y el plan ya no aporta precio base.
+        $fx = (float) config('billing.fx_usd_rate');
+        $this->assertEqualsWithDelta(16.0494 * $fx, $line['overage_cost'], 0.01);
+        $this->assertSame(config('billing.currency'), $snapshot->currency);
+        $this->assertEqualsWithDelta(16.0494 * $fx, (float) $snapshot->total, 0.01);
     }
 
     public function test_billing_page_shows_messaging_as_money_not_micros(): void

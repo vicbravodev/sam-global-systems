@@ -4,6 +4,7 @@ namespace App\Domains\Tenancy\Actions;
 
 use App\Domains\Tenancy\Models\BillingRate;
 use App\Domains\Tenancy\Models\Subscription;
+use App\Domains\Tenancy\Models\TenantBillingTerms;
 use App\Domains\Tenancy\Models\TenantFeature;
 use App\Domains\Tenancy\Models\UsageMeter;
 use App\Support\TenantContext;
@@ -11,9 +12,13 @@ use App\Support\TenantContext;
 /**
  * Resolves the effective cap on monitored/synced assets for a tenant.
  *
- * Precedence: a per-tenant TenantFeature limit (manual override or plan-seeded)
- * wins; otherwise the tenant's current plan billing rate for the asset meter.
+ * Precedence: the tenant's explicit billing terms (`included_assets`) win;
+ * then a per-tenant TenantFeature limit (manual override or plan-seeded);
+ * otherwise the tenant's current plan billing rate for the asset meter.
  * Returns null when no cap applies (unlimited).
+ *
+ * The cap is SOFT (2026-09-28): callers never block on it, they flag the
+ * excess so it is billed as extra asset-days.
  */
 class ResolveAssetLimit
 {
@@ -22,6 +27,14 @@ class ResolveAssetLimit
     public function execute(int $teamId): ?int
     {
         return TenantContext::for($teamId, function () use ($teamId) {
+            $contracted = TenantBillingTerms::query()
+                ->where('team_id', $teamId)
+                ->value('included_assets');
+
+            if ($contracted !== null) {
+                return (int) $contracted > 0 ? (int) $contracted : null;
+            }
+
             $feature = TenantFeature::query()
                 ->where('team_id', $teamId)
                 ->where('feature_key', self::METER_CODE)

@@ -3,7 +3,6 @@
 namespace Tests\Feature\Domains\Tenancy;
 
 use App\Domains\Tenancy\Actions\ChangeTenantPlan;
-use App\Domains\Tenancy\Actions\ExtendTrial;
 use App\Domains\Tenancy\Actions\ResolveAssetLimit;
 use App\Domains\Tenancy\Actions\UpdatePlanLimits;
 use App\Domains\Tenancy\Actions\UpdateSubscriptionStatus;
@@ -110,24 +109,6 @@ class SubscriptionControlActionsTest extends TestCase
         $this->assertSame(SubscriptionStatus::Canceled, $fresh->status);
         $this->assertNotNull($fresh->ends_at);
         $this->assertTrue((bool) $fresh->cancel_at_period_end);
-    }
-
-    public function test_extend_trial_pushes_trial_end_forward(): void
-    {
-        $subscription = Subscription::factory()->create([
-            'status' => SubscriptionStatus::Trialing,
-            'trial_ends_at' => now()->addDays(2),
-        ]);
-
-        $expected = $subscription->trial_ends_at->copy()->addDays(10)->toDateString();
-
-        app(ExtendTrial::class)->execute($subscription, 10);
-
-        // Extends from the existing trial end (now+2 → now+12), not from "now".
-        $this->assertSame(
-            $expected,
-            $subscription->fresh()->trial_ends_at->toDateString(),
-        );
     }
 
     public function test_resolve_asset_limit_prefers_tenant_feature_then_plan(): void

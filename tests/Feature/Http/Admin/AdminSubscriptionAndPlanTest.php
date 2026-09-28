@@ -86,21 +86,6 @@ class AdminSubscriptionAndPlanTest extends TestCase
         );
     }
 
-    public function test_super_admin_extends_trial(): void
-    {
-        $admin = $this->superAdmin();
-        $team = $this->tenantWithSubscription(SubscriptionStatus::Trialing);
-
-        $this->actingAs($admin)
-            ->post(route('admin.tenants.subscription.extend-trial', $team), ['days' => 30])
-            ->assertRedirect();
-
-        $this->assertDatabaseHas('audit_logs', [
-            'team_id' => $team->id,
-            'action' => 'tenant.trial_extended',
-        ]);
-    }
-
     public function test_plans_index_renders_for_super_admin(): void
     {
         $admin = $this->superAdmin();

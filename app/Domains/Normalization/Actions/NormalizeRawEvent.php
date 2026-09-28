@@ -6,6 +6,7 @@ use App\Domains\Assets\Models\Asset;
 use App\Domains\Assets\Models\AssetExternalReference;
 use App\Domains\Drivers\Models\Driver;
 use App\Domains\Drivers\Models\DriverExternalReference;
+use App\Domains\Ingestion\Enums\RawEventStatus;
 use App\Domains\Ingestion\Models\RawEvent;
 use App\Domains\Normalization\Enums\NormalizedEventStatus;
 use App\Domains\Normalization\Events\EventNormalized;
@@ -24,7 +25,13 @@ class NormalizeRawEvent
         private ResolveEventSeverity $resolveEventSeverity,
     ) {}
 
-    public function execute(RawEvent $rawEvent): NormalizedEvent
+    /**
+     * Null when the event belongs to an asset the tenant is not monitoring:
+     * the raw event is marked `discarded` and never reaches enrichment, AI,
+     * decisions or incidents. Only monitored assets are billed, so only
+     * monitored assets may cost anything downstream.
+     */
+    public function execute(RawEvent $rawEvent): ?NormalizedEvent
     {
         $externalEventType = $rawEvent->event_type_raw ?? '';
         $providerId = $rawEvent->provider_id;
@@ -75,15 +82,22 @@ class NormalizeRawEvent
         RawEvent $rawEvent,
         EventType $eventType,
         array $payload,
-    ): NormalizedEvent {
+    ): ?NormalizedEvent {
         $severity = $eventType->defaultSeverity ?? EventSeverity::query()->orderBy('level')->firstOrFail();
+        $assetId = $this->resolveInternalAssetId($rawEvent, $payload);
+
+        if ($this->assetIsSwitchedOff($assetId)) {
+            $this->discard($rawEvent);
+
+            return null;
+        }
 
         $normalizedEvent = NormalizedEvent::query()->updateOrCreate(
             ['raw_event_id' => $rawEvent->id],
             [
                 'team_id' => $rawEvent->team_id,
                 'provider_id' => null,
-                'asset_id' => $this->resolveInternalAssetId($rawEvent, $payload),
+                'asset_id' => $assetId,
                 'driver_id' => null,
                 'event_type_id' => $eventType->id,
                 'event_category_id' => $eventType->category?->id ?? $this->getUnmappedCategoryId(),
@@ -153,7 +167,7 @@ class NormalizeRawEvent
         RawEvent $rawEvent,
         EventMappingRule $rule,
         array $payload,
-    ): NormalizedEvent {
+    ): ?NormalizedEvent {
         $eventType = $rule->mappedEventType;
         $severity = $this->resolveEventSeverity->execute($rule, $eventType);
         $category = $rule->mapped_category_id
@@ -161,6 +175,13 @@ class NormalizeRawEvent
             : $eventType->category;
 
         $assetId = $this->resolveAssetId($rawEvent->provider_id, $rawEvent->team_id, $payload);
+
+        if ($this->assetIsSwitchedOff($assetId)) {
+            $this->discard($rawEvent);
+
+            return null;
+        }
+
         $driverId = $this->resolveDriverId($rawEvent->provider_id, $rawEvent->team_id, $payload);
 
         $normalizedEvent = NormalizedEvent::query()->updateOrCreate(
@@ -185,6 +206,28 @@ class NormalizeRawEvent
         EventNormalized::dispatch($normalizedEvent);
 
         return $normalizedEvent;
+    }
+
+    /**
+     * A resolved asset the tenant has not switched on (`pending`) or has
+     * switched off (`excluded`). Events with no asset at all still flow:
+     * they cost nothing per unit and may be fleet-wide provider notices.
+     */
+    private function assetIsSwitchedOff(?int $assetId): bool
+    {
+        if ($assetId === null) {
+            return false;
+        }
+
+        return Asset::query()
+            ->whereKey($assetId)
+            ->monitored()
+            ->doesntExist();
+    }
+
+    private function discard(RawEvent $rawEvent): void
+    {
+        $rawEvent->markAsStatus(RawEventStatus::Discarded);
     }
 
     /**

@@ -10,6 +10,7 @@ use App\Domains\Tenancy\Models\BillingRate;
 use App\Domains\Tenancy\Models\InvoiceSnapshot;
 use App\Domains\Tenancy\Models\Plan;
 use App\Domains\Tenancy\Models\Subscription;
+use App\Domains\Tenancy\Models\TenantBillingTerms;
 use App\Domains\Tenancy\Models\UsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
 use App\Models\Team;
@@ -28,6 +29,8 @@ class GenerateMonthlyInvoicesJobTest extends TestCase
 
     private UsageMeter $assets;
 
+    private UsageMeter $assetDays;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -38,6 +41,11 @@ class GenerateMonthlyInvoicesJobTest extends TestCase
 
         $this->messages = UsageMeter::factory()->create(['code' => 'messages', 'aggregation_type' => AggregationType::Sum]);
         $this->assets = UsageMeter::factory()->create(['code' => 'monitored_assets', 'aggregation_type' => AggregationType::Max]);
+        // Sembrado por migración (insertOrIgnore): base del cobro por tracto-día.
+        $this->assetDays = UsageMeter::query()->where('code', 'monitored_asset_days')->sole();
+        config()->set('billing.unit_price', 450);
+        config()->set('billing.min_billable_assets', 0);
+        config()->set('billing.volume_tiers', []);
 
         BillingRate::factory()->create([
             'plan_id' => $this->plan->id,
@@ -64,6 +72,7 @@ class GenerateMonthlyInvoicesJobTest extends TestCase
         $this->usage($team, $this->messages, 3, '2026-09-10 10:00:00');
         foreach (['2026-09-01', '2026-09-02', '2026-09-03'] as $i => $day) {
             $this->usage($team, $this->assets, 239 + $i, "{$day} 00:05:00");
+            $this->usage($team, $this->assetDays, 239 + $i, "{$day} 00:05:00");
         }
 
         // October usage must not leak into the September invoice.
@@ -75,19 +84,30 @@ class GenerateMonthlyInvoicesJobTest extends TestCase
 
         $this->assertSame('2026-09-01', $invoice->period_start->toDateString());
         $this->assertSame('2026-09-30', $invoice->period_end->toDateString());
-        $this->assertSame('usd', $invoice->currency);
+        // La moneda es la de los términos del tenant (default de plataforma),
+        // nunca la del plan ni la del team.
+        $this->assertSame(config('billing.currency'), $invoice->currency);
 
         $lines = collect($invoice->breakdown_json)->keyBy('meter_code');
         $this->assertEquals(15, $lines['messages']['consumed']);
         $this->assertEquals(5, $lines['messages']['overage']);
-        $this->assertEquals(241, $lines['monitored_assets']['consumed']);
-        $this->assertEquals(0, $lines['monitored_assets']['overage']);
-        $this->assertEquals(105.0, (float) $invoice->total);
+        // El gauge `monitored_assets` del plan no se repite en la factura: el
+        // tope vive en la línea de tracto-día.
+        $this->assertArrayNotHasKey('monitored_assets', $lines->all());
+
+        // Tracto-día: 3 muestras de 239/240/241 = 720 tracto-días en un mes
+        // de 30 días a 450/mes → 720 × 15 = 10,800; más 5 de excedente de
+        // mensajes a 1.00. El plan no aporta precio base.
+        $this->assertEquals(720, $lines['monitored_asset_days']['consumed']);
+        $this->assertEquals(30, $lines['monitored_asset_days']['days_in_period']);
+        $this->assertEqualsWithDelta(720 * (450 / 30), $lines['monitored_asset_days']['amount'], 0.01);
+        $this->assertEqualsWithDelta(720 * (450 / 30), (float) $invoice->subtotal, 0.01);
+        $this->assertEqualsWithDelta(720 * (450 / 30) + 5.0, (float) $invoice->total, 0.01);
     }
 
     public function test_tenants_without_an_operational_subscription_are_skipped(): void
     {
-        $active = $this->tenant(SubscriptionStatus::Trialing);
+        $active = $this->tenant(SubscriptionStatus::PastDue);
         $canceled = $this->tenant(SubscriptionStatus::Canceled);
         $suspended = $this->tenant(SubscriptionStatus::Suspended);
 
@@ -114,13 +134,16 @@ class GenerateMonthlyInvoicesJobTest extends TestCase
         $this->assertEquals(40, $consumed($teamB));
     }
 
-    public function test_single_invoice_uses_the_plan_currency_not_the_team_currency(): void
+    public function test_single_invoice_uses_the_tenant_billing_terms_currency(): void
     {
         $team = $this->tenant(SubscriptionStatus::Active, currency: 'mxn');
+        TenantBillingTerms::factory()->create(['team_id' => $team->id, 'currency' => 'USD']);
 
         (new GenerateInvoiceSnapshotJob($team->id))->handle();
 
-        $this->assertSame('usd', InvoiceSnapshot::query()->where('team_id', $team->id)->sole()->currency);
+        $invoice = InvoiceSnapshot::query()->where('team_id', $team->id)->sole();
+        $this->assertSame('usd', $invoice->currency);
+        $this->assertSame('usd', collect($invoice->breakdown_json)->firstWhere('meter_code', '_terms')['terms']['currency']);
     }
 
     public function test_it_is_scheduled_monthly_on_the_first(): void

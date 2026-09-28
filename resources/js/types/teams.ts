@@ -52,5 +52,4 @@ export type Impersonation = {
 
 export type AdminBadges = {
     tenantsPastDue: number;
-    tenantsTrialing: number;
 };

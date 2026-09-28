@@ -69,6 +69,7 @@ class DetectUnauthorizedStopJob implements ShouldQueue
         // pero inspecciona cada activo dentro del contexto del suyo. Ver §2.1.
         TenantContext::withoutTenant(fn () => Asset::query()
             ->whereNotNull('team_id')
+            ->monitored()
             ->whereNotIn('status', [AssetStatus::Inactive, AssetStatus::Maintenance])
             ->with('latestLocation')
             ->chunkById(200, function ($assets) use (&$teamHasGeofences, $tenantConfig, $resolveGeofences, $storeRawEvent, $queueForProcessing) {

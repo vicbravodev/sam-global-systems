@@ -56,6 +56,7 @@ class DetectAfterHoursMovementJob implements ShouldQueue
         // dentro del contexto de SU tenant. Ver §2.1.
         TenantContext::withoutTenant(fn () => Asset::query()
             ->whereNotNull('team_id')
+            ->monitored()
             ->whereNotIn('status', [AssetStatus::Inactive, AssetStatus::Maintenance])
             ->with('latestLocation')
             ->chunkById(200, function ($assets) use (&$schedules, $scheduleResolver, $storeRawEvent, $queueForProcessing) {

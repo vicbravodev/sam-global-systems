@@ -34,7 +34,6 @@ class ExpireOldReportsJob implements ShouldQueue
             ->whereHas('teamSubscription', function ($query) {
                 $query->withoutGlobalScopes()
                     ->whereIn('status', [
-                        SubscriptionStatus::Trialing->value,
                         SubscriptionStatus::Active->value,
                         SubscriptionStatus::PastDue->value,
                     ]);

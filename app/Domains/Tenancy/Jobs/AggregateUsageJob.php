@@ -48,7 +48,6 @@ class AggregateUsageJob implements ShouldQueue
             ->whereHas('teamSubscription', function ($query) {
                 $query->withoutGlobalScopes()
                     ->whereIn('status', [
-                        SubscriptionStatus::Trialing->value,
                         SubscriptionStatus::Active->value,
                         SubscriptionStatus::PastDue->value,
                     ]);
@@ -145,7 +144,6 @@ class AggregateUsageJob implements ShouldQueue
         $subscription = Subscription::query()
             ->where('team_id', $team->id)
             ->whereIn('status', [
-                SubscriptionStatus::Trialing->value,
                 SubscriptionStatus::Active->value,
                 SubscriptionStatus::PastDue->value,
             ])

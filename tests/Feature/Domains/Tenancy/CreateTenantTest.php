@@ -51,7 +51,7 @@ class CreateTenantTest extends TestCase
         $this->assertDatabaseHas('team_subscriptions', [
             'team_id' => $team->id,
             'plan_id' => $plan->id,
-            'status' => SubscriptionStatus::Trialing->value,
+            'status' => SubscriptionStatus::Active->value,
         ]);
 
         $this->assertDatabaseHas('tenant_features', [
@@ -80,26 +80,21 @@ class CreateTenantTest extends TestCase
         });
     }
 
-    public function test_trial_defaults_to_14_days(): void
+    public function test_tenant_with_plan_starts_active_without_trial(): void
     {
         Event::fake([TenantCreated::class]);
 
         $owner = User::factory()->create();
-        $plan = Plan::factory()->create(['code' => 'starter', 'billing_cycle' => BillingCycle::Monthly]);
+        Plan::factory()->create(['code' => 'starter', 'billing_cycle' => BillingCycle::Monthly]);
 
         $action = app(CreateTenant::class);
-        $team = $action->execute('Trial Corp', $owner, 'starter');
+        $team = $action->execute('Direct Corp', $owner, 'starter');
 
         $subscription = $team->teamSubscription()->withoutGlobalScopes()->first();
 
         $this->assertNotNull($subscription, 'Subscription should exist for tenant created with a plan');
-
-        $expectedTrialEnd = now()->addDays(14);
-
-        $this->assertTrue(
-            $subscription->trial_ends_at->isSameDay($expectedTrialEnd),
-            "Trial should end in 14 days. Expected: {$expectedTrialEnd->toDateString()}, Got: {$subscription->trial_ends_at->toDateString()}",
-        );
+        $this->assertSame(SubscriptionStatus::Active, $subscription->status);
+        $this->assertNull($subscription->getAttribute('trial_ends_at'), 'SAM bills per asset-day from day one: no trial window');
     }
 
     public function test_it_creates_tenant_without_plan(): void
