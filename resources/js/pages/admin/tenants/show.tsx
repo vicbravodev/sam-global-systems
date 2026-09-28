@@ -22,6 +22,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { formatCurrency, formatDate } from '@/lib/format';
+import { invoiceStatusLabel } from '@/lib/labels';
 import { store as impersonateStore } from '@/routes/admin/impersonate';
 import { index as adminTenantsIndex } from '@/routes/admin/tenants';
 
@@ -775,62 +776,70 @@ export default function AdminTenantShow({
                                             #{invoice.id}
                                         </span>
                                         <span>
-                                            {invoice.periodStart} —{' '}
-                                            {invoice.periodEnd}
+                                            {formatDate(invoice.periodStart)} —{' '}
+                                            {formatDate(invoice.periodEnd)}
                                         </span>
                                         <span className="font-semibold">
-                                            {invoice.total.toLocaleString('es')}{' '}
-                                            {invoice.currency}
+                                            {formatCurrency(
+                                                invoice.total,
+                                                invoice.currency,
+                                            )}
                                         </span>
                                         <span className="text-xs text-fg-3">
-                                            {invoice.status}
+                                            {invoiceStatusLabel(invoice.status)}
                                             {invoice.hasReceipt &&
                                                 ' · comprobante recibido'}
                                             {invoice.paidAt &&
-                                                ` · pagada ${invoice.paidAt}`}
+                                                ` · pagada el ${formatDate(invoice.paidAt)}`}
                                         </span>
-                                        {invoice.status !== 'paid' && (
-                                            <span className="ml-auto flex gap-1">
-                                                <Button
-                                                    size="sm"
-                                                    variant="outline"
-                                                    onClick={() =>
-                                                        router.post(
-                                                            `/admin/tenants/${tenant.slug}/invoices/${invoice.id}/mark-paid`,
-                                                            {},
-                                                            {
-                                                                preserveScroll: true,
-                                                                onSuccess: () =>
-                                                                    toast.success(
-                                                                        'Factura marcada como pagada.',
-                                                                    ),
-                                                            },
-                                                        )
-                                                    }
-                                                >
-                                                    Marcar pagada
-                                                </Button>
-                                                <Button
-                                                    size="sm"
-                                                    variant="ghost"
-                                                    onClick={() =>
-                                                        router.post(
-                                                            `/admin/tenants/${tenant.slug}/invoices/${invoice.id}/void`,
-                                                            {},
-                                                            {
-                                                                preserveScroll: true,
-                                                                onSuccess: () =>
-                                                                    toast.success(
-                                                                        'Factura anulada.',
-                                                                    ),
-                                                            },
-                                                        )
-                                                    }
-                                                >
-                                                    Anular
-                                                </Button>
-                                            </span>
-                                        )}
+                                        {/* Pagada o anulada: ciclo cerrado,
+                                            el servidor rechaza cualquier
+                                            transición posterior. */}
+                                        {invoice.status !== 'paid' &&
+                                            invoice.status !== 'void' && (
+                                                <span className="ml-auto flex gap-1">
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        onClick={() =>
+                                                            router.post(
+                                                                `/admin/tenants/${tenant.slug}/invoices/${invoice.id}/mark-paid`,
+                                                                {},
+                                                                {
+                                                                    preserveScroll: true,
+                                                                    onSuccess:
+                                                                        () =>
+                                                                            toast.success(
+                                                                                'Factura marcada como pagada.',
+                                                                            ),
+                                                                },
+                                                            )
+                                                        }
+                                                    >
+                                                        Marcar pagada
+                                                    </Button>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        onClick={() =>
+                                                            router.post(
+                                                                `/admin/tenants/${tenant.slug}/invoices/${invoice.id}/void`,
+                                                                {},
+                                                                {
+                                                                    preserveScroll: true,
+                                                                    onSuccess:
+                                                                        () =>
+                                                                            toast.success(
+                                                                                'Factura anulada.',
+                                                                            ),
+                                                                },
+                                                            )
+                                                        }
+                                                    >
+                                                        Anular
+                                                    </Button>
+                                                </span>
+                                            )}
                                     </li>
                                 ))}
                             </ul>

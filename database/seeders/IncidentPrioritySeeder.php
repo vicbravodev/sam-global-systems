@@ -10,10 +10,10 @@ class IncidentPrioritySeeder extends Seeder
     public function run(): void
     {
         $priorities = [
-            ['code' => 'low', 'name' => 'Low', 'level' => 1, 'sla_seconds' => null, 'color' => '#6B7280'],
-            ['code' => 'medium', 'name' => 'Medium', 'level' => 2, 'sla_seconds' => 3600, 'color' => '#F59E0B'],
-            ['code' => 'high', 'name' => 'High', 'level' => 3, 'sla_seconds' => 1800, 'color' => '#EF4444'],
-            ['code' => 'critical', 'name' => 'Critical', 'level' => 4, 'sla_seconds' => 300, 'color' => '#991B1B'],
+            ['code' => 'low', 'name' => 'Baja', 'level' => 1, 'sla_seconds' => null, 'color' => '#6B7280'],
+            ['code' => 'medium', 'name' => 'Media', 'level' => 2, 'sla_seconds' => 3600, 'color' => '#F59E0B'],
+            ['code' => 'high', 'name' => 'Alta', 'level' => 3, 'sla_seconds' => 1800, 'color' => '#EF4444'],
+            ['code' => 'critical', 'name' => 'Crítica', 'level' => 4, 'sla_seconds' => 300, 'color' => '#991B1B'],
         ];
 
         foreach ($priorities as $priority) {

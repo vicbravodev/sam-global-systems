@@ -32,6 +32,19 @@ class AuthenticationTest extends TestCase
         $response->assertRedirect(route('dashboard'));
     }
 
+    public function test_super_admins_land_on_the_admin_console()
+    {
+        $user = User::factory()->create(['global_role' => 'super_admin']);
+
+        $response = $this->post(route('login.store'), [
+            'email' => $user->email,
+            'password' => 'password',
+        ]);
+
+        $this->assertAuthenticated();
+        $response->assertRedirect(route('admin.tenants.index'));
+    }
+
     public function test_users_with_two_factor_enabled_are_redirected_to_two_factor_challenge()
     {
         if (! Features::canManageTwoFactorAuthentication()) {

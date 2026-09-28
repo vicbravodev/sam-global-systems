@@ -1,4 +1,4 @@
-import { Head } from '@inertiajs/react';
+import { Head, router } from '@inertiajs/react';
 import { ScrollText } from 'lucide-react';
 import { EmptyState } from '@/components/ui/empty-state';
 import { formatDateTime } from '@/lib/format';
@@ -6,7 +6,9 @@ import { formatDateTime } from '@/lib/format';
 interface AuditEntry {
     id: number;
     action: string;
+    actionLabel: string;
     category: string;
+    categoryLabel: string | null;
     summary: string;
     team: string | null;
     actorEmail: string | null;
@@ -15,9 +17,15 @@ interface AuditEntry {
 
 interface AdminAuditIndexProps {
     entries: AuditEntry[];
+    filters?: { system: boolean };
 }
 
-export default function AdminAuditIndex({ entries }: AdminAuditIndexProps) {
+export default function AdminAuditIndex({
+    entries,
+    filters,
+}: AdminAuditIndexProps) {
+    const showSystem = filters?.system ?? false;
+
     return (
         <div className="flex h-full flex-col overflow-hidden">
             <Head title="Auditoría" />
@@ -26,9 +34,27 @@ export default function AdminAuditIndex({ entries }: AdminAuditIndexProps) {
                 <div className="flex items-center gap-3">
                     <h1 className="sam-h2 m-0">Auditoría</h1>
                     <span className="sam-meta">
-                        seguridad y facturación · cross-tenant
+                        seguridad y facturación · todos los tenants
                     </span>
                 </div>
+                <label className="flex cursor-pointer items-center gap-1.5 text-xs text-fg-2">
+                    <input
+                        type="checkbox"
+                        checked={showSystem}
+                        onChange={(event) =>
+                            router.reload({
+                                only: ['entries', 'filters'],
+                                data: {
+                                    system: event.target.checked
+                                        ? 1
+                                        : undefined,
+                                },
+                            })
+                        }
+                        className="accent-primary"
+                    />
+                    Mostrar actividad automática del sistema
+                </label>
             </header>
 
             <div className="flex-1 overflow-y-auto p-5">
@@ -70,9 +96,14 @@ export default function AdminAuditIndex({ entries }: AdminAuditIndexProps) {
                                             {formatDateTime(entry.occurredAt)}
                                         </td>
                                         <td className="px-3 py-2">
-                                            <span className="font-mono text-xs">
-                                                {entry.action}
+                                            <span title={entry.action}>
+                                                {entry.actionLabel}
                                             </span>
+                                            {entry.categoryLabel && (
+                                                <span className="ml-2 text-2xs text-fg-3">
+                                                    {entry.categoryLabel}
+                                                </span>
+                                            )}
                                         </td>
                                         <td className="px-3 py-2">
                                             {entry.team ?? '—'}

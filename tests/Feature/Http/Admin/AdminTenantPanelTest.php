@@ -49,8 +49,11 @@ class AdminTenantPanelTest extends TestCase
             ->assertInertia(
                 fn (Assert $page) => $page
                     ->component('admin/tenants/index')
-                    // 2 org tenants + the super-admin's own personal team.
-                    ->has('tenants', 3)
+                    // Only the 2 org tenants: personal teams (incl. the
+                    // super-admin's own) are workspaces, not customers.
+                    ->has('tenants', 2)
+                    ->where('tenants.0.isPersonal', false)
+                    ->where('tenants.1.isPersonal', false)
                     ->where('stats.total', 2),
             );
     }

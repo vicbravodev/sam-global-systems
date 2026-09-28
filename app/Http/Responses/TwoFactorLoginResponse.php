@@ -17,8 +17,15 @@ class TwoFactorLoginResponse implements TwoFactorLoginResponseContract
             abort(403);
         }
 
-        return $request->wantsJson()
-            ? new JsonResponse(['two_factor' => false], 200)
-            : redirect()->intended("/{$team->slug}/dashboard");
+        if ($request->wantsJson()) {
+            return new JsonResponse(['two_factor' => false], 200);
+        }
+
+        // The SaaS operator works from the cross-tenant console.
+        if ($user->isSuperAdmin()) {
+            return redirect()->intended(route('admin.tenants.index'));
+        }
+
+        return redirect()->intended("/{$team->slug}/dashboard");
     }
 }

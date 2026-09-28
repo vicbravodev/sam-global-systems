@@ -6,8 +6,10 @@ use App\Domains\Audit\Enums\AuditActorType;
 use App\Domains\Audit\Enums\AuditCategory;
 use App\Domains\Audit\Models\AuditLog;
 use App\Domains\Audit\Models\DomainEventLog;
+use App\Domains\Audit\Support\AuditActionPresenter;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -62,10 +64,17 @@ class AuditPageController extends Controller
                 : null,
             'from' => $request->filled('from') ? $request->string('from')->toString() : null,
             'to' => $request->filled('to') ? $request->string('to')->toString() : null,
+            // Automated bookkeeping (usage recorded, events normalized…) is
+            // hidden unless the viewer opts in.
+            'system' => $request->boolean('system'),
         ];
 
         $query = AuditLog::query()
             ->where('team_id', $current_team->id);
+
+        if (! $filters['system']) {
+            $query->whereNotIn('action', AuditActionPresenter::NOISE_ACTIONS);
+        }
 
         if ($filters['q'] !== null && $filters['q'] !== '') {
             $term = '%'.mb_strtolower(str_replace(['%', '_'], ['\%', '\_'], $filters['q'])).'%';
@@ -97,17 +106,42 @@ class AuditPageController extends Controller
             ->paginate(self::PER_PAGE)
             ->withQueryString();
 
+        $items = collect($paginator->items());
+
+        // Human actor names: only the users on this page, and only if they
+        // are members of this team (never another tenant's user).
+        $userIds = $items
+            ->filter(fn (AuditLog $log) => $log->actor_type === AuditActorType::User && $log->actor_id !== null)
+            ->pluck('actor_id')
+            ->unique()
+            ->all();
+        $actorNames = $userIds === []
+            ? []
+            : User::query()
+                ->whereIn('id', $userIds)
+                ->whereHas('teams', fn (Builder $q) => $q->where('teams.id', $current_team->id))
+                ->pluck('name', 'id')
+                ->all();
+
         return Inertia::render('audit/index', [
-            'logs' => collect($paginator->items())
+            'logs' => $items
                 ->map(fn (AuditLog $log): array => [
                     'id' => (int) $log->id,
                     'action' => $log->action,
+                    'actionLabel' => AuditActionPresenter::actionLabel($log->action),
                     'category' => $log->category?->value,
+                    'categoryLabel' => AuditActionPresenter::categoryLabel($log->category),
                     'actorType' => $log->actor_type?->value,
                     'actorId' => $log->actor_id !== null ? (int) $log->actor_id : null,
+                    'actorLabel' => $this->actorLabel($log, $actorNames),
                     'entityType' => $log->entity_type,
-                    'entityId' => $log->entity_id !== null ? (int) $log->entity_id : null,
-                    'entityLabel' => $this->entityLabel($log->entity_type),
+                    // The tenant itself is shown by name, not "Tenant #1".
+                    'entityId' => $log->entity_id !== null && ! $this->isTeamEntity($log->entity_type)
+                        ? (int) $log->entity_id
+                        : null,
+                    'entityLabel' => $this->isTeamEntity($log->entity_type)
+                        ? $current_team->name
+                        : $this->entityLabel($log->entity_type),
                     'summary' => $log->summary,
                     'occurredAt' => $log->occurred_at?->toIso8601String(),
                 ])
@@ -120,8 +154,14 @@ class AuditPageController extends Controller
             ],
             'filters' => $filters,
             'filterOptions' => fn (): array => [
-                'categories' => array_map(fn (AuditCategory $category) => $category->value, AuditCategory::cases()),
-                'actorTypes' => array_map(fn (AuditActorType $type) => $type->value, AuditActorType::cases()),
+                'categories' => array_map(fn (AuditCategory $category): array => [
+                    'value' => $category->value,
+                    'label' => AuditActionPresenter::categoryLabel($category),
+                ], AuditCategory::cases()),
+                'actorTypes' => array_map(fn (AuditActorType $type): array => [
+                    'value' => $type->value,
+                    'label' => AuditActionPresenter::actorTypeLabel($type),
+                ], AuditActorType::cases()),
             ],
             'events' => fn () => DomainEventLog::query()
                 ->where('team_id', $current_team->id)
@@ -139,6 +179,23 @@ class AuditPageController extends Controller
                 ])
                 ->all(),
         ]);
+    }
+
+    /**
+     * @param  array<int, string>  $actorNames
+     */
+    private function actorLabel(AuditLog $log, array $actorNames): ?string
+    {
+        if ($log->actor_type === AuditActorType::User && $log->actor_id !== null) {
+            return $actorNames[$log->actor_id] ?? 'Usuario #'.$log->actor_id;
+        }
+
+        return AuditActionPresenter::actorTypeLabel($log->actor_type);
+    }
+
+    private function isTeamEntity(?string $type): bool
+    {
+        return $type !== null && in_array(class_basename($type), ['Team', 'team', 'tenant'], true);
     }
 
     private function entityLabel(?string $type): ?string

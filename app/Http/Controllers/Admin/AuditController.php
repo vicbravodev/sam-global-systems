@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Admin;
 
 use App\Domains\Audit\Enums\AuditCategory;
 use App\Domains\Audit\Models\AuditLog;
+use App\Domains\Audit\Support\AuditActionPresenter;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
 use App\Support\TenantContext;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -17,11 +19,14 @@ use Inertia\Response;
  */
 class AuditController extends Controller
 {
-    public function index(): Response
+    public function index(Request $request): Response
     {
+        $showSystem = $request->boolean('system');
+
         // Bitácora de la consola de operador: cruza tenants a propósito.
         $logs = TenantContext::withoutTenant(fn () => AuditLog::query()
             ->whereIn('category', [AuditCategory::Security, AuditCategory::Billing])
+            ->when(! $showSystem, fn ($q) => $q->whereNotIn('action', AuditActionPresenter::NOISE_ACTIONS))
             ->orderByDesc('occurred_at')
             ->orderByDesc('id')
             ->limit(150)
@@ -34,15 +39,18 @@ class AuditController extends Controller
         $entries = $logs->map(fn (AuditLog $log) => [
             'id' => (int) $log->id,
             'action' => (string) $log->action,
+            'actionLabel' => AuditActionPresenter::actionLabel($log->action),
             'category' => $log->category->value,
+            'categoryLabel' => AuditActionPresenter::categoryLabel($log->category),
             'summary' => (string) $log->summary,
-            'team' => $log->team_id ? ($teamNames[$log->team_id] ?? "#{$log->team_id}") : null,
+            'team' => $log->team_id ? ($teamNames[$log->team_id] ?? "Tenant eliminado #{$log->team_id}") : null,
             'actorEmail' => ($log->metadata_json ?? [])['actor_email'] ?? null,
             'occurredAt' => $log->occurred_at?->toIso8601String(),
         ])->values()->all();
 
         return Inertia::render('admin/audit/index', [
             'entries' => $entries,
+            'filters' => ['system' => $showSystem],
         ]);
     }
 }

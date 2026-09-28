@@ -166,6 +166,16 @@ export default function TeamEdit({
                         ) : null}
                     </div>
 
+                    <p className="text-xs text-muted-foreground">
+                        El <strong>rol en el equipo</strong> (Propietario,
+                        Administrador, Miembro) sólo decide quién administra el
+                        equipo: invitar, quitar miembros y renombrarlo. Qué
+                        puede ver y hacer cada persona en la operación
+                        (incidentes, flota, facturación…) lo define su{' '}
+                        <strong>rol de acceso</strong> en{' '}
+                        <em>Ajustes › Equipo y roles</em>.
+                    </p>
+
                     <div className="space-y-3">
                         {members.map((member) => (
                             <div
@@ -343,6 +353,24 @@ export default function TeamEdit({
                                 Eliminar equipo
                             </Button>
                         </div>
+                    </div>
+                ) : null}
+
+                {!permissions.canDeleteTeam &&
+                !team.isPersonal &&
+                team.role === 'owner' ? (
+                    <div className="space-y-2">
+                        <Heading
+                            variant="small"
+                            title="Eliminar equipo"
+                            description="Este equipo es una cuenta activa de SAM"
+                        />
+                        <p className="text-sm text-muted-foreground">
+                            Dar de baja la cuenta elimina la operación completa
+                            (incidentes, integraciones e historial de
+                            facturación), así que no se hace desde aquí.
+                            Contacta al equipo de SAM para cancelar el servicio.
+                        </p>
                     </div>
                 ) : null}
             </div>

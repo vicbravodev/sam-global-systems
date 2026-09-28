@@ -39,6 +39,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { teamRoleLabel } from '@/lib/labels';
 import {
     deleteJson,
     postJson,
@@ -55,11 +56,12 @@ interface RolesIndexProps {
     members: TeamMemberRow[];
 }
 
-const LEGACY_ROLE_LABEL: Record<string, string> = {
-    owner: 'Propietario (heredado)',
-    admin: 'Admin (heredado)',
-    member: 'Miembro (heredado)',
-};
+/** Etiqueta de reserva cuando el miembro aún no tiene rol de acceso. */
+function fallbackRoleLabel(legacyRole: string | null): string {
+    return legacyRole
+        ? `${teamRoleLabel(legacyRole)} (sin rol de acceso)`
+        : 'Sin rol';
+}
 
 // ---- Permission checkbox tree ----
 
@@ -676,6 +678,13 @@ function MembersCard({
                 </span>
             </CardHeader>
             <CardContent className="p-0">
+                <p className="border-b border-border px-4 py-2.5 text-xs text-fg-3">
+                    El <strong className="text-fg-2">rol de acceso</strong>{' '}
+                    define qué puede ver y hacer cada persona en la operación.
+                    Propietario y Administrador del equipo sólo indican quién
+                    administra miembros e invitaciones (en{' '}
+                    <em>Ajustes › Equipos</em>).
+                </p>
                 <ul className="divide-y divide-border">
                     {members.map((member) => (
                         <li
@@ -690,6 +699,16 @@ function MembersCard({
                                     {member.userEmail}
                                 </div>
                             </div>
+                            {member.legacyRole &&
+                            member.legacyRole !== 'member' ? (
+                                <span
+                                    className="text-2xs text-fg-3"
+                                    title="Rol en el equipo: administra miembros e invitaciones"
+                                >
+                                    {teamRoleLabel(member.legacyRole)} del
+                                    equipo
+                                </span>
+                            ) : null}
                             {canManage && !member.locked ? (
                                 <div className="flex items-center gap-2">
                                     {updatingId === member.id ? (
@@ -711,11 +730,9 @@ function MembersCard({
                                             aria-label={`Rol de ${member.userName}`}
                                         >
                                             <SelectValue
-                                                placeholder={
-                                                    LEGACY_ROLE_LABEL[
-                                                        member.legacyRole ?? ''
-                                                    ] ?? 'Sin rol'
-                                                }
+                                                placeholder={fallbackRoleLabel(
+                                                    member.legacyRole,
+                                                )}
                                             />
                                         </SelectTrigger>
                                         <SelectContent>
@@ -733,10 +750,7 @@ function MembersCard({
                             ) : (
                                 <Badge variant="secondary">
                                     {member.roleName ??
-                                        LEGACY_ROLE_LABEL[
-                                            member.legacyRole ?? ''
-                                        ] ??
-                                        'Sin rol'}
+                                        fallbackRoleLabel(member.legacyRole)}
                                 </Badge>
                             )}
                         </li>

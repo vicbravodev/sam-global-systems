@@ -30,7 +30,9 @@ function lookup(
         return fallback ?? '—';
     }
 
-    return map[code] ?? map[code.toLowerCase()] ?? fallback ?? humanizeCode(code);
+    return (
+        map[code] ?? map[code.toLowerCase()] ?? fallback ?? humanizeCode(code)
+    );
 }
 
 // ── Prioridad / severidad ────────────────────────────────────────────────
@@ -241,7 +243,9 @@ export const SUBSCRIPTION_STATUS_LABELS: Record<string, string> = {
     unpaid: 'Sin pagar',
 };
 
-export function subscriptionStatusLabel(code: string | null | undefined): string {
+export function subscriptionStatusLabel(
+    code: string | null | undefined,
+): string {
     return lookup(SUBSCRIPTION_STATUS_LABELS, code);
 }
 
@@ -345,4 +349,148 @@ export const CHANNEL_LABELS: Record<string, string> = {
 
 export function channelLabel(code: string | null | undefined): string {
     return lookup(CHANNEL_LABELS, code);
+}
+
+// ── Retrasos (automatizaciones / escalación) ─────────────────────────────
+
+/** 300 → "+5 min", 45 → "+45 s", 5400 → "+1 h 30 min"; 0 → "Inmediato". */
+export function delayLabel(seconds: number | null | undefined): string {
+    const total = Math.max(0, Math.round(Number(seconds ?? 0)));
+
+    if (total === 0) {
+        return 'Inmediato';
+    }
+
+    if (total < 60) {
+        return `+${total} s`;
+    }
+
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.round((total % 3600) / 60);
+
+    if (hours === 0) {
+        return `+${minutes} min`;
+    }
+
+    return minutes === 0 ? `+${hours} h` : `+${hours} h ${minutes} min`;
+}
+
+// ── Funcionalidades (módulos) del plan y analítica — F1 ─────────────────
+
+export const FEATURE_LABELS: Record<string, string> = {
+    ai: 'Evaluación con IA',
+    assets: 'Flota',
+    audit: 'Auditoría',
+    automation: 'Automatizaciones',
+    config: 'Configuración del tenant',
+    context: 'Contexto y video de eventos',
+    copilot: 'SAM Copilot',
+    decisions: 'Reglas de decisión',
+    drivers: 'Conductores',
+    geofences: 'Geocercas',
+    incidents: 'Incidentes',
+    integrations: 'Integraciones',
+    notifications: 'Notificaciones',
+    reports: 'Analítica y reportes',
+    tenancy: 'Facturación y equipo',
+    users: 'Usuarios y roles',
+};
+
+export function featureLabel(code: string | null | undefined): string {
+    return lookup(FEATURE_LABELS, code);
+}
+
+export const REPORT_STATUS_LABELS: Record<string, string> = {
+    pending: 'En cola',
+    queued: 'En cola',
+    running: 'Generando',
+    processing: 'Generando',
+    completed: 'Listo',
+    succeeded: 'Listo',
+    failed: 'Falló',
+    cancelled: 'Cancelado',
+    canceled: 'Cancelado',
+    expired: 'Expirado',
+};
+
+/** Nombres de KPI sin fila en metric_definitions (los calcula EvaluateAIEffectiveness). */
+export const KPI_LABELS: Record<string, string> = {
+    incidents_total: 'Incidentes abiertos en el periodo',
+    incidents_resolved: 'Incidentes resueltos',
+    incidents_open: 'Incidentes aún abiertos',
+    incidents_mttr_minutes: 'Tiempo medio de resolución',
+    decisions_total: 'Decisiones tomadas',
+    decisions_human_review_rate: 'Tasa de revisión humana',
+    ai_evaluations_total: 'Evaluaciones de IA',
+    ai_total_evaluations: 'Evaluaciones de IA',
+    ai_average_confidence: 'Confianza media de la IA',
+    ai_accuracy_rate: 'Precisión de la IA',
+    ai_false_positive_rate: 'Tasa de falsos positivos',
+    ai_real_event_rate: 'Tasa de eventos reales',
+    ai_human_override_rate: 'Tasa de corrección humana',
+    active_assets: 'Activos monitoreados',
+    ingested_events: 'Eventos recibidos',
+    ai_calls: 'Llamadas a la IA',
+    outbound_notifications: 'Notificaciones enviadas',
+    copilot_queries: 'Consultas a SAM Copilot',
+    // Claves del resumen del tenant (analytics_snapshots.snapshot_json).
+    total_incidents: 'Incidentes',
+    resolved_incidents: 'Incidentes resueltos',
+    mean_resolution_time_minutes: 'Tiempo medio de resolución',
+    active_integrations: 'Integraciones activas',
+};
+
+export function kpiLabel(
+    code: string | null | undefined,
+    fallback?: string | null,
+): string {
+    if (code && KPI_LABELS[code]) {
+        return fallback ?? KPI_LABELS[code];
+    }
+
+    return lookup(KPI_LABELS, code, fallback);
+}
+
+export function reportStatusLabel(code: string | null | undefined): string {
+    return lookup(REPORT_STATUS_LABELS, code);
+}
+
+// ── Evidencia multimedia y descripciones de proveedor (F4) ──────────────
+
+export const MEDIA_ROLE_LABELS: Record<string, string> = {
+    primary_evidence: 'evidencia principal',
+    driver_facing: 'cámara interior',
+    road_facing: 'cámara frontal',
+    side_facing: 'cámara lateral',
+    rear_facing: 'cámara trasera',
+};
+
+export function mediaRoleLabel(code: string | null | undefined): string {
+    return lookup(MEDIA_ROLE_LABELS, code).toLowerCase();
+}
+
+/**
+ * Descripción cruda del proveedor ("Panic Button", "MaxSpeed") traducida si
+ * es un tipo conocido. Devuelve null cuando la traducción repite el tipo de
+ * evento ya mostrado, para no duplicar "Botón de pánico · Botón de pánico".
+ */
+export function providerDescriptionLabel(
+    description: string | null | undefined,
+    eventTypeName?: string | null,
+): string | null {
+    if (!description) {
+        return null;
+    }
+
+    const key = description.trim().toLowerCase();
+    const translated =
+        EVENT_TYPE_LABELS[key] ??
+        EVENT_TYPE_LABELS[key.replace(/\s+/g, '_')] ??
+        null;
+
+    if (translated === null) {
+        return description;
+    }
+
+    return eventTypeName && translated === eventTypeName ? null : translated;
 }
