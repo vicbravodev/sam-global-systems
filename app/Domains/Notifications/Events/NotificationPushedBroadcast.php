@@ -2,13 +2,15 @@
 
 namespace App\Domains\Notifications\Events;
 
+use App\Support\Broadcasting\QueuesRealtimeBroadcast;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldRescue;
 use Illuminate\Queue\SerializesModels;
 
-class NotificationPushedBroadcast implements ShouldBroadcast
+class NotificationPushedBroadcast implements ShouldBroadcast, ShouldRescue
 {
-    use SerializesModels;
+    use QueuesRealtimeBroadcast, SerializesModels;
 
     public function __construct(
         public readonly int $userId,
@@ -17,6 +19,9 @@ class NotificationPushedBroadcast implements ShouldBroadcast
         public readonly string $priority,
         public readonly ?string $subject = null,
         public readonly ?string $bodyPreview = null,
+        // A user can belong to several teams; the client only raises the
+        // toast when this matches the team it is looking at.
+        public readonly ?int $teamId = null,
     ) {}
 
     /**
@@ -45,15 +50,7 @@ class NotificationPushedBroadcast implements ShouldBroadcast
             'priority' => $this->priority,
             'subject' => $this->subject,
             'body_preview' => $this->bodyPreview,
+            'team_id' => $this->teamId,
         ];
-    }
-
-    /**
-     * Operator-facing live updates: consumed by supervisor-high, not queued
-     * behind analytics and audit on `default`.
-     */
-    public function broadcastQueue(): string
-    {
-        return 'broadcasts';
     }
 }

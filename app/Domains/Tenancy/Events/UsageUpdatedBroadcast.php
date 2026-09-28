@@ -2,16 +2,18 @@
 
 namespace App\Domains\Tenancy\Events;
 
+use App\Support\Broadcasting\QueuesRealtimeBroadcast;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldRescue;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class UsageUpdatedBroadcast implements ShouldBroadcast
+class UsageUpdatedBroadcast implements ShouldBroadcast, ShouldRescue
 {
-    use Dispatchable, InteractsWithSockets, SerializesModels;
+    use Dispatchable, InteractsWithSockets, QueuesRealtimeBroadcast, SerializesModels;
 
     public function __construct(
         public int $teamId,
@@ -51,14 +53,5 @@ class UsageUpdatedBroadcast implements ShouldBroadcast
             'period_start' => $this->periodStart,
             'period_end' => $this->periodEnd,
         ];
-    }
-
-    /**
-     * Operator-facing live updates: consumed by supervisor-high, not queued
-     * behind analytics and audit on `default`.
-     */
-    public function broadcastQueue(): string
-    {
-        return 'broadcasts';
     }
 }

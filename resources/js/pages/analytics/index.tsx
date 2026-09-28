@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
+import { useBroadcastReload } from '@/hooks/use-team-broadcasts';
 import {
     formatDate,
     formatDateTime,
@@ -399,6 +400,8 @@ function ReportsTab({
 
     const [generating, setGenerating] = useState<string | null>(null);
 
+    useBroadcastReload({ 'report.ready': ['executions'] }, { debounceMs: 300 });
+
     const generate = async (report: ReportRow, format: string) => {
         if (teamSlug === null) {
             return;
@@ -416,7 +419,9 @@ function ReportsTab({
                 toast.success(
                     `Generando ${report.name} (${format.toUpperCase()})…`,
                 );
-                setTimeout(() => router.reload({ only: ['executions'] }), 1200);
+                // The row shows up as running now; `report.ready` swaps it
+                // for the finished one.
+                router.reload({ only: ['executions'] });
             } else if (response.status === 403) {
                 toast.error('No tienes permisos para generar reportes.');
             } else {

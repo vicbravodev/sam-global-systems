@@ -1,6 +1,6 @@
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { ChevronRight, Gauge, RefreshCw } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import {
     Kpi,
     KpiStrip,
@@ -15,8 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { useRealtimeConnection } from '@/hooks/use-realtime-connection';
-import type { TeamBroadcastDetail } from '@/hooks/use-team-broadcasts';
-import { TEAM_BROADCAST_EVENT_NAME } from '@/hooks/use-team-broadcasts';
+import { useBroadcastReload } from '@/hooks/use-team-broadcasts';
 import { formatCurrency } from '@/lib/format';
 import { formatClock } from '@/lib/time';
 import { cn } from '@/lib/utils';
@@ -31,12 +30,14 @@ import type {
 
 // Reload keys to refresh when each broadcast event arrives. Decisions and AI
 // evaluations fire per ingested event, so reloads are debounced below.
-const RELOAD_KEYS_BY_EVENT: Record<string, string[]> = {
+const RELOAD_KEYS_BY_EVENT = {
     'incidents.created': ['kpis', 'incidents', 'stream'],
+    'incidents.updated': ['kpis', 'incidents'],
     'decisions.decision_made': ['kpis', 'stream'],
     'ai.evaluation_completed': ['kpis', 'stream'],
     'usage.updated': ['usage'],
-};
+    'integration.status_changed': ['integrations'],
+} as const;
 
 const RELOAD_DEBOUNCE_MS = 2000;
 
@@ -49,124 +50,10 @@ export default function Dashboard() {
         page.props as unknown as DashboardProps;
     const teamSlug = page.props.currentTeam?.slug ?? null;
 
-    // Coalesce bursts of broadcasts into one partial reload with the union
-    // of the affected prop keys. `kpis` (two-week aggregates) refreshes at
-    // most every KPI_MIN_INTERVAL_MS on its own timer, and nothing reloads
-    // while the tab is hidden: pending keys are flushed when it comes back.
-    const pendingKeys = useRef<Set<string>>(new Set());
-    const timer = useRef<number | null>(null);
-    const kpiPending = useRef(false);
-    const kpiTimer = useRef<number | null>(null);
-    const lastKpiReload = useRef(0);
-
-    useEffect(() => {
-        lastKpiReload.current = Date.now();
-
-        const hidden = () => document.visibilityState === 'hidden';
-
-        const flushKeys = () => {
-            timer.current = null;
-
-            if (hidden() || pendingKeys.current.size === 0) {
-                return;
-            }
-
-            const only = [...pendingKeys.current];
-            pendingKeys.current.clear();
-            router.reload({ only });
-        };
-
-        const flushKpis = () => {
-            kpiTimer.current = null;
-
-            if (hidden() || !kpiPending.current) {
-                return;
-            }
-
-            kpiPending.current = false;
-            lastKpiReload.current = Date.now();
-            router.reload({ only: ['kpis'] });
-        };
-
-        const scheduleKeys = () => {
-            if (timer.current === null) {
-                timer.current = window.setTimeout(
-                    flushKeys,
-                    RELOAD_DEBOUNCE_MS,
-                );
-            }
-        };
-
-        const scheduleKpis = () => {
-            if (kpiTimer.current !== null) {
-                return;
-            }
-
-            const wait = Math.max(
-                RELOAD_DEBOUNCE_MS,
-                KPI_MIN_INTERVAL_MS - (Date.now() - lastKpiReload.current),
-            );
-            kpiTimer.current = window.setTimeout(flushKpis, wait);
-        };
-
-        const handler = (event: Event) => {
-            const detail = (event as CustomEvent<TeamBroadcastDetail>).detail;
-            const keys = RELOAD_KEYS_BY_EVENT[detail?.event ?? ''];
-
-            if (!keys) {
-                return;
-            }
-
-            keys.forEach((key) => {
-                if (key === 'kpis') {
-                    kpiPending.current = true;
-                } else {
-                    pendingKeys.current.add(key);
-                }
-            });
-
-            if (pendingKeys.current.size > 0) {
-                scheduleKeys();
-            }
-
-            if (kpiPending.current) {
-                scheduleKpis();
-            }
-        };
-
-        const onVisibilityChange = () => {
-            if (hidden()) {
-                return;
-            }
-
-            if (pendingKeys.current.size > 0) {
-                scheduleKeys();
-            }
-
-            if (kpiPending.current) {
-                scheduleKpis();
-            }
-        };
-
-        window.addEventListener(TEAM_BROADCAST_EVENT_NAME, handler);
-        document.addEventListener('visibilitychange', onVisibilityChange);
-
-        return () => {
-            window.removeEventListener(TEAM_BROADCAST_EVENT_NAME, handler);
-            document.removeEventListener(
-                'visibilitychange',
-                onVisibilityChange,
-            );
-
-            if (timer.current !== null) {
-                window.clearTimeout(timer.current);
-            }
-
-            if (kpiTimer.current !== null) {
-                window.clearTimeout(kpiTimer.current);
-            }
-        };
-    }, []);
+    useBroadcastReload(RELOAD_KEYS_BY_EVENT, {
+        debounceMs: RELOAD_DEBOUNCE_MS,
+        minIntervalMs: { kpis: KPI_MIN_INTERVAL_MS },
+    });
 
     return (
         <>

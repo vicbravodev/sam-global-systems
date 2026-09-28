@@ -2,13 +2,15 @@
 
 namespace App\Domains\Assets\Events;
 
+use App\Support\Broadcasting\QueuesRealtimeBroadcast;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldRescue;
 use Illuminate\Queue\SerializesModels;
 
-class AssetMonitoringChangedBroadcast implements ShouldBroadcast
+class AssetMonitoringChangedBroadcast implements ShouldBroadcast, ShouldRescue
 {
-    use SerializesModels;
+    use QueuesRealtimeBroadcast, SerializesModels;
 
     public function __construct(
         public readonly int $teamId,
@@ -44,14 +46,5 @@ class AssetMonitoringChangedBroadcast implements ShouldBroadcast
             'previous_state' => $this->previousState,
             'new_state' => $this->newState,
         ];
-    }
-
-    /**
-     * Operator-facing live updates: consumed by supervisor-high, not queued
-     * behind analytics and audit on `default`.
-     */
-    public function broadcastQueue(): string
-    {
-        return 'broadcasts';
     }
 }

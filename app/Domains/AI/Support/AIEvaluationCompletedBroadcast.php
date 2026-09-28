@@ -3,13 +3,15 @@
 namespace App\Domains\AI\Support;
 
 use App\Domains\AI\Models\AIEventEvaluation;
+use App\Support\Broadcasting\QueuesRealtimeBroadcast;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldRescue;
 use Illuminate\Queue\SerializesModels;
 
-class AIEvaluationCompletedBroadcast implements ShouldBroadcast
+class AIEvaluationCompletedBroadcast implements ShouldBroadcast, ShouldRescue
 {
-    use SerializesModels;
+    use QueuesRealtimeBroadcast, SerializesModels;
 
     public function __construct(
         public readonly int $teamId,
@@ -65,14 +67,5 @@ class AIEvaluationCompletedBroadcast implements ShouldBroadcast
             'risk_score' => $this->riskScore,
             'requires_action' => $this->requiresAction,
         ];
-    }
-
-    /**
-     * Operator-facing live updates: consumed by supervisor-high, not queued
-     * behind analytics and audit on `default`.
-     */
-    public function broadcastQueue(): string
-    {
-        return 'broadcasts';
     }
 }

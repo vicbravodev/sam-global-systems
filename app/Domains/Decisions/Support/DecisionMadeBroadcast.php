@@ -3,13 +3,15 @@
 namespace App\Domains\Decisions\Support;
 
 use App\Domains\Decisions\Models\Decision;
+use App\Support\Broadcasting\QueuesRealtimeBroadcast;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldRescue;
 use Illuminate\Queue\SerializesModels;
 
-class DecisionMadeBroadcast implements ShouldBroadcast
+class DecisionMadeBroadcast implements ShouldBroadcast, ShouldRescue
 {
-    use SerializesModels;
+    use QueuesRealtimeBroadcast, SerializesModels;
 
     public function __construct(
         public readonly int $teamId,
@@ -62,14 +64,5 @@ class DecisionMadeBroadcast implements ShouldBroadcast
             'requires_human_review' => $this->requiresHumanReview,
             'decided_at' => $this->decidedAt,
         ];
-    }
-
-    /**
-     * Operator-facing live updates: consumed by supervisor-high, not queued
-     * behind analytics and audit on `default`.
-     */
-    public function broadcastQueue(): string
-    {
-        return 'broadcasts';
     }
 }

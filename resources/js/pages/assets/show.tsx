@@ -480,6 +480,12 @@ function LocationCard({
                                 latitude={location.latitude}
                                 longitude={location.longitude}
                                 heading={location.heading}
+                                speed={
+                                    asset.currentSpeed &&
+                                    !asset.currentSpeed.stale
+                                        ? asset.currentSpeed.kph
+                                        : 0
+                                }
                                 label={asset.name}
                                 tone={STATUS_TONE[asset.status]}
                                 trail={trail}

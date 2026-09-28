@@ -61,10 +61,30 @@ return [
     ],
 
     /*
-    | Speed (km/h) above which a GPS point counts as moving. Drives the motion
-    | state kept on the asset (`last_moving_at` / `stopped_since`).
+    | Motion state kept on the asset (`last_moving_at` / `stopped_since`).
+    |
+    | A parked unit's GPS reports phantom speeds of 1–3 km/h (seen live: the
+    | same spot, ±2 m, reading 2.95 km/h). So a point counts as moving only at
+    | `moving_speed_kph` or more — the threshold every other SAM surface uses —
+    | and a stopped unit is only moving again once it is also farther than
+    | `stop_exit_radius_m` from where it stopped.
     */
-    'moving_speed_kph' => 1.0,
+    'moving_speed_kph' => 5.0,
+    'stop_exit_radius_m' => 50,
+
+    /*
+    | Unauthorized-stop alerts: a new stop within `stop_realert_radius_m` of
+    | the last alerted one, within `stop_realert_hours`, is the same place and
+    | is not alerted again (a unit shuffling around a yard).
+    */
+    'stop_realert_radius_m' => 200,
+    'stop_realert_hours' => 6,
+
+    /*
+    | After-hours movement: at most one alert per unit per this many hours, so
+    | one night of driving is one alert even when it crosses local midnight.
+    */
+    'after_hours_cooldown_hours' => 12,
 
     'retention' => [
         // Raw GPS points. Every reader of the history looks at most 24 h back;

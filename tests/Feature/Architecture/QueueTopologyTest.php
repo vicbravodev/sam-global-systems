@@ -29,12 +29,12 @@ class QueueTopologyTest extends TestCase
                 continue;
             }
 
-            $this->assertTrue(
-                $reflection->hasMethod('broadcastQueue'),
-                "{$class} is queued but declares no broadcastQueue(): it would land on `default`.",
-            );
+            $event = $reflection->newInstanceWithoutConstructor();
+            $queue = method_exists($event, 'broadcastQueue')
+                ? $event->broadcastQueue()
+                : ($event->broadcastQueue ?? null);
 
-            $queue = $reflection->newInstanceWithoutConstructor()->broadcastQueue();
+            $this->assertNotNull($queue, "{$class} is queued but declares no broadcast queue: it would land on `default`.");
 
             $this->assertContains($queue, $consumed, "{$class} broadcasts on `{$queue}`, which no production supervisor consumes.");
         }

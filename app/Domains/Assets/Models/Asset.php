@@ -51,6 +51,11 @@ class Asset extends Model
         'last_moving_at',
         'stopped_since',
         'stop_alerted_for',
+        'stop_latitude',
+        'stop_longitude',
+        'stop_alerted_latitude',
+        'stop_alerted_longitude',
+        'after_hours_alerted_at',
     ];
 
     /**
@@ -256,6 +261,11 @@ class Asset extends Model
             'last_moving_at' => 'datetime',
             'stopped_since' => 'datetime',
             'stop_alerted_for' => 'datetime',
+            'stop_latitude' => 'float',
+            'stop_longitude' => 'float',
+            'stop_alerted_latitude' => 'float',
+            'stop_alerted_longitude' => 'float',
+            'after_hours_alerted_at' => 'datetime',
         ];
     }
 

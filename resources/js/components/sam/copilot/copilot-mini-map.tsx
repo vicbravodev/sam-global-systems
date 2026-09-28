@@ -1,18 +1,19 @@
 import maplibregl from 'maplibre-gl';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
+import {
+    resolveCssColor,
+    SAM_LAYER_PREFIX,
+} from '@/components/sam/map/basemap';
+import { MapLoading } from '@/components/sam/map/map-controls';
+import { useSamMap } from '@/components/sam/map/use-sam-map';
 import { useAppearance } from '@/hooks/use-appearance';
-import 'maplibre-gl/dist/maplibre-gl.css';
 
-// Same free tiles and dark-mode treatment as the live fleet map.
-const MAP_STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty';
-const DARK_CANVAS_FILTER =
-    'invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.95)';
-
-const TRAIL_COLOR = '#3b82f6';
+const TRAIL_SOURCE = `${SAM_LAYER_PREFIX}copilot-trail`;
 
 export interface MiniMapPoint {
     latitude: number;
     longitude: number;
+    /** Any CSS color, tokens included (`var(--severity-critical)`). */
     color: string;
     label?: string;
     emphasis?: boolean;
@@ -26,9 +27,33 @@ interface Props {
     zoom?: number;
 }
 
+function buildPoint(point: MiniMapPoint): HTMLElement {
+    const el = document.createElement(point.href ? 'a' : 'div');
+    el.className = 'sam-map-unit';
+    el.style.setProperty('--unit', point.color);
+    el.style.cursor = point.href ? 'pointer' : 'default';
+    el.innerHTML =
+        '<span class="sam-map-unit__body"><span class="sam-map-unit__dot"></span></span>';
+
+    if (point.href && el instanceof HTMLAnchorElement) {
+        el.href = point.href;
+    }
+
+    if (point.emphasis) {
+        el.setAttribute('data-emphasis', '');
+    }
+
+    if (point.label) {
+        el.title = point.label;
+        el.setAttribute('aria-label', point.label);
+    }
+
+    return el;
+}
+
 /**
  * Compact map for chat cards: markers (plus an optional trail) fitted to the
- * data. Interaction is limited to zoom so the chat keeps scrolling.
+ * data. Only zoom is interactive, so the chat keeps scrolling under it.
  */
 export function CopilotMiniMap({
     points,
@@ -37,139 +62,102 @@ export function CopilotMiniMap({
     zoom = 13,
 }: Props) {
     const containerRef = useRef<HTMLDivElement | null>(null);
-    const mapRef = useRef<maplibregl.Map | null>(null);
-    const [loaded, setLoaded] = useState(false);
-    const [failed, setFailed] = useState(false);
     const { resolvedAppearance } = useAppearance();
+    const first = points[0];
+    const { map, status } = useSamMap(containerRef, {
+        center: first ? [first.longitude, first.latitude] : [-102, 23.8],
+        zoom,
+        attributionControl: false,
+        dragRotate: false,
+        scrollZoom: false,
+        touchPitch: false,
+    });
 
+    // Markers, and a one-off fit to everything the card shows.
     useEffect(() => {
-        if (!containerRef.current || points.length === 0) {
+        if (map === null) {
             return;
         }
 
-        const first = points[0];
-        const map = new maplibregl.Map({
-            container: containerRef.current,
-            style: MAP_STYLE_URL,
-            center: [first.longitude, first.latitude],
-            zoom,
-            attributionControl: false,
-            dragRotate: false,
-            scrollZoom: false,
-            cooperativeGestures: false,
-        });
-        map.addControl(
-            new maplibregl.NavigationControl({ showCompass: false }),
-            'top-right',
-        );
-        mapRef.current = map;
-
-        const markers = points.map((point) => {
-            const element = document.createElement(point.href ? 'a' : 'div');
-
-            if (point.href && element instanceof HTMLAnchorElement) {
-                element.href = point.href;
-            }
-
-            const size = point.emphasis ? 16 : 11;
-            element.style.cssText = `width:${size}px;height:${size}px;border-radius:999px;background:${point.color};border:2px solid white;box-shadow:0 0 0 4px color-mix(in oklch, ${point.color} 30%, transparent);cursor:${point.href ? 'pointer' : 'default'}`;
-
-            if (point.label) {
-                element.title = point.label;
-            }
-
-            return new maplibregl.Marker({ element })
+        const markers = points.map((point) =>
+            new maplibregl.Marker({ element: buildPoint(point) })
                 .setLngLat([point.longitude, point.latitude])
-                .addTo(map);
-        });
+                .addTo(map),
+        );
 
-        // Tiles unreachable (offline, blocked network): show the coordinates
-        // instead of an eternal spinner.
-        map.on('error', () => {
-            if (!map.loaded()) {
-                setFailed(true);
-            }
-        });
+        const coordinates: [number, number][] = [
+            ...points.map((p): [number, number] => [p.longitude, p.latitude]),
+            ...(trail ?? []).map(([lat, lng]): [number, number] => [lng, lat]),
+        ];
 
-        map.on('load', () => {
-            setLoaded(true);
-
-            if (trail && trail.length > 1) {
-                map.addSource('copilot-trail', {
-                    type: 'geojson',
-                    data: {
-                        type: 'Feature',
-                        properties: {},
-                        geometry: {
-                            type: 'LineString',
-                            coordinates: trail.map(([lat, lng]) => [lng, lat]),
-                        },
-                    },
-                });
-                map.addLayer({
-                    id: 'copilot-trail',
-                    type: 'line',
-                    source: 'copilot-trail',
-                    paint: {
-                        // MapLibre paints on canvas and can't resolve CSS
-                        // variables or oklch(); this is the sRGB twin of
-                        // --chart-1 used by the rest of the fleet charts.
-                        'line-color': TRAIL_COLOR,
-                        'line-width': 3,
-                        'line-opacity': 0.75,
-                    },
-                });
-            }
-
-            const coordinates: [number, number][] = [
-                ...points.map(
-                    (p) => [p.longitude, p.latitude] as [number, number],
-                ),
-                ...(trail ?? []).map(
-                    ([lat, lng]) => [lng, lat] as [number, number],
-                ),
-            ];
-
-            if (coordinates.length > 1) {
-                const bounds = coordinates.reduce(
-                    (b, c) => b.extend(c),
-                    new maplibregl.LngLatBounds(coordinates[0], coordinates[0]),
-                );
-                map.fitBounds(bounds, {
-                    padding: 36,
-                    maxZoom: 14,
-                    duration: 0,
-                });
-            }
-        });
-
-        return () => {
-            markers.forEach((marker) => marker.remove());
-            map.remove();
-            mapRef.current = null;
-        };
-    }, [points, trail, zoom]);
-
-    useEffect(() => {
-        const wrap = mapRef.current?.getCanvasContainer();
-
-        if (wrap) {
-            wrap.style.filter =
-                resolvedAppearance === 'dark' ? DARK_CANVAS_FILTER : '';
+        if (coordinates.length > 1) {
+            const bounds = coordinates.reduce(
+                (b, c) => b.extend(c),
+                new maplibregl.LngLatBounds(coordinates[0], coordinates[0]),
+            );
+            map.fitBounds(bounds, { padding: 36, maxZoom: 14, duration: 0 });
         }
-    }, [resolvedAppearance, loaded]);
+
+        return () => markers.forEach((marker) => marker.remove());
+    }, [map, points, trail]);
+
+    // Trail, recolored with the theme.
+    useEffect(() => {
+        if (map === null || !trail || trail.length < 2) {
+            return;
+        }
+
+        const data: GeoJSON.Feature<GeoJSON.LineString> = {
+            type: 'Feature',
+            properties: {},
+            geometry: {
+                type: 'LineString',
+                coordinates: trail.map(([lat, lng]) => [lng, lat]),
+            },
+        };
+        const source = map.getSource(TRAIL_SOURCE) as
+            | maplibregl.GeoJSONSource
+            | undefined;
+
+        if (source) {
+            source.setData(data);
+        } else {
+            map.addSource(TRAIL_SOURCE, { type: 'geojson', data });
+            map.addLayer({
+                id: `${TRAIL_SOURCE}-casing`,
+                type: 'line',
+                source: TRAIL_SOURCE,
+                layout: { 'line-cap': 'round', 'line-join': 'round' },
+                paint: { 'line-width': 5 },
+            });
+            map.addLayer({
+                id: TRAIL_SOURCE,
+                type: 'line',
+                source: TRAIL_SOURCE,
+                layout: { 'line-cap': 'round', 'line-join': 'round' },
+                paint: { 'line-width': 2.5, 'line-opacity': 0.9 },
+            });
+        }
+
+        map.setPaintProperty(
+            `${TRAIL_SOURCE}-casing`,
+            'line-color',
+            resolveCssColor('var(--map-marker-ring)'),
+        );
+        map.setPaintProperty(
+            TRAIL_SOURCE,
+            'line-color',
+            resolveCssColor('var(--map-trail)'),
+        );
+    }, [map, trail, resolvedAppearance]);
 
     return (
         <div className="relative w-full overflow-hidden" style={{ height }}>
-            <div ref={containerRef} className="h-full w-full" />
-            {!loaded && !failed && (
-                <div className="absolute inset-0 grid animate-pulse place-items-center bg-surface-2">
-                    <span className="rounded-md border border-border bg-surface-1/90 px-3 py-1.5 text-xs text-fg-3">
-                        Cargando mapa…
-                    </span>
-                </div>
+            <div ref={containerRef} className="sam-map h-full w-full" />
+            {status === 'loading' && <MapLoading />}
+            {status === 'unavailable' && (
+                <OfflinePlot points={points} trail={trail} />
             )}
-            {failed && <OfflinePlot points={points} trail={trail} />}
         </div>
     );
 }
@@ -232,7 +220,7 @@ function OfflinePlot({
                             .map((c) => project(c).join(','))
                             .join(' ')}
                         fill="none"
-                        stroke="var(--chart-1)"
+                        stroke="var(--map-trail)"
                         strokeWidth="0.8"
                         vectorEffect="non-scaling-stroke"
                     />
@@ -245,7 +233,7 @@ function OfflinePlot({
                     <span
                         key={i}
                         title={p.label}
-                        className="absolute size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-white"
+                        className="absolute size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-(--map-marker-ring)"
                         style={{
                             left: `${x}%`,
                             top: `${y}%`,

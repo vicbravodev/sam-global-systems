@@ -334,7 +334,8 @@ class DispatchNotificationTest extends TestCase
         Event::assertDispatched(NotificationPushedBroadcast::class, function (NotificationPushedBroadcast $event) use ($user, $notification) {
             return $event->userId === $user->id
                 && $event->notificationId === $notification->id
-                && $event->notificationType === 'manual.web';
+                && $event->notificationType === 'manual.web'
+                && $event->broadcastWith()['team_id'] === (int) $notification->team_id;
         });
     }
 

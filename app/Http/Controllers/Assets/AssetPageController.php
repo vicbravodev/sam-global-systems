@@ -206,7 +206,7 @@ class AssetPageController extends Controller
         // One row per unit: the live position lives on the asset itself.
         $assets = Asset::query()
             ->where('team_id', $current_team->id)
-            ->with('assetType')
+            ->with(['assetType', 'currentDriverAssignment.driver'])
             ->get();
 
         [$positioned, $unpositioned] = $assets->partition(
@@ -610,6 +610,7 @@ class AssetPageController extends Controller
             'speed' => $asset->last_speed_kph !== null ? (float) $asset->last_speed_kph : null,
             'heading' => $asset->last_heading,
             'recordedAt' => $asset->last_location_at->toIso8601String(),
+            'driver' => $asset->currentDriverAssignment?->driver?->full_name,
         ];
     }
 

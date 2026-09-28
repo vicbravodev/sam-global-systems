@@ -169,4 +169,29 @@ class RaiseAfterHoursMovementTest extends TestCase
 
         $this->assertSame(0, RawEvent::withoutGlobalScopes()->where('team_id', $this->teamId)->count());
     }
+
+    public function test_a_night_of_driving_that_crosses_local_midnight_alerts_once(): void
+    {
+        $this->makeSchedule();
+        $asset = $this->makeMovingAsset();
+
+        // 23:30 local on Saturday.
+        Carbon::setTestNow(Carbon::parse('2026-06-14 05:30:00', 'UTC'));
+        $this->moving = [[$asset, 60.0, now()->subMinute()]];
+        $this->runJob();
+
+        // Still driving at 00:30 local, a new calendar day.
+        Carbon::setTestNow(Carbon::parse('2026-06-14 06:30:00', 'UTC'));
+        $this->moving = [[$asset->fresh(), 60.0, now()->subMinute()]];
+        $this->runJob();
+
+        $this->assertSame(1, RawEvent::withoutGlobalScopes()->count());
+
+        // The next night is a new closed stretch.
+        Carbon::setTestNow(Carbon::parse('2026-06-15 05:30:00', 'UTC'));
+        $this->moving = [[$asset->fresh(), 60.0, now()->subMinute()]];
+        $this->runJob();
+
+        $this->assertSame(2, RawEvent::withoutGlobalScopes()->count());
+    }
 }

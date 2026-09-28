@@ -3,13 +3,15 @@
 namespace App\Domains\Incidents\Support;
 
 use App\Domains\Incidents\Models\Incident;
+use App\Support\Broadcasting\QueuesRealtimeBroadcast;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldRescue;
 use Illuminate\Queue\SerializesModels;
 
-class IncidentUpdatedBroadcast implements ShouldBroadcast
+class IncidentUpdatedBroadcast implements ShouldBroadcast, ShouldRescue
 {
-    use SerializesModels;
+    use QueuesRealtimeBroadcast, SerializesModels;
 
     public function __construct(
         public readonly int $teamId,
@@ -61,14 +63,5 @@ class IncidentUpdatedBroadcast implements ShouldBroadcast
             'assigned_to' => $this->assignedTo,
             'updated_at' => $this->updatedAt,
         ];
-    }
-
-    /**
-     * Operator-facing live updates: consumed by supervisor-high, not queued
-     * behind analytics and audit on `default`.
-     */
-    public function broadcastQueue(): string
-    {
-        return 'broadcasts';
     }
 }

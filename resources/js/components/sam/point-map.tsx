@@ -1,14 +1,24 @@
 import maplibregl from 'maplibre-gl';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
+import {
+    resolveCssColor,
+    SAM_LAYER_PREFIX,
+} from '@/components/sam/map/basemap';
+import {
+    MapControls,
+    MapLoading,
+    MapUnavailable,
+} from '@/components/sam/map/map-controls';
+import {
+    createPinMarker,
+    createUnitMarker,
+    MOVING_MIN_KPH,
+    updateUnitMarker,
+} from '@/components/sam/map/markers';
+import { useSamMap } from '@/components/sam/map/use-sam-map';
 import { useAppearance } from '@/hooks/use-appearance';
 import { cn } from '@/lib/utils';
-import 'maplibre-gl/dist/maplibre-gl.css';
-
-// Same free vector tiles and dark-mode treatment as the live fleet map so a
-// unit looks identical on its detail page and on the fleet map.
-const MAP_STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty';
-const DARK_CANVAS_FILTER =
-    'invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.95)';
+import type { AssetStatusValue } from '@/types/assets';
 
 const TONE_COLORS = {
     ok: 'var(--severity-low)',
@@ -21,269 +31,271 @@ const TONE_COLORS = {
 
 export type PointTone = keyof typeof TONE_COLORS;
 
-// The dark basemap is the light one run through DARK_CANVAS_FILTER, which
-// also recolors anything painted INTO the canvas (the trail line). These two
-// operations cancel it out: invert and a 180° hue turn are each their own
-// inverse, so pre-applying them lands the line on its intended color.
-const DARK_PAINT_COMPENSATION = 'invert(1) hue-rotate(180deg)';
+// Status a tone stands for when the point is a unit, so the detail map draws
+// the same marker as the fleet map.
+const TONE_STATUS: Record<PointTone, AssetStatusValue> = {
+    ok: 'active',
+    warn: 'maintenance',
+    high: 'alert',
+    critical: 'critical',
+    neutral: 'offline',
+    primary: 'active',
+};
 
-/**
- * A concrete `rgb()` for a CSS color token, for MapLibre paint properties:
- * the canvas renderer does not understand `var(--x)` (the trail was silently
- * never drawn) nor every CSS Color 4 space the tokens use (oklch). Painting a
- * pixel and reading it back resolves both, and applies the dark-mode
- * compensation in the same step.
- */
-function canvasColor(token: string, dark: boolean): string {
-    const probe = document.createElement('span');
-    probe.style.color = token;
-    document.body.appendChild(probe);
-    const resolved = getComputedStyle(probe).color;
-    probe.remove();
-
-    const canvas = document.createElement('canvas');
-    canvas.width = 1;
-    canvas.height = 1;
-    const ctx = canvas.getContext('2d');
-
-    if (ctx === null) {
-        return resolved;
-    }
-
-    if (dark) {
-        ctx.filter = DARK_PAINT_COMPENSATION;
-    }
-
-    ctx.fillStyle = resolved;
-    ctx.fillRect(0, 0, 1, 1);
-    const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
-
-    return `rgb(${r}, ${g}, ${b})`;
-}
+const TRAIL_SOURCE = `${SAM_LAYER_PREFIX}trail`;
+const TRAIL_CASING = `${SAM_LAYER_PREFIX}trail-casing`;
+const TRAIL_LINE = `${SAM_LAYER_PREFIX}trail-line`;
+const TRAIL_START = `${SAM_LAYER_PREFIX}trail-start`;
 
 interface Props {
     latitude: number;
     longitude: number;
-    /** Degrees, 0 = north. Draws a heading wedge when known. */
+    /** Degrees, 0 = north. A unit shows it as an arrow while moving. */
     heading?: number | null;
+    /** km/h; with a heading, draws the unit as moving. */
+    speed?: number | null;
     label?: string;
     tone?: PointTone;
+    /**
+     * `unit`: the fleet map's vehicle marker (status + heading).
+     * `pin`: a place where something happened (event, incident).
+     */
+    variant?: 'unit' | 'pin';
     zoom?: number;
-    /** Extra points drawn as a faint trail (oldest first). */
+    /** Previous positions, oldest first, drawn as a fading trail. */
     trail?: { latitude: number; longitude: number }[];
     className?: string;
 }
 
-function buildMarker(
-    label: string | undefined,
-    tone: PointTone,
-    heading: number | null | undefined,
-): HTMLDivElement {
-    const el = document.createElement('div');
-    el.className = 'relative grid place-items-center';
-    el.style.width = '28px';
-    el.style.height = '28px';
-
-    if (heading !== null && heading !== undefined) {
-        const wedge = document.createElement('div');
-        wedge.style.position = 'absolute';
-        wedge.style.width = '0';
-        wedge.style.height = '0';
-        wedge.style.borderLeft = '7px solid transparent';
-        wedge.style.borderRight = '7px solid transparent';
-        wedge.style.borderBottom = `14px solid ${TONE_COLORS[tone]}`;
-        wedge.style.opacity = '0.55';
-        wedge.style.transformOrigin = '50% 100%';
-        wedge.style.transform = `translateY(-11px) rotate(${heading}deg)`;
-        el.appendChild(wedge);
-    }
-
-    const dot = document.createElement('div');
-    dot.className = 'rounded-full border-2 border-white shadow-md';
-    dot.style.width = '14px';
-    dot.style.height = '14px';
-    dot.style.backgroundColor = TONE_COLORS[tone];
-    dot.style.position = 'relative';
-    el.appendChild(dot);
-
-    if (label) {
-        el.title = label;
-        el.setAttribute('aria-label', label);
-    }
-
-    return el;
-}
-
 /**
- * Single-point map for detail pages (unit position, event location). Static
- * by intent: no clustering, one marker, optional heading wedge and a faint
- * trail of previous positions. Re-centers when the point changes.
+ * Single-point map for detail pages (unit position, event location). No
+ * clustering: one marker, optional heading and a trail that fades from the
+ * oldest point to the current one. Follows the point when it changes.
  */
 export function PointMap({
     latitude,
     longitude,
     heading = null,
+    speed = null,
     label,
     tone = 'primary',
+    variant = 'unit',
     zoom = 13,
     trail = [],
     className,
 }: Props) {
-    const { resolvedAppearance } = useAppearance();
     const containerRef = useRef<HTMLDivElement | null>(null);
-    const mapRef = useRef<maplibregl.Map | null>(null);
+    const { resolvedAppearance } = useAppearance();
+    const { map, status } = useSamMap(containerRef, {
+        center: [longitude, latitude],
+        zoom,
+        maxZoom: 18,
+        // Detail pages scroll: the wheel scrolls the page, the map zooms with
+        // the controls, a pinch or ctrl + wheel.
+        cooperativeGestures: false,
+        scrollZoom: false,
+    });
     const markerRef = useRef<maplibregl.Marker | null>(null);
-    const [loaded, setLoaded] = useState(false);
-    const [unavailable, setUnavailable] = useState(false);
 
+    const coordinates = useMemo<[number, number][]>(
+        () => [
+            ...trail.map((p): [number, number] => [p.longitude, p.latitude]),
+            [longitude, latitude],
+        ],
+        [trail, latitude, longitude],
+    );
+
+    const unitState = useMemo(
+        () => ({
+            status: TONE_STATUS[tone],
+            heading,
+            moving:
+                heading !== null && (speed === null || speed >= MOVING_MIN_KPH),
+            label: null,
+            ariaLabel: label ?? 'Posición',
+            emphasis: true,
+        }),
+        [tone, heading, speed, label],
+    );
+
+    // Marker: created once per variant, then patched and moved in place.
     useEffect(() => {
-        if (containerRef.current === null) {
+        if (map === null) {
             return;
         }
 
-        let map: maplibregl.Map;
+        const element =
+            variant === 'pin'
+                ? createPinMarker(TONE_COLORS[tone], label)
+                : createUnitMarker(unitState, false);
 
-        try {
-            map = new maplibregl.Map({
-                container: containerRef.current,
-                style: MAP_STYLE_URL,
-                center: [longitude, latitude],
-                zoom,
-                attributionControl: { compact: true },
-            });
-        } catch {
-            // No WebGL (old GPU, headless, remote desktop): the page must
-            // still render; the coordinates and the external link below the
-            // map carry the information.
-            setUnavailable(true);
-
-            return;
+        if (variant === 'unit') {
+            element.style.setProperty('--unit', TONE_COLORS[tone]);
         }
 
-        map.addControl(new maplibregl.NavigationControl(), 'top-right');
-        map.on('load', () => setLoaded(true));
-        mapRef.current = map;
+        markerRef.current = new maplibregl.Marker({ element })
+            .setLngLat([longitude, latitude])
+            .addTo(map);
 
         return () => {
             markerRef.current?.remove();
             markerRef.current = null;
-            map.remove();
-            mapRef.current = null;
-            setLoaded(false);
         };
-        // The map is created once; position/marker updates are handled below.
+        // Position and state are applied by the effect below.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [map, variant]);
 
-    // Marker + trail follow the point.
     useEffect(() => {
-        const map = mapRef.current;
+        const marker = markerRef.current;
 
-        if (map === null || !loaded) {
+        if (map === null || marker === null) {
             return;
         }
 
-        markerRef.current?.remove();
-        markerRef.current = new maplibregl.Marker({
-            element: buildMarker(label, tone, heading),
-        })
-            .setLngLat([longitude, latitude])
-            .addTo(map);
-        map.easeTo({ center: [longitude, latitude], duration: 400 });
+        marker.setLngLat([longitude, latitude]);
+        const el = marker.getElement();
 
-        const sourceId = 'point-trail';
-        const coordinates = [
-            ...trail.map((p) => [p.longitude, p.latitude]),
-            [longitude, latitude],
-        ];
+        if (variant === 'unit') {
+            updateUnitMarker(el, unitState);
+            el.style.setProperty('--unit', TONE_COLORS[tone]);
+        } else {
+            el.style.setProperty('--unit', TONE_COLORS[tone]);
+        }
+
+        if (!map.getBounds().contains([longitude, latitude])) {
+            map.easeTo({ center: [longitude, latitude], duration: 400 });
+        }
+    }, [map, latitude, longitude, unitState, tone, variant]);
+
+    // Trail: one GeoJSON line with a gradient from faint (oldest) to solid
+    // (now), over a casing in the basemap color so it reads on any road.
+    useEffect(() => {
+        if (map === null) {
+            return;
+        }
+
+        const color = resolveCssColor('var(--map-trail)');
+        const casing = resolveCssColor('var(--map-marker-ring)');
+        const faint = resolveCssColor(
+            'color-mix(in oklch, var(--map-trail) 15%, transparent)',
+        );
         const data: GeoJSON.Feature<GeoJSON.LineString> = {
             type: 'Feature',
             properties: {},
             geometry: { type: 'LineString', coordinates },
         };
-
-        const existing = map.getSource(sourceId) as
+        const startData: GeoJSON.Feature<GeoJSON.Point> = {
+            type: 'Feature',
+            properties: {},
+            geometry: { type: 'Point', coordinates: coordinates[0] },
+        };
+        const hasTrail = coordinates.length > 1;
+        const source = map.getSource(TRAIL_SOURCE) as
             | maplibregl.GeoJSONSource
             | undefined;
 
-        if (existing) {
-            existing.setData(data);
-        } else if (coordinates.length > 1) {
-            map.addSource(sourceId, { type: 'geojson', data });
-            map.addLayer({
-                id: `${sourceId}-line`,
-                type: 'line',
-                source: sourceId,
-                paint: {
-                    'line-color': canvasColor(
-                        TONE_COLORS.primary,
-                        resolvedAppearance === 'dark',
-                    ),
-                    'line-width': 3,
-                    'line-opacity': 0.8,
-                },
+        if (!hasTrail) {
+            [TRAIL_START, TRAIL_LINE, TRAIL_CASING].forEach((id) => {
+                if (map.getLayer(id)) {
+                    map.removeLayer(id);
+                }
             });
-        }
-    }, [
-        latitude,
-        longitude,
-        heading,
-        label,
-        tone,
-        trail,
-        loaded,
-        resolvedAppearance,
-    ]);
 
-    useEffect(() => {
-        const map = mapRef.current;
+            if (source) {
+                map.removeSource(TRAIL_SOURCE);
+                map.removeSource(`${TRAIL_SOURCE}-start`);
+            }
 
-        if (map === null || !loaded) {
             return;
         }
 
-        map.getCanvasContainer().style.filter =
-            resolvedAppearance === 'dark' ? DARK_CANVAS_FILTER : '';
-
-        // The trail's compensated color depends on the theme.
-        if (map.getLayer('point-trail-line')) {
-            map.setPaintProperty(
-                'point-trail-line',
-                'line-color',
-                canvasColor(TONE_COLORS.primary, resolvedAppearance === 'dark'),
-            );
+        if (source) {
+            source.setData(data);
+            (
+                map.getSource(
+                    `${TRAIL_SOURCE}-start`,
+                ) as maplibregl.GeoJSONSource
+            ).setData(startData);
+        } else {
+            map.addSource(TRAIL_SOURCE, {
+                type: 'geojson',
+                data,
+                lineMetrics: true,
+            });
+            map.addSource(`${TRAIL_SOURCE}-start`, {
+                type: 'geojson',
+                data: startData,
+            });
+            map.addLayer({
+                id: TRAIL_CASING,
+                type: 'line',
+                source: TRAIL_SOURCE,
+                layout: { 'line-cap': 'round', 'line-join': 'round' },
+                paint: { 'line-width': 6, 'line-opacity': 0.9 },
+            });
+            map.addLayer({
+                id: TRAIL_LINE,
+                type: 'line',
+                source: TRAIL_SOURCE,
+                layout: { 'line-cap': 'round', 'line-join': 'round' },
+                paint: { 'line-width': 3 },
+            });
+            map.addLayer({
+                id: TRAIL_START,
+                type: 'circle',
+                source: `${TRAIL_SOURCE}-start`,
+                paint: { 'circle-radius': 3.5, 'circle-stroke-width': 2 },
+            });
         }
-    }, [resolvedAppearance, loaded]);
 
-    if (unavailable) {
-        return (
-            <div
-                className={cn(
-                    'grid h-full w-full place-items-center bg-surface-2 text-center',
-                    className,
-                )}
-            >
-                <span className="rounded-md border border-border bg-surface-1/90 px-3 py-1.5 text-xs text-fg-3">
-                    Mapa no disponible en este navegador ·{' '}
-                    <span className="font-mono tabular-nums">
-                        {latitude.toFixed(5)}, {longitude.toFixed(5)}
-                    </span>
-                </span>
-            </div>
-        );
-    }
+        map.setPaintProperty(TRAIL_CASING, 'line-color', casing);
+        map.setPaintProperty(TRAIL_LINE, 'line-gradient', [
+            'interpolate',
+            ['linear'],
+            ['line-progress'],
+            0,
+            faint,
+            1,
+            color,
+        ]);
+        map.setPaintProperty(TRAIL_START, 'circle-color', casing);
+        map.setPaintProperty(TRAIL_START, 'circle-stroke-color', faint);
+        // Colors depend on the theme, so they are reapplied when it changes.
+    }, [map, coordinates, resolvedAppearance]);
+
+    const recenter = useCallback(() => {
+        map?.easeTo({ center: [longitude, latitude], zoom, duration: 500 });
+    }, [map, latitude, longitude, zoom]);
+
+    const fitTrail = useCallback(() => {
+        if (map === null) {
+            return;
+        }
+
+        const bounds = new maplibregl.LngLatBounds();
+        coordinates.forEach((c) => bounds.extend(c));
+        map.fitBounds(bounds, { padding: 48, maxZoom: 15, duration: 500 });
+    }, [map, coordinates]);
 
     return (
-        <div className={cn('relative h-full w-full', className)}>
-            <div ref={containerRef} className="h-full w-full" />
-            {!loaded && (
-                <div className="absolute inset-0 z-10 animate-pulse bg-surface-2">
-                    <div className="grid h-full place-items-center">
-                        <span className="rounded-md border border-border bg-surface-1/90 px-3 py-1.5 text-xs text-fg-3">
-                            Cargando mapa…
-                        </span>
-                    </div>
-                </div>
+        <div
+            className={cn(
+                'relative h-full w-full overflow-hidden bg-surface-2',
+                className,
+            )}
+        >
+            <div ref={containerRef} className="sam-map h-full w-full" />
+            {status === 'loading' && <MapLoading />}
+            {status === 'unavailable' && (
+                <MapUnavailable latitude={latitude} longitude={longitude} />
+            )}
+            {map !== null && (
+                <MapControls
+                    map={map}
+                    onRecenter={recenter}
+                    onFit={coordinates.length > 1 ? fitTrail : undefined}
+                    fitLabel="Ver recorrido"
+                />
             )}
         </div>
     );
