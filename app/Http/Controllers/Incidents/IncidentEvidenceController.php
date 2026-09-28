@@ -35,6 +35,8 @@ class IncidentEvidenceController extends Controller
             addedById: $request->user()->id,
         );
 
-        return response()->json(['data' => $evidence], 201);
+        return response()->json([
+            'data' => [...$evidence->toArray(), 'download_url' => $evidence->downloadUrl()],
+        ], 201);
     }
 }
