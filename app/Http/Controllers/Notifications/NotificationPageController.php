@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Notifications;
 
 use App\Domains\Notifications\Actions\MarkNotificationRead;
+use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Enums\DeliveryStatus;
 use App\Domains\Notifications\Enums\MessagingChargeSource;
 use App\Domains\Notifications\Enums\NotificationPriority;
@@ -39,7 +40,10 @@ class NotificationPageController extends Controller
         $failuresOnly = $request->boolean('failures');
 
         $notifications = Notification::query()
-            ->with(['reads' => fn ($query) => $query->where('user_id', $user->id)])
+            ->with([
+                'reads' => fn ($query) => $query->where('user_id', $user->id),
+                'deliveries.channel',
+            ])
             ->withCount([
                 'recipients',
                 'deliveries',
@@ -84,6 +88,7 @@ class NotificationPageController extends Controller
                 'statuses' => $this->statusOptions(),
                 'priorities' => $this->priorityOptions(),
             ],
+            'summary' => fn () => $this->summary($user->id),
         ]);
     }
 
@@ -98,7 +103,10 @@ class NotificationPageController extends Controller
         $this->authorize('view', $notification);
 
         $notification->loadCount(['recipients', 'deliveries']);
-        $notification->load(['reads' => fn ($query) => $query->where('user_id', $request->user()->id)]);
+        $notification->load([
+            'reads' => fn ($query) => $query->where('user_id', $request->user()->id),
+            'deliveries.channel',
+        ]);
 
         $deliveries = NotificationDelivery::query()
             ->where('notification_id', $notification->id)
@@ -176,6 +184,88 @@ class NotificationPageController extends Controller
     }
 
     /**
+     * Tenant pulse for the header strip: what this user has not read yet,
+     * what went out in the last 24 h, what did not (failed or cancelled) and
+     * how many critical notices were raised. Ignores the active filters on
+     * purpose; tenant scope comes from the BelongsToTenant global scope.
+     *
+     * @return array{unread: int, sent24h: int, undelivered24h: int, critical24h: int}
+     */
+    private function summary(int $userId): array
+    {
+        $since = now()->subDay();
+
+        return [
+            'unread' => Notification::query()
+                ->whereDoesntHave('reads', fn ($q) => $q->where('user_id', $userId))
+                ->count(),
+            'sent24h' => Notification::query()
+                ->where('created_at', '>=', $since)
+                ->whereIn('status', [NotificationStatus::Sent, NotificationStatus::PartiallySent])
+                ->count(),
+            'undelivered24h' => Notification::query()
+                ->where('created_at', '>=', $since)
+                ->whereIn('status', [NotificationStatus::Failed, NotificationStatus::Cancelled])
+                ->count(),
+            'critical24h' => Notification::query()
+                ->where('created_at', '>=', $since)
+                ->where('priority', NotificationPriority::Critical)
+                ->count(),
+        ];
+    }
+
+    /**
+     * One chip per channel the notification went through, carrying the worst
+     * delivery status seen on that channel (a failed SMS to one recipient
+     * outranks the two that were delivered) so the row tells at a glance
+     * which channel needs attention.
+     *
+     * @return list<array{type: string, status: string, count: int}>
+     */
+    private function channels(Notification $notification): array
+    {
+        $rank = [
+            DeliveryStatus::Failed->value => 6,
+            DeliveryStatus::Bounced->value => 5,
+            DeliveryStatus::Retrying->value => 4,
+            DeliveryStatus::Skipped->value => 3,
+            DeliveryStatus::Cancelled->value => 3,
+            DeliveryStatus::Pending->value => 2,
+            DeliveryStatus::Queued->value => 2,
+            DeliveryStatus::Sending->value => 2,
+            DeliveryStatus::Sent->value => 2,
+            DeliveryStatus::Delivered->value => 1,
+        ];
+
+        $channels = [];
+
+        foreach ($notification->deliveries as $delivery) {
+            $type = $delivery->channel?->channel_type;
+            $type = $type instanceof ChannelType ? $type->value : (is_string($type) ? $type : null);
+
+            if ($type === null) {
+                continue;
+            }
+
+            $status = $delivery->status instanceof DeliveryStatus
+                ? $delivery->status->value
+                : (string) $delivery->status;
+
+            if (! isset($channels[$type])) {
+                $channels[$type] = ['type' => $type, 'status' => $status, 'count' => 0];
+            }
+
+            $channels[$type]['count']++;
+
+            if (($rank[$status] ?? 0) > ($rank[$channels[$type]['status']] ?? 0)) {
+                $channels[$type]['status'] = $status;
+            }
+        }
+
+        return array_values($channels);
+    }
+
+    /**
      * Mark a notification as read for the authenticated user. Idempotent.
      */
     public function read(
@@ -209,6 +299,8 @@ class NotificationPageController extends Controller
             'createdAt' => $notification->created_at?->toIso8601String(),
             'isRead' => $notification->reads->isNotEmpty(),
             'statusReason' => $this->statusReason($notification),
+            'recipientsCount' => (int) $notification->recipients_count,
+            'channels' => $this->channels($notification),
             'deliverySummary' => isset($notification->attempted_deliveries_count) ? [
                 'attempted' => (int) $notification->attempted_deliveries_count,
                 'delivered' => (int) $notification->delivered_deliveries_count,

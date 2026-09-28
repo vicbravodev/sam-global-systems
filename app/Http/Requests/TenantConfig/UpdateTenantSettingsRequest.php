@@ -3,6 +3,7 @@
 namespace App\Http\Requests\TenantConfig;
 
 use App\Domains\Context\Actions\FetchLiveLocationForEvent;
+use App\Domains\Notifications\Listeners\NotifyOnIncidentCreated;
 use App\Domains\TenantConfig\Enums\SettingGroup;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -47,6 +48,16 @@ class UpdateTenantSettingsRequest extends FormRequest
 
                 foreach ($settings as $index => $setting) {
                     if (! is_array($setting)) {
+                        continue;
+                    }
+
+                    if (($setting['setting_key'] ?? null) === NotifyOnIncidentCreated::SETTING_MIN_SEVERITY
+                        && ! in_array($setting['value'] ?? null, ['low', 'medium', 'high', 'critical'], true)) {
+                        $validator->errors()->add(
+                            "settings.{$index}.value",
+                            'La severidad mínima debe ser low, medium, high o critical.',
+                        );
+
                         continue;
                     }
 

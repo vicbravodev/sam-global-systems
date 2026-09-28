@@ -422,6 +422,80 @@ class NotificationCenterPageTest extends TestCase
         $this->assertSame(0, NotificationRead::query()->withoutGlobalScopes()->count());
     }
 
+    public function test_rows_expose_one_chip_per_channel_with_the_worst_delivery_status(): void
+    {
+        [$user, $team] = $this->createUserWithRole('notif_channels', ['notifications.view']);
+
+        $notification = Notification::factory()->sent()->create(['team_id' => $team->id]);
+        $sms = NotificationChannel::factory()->sms()->create();
+        $email = NotificationChannel::factory()->email()->create();
+
+        NotificationDelivery::factory()->create([
+            'notification_id' => $notification->id,
+            'channel_id' => $sms->id,
+            'status' => DeliveryStatus::Delivered,
+        ]);
+        NotificationDelivery::factory()->create([
+            'notification_id' => $notification->id,
+            'channel_id' => $sms->id,
+            'status' => DeliveryStatus::Failed,
+        ]);
+        NotificationDelivery::factory()->create([
+            'notification_id' => $notification->id,
+            'channel_id' => $email->id,
+            'status' => DeliveryStatus::Delivered,
+        ]);
+
+        $response = $this->actingAs($user)->get(
+            route('notifications.index', ['current_team' => $team->slug]),
+        );
+
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->component('notifications/index')
+                ->where('notifications.0.recipientsCount', 3)
+                ->has('notifications.0.channels', 2)
+                ->where('notifications.0.channels.0.type', 'sms')
+                ->where('notifications.0.channels.0.status', 'failed')
+                ->where('notifications.0.channels.0.count', 2)
+                ->where('notifications.0.channels.1.type', 'email')
+                ->where('notifications.0.channels.1.status', 'delivered'),
+        );
+    }
+
+    public function test_summary_counts_unread_for_this_user_and_the_last_24h_of_the_tenant(): void
+    {
+        [$user, $team] = $this->createUserWithRole('notif_summary', ['notifications.view']);
+        $other = Team::factory()->create();
+
+        $read = Notification::factory()->sent()->create(['team_id' => $team->id]);
+        NotificationRead::factory()->create([
+            'team_id' => $team->id,
+            'notification_id' => $read->id,
+            'user_id' => $user->id,
+        ]);
+        Notification::factory()->sent()->critical()->create(['team_id' => $team->id]);
+        Notification::factory()->create(['team_id' => $team->id, 'status' => NotificationStatus::Failed]);
+        Notification::factory()->create(['team_id' => $team->id, 'status' => NotificationStatus::Cancelled]);
+        // Older than a day: unread but outside the 24 h counters.
+        $old = Notification::factory()->sent()->critical()->create(['team_id' => $team->id]);
+        $old->forceFill(['created_at' => now()->subDays(2)])->save();
+        Notification::factory()->sent()->critical()->count(3)->create(['team_id' => $other->id]);
+
+        $response = $this->actingAs($user)->get(
+            route('notifications.index', ['current_team' => $team->slug, 'unread' => 1]),
+        );
+
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->component('notifications/index')
+                ->where('summary.unread', 4)
+                ->where('summary.sent24h', 2)
+                ->where('summary.undelivered24h', 2)
+                ->where('summary.critical24h', 1),
+        );
+    }
+
     /**
      * @param  array<string>  $permissionCodes
      * @return array{0: User, 1: Team}

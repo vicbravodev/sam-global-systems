@@ -12,6 +12,7 @@ use App\Domains\Notifications\Models\Notification;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Models\NotificationDelivery;
 use App\Domains\Notifications\Models\NotificationRecipient;
+use App\Domains\Notifications\Support\CancelBlockedNotification;
 use App\Domains\Notifications\Support\ChannelAddress;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -29,6 +30,10 @@ class DispatchNotification
 
     public function execute(Notification $notification): Notification
     {
+        if (CancelBlockedNotification::apply($notification)) {
+            return $notification;
+        }
+
         $descriptors = $this->resolveRecipients->execute($notification);
 
         if ($descriptors === []) {

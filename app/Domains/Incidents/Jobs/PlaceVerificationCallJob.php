@@ -19,6 +19,7 @@ use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Support\PlatformTwilioConfig;
 use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
+use App\Domains\Tenancy\Support\TenantCanSend;
 use App\Support\JobFailureReporter;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
@@ -95,6 +96,19 @@ class PlaceVerificationCallJob implements ShouldQueue
             $verification->forceFill([
                 'status' => CallVerificationStatus::Failed,
                 'metadata_json' => ['failure_reason' => self::SUPPRESSED_FAILURE_REASON],
+            ])->save();
+
+            return;
+        }
+
+        // Tenant suspendido/cancelado/expirado: no se llama (coste Twilio).
+        // El intento se cierra con el motivo, sin encadenar reintentos.
+        $blocked = TenantCanSend::blockedReason((int) $verification->team_id);
+
+        if ($blocked !== null) {
+            $verification->forceFill([
+                'status' => CallVerificationStatus::Failed,
+                'metadata_json' => ['failure_reason' => $blocked],
             ])->save();
 
             return;

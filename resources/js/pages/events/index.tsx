@@ -1,73 +1,46 @@
 import { Head, router, usePage } from '@inertiajs/react';
-import { Activity, ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
+import {
+    Activity,
+    AlertTriangle,
+    CircleSlash,
+    RefreshCw,
+    ShieldAlert,
+    Sparkles,
+    Truck,
+    Unlink,
+} from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
-import { DataTable } from '@/components/sam/data-table';
+import { CellEmpty, DataTable } from '@/components/sam/data-table';
 import type { DataTableColumn } from '@/components/sam/data-table';
-import { Badge } from '@/components/ui/badge';
+import { EntityAvatar } from '@/components/sam/entity-avatar';
+import { SEVERITY_DOT, toSeverity } from '@/components/sam/event-severity';
+import { EventCategoryIcon } from '@/components/sam/events/event-category-icon';
+import { PipelineStatusPill } from '@/components/sam/events/pipeline-status';
+import {
+    ClearFiltersButton,
+    FilterDropdown,
+    ListFooter,
+    SearchInput,
+} from '@/components/sam/list';
+import { ProviderTag } from '@/components/sam/provider-tag';
+import { PulseStat, PulseStrip } from '@/components/sam/pulse-strip';
+import { RelativeTime } from '@/components/sam/relative-time';
+import { SegmentedFilter } from '@/components/sam/segmented-filter';
+import { SeverityBadge } from '@/components/sam/severity-badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
 import { formatDateTime } from '@/lib/format';
-
-// Sentinel para representar "sin filtro" en los <Select> del DS: Radix no
-// permite SelectItem con value="", así que el filtro vacío (todos) se
-// traduce a/desde este string en el handler.
-const ALL_OPTION = '__all__';
-
-export interface EventRow {
-    id: number;
-    occurredAt: string | null;
-    status: string | null;
-    eventType: string | null;
-    eventTypeCode: string | null;
-    category: string | null;
-    severity: string | null;
-    severityLabel: string | null;
-    severityColor: string | null;
-    asset: string | null;
-    driver: string | null;
-    provider: string | null;
-}
-
-export interface EventFilters {
-    q: string | null;
-    status: string | null;
-    event_type_id: number | null;
-    event_category_id: number | null;
-    event_severity_id: number | null;
-    occurred_from: string | null;
-    occurred_until: string | null;
-}
-
-interface FilterOption {
-    value: string;
-    label: string;
-}
-
-interface EventsPageProps {
-    events: EventRow[];
-    pagination: {
-        page: number;
-        perPage: number;
-        total: number;
-        lastPage: number;
-    };
-    filters: EventFilters;
-    filterOptions: {
-        eventTypes: FilterOption[];
-        categories: FilterOption[];
-        severities: FilterOption[];
-        statuses: FilterOption[];
-    };
-    unmappedCount: number;
-}
+import { formatClock, dayLabel, minutesSince } from '@/lib/time';
+import { cn } from '@/lib/utils';
+import type {
+    EventFilterOptions,
+    EventFilters,
+    EventRow,
+    EventsIndexProps,
+    EventsPagination,
+    EventsSummary,
+} from '@/types/events';
 
 const EMPTY_FILTERS: EventFilters = {
     q: null,
@@ -79,141 +52,447 @@ const EMPTY_FILTERS: EventFilters = {
     occurred_until: null,
 };
 
-const STATUS_BADGE: Record<string, string> = {
-    normalized: 'text-fg-2',
-    enrichment_pending: 'text-severity-medium',
-    enriched: 'text-severity-low',
-    failed: 'text-severity-critical',
-    unmapped: 'text-severity-high',
+const EMPTY_OPTIONS: EventFilterOptions = {
+    eventTypes: [],
+    categories: [],
+    severities: [],
+    statuses: [],
 };
+
+const EMPTY_PAGINATION: EventsPagination = {
+    page: 1,
+    perPage: 50,
+    total: 0,
+    lastPage: 1,
+};
+
+// ---- Quick date ranges ----
+
+type QuickRange = 'today' | '7d' | '30d';
+
+function isoDaysAgo(days: number): string {
+    const date = new Date();
+    date.setDate(date.getDate() - days);
+
+    return date.toISOString().slice(0, 10);
+}
+
+const QUICK_RANGES: { key: QuickRange; label: string; days: number }[] = [
+    { key: 'today', label: 'Hoy', days: 0 },
+    { key: '7d', label: '7 días', days: 6 },
+    { key: '30d', label: '30 días', days: 29 },
+];
+
+function activeQuickRange(filters: EventFilters): QuickRange | null {
+    if (filters.occurred_until !== null) {
+        return null;
+    }
+
+    return (
+        QUICK_RANGES.find((r) => filters.occurred_from === isoDaysAgo(r.days))
+            ?.key ?? null
+    );
+}
+
+// ---- Columns ----
+
+function WhenCell({ iso }: { iso: string | null }) {
+    if (iso === null) {
+        return <CellEmpty />;
+    }
+
+    return (
+        <span
+            className="flex flex-col whitespace-nowrap"
+            title={formatDateTime(iso)}
+        >
+            <RelativeTime minutes={minutesSince(iso)} className="text-fg-1" />
+            <span className="font-mono text-3xs text-fg-3 tabular-nums">
+                {dayLabel(iso)} · {formatClock(iso)}
+            </span>
+        </span>
+    );
+}
+
+function EventCell({ event }: { event: EventRow }) {
+    return (
+        <span className="flex items-center gap-2.5">
+            <span className="grid size-7 shrink-0 place-items-center rounded-md border border-border bg-surface-2">
+                <EventCategoryIcon code={event.categoryCode} />
+            </span>
+            <span className="flex min-w-0 flex-col">
+                <span className="truncate text-sm font-medium text-fg-1">
+                    {event.eventType ??
+                        event.eventTypeCode ??
+                        `Evento #${event.id}`}
+                </span>
+                <span className="truncate text-3xs text-fg-3">
+                    {[event.category, event.description]
+                        .filter(Boolean)
+                        .join(' · ') || '—'}
+                </span>
+            </span>
+        </span>
+    );
+}
+
+function PipelineCell({ event }: { event: EventRow }) {
+    return (
+        <span className="flex items-center gap-1.5">
+            <PipelineStatusPill
+                status={event.status}
+                label={event.statusLabel}
+            />
+            {event.hasEvaluation && (
+                <span
+                    title="Evaluado por IA"
+                    className="grid size-5 place-items-center rounded-sm border border-ai-accent/40 bg-ai-accent-bg text-ai-accent"
+                >
+                    <Sparkles size={11} aria-label="Evaluado por IA" />
+                </span>
+            )}
+            {event.hasIncident && (
+                <span
+                    title="Abrió un incidente"
+                    className="grid size-5 place-items-center rounded-sm border border-severity-high/40 bg-severity-high/10 text-severity-high"
+                >
+                    <ShieldAlert size={11} aria-label="Abrió un incidente" />
+                </span>
+            )}
+        </span>
+    );
+}
 
 const COLUMNS: DataTableColumn<EventRow>[] = [
     {
         key: 'occurredAt',
-        header: 'Fecha',
+        header: 'Cuándo',
+        width: 'w-36',
         sortValue: (event) =>
             event.occurredAt ? Date.parse(event.occurredAt) : null,
-        cell: (event) => (
-            <span className="font-mono text-2xs whitespace-nowrap text-fg-2">
-                {formatDateTime(event.occurredAt)}
-            </span>
-        ),
+        cell: (event) => <WhenCell iso={event.occurredAt} />,
     },
     {
-        key: 'type',
-        header: 'Tipo',
+        key: 'event',
+        header: 'Evento',
         sortValue: (event) => event.eventType ?? event.eventTypeCode,
-        cell: (event) => (
-            <span className="text-xs text-fg-1">
-                {event.eventType ?? event.eventTypeCode ?? '—'}
-            </span>
-        ),
+        cell: (event) => <EventCell event={event} />,
     },
     {
         key: 'severity',
         header: 'Severidad',
+        width: 'w-28',
         sortValue: (event) => event.severityLabel,
         cell: (event) =>
-            event.severityLabel ? (
-                <span
-                    className="rounded px-1.5 py-0.5 text-3xs font-semibold uppercase"
-                    style={{
-                        color: event.severityColor ?? undefined,
-                        backgroundColor: event.severityColor
-                            ? `${event.severityColor}22`
-                            : undefined,
-                    }}
-                >
-                    {event.severityLabel}
-                </span>
+            event.severity ? (
+                <SeverityBadge level={toSeverity(event.severity)} />
             ) : (
-                <span className="text-xs text-fg-2">—</span>
+                <CellEmpty />
             ),
     },
     {
         key: 'asset',
-        header: 'Activo',
+        header: 'Unidad',
+        width: 'w-40',
         sortValue: (event) => event.asset,
-        cell: (event) => (
-            <span className="text-xs text-fg-2">{event.asset ?? '—'}</span>
-        ),
+        cell: (event) =>
+            event.asset ? (
+                <span className="flex items-center gap-1.5 text-xs text-fg-1">
+                    <Truck
+                        size={12}
+                        strokeWidth={1.75}
+                        className="shrink-0 text-fg-3"
+                        aria-hidden="true"
+                    />
+                    <span className="truncate">{event.asset}</span>
+                </span>
+            ) : (
+                <CellEmpty />
+            ),
     },
     {
         key: 'driver',
         header: 'Conductor',
+        width: 'w-44',
         sortValue: (event) => event.driver,
-        cell: (event) => (
-            <span className="text-xs text-fg-2">{event.driver ?? '—'}</span>
-        ),
+        cell: (event) =>
+            event.driver ? (
+                <span className="flex items-center gap-2">
+                    <EntityAvatar name={event.driver} size={20} />
+                    <span className="truncate text-xs text-fg-1">
+                        {event.driver}
+                    </span>
+                </span>
+            ) : (
+                <CellEmpty variant="person" />
+            ),
     },
     {
         key: 'provider',
-        header: 'Proveedor',
-        cell: (event) => (
-            <span className="text-xs text-fg-2">{event.provider ?? '—'}</span>
-        ),
+        header: 'Origen',
+        width: 'w-24',
+        cell: (event) =>
+            event.provider ? (
+                <ProviderTag name={event.provider} />
+            ) : (
+                <span className="text-2xs text-fg-3">interno</span>
+            ),
     },
     {
         key: 'status',
-        header: 'Estado',
+        header: 'Pipeline',
+        width: 'w-44',
         sortValue: (event) => event.status,
-        cell: (event) => (
-            <span
-                className={`text-2xs ${STATUS_BADGE[event.status ?? ''] ?? 'text-fg-3'}`}
-            >
-                {event.status ?? '—'}
-            </span>
-        ),
+        cell: (event) => <PipelineCell event={event} />,
     },
 ];
 
-function FilterSelect({
-    label,
-    value,
-    options,
-    onChange,
+// ---- Pulse strip ----
+
+function EventsPulse({
+    summary,
+    filters,
+    onApply,
 }: {
-    label: string;
-    value: string | null;
-    options: FilterOption[];
-    onChange: (value: string | null) => void;
+    summary: EventsSummary;
+    filters: EventFilters;
+    onApply: (next: EventFilters) => void;
 }) {
+    const toggleStatus = (value: string) => () =>
+        onApply({
+            ...filters,
+            status: filters.status === value ? null : value,
+        });
+
     return (
-        <Select
-            value={value ?? ALL_OPTION}
-            onValueChange={(next) =>
-                onChange(next === ALL_OPTION ? null : next)
-            }
-        >
-            <SelectTrigger aria-label={label} className="h-9">
-                <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-                <SelectItem value={ALL_OPTION}>{label}: todos</SelectItem>
-                {options.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                    </SelectItem>
-                ))}
-            </SelectContent>
-        </Select>
+        <PulseStrip>
+            <PulseStat
+                label="Últimas 24 h"
+                value={summary.last24h}
+                icon={Activity}
+                tone="info"
+                live={summary.last24h > 0}
+                hint="eventos normalizados"
+            />
+            <PulseStat
+                label="Severos 24 h"
+                value={summary.severe24h}
+                icon={AlertTriangle}
+                tone={summary.severe24h > 0 ? 'critical' : 'neutral'}
+                hint="severidad alta o crítica"
+            />
+            <PulseStat
+                label="Con incidente 24 h"
+                value={summary.incidents24h}
+                icon={ShieldAlert}
+                tone={summary.incidents24h > 0 ? 'warn' : 'neutral'}
+                hint="escalados a la bandeja"
+            />
+            <PulseStat
+                label="Sin mapear"
+                value={summary.unmapped}
+                icon={Unlink}
+                tone={summary.unmapped > 0 ? 'warn' : 'neutral'}
+                hint="sin regla de normalización"
+                onClick={toggleStatus('unmapped')}
+                active={filters.status === 'unmapped'}
+            />
+            <PulseStat
+                label="Fallidos"
+                value={summary.failed}
+                icon={CircleSlash}
+                tone={summary.failed > 0 ? 'critical' : 'neutral'}
+                hint="error en el pipeline"
+                onClick={toggleStatus('failed')}
+                active={filters.status === 'failed'}
+            />
+        </PulseStrip>
     );
 }
 
+// ---- FilterBar ----
+
+function FilterBar({
+    filters,
+    options,
+    onApply,
+}: {
+    filters: EventFilters;
+    options: EventFilterOptions;
+    onApply: (next: EventFilters) => void;
+}) {
+    const hasActive = Object.values(filters).some((value) => value !== null);
+    const quick = activeQuickRange(filters);
+
+    return (
+        <div className="flex shrink-0 flex-col gap-2 border-b border-border bg-background px-5 py-2">
+            <div className="flex flex-wrap items-center gap-2">
+                <SearchInput
+                    value={filters.q}
+                    onApply={(q) => onApply({ ...filters, q })}
+                    placeholder="Buscar por unidad o tipo…"
+                    className="mr-1"
+                />
+                <SegmentedFilter
+                    aria-label="Filtrar por severidad"
+                    value={
+                        filters.event_severity_id !== null
+                            ? String(filters.event_severity_id)
+                            : null
+                    }
+                    onChange={(value) =>
+                        onApply({
+                            ...filters,
+                            event_severity_id:
+                                value !== null ? Number(value) : null,
+                        })
+                    }
+                    allLabel="Todas"
+                    options={[...options.severities].reverse().map((o) => ({
+                        value: o.value,
+                        label: o.label,
+                        dot: SEVERITY_DOT[toSeverity(o.code)],
+                    }))}
+                />
+                <FilterDropdown
+                    label="Tipo"
+                    value={
+                        filters.event_type_id !== null
+                            ? String(filters.event_type_id)
+                            : null
+                    }
+                    options={options.eventTypes}
+                    onChange={(value) =>
+                        onApply({
+                            ...filters,
+                            event_type_id:
+                                value !== null ? Number(value) : null,
+                        })
+                    }
+                />
+                <FilterDropdown
+                    label="Categoría"
+                    value={
+                        filters.event_category_id !== null
+                            ? String(filters.event_category_id)
+                            : null
+                    }
+                    options={options.categories}
+                    onChange={(value) =>
+                        onApply({
+                            ...filters,
+                            event_category_id:
+                                value !== null ? Number(value) : null,
+                        })
+                    }
+                />
+                <FilterDropdown
+                    label="Pipeline"
+                    value={filters.status}
+                    options={options.statuses}
+                    onChange={(status) => onApply({ ...filters, status })}
+                />
+                {hasActive && (
+                    <ClearFiltersButton
+                        onClick={() => onApply(EMPTY_FILTERS)}
+                    />
+                )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+                <span className="text-3xs font-semibold tracking-caps text-fg-3 uppercase">
+                    Periodo
+                </span>
+                <div
+                    role="group"
+                    aria-label="Periodo rápido"
+                    className="flex items-center gap-1"
+                >
+                    {QUICK_RANGES.map((range) => {
+                        const active = quick === range.key;
+
+                        return (
+                            <button
+                                key={range.key}
+                                type="button"
+                                aria-pressed={active}
+                                onClick={() =>
+                                    onApply({
+                                        ...filters,
+                                        occurred_from: active
+                                            ? null
+                                            : isoDaysAgo(range.days),
+                                        occurred_until: null,
+                                    })
+                                }
+                                className={cn(
+                                    'rounded-full border px-2.5 py-1 text-2xs font-medium transition-colors',
+                                    active
+                                        ? 'border-primary/40 bg-primary/10 text-primary'
+                                        : 'border-border bg-surface-1 text-fg-2 hover:border-border-strong hover:text-fg-1',
+                                )}
+                            >
+                                {range.label}
+                            </button>
+                        );
+                    })}
+                </div>
+                <span className="text-2xs text-fg-3">o</span>
+                <input
+                    type="date"
+                    aria-label="Desde"
+                    value={filters.occurred_from ?? ''}
+                    onChange={(event) =>
+                        onApply({
+                            ...filters,
+                            occurred_from:
+                                event.target.value === ''
+                                    ? null
+                                    : event.target.value,
+                        })
+                    }
+                    className="rounded-md border border-border bg-surface-1 px-2 py-1 text-xs text-fg-2"
+                />
+                <span className="text-2xs text-fg-3">→</span>
+                <input
+                    type="date"
+                    aria-label="Hasta"
+                    value={filters.occurred_until ?? ''}
+                    onChange={(event) =>
+                        onApply({
+                            ...filters,
+                            occurred_until:
+                                event.target.value === ''
+                                    ? null
+                                    : event.target.value,
+                        })
+                    }
+                    className="rounded-md border border-border bg-surface-1 px-2 py-1 text-xs text-fg-2"
+                />
+            </div>
+        </div>
+    );
+}
+
+// ---- Page ----
+
 export default function EventsIndex() {
     const page = usePage();
-    const { events, pagination, filterOptions, unmappedCount } =
-        page.props as unknown as EventsPageProps;
-    const serverFilters = (page.props as unknown as EventsPageProps).filters;
+    const pageProps = page.props as unknown as EventsIndexProps;
+    const teamSlug = page.props.currentTeam?.slug ?? null;
+    const events = pageProps.events ?? [];
+    const pagination = pageProps.pagination ?? EMPTY_PAGINATION;
+    const serverFilters = pageProps.filters ?? EMPTY_FILTERS;
+    const filterOptions = pageProps.filterOptions ?? EMPTY_OPTIONS;
+    const summary = pageProps.summary ?? null;
+    const unmappedCount = pageProps.unmappedCount ?? 0;
 
+    const [refreshing, setRefreshing] = useState(false);
     const [filters, setFilters] = useState<EventFilters>(serverFilters);
-    const [search, setSearch] = useState(serverFilters.q ?? '');
-    const teamSlug =
-        (
-            page.props as unknown as {
-                currentTeam?: { slug?: string | null } | null;
-            }
-        ).currentTeam?.slug ?? null;
+
+    useEffect(() => {
+        setFilters(serverFilters);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [JSON.stringify(serverFilters)]);
 
     const applyFilters = useCallback((next: EventFilters) => {
         setFilters(next);
@@ -232,29 +511,6 @@ export default function EventsIndex() {
         });
     }, []);
 
-    useEffect(() => {
-        setSearch(serverFilters.q ?? '');
-
-        setFilters(serverFilters);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [JSON.stringify(serverFilters)]);
-
-    useEffect(() => {
-        const current = filters.q ?? '';
-        const next = search.trim();
-
-        if (next === current) {
-            return;
-        }
-
-        const timer = setTimeout(() => {
-            applyFilters({ ...filters, q: next === '' ? null : next });
-        }, 350);
-
-        return () => clearTimeout(timer);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [search]);
-
     const goToPage = useCallback((target: number) => {
         router.reload({
             only: ['events', 'pagination'],
@@ -262,154 +518,103 @@ export default function EventsIndex() {
         });
     }, []);
 
-    const hasActive = Object.values(filters).some((value) => value !== null);
+    const refresh = () => {
+        setRefreshing(true);
+        router.reload({
+            only: ['events', 'pagination', 'summary', 'unmappedCount'],
+            onFinish: () => setRefreshing(false),
+        });
+    };
+
+    const hasActive = Object.values(serverFilters).some(
+        (value) => value !== null,
+    );
     const unmappedActive = filters.status === 'unmapped';
 
     return (
         <>
             <Head title="Eventos" />
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                {/* Head */}
                 <PageHeader
                     title="Eventos"
-                    description={`${pagination.total} eventos normalizados del pipeline`}
-                    actions={
-                        <Button
-                            size="sm"
-                            variant={unmappedActive ? 'default' : 'outline'}
-                            onClick={() =>
-                                applyFilters({
-                                    ...EMPTY_FILTERS,
-                                    status: unmappedActive ? null : 'unmapped',
-                                })
-                            }
-                        >
-                            Sin mapear
-                            <Badge
-                                variant="secondary"
-                                className="ml-1 px-1.5 text-3xs"
-                            >
-                                {unmappedCount}
-                            </Badge>
-                        </Button>
+                    meta={
+                        <span className="text-xs text-fg-3">
+                            <span className="font-medium text-fg-1">
+                                {pagination.total}
+                            </span>{' '}
+                            {hasActive
+                                ? 'con estos filtros'
+                                : 'eventos normalizados'}
+                            {summary && summary.last24h > 0 && (
+                                <>
+                                    {' · '}
+                                    <span className="text-severity-info">
+                                        {summary.last24h} en 24 h
+                                    </span>
+                                </>
+                            )}
+                        </span>
                     }
-                    className="shrink-0 border-b border-border bg-background px-5 py-3"
+                    actions={
+                        <>
+                            <Button
+                                size="sm"
+                                variant={unmappedActive ? 'default' : 'outline'}
+                                onClick={() =>
+                                    applyFilters({
+                                        ...EMPTY_FILTERS,
+                                        status: unmappedActive
+                                            ? null
+                                            : 'unmapped',
+                                    })
+                                }
+                            >
+                                <Unlink size={13} />
+                                Sin mapear
+                                <span
+                                    className={cn(
+                                        'rounded-full px-1.5 font-mono text-3xs tabular-nums',
+                                        unmappedActive
+                                            ? 'bg-primary-foreground/20'
+                                            : unmappedCount > 0
+                                              ? 'bg-severity-high/15 text-severity-high'
+                                              : 'bg-surface-3 text-fg-3',
+                                    )}
+                                >
+                                    {unmappedCount}
+                                </span>
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={refresh}
+                                disabled={refreshing}
+                            >
+                                <RefreshCw
+                                    size={13}
+                                    className={cn(refreshing && 'animate-spin')}
+                                />
+                                Refrescar
+                            </Button>
+                        </>
+                    }
+                    className="shrink-0 border-b border-border bg-surface-1 px-5 py-3"
                 />
 
-                {/* Filters */}
-                <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-background px-5 py-2">
-                    <div className="flex items-center gap-1.5 rounded-md border border-border bg-surface-1 px-2.5 py-1.5">
-                        <Search size={12} className="text-fg-3" />
-                        <input
-                            type="text"
-                            value={search}
-                            onChange={(event) => setSearch(event.target.value)}
-                            placeholder="Buscar por activo o tipo…"
-                            className="w-44 border-none bg-transparent text-xs text-fg-1 outline-none"
-                        />
-                    </div>
-                    <FilterSelect
-                        label="Tipo"
-                        value={
-                            filters.event_type_id !== null
-                                ? String(filters.event_type_id)
-                                : null
-                        }
-                        options={filterOptions.eventTypes}
-                        onChange={(value) =>
-                            applyFilters({
-                                ...filters,
-                                event_type_id:
-                                    value !== null ? Number(value) : null,
-                            })
-                        }
+                {summary && (
+                    <EventsPulse
+                        summary={summary}
+                        filters={filters}
+                        onApply={applyFilters}
                     />
-                    <FilterSelect
-                        label="Severidad"
-                        value={
-                            filters.event_severity_id !== null
-                                ? String(filters.event_severity_id)
-                                : null
-                        }
-                        options={filterOptions.severities}
-                        onChange={(value) =>
-                            applyFilters({
-                                ...filters,
-                                event_severity_id:
-                                    value !== null ? Number(value) : null,
-                            })
-                        }
-                    />
-                    <FilterSelect
-                        label="Categoría"
-                        value={
-                            filters.event_category_id !== null
-                                ? String(filters.event_category_id)
-                                : null
-                        }
-                        options={filterOptions.categories}
-                        onChange={(value) =>
-                            applyFilters({
-                                ...filters,
-                                event_category_id:
-                                    value !== null ? Number(value) : null,
-                            })
-                        }
-                    />
-                    <FilterSelect
-                        label="Estado"
-                        value={filters.status}
-                        options={filterOptions.statuses}
-                        onChange={(value) =>
-                            applyFilters({ ...filters, status: value })
-                        }
-                    />
-                    <input
-                        type="date"
-                        aria-label="Desde"
-                        value={filters.occurred_from ?? ''}
-                        onChange={(event) =>
-                            applyFilters({
-                                ...filters,
-                                occurred_from:
-                                    event.target.value === ''
-                                        ? null
-                                        : event.target.value,
-                            })
-                        }
-                        className="rounded-md border border-border bg-surface-1 px-2 py-1 text-xs text-fg-2"
-                    />
-                    <input
-                        type="date"
-                        aria-label="Hasta"
-                        value={filters.occurred_until ?? ''}
-                        onChange={(event) =>
-                            applyFilters({
-                                ...filters,
-                                occurred_until:
-                                    event.target.value === ''
-                                        ? null
-                                        : event.target.value,
-                            })
-                        }
-                        className="rounded-md border border-border bg-surface-1 px-2 py-1 text-xs text-fg-2"
-                    />
-                    {hasActive && (
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setSearch('');
-                                applyFilters(EMPTY_FILTERS);
-                            }}
-                            className="flex items-center gap-1 text-xs text-fg-3 hover:text-fg-1"
-                        >
-                            <X size={11} />
-                            Limpiar
-                        </button>
-                    )}
-                </div>
+                )}
 
-                {/* Table */}
+                <FilterBar
+                    filters={filters}
+                    options={filterOptions}
+                    onApply={applyFilters}
+                />
+
                 <DataTable
                     columns={COLUMNS}
                     rows={events}
@@ -437,33 +642,12 @@ export default function EventsIndex() {
                     }
                 />
 
-                {/* Footer / pagination */}
-                <div className="flex shrink-0 items-center justify-between border-t border-border bg-background px-5 py-2 text-xs text-fg-3">
-                    <span>
-                        {events.length} de {pagination.total} eventos
-                    </span>
-                    <div className="flex items-center gap-2">
-                        <Button
-                            size="sm"
-                            variant="ghost"
-                            disabled={pagination.page <= 1}
-                            onClick={() => goToPage(pagination.page - 1)}
-                        >
-                            <ChevronLeft size={13} />
-                        </Button>
-                        <span className="tabular-nums">
-                            {pagination.page} / {pagination.lastPage}
-                        </span>
-                        <Button
-                            size="sm"
-                            variant="ghost"
-                            disabled={pagination.page >= pagination.lastPage}
-                            onClick={() => goToPage(pagination.page + 1)}
-                        >
-                            <ChevronRight size={13} />
-                        </Button>
-                    </div>
-                </div>
+                <ListFooter
+                    pagination={pagination}
+                    shown={events.length}
+                    onPage={goToPage}
+                    noun={['evento', 'eventos']}
+                />
             </div>
         </>
     );

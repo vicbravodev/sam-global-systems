@@ -13,9 +13,11 @@ use App\Domains\Notifications\Data\RenderedNotification;
 use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Enums\MessagingChargeSource;
 use App\Domains\Notifications\Models\NotificationChannel;
+use App\Domains\Tenancy\Support\TenantCanSend;
 use App\Models\User;
 use App\Support\OtpCacheKeys;
 use App\Support\PhoneNumber;
+use App\Support\TeamMembers;
 use Illuminate\Support\Facades\Cache;
 
 class SendPhoneOtp
@@ -33,6 +35,26 @@ class SendPhoneOtp
 
         if (! PhoneNumber::isE164($phone)) {
             return OtpResult::failure('no_phone');
+        }
+
+        // current_team_id lo controla el usuario: sólo se cobra el SMS a un
+        // team del que es miembro.
+        if (! TeamMembers::isMember($teamId, (int) $user->id)) {
+            return OtpResult::failure('not_member');
+        }
+
+        // Número ya verificado (cambiar el teléfono limpia phone_verified_at):
+        // re-enviar sería un SMS pagado sin propósito.
+        if ($user->phone_verified_at !== null) {
+            return OtpResult::failure('already_verified');
+        }
+
+        $blocked = TenantCanSend::blockedReason($teamId);
+
+        if ($blocked !== null) {
+            $this->record($user, $teamId, 'phone_otp.send_failed', 'tenant_cannot_send');
+
+            return OtpResult::failure('tenant_inactive');
         }
 
         $channel = NotificationChannel::query()

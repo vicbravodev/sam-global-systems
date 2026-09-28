@@ -48,6 +48,9 @@ class PhoneVerificationController extends Controller
             'too_many_attempts' => 'Demasiados intentos. Solicita un código nuevo.',
             'invalid_code' => 'El código no es correcto.',
             'phone_changed' => 'El teléfono cambió desde que se envió el código. Solicita uno nuevo.',
+            'already_verified' => 'Tu teléfono ya está verificado.',
+            'not_member' => 'No perteneces al equipo activo; cambia de equipo e intenta de nuevo.',
+            'tenant_inactive' => 'La suscripción de tu equipo no está activa; no se pueden enviar códigos.',
             'daily_limit' => 'Alcanzaste el límite diario de códigos. Intenta de nuevo mañana.',
             default => 'No se pudo completar la verificación.',
         };
