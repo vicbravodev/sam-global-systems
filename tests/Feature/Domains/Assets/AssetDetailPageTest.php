@@ -12,6 +12,7 @@ use App\Domains\Drivers\Models\Driver;
 use App\Domains\Drivers\Models\DriverAssignment;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Integrations\Models\IntegrationProvider;
+use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -87,6 +88,7 @@ class AssetDetailPageTest extends TestCase
                         ->where('firstSeenAt', $asset->first_seen_at->toIso8601String())
                         ->where('lastSeenAt', $asset->last_seen_at->toIso8601String())
                         ->where('driver', null)
+                        ->where('vehicle', null)
                         ->has('lastSignalAt'),
                 )
                 ->has('telemetry')
@@ -372,5 +374,45 @@ class AssetDetailPageTest extends TestCase
         ]));
 
         $response->assertNotFound();
+    }
+
+    public function test_detail_exposes_recent_events_of_this_asset_only(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+
+        $asset = Asset::factory()->create(['team_id' => $team->id]);
+        $sibling = Asset::factory()->create(['team_id' => $team->id]);
+        $driver = Driver::factory()->create(['team_id' => $team->id, 'full_name' => 'Luis Mena']);
+
+        $latest = NormalizedEvent::factory()->create([
+            'team_id' => $team->id,
+            'asset_id' => $asset->id,
+            'driver_id' => $driver->id,
+            'occurred_at' => now()->subMinutes(10),
+        ]);
+        NormalizedEvent::factory()->create([
+            'team_id' => $team->id,
+            'asset_id' => $asset->id,
+            'occurred_at' => now()->subHours(5),
+        ]);
+        NormalizedEvent::factory()->create([
+            'team_id' => $team->id,
+            'asset_id' => $sibling->id,
+        ]);
+
+        $response = $this->actingAs($user)->get(
+            route('assets.show', ['current_team' => $team->slug, 'asset' => $asset->id]),
+        );
+
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->component('assets/show')
+                ->has('recentEvents', 2)
+                ->where('recentEvents.0.id', $latest->id)
+                ->where('recentEvents.0.driver.name', 'Luis Mena')
+                ->has('recentEvents.0.eventType')
+                ->has('recentEvents.0.severity'),
+        );
     }
 }

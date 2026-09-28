@@ -94,7 +94,8 @@ class ResolveRecipients
                 recipientType: RecipientType::User,
                 address: $user->email,
                 email: $user->email,
-                phone: $user->phone,
+                // Sólo el teléfono verificado por OTP recibe SMS/WhatsApp/voz.
+                phone: $user->verifiedPhone(),
                 name: $user->name,
                 referenceId: (string) $user->id,
                 role: $membership->getRawOriginal('role'),

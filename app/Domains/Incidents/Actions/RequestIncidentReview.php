@@ -61,7 +61,12 @@ class RequestIncidentReview
 
             $fresh = $incident->fresh(['status', 'priority', 'type']);
 
-            IncidentStatusChanged::dispatch($fresh, $previousStatusCode, IncidentStatusCode::InReview->value);
+            IncidentStatusChanged::dispatch(
+                $fresh,
+                $previousStatusCode,
+                IncidentStatusCode::InReview->value,
+                $requestedByType === IncidentCreatorType::User ? $requestedById : null,
+            );
 
             broadcast(IncidentUpdatedBroadcast::fromModel($fresh));
 

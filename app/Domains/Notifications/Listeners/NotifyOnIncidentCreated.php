@@ -2,10 +2,12 @@
 
 namespace App\Domains\Notifications\Listeners;
 
+use App\Contracts\TenantConfig\TenantConfigResolver;
 use App\Domains\Context\Models\EventContextSnapshot;
 use App\Domains\Incidents\Events\IncidentCreated;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Notifications\Actions\SendNotification;
+use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Enums\NotificationPriority;
 use App\Domains\Notifications\Enums\NotificationSourceType;
 use App\Domains\Notifications\Enums\NotificationTriggeredByType;
@@ -13,8 +15,25 @@ use App\Domains\Notifications\Models\NotificationTemplate;
 
 class NotifyOnIncidentCreated
 {
+    /**
+     * Severidad mínima del incidente para salir por canales fuera de la app
+     * (correo/SMS/WhatsApp/voz/push). Por debajo sólo hay aviso in-app.
+     * Valores: low | medium | high | critical.
+     */
+    public const string SETTING_MIN_SEVERITY = 'notifications.out_of_band_min_severity';
+
+    public const string DEFAULT_MIN_SEVERITY = 'medium';
+
+    private const array SEVERITY_RANK = [
+        'low' => 1,
+        'medium' => 2,
+        'high' => 3,
+        'critical' => 4,
+    ];
+
     public function __construct(
         private readonly SendNotification $sendNotification,
+        private readonly TenantConfigResolver $tenantConfig,
     ) {}
 
     public function handle(IncidentCreated $event): void
@@ -28,26 +47,34 @@ class NotifyOnIncidentCreated
         $severity = $incident->priority?->code;
         $context = $this->contextSnapshot($incident);
 
+        $payload = [
+            'incident_id' => $incident->id,
+            'incident_type' => $incident->type?->code,
+            'severity' => $severity,
+            'incident_title' => $incident->title,
+            'asset_name' => $incident->asset?->name,
+            'driver_name' => $incident->driver?->full_name,
+            'location' => $this->location($incident, $context),
+            'incident_url' => $this->incidentUrl($incident),
+            'has_media' => $this->hasMedia($context),
+        ];
+
+        // Un incidente por debajo del umbral del tenant (por defecto: low)
+        // sólo avisa dentro de la app: no justifica un correo/SMS al equipo.
+        if (! $this->reachesOutOfBandThreshold((int) $incident->team_id, $severity)) {
+            $payload['force_channels'] = [ChannelType::Web->value];
+        }
+
         $this->sendNotification->execute(
             teamId: (int) $incident->team_id,
             notificationType: $this->resolveNotificationType($incident),
             sourceType: NotificationSourceType::Incident,
             sourceReferenceId: (string) $incident->id,
-            priority: $this->mapPriority($severity),
+            priority: NotificationPriority::fromIncidentPriority($severity),
             triggeredByType: NotificationTriggeredByType::System,
             triggeredById: null,
             eventKey: 'incident_created:'.$incident->id,
-            payload: [
-                'incident_id' => $incident->id,
-                'incident_type' => $incident->type?->code,
-                'severity' => $severity,
-                'incident_title' => $incident->title,
-                'asset_name' => $incident->asset?->name,
-                'driver_name' => $incident->driver?->full_name,
-                'location' => $this->location($incident, $context),
-                'incident_url' => $this->incidentUrl($incident),
-                'has_media' => $this->hasMedia($context),
-            ],
+            payload: $payload,
             subject: 'Nuevo incidente creado',
             bodyPreview: 'Se ha reportado un nuevo incidente en tu equipo.',
         );
@@ -79,6 +106,16 @@ class NotifyOnIncidentCreated
             ->exists();
 
         return $hasTemplate ? $specific : 'incident.created';
+    }
+
+    private function reachesOutOfBandThreshold(int $teamId, ?string $severity): bool
+    {
+        $minimum = (string) $this->tenantConfig->resolve($teamId, self::SETTING_MIN_SEVERITY, self::DEFAULT_MIN_SEVERITY);
+
+        $minimumRank = self::SEVERITY_RANK[$minimum] ?? self::SEVERITY_RANK[self::DEFAULT_MIN_SEVERITY];
+        $severityRank = self::SEVERITY_RANK[$severity ?? ''] ?? self::SEVERITY_RANK['medium'];
+
+        return $severityRank >= $minimumRank;
     }
 
     private function contextSnapshot(Incident $incident): ?EventContextSnapshot
@@ -127,15 +164,5 @@ class NotifyOnIncidentCreated
         $media = $context?->media_snapshot_json;
 
         return is_array($media) && ($media['items'] ?? $media) !== [];
-    }
-
-    private function mapPriority(?string $severity): NotificationPriority
-    {
-        return match ($severity) {
-            'critical' => NotificationPriority::Critical,
-            'high' => NotificationPriority::High,
-            'low' => NotificationPriority::Low,
-            default => NotificationPriority::Normal,
-        };
     }
 }

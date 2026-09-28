@@ -1,9 +1,20 @@
+import type { LinkedIncidentEntry } from '@/components/sam/linked-incidents-card';
+import type { RecentEventEntry } from '@/components/sam/recent-events-card';
+
 export type DriverStatusValue =
     | 'active'
     | 'off_duty'
     | 'unavailable'
     | 'suspended'
     | 'under_review';
+
+export type DriverRiskLevel = 'low' | 'medium' | 'high' | 'critical';
+
+export type DriverRiskTrend =
+    | 'baseline'
+    | 'improving'
+    | 'deteriorating'
+    | 'stable';
 
 export interface DriverAssetSummary {
     id: number;
@@ -18,6 +29,10 @@ export interface DriverRow {
     status: DriverStatusValue;
     currentAsset: DriverAssetSummary | null;
     riskScore: number | null;
+    riskLevel: DriverRiskLevel | null;
+    riskTrend: DriverRiskTrend | null;
+    incidentsCount: number;
+    harshEventsCount: number;
     phone: string | null;
     lastSeenAt: string | null;
 }
@@ -50,20 +65,34 @@ export interface DriversPagination {
     lastPage: number;
 }
 
+/** Pulso del roster completo del tenant (ignora filtros). */
+export interface DriversSummary {
+    total: number;
+    statuses: Record<DriverStatusValue, number>;
+    highRisk: number;
+    unassigned: number;
+    seenToday: number;
+}
+
 export interface DriversIndexProps {
     drivers: DriverRow[];
     pagination: DriversPagination;
     filters: DriverFilters;
     filterOptions: DriverFilterOptions;
     columns?: DriverColumnPresence;
+    summary?: DriversSummary;
 }
 
 export interface DriverRiskProfile {
     riskScore: number | null;
-    riskLevel: 'low' | 'medium' | 'high' | 'critical' | null;
+    riskLevel: DriverRiskLevel | null;
+    trend: DriverRiskTrend | null;
+    previousScore: number | null;
+    windowDays: number | null;
     incidentsCount: number;
     harshEventsCount: number;
     fatigueFlagsCount: number;
+    severeEventsCount: number;
     lastCalculatedAt: string | null;
 }
 
@@ -86,6 +115,15 @@ export interface DriverDocumentEntry {
     expiresAt: string | null;
     fileUrl: string | null;
     isExpired: boolean;
+    /** Días hasta el vencimiento (negativo si ya venció); null sin fecha. */
+    daysToExpiry: number | null;
+}
+
+/** Campo del perfil sincronizado desde el proveedor (licencia, usuario…). */
+export interface DriverProviderField {
+    key: string;
+    label: string;
+    value: string;
 }
 
 export interface DriverDetail {
@@ -95,11 +133,13 @@ export interface DriverDetail {
     lastName: string | null;
     employeeCode: string | null;
     externalPrimaryId: string | null;
+    phone: string | null;
     status: DriverStatusValue;
     firstSeenAt: string | null;
     lastSeenAt: string | null;
     currentAsset: DriverAssetSummary | null;
     riskProfile: DriverRiskProfile | null;
+    providerFields: DriverProviderField[];
     contacts: DriverContactEntry[];
     documents: DriverDocumentEntry[];
 }
@@ -123,8 +163,16 @@ export interface DriverStatusLogEntry {
     effectiveTo: string | null;
 }
 
+export interface DriverActivityPoint {
+    date: string;
+    count: number;
+}
+
 export interface DriverShowProps {
     driver: DriverDetail;
     assignments: DriverAssignmentEntry[];
     statusLog: DriverStatusLogEntry[];
+    recentEvents: RecentEventEntry[];
+    incidents: LinkedIncidentEntry[];
+    activity: DriverActivityPoint[];
 }

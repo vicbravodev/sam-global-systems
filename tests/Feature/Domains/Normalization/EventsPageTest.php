@@ -6,10 +6,12 @@ use App\Domains\Access\Enums\RoleScope;
 use App\Domains\Access\Models\Role;
 use App\Domains\AI\Enums\EventClassification;
 use App\Domains\AI\Models\AIEventEvaluation;
+use App\Domains\Assets\Models\Asset;
 use App\Domains\Decisions\Enums\DecisionOutcomeCode;
 use App\Domains\Decisions\Models\Decision;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Normalization\Enums\NormalizedEventStatus;
+use App\Domains\Normalization\Models\EventSeverity;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Enums\TeamRole;
 use App\Models\Team;
@@ -209,5 +211,140 @@ class EventsPageTest extends TestCase
         );
 
         $response->assertForbidden();
+    }
+
+    public function test_index_exposes_pipeline_flags_spanish_status_and_summary(): void
+    {
+        $other = Team::factory()->create();
+        $severe = EventSeverity::factory()->create(['code' => 'high', 'label' => 'High', 'level' => 3]);
+        $mild = EventSeverity::factory()->create(['code' => 'low', 'label' => 'Low', 'level' => 1]);
+
+        $withIncident = NormalizedEvent::factory()->create([
+            'team_id' => $this->team->id,
+            'event_severity_id' => $severe->id,
+            'occurred_at' => now()->subHours(1),
+            'payload_normalized_json' => ['description' => 'Harsh Brake'],
+        ]);
+        Incident::factory()->open()->create([
+            'team_id' => $this->team->id,
+            'related_event_id' => $withIncident->id,
+            'opened_at' => now()->subHours(1),
+        ]);
+
+        $evaluated = NormalizedEvent::factory()->create([
+            'team_id' => $this->team->id,
+            'event_severity_id' => $mild->id,
+            'occurred_at' => now()->subHours(2),
+            'payload_normalized_json' => ['event_type' => 'test'],
+        ]);
+        AIEventEvaluation::factory()->create([
+            'team_id' => $this->team->id,
+            'normalized_event_id' => $evaluated->id,
+        ]);
+
+        NormalizedEvent::factory()->unmapped()->create([
+            'team_id' => $this->team->id,
+            'event_severity_id' => $mild->id,
+            'occurred_at' => now()->subDays(3),
+        ]);
+        NormalizedEvent::factory()->failed()->create([
+            'team_id' => $this->team->id,
+            'event_severity_id' => $severe->id,
+            'occurred_at' => now()->subDays(2),
+        ]);
+        NormalizedEvent::factory()->count(2)->create([
+            'team_id' => $other->id,
+            'event_severity_id' => $severe->id,
+        ]);
+
+        $response = $this->actingAs($this->user)->get(
+            route('events.index', ['current_team' => $this->team->slug]),
+        );
+
+        $response->assertOk();
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->component('events/index')
+                ->has('events', 4)
+                ->where('events.0.id', $withIncident->id)
+                ->where('events.0.hasIncident', true)
+                ->where('events.0.hasEvaluation', false)
+                ->where('events.0.statusLabel', 'Normalizado')
+                ->where('events.0.description', 'Harsh Brake')
+                ->where('events.1.hasEvaluation', true)
+                ->where('events.1.hasIncident', false)
+                ->where('events.1.description', null)
+                ->where('summary.last24h', 2)
+                ->where('summary.severe24h', 1)
+                ->where('summary.incidents24h', 1)
+                ->where('summary.unmapped', 1)
+                ->where('summary.failed', 1),
+        );
+    }
+
+    public function test_show_lifts_operator_facts_out_of_the_payload(): void
+    {
+        $asset = Asset::factory()->create(['team_id' => $this->team->id]);
+
+        $event = NormalizedEvent::factory()->create([
+            'team_id' => $this->team->id,
+            'asset_id' => $asset->id,
+            'payload_normalized_json' => [
+                'external_event_type' => 'HarshBrake',
+                'location' => ['latitude' => 25.68, 'longitude' => -100.31, 'formattedLocation' => 'Monterrey, NL'],
+                'raw_behavior_labels' => [['label' => 'harshBrake', 'name' => 'Harsh Brake'], ['name' => 'Harsh Brake']],
+                'incident_url' => 'https://cloud.samsara.com/o/1/safety/events/2',
+                'is_resolved' => false,
+                'event_state' => 'needsReview',
+            ],
+        ]);
+
+        $incident = Incident::factory()->open()->create([
+            'team_id' => $this->team->id,
+            'related_event_id' => $event->id,
+        ]);
+
+        $response = $this->actingAs($this->user)->get(
+            route('events.show', ['current_team' => $this->team->slug, 'normalizedEvent' => $event->id]),
+        );
+
+        $response->assertOk();
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->component('events/show')
+                ->where('event.assetId', $asset->id)
+                ->where('event.facts.location.latitude', 25.68)
+                ->where('event.facts.location.formatted', 'Monterrey, NL')
+                ->where('event.facts.labels', ['Harsh Brake'])
+                ->where('event.facts.externalUrl', 'https://cloud.samsara.com/o/1/safety/events/2')
+                ->where('event.facts.externalEventType', 'HarshBrake')
+                ->where('event.facts.isResolved', false)
+                ->where('event.facts.eventState', 'needsReview')
+                ->where('incident.id', $incident->id)
+                ->where('incident.statusLabel', 'Nuevo')
+                ->where('incident.uiStatus', 'new'),
+        );
+    }
+
+    public function test_show_ignores_unsafe_external_urls_and_missing_location(): void
+    {
+        $event = NormalizedEvent::factory()->create([
+            'team_id' => $this->team->id,
+            'payload_normalized_json' => [
+                'incident_url' => 'javascript:alert(1)',
+                'location' => ['latitude' => 'n/a'],
+            ],
+        ]);
+
+        $response = $this->actingAs($this->user)->get(
+            route('events.show', ['current_team' => $this->team->slug, 'normalizedEvent' => $event->id]),
+        );
+
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->where('event.facts.externalUrl', null)
+                ->where('event.facts.location', null)
+                ->where('event.facts.labels', []),
+        );
     }
 }

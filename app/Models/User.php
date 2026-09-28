@@ -82,6 +82,17 @@ class User extends Authenticatable
     }
 
     /**
+     * Teléfono utilizable para SMS/WhatsApp/voz: sólo el verificado por OTP.
+     * Un número sin verificar puede ser de un tercero y cada envío se paga.
+     */
+    public function verifiedPhone(): ?string
+    {
+        $phone = trim((string) $this->phone);
+
+        return $phone !== '' && $this->phone_verified_at !== null ? $phone : null;
+    }
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>

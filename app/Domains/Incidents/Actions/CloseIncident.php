@@ -106,7 +106,12 @@ class CloseIncident
 
             $fresh = $incident->fresh(['status', 'priority']);
 
-            IncidentStatusChanged::dispatch($fresh, $previousStatusCode, $targetStatusCode->value);
+            IncidentStatusChanged::dispatch(
+                $fresh,
+                $previousStatusCode,
+                $targetStatusCode->value,
+                $resolvedByType === IncidentCreatorType::User ? $resolvedById : null,
+            );
             IncidentResolved::dispatch($fresh, $resolution);
 
             if ($targetStatusCode === IncidentStatusCode::Closed) {

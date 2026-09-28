@@ -67,9 +67,30 @@ class RecipientChannelAddressTest extends TestCase
         $this->assertSame('someone@example.com', $recipient->addressForChannel(ChannelType::Push));
     }
 
-    public function test_team_fanout_includes_user_phone(): void
+    public function test_team_fanout_omits_unverified_user_phone(): void
     {
-        $user = User::factory()->create(['phone' => '+5215555550144']);
+        $user = User::factory()->create(['phone' => '+5215555550144', 'phone_verified_at' => null]);
+        $team = $user->currentTeam;
+        $this->actingAs($user);
+
+        $notification = Notification::factory()->create([
+            'team_id' => $team->id,
+            'notification_type' => 'manual.test',
+            'priority' => NotificationPriority::Normal,
+            'status' => NotificationStatus::Queued,
+            'payload_json' => [],
+        ]);
+
+        $descriptors = app(ResolveRecipients::class)->execute($notification);
+
+        $this->assertCount(1, $descriptors);
+        $this->assertSame($user->email, $descriptors[0]->email);
+        $this->assertNull($descriptors[0]->phone);
+    }
+
+    public function test_team_fanout_includes_verified_user_phone(): void
+    {
+        $user = User::factory()->create(['phone' => '+5215555550144', 'phone_verified_at' => now()]);
         $team = $user->currentTeam;
         $this->actingAs($user);
 

@@ -92,6 +92,13 @@ class AssignOnCallOnIncidentCreatedTest extends TestCase
             $notification->payload_json['recipients'][0]['address'],
             'the directed notification must target only the on-call operator',
         );
+
+        // The team-wide critical alert already reaches the operator out of
+        // band: the directed "it's yours" notice is in-app only (no 2nd SMS).
+        $this->assertSame(['web'], $notification->payload_json['force_channels']);
+        $this->assertTrue(Notification::withoutGlobalScopes()
+            ->where('event_key', "incident_created:{$incident->id}")
+            ->exists());
     }
 
     public function test_assigns_without_directed_notification_for_non_critical(): void

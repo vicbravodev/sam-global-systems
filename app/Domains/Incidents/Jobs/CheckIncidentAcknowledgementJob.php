@@ -9,6 +9,7 @@ use App\Domains\Incidents\Enums\IncidentStatusCode;
 use App\Domains\Incidents\Enums\TimelineActorType;
 use App\Domains\Incidents\Enums\TimelineEntryType;
 use App\Domains\Incidents\Models\Incident;
+use App\Domains\Incidents\Support\IncidentSupervisors;
 use App\Domains\Incidents\Support\IncidentSuppression;
 use App\Domains\Notifications\Actions\SendNotification;
 use App\Domains\Notifications\Enums\ChannelType;
@@ -146,8 +147,9 @@ class CheckIncidentAcknowledgementJob implements ShouldQueue
             'escalation_level' => $this->level,
         ];
 
-        // Explicit contacts on the step are addressed directly; without them
-        // the notification fans out to the whole team (default recipients).
+        // Explicit contacts on the step are addressed directly, on the
+        // channels the step pins (Roadmap V2-A4 — `force_channels` overrides
+        // the tenant policy; the gate stays the active NotificationChannel).
         $contacts = array_values(array_filter(
             (array) ($step['contacts'] ?? []),
             fn ($contact) => is_string($contact) && $contact !== '',
@@ -158,17 +160,29 @@ class CheckIncidentAcknowledgementJob implements ShouldQueue
                 'recipient_type' => 'external_contact',
                 'address' => $address,
             ], $contacts);
-        }
 
-        // Channels pinned on the step (Roadmap V2-A4) override the tenant's
-        // notification policy — the gate stays the active NotificationChannel.
-        $channels = array_values(array_filter(
-            (array) ($step['channels'] ?? []),
-            fn ($channel) => is_string($channel) && ChannelType::tryFrom($channel) !== null,
-        ));
+            $channels = array_values(array_filter(
+                (array) ($step['channels'] ?? []),
+                fn ($channel) => is_string($channel) && ChannelType::tryFrom($channel) !== null,
+            ));
 
-        if ($channels !== []) {
-            $payload['force_channels'] = $channels;
+            if ($channels !== []) {
+                $payload['force_channels'] = $channels;
+            }
+        } else {
+            // Sin escalación configurada (o paso sin contactos) NUNCA se hace
+            // un blast fuera de banda al equipo entero: sólo supervisores y
+            // admins, por la app y correo. Antes cada incidente medio sin ACK
+            // mandaba SMS a todos, y un paso `channels: ["voice"]` sin
+            // contactos llamaba a cada miembro en cada intento.
+            $supervisors = IncidentSupervisors::recipients((int) $incident->team_id);
+
+            if ($supervisors === []) {
+                return;
+            }
+
+            $payload['recipients'] = $supervisors;
+            $payload['force_channels'] = [ChannelType::Web->value, ChannelType::Email->value];
         }
 
         $eventKey = "incident_sla_breached:{$incident->id}:{$this->level}"
@@ -179,7 +193,9 @@ class CheckIncidentAcknowledgementJob implements ShouldQueue
             notificationType: 'incident.sla_breached',
             sourceType: NotificationSourceType::Incident,
             sourceReferenceId: (string) $incident->id,
-            priority: NotificationPriority::Critical,
+            // La prioridad sale del incidente: un medio sin ACK no es una
+            // alerta crítica (la crítica abre SMS/voz por política).
+            priority: NotificationPriority::fromIncidentPriority($incident->priority?->code),
             triggeredByType: NotificationTriggeredByType::System,
             triggeredById: null,
             eventKey: $eventKey,

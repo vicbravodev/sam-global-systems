@@ -63,6 +63,11 @@ class TenantNotificationPolicyController extends Controller
             Cache::forget(CacheKeys::notificationPolicy($current_team->id, $policy->notification_type, $policy->priority));
         }
 
+        // La política global (canales normales/críticos, horario de silencio)
+        // que usa el despacho también se cachea: sin esto el cambio tardaba
+        // el TTL completo en aplicarse.
+        Cache::forget(CacheKeys::notificationPoliciesGlobal($current_team->id));
+
         // D-18: guardar políticas de notificación también registra una versión.
         $userId = $request->user()?->id;
         $this->snapshotTenantConfig->execute(

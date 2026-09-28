@@ -12,6 +12,7 @@ use App\Domains\Assets\Models\AssetTelemetrySnapshot;
 use App\Domains\Assets\Models\AssetType;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Support\IncidentStatusPresenter;
+use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
 use Illuminate\Database\Eloquent\Builder;
@@ -93,6 +94,22 @@ class AssetPageController extends Controller
      */
     private const INCIDENTS_LIMIT = 20;
 
+    /**
+     * Recent normalized events shown in the detail activity feed.
+     */
+    private const RECENT_EVENTS_LIMIT = 15;
+
+    /**
+     * A unit counts as "reporting" when its latest real signal is younger
+     * than this many minutes (matches the offline watchdog default, C1).
+     */
+    private const REPORTING_WINDOW_MINUTES = 15;
+
+    /**
+     * Speed (km/h) above which a fresh position counts as "in motion".
+     */
+    private const MOVING_SPEED_KPH = 5;
+
     public function index(Request $request, Team $current_team): Response
     {
         // Assets are read-only and managed exclusively by integration sync
@@ -106,6 +123,7 @@ class AssetPageController extends Controller
                 'assetType',
                 'latestLocation',
                 'latestTelemetry',
+                'currentDriverAssignment.driver',
                 // Only devices currently attached (mirrors AssetDevice::isAttached()).
                 'devices' => fn (HasMany $q) => $q
                     ->whereNull('detached_at')
@@ -136,6 +154,7 @@ class AssetPageController extends Controller
             ],
             'filters' => $filters,
             'filterOptions' => fn () => $this->filterOptions(),
+            'summary' => fn () => $this->summary($current_team),
         ]);
     }
 
@@ -184,7 +203,120 @@ class AssetPageController extends Controller
             'telemetry' => fn () => $this->telemetry($asset),
             'locationHistory' => fn () => $this->locationHistory($asset),
             'incidents' => fn () => $this->incidents($asset),
+            'recentEvents' => fn () => $this->recentEvents($asset),
         ]);
+    }
+
+    /**
+     * Tenant-wide fleet pulse for the header strip: units that reported a
+     * real signal in the last 15 minutes, units silent for more than a day,
+     * units in alert/critical, in maintenance and camera-equipped. Ignores
+     * the active filters on purpose (it describes the whole fleet).
+     *
+     * @return array{total: int, statuses: array<string, int>, reporting: int, silent: int, alerting: int, maintenance: int, withCamera: int, moving: int}
+     */
+    private function summary(Team $team): array
+    {
+        $assets = fn (): Builder => Asset::query()->where('team_id', $team->id);
+        $freshSince = now()->subMinutes(self::REPORTING_WINDOW_MINUTES);
+        $silentSince = now()->subDay();
+
+        $byStatus = $assets()
+            ->selectRaw('status, COUNT(*) as aggregate')
+            ->groupBy('status')
+            ->pluck('aggregate', 'status');
+
+        $statuses = [];
+
+        foreach (AssetStatus::cases() as $status) {
+            $statuses[$status->value] = (int) ($byStatus[$status->value] ?? 0);
+        }
+
+        return [
+            'total' => (int) $byStatus->sum(),
+            'statuses' => $statuses,
+            'reporting' => $assets()
+                ->where(fn (Builder $q) => $q
+                    ->whereHas('locationSnapshots', fn (Builder $s) => $s->where('recorded_at', '>=', $freshSince))
+                    ->orWhereHas('telemetrySnapshots', fn (Builder $s) => $s->where('recorded_at', '>=', $freshSince)))
+                ->count(),
+            'silent' => $assets()
+                ->whereDoesntHave('locationSnapshots', fn (Builder $s) => $s->where('recorded_at', '>=', $silentSince))
+                ->whereDoesntHave('telemetrySnapshots', fn (Builder $s) => $s->where('recorded_at', '>=', $silentSince))
+                ->count(),
+            'alerting' => $assets()
+                ->whereIn('status', [AssetStatus::Alert, AssetStatus::Critical])
+                ->count(),
+            'maintenance' => $assets()->where('status', AssetStatus::Maintenance)->count(),
+            'withCamera' => $assets()
+                ->whereHas('devices', fn (Builder $d) => $d
+                    ->whereIn('device_type', ['camera', 'dashcam'])
+                    ->whereNull('detached_at')
+                    ->where('status', '!=', DeviceStatus::Detached))
+                ->count(),
+            // Units whose latest position is fresh AND shows speed: the live
+            // "on the road right now" figure.
+            'moving' => $assets()
+                ->whereHas('latestLocation', fn (Builder $s) => $s
+                    ->where('recorded_at', '>=', $freshSince)
+                    ->where('speed', '>', self::MOVING_SPEED_KPH))
+                ->count(),
+        ];
+    }
+
+    /**
+     * Latest normalized events attributed to this asset (safety, panic,
+     * offline...) so the detail reads as a live record.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function recentEvents(Asset $asset): array
+    {
+        return NormalizedEvent::query()
+            ->where('team_id', $asset->team_id)
+            ->where('asset_id', $asset->id)
+            ->with(['eventType', 'eventCategory', 'eventSeverity', 'driver'])
+            ->orderByDesc('occurred_at')
+            ->orderByDesc('id')
+            ->limit(self::RECENT_EVENTS_LIMIT)
+            ->get()
+            ->map(fn (NormalizedEvent $event) => [
+                'id' => (int) $event->id,
+                'occurredAt' => $event->occurred_at?->toIso8601String(),
+                'eventType' => $event->eventType?->name ?? $event->eventType?->code,
+                'category' => $event->eventCategory?->name,
+                'severity' => $event->eventSeverity?->code,
+                'driver' => $event->driver ? [
+                    'id' => (int) $event->driver->id,
+                    'name' => (string) $event->driver->full_name,
+                ] : null,
+            ])
+            ->all();
+    }
+
+    /**
+     * Vehicle facts the integration sync stores in `metadata_json` (Samsara:
+     * make/model/year, plate, VIN). Null when nothing is known so the UI can
+     * hide the block instead of painting dashes.
+     *
+     * @return array{make: string|null, model: string|null, year: int|null, plate: string|null, vin: string|null, hasCamera: bool}|null
+     */
+    private function vehicle(Asset $asset): ?array
+    {
+        $metadata = $asset->metadata_json ?? [];
+
+        $vehicle = [
+            'make' => isset($metadata['make']) && is_scalar($metadata['make']) ? (string) $metadata['make'] : null,
+            'model' => isset($metadata['model']) && is_scalar($metadata['model']) ? (string) $metadata['model'] : null,
+            'year' => isset($metadata['year']) && is_numeric($metadata['year']) ? (int) $metadata['year'] : null,
+            'plate' => isset($metadata['license_plate']) && is_scalar($metadata['license_plate']) ? (string) $metadata['license_plate'] : null,
+            'vin' => isset($metadata['vin']) && is_scalar($metadata['vin']) ? (string) $metadata['vin'] : null,
+            'hasCamera' => (bool) ($metadata['has_camera'] ?? false),
+        ];
+
+        $known = array_filter($vehicle, fn ($value) => $value !== null && $value !== false);
+
+        return $known === [] ? null : $vehicle;
     }
 
     /**
@@ -267,12 +399,21 @@ class AssetPageController extends Controller
     private function toRow(Asset $asset): array
     {
         $location = $asset->latestLocation;
+        $driver = $asset->currentDriverAssignment?->driver;
 
         return [
             'id' => (int) $asset->id,
             'name' => (string) $asset->name,
             'code' => $asset->code,
             'status' => $asset->status->value,
+            'vehicle' => $this->vehicle($asset),
+            // Currently assigned primary driver (reciprocal of the driver
+            // roster's "activo asignado" column). Null when nobody is assigned.
+            'driver' => $driver ? [
+                'id' => (int) $driver->id,
+                'name' => (string) $driver->full_name,
+                'employeeCode' => $driver->employee_code,
+            ] : null,
             'type' => $asset->assetType ? [
                 'code' => (string) $asset->assetType->code,
                 'name' => (string) $asset->assetType->name,
@@ -353,22 +494,12 @@ class AssetPageController extends Controller
      */
     private function toDetail(Asset $asset): array
     {
-        $driver = $asset->currentDriverAssignment?->driver;
-
         return [
             ...$this->toRow($asset),
             'externalPrimaryId' => $asset->external_primary_id,
             'provider' => $asset->provider?->name,
             'sourceIntegration' => $asset->sourceIntegration?->name,
             'firstSeenAt' => $asset->first_seen_at?->toIso8601String(),
-            // Currently assigned primary driver, the reciprocal of the
-            // asset link the driver detail already shows (C-08). Null when
-            // nobody is assigned right now.
-            'driver' => $driver ? [
-                'id' => (int) $driver->id,
-                'name' => (string) $driver->full_name,
-                'employeeCode' => $driver->employee_code,
-            ] : null,
         ];
     }
 
@@ -470,6 +601,10 @@ class AssetPageController extends Controller
                 'title' => (string) $incident->title,
                 'status' => $incident->status ? [
                     'code' => (string) $incident->status->code,
+                    'uiStatus' => IncidentStatusPresenter::uiStatus(
+                        $incident->status->code,
+                        $incident->currentAssignment !== null,
+                    ),
                     // Same rendered string as inbox/detail/palette (C1-b).
                     'name' => IncidentStatusPresenter::label(
                         $incident->status->code,
