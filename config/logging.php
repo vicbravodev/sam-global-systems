@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Log\Formatters\JsonFormatter;
 use Monolog\Handler\NullHandler;
 use Monolog\Handler\StreamHandler;
 use Monolog\Handler\SyslogUdpHandler;
@@ -71,6 +72,19 @@ return [
             'level' => env('LOG_LEVEL', 'debug'),
             'days' => env('LOG_DAILY_DAYS', 14),
             'replace_placeholders' => true,
+        ],
+
+        // Una línea JSON por entrada, con todo el Context en `extra`
+        // (trace_id, team_id, ids de etapa: App\Support\PipelineTrace). Para
+        // seguir un evento: `grep '"trace_id":"<id>"' storage/logs/pipeline-*.json`
+        // o `jq 'select(.extra.trace_id == "<id>")'`. Se activa añadiéndolo al
+        // stack: LOG_STACK=single,json.
+        'json' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/pipeline.json'),
+            'level' => env('LOG_JSON_LEVEL', env('LOG_LEVEL', 'debug')),
+            'days' => env('LOG_JSON_DAYS', 7),
+            'formatter' => JsonFormatter::class,
         ],
 
         // One structured line per telematics cycle and backfill (team, feed,
