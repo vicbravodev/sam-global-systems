@@ -3,6 +3,7 @@
 namespace Tests\Feature\Domains\Assets;
 
 use App\Domains\Assets\Jobs\PollAllAssetLocationsJob;
+use App\Domains\Assets\Jobs\PollAssetConnectivityJob;
 use App\Domains\Assets\Jobs\PollAssetLocationsJob;
 use App\Domains\Integrations\Enums\TenantIntegrationStatus;
 use App\Domains\Integrations\Models\IntegrationProvider;
@@ -30,7 +31,7 @@ class PollAllAssetLocationsJobTest extends TestCase
 
     public function test_it_dispatches_a_poll_only_for_due_active_integrations(): void
     {
-        Bus::fake([PollAssetLocationsJob::class]);
+        Bus::fake([PollAssetLocationsJob::class, PollAssetConnectivityJob::class]);
 
         $due = $this->makeIntegration(['last_location_poll_at' => null]);
         $this->makeIntegration(['last_location_poll_at' => now()]); // polled just now — not due
@@ -46,6 +47,13 @@ class PollAllAssetLocationsJobTest extends TestCase
         Bus::assertDispatched(
             PollAssetLocationsJob::class,
             fn (PollAssetLocationsJob $job) => $job->integration->id === $due->id,
+        );
+
+        // The device heartbeat rides the same cadence, for the same integrations.
+        Bus::assertDispatchedTimes(PollAssetConnectivityJob::class, 1);
+        Bus::assertDispatched(
+            PollAssetConnectivityJob::class,
+            fn (PollAssetConnectivityJob $job) => $job->integration->id === $due->id,
         );
     }
 

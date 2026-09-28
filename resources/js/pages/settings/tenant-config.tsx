@@ -355,9 +355,14 @@ function GeneralTab({
                 'Teléfonos a los que se llama para verificar un pánico.',
         },
         'monitoring.offline_alert_minutes': {
-            label: 'Alerta de unidad sin reportar',
+            label: 'Alerta de dispositivo sin conexión (en ruta)',
             description:
-                'Minutos sin reportar antes de generar alerta (0 la desactiva).',
+                'Minutos sin conexión del dispositivo, con la unidad en movimiento, antes de alertar (0 desactiva la vigilancia).',
+        },
+        'monitoring.offline_parked_alert_minutes': {
+            label: 'Alerta de dispositivo sin conexión (estacionada)',
+            description:
+                'Minutos sin conexión del dispositivo con la unidad detenida antes de alertar (0 la desactiva).',
         },
         'monitoring.stop_alert_minutes': {
             label: 'Alerta de parada sospechosa',

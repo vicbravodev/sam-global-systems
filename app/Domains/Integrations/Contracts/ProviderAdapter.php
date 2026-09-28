@@ -48,6 +48,21 @@ interface ProviderAdapter
     public function fetchAssetTelemetry(TenantIntegration $integration): array;
 
     /**
+     * Fetch the real connectivity of each asset's telematics device.
+     *
+     * Distinct from {@see fetchAssetLocations()}: a GPS fix only moves when the
+     * vehicle does (a parked unit reports roughly once an hour), so the age of
+     * the last position says nothing about whether the device is online. This
+     * is the provider's own "last connected" heartbeat, which the offline
+     * watchdog uses as its liveness signal. One entry per asset; providers
+     * without a connectivity feed return an empty list (and their assets are
+     * then not watched for going offline).
+     *
+     * @return array<int, array{external_id: string, last_connected_at: string|null, health_status: string|null, serial: string|null, model: string|null}>
+     */
+    public function fetchDeviceConnectivity(TenantIntegration $integration): array;
+
+    /**
      * Fetch the current position of a single asset directly from the provider.
      *
      * Used for on-demand refreshes (e.g. a critical event whose latest known
