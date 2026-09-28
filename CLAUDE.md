@@ -1,301 +1,69 @@
-# CLAUDE.md — SAM Global Systems
+# SAM Global Systems
 
-Guía operativa para Claude Code. El documento autoritativo de reglas Laravel sigue siendo [`AGENTS.md`](AGENTS.md) (Laravel Boost); este archivo NO lo reemplaza, lo complementa con el contexto específico del producto SAM y el estado actual de implementación.
+Plataforma multi-tenant de flotas: ingiere eventos de proveedores (Samsara), los normaliza, enriquece, evalúa con IA y genera incidentes, automatizaciones y notificaciones (Twilio). **Tenant = `Team`** (no existe modelo `Tenant`).
 
-**Lee primero, en este orden, antes de cualquier cambio no trivial:**
+**Stack:** Laravel 13 · PHP 8.5 · Inertia v3 · React 19 · Tailwind v4 · PostgreSQL 18 · Valkey (no Redis Cluster) · RustFS (S3) · Soketi · Horizon · PHPUnit 13 (no Pest).
 
-1. [`AGENTS.md`](AGENTS.md) — convenciones Laravel/Inertia/React de este repo.
-2. [`specs/00-MASTER-GUIDE.md`](specs/00-MASTER-GUIDE.md) — arquitectura domain-modular, stack, convenciones de migrations/tests, topología de colas.
-3. El spec concreto del dominio donde vas a trabajar (`specs/NN-*.md`).
-4. El módulo ya implementado como plantilla de estilo (ver tabla de estado abajo).
+Reglas por zona (se cargan al trabajar ahí): [`app/CLAUDE.md`](app/CLAUDE.md) · [`database/CLAUDE.md`](database/CLAUDE.md) · [`tests/CLAUDE.md`](tests/CLAUDE.md) · [`resources/js/CLAUDE.md`](resources/js/CLAUDE.md). Specs de negocio: `specs/NN-*.md` (arquitectura: `specs/00-MASTER-GUIDE.md`). Si el código contradice un spec o un doc, **manda el código**.
 
----
+## Comandos
 
-## 1. Qué es SAM
-
-Plataforma multi-tenant de flotas: ingesta webhooks/eventos de proveedores externos (Samsara, etc.), los normaliza, los enriquece con contexto operacional, los evalúa con IA, y genera incidentes + automatizaciones. Billing metered **local** con eventos de uso por tenant: el cobro es por transferencia bancaria (decisión 2026-06-09, **Stripe cancelado** — no arrancar trabajo Stripe; el admin activa/desactiva tenants según pago/factura subida).
-
-**Modelo de cobro (decisión 2026-09-28): por tracto-día, sin planes ni trial.** Cada activo tiene `monitoring_state` (`monitored` / `pending` / `excluded`): el sync descubre toda la flota como `pending`, el cliente enciende lo que quiere (`SetAssetMonitoring`) y sólo lo `monitored` se sondea, normaliza, evalúa y cobra. El tope contratado es **suave**: encender de más se permite, se audita (`UsageLimitExceeded`) y se cobra como extra. La muestra nocturna (`assets:record-usage-meters`) alimenta `monitored_asset_days` (suma) y la factura es Σ tracto-días × (precio mensual ÷ días del mes) según `tenant_billing_terms` con defaults en `config/billing.php` (`ResolveBillingTerms`, `AssetDayPricing`, `GenerateInvoiceSnapshotJob`). Los `plans` son sólo plantillas de topes (base_price 0).
-
-**Stack:** Laravel 13 · PHP 8.5 · Inertia v3 · React 19 · Tailwind v4 · PostgreSQL 18 · Valkey (no Redis) · RustFS (S3-compatible) · Soketi (Pusher-compatible) · Horizon · Mailpit (dev). (Cashier retirado 2026-06-10 — billing local por transferencia.)
-
-**Tenant = Team.** `app/Models/Team.php` ES el tenant. No existe un modelo `Tenant` separado — no lo inventes.
-
----
-
-## 2. Arquitectura domain-modular (NO saltarse)
-
-Todo código de negocio nuevo vive bajo `app/Domains/{Dominio}/` con subdirs: `Actions/ Data/ Enums/ Events/ Jobs/ Listeners/ Models/ Policies/ Queries/ Services/ Support/`. Cada dominio registra un `ServiceProvider` en [`bootstrap/providers.php`](bootstrap/providers.php).
-
-**Reglas duras:**
-
-- Modelos tenant-scoped DEBEN usar el trait `App\Concerns\BelongsToTenant` (scope global + auto-set `team_id` en create). Ver [`app/Concerns/BelongsToTenant.php`](app/Concerns/BelongsToTenant.php).
-- Cada tabla tenant-scoped incluye `foreignId('team_id')->constrained()->cascadeOnDelete()` + `index('team_id')`.
-- Helper global `currentTeam()` (ya autoloaded vía [`app/Support/helpers.php`](app/Support/helpers.php)) — úsalo; no llames `auth()->user()->currentTeam` ad-hoc.
-- Contratos cross-domain en `app/Contracts/` con implementaciones en `app/Infrastructure/` o en el dominio dueño. Mira cómo `Integrations` bindea `NullRawEventIngestion` / `NullAssetSyncHandler` / `NullDriverSyncHandler` con `singletonIf` para romper dependencias circulares.
-- Jobs van a colas con nombre por dominio (`ingestion`, `normalization`, `ai-evaluation`, `billing`, `sync`, etc.). Ver [`config/horizon.php`](config/horizon.php).
-- Uso metered: todo punto facturable llama `App\Domains\Tenancy\Actions\RecordUsageEvent` con `event_key` idempotente.
-- Rutas API tenant-scoped viven bajo `/{current_team}/...` con middleware `EnsureTeamMembership` (ver [`routes/api.php`](routes/api.php)).
-
-**Convenciones de nombres (del Master Guide §8):** Modelos singular PascalCase, tablas plural snake_case, columnas JSON sufijadas `_json`, actions `Verbo+Sustantivo`, jobs `...Job`, eventos en pasado, broadcasting events con sufijo `Broadcast` solo si hay que desambiguar.
-
-### 2.1 Tenant scope OBLIGATORIO en toda feature (regla dura, no negociable)
-
-**Ninguna feature se da por terminada si su dato no está scopeado a un tenant.** SAM es multi-tenant: una fuga cross-tenant es el peor bug que este producto puede tener — expone la operación de un cliente a otro. No es un "nice to have" de seguridad, es requisito de aceptación como lo son los tests.
-
-**Por qué existe esta regla:** el scope global de `BelongsToTenant` sólo filtraba si `currentTeam()` devolvía algo, y `currentTeam()` era `auth()->user()?->currentTeam`. En jobs, listeners, comandos y scheduler no hay usuario autenticado, así que **el scope era un no-op justo en el pipeline que ES el producto**. De ahí salieron `c64334a` (assets resueltos por external id de otro tenant) y `3695360` (normalización vinculando activo/conductor de otro tenant), ninguna detectada por los tests de aislamiento de entonces.
-
-**Cómo está resuelto ahora ([`App\Support\TenantContext`](app/Support/TenantContext.php)):** el tenant activo vive en el `Context` de Laravel, que se deshidrata en el payload del job al despachar y se rehidrata en el worker. `currentTeamId()` lo lee primero y cae al usuario autenticado después. El scope global **sí** filtra en colas, y `withoutGlobalScopes()` pasó de 308 llamadas a 50.
-
-**Los cuatro patrones, y cuándo usa cada uno:**
-
-| Situación | Patrón |
+| Qué | Comando |
 |---|---|
-| Job o listener que entra por un id | Lookup de entrada **sin scope** (es como descubre su tenant) y `TenantContext::set($model->team_id)` justo después. `set()` no restaura, y no hace falta: `Context::hydrate()` hace `flush()` al arrancar cada job. |
-| Action, query o servicio que recibe `int $teamId` | `TenantContext::for($teamId, fn () => ...)`. Nunca `set()`: una Action corre dentro del flujo de otro y debe devolver el contexto como estaba. |
-| Trabajo de plataforma que cruza tenants a propósito (fan-out del scheduler, consola de operador, agregados de facturación) | `TenantContext::withoutTenant(fn () => ...)`, y dentro `TenantContext::for($row->team_id, ...)` por cada tenant. Deja la intención escrita en vez de esconderla tras un bypass. |
-| Todo lo demás | `Model::query()` a secas. Sin contexto se comporta igual que antes; con contexto, filtra. |
+| Formato PHP | automático: hook `PostToolUse` corre Pint en cada `.php` editado · manual: `vendor/bin/pint --dirty --format agent` — nunca `--test` |
+| Tests filtrados | `php artisan test --compact --filter=Nombre` · `php artisan test --compact tests/Feature/Domains/{Dominio}` |
+| Suite completa | `php artisan test --compact` |
+| Frontend | `npm run types:check && npm run lint:check && npm run format:check` · `npm run build` |
+| Wayfinder (tras cambiar rutas/controladores) | `php artisan wayfinder:generate --with-form` |
+| Gate antes de push | los cuatro de arriba (formato, suite, lint/format, types) o `composer ci:check` |
+| Dev | `composer run dev` · servicios: `./vendor/bin/sail up -d pgsql valkey rustfs soketi mailpit` |
+| Worktree nuevo | skill `worktree-bootstrap` ANTES de cualquier gate (`vendor/`, `.env` y tipos Wayfinder no vienen en el checkout) |
 
-**Checklist obligatorio por feature (todo lo aplicable, sin excepciones):**
+## Mapa
 
-1. **Tabla**: `foreignId('team_id')->constrained()->cascadeOnDelete()` + índice. `nullable()` **sólo** si el registro puede ser un catálogo global de plataforma (`team_id = null`), y en ese caso hay que documentarlo en la migración con un comentario.
-2. **Modelo**: `use App\Concerns\BelongsToTenant`. Si el modelo es del tipo "global o de tenant" (`team_id` nullable), **NO** lleva el trait, y entonces toda consulta debe usar el idiom explícito `->where('team_id', $teamId)` con fallback `->whereNull('team_id')` — ver [`ResolveActionTemplate`](app/Domains/Automation/Actions/ResolveActionTemplate.php) como plantilla. Ninguna de las dos opciones es "no hacer nada".
-3. **Toda query fuera de HTTP** (Action, Job, Listener, Command, Query, seeder de tenant) corre **dentro de un `TenantContext`**, según la tabla de patrones de arriba. Un `withoutGlobalScopes()` nuevo necesita justificarse: sólo valen el lookup de entrada por el que un job descubre su tenant, la escritura de ingesta y las filas de plataforma (`team_id` null). Cualquier otro es un error de revisión.
-4. **Resolución por identificador externo o de proveedor** (`external_id`, `provider_id`, ids de payload de webhook, ids de Samsara): **siempre** verificar que el registro resuelto pertenece al team del evento antes de usarlo. Los ids de proveedor son únicos platform-wide, no por tenant — el aislamiento nunca puede depender de cómo el proveedor asigna sus ids.
-5. **Jobs y eventos**: propagar `team_id` explícito en el constructor/payload. Nunca reconstruir el tenant desde `currentTeam()` dentro de un job. Si un job recibe a la vez un id de recurso y un `teamId`, debe validar que concuerdan y abortar si no.
-6. **Endpoint nuevo**: ruta bajo `/{current_team}/...` con `EnsureTeamMembership` + `$this->authorize(...)` con una Policy que compruebe el team, no sólo el permiso. Si el modelo bindeado por ruta no lleva el trait, la Policy es la ÚNICA barrera: tiene que comparar `team_id` explícitamente.
-7. **Caché / claves KV / locks / nombres de archivo en storage**: la clave incluye el `team_id`. Una clave de caché compartida entre tenants es una fuga igual de grave que una query mal filtrada.
-8. **Tests (bloqueante, sin esto la feature no está hecha):** además del `TenantIsolationTest` de scope del dominio, **cada feature nueva aporta un test de fuga sobre su propio camino real**, con el trait [`Tests\Concerns\AssertsTenantIsolation`](tests/Concerns/AssertsTenantIsolation.php): `$this->assertNoTenantLeak($teamB, fn () => ...)` ejecuta la Action/Job/endpoint dentro de B y falla si tocó datos de A (escritura) o devolvió modelos ajenos (lectura). Plantilla: [`NormalizeEventJobTenantLeakTest`](tests/Feature/Domains/Normalization/NormalizeEventJobTenantLeakTest.php). Un test que sólo hace `actingAs($userA); assertSame(2, Model::count())` prueba el scope global de Laravel, no tu feature — no cuenta.
-9. **Factories**: un modelo hijo se crea en el MISMO tenant que su padre. Una factory que le pone un `Team::factory()` propio a cada relación fabrica datos que en producción no existen y enmascara fallos de aislamiento (pasó con `NormalizedEventFactory`, que creaba el `RawEvent` en otro team).
+| Ruta | Qué hay |
+|---|---|
+| `app/Domains/{Dominio}/` | todo el código de negocio (17 dominios), un `ServiceProvider` por dominio en `bootstrap/providers.php` |
+| `app/Support/TenantContext.php`, `app/Concerns/BelongsToTenant.php` | el aislamiento por tenant |
+| `app/Contracts/` → `app/Infrastructure/` | contratos cross-domain y sus implementaciones |
+| `routes/api.php` · `routes/web.php` · `routes/channels.php` · `routes/console.php` | rutas, canales de broadcast, scheduler |
+| `config/horizon.php` | colas y supervisores |
+| `resources/js/pages` · `resources/js/components/{ui,sam}` | páginas Inertia y componentes |
+| `tests/Feature/Domains/{Dominio}` · `tests/Concerns/AssertsTenantIsolation.php` | tests por dominio y helper de fuga |
+| `specs/` · `docs/SAM/` · `docs/ROADMAP.md` | specs, docs de producto, roadmap vivo |
 
-**Al revisar o cerrar un PR, si algún punto aplicable del checklist no está cubierto, el PR no se cierra.** Ante la duda entre filtrar de más o de menos: filtrar de más.
+## Invariantes de negocio (no negociables)
 
----
+1. **Aislamiento de tenant.** Una fuga cross-tenant es el peor bug posible. Ninguna feature está terminada sin scope de tenant en tabla, modelo, queries, jobs, endpoints, caché y tests. Checklist completo y los 4 patrones de `TenantContext`: [`app/CLAUDE.md`](app/CLAUDE.md). Ante la duda, filtrar de más.
+2. **Uso facturable** sólo vía `App\Domains\Tenancy\Actions\RecordUsageEvent` con `event_key` idempotente. Cobro por **tracto-día**: sólo se sondea, evalúa y cobra lo `monitored` (`monitoring_state`); el tope contratado es suave (se audita y se cobra el extra). Sin planes ni trial (`plans` = plantillas de topes). Detalle en `config/billing.php`, `ResolveBillingTerms`, `AssetDayPricing`.
+3. **Cobro por transferencia.** Stripe/Cashier retirados: no iniciar trabajo de Stripe.
+4. **Webhooks:** el tenant se resuelve desde `WebhookEndpoint` en DB (nunca del payload) y la firma se valida antes de ingerir.
+5. **Pipeline:** emergencias (pánico, colisión, vuelco) abren incidente sin esperar IA ni decisiones. Las categorías de `ai.skip_evaluation_categories` (`safety`, `maintenance`) no se evalúan con IA y, por tanto, no generan decisión ni incidente.
 
-## 3. Estado de implementación
+## Convenciones no obvias
 
-Specs 01–16 e infra I1/I2/I3 implementados. Para el estado real, mira el código (`app/Domains/`,
-`tests/Feature/Domains/`) y el git log — **manda el código**.
+- Jobs en colas con nombre por dominio. Supervisores: `high` = ingestion/normalization/decisions/incidents · `medium` = context/ai-evaluation/automation/notifications/billing · `long` = sync · `telematics` · `realtime` = broadcasts · `low` = default/audit/analytics.
+- Broadcasts tenant-scoped en `private-accounts.{teamId}`; todo `ShouldBroadcast` usa el trait `QueuesRealtimeBroadcast` + `ShouldRescue` (los del feed de telemática: `ShouldBroadcastNow` + `ShouldRescue`).
+- `TenantConfigServiceProvider` bindea TODOS los contratos `TenantConfig`; los dominios consumidores no bindean sus propios `Null...Resolver`.
+- `Integrations` rompe dependencias circulares con `Null*` bindeados vía `singletonIf`; los `NullImplementations/` son para tests o contratos sin implementación real.
 
-**Únicos pendientes conocidos:** Policies de Tenancy (Subscription/TenantBranding/TenantFeature), a crear
-junto con `BillingController`/`BrandingController` (spec 01 §9, aún no existen). El contrato `KeyValueStore`
-es YAGNI confirmado: Laravel `Cache::` ya abstrae Valkey.
+## Qué NO hacer
 
-**Roadmap vivo de next steps (frontend + backend): [`docs/ROADMAP.md`](docs/ROADMAP.md).**
+- Directorios nuevos en `app/`, cambios en `composer.json`/`package.json`, o docs/README nuevos, sin aprobación.
+- Reemplazar `User`, `Team`, `Membership`, `TeamInvitation` (extenderlos).
+- Mockear la DB en tests de feature.
+- Borrar o debilitar tests existentes.
 
----
+## Git (reglas duras)
 
-## 4. Flujo de trabajo en este repo
+- Commits sólo con la identidad del usuario: **sin** `Co-Authored-By`, `--author`, `--trailer` ni banners "Generated with Claude Code". Formato `type: subject en minúsculas` (`feat|fix|chore|refactor|ci|docs|test|perf|style`), un cambio atómico por commit.
+- Ramas desde `main` actualizada con prefijo `feat/ fix/ refactor/ chore/ ci/ docs/ test/` (excepción: `claude/...`). Nunca push a `main`: todo entra por PR con CI verde (`Lint & Format` + `PHPUnit`) y la rama al día con `main`.
+- Merge (`gh pr merge --merge`) sólo con autorización del usuario (caso a caso o amplia vigente). Tras cada merge: `git -C <checkout-principal> checkout main && git pull --ff-only origin main`. El hook `post-merge` poda solo los worktrees ya mergeados de `.claude/worktrees/`; reporta los que tienen trabajo sin mergear — revísalos.
+- Al empezar una tarea, reporta (no borres) trabajo huérfano: worktrees con cambios y ramas sin mergear (`git branch --no-merged main`, también remotas; si su PR está `CLOSED`, suele ser abandono intencional).
+- Tras `git push`, esperar CI (`gh pr checks --watch`) y arreglar lo rojo con un commit nuevo.
+- Nunca, salvo petición explícita en el turno: `--force`/`--force-with-lease`, `--no-verify`, `--amend` de lo publicado, `reset --hard`, `checkout .`, `clean -fd`, `branch -D`, `rebase -i`, `gh release`, bypass del ruleset.
+- Si falla un hook, arreglar la causa y hacer un commit nuevo.
 
-### Crear un dominio nuevo (specs 08+)
+## Al compactar
 
-Seguir literalmente `specs/00-MASTER-GUIDE.md` §9 (22 pasos). Resumen operativo:
-
-```bash
-mkdir -p app/Domains/{Nombre}/{Actions,Data,Enums,Events,Jobs,Listeners,Models,Policies,Queries,Services,Support}
-php artisan make:migration create_xxx_table --no-interaction
-php artisan make:model --no-interaction     # luego mover a app/Domains/{Nombre}/Models
-php artisan make:factory --no-interaction
-php artisan make:job --no-interaction       # luego mover a app/Domains/{Nombre}/Jobs
-php artisan make:event --no-interaction
-php artisan make:test --phpunit --no-interaction {Nombre}Test
-```
-
-Después: crear `{Nombre}ServiceProvider`, registrarlo en [`bootstrap/providers.php`](bootstrap/providers.php), cablear `RecordUsageEvent` en todos los puntos facturables listados en la §12 del spec, y escribir tests que cubran aislamiento de tenant e idempotencia.
-
-### Comandos que Claude Code debe correr
-
-```bash
-# Formato (obligatorio tras cambios PHP)
-vendor/bin/pint --dirty --format agent
-
-# Tests: filtrar siempre
-php artisan test --compact --filter=NombreDelTest
-php artisan test --compact tests/Feature/Domains/{Dominio}
-
-# Suite completa (antes de dar por cerrado un módulo)
-php artisan test --compact
-
-# Dev stack (Sail)
-composer run dev   # arranca serve + queue + pail + vite
-./vendor/bin/sail up -d pgsql valkey rustfs soketi mailpit
-
-# Migraciones
-php artisan migrate
-php artisan migrate:fresh --seed    # resetea + ejecuta DatabaseSeeder/AccessSeeder/AssetTypeSeeder/NormalizationSeeder
-
-# Frontend
-npm run dev        # vite watch
-npm run build      # producción
-npm run types:check && npm run lint:check && npm run format:check
-
-# Wayfinder (tipados frontend)
-php artisan wayfinder:generate    # regenerar tras cambiar rutas/controladores
-```
-
-### Bootstrap de un worktree nuevo (OBLIGATORIO antes de correr gates)
-
-Un worktree recién creado bajo `.claude/worktrees/<slug>` **no es ejecutable tal cual** (`vendor/`, `.env`
-y los tipados de Wayfinder están gitignored). Procedimiento completo, gotchas y cómo servir un preview
-local sin Docker: **skill `worktree-bootstrap`** (`.claude/skills/worktree-bootstrap/SKILL.md`) — invocarla
-ANTES de tipos/lint/build/tests/preview en un worktree nuevo.
-
-### Tests — qué exigir siempre
-
-- Un test por cada Action y cada Job crítico.
-- Un `TenantIsolationTest` por dominio que verifique que `BelongsToTenant` scope aísla queries entre teams distintos. **Eso es el piso, no el techo**: además, cada feature aporta su propio test de fuga cross-tenant sobre su camino real (Action/Job/endpoint), según §2.1 punto 8.
-- Tests de idempotencia en cualquier cosa que reciba `event_key` / signature / webhook (duplicates no deben crear side-effects).
-- Usar factories; nunca `Model::create()` manual en tests.
-- Para Storage: `Storage::fake('rustfs')`. Para eventos: `Event::fake([...Broadcast::class])`.
-
----
-
-## 5. Puntos de integración críticos
-
-- **Webhook público:** `POST /webhooks/{endpoint_url}` con `throttle:webhooks` (300/min por IP). El tenant se resuelve desde `WebhookEndpoint` en DB; firma vía `ValidateWebhookSignature`.
-- **Broadcasting:** canales privados en [`routes/channels.php`](routes/channels.php) — `accounts.{teamId}`, `users.{userId}`, `jobs.{jobId}`, presencia `incidents.{incidentId}`. Todo event broadcast debe declarar `broadcastOn()` con `private-accounts.{teamId}` cuando sea tenant-scoped. Existen `AssetLocationUpdatedBroadcast`, `AssetStatusChangedBroadcast`, `UsageUpdatedBroadcast`, `AIEvaluationCompletedBroadcast`, `DecisionMadeBroadcast`, `ActionExecutedBroadcast`/`ActionFailedBroadcast`.
-- **Horizon supervisors** ([`config/horizon.php`](config/horizon.php)): `supervisor-high` = ingestion/normalization/decisions/incidents · `-medium` = context/ai-evaluation/automation/notifications/billing/sync · `-low` = default/audit/analytics · `-telematics` = telematics (feed en vivo) · `-realtime` = broadcasts. Todo evento `ShouldBroadcast` usa el trait `App\Support\Broadcasting\QueuesRealtimeBroadcast` (cola `broadcasts` + after-commit) e implementa `ShouldRescue`; los que ya corren dentro de un job de alta frecuencia (feed) son `ShouldBroadcastNow` + `ShouldRescue`.
-- **Bindings condicionales:** `IngestionServiceProvider` decide `RustFsObjectStorage` vs `NullObjectStorage` según `config('filesystems.disks.rustfs')`. Los `NullImplementations/` existen para tests y para contratos cuyo dueño aún no shippea una implementación DB-backed — úsalos cuando no haya alternativa real.
-- **TenantConfig como dueño de resolvers:** `TenantConfigServiceProvider` bindea TODOS los `TenantConfig` contracts. Los dominios consumidores (Decisions/Automation/Notifications/Analytics) no deben bindear sus propios `Null...Resolver` — TenantConfig es la única fuente de verdad.
-- **Scheduler:** `AggregateUsageJob` diario 02:00 ([`routes/console.php`](routes/console.php)) y `assets:record-usage-meters` diario (`AssetsServiceProvider`). Specs 14/15 añaden tareas adicionales (audit retention, analytics snapshots).
-
----
-
-## 6. Qué NO hacer
-
-- No crear directorios nuevos a nivel `app/` sin aprobación (regla AGENTS.md).
-- No cambiar dependencias de `composer.json` / `package.json` sin aprobación.
-- No reemplazar modelos existentes (`User`, `Team`, `Membership`, `TeamInvitation`) — extender.
-- No usar Redis Cluster — Horizon no lo soporta y Valkey corre standalone.
-- No inventar un modelo `Tenant`: `Team` = tenant.
-- **No shipear una feature sin scope de tenant** (tabla, modelo, queries, jobs, endpoints, caché y tests) — checklist completo en §2.1. No confiar en que el scope global de `BelongsToTenant` cubre código que corre en colas: ahí no hay usuario autenticado y el scope no filtra nada.
-- No usar `withoutGlobalScopes()` sin un `where('team_id', ...)` explícito en la misma cadena de query.
-- No añadir `axios` de forma manual al frontend (Inertia v3 lo removió); usar `useHttp` / `useForm`.
-- No mockear la base de datos en tests de feature — usar `RefreshDatabase` + factories reales.
-- No crear docs en `docs/` ni `README` nuevos sin que el usuario lo pida explícitamente.
-- No correr `vendor/bin/pint --test` — correr `vendor/bin/pint --dirty --format agent`.
-
-### 6.1 Git, GitHub y commits (reglas duras)
-
-- **Todos los commits se firman SOLO con la identidad del usuario** (`user.name = "Victor Jesus Bravo de la Peña"`, `user.email = "vicbravodev@gmail.com"`). **Nunca** añadir `Co-Authored-By: Claude ...` ni ningún otro coautor automático. No usar `--author`, `--trailer`, ni banners tipo "Generated with Claude Code" en el mensaje del commit. Todo lo que llegue al remoto debe salir a nombre del usuario.
-- **Claude PUEDE**: crear commits locales, ramas locales, `git add`, `git status` / `git diff` / `git log`, `git push` a la rama de la PR (no directo a `main`), `gh pr create` (cuerpo del PR redactado por Claude pero autoría de los commits = usuario), `gh pr comment`, `gh pr checks`, `gh run view`, y en general cualquier acción de publicación sobre ramas de trabajo.
-- **Claude PUEDE mergear PRs a `main` (`gh pr merge`), pero SIEMPRE pidiendo autorización explícita primero**: antes de mergear, Claude lo anuncia y espera el OK del usuario en ese turno. Con la autorización dada, Claude ejecuta el merge (prefiere `--merge`; usa `--admin` sólo si el usuario lo pide). Si la rama no está al día con `main`, Claude la actualiza con un merge de `main` dentro de la rama (sin `--force`), reespera CI verde, y entonces mergea. El usuario puede otorgar una autorización amplia ("mergea tú los PRs cuando CI esté verde") que aplica hasta que la revoque; sin esa autorización amplia, se pide caso por caso. **Tras CADA merge a `main` (autorizado caso a caso o por autorización amplia), Claude SIEMPRE actualiza el `main` local del checkout principal acto seguido**: `git -C <checkout-principal> checkout main && git pull --ff-only origin main`. No se da por cerrado el merge sin dejar el `main` local sincronizado con el remoto.
-- **Claude NUNCA hace**:
-  - `git push` directo a `main` / `master` (directo o por `push --force`). Los cambios entran a `main` vía PR mergeado, no por push directo.
-  - `gh pr merge` SIN autorización del usuario (ver punto anterior). El merge requiere OK explícito; sin él, no se mergea.
-  - `gh release create` / `gh release publish`.
-  - `git push --force` o `--force-with-lease` sobre cualquier rama sin petición explícita del usuario en ese turno.
-- **Ver CI es obligatorio antes de dar por cerrada una tarea con PR**: después de `git push` Claude espera al workflow (`gh run watch` / `gh pr checks --watch`) y reporta el resultado. Si CI falla por un cambio de Claude, Claude lo arregla y empuja un commit nuevo; no se da por terminada la tarea con CI rojo salvo que el usuario pida explícitamente ignorarlo.
-- **Limpieza de worktrees post-merge es obligatoria**: una vez que un PR creado por Claude está mergeado a `main` (verificable con `gh pr view <num> --json mergedAt,state`), Claude DEBE eliminar el worktree asociado y su rama local desde el repo principal: `git worktree remove .claude/worktrees/<slug>` seguido de `git branch -d claude/<slug>`. Si Claude está corriendo dentro del worktree que se acaba de mergear, no puede borrarlo desde dentro — debe avisarlo y dejar el comando preparado para que el usuario lo ejecute (o esperar al siguiente turno fuera del worktree). Al iniciar una tarea nueva, Claude revisa con `git worktree list` y poda los que correspondan a PRs ya mergeados. No dejar worktrees mergeados acumulándose: cada uno consume cientos de MB y contamina `git branch -a`. Excepción al uso prohibido de `git branch -D`: si la rama está mergeada (`git branch --merged main` la lista) puede usar `git branch -d` (lowercase, seguro); sólo si git rechaza con `-d` por sospecha de pérdida y el usuario lo autoriza explícitamente, usar `-D`.
-- **Auditar worktrees NO mergeados es igual de obligatorio**: la regla anterior sólo poda lo que ya entró. El fallo simétrico —y el caro— es el trabajo que se queda vivo y nunca llega a `main`. Al iniciar una tarea nueva, además de podar, Claude revisa si hay trabajo huérfano y lo reporta al usuario en vez de dejarlo pudrirse:
-  - `git -C <worktree> status --porcelain` en cada worktree → cambios sin commitear.
-  - `git branch --no-merged main` y `git branch -r --no-merged origin/main` → ramas con commits que nunca se mergearon, **incluidas las que no tienen worktree** (no salen en `git worktree list`, así que son invisibles si sólo se mira ahí).
-  - Una rama sin mergear cuyo PR está `CLOSED` suele estar abandonada a propósito: comprobarlo con `gh pr list --state all --head <rama>` antes de proponer nada.
-  Precedente: el 2026-08-09 aparecieron ~3.000 líneas en limbo (idempotencia de `DispatchNotification` sin commitear, contactabilidad E.164/OTP en una rama sin PR, y las primitivas de UI del Track A en una rama huérfana sin worktree), algunas de semanas atrás. Nada de eso era visible desde `git worktree list`.
-- **Excepción para tareas demostrativas**: si el usuario pide explícitamente en el turno actual publicar código que no pasa thresholds o checks (p.ej. para ver cómo se ve el reporte en GitHub), Claude puede hacer `git push` y `gh pr create` aunque el CI vaya a fallar, pero debe avisarlo en el mismo mensaje.
-- **Claude NO usa** `--no-verify`, `--no-gpg-sign`, `git reset --hard`, `git checkout .`, `git clean -fd`, `git branch -D`, `git rebase -i`, ni amends a commits ya publicados, salvo petición explícita del usuario en ese turno.
-- Si un hook de pre-commit o pre-push falla, Claude arregla la causa raíz y crea un commit NUEVO; no repite el commit con `--amend` ni salta el hook (salvo `SKIP_COVERAGE=1` en pushes demostrativos si el usuario lo autoriza).
-
-### 6.2 Flujo de PRs y calidad
-
-El repo vive en GitHub bajo `vicbravodev/sam-global-systems`. La rama `main` está protegida por un **ruleset activo** — no se puede `push` directo, todo entra por PR con CI en verde. Las reglas de *quién* puede pushear/crear/mergear PRs son las de §6.1 (manda §6.1 ante cualquier duda); esta sección cubre el naming, el gate de calidad y el ruleset.
-
-**Naming de ramas** — un slug por rama, siempre desde `main` actualizada:
-
-| Tipo de cambio | Prefijo | Ejemplos |
-|---|---|---|
-| Feature (spec nuevo o endpoint) | `feat/` | `feat/spec-08-context`, `feat/incidents-api` |
-| Bug fix | `fix/` | `fix/driver-policy-viewany`, `fix/tenant-isolation-leak` |
-| Refactor sin cambio de comportamiento | `refactor/` | `refactor/extract-rate-limiter` |
-| Chore / housekeeping | `chore/` | `chore/bump-pint`, `chore/drop-dead-code` |
-| Infra / pipelines | `ci/` | `ci/cache-node-modules`, `ci/add-coverage` |
-| Docs y specs | `docs/` | `docs/update-spec-05` |
-| Tests-only | `test/` | `test/ingestion-idempotency` |
-
-No usar nombres genéricos (`updates`, `patch`, `temp`). Una rama = un cambio cohesivo. (Las ramas autogeneradas `claude/...` y la rutina `claude/night-roadmap` son la excepción operativa.)
-
-**Formato de commits** (conventional-ish, como el historial): `type: subject corto en minúsculas`, cuerpo opcional que explica el *por qué* y referencia specs tocados (`spec 05 §10`). `type` ∈ `feat | fix | chore | refactor | ci | docs | test | perf | style`. Un commit = un cambio atómico. Autoría e identidad: ver §6.1 (sin `Co-Authored-By`, sin `--amend`/`--no-verify`).
-
-**Gate local antes de push (OBLIGATORIO)** — dejar los 4 en verde; si local pasa, CI pasa:
-
-```bash
-vendor/bin/pint --dirty --format agent              # PHP style — solo archivos modificados
-php artisan test --compact                          # Suite PHPUnit completa
-npm run lint:check && npm run format:check          # ESLint + Prettier
-npm run types:check                                 # tsc --noEmit
-```
-
-Atajo equivalente: `composer ci:check` (ver [`composer.json`](composer.json) scripts). **Nota tipos generados**: `npm run types:check` depende de `resources/js/{routes,actions,wayfinder}` generados por el plugin Vite de Wayfinder; si faltan (repo recién clonado o tras `php artisan route:clear`), correr `npm run build` una vez antes del type-check.
-
-**Ruleset activo en `main`** — lo que la PR debe satisfacer antes de que GitHub permita el merge:
-
-1. **2 status checks verdes**: `Lint & Format` y `PHPUnit` (jobs de [`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
-2. **Rama del PR actualizada con `main`** (`strict` policy — si `main` avanzó, mergear `main` dentro de la rama, sin `--force`; ver §6.1).
-3. **Hilos de conversación del review resueltos.**
-4. **No force-push ni deletion de `main`** (bloqueados siempre).
-5. **0 aprobaciones requeridas** (solo-dev), pero se pueden pedir si participa alguien más.
-6. **Bypass**: solo el owner (`vicbravodev`). Claude NUNCA hace bypass ni lo sugiere.
-
----
-
-## 7. Archivos de referencia rápida
-
-| Propósito | Archivo |
-|-----------|---------|
-| Reglas Laravel Boost (autoritativo) | [`AGENTS.md`](AGENTS.md) |
-| Arquitectura, convenciones, orden de specs | [`specs/00-MASTER-GUIDE.md`](specs/00-MASTER-GUIDE.md) |
-| Specs por módulo (negocio) | [`specs/01-tenancy.md`](specs/01-tenancy.md) … [`specs/16-tenant-config.md`](specs/16-tenant-config.md) |
-| Specs de infraestructura | [`specs/I1-storage-infrastructure.md`](specs/I1-storage-infrastructure.md), [`I2`](specs/I2-realtime-broadcasting.md), [`I3`](specs/I3-keyvalue-caching.md) |
-| Docs de producto en español | [`docs/SAM/`](docs/SAM/) |
-| Trait tenant-scope | [`app/Concerns/BelongsToTenant.php`](app/Concerns/BelongsToTenant.php) |
-| Helper `currentTeam()` | [`app/Support/helpers.php`](app/Support/helpers.php) |
-| Providers de dominios registrados | [`bootstrap/providers.php`](bootstrap/providers.php) |
-| Configuración de colas | [`config/horizon.php`](config/horizon.php) |
-| Rutas API tenant-scoped | [`routes/api.php`](routes/api.php) |
-| Canales broadcasting | [`routes/channels.php`](routes/channels.php) |
-| Docker services | [`compose.yaml`](compose.yaml) |
-
----
-
-## 8. Rutina recurrente (`claude/night-roadmap`)
-
-Reglas para el agente programado (cloud) que corre en runs recurrentes (~cada 2 h) trabajando el [`ROADMAP.md`](ROADMAP.md) de la raíz (cola de tareas de la rutina — NO confundir con [`docs/ROADMAP.md`](docs/ROADMAP.md), que es el roadmap de producto y sigue mandando como fuente de prioridades). El prompt maestro vive en [`ROUTINE_PROMPT.md`](ROUTINE_PROMPT.md); el entorno se prepara con [`.claude/setup.sh`](.claude/setup.sh).
-
-Comandos y stack: ver §1 (stack) y §4 (comandos canónicos) — la rutina no usa comandos distintos.
-Excepción: el gate de cierre de estilo es `vendor/bin/pint --test` (solo verificación; para arreglar,
-`vendor/bin/pint --dirty --format agent`). Cobertura: `php artisan test --coverage-clover=coverage.xml
---compact && php scripts/check-coverage.php coverage.xml --mode=local` (requiere pcov/xdebug; si no hay
-driver, reportarlo y seguir — CI la exige igual). **No existe `phpstan analyse` en este repo.**
-
-### 8.3 Branch policy (dura)
-
-- Trabajar **única y exclusivamente** en la rama `claude/night-roadmap` (retomarla de `origin/claude/night-roadmap` si existe; si no, crearla desde `main`).
-- **Candado anti-concurrencia entre runs:** al arrancar, si el último commit remoto de `claude/night-roadmap` tiene <45 min y NO es un commit `chore(night): cierre ...`, otro run sigue activo → terminar sin tocar nada. Cada run cierra SIEMPRE con un commit `chore(night): cierre de run {YYYY-MM-DD HH:mm}`.
-- **NUNCA** push a `main`/`master` ni a ramas de producción. Nunca `--force`. Aplican todas las reglas de §6.1.
-- **UN solo PR abierto a la vez** de `claude/night-roadmap` → `main`; los runs siguientes lo actualizan con pushes + comentario de resumen. No mergearlo (el merge siempre lo autoriza el usuario, §6.1).
-- Commits pequeños por tarea, firmados solo con la identidad del usuario (§6.1: sin `Co-Authored-By`, sin banners).
-
-### 8.4 Migraciones y datos (dura)
-
-- Migraciones **additive-only**: solo `create table` / `add column` / `add index`. Prohibido `dropColumn`, `dropTable`, `renameColumn`, cambios de tipo destructivos, y `DELETE`/`UPDATE` masivos de datos dentro de migraciones.
-- Prohibido `migrate:fresh`, `migrate:reset`, `db:wipe` fuera del sqlite local de la rutina / entorno de tests.
-- Toda tabla tenant-scoped nueva cumple §2 (`team_id` + `BelongsToTenant`).
-
-### 8.5 Regla Inertia/tests (dura)
-
-- Cada página Inertia nueva o modificada → feature test con `$response->assertInertia(fn (Inertia\Testing\AssertableInertia $page) => $page->component('...')->has(...))`.
-- Cada endpoint nuevo (web o API) → feature test (happy path + authz/policy + aislamiento de tenant cuando aplique).
-- Tests en **PHPUnit 12** (clases en `tests/Feature/...`, siguiendo el estilo de los ~750 tests existentes). **No escribir tests Pest** — Pest no está instalado.
-- Factories siempre; nunca `Model::create()` manual en tests (§4).
-
-### 8.6 EXIT CRITERIA de un run
-
-Un run termina solo cuando: **(1)** no quedan tareas `- [ ]` en `ROADMAP.md` (todas `- [x]` completadas o `- [!]` bloqueadas y documentadas), **(2)** `php artisan test --compact` completamente verde, **(3)** `vendor/bin/pint --test` limpio, **(4)** `npm run types:check && npm run lint:check && npm run format:check` verdes, **(5)** `npm run build` exitoso — o cuando se alcanza un límite anti-loop de §8.7 o el presupuesto de la sesión. Todo cierre (incluso sin avance) actualiza `MORNING-REPORT.md` y termina con el commit de cierre del §8.3; el siguiente run retoma.
-
-### 8.7 Límites anti-loop (duros)
-
-- Máximo **10 tareas auto-generadas por día calendario** (FASE B), sumando TODOS los runs del día — contar las tareas de las secciones `## Iteración v{N} — auto-generada {fecha}` con fecha de hoy antes de generar más.
-- Máximo hasta la sección **"Iteración v5"** en `ROADMAP.md`. Si v5 se completa, la rutina cierra con PR y reporte; NO crear v6.
-- **Respetar "Descartadas (won't fix)"**: nunca re-generar una tarea igual o equivalente a una descartada, ni reabrir una `- [!]` bloqueada sin decisión del usuario.
-- Una tarea que falla 2 intentos se marca `- [!]`, se mueve a "Bloqueadas / requieren decisión" con explicación, y se continúa con la siguiente; nunca quedarse iterando la misma tarea.
-- Prohibido a la rutina: tocar dependencias (`composer.json`/`package.json`), crear directorios nuevos a nivel `app/`, borrar o debilitar tests existentes para "poner verde", bajar umbrales de cobertura (`scripts/coverage-tiers.php`), o editar este CLAUDE.md / `ROUTINE_PROMPT.md`.
+Conserva siempre la lista de archivos modificados y los comandos de test usados (con su resultado).

@@ -4,7 +4,7 @@ Eres el agente recurrente de SAM Global Systems (Laravel 13 + Inertia v3 + React
 
 ## Setup (antes de todo)
 
-1. Lee `CLAUDE.md` completo — la §8 (rutina recurrente) es tu contrato; la §6.1 (reglas git) es inviolable. Lee también `AGENTS.md` y, antes de tocar un dominio, su spec en `specs/`.
+1. Lee `CLAUDE.md` completo — el contrato de la rutina está al final de ESTE archivo; la §6.1 (reglas git) es inviolable. Lee también `AGENTS.md` y, antes de tocar un dominio, su spec en `specs/`.
 2. **Candado anti-concurrencia (obligatorio, antes de cualquier otra cosa):** corre `git fetch origin claude/night-roadmap`. Si la rama remota existe, mira su último commit (`git log -1 --format='%ct %s' origin/claude/night-roadmap`). Si ese commit tiene **menos de 45 minutos** de antigüedad Y su mensaje NO empieza con `chore(night): cierre`, otro run sigue activo: **termina inmediatamente sin tocar nada** (sin commits, sin push, sin PR, sin comentarios). Si el commit es un `chore(night): cierre ...` o tiene ≥45 minutos, continúa.
 3. Crea o retoma la rama `claude/night-roadmap` desde el remoto (si existe, pártela de `origin/claude/night-roadmap`; si no, desde `main`). JAMÁS trabajes en `main` ni hagas push a `main`. Nunca `--force`.
 4. Corre `bash .claude/setup.sh` (composer install, .env sqlite, migraciones, npm ci, build). Si el setup falla, arregla la causa (sin tocar dependencias) o aborta documentándolo en `MORNING-REPORT.md`.
@@ -53,3 +53,50 @@ Un run termina cuando: no quedan `- [ ]` en `ROADMAP.md` Y la suite completa, `v
 2. Commitea todo lo pendiente, y como **ÚLTIMO commit del run** (siempre, aunque solo cambie el reporte) uno con mensaje exacto `chore(night): cierre de run {YYYY-MM-DD HH:mm}` que incluya `MORNING-REPORT.md` y el `ROADMAP.md` actualizado. Ese mensaje es el candado que le dice al siguiente run que ya terminaste — no lo omitas nunca.
 3. Push de `claude/night-roadmap`. Si NO existe un PR abierto de esta rama hacia `main`, abre **UNO** (título `chore(night): roadmap continuo {fecha}`, cuerpo = resumen del último run). Si ya existe, NO abras otro: el push lo actualiza; añade un comentario al PR con el resumen del run.
 4. NUNCA merges el PR, nunca push a `main`, nunca `gh release`. El merge lo decide el humano.
+
+---
+
+# Contrato de la rutina (movido desde CLAUDE.md §8 el 2026-09-28)
+
+> La rutina está inactiva desde 2026-06-10. Este bloque era la §8 de CLAUDE.md; se movió aquí para no cargarlo en cada sesión interactiva. Las referencias a "§6.1" apuntan a CLAUDE.md.
+
+Reglas para el agente programado (cloud) que corre en runs recurrentes (~cada 2 h) trabajando el [`ROADMAP.md`](ROADMAP.md) de la raíz (cola de tareas de la rutina — NO confundir con [`docs/ROADMAP.md`](docs/ROADMAP.md), que es el roadmap de producto y sigue mandando como fuente de prioridades). El prompt maestro vive en [`ROUTINE_PROMPT.md`](ROUTINE_PROMPT.md); el entorno se prepara con [`.claude/setup.sh`](.claude/setup.sh).
+
+Comandos y stack: ver §1 (stack) y §4 (comandos canónicos) — la rutina no usa comandos distintos.
+Excepción: el gate de cierre de estilo es `vendor/bin/pint --test` (solo verificación; para arreglar,
+`vendor/bin/pint --dirty --format agent`). Cobertura: `php artisan test --coverage-clover=coverage.xml
+--compact && php scripts/check-coverage.php coverage.xml --mode=local` (requiere pcov/xdebug; si no hay
+driver, reportarlo y seguir — CI la exige igual). **No existe `phpstan analyse` en este repo.**
+
+### Branch policy (dura)
+
+- Trabajar **única y exclusivamente** en la rama `claude/night-roadmap` (retomarla de `origin/claude/night-roadmap` si existe; si no, crearla desde `main`).
+- **Candado anti-concurrencia entre runs:** al arrancar, si el último commit remoto de `claude/night-roadmap` tiene <45 min y NO es un commit `chore(night): cierre ...`, otro run sigue activo → terminar sin tocar nada. Cada run cierra SIEMPRE con un commit `chore(night): cierre de run {YYYY-MM-DD HH:mm}`.
+- **NUNCA** push a `main`/`master` ni a ramas de producción. Nunca `--force`. Aplican todas las reglas de §6.1.
+- **UN solo PR abierto a la vez** de `claude/night-roadmap` → `main`; los runs siguientes lo actualizan con pushes + comentario de resumen. No mergearlo (el merge siempre lo autoriza el usuario, §6.1).
+- Commits pequeños por tarea, firmados solo con la identidad del usuario (§6.1: sin `Co-Authored-By`, sin banners).
+
+### Migraciones y datos (dura)
+
+- Migraciones **additive-only**: solo `create table` / `add column` / `add index`. Prohibido `dropColumn`, `dropTable`, `renameColumn`, cambios de tipo destructivos, y `DELETE`/`UPDATE` masivos de datos dentro de migraciones.
+- Prohibido `migrate:fresh`, `migrate:reset`, `db:wipe` fuera del sqlite local de la rutina / entorno de tests.
+- Toda tabla tenant-scoped nueva cumple §2 (`team_id` + `BelongsToTenant`).
+
+### Regla Inertia/tests (dura)
+
+- Cada página Inertia nueva o modificada → feature test con `$response->assertInertia(fn (Inertia\Testing\AssertableInertia $page) => $page->component('...')->has(...))`.
+- Cada endpoint nuevo (web o API) → feature test (happy path + authz/policy + aislamiento de tenant cuando aplique).
+- Tests en **PHPUnit 12** (clases en `tests/Feature/...`, siguiendo el estilo de los ~750 tests existentes). **No escribir tests Pest** — Pest no está instalado.
+- Factories siempre; nunca `Model::create()` manual en tests (§4).
+
+### EXIT CRITERIA de un run
+
+Un run termina solo cuando: **(1)** no quedan tareas `- [ ]` en `ROADMAP.md` (todas `- [x]` completadas o `- [!]` bloqueadas y documentadas), **(2)** `php artisan test --compact` completamente verde, **(3)** `vendor/bin/pint --test` limpio, **(4)** `npm run types:check && npm run lint:check && npm run format:check` verdes, **(5)** `npm run build` exitoso — o cuando se alcanza un límite anti-loop (sección "Límites anti-loop") o el presupuesto de la sesión. Todo cierre (incluso sin avance) actualiza `MORNING-REPORT.md` y termina con el commit de cierre de "Branch policy"; el siguiente run retoma.
+
+### Límites anti-loop (duros)
+
+- Máximo **10 tareas auto-generadas por día calendario** (FASE B), sumando TODOS los runs del día — contar las tareas de las secciones `## Iteración v{N} — auto-generada {fecha}` con fecha de hoy antes de generar más.
+- Máximo hasta la sección **"Iteración v5"** en `ROADMAP.md`. Si v5 se completa, la rutina cierra con PR y reporte; NO crear v6.
+- **Respetar "Descartadas (won't fix)"**: nunca re-generar una tarea igual o equivalente a una descartada, ni reabrir una `- [!]` bloqueada sin decisión del usuario.
+- Una tarea que falla 2 intentos se marca `- [!]`, se mueve a "Bloqueadas / requieren decisión" con explicación, y se continúa con la siguiente; nunca quedarse iterando la misma tarea.
+- Prohibido a la rutina: tocar dependencias (`composer.json`/`package.json`), crear directorios nuevos a nivel `app/`, borrar o debilitar tests existentes para "poner verde", bajar umbrales de cobertura (`scripts/coverage-tiers.php`), o editar CLAUDE.md / `ROUTINE_PROMPT.md`.
