@@ -10,6 +10,7 @@ use App\Domains\Integrations\Models\IntegrationProvider;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -166,6 +167,56 @@ class PollAssetLocationsJobTest extends TestCase
 
         $this->assertDatabaseCount('asset_location_snapshots', 1);
         $this->assertSame('2026-09-27T23:06:11+00:00', $asset->fresh()->last_seen_at->toIso8601String());
+    }
+
+    /**
+     * The poll runs every minute, so a parked fleet must cost the same number
+     * of queries whatever its size: batch resolve + one stored-fix lookup, no
+     * per-vehicle reads and no writes.
+     */
+    public function test_a_parked_fleet_costs_a_flat_number_of_queries_whatever_its_size(): void
+    {
+        // One stub for the whole test: Http::fake stacks, and the first match
+        // would keep answering with the previous fleet.
+        $data = [];
+        Http::fake(['api.samsara.com/fleet/vehicles/stats*' => function () use (&$data) {
+            return Http::response(['data' => $data, 'pagination' => ['hasNextPage' => false]], 200);
+        }]);
+
+        $queriesFor = function (int $fleetSize) use (&$data): int {
+            $integration = $this->makeSamsaraIntegration();
+            $data = [];
+
+            foreach (range(1, $fleetSize) as $i) {
+                $this->linkAsset($integration, "{$fleetSize}-{$i}");
+                $data[] = ['id' => "{$fleetSize}-{$i}", 'gps' => ['latitude' => 40.1, 'longitude' => -74.2, 'time' => '2026-09-27T23:06:11Z']];
+            }
+
+            app()->call([new PollAssetLocationsJob($integration), 'handle']);
+
+            // A minute later, like the next tick, so the poll stamp really moves.
+            $this->travel(1)->minutes();
+            DB::flushQueryLog();
+            DB::enableQueryLog();
+            app()->call([new PollAssetLocationsJob($integration), 'handle']);
+            DB::disableQueryLog();
+
+            return count(DB::getQueryLog());
+        };
+
+        $small = $queriesFor(3);
+        $large = $queriesFor(25);
+
+        $this->assertSame($small, $large);
+        $this->assertDatabaseCount('asset_location_snapshots', 28);
+    }
+
+    public function test_a_failed_poll_is_not_retried_so_an_old_fix_never_lands_late(): void
+    {
+        $job = new PollAssetLocationsJob(TenantIntegration::factory()->make());
+
+        $this->assertSame(1, $job->tries);
+        $this->assertGreaterThan(0, $job->uniqueFor);
     }
 
     public function test_it_targets_the_sync_queue(): void
