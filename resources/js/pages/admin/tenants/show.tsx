@@ -21,7 +21,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { formatDate } from '@/lib/format';
+import { formatCurrency, formatDate } from '@/lib/format';
 import { store as impersonateStore } from '@/routes/admin/impersonate';
 import { index as adminTenantsIndex } from '@/routes/admin/tenants';
 
@@ -70,6 +70,8 @@ interface UsageRow {
     consumed: number;
     included: number;
     overage: number;
+    /** Cost-plus meters (Twilio): USD amounts instead of a micro count. */
+    money: { providerCost: number; charged: number } | null;
 }
 
 interface PlanOption {
@@ -867,15 +869,35 @@ export default function AdminTenantShow({
                                             <td className="py-1">
                                                 {row.meter}
                                             </td>
-                                            <td className="py-1 tabular-nums">
-                                                {row.consumed}
-                                            </td>
-                                            <td className="py-1 tabular-nums">
-                                                {row.included}
-                                            </td>
-                                            <td className="py-1 tabular-nums">
-                                                {row.overage}
-                                            </td>
+                                            {row.money ? (
+                                                <td
+                                                    className="py-1 tabular-nums"
+                                                    colSpan={3}
+                                                >
+                                                    Costo Twilio{' '}
+                                                    {formatCurrency(
+                                                        row.money.providerCost,
+                                                        'usd',
+                                                    )}{' '}
+                                                    · cobrado{' '}
+                                                    {formatCurrency(
+                                                        row.money.charged,
+                                                        'usd',
+                                                    )}
+                                                </td>
+                                            ) : (
+                                                <>
+                                                    <td className="py-1 tabular-nums">
+                                                        {row.consumed}
+                                                    </td>
+                                                    <td className="py-1 tabular-nums">
+                                                        {row.included}
+                                                    </td>
+                                                    <td className="py-1 tabular-nums">
+                                                        {row.overage}
+                                                    </td>
+                                                </>
+                                            )}
                                         </tr>
                                     ))}
                                 </tbody>

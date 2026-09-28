@@ -2,11 +2,13 @@
 
 namespace App\Domains\Tenancy\Jobs;
 
+use App\Domains\Tenancy\Enums\BillingModel;
 use App\Domains\Tenancy\Enums\InvoiceStatus;
 use App\Domains\Tenancy\Models\BillingRate;
 use App\Domains\Tenancy\Models\InvoiceSnapshot;
 use App\Domains\Tenancy\Models\Subscription;
 use App\Domains\Tenancy\Models\TenantUsageCounter;
+use App\Domains\Tenancy\Support\CostPlusPricing;
 use App\Models\Team;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -71,6 +73,15 @@ class GenerateInvoiceSnapshotJob implements ShouldQueue
                     ->first();
 
                 $consumed = $counter?->consumed_value ?? 0;
+
+                if ($rate->billing_model === BillingModel::CostPlus) {
+                    $line = $this->costPlusLine($rate, (float) $consumed);
+                    $overageTotal += $line['overage_cost'];
+                    $breakdown[] = $line;
+
+                    continue;
+                }
+
                 $included = $rate->included_quantity;
                 $overage = max(0, $consumed - $included);
                 $overageCost = $overage * (float) $rate->overage_unit_price;
@@ -103,5 +114,31 @@ class GenerateInvoiceSnapshotJob implements ShouldQueue
             'breakdown_json' => $breakdown,
             'generated_at' => now(),
         ]);
+    }
+
+    /**
+     * Cost-plus line (Twilio messaging): the meter holds the provider cost in
+     * micro-USD; the tenant pays cost × (1 + markup / 100), no included quota.
+     *
+     * @return array<string, mixed>
+     */
+    private function costPlusLine(BillingRate $rate, float $consumedMicros): array
+    {
+        $markup = $rate->markup_percent !== null
+            ? (float) $rate->markup_percent
+            : CostPlusPricing::defaultMarkup();
+
+        return [
+            'meter_code' => $rate->usageMeter->code,
+            'meter_name' => $rate->usageMeter->name,
+            'billing_model' => BillingModel::CostPlus->value,
+            'consumed' => $consumedMicros,
+            'included' => 0,
+            'overage' => $consumedMicros,
+            'overage_unit_price' => 0.0,
+            'provider_cost' => CostPlusPricing::providerCost($consumedMicros),
+            'markup_percent' => $markup,
+            'overage_cost' => CostPlusPricing::charged($consumedMicros, $markup),
+        ];
     }
 }

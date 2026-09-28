@@ -14,7 +14,7 @@ class NotificationMeterSeeder extends Seeder
         $meters = [
             'outbound_notifications' => [
                 'name' => 'Outbound Notifications',
-                'description' => 'Number of notification delivery attempts dispatched.',
+                'description' => 'Number of notification deliveries successfully sent.',
             ],
             // Messaging channels bill per message (Twilio fee per channel);
             // codes must match ChannelType::usageMeterCode().
@@ -32,12 +32,21 @@ class NotificationMeterSeeder extends Seeder
             ],
         ];
 
+        // Real Twilio cost of every message/call SAM sends for the tenant
+        // (notifications, OTP, verification calls), in micro-USD. Billed
+        // cost-plus (see PlanSeeder / GenerateInvoiceSnapshotJob).
+        $meters['messaging_cost_micros'] = [
+            'name' => 'Mensajería y llamadas (Twilio)',
+            'description' => 'Costo real de Twilio de los mensajes y llamadas enviados, en micro-USD.',
+            'unit' => 'usd_micros',
+        ];
+
         foreach ($meters as $code => $attributes) {
             UsageMeter::query()->updateOrCreate(
                 ['code' => $code],
                 [
-                    ...$attributes,
                     'unit' => 'count',
+                    ...$attributes,
                     'aggregation_type' => AggregationType::Sum,
                     'is_billable' => true,
                     'reset_period' => ResetPeriod::Monthly,
