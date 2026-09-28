@@ -11,6 +11,7 @@ use App\Domains\Assets\Models\AssetDevice;
 use App\Domains\Assets\Models\AssetLocationSnapshot;
 use App\Domains\Assets\Models\AssetTelemetrySnapshot;
 use App\Domains\Assets\Models\AssetType;
+use App\Domains\Assets\Queries\LatestAssetTelemetry;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Support\IncidentStatusPresenter;
 use App\Domains\Normalization\Models\NormalizedEvent;
@@ -125,8 +126,6 @@ class AssetPageController extends Controller
             ->with([
                 'assetType',
                 'latestLocation',
-                'latestTelemetry',
-                'latestSpeedTelemetry',
                 'currentDriverAssignment.driver',
                 // Only devices currently attached (mirrors AssetDevice::isAttached()).
                 'devices' => fn (HasMany $q) => $q
@@ -145,6 +144,10 @@ class AssetPageController extends Controller
             ->orderBy('id')
             ->paginate(self::PER_PAGE)
             ->withQueryString();
+
+        // latestTelemetry / latestSpeedTelemetry without the one-of-many
+        // full-history scan (see LatestAssetTelemetry).
+        app(LatestAssetTelemetry::class)->loadInto($paginator->items());
 
         return Inertia::render('assets/index', [
             'assets' => collect($paginator->items())
@@ -220,8 +223,6 @@ class AssetPageController extends Controller
         $asset->load([
             'assetType',
             'latestLocation',
-            'latestTelemetry',
-            'latestSpeedTelemetry',
             'provider',
             'sourceIntegration',
             'currentDriverAssignment.driver',
@@ -230,6 +231,7 @@ class AssetPageController extends Controller
                 ->where('status', '!=', DeviceStatus::Detached)
                 ->orderBy('attached_at'),
         ]);
+        app(LatestAssetTelemetry::class)->loadInto([$asset]);
 
         return Inertia::render('assets/show', [
             'asset' => $this->toDetail($asset),
@@ -314,8 +316,9 @@ class AssetPageController extends Controller
                 ->orWhereHas('telemetrySnapshots', fn (Builder $s) => $s
                     ->where('telemetry_type', TelemetryType::Speed)
                     ->where('recorded_at', '>=', $freshSince)))
-            ->with(['latestLocation', 'latestSpeedTelemetry'])
+            ->with('latestLocation')
             ->get()
+            ->tap(fn ($candidates) => app(LatestAssetTelemetry::class)->loadInto($candidates))
             ->filter(function (Asset $asset): bool {
                 $speed = $this->currentSpeed($asset);
 

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Drivers;
 
+use App\Domains\Assets\Queries\LatestAssetTelemetry;
 use App\Domains\Context\Actions\LoadRecentAssetHistory;
 use App\Domains\Drivers\Enums\AssignmentType;
 use App\Domains\Drivers\Enums\ContactType;
@@ -143,7 +144,6 @@ class DriverPageController extends Controller
 
         $driver->load([
             'currentAssignment.asset.latestLocation',
-            'currentAssignment.asset.latestTelemetry',
             'riskProfile',
             'contacts' => fn (HasMany $q) => $q
                 ->orderByDesc('is_primary')
@@ -152,6 +152,8 @@ class DriverPageController extends Controller
                 ->orderByDesc('expires_at')
                 ->orderBy('id'),
         ]);
+        // latestTelemetry without the one-of-many full-history scan.
+        app(LatestAssetTelemetry::class)->loadInto([$driver->currentAssignment?->asset]);
 
         return Inertia::render('drivers/show', [
             'driver' => $this->toDetail($driver),
