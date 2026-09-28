@@ -39,6 +39,15 @@ class AIMeterSeeder extends Seeder
                 'is_billable' => true,
                 'reset_period' => ResetPeriod::Monthly,
             ],
+            [
+                'code' => 'copilot_queries',
+                'name' => 'SAM Copilot Queries',
+                'description' => 'Questions answered by the SAM Copilot assistant.',
+                'unit' => 'query',
+                'aggregation_type' => AggregationType::Sum,
+                'is_billable' => true,
+                'reset_period' => ResetPeriod::Monthly,
+            ],
         ];
 
         foreach ($meters as $meter) {

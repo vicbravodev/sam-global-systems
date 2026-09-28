@@ -65,6 +65,17 @@ export function putJson(
 }
 
 /**
+ * PATCH a JSON body to a session-authenticated route.
+ */
+export function patchJson(
+    url: string,
+    body?: Record<string, unknown>,
+    signal?: AbortSignal,
+): Promise<Response> {
+    return sendJson('PATCH', url, body, signal);
+}
+
+/**
  * DELETE a session-authenticated route, optionally with a JSON body.
  */
 export function deleteJson(

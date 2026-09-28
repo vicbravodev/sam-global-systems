@@ -21,6 +21,20 @@ class UpdateAssetLocationSnapshot
         ?int $heading = null,
         ?string $formattedLocation = null,
     ): AssetLocationSnapshot {
+        // The provider's "latest position" of a parked vehicle is the same fix
+        // poll after poll; storing it again adds rows and fires movement
+        // events for a vehicle that did not move.
+        if ($recordedAt !== null) {
+            $existing = AssetLocationSnapshot::query()
+                ->where('asset_id', $asset->id)
+                ->where('recorded_at', $recordedAt)
+                ->first();
+
+            if ($existing !== null) {
+                return $existing;
+            }
+        }
+
         $recordedAt = $recordedAt ?? now();
 
         $snapshot = AssetLocationSnapshot::create([

@@ -76,6 +76,15 @@ class HandleInertiaRequests extends Middleware
             'adminBadges' => fn () => $user?->isSuperAdmin()
                 ? $this->adminBadges()
                 : null,
+            // SAM Copilot availability for the sidebar entry and the floating
+            // bubble. Resolved through AuthorizeAction so the tenant feature
+            // flag and the subscription state are honoured, not just the role.
+            'copilot' => fn () => $user && ($current = $team())
+                ? [
+                    'enabled' => app(AuthorizeAction::class)->execute($user, 'copilot.use', $current),
+                    'canViewUsage' => app(AuthorizeAction::class)->execute($user, 'copilot.usage.view', $current),
+                ]
+                : null,
             // Tenant-scoped counters for the workspace sidebar badges.
             'navBadges' => fn () => ($current = $team())
                 ? $this->navBadges($current->id)

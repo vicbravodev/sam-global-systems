@@ -13,6 +13,7 @@ declare module '@inertiajs/core' {
             impersonation: Impersonation | null;
             adminBadges: AdminBadges | null;
             navBadges: NavBadges | null;
+            copilot: { enabled: boolean; canViewUsage: boolean } | null;
             [key: string]: unknown;
         };
     }

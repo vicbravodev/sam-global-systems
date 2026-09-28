@@ -2,6 +2,7 @@
 
 namespace Tests\Unit\Infrastructure\AI;
 
+use App\Infrastructure\AI\Agents\CopilotAgent;
 use App\Infrastructure\AI\Agents\EventClassifierAgent;
 use App\Infrastructure\AI\Agents\MediaInspectorAgent;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -75,5 +76,25 @@ class AgentPromptRulesTest extends TestCase
     public function test_inspector_prompt_keeps_rule(string $needle): void
     {
         $this->assertStringContainsString($needle, (string) (new MediaInspectorAgent)->instructions());
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function copilotRules(): array
+    {
+        return [
+            'spanish output' => ['SIEMPRE en español de México'],
+            'grounded on facts only' => ['EXCLUSIVAMENTE los datos de "facts" y "highlights"'],
+            'never invent' => ['Nunca inventes'],
+            'cards already show detail' => ['no repitas listas completas'],
+            'permission denial' => ['falta de permisos'],
+        ];
+    }
+
+    #[DataProvider('copilotRules')]
+    public function test_copilot_prompt_keeps_rule(string $needle): void
+    {
+        $this->assertStringContainsString($needle, (string) (new CopilotAgent)->instructions());
     }
 }

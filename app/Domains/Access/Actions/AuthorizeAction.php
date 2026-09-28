@@ -21,6 +21,7 @@ class AuthorizeAction
         'drivers',
         'ai',
         'automation',
+        'copilot',
     ];
 
     private const TEAM_ROLE_FALLBACK_MAP = [

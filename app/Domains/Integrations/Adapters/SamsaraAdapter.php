@@ -153,6 +153,111 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
     }
 
     /**
+     * Connectivity of every activated gateway, reduced to one entry per asset.
+     *
+     * `GET /gateways` lists every device in the org — vehicle gateways (VG),
+     * asset gateways (AG), dashcams (CM) and asset tags (AT) — each with the
+     * Samsara asset it is installed on and a `connectionStatus` holding
+     * `lastConnected` (the device heartbeat, which keeps ticking while a
+     * vehicle is parked with the engine off) and `healthStatus`. An asset with
+     * several devices is represented by its telematics gateway (VG/AG): a
+     * dashcam or tag only stands in when the asset has no gateway.
+     *
+     * Vehicles with no activated gateway are simply absent from the result.
+     *
+     * @return array<int, array{external_id: string, last_connected_at: string|null, health_status: string|null, serial: string|null, model: string|null}>
+     */
+    public function fetchDeviceConnectivity(TenantIntegration $integration): array
+    {
+        $token = $this->resolveToken($integration);
+
+        if ($token === null) {
+            return [];
+        }
+
+        $byAsset = [];
+        $cursor = null;
+        $pages = 0;
+
+        do {
+            $query = $cursor !== null ? ['after' => $cursor] : [];
+
+            $response = $this->client($token)->get('/gateways', $query);
+
+            if (! $response->successful()) {
+                // A partial listing would make the missing assets look stale;
+                // report nothing so the watchdog keeps its last good reading.
+                return [];
+            }
+
+            foreach ((array) $response->json('data', []) as $gateway) {
+                $mapped = $this->mapGatewayConnectivity((array) $gateway);
+
+                if ($mapped === null) {
+                    continue;
+                }
+
+                $current = $byAsset[$mapped['external_id']] ?? null;
+
+                if ($current === null || $this->gatewayOutranks($mapped, $current)) {
+                    $byAsset[$mapped['external_id']] = $mapped;
+                }
+            }
+
+            $cursor = $response->json('pagination.endCursor');
+            $hasNext = (bool) $response->json('pagination.hasNextPage', false);
+            $pages++;
+        } while ($hasNext && $cursor && $pages < self::MAX_PAGES);
+
+        return array_values($byAsset);
+    }
+
+    /**
+     * @param  array<string, mixed>  $gateway
+     * @return array{external_id: string, last_connected_at: string|null, health_status: string|null, serial: string|null, model: string|null}|null
+     */
+    private function mapGatewayConnectivity(array $gateway): ?array
+    {
+        $assetId = Arr::get($gateway, 'asset.id');
+
+        if (! is_scalar($assetId) || (string) $assetId === '') {
+            return null;
+        }
+
+        $lastConnected = Arr::get($gateway, 'connectionStatus.lastConnected');
+        $health = Arr::get($gateway, 'connectionStatus.healthStatus');
+
+        return [
+            'external_id' => (string) $assetId,
+            'last_connected_at' => is_string($lastConnected) && $lastConnected !== '' ? $lastConnected : null,
+            'health_status' => is_string($health) && $health !== '' ? $health : null,
+            'serial' => is_string($gateway['serial'] ?? null) ? $gateway['serial'] : null,
+            'model' => is_string($gateway['model'] ?? null) ? $gateway['model'] : null,
+        ];
+    }
+
+    /**
+     * Whether `$candidate` should represent its asset instead of `$current`:
+     * a telematics gateway (VG/AG) beats a dashcam or tag, and within the same
+     * rank the most recent heartbeat wins.
+     *
+     * @param  array{last_connected_at: string|null, model: string|null}  $candidate
+     * @param  array{last_connected_at: string|null, model: string|null}  $current
+     */
+    private function gatewayOutranks(array $candidate, array $current): bool
+    {
+        $rank = fn (?string $model): int => $model !== null && preg_match('/^(VG|AG)/', $model) === 1 ? 1 : 0;
+
+        if ($rank($candidate['model']) !== $rank($current['model'])) {
+            return $rank($candidate['model']) > $rank($current['model']);
+        }
+
+        $time = fn (?string $iso): float => $iso !== null ? (float) Carbon::parse($iso)->format('U.u') : 0.0;
+
+        return $time($candidate['last_connected_at']) > $time($current['last_connected_at']);
+    }
+
+    /**
      * Fetch the latest onboard-diagnostic readings for every vehicle.
      *
      * Samsara caps `types` at 3 per request, so the stats we track are fetched

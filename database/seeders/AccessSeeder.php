@@ -60,6 +60,8 @@ class AccessSeeder extends Seeder
         ['code' => 'notifications.manage', 'name' => 'Gestionar notificaciones', 'module' => 'notifications', 'description' => 'Gestionar plantillas y canales de notificación'],
         ['code' => 'automation.view', 'name' => 'Ver automatización', 'module' => 'automation', 'description' => 'Ver flujos de automatización y sus ejecuciones'],
         ['code' => 'automation.manage', 'name' => 'Gestionar automatización', 'module' => 'automation', 'description' => 'Crear, actualizar y eliminar flujos y plantillas de automatización'],
+        ['code' => 'copilot.use', 'name' => 'Usar SAM Copilot', 'module' => 'copilot', 'description' => 'Consultar al asistente de IA sobre unidades, ubicación, media, motor, combustible, pánicos e incidentes'],
+        ['code' => 'copilot.usage.view', 'name' => 'Ver uso de SAM Copilot', 'module' => 'copilot', 'description' => 'Ver consultas, tokens, costo y usuarios del asistente de IA'],
         ['code' => 'automation.execute', 'name' => 'Ejecutar automatización', 'module' => 'automation', 'description' => 'Disparar flujos manualmente y gestionar ejecuciones de acciones individuales'],
     ];
 
@@ -86,6 +88,7 @@ class AccessSeeder extends Seeder
             'decisions.view', 'decisions.override', 'decisions.rules.manage', 'decisions.escalation.manage',
             'notifications.view', 'notifications.send', 'notifications.manage',
             'automation.view', 'automation.manage', 'automation.execute',
+            'copilot.use', 'copilot.usage.view',
         ],
         'supervisor' => [
             'integrations.view', 'integrations.manage',
@@ -102,6 +105,7 @@ class AccessSeeder extends Seeder
             'decisions.view', 'decisions.override', 'decisions.rules.manage', 'decisions.escalation.manage',
             'notifications.view', 'notifications.send',
             'automation.view', 'automation.execute',
+            'copilot.use', 'copilot.usage.view',
         ],
         'monitorista' => [
             'incidents.view', 'incidents.manage', 'incidents.resolve',
@@ -113,6 +117,7 @@ class AccessSeeder extends Seeder
             'notifications.view',
             // Botón de feedback/reevaluación de la IA en el detalle del incidente.
             'ai.analysis.execute',
+            'copilot.use',
         ],
         'analyst' => [
             'reports.view', 'reports.export',
@@ -122,10 +127,12 @@ class AccessSeeder extends Seeder
             'incidents.view',
             'context.view',
             'decisions.view',
+            'copilot.use',
         ],
         'billing_manager' => [
             'tenancy.billing.view', 'tenancy.billing.manage',
             'tenancy.manage',
+            'copilot.usage.view',
         ],
         'viewer' => [
             'tenancy.billing.view',
