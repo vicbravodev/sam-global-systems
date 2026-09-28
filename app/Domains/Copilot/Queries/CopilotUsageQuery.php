@@ -7,6 +7,7 @@ use App\Domains\Copilot\Enums\CopilotMessageRole;
 use App\Domains\Copilot\Models\CopilotMessage;
 use App\Models\User;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Usage analytics of SAM Copilot for one tenant: volume, tokens, cost,
@@ -42,12 +43,13 @@ class CopilotUsageQuery
             ->selectRaw('SUM(CASE WHEN feedback = -1 THEN 1 ELSE 0 END) as negative')
             ->first();
 
-        $activeUsers = CopilotMessage::query()
-            ->where('team_id', $teamId)
-            ->where('role', CopilotMessageRole::User)
-            ->where('created_at', '>=', $from)
+        // Same identity as byUser(): the conversation owner of each metered
+        // assistant turn, so the headline count matches the per-user table.
+        $activeUsers = $base()
+            ->join('copilot_conversations', 'copilot_conversations.id', '=', 'copilot_messages.copilot_conversation_id')
+            ->where('copilot_conversations.team_id', $teamId)
             ->distinct()
-            ->count('user_id');
+            ->count('copilot_conversations.user_id');
 
         $daily = $base()
             ->selectRaw('DATE(created_at) as day')
@@ -89,25 +91,28 @@ class CopilotUsageQuery
 
         $byUser = $this->byUser($teamId, $from);
 
-        $recent = CopilotMessage::query()
-            ->where('team_id', $teamId)
-            ->where('role', CopilotMessageRole::Assistant)
+        // The question of each answer is the latest user turn before it in the
+        // same conversation, resolved in the same query (no per-row lookup).
+        $question = DB::table('copilot_messages as question')
+            ->select('question.content')
+            ->whereColumn('question.copilot_conversation_id', 'copilot_messages.copilot_conversation_id')
+            ->whereColumn('question.id', '<', 'copilot_messages.id')
+            ->where('question.team_id', $teamId)
+            ->where('question.role', CopilotMessageRole::User->value)
+            ->orderByDesc('question.id')
+            ->limit(1);
+
+        $recent = $base()
+            ->select('copilot_messages.*')
+            ->selectSub($question, 'question_content')
             ->with(['conversation.user'])
-            ->orderByDesc('id')
+            ->orderByDesc('copilot_messages.id')
             ->limit(self::RECENT_LIMIT)
             ->get()
-            ->map(function (CopilotMessage $answer) use ($teamId): array {
-                $question = CopilotMessage::query()
-                    ->where('team_id', $teamId)
-                    ->where('copilot_conversation_id', $answer->copilot_conversation_id)
-                    ->where('role', CopilotMessageRole::User)
-                    ->where('id', '<', $answer->id)
-                    ->orderByDesc('id')
-                    ->value('content');
-
+            ->map(function (CopilotMessage $answer): array {
                 return [
                     'id' => (int) $answer->id,
-                    'question' => (string) $question,
+                    'question' => (string) $answer->getAttribute('question_content'),
                     'user' => $answer->conversation?->user?->name,
                     'intent' => $answer->intent?->label(),
                     'channel' => $answer->channel,
