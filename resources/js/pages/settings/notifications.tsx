@@ -22,6 +22,8 @@ interface ChannelOption {
 type Props = {
     preferences?: PreferenceEntry[];
     knownTypes?: string[];
+    /** notification_type → etiqueta humana (NotificationTypeLabels). */
+    typeLabels?: Record<string, string>;
     channelOptions?: ChannelOption[];
     teamName?: string | null;
 };
@@ -35,12 +37,14 @@ function sameSet(a: string[], b: string[]): boolean {
 
 function PreferenceRow({
     type,
+    label,
     initialChannels,
     initialMuted,
     configured,
     channelOptions,
 }: {
     type: string;
+    label: string;
     initialChannels: string[];
     initialMuted: boolean;
     configured: boolean;
@@ -80,8 +84,11 @@ function PreferenceRow({
         <div className="rounded-md border border-border p-4">
             <div className="flex items-center justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-2">
-                    <span className="truncate font-mono text-xs font-medium">
-                        {type}
+                    <span
+                        className="truncate text-sm font-medium text-fg-1"
+                        title={type}
+                    >
+                        {label}
                     </span>
                     {!configured && (
                         <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-3xs text-muted-foreground">
@@ -144,6 +151,7 @@ function PreferenceRow({
 export default function NotificationsSettings({
     preferences = [],
     knownTypes = [],
+    typeLabels = {},
     channelOptions = [],
     teamName = null,
 }: Props) {
@@ -163,8 +171,10 @@ export default function NotificationsSettings({
             ...preferences.map((p) => p.notificationType),
         ]);
 
-        return [...all].sort();
-    }, [knownTypes, preferences]);
+        return [...all].sort((a, b) =>
+            (typeLabels[a] ?? a).localeCompare(typeLabels[b] ?? b, 'es'),
+        );
+    }, [knownTypes, preferences, typeLabels]);
 
     return (
         <>
@@ -191,6 +201,7 @@ export default function NotificationsSettings({
                             <PreferenceRow
                                 key={`${type}:${pref?.id ?? 'new'}:${pref ? pref.allowedChannels.join(',') : ''}:${pref?.muted ?? false}`}
                                 type={type}
+                                label={typeLabels[type] ?? type}
                                 initialChannels={pref?.allowedChannels ?? []}
                                 initialMuted={pref?.muted ?? false}
                                 configured={pref !== undefined}

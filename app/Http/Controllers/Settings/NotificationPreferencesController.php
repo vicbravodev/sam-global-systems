@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Settings;
 use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Models\Notification;
 use App\Domains\Notifications\Models\NotificationPreference;
+use App\Domains\Notifications\Support\NotificationTypeLabels;
+use App\Domains\Notifications\Support\ProvidedChannels;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -52,14 +54,14 @@ class NotificationPreferencesController extends Controller
                     'muted' => (bool) $preference->muted,
                 ])
                 ->all(),
-            'knownTypes' => $this->knownTypes($preferences->pluck('notification_type')->all()),
-            'channelOptions' => array_map(
-                fn (ChannelType $type) => [
-                    'value' => $type->value,
-                    'label' => $type->label(),
-                ],
-                ChannelType::cases(),
-            ),
+            'knownTypes' => $knownTypes = $this->knownTypes($preferences->pluck('notification_type')->all()),
+            // Etiqueta humana de cada tipo (incluye los ya configurados).
+            'typeLabels' => collect(app(NotificationTypeLabels::class)->options($knownTypes))
+                ->pluck('label', 'value')
+                ->all(),
+            // Sólo los canales que SAM entrega (Push/Slack/Webhook no existen
+            // como canal de plataforma y no se ofrecen).
+            'channelOptions' => app(ProvidedChannels::class)->options(),
             'teamName' => $team?->name,
         ]);
     }

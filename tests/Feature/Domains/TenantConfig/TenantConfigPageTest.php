@@ -13,6 +13,7 @@ use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Models\User;
 use Database\Seeders\AccessSeeder;
+use Database\Seeders\PlatformChannelSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -41,6 +42,7 @@ class TenantConfigPageTest extends TestCase
 
     public function test_page_renders_all_config_sections(): void
     {
+        $this->seed(PlatformChannelSeeder::class);
         TenantSetting::factory()->create([
             'team_id' => $this->team->id,
             'setting_key' => 'media.auto_request_on_critical',
@@ -68,6 +70,11 @@ class TenantConfigPageTest extends TestCase
                 ->has('aiProfileOptions.automationLevels')
                 ->where('aiProfileOptions.automationLevels.0', ['value' => 'conservative', 'label' => 'Conservador'])
                 ->where('channelTypes.0', ['value' => 'email', 'label' => 'Correo'])
+                // Sólo los canales con canal de plataforma activo.
+                ->where('channelTypes', fn ($types) => collect($types)->pluck('value')->sort()->values()->all()
+                    === ['email', 'sms', 'voice', 'web', 'whatsapp'])
+                ->where('notificationTypeOptions', fn ($options) => collect($options)
+                    ->contains(['value' => 'incident.sla_breached', 'label' => 'Incidente sin atender a tiempo (SLA vencido)']))
                 ->has('notificationPolicies', 1)
                 ->has('escalationConfigs', 1)
                 ->has('escalationConditionFields', 2)

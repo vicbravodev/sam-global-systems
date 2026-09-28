@@ -12,6 +12,19 @@ enum ActionExecutionStatus: string
     case Cancelled = 'cancelled';
     case Retrying = 'retrying';
 
+    public function label(): string
+    {
+        return match ($this) {
+            self::Pending => 'Por confirmar',
+            self::Queued => 'En cola',
+            self::Running => 'En curso',
+            self::Completed => 'Completada',
+            self::Failed => 'Fallida',
+            self::Cancelled => 'Cancelada',
+            self::Retrying => 'Reintentando',
+        };
+    }
+
     public function isTerminal(): bool
     {
         return match ($this) {
