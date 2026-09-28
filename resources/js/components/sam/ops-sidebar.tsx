@@ -286,7 +286,8 @@ export function OpsSidebar({ navBadges, mobile = false }: OpsSidebarProps) {
             .map((group) => ({
                 ...group,
                 items: group.items.filter(
-                    (item) => item.can === undefined || nav?.[item.can] === true,
+                    (item) =>
+                        item.can === undefined || nav?.[item.can] === true,
                 ),
             }))
             .filter((group) => group.items.length > 0);
