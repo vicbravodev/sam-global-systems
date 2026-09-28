@@ -3,6 +3,7 @@
 namespace App\Domains\Incidents\Actions;
 
 use App\Domains\AI\Models\AIEventEvaluation;
+use App\Domains\Assets\Jobs\DetectOfflineAssetsJob;
 use App\Domains\Context\Models\EventContextSnapshot;
 use App\Domains\Incidents\Enums\EventRelationType;
 use App\Domains\Incidents\Enums\EvidenceSourceType;
@@ -23,11 +24,23 @@ use App\Domains\Incidents\Support\IncidentCreatedBroadcast;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Domains\TenantConfig\Actions\ResolveIncidentSla;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class CreateIncidentFromEvent
 {
+    private const int DEDUP_LOCK_SECONDS = 30;
+
+    private const int DEDUP_LOCK_WAIT_SECONDS = 15;
+
+    /** Minutos en los que varios device_offline del tenant cuentan como ráfaga. */
+    public const int OFFLINE_BURST_WINDOW_MINUTES = 10;
+
+    /** device_offline de activos distintos dentro de la ventana que abren el incidente agregado. */
+    public const int OFFLINE_BURST_THRESHOLD = 3;
+
     public function __construct(
         private readonly AppendTimelineEntry $appendTimelineEntry,
         private readonly LinkEventToIncident $linkEventToIncident,
@@ -47,9 +60,31 @@ class CreateIncidentFromEvent
      */
     public function execute(NormalizedEvent $event, array $context = []): Incident
     {
-        return DB::transaction(function () use ($event, $context) {
+        $incidentType = $this->resolveIncidentType($context['incident_type_code'] ?? null, $event);
+        $lockKey = $this->dedupLockKey($event, $incidentType);
+
+        if ($lockKey === null) {
+            return $this->createOrLink($event, $context, $incidentType);
+        }
+
+        // Dos eventos casi simultáneos del mismo activo (o una ráfaga de
+        // device_offline del tenant) no pueden abrir dos incidentes: el
+        // chequeo de duplicado y la creación van bajo el mismo candado. La
+        // clave incluye el team_id (§2.1.7).
+        return Cache::lock($lockKey, self::DEDUP_LOCK_SECONDS)
+            ->block(
+                (int) config('incidents.dedup_lock_wait_seconds', self::DEDUP_LOCK_WAIT_SECONDS),
+                fn () => $this->createOrLink($event, $context, $incidentType),
+            );
+    }
+
+    /**
+     * @param  array<string, mixed>  $context
+     */
+    private function createOrLink(NormalizedEvent $event, array $context, IncidentType $incidentType): Incident
+    {
+        return DB::transaction(function () use ($event, $context, $incidentType) {
             $teamId = (int) $event->team_id;
-            $incidentType = $this->resolveIncidentType($context['incident_type_code'] ?? null, $event);
             $priority = $this->resolvePriority($context['priority_code'] ?? null, $incidentType);
 
             // Solo se deduplica contra un incidente abierto DEL MISMO TIPO: un
@@ -69,19 +104,39 @@ class CreateIncidentFromEvent
 
                 return $existing;
             }
+
+            // Ráfaga de device_offline en el tenant (caída de red, gateway
+            // compartido, corte del proveedor): un solo incidente agregado en
+            // vez de un incidente —y una notificación— por activo.
+            $burst = $this->offlineBurst($event, $incidentType);
+
+            if ($burst instanceof Incident) {
+                $this->linkEventToIncident->execute($burst, $event, EventRelationType::SupportingEvent);
+
+                return $burst;
+            }
+
+            $aggregateBurst = $burst === true;
             $openStatus = IncidentStatus::query()->where('code', IncidentStatusCode::Open->value)->firstOrFail();
 
             $sourceType = isset($context['decision_id'])
                 ? IncidentSourceType::AiDecision
                 : IncidentSourceType::NormalizedEvent;
 
-            $title = $context['title'] ?? $this->buildTitle($event, $incidentType->name);
-            $summary = $context['summary'] ?? $this->buildSummary($event);
+            $title = $aggregateBurst
+                ? 'Varios dispositivos sin conexión'
+                : ($context['title'] ?? $this->buildTitle($event, $incidentType->name));
+            $summary = $aggregateBurst
+                ? "Varios activos dejaron de reportar en pocos minutos (evento #{$event->id} y siguientes): probable caída de red o del proveedor."
+                : ($context['summary'] ?? $this->buildSummary($event));
 
             $openedAt = Carbon::instance($event->occurred_at ?? now());
             $slaSeconds = $this->resolveIncidentSla->execute($teamId, $priority->id);
+            // El SLA corre desde que SAM se entera, no desde que ocurrió: un
+            // evento atrasado o de backfill no puede nacer ya vencido y
+            // escalar (SMS/llamadas) en el mismo segundo en que se crea.
             $slaDueAt = $slaSeconds !== null
-                ? $openedAt->copy()->addSeconds($slaSeconds)
+                ? $openedAt->copy()->max(now())->addSeconds($slaSeconds)
                 : null;
 
             $incident = Incident::query()->create([
@@ -93,8 +148,8 @@ class CreateIncidentFromEvent
                 'source_reference_id' => $context['decision_id'] ?? $event->id,
                 'related_event_id' => $event->id,
                 'related_decision_id' => $context['decision_id'] ?? null,
-                'asset_id' => $event->asset_id,
-                'driver_id' => $event->driver_id,
+                'asset_id' => $aggregateBurst ? null : $event->asset_id,
+                'driver_id' => $aggregateBurst ? null : $event->driver_id,
                 'title' => $title,
                 'summary' => $summary,
                 'opened_at' => $openedAt,
@@ -193,21 +248,25 @@ class CreateIncidentFromEvent
         );
     }
 
+    /**
+     * Incidente abierto del mismo tipo y del mismo activo/conductor que
+     * sigue "vivo": abierto dentro de la ventana o con algún evento vinculado
+     * dentro de ella. Un flujo continuo de eventos (p. ej. device_offline cada
+     * hora de un activo parado) extiende la ventana y queda en un solo
+     * incidente; un evento tras un silencio largo abre uno nuevo.
+     */
     private function findOpenDuplicate(NormalizedEvent $event, IncidentType $incidentType): ?Incident
     {
         if ($event->asset_id === null && $event->driver_id === null) {
             return null;
         }
 
-        $window = (int) config('incidents.duplicate_window_minutes', 30);
-        $occurredAt = $event->occurred_at ?? now();
-        $threshold = Carbon::instance($occurredAt)->subMinutes($window);
+        $threshold = $this->windowStart($event, (int) config('incidents.duplicate_window_minutes', 30));
 
         return Incident::query()
             ->where('team_id', $event->team_id)
             ->where('incident_type_id', $incidentType->id)
             ->whereHas('status', fn ($q) => $q->where('is_terminal', false))
-            ->where('opened_at', '>=', $threshold)
             ->where(function ($q) use ($event) {
                 if ($event->asset_id !== null) {
                     $q->orWhere('asset_id', $event->asset_id);
@@ -216,8 +275,90 @@ class CreateIncidentFromEvent
                     $q->orWhere('driver_id', $event->driver_id);
                 }
             })
+            ->where(fn ($q) => $this->activeSince($q, $threshold))
             ->orderByDesc('opened_at')
             ->first();
+    }
+
+    /**
+     * Correlador de ráfagas de device_offline por tenant. Devuelve:
+     *  - el incidente agregado abierto al que vincular este evento;
+     *  - `true` cuando este evento completa el umbral y debe abrir el
+     *    incidente agregado;
+     *  - `null` cuando no hay ráfaga (se crea el incidente normal).
+     *
+     * El incidente agregado se reconoce por no tener activo ni conductor y
+     * nacer de un evento device_offline (esos eventos siempre traen activo).
+     */
+    private function offlineBurst(NormalizedEvent $event, IncidentType $incidentType): Incident|bool|null
+    {
+        if (! $this->isDeviceOffline($event)) {
+            return null;
+        }
+
+        $threshold = $this->windowStart($event, (int) config('incidents.offline_burst_window_minutes', self::OFFLINE_BURST_WINDOW_MINUTES));
+
+        $base = fn () => Incident::query()
+            ->where('team_id', $event->team_id)
+            ->where('incident_type_id', $incidentType->id)
+            ->whereHas('status', fn ($q) => $q->where('is_terminal', false))
+            ->whereHas('relatedEvent.eventType', fn ($q) => $q->where('code', DetectOfflineAssetsJob::EVENT_TYPE_CODE));
+
+        $aggregate = $base()
+            ->whereNull('asset_id')
+            ->whereNull('driver_id')
+            ->where(fn ($q) => $this->activeSince($q, $threshold))
+            ->orderByDesc('opened_at')
+            ->first();
+
+        if ($aggregate !== null) {
+            return $aggregate;
+        }
+
+        $recentSingles = $base()
+            ->whereNotNull('asset_id')
+            ->where('opened_at', '>=', $threshold)
+            ->count();
+
+        $burstThreshold = max(2, (int) config('incidents.offline_burst_threshold', self::OFFLINE_BURST_THRESHOLD));
+
+        return $recentSingles + 1 >= $burstThreshold ? true : null;
+    }
+
+    /**
+     * @param  Builder<Incident>  $query
+     */
+    private function activeSince(Builder $query, Carbon $threshold): void
+    {
+        $query->where('opened_at', '>=', $threshold)
+            ->orWhereHas('eventLinks.normalizedEvent', fn ($q) => $q->where('occurred_at', '>=', $threshold));
+    }
+
+    private function windowStart(NormalizedEvent $event, int $minutes): Carbon
+    {
+        return Carbon::instance($event->occurred_at ?? now())->subMinutes($minutes);
+    }
+
+    private function isDeviceOffline(NormalizedEvent $event): bool
+    {
+        $eventType = $event->relationLoaded('eventType') ? $event->eventType : $event->eventType()->first();
+
+        return $eventType?->code === DetectOfflineAssetsJob::EVENT_TYPE_CODE;
+    }
+
+    private function dedupLockKey(NormalizedEvent $event, IncidentType $incidentType): ?string
+    {
+        $teamId = (int) $event->team_id;
+
+        if ($this->isDeviceOffline($event)) {
+            return "incident_dedup:{$teamId}:{$incidentType->id}:offline_burst";
+        }
+
+        if ($event->asset_id === null && $event->driver_id === null) {
+            return null;
+        }
+
+        return "incident_dedup:{$teamId}:{$incidentType->id}:a{$event->asset_id}:d{$event->driver_id}";
     }
 
     /**

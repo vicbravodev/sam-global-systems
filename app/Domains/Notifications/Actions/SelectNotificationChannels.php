@@ -9,6 +9,7 @@ use App\Domains\Notifications\Models\Notification;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Models\NotificationPreference;
 use App\Domains\Notifications\Models\NotificationRecipient;
+use App\Domains\Notifications\Support\QuietHours;
 use App\Models\Team;
 
 class SelectNotificationChannels
@@ -44,20 +45,22 @@ class SelectNotificationChannels
         // stays the same: an active NotificationChannel of that type must exist.
         $forced = $notification->payload_json['force_channels'] ?? null;
 
-        if (is_array($forced) && $forced !== []) {
-            return $channels
-                ->filter(fn (NotificationChannel $channel) => in_array($channel->channel_type->value, $forced, true))
-                ->values()
-                ->all();
-        }
-
         if ($notification->priority->isCritical()) {
+            if (is_array($forced) && $forced !== []) {
+                return $this->onlyTypes($channels->all(), $forced);
+            }
+
             $allowedTypes = collect($policy->criticalChannels)->map(fn (ChannelType $type) => $type->value);
 
             return $channels->filter(fn (NotificationChannel $channel) => $allowedTypes->contains($channel->channel_type->value))->values()->all();
         }
 
         $preference = $this->resolvePreference($notification, $recipient);
+        $quiet = $this->insideQuietHours($team, $policy, $preference);
+
+        if (is_array($forced) && $forced !== []) {
+            return $this->withoutQuietChannels($this->onlyTypes($channels->all(), $forced), $quiet);
+        }
 
         if ($preference !== null && $preference->muted && $notification->priority->suppressedByMute()) {
             return [];
@@ -68,6 +71,8 @@ class SelectNotificationChannels
         $filtered = $channels->filter(fn (NotificationChannel $channel) => in_array($channel->channel_type->value, $allowedTypes, true))
             ->values()
             ->all();
+
+        $filtered = $this->withoutQuietChannels($filtered, $quiet);
 
         if ($recipient->channel_preference !== null) {
             $preferred = collect($filtered)
@@ -80,6 +85,47 @@ class SelectNotificationChannels
         }
 
         return $filtered;
+    }
+
+    /**
+     * El horario de silencio del usuario manda sobre el del tenant.
+     */
+    private function insideQuietHours(Team $team, TenantNotificationPolicy $policy, ?NotificationPreference $preference): bool
+    {
+        $quietHours = is_array($preference?->quiet_hours_json) && $preference->quiet_hours_json !== []
+            ? $preference->quiet_hours_json
+            : $policy->quietHours;
+
+        return QuietHours::isActive($quietHours, $team->timezone);
+    }
+
+    /**
+     * @param  array<int, NotificationChannel>  $channels
+     * @param  array<int, mixed>  $types
+     * @return array<int, NotificationChannel>
+     */
+    private function onlyTypes(array $channels, array $types): array
+    {
+        return array_values(array_filter(
+            $channels,
+            fn (NotificationChannel $channel) => in_array($channel->channel_type->value, $types, true),
+        ));
+    }
+
+    /**
+     * @param  array<int, NotificationChannel>  $channels
+     * @return array<int, NotificationChannel>
+     */
+    private function withoutQuietChannels(array $channels, bool $quiet): array
+    {
+        if (! $quiet) {
+            return $channels;
+        }
+
+        return array_values(array_filter(
+            $channels,
+            fn (NotificationChannel $channel) => ! QuietHours::silences($channel->channel_type),
+        ));
     }
 
     private function resolvePreference(Notification $notification, NotificationRecipient $recipient): ?NotificationPreference

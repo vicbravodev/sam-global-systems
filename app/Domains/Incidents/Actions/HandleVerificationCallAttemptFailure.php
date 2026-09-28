@@ -10,6 +10,7 @@ use App\Domains\Incidents\Enums\TimelineActorType;
 use App\Domains\Incidents\Enums\TimelineEntryType;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentCallVerification;
+use App\Domains\Incidents\Support\IncidentSuppression;
 
 /**
  * Close one unanswered/failed verification-call attempt (Roadmap V2-A3):
@@ -45,6 +46,12 @@ class HandleVerificationCallAttemptFailure
         $incident = Incident::query()->find($verification->incident_id);
 
         if ($incident === null || $incident->isTerminal()) {
+            return;
+        }
+
+        // Un humano tomó el incidente o acusó recibo mientras sonaba la
+        // llamada: ni otro intento ni escalación, el operador ya está encima.
+        if (IncidentSuppression::isUnderHumanControl($incident)) {
             return;
         }
 

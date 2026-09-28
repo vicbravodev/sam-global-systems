@@ -59,7 +59,7 @@ class CrossDomainListenersTest extends TestCase
         $this->assertSame('Se ha reportado un nuevo incidente en tu equipo.', $notification->body_preview);
     }
 
-    public function test_incident_status_changed_listener_creates_notification_in_spanish(): void
+    public function test_in_review_status_change_is_internal_and_never_notifies(): void
     {
         Bus::fake();
 
@@ -67,21 +67,61 @@ class CrossDomainListenersTest extends TestCase
         $team = $user->currentTeam;
         $this->actingAs($user);
 
-        $incident = $this->incidentWithSeverity($team->id, 'high');
+        $incident = $this->incidentWithSeverity($team->id, 'high', ['claimed_by_user_id' => $user->id]);
 
         IncidentStatusChanged::dispatch($incident, 'open', 'in_review');
 
-        $notification = Notification::withoutGlobalScopes()
+        $this->assertFalse(Notification::withoutGlobalScopes()
             ->where('team_id', $team->id)
             ->where('event_key', "incident_status:{$incident->id}:in_review")
+            ->exists());
+    }
+
+    public function test_status_change_notifies_only_the_claimer_in_spanish_never_the_actor_or_the_team(): void
+    {
+        Bus::fake();
+
+        $actor = User::factory()->create();
+        $team = $actor->currentTeam;
+        $claimer = User::factory()->create();
+        $bystander = User::factory()->create();
+        $team->members()->attach($claimer, ['role' => 'member']);
+        $team->members()->attach($bystander, ['role' => 'member']);
+        $this->actingAs($actor);
+
+        $incident = $this->incidentWithSeverity($team->id, 'high', ['claimed_by_user_id' => $claimer->id]);
+
+        IncidentStatusChanged::dispatch($incident, 'open', 'resolved', $actor->id);
+
+        $notification = Notification::withoutGlobalScopes()
+            ->where('team_id', $team->id)
+            ->where('event_key', "incident_status:{$incident->id}:resolved")
             ->first();
 
         $this->assertNotNull($notification);
         $this->assertSame('Estado del incidente actualizado', $notification->subject);
         $this->assertSame(
-            "El incidente #{$incident->id} pasó a ".IncidentStatusPresenter::label('in_review').'.',
+            "El incidente #{$incident->id} pasó a ".IncidentStatusPresenter::label('resolved').'.',
             $notification->body_preview,
         );
+        $recipients = collect($notification->payload_json['recipients'])->pluck('recipient_reference_id')->all();
+        $this->assertSame([(string) $claimer->id], $recipients);
+        $this->assertSame(['web', 'email'], $notification->payload_json['force_channels']);
+    }
+
+    public function test_status_change_by_the_only_owner_sends_nothing(): void
+    {
+        Bus::fake();
+
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+        $this->actingAs($user);
+
+        $incident = $this->incidentWithSeverity($team->id, 'high', ['claimed_by_user_id' => $user->id]);
+
+        IncidentStatusChanged::dispatch($incident, 'open', 'resolved', $user->id);
+
+        $this->assertSame(0, Notification::withoutGlobalScopes()->where('team_id', $team->id)->count());
     }
 
     public function test_incident_closed_listener_creates_notification_in_spanish(): void
@@ -92,7 +132,7 @@ class CrossDomainListenersTest extends TestCase
         $team = $user->currentTeam;
         $this->actingAs($user);
 
-        $incident = $this->incidentWithSeverity($team->id, 'high');
+        $incident = $this->incidentWithSeverity($team->id, 'high', ['claimed_by_user_id' => $user->id]);
 
         IncidentClosed::dispatch($incident);
 
@@ -165,14 +205,17 @@ class CrossDomainListenersTest extends TestCase
         $this->assertSame(1, $count);
     }
 
-    private function incidentWithSeverity(int $teamId, string $severityCode): Incident
+    /**
+     * @param  array<string, mixed>  $attributes
+     */
+    private function incidentWithSeverity(int $teamId, string $severityCode, array $attributes = []): Incident
     {
         $priority = IncidentPriority::query()->where('code', $severityCode)->first()
             ?? IncidentPriority::factory()->create(['code' => $severityCode]);
 
-        return Incident::factory()->create([
+        return Incident::factory()->create(array_merge([
             'team_id' => $teamId,
             'incident_priority_id' => $priority->id,
-        ]);
+        ], $attributes));
     }
 }

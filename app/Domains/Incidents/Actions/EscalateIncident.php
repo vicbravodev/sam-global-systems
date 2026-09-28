@@ -58,7 +58,12 @@ class EscalateIncident
 
             $fresh = $incident->fresh(['status', 'priority', 'type']);
 
-            IncidentStatusChanged::dispatch($fresh, $previousStatusCode, IncidentStatusCode::Escalated->value);
+            IncidentStatusChanged::dispatch(
+                $fresh,
+                $previousStatusCode,
+                IncidentStatusCode::Escalated->value,
+                $escalatedByType === IncidentCreatorType::User ? $escalatedById : null,
+            );
 
             broadcast(IncidentUpdatedBroadcast::fromModel($fresh));
 
