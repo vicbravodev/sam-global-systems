@@ -23,7 +23,7 @@ class UpdateSubscriptionStatus
         }
 
         if ($status->grantsOperationalAccess()) {
-            // Reactivating (active/trialing/past_due) clears any pending cancellation.
+            // Reactivating (active/past_due) clears any pending cancellation.
             $subscription->cancel_at_period_end = false;
             $subscription->ends_at = null;
         }

@@ -14,6 +14,10 @@ use App\Domains\Assets\Models\AssetExternalReference;
  * per chunk with the same isolation guarantee: `$teamId` is applied explicitly,
  * so an external id whose reference belongs to another tenant is simply absent
  * from the result.
+ *
+ * Only MONITORED assets resolve: a poll must never spend provider quota,
+ * storage or alerts on a unit the tenant has not switched on (`pending`) or
+ * has switched off (`excluded`). Those ids are omitted like unknown ones.
  */
 class ResolveAssetsFromExternalIds
 {
@@ -50,6 +54,7 @@ class ResolveAssetsFromExternalIds
 
             $assets = Asset::query()
                 ->where('team_id', $teamId)
+                ->monitored()
                 ->whereKey($assetIdsByExternalId->values()->unique()->all())
                 ->get()
                 ->keyBy('id');

@@ -45,7 +45,6 @@ interface PlanOption {
 interface Stats {
     total: number;
     active: number;
-    trialing: number;
     pastDue: number;
 }
 
@@ -57,7 +56,6 @@ interface AdminTenantsIndexProps {
 
 const STATUS_LABEL: Record<string, string> = {
     active: 'Activa',
-    trialing: 'Trial',
     past_due: 'Morosa',
     suspended: 'Suspendida',
     canceled: 'Cancelada',
@@ -138,7 +136,7 @@ function CreateTenantDialog({
                             onValueChange={(v) => form.setData('plan_code', v)}
                         >
                             <SelectTrigger id="tenant-plan">
-                                <SelectValue placeholder="Sin plan / trial manual" />
+                                <SelectValue placeholder="Sin plan" />
                             </SelectTrigger>
                             <SelectContent>
                                 {plans.map((plan) => (
@@ -238,10 +236,9 @@ export default function AdminTenantsIndex({
             </header>
 
             <div className="flex-1 overflow-y-auto p-5">
-                <div className="mb-5 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-4">
+                <div className="mb-5 grid grid-cols-3 gap-px overflow-hidden rounded-lg border border-border bg-border">
                     <StatCard label="Tenants" value={stats.total} />
                     <StatCard label="Activos" value={stats.active} />
-                    <StatCard label="Trial" value={stats.trialing} />
                     <StatCard label="Morosos" value={stats.pastDue} />
                 </div>
 

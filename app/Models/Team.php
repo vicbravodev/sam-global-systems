@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Concerns\GeneratesUniqueTeamSlugs;
 use App\Domains\Tenancy\Models\Plan;
 use App\Domains\Tenancy\Models\Subscription;
+use App\Domains\Tenancy\Models\TenantBillingTerms;
 use App\Domains\Tenancy\Models\TenantBranding;
 use App\Domains\Tenancy\Models\TenantFeature;
 use App\Domains\Tenancy\Models\TenantUsageCounter;
@@ -90,12 +91,20 @@ class Team extends Model
     }
 
     /**
+     * @return HasOne<TenantBillingTerms, $this>
+     */
+    public function billingTerms(): HasOne
+    {
+        return $this->hasOne(TenantBillingTerms::class);
+    }
+
+    /**
      * @return HasOne<Subscription, $this>
      */
     public function teamSubscription(): HasOne
     {
         return $this->hasOne(Subscription::class)
-            ->whereIn('status', ['trialing', 'active', 'past_due'])
+            ->whereIn('status', ['active', 'past_due'])
             ->latest('starts_at');
     }
 

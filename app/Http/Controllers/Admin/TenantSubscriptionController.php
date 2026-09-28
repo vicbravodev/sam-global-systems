@@ -6,7 +6,6 @@ use App\Domains\Audit\Actions\RecordAuditEntry;
 use App\Domains\Audit\Enums\AuditActorType;
 use App\Domains\Audit\Enums\AuditCategory;
 use App\Domains\Tenancy\Actions\ChangeTenantPlan;
-use App\Domains\Tenancy\Actions\ExtendTrial;
 use App\Domains\Tenancy\Actions\UpdateSubscriptionStatus;
 use App\Domains\Tenancy\Enums\SubscriptionStatus;
 use App\Domains\Tenancy\Models\Subscription;
@@ -58,28 +57,6 @@ class TenantSubscriptionController extends Controller
     {
         return $this->transition($request, $team, $updateStatus, SubscriptionStatus::Canceled,
             'tenant.subscription_canceled', 'cancelado');
-    }
-
-    public function extendTrial(Request $request, Team $team, ExtendTrial $extendTrial): RedirectResponse
-    {
-        $data = $request->validate([
-            'days' => ['required', 'integer', 'min:1', 'max:365'],
-        ]);
-
-        $subscription = $this->subscriptionFor($team);
-
-        if ($subscription === null) {
-            return $this->backToTenant($team, 'El tenant no tiene suscripción.', error: true);
-        }
-
-        $extendTrial->execute($subscription, (int) $data['days']);
-
-        $this->record($request, $team, 'tenant.trial_extended',
-            "Trial del tenant {$team->name} extendido {$data['days']} días.",
-            ['days' => (int) $data['days']],
-        );
-
-        return $this->backToTenant($team, 'Trial extendido.');
     }
 
     private function transition(

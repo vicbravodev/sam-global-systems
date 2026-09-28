@@ -36,7 +36,7 @@ class GenerateMonthlyInvoicesJob implements ShouldQueue
         $end = $periodStart->endOfMonth()->toDateString();
 
         // Platform run across tenants on purpose (`teamSubscription` only
-        // matches trialing/active/past_due); each tenant's chain is dispatched
+        // matches active/past_due); each tenant's chain is dispatched
         // inside its own context. Ver CLAUDE.md §2.1.
         TenantContext::withoutTenant(fn () => Team::query()
             ->whereHas('teamSubscription')

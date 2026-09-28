@@ -26,17 +26,8 @@ class SubscriptionFactory extends Factory
             'starts_at' => now(),
             'renews_at' => now()->addMonth(),
             'ends_at' => null,
-            'trial_ends_at' => null,
             'cancel_at_period_end' => false,
         ];
-    }
-
-    public function trialing(): static
-    {
-        return $this->state(fn () => [
-            'status' => SubscriptionStatus::Trialing,
-            'trial_ends_at' => now()->addDays(14),
-        ]);
     }
 
     public function suspended(): static

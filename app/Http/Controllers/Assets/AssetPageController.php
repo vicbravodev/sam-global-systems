@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Assets;
 
+use App\Domains\Assets\Enums\AssetMonitoringState;
 use App\Domains\Assets\Enums\AssetStatus;
 use App\Domains\Assets\Enums\DeviceStatus;
 use App\Domains\Assets\Enums\TelemetryType;
@@ -13,6 +14,7 @@ use App\Domains\Assets\Models\AssetType;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Support\IncidentStatusPresenter;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Domains\Tenancy\Actions\ResolveAssetLimit;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
 use Illuminate\Database\Eloquent\Builder;
@@ -110,11 +112,12 @@ class AssetPageController extends Controller
      */
     private const MOVING_SPEED_KPH = 5;
 
-    public function index(Request $request, Team $current_team): Response
+    public function index(Request $request, Team $current_team, ResolveAssetLimit $resolveAssetLimit): Response
     {
-        // Assets are read-only and managed exclusively by integration sync
-        // (spec 04 §9): EnsureTeamMembership on the route group is the whole
-        // access check, there is no AssetPolicy.
+        // Asset inventory is managed by integration sync (spec 04 §9):
+        // EnsureTeamMembership on the route group is the whole access check
+        // for reading. Switching monitoring on/off lives in
+        // AssetMonitoringController behind `assets.manage`.
         $filters = $this->filters($request);
 
         $query = Asset::query()
@@ -155,7 +158,35 @@ class AssetPageController extends Controller
             'filters' => $filters,
             'filterOptions' => fn () => $this->filterOptions(),
             'summary' => fn () => $this->summary($current_team),
+            'monitoring' => fn () => $this->monitoring($current_team, $resolveAssetLimit),
         ]);
+    }
+
+    /**
+     * Cupo de vigilancia del tenant: cuántas unidades vigila, cuántas quedaron
+     * pendientes tras el sync y el tope contratado. Tope suave: `overCap`
+     * sólo avisa que el excedente se cobra como extra por día.
+     *
+     * @return array{monitored: int, pending: int, excluded: int, cap: int|null, overCap: bool}
+     */
+    private function monitoring(Team $team, ResolveAssetLimit $resolveAssetLimit): array
+    {
+        $byState = Asset::query()
+            ->where('team_id', $team->id)
+            ->selectRaw('monitoring_state, COUNT(*) as aggregate')
+            ->groupBy('monitoring_state')
+            ->pluck('aggregate', 'monitoring_state');
+
+        $monitored = (int) ($byState[AssetMonitoringState::Monitored->value] ?? 0);
+        $cap = $resolveAssetLimit->execute((int) $team->id);
+
+        return [
+            'monitored' => $monitored,
+            'pending' => (int) ($byState[AssetMonitoringState::Pending->value] ?? 0),
+            'excluded' => (int) ($byState[AssetMonitoringState::Excluded->value] ?? 0),
+            'cap' => $cap,
+            'overCap' => $cap !== null && $monitored > $cap,
+        ];
     }
 
     public function map(Team $current_team): Response
@@ -323,7 +354,7 @@ class AssetPageController extends Controller
      * Resolve the active fleet filters from the request query string. An
      * unknown status value is dropped so the prop mirrors what was applied.
      *
-     * @return array{q: string|null, status: string|null, type: string|null}
+     * @return array{q: string|null, status: string|null, type: string|null, monitoring: string|null}
      */
     private function filters(Request $request): array
     {
@@ -331,19 +362,28 @@ class AssetPageController extends Controller
             ? AssetStatus::tryFrom($request->string('status')->toString())?->value
             : null;
 
+        $monitoring = $request->filled('monitoring')
+            ? AssetMonitoringState::tryFrom($request->string('monitoring')->toString())?->value
+            : null;
+
         return [
             'q' => $request->filled('q') ? $request->string('q')->trim()->toString() : null,
             'status' => $status,
             'type' => $request->filled('type') ? $request->string('type')->toString() : null,
+            'monitoring' => $monitoring,
         ];
     }
 
     /**
      * @param  Builder<Asset>  $query
-     * @param  array{q: string|null, status: string|null, type: string|null}  $filters
+     * @param  array{q: string|null, status: string|null, type: string|null, monitoring: string|null}  $filters
      */
     private function applyFilters(Builder $query, array $filters): void
     {
+        if (($filters['monitoring'] ?? null) !== null) {
+            $query->where('monitoring_state', $filters['monitoring']);
+        }
+
         if ($filters['q'] !== null && $filters['q'] !== '') {
             // LOWER(...) LIKE keeps the search case-insensitive on both
             // PostgreSQL (production) and SQLite (tests) without ILIKE.
@@ -367,11 +407,18 @@ class AssetPageController extends Controller
      * Reference lists used to populate the fleet filter dropdowns. AssetType
      * is a global seeded catalog (no team scope), so listing it all is fine.
      *
-     * @return array{statuses: list<array{value: string, label: string}>, types: list<array{value: string, label: string}>}
+     * @return array{statuses: list<array{value: string, label: string}>, types: list<array{value: string, label: string}>, monitoring: list<array{value: string, label: string}>}
      */
     private function filterOptions(): array
     {
         return [
+            'monitoring' => array_map(
+                fn (AssetMonitoringState $state) => [
+                    'value' => $state->value,
+                    'label' => $state->label(),
+                ],
+                AssetMonitoringState::cases(),
+            ),
             'statuses' => array_map(
                 fn (AssetStatus $status) => [
                     'value' => $status->value,
@@ -406,6 +453,7 @@ class AssetPageController extends Controller
             'name' => (string) $asset->name,
             'code' => $asset->code,
             'status' => $asset->status->value,
+            'monitoringState' => $asset->monitoring_state->value,
             'vehicle' => $this->vehicle($asset),
             // Currently assigned primary driver (reciprocal of the driver
             // roster's "activo asignado" column). Null when nobody is assigned.
