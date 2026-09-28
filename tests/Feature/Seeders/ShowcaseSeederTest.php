@@ -48,6 +48,12 @@ class ShowcaseSeederTest extends TestCase
     {
         parent::setUp();
 
+        // El showcase es determinista por fecha, pero cuántos incidentes
+        // siguen abiertos depende de la hora ("ahora" corta las vidas que
+        // aún no terminan): con el reloj real el test pasaba o fallaba
+        // según la hora a la que corriera. Se fija a media mañana.
+        $this->travelTo(CarbonImmutable::parse('2026-09-28 11:00:00'));
+
         Storage::fake('rustfs');
         $this->seed(DatabaseSeeder::class);
     }
