@@ -221,6 +221,15 @@ class ShowcaseSeederTest extends TestCase
         app(TwilioClientFactory::class);
     }
 
+    public function test_the_command_seeds_and_replays_real_events(): void
+    {
+        $this->artisan('sam:showcase', ['--days' => 2, '--replay' => 2])
+            ->expectsOutputToContain('Replay: 2 evento(s)')
+            ->assertSuccessful();
+
+        $this->assertTrue(DB::table('raw_events')->where('external_event_id', 'like', 'showcase-replay-%')->exists());
+    }
+
     public function test_it_refuses_to_run_in_production(): void
     {
         $this->app->detectEnvironment(fn () => 'production');
