@@ -75,9 +75,11 @@ class DecisionRuleController extends Controller
     {
         $this->authorize('delete', $rule);
 
-        $rule->is_active = false;
-        $rule->save();
+        // Borrado real: apagar una regla ya es el switch de `update`
+        // (is_active). Las decisiones pasadas no la referencian por FK — la
+        // traza guarda `rule_code` —, así que el historial no se pierde.
+        $rule->delete();
 
-        return response()->json(['data' => $rule->fresh()]);
+        return response()->json(null, 204);
     }
 }

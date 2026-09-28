@@ -173,7 +173,7 @@ class ApplyDefaultTenantConfig
             'ruleset_id' => $ruleSet->id,
             'code' => 'panic-false-alarm-review',
             'name' => 'Pánico resuelto + en base → revisión humana',
-            'description' => 'Un pánico que el proveedor ya resolvió Y de una unidad estacionada en su base pasa a revisión humana en vez de incidente automático. Un pánico cancelado en carretera nunca se degrada (posible coacción).',
+            'description' => 'Un pánico que el proveedor ya dio por resuelto, de una unidad estacionada en su base, pasa a revisión de una persona en vez de abrir un incidente. Un pánico cancelado en carretera nunca se rebaja (podría ser bajo amenaza).',
             'scope' => RuleScope::EventType,
             'priority' => 110,
             'conditions_json' => [
@@ -193,7 +193,7 @@ class ApplyDefaultTenantConfig
             'ruleset_id' => $ruleSet->id,
             'code' => 'after-hours-movement-incident',
             'name' => 'Movimiento fuera de horario → incidente',
-            'description' => 'Una unidad en movimiento fuera del horario operativo del tenant abre un incidente (señal de robo o mal uso). Requiere un perfil de horario activo (V2-C2).',
+            'description' => 'Una unidad que se mueve fuera de tu horario de operación abre un incidente (posible robo o mal uso). Solo funciona si tienes un horario de operación configurado.',
             'scope' => RuleScope::EventType,
             'priority' => 90,
             'conditions_json' => [
@@ -211,7 +211,7 @@ class ApplyDefaultTenantConfig
             'ruleset_id' => $ruleSet->id,
             'code' => 'suspicious-stop-review',
             'name' => 'Parada sospechosa → revisión humana',
-            'description' => 'Una parada prolongada fuera de toda geocerca conocida pasa a revisión humana — un operador valida antes de escalar (V2-C3).',
+            'description' => 'Una parada larga fuera de tus zonas conocidas pasa a revisión de una persona, que decide si hay que escalarla.',
             'scope' => RuleScope::EventType,
             'priority' => 85,
             'conditions_json' => [
@@ -229,7 +229,7 @@ class ApplyDefaultTenantConfig
             'ruleset_id' => $ruleSet->id,
             'code' => 'panic-button-always-incident',
             'name' => 'Botón de pánico → incidente',
-            'description' => 'Todo evento panic_button abre un incidente (regla dura de seguridad).',
+            'description' => 'Todo botón de pánico abre un incidente. Es una regla de seguridad.',
             'scope' => RuleScope::EventType,
             'priority' => 100,
             'conditions_json' => [

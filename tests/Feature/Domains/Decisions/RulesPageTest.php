@@ -13,6 +13,7 @@ use Database\Seeders\AccessSeeder;
 use Database\Seeders\DecisionOutcomeSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
+use Tests\Concerns\AssertsTenantIsolation;
 use Tests\TestCase;
 
 /**
@@ -21,6 +22,7 @@ use Tests\TestCase;
  */
 class RulesPageTest extends TestCase
 {
+    use AssertsTenantIsolation;
     use RefreshDatabase;
 
     private User $user;
@@ -492,5 +494,190 @@ class RulesPageTest extends TestCase
         $fresh = $rule->fresh();
         $this->assertSame('codigo-original', $fresh->code);
         $this->assertSame('Regla renombrada', $fresh->name);
+    }
+
+    public function test_rules_expose_their_real_evaluation_order(): void
+    {
+        $ruleset = RuleSet::factory()->create([
+            'team_id' => $this->team->id,
+            'is_default' => true,
+            'is_active' => true,
+        ]);
+        $otherSet = RuleSet::factory()->create([
+            'team_id' => $this->team->id,
+            'is_default' => false,
+            'is_active' => true,
+        ]);
+
+        $second = DecisionRule::factory()->create([
+            'team_id' => $this->team->id, 'ruleset_id' => $ruleset->id,
+            'priority' => 50, 'is_active' => true,
+        ]);
+        $off = DecisionRule::factory()->create([
+            'team_id' => $this->team->id, 'ruleset_id' => $ruleset->id,
+            'priority' => 200, 'is_active' => false,
+        ]);
+        $first = DecisionRule::factory()->create([
+            'team_id' => $this->team->id, 'ruleset_id' => $ruleset->id,
+            'priority' => 120, 'is_active' => true,
+        ]);
+        $unused = DecisionRule::factory()->create([
+            'team_id' => $this->team->id, 'ruleset_id' => $otherSet->id,
+            'priority' => 150, 'is_active' => true,
+        ]);
+
+        $response = $this->actingAs($this->user)->get(
+            route('rules.show', ['current_team' => $this->team->slug]),
+        );
+
+        $rules = collect($response->viewData('page')['props']['decisionRules'])->keyBy('id');
+
+        // Apagada: no se revisa. Otro conjunto: el motor no lo usa.
+        $this->assertNull($rules[$off->id]['evaluationOrder']);
+        $this->assertTrue($rules[$off->id]['inEffectiveRuleset']);
+        $this->assertSame(1, $rules[$first->id]['evaluationOrder']);
+        $this->assertSame(2, $rules[$second->id]['evaluationOrder']);
+        $this->assertNull($rules[$unused->id]['evaluationOrder']);
+        $this->assertFalse($rules[$unused->id]['inEffectiveRuleset']);
+    }
+
+    public function test_decision_summary_counts_active_rules_by_outcome(): void
+    {
+        $ruleset = RuleSet::factory()->create([
+            'team_id' => $this->team->id,
+            'is_default' => true,
+        ]);
+        $incident = DecisionOutcome::firstWhere('code', 'INCIDENT');
+        $review = DecisionOutcome::firstWhere('code', 'REQUIRE_HUMAN_REVIEW');
+
+        DecisionRule::factory()->count(2)->create([
+            'team_id' => $this->team->id, 'ruleset_id' => $ruleset->id,
+            'outcome_override' => $incident->id, 'is_active' => true,
+        ]);
+        DecisionRule::factory()->create([
+            'team_id' => $this->team->id, 'ruleset_id' => $ruleset->id,
+            'outcome_override' => $review->id, 'is_active' => false,
+        ]);
+        DecisionRule::factory()->create([
+            'team_id' => null, 'ruleset_id' => RuleSet::factory()->global()->create()->id,
+            'outcome_override' => null, 'is_active' => true,
+        ]);
+
+        $response = $this->actingAs($this->user)->get(
+            route('rules.show', ['current_team' => $this->team->slug]),
+        );
+
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->where('decisionSummary.total', 4)
+                ->where('decisionSummary.active', 3)
+                ->where('decisionSummary.own', 3)
+                ->where('decisionSummary.platform', 1)
+                ->where('decisionSummary.byOutcome.INCIDENT', 2)
+                ->where('decisionSummary.byOutcome.REQUIRE_HUMAN_REVIEW', 0)
+                ->where('decisionSummary.byOutcome.NONE', 1),
+        );
+    }
+
+    public function test_rules_page_does_not_leak_other_tenants_rules(): void
+    {
+        $otherTeam = User::factory()->create()->currentTeam;
+        $foreignRuleset = RuleSet::factory()->create([
+            'team_id' => $otherTeam->id,
+            'is_default' => true,
+        ]);
+        DecisionRule::factory()->count(3)->create([
+            'team_id' => $otherTeam->id,
+            'ruleset_id' => $foreignRuleset->id,
+            'is_active' => true,
+        ]);
+
+        $ruleset = RuleSet::factory()->create([
+            'team_id' => $this->team->id,
+            'is_default' => true,
+        ]);
+        $own = DecisionRule::factory()->create([
+            'team_id' => $this->team->id,
+            'ruleset_id' => $ruleset->id,
+            'is_active' => true,
+        ]);
+
+        $response = $this->assertNoTenantLeak(
+            $this->team,
+            fn () => $this->actingAs($this->user)->get(
+                route('rules.show', ['current_team' => $this->team->slug]),
+            ),
+        );
+
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->has('decisionRules', 1)
+                ->where('decisionRules.0.id', $own->id)
+                ->where('decisionRules.0.evaluationOrder', 1)
+                ->where('decisionSummary.total', 1)
+                ->where('decisionSummary.active', 1),
+        );
+    }
+
+    public function test_mapping_rules_expose_the_effective_severity_and_conditions(): void
+    {
+        $rule = EventMappingRule::factory()->create([
+            'external_event_type' => 'AlertIncident',
+            'external_conditions_json' => ['data.conditions.0.description' => 'Panic Button'],
+            'mapped_severity_id' => null,
+        ]);
+        EventMappingRule::factory()->create(['is_active' => false]);
+
+        $expectedSeverity = $rule->mappedEventType?->defaultSeverity?->code;
+
+        $response = $this->actingAs($this->user)->get(
+            route('rules.show', ['current_team' => $this->team->slug]),
+        );
+
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->where('mappingSummary.total', 2)
+                ->where('mappingSummary.active', 1)
+                ->where('mappingSummary.conditional', 1)
+                ->where('mappingRules.0.conditions', ['data.conditions.0.description' => 'Panic Button'])
+                ->where('mappingRules.0.severityFromType', true)
+                ->where('mappingRules.0.effectiveSeverityCode', $expectedSeverity),
+        );
+    }
+
+    public function test_decision_rule_can_be_deleted_via_web_route(): void
+    {
+        $ruleset = RuleSet::factory()->create(['team_id' => $this->team->id]);
+        $rule = DecisionRule::factory()->create([
+            'team_id' => $this->team->id,
+            'ruleset_id' => $ruleset->id,
+        ]);
+
+        $this->actingAs($this->user)->deleteJson(
+            route('rules.decision.destroy', [
+                'current_team' => $this->team->slug,
+                'rule' => $rule->id,
+            ]),
+        )->assertNoContent();
+
+        $this->assertNull(DecisionRule::withoutGlobalScopes()->find($rule->id));
+    }
+
+    public function test_tenant_cannot_delete_another_tenants_rule(): void
+    {
+        $otherTeam = User::factory()->create()->currentTeam;
+        $foreign = DecisionRule::factory()->create([
+            'team_id' => $otherTeam->id,
+            'ruleset_id' => RuleSet::factory()->create(['team_id' => $otherTeam->id])->id,
+        ]);
+
+        $this->actingAs($this->user)->deleteJson(
+            route('rules.decision.destroy', [
+                'current_team' => $this->team->slug,
+                'rule' => $foreign->id,
+            ]),
+        )->assertForbidden();
+
+        $this->assertNotNull(DecisionRule::withoutGlobalScopes()->find($foreign->id));
     }
 }

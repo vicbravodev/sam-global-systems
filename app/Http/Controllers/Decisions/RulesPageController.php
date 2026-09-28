@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Decisions;
 
+use App\Domains\Decisions\Actions\ApplyTenantRuleSet;
 use App\Domains\Decisions\Enums\DecisionOutcomeCode;
 use App\Domains\Decisions\Enums\RuleScope;
 use App\Domains\Decisions\Models\DecisionOutcome;
@@ -17,6 +18,7 @@ use App\Domains\TenantConfig\Models\TenantRuleOverride;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -28,19 +30,24 @@ use Inertia\Response;
  */
 class RulesPageController extends Controller
 {
-    public function show(Team $current_team): Response
+    public function show(Team $current_team, ApplyTenantRuleSet $ruleSets): Response
     {
         $this->authorize('viewAny', DecisionRule::class);
 
+        $rules = DecisionRule::query()
+            ->where(fn (Builder $q) => $q
+                ->whereNull('team_id')
+                ->orWhere('team_id', $current_team->id))
+            ->with(['outcomeOverride', 'ruleset'])
+            ->orderByDesc('priority')
+            ->orderBy('id')
+            ->get();
+
+        $effectiveRulesetId = $ruleSets->effectiveRuleSet($current_team->id)?->id;
+        $order = $this->evaluationOrder($rules, $effectiveRulesetId);
+
         return Inertia::render('rules/index', [
-            'decisionRules' => fn () => DecisionRule::query()
-                ->where(fn (Builder $q) => $q
-                    ->whereNull('team_id')
-                    ->orWhere('team_id', $current_team->id))
-                ->with(['outcomeOverride', 'ruleset'])
-                ->orderByDesc('priority')
-                ->orderBy('id')
-                ->get()
+            'decisionRules' => fn () => $rules
                 ->map(fn (DecisionRule $rule): array => [
                     'id' => (int) $rule->id,
                     'code' => $rule->code,
@@ -59,8 +66,16 @@ class RulesPageController extends Controller
                     'isGlobal' => $rule->team_id === null,
                     'rulesetId' => (int) $rule->ruleset_id,
                     'rulesetCode' => $rule->ruleset?->code,
+                    // Posición real en la que el motor revisa la regla (1 =
+                    // primera). Null si está apagada o si pertenece a un
+                    // conjunto de reglas que el motor no usa para este equipo.
+                    'evaluationOrder' => $order[$rule->id] ?? null,
+                    'inEffectiveRuleset' => $effectiveRulesetId !== null
+                        && (int) $rule->ruleset_id === (int) $effectiveRulesetId,
                 ])
+                ->values()
                 ->all(),
+            'decisionSummary' => fn (): array => $this->decisionSummary($rules),
             'rulesets' => fn () => RuleSet::query()
                 ->where(fn (Builder $q) => $q
                     ->whereNull('team_id')
@@ -92,7 +107,7 @@ class RulesPageController extends Controller
             ),
             'conditionFields' => fn () => DecisionConditionCatalog::fields(),
             'mappingRules' => fn () => EventMappingRule::query()
-                ->with(['provider', 'mappedEventType', 'mappedSeverity'])
+                ->with(['provider', 'mappedEventType.defaultSeverity', 'mappedSeverity'])
                 ->orderByDesc('priority')
                 ->orderBy('id')
                 ->limit(200)
@@ -103,13 +118,25 @@ class RulesPageController extends Controller
                     'provider' => $rule->provider?->name,
                     'externalEventType' => $rule->external_event_type,
                     'hasConditions' => ! empty($rule->external_conditions_json),
+                    'conditions' => empty($rule->external_conditions_json) ? null : $rule->external_conditions_json,
                     'mappedEventTypeId' => (int) $rule->mapped_event_type_id,
                     'mappedEventType' => $rule->mappedEventType?->name,
                     'mappedSeverity' => $rule->mappedSeverity?->label ?? $rule->mappedSeverity?->code,
+                    // Gravedad con la que el evento entra de verdad: la de la
+                    // regla o, si no fija ninguna, la por defecto del tipo.
+                    'effectiveSeverityCode' => $rule->mappedSeverity?->code
+                        ?? $rule->mappedEventType?->defaultSeverity?->code,
+                    'severityFromType' => $rule->mapped_severity_id === null,
+                    'mappedSeverityId' => $rule->mapped_severity_id !== null ? (int) $rule->mapped_severity_id : null,
                     'priority' => (int) $rule->priority,
                     'isActive' => (bool) $rule->is_active,
                 ])
                 ->all(),
+            'mappingSummary' => fn (): array => [
+                'total' => EventMappingRule::query()->count(),
+                'active' => EventMappingRule::query()->where('is_active', true)->count(),
+                'conditional' => EventMappingRule::query()->whereNotNull('external_conditions_json')->count(),
+            ],
             'mappingOptions' => fn (): array => [
                 'providers' => DB::table('integration_providers')
                     ->orderBy('name')
@@ -151,5 +178,58 @@ class RulesPageController extends Controller
             'canManageMappingRules' => fn () => (bool) request()->user()?->can('create', EventMappingRule::class),
             'canManageOverrides' => fn () => (bool) request()->user()?->can('create', TenantRuleOverride::class),
         ]);
+    }
+
+    /**
+     * Posición (1-based) de cada regla activa dentro del conjunto que el
+     * motor evalúa, con el mismo orden que `ApplyTenantRuleSet`.
+     *
+     * @param  Collection<int, DecisionRule>  $rules
+     * @return array<int, int>
+     */
+    private function evaluationOrder(Collection $rules, ?int $effectiveRulesetId): array
+    {
+        if ($effectiveRulesetId === null) {
+            return [];
+        }
+
+        return $rules
+            ->filter(fn (DecisionRule $rule) => $rule->is_active
+                && (int) $rule->ruleset_id === $effectiveRulesetId)
+            ->values()
+            ->mapWithKeys(fn (DecisionRule $rule, int $index) => [(int) $rule->id => $index + 1])
+            ->all();
+    }
+
+    /**
+     * Conteos para la franja de resumen: activas y qué hacen las activas.
+     *
+     * @param  Collection<int, DecisionRule>  $rules
+     * @return array{total: int, active: int, own: int, platform: int, byOutcome: array<string, int>}
+     */
+    private function decisionSummary(Collection $rules): array
+    {
+        $active = $rules->filter(fn (DecisionRule $rule) => (bool) $rule->is_active);
+
+        $byOutcome = [];
+
+        foreach (DecisionOutcomeCode::cases() as $code) {
+            $byOutcome[$code->value] = 0;
+        }
+
+        $byOutcome['NONE'] = 0;
+
+        foreach ($active as $rule) {
+            $key = $rule->outcomeOverride?->code ?? 'NONE';
+            $byOutcome[$key] = ($byOutcome[$key] ?? 0) + 1;
+        }
+
+        return [
+            'total' => $rules->count(),
+            'active' => $active->count(),
+            'own' => $rules->whereNotNull('team_id')->count(),
+            'platform' => $rules->whereNull('team_id')->count(),
+            'byOutcome' => $byOutcome,
+        ];
     }
 }
