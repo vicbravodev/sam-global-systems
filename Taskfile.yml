@@ -67,6 +67,12 @@ tasks:
       - docker compose restart horizon
       - '{{.SAIL}} artisan horizon:status'
 
+  telescope:
+    desc: 'Telescope (sólo local) → http://localhost/telescope · filtra un evento por la etiqueta trace:<trace_id>'
+    cmds:
+      - '{{.SAIL}} artisan migrate'
+      - echo "Abre http://localhost/telescope y busca la etiqueta trace:<trace_id> o team:<team_id>"
+
   logs:
     desc: 'Logs de la app en vivo (artisan pail)'
     interactive: true
