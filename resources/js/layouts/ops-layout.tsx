@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { ImpersonationBanner } from '@/components/impersonation-banner';
 import { RealtimeBootstrap } from '@/components/realtime-bootstrap';
 import { CommandPalette } from '@/components/sam/command-palette';
+import { CopilotLauncher } from '@/components/sam/copilot/copilot-launcher';
 import { OpsSidebar } from '@/components/sam/ops-sidebar';
 import { OpsTopbar } from '@/components/sam/ops-topbar';
 import {
@@ -65,6 +66,7 @@ export default function OpsLayout({
                     />
                 </div>
             </div>
+            <CopilotLauncher />
             <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
                 <SheetContent
                     side="left"
