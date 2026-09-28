@@ -122,7 +122,7 @@ class ResolveDecisionOutcome
                 'outcome' => $hardSafetyRule->outcomeOverride,
                 'sourceType' => DecisionSourceType::Rule,
                 'sourceRule' => $hardSafetyRule,
-                'reason' => 'Hard safety rule matched: '.$hardSafetyRule->code,
+                'reason' => 'Regla de seguridad obligatoria aplicada: '.$this->ruleLabel($hardSafetyRule).'.',
                 'requiresHumanReview' => $requiresHumanReview,
             ];
         }
@@ -134,7 +134,7 @@ class ResolveDecisionOutcome
                 'outcome' => $tenantRule->outcomeOverride,
                 'sourceType' => DecisionSourceType::TenantPolicy,
                 'sourceRule' => $tenantRule,
-                'reason' => 'Tenant rule applied: '.$tenantRule->code,
+                'reason' => 'Regla de la empresa aplicada: '.$this->ruleLabel($tenantRule).'.',
                 'requiresHumanReview' => $requiresHumanReview,
             ];
         }
@@ -146,7 +146,7 @@ class ResolveDecisionOutcome
                 'outcome' => $globalRule->outcomeOverride,
                 'sourceType' => DecisionSourceType::Rule,
                 'sourceRule' => $globalRule,
-                'reason' => 'Rule applied: '.$globalRule->code,
+                'reason' => 'Regla aplicada: '.$this->ruleLabel($globalRule).'.',
                 'requiresHumanReview' => $requiresHumanReview,
             ];
         }
@@ -159,7 +159,7 @@ class ResolveDecisionOutcome
                 'outcome' => $aiOutcome,
                 'sourceType' => DecisionSourceType::Ai,
                 'sourceRule' => null,
-                'reason' => 'Mapped from AI classification '.$eval->classification->value,
+                'reason' => 'Decisión según la clasificación de la IA: '.mb_strtolower($eval->classification->label()).'.',
                 'requiresHumanReview' => $requiresHumanReview,
             ];
         }
@@ -173,9 +173,19 @@ class ResolveDecisionOutcome
             'outcome' => $fallback,
             'sourceType' => DecisionSourceType::Fallback,
             'sourceRule' => null,
-            'reason' => 'No rules matched; fallback to LOG_ONLY',
+            'reason' => 'Ninguna regla aplicó; el evento solo se registra.',
             'requiresHumanReview' => $requiresHumanReview,
         ];
+    }
+
+    /**
+     * Nombre legible de la regla para el operador, con su código para trazabilidad.
+     */
+    private function ruleLabel(DecisionRule $rule): string
+    {
+        $name = trim((string) $rule->name);
+
+        return $name !== '' ? '«'.$name.'» ('.$rule->code.')' : (string) $rule->code;
     }
 
     /**
@@ -222,8 +232,8 @@ class ResolveDecisionOutcome
             'outcome' => $outcome,
             'sourceType' => DecisionSourceType::Fallback,
             'sourceRule' => null,
-            'reason' => 'Media contradicts the event but a prior decision already acted on it; '
-                .'downgrade to '.$resolved['outcome']->code.' blocked pending human review.',
+            'reason' => 'Las imágenes contradicen el evento, pero una decisión previa ya actuó sobre él: '
+                .'se bloquea la baja a '.$resolved['outcome']->code.' hasta que un operador lo revise.',
             'requiresHumanReview' => true,
         ];
     }

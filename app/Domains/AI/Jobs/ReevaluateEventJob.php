@@ -53,7 +53,7 @@ class ReevaluateEventJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
     public function handle(ReevaluateEventWithNewEvidence $reevaluate, AIEvaluationGate $gate): void
     {
         $normalizedEvent = NormalizedEvent::withoutGlobalScopes()
-            ->with('eventCategory')
+            ->with(['eventCategory', 'eventType'])
             ->find($this->normalizedEventId);
 
         if ($normalizedEvent === null) {

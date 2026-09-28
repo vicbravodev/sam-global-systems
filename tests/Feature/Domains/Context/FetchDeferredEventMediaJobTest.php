@@ -456,6 +456,66 @@ class FetchDeferredEventMediaJobTest extends TestCase
         Event::assertDispatched(EventMediaFailed::class);
     }
 
+    public function test_failed_download_keeps_polling_instead_of_completing(): void
+    {
+        $this->makeSamsaraIntegration();
+
+        Http::fake([
+            ...$this->fakeNoUploadedMedia(),
+            'api.samsara.com/cameras/media/retrieval*' => Http::response(['data' => ['media' => [[
+                'input' => 'dashcamRoadFacing',
+                'status' => 'available',
+                'urlInfo' => ['url' => 'https://media.samsara.com/ret-1/road.mp4'],
+            ]]]]),
+            'media.samsara.com/*' => Http::response('', 503),
+        ]);
+
+        // The re-poll must be queued, not run inline.
+        Queue::fake();
+
+        $request = $this->makeRequest(attributes: [
+            'status' => MediaRequestStatus::Sent,
+            'response_metadata_json' => ['retrieval_id' => 'ret-1'],
+        ]);
+
+        $this->runJob($request);
+
+        $fresh = $request->fresh();
+        $this->assertSame(MediaRequestStatus::Processing, $fresh->status);
+        $this->assertNull($fresh->completed_at);
+        Queue::assertPushed(
+            FetchDeferredEventMediaJob::class,
+            fn (FetchDeferredEventMediaJob $job) => $job->eventMediaRequestId === $request->id,
+        );
+        $this->assertSame(0, RawEventAttachment::query()->count());
+    }
+
+    public function test_media_url_on_a_non_allowlisted_host_is_never_fetched(): void
+    {
+        $this->makeSamsaraIntegration();
+
+        Http::fake([
+            ...$this->fakeNoUploadedMedia(),
+            'api.samsara.com/cameras/media/retrieval*' => Http::response(['data' => ['media' => [[
+                'input' => 'dashcamRoadFacing',
+                'status' => 'available',
+                'urlInfo' => ['url' => 'https://evil.example.com/road.mp4'],
+            ]]]]),
+            'evil.example.com/*' => Http::response('clip-bytes', 200),
+        ]);
+        Queue::fake();
+
+        $request = $this->makeRequest(attributes: [
+            'status' => MediaRequestStatus::Sent,
+            'response_metadata_json' => ['retrieval_id' => 'ret-1'],
+        ]);
+
+        $this->runJob($request);
+
+        Http::assertNotSent(fn ($req) => str_contains($req->url(), 'evil.example.com'));
+        $this->assertSame(MediaRequestStatus::Processing, $request->fresh()->status);
+    }
+
     public function test_handle_no_ops_when_request_already_completed(): void
     {
         Http::fake();

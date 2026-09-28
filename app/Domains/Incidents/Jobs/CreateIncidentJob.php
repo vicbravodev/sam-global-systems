@@ -5,6 +5,10 @@ namespace App\Domains\Incidents\Jobs;
 use App\Domains\Decisions\Models\Decision;
 use App\Domains\Incidents\Actions\ApplyReevaluationToIncident;
 use App\Domains\Incidents\Actions\CreateIncidentFromEvent;
+use App\Domains\Incidents\Actions\RequestIncidentReview;
+use App\Domains\Incidents\Enums\IncidentCreatorType;
+use App\Domains\Incidents\Enums\IncidentStatusCode;
+use App\Domains\Incidents\Models\Incident;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Support\JobFailureReporter;
 use App\Support\TenantContext;
@@ -40,8 +44,11 @@ class CreateIncidentJob implements ShouldBeUnique, ShouldQueue
         return 'incident:'.$this->normalizedEventId;
     }
 
-    public function handle(CreateIncidentFromEvent $createIncidentFromEvent, ?ApplyReevaluationToIncident $applyReevaluation = null): void
-    {
+    public function handle(
+        CreateIncidentFromEvent $createIncidentFromEvent,
+        ?ApplyReevaluationToIncident $applyReevaluation = null,
+        ?RequestIncidentReview $requestReview = null,
+    ): void {
         $applyReevaluation ??= app(ApplyReevaluationToIncident::class);
 
         $event = NormalizedEvent::withoutGlobalScopes()->find($this->normalizedEventId);
@@ -73,7 +80,34 @@ class CreateIncidentJob implements ShouldBeUnique, ShouldQueue
 
         $incident = $createIncidentFromEvent->execute($event, $this->context);
 
+        $this->flagForReview($incident, $requestReview ?? app(RequestIncidentReview::class));
+
         AutoAssignIncidentJob::dispatch($incident->id);
+    }
+
+    /**
+     * A REQUIRE_HUMAN_REVIEW decision passes `request_review`: the incident it
+     * just opened moves to in-review so the inbox surfaces it for triage.
+     * Only the incident this decision created is touched — when the event was
+     * linked to an already-open incident (dedup) that one keeps its status.
+     */
+    private function flagForReview(Incident $incident, RequestIncidentReview $requestReview): void
+    {
+        $reason = $this->context['request_review'] ?? null;
+        $decisionId = $this->context['decision_id'] ?? null;
+
+        if (! is_string($reason) || $decisionId === null) {
+            return;
+        }
+
+        if ((int) $incident->related_decision_id !== (int) $decisionId
+            || (int) $incident->related_event_id !== $this->normalizedEventId
+            || $incident->status?->code !== IncidentStatusCode::Open->value
+        ) {
+            return;
+        }
+
+        $requestReview->execute($incident, $reason, IncidentCreatorType::System);
     }
 
     public function failed(\Throwable $exception): void

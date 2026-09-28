@@ -61,6 +61,138 @@ class CreateIncidentOnDecisionMadeTest extends TestCase
         Bus::assertNotDispatched(CreateIncidentJob::class);
     }
 
+    public function test_log_only_outcome_is_ignored(): void
+    {
+        Bus::fake();
+
+        $user = User::factory()->create();
+        $event = NormalizedEvent::factory()->create(['team_id' => $user->currentTeam->id]);
+
+        $decision = $this->makeDecision($user->currentTeam->id, $event->id, DecisionOutcomeCode::LogOnly);
+
+        app(CreateIncidentOnDecisionMade::class)->handle(new DecisionMade($decision));
+
+        Bus::assertNotDispatched(CreateIncidentJob::class);
+    }
+
+    public function test_require_human_review_dispatches_flagged_medium_incident(): void
+    {
+        Bus::fake();
+
+        $user = User::factory()->create();
+        $event = NormalizedEvent::factory()->create(['team_id' => $user->currentTeam->id]);
+
+        $decision = $this->makeDecision($user->currentTeam->id, $event->id, DecisionOutcomeCode::RequireHumanReview);
+
+        app(CreateIncidentOnDecisionMade::class)->handle(new DecisionMade($decision));
+
+        Bus::assertDispatched(CreateIncidentJob::class, function (CreateIncidentJob $job) use ($event, $decision) {
+            return $job->normalizedEventId === $event->id
+                && ($job->context['decision_id'] ?? null) === $decision->id
+                && ($job->context['priority_code'] ?? null) === 'medium'
+                && is_string($job->context['request_review'] ?? null)
+                && ($job->context['metadata']['requires_review'] ?? null) === true;
+        });
+    }
+
+    public function test_alert_dispatches_low_priority_incident(): void
+    {
+        Bus::fake();
+
+        $user = User::factory()->create();
+        $event = NormalizedEvent::factory()->create(['team_id' => $user->currentTeam->id]);
+
+        $decision = $this->makeDecision($user->currentTeam->id, $event->id, DecisionOutcomeCode::Alert);
+
+        app(CreateIncidentOnDecisionMade::class)->handle(new DecisionMade($decision));
+
+        Bus::assertDispatched(CreateIncidentJob::class, function (CreateIncidentJob $job) use ($decision) {
+            return ($job->context['decision_id'] ?? null) === $decision->id
+                && ($job->context['priority_code'] ?? null) === 'low'
+                && ! array_key_exists('request_review', $job->context)
+                && ($job->context['metadata']['decision_outcome'] ?? null) === 'ALERT';
+        });
+    }
+
+    public function test_review_job_opens_incident_in_review_status(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+        $event = NormalizedEvent::factory()->create([
+            'team_id' => $team->id,
+            'asset_id' => $this->makeAsset($team)->id,
+        ]);
+        $decision = $this->makeDecision($team->id, $event->id, DecisionOutcomeCode::RequireHumanReview);
+
+        Bus::fake();
+        app(CreateIncidentOnDecisionMade::class)->handle(new DecisionMade($decision));
+
+        $job = null;
+        Bus::assertDispatched(CreateIncidentJob::class, function (CreateIncidentJob $dispatched) use (&$job) {
+            $job = $dispatched;
+
+            return true;
+        });
+
+        $job->handle(app(CreateIncidentFromEvent::class));
+
+        $incident = Incident::withoutGlobalScopes()
+            ->with(['status', 'priority'])
+            ->where('related_event_id', $event->id)
+            ->sole();
+
+        $this->assertSame('in_review', $incident->status->code);
+        $this->assertSame('medium', $incident->priority->code);
+        $this->assertSame($decision->id, (int) $incident->related_decision_id);
+        $this->assertTrue($incident->metadata_json['requires_review']);
+    }
+
+    public function test_review_job_does_not_move_an_existing_open_incident_to_review(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+        $asset = $this->makeAsset($team);
+        $first = NormalizedEvent::factory()->create(['team_id' => $team->id, 'asset_id' => $asset->id]);
+        $second = NormalizedEvent::factory()->create(['team_id' => $team->id, 'asset_id' => $asset->id]);
+
+        (new CreateIncidentJob($first->id, ['incident_type_code' => 'collision']))
+            ->handle(app(CreateIncidentFromEvent::class));
+
+        $decision = $this->makeDecision($team->id, $second->id, DecisionOutcomeCode::RequireHumanReview);
+
+        (new CreateIncidentJob($second->id, [
+            'decision_id' => $decision->id,
+            'priority_code' => 'medium',
+            'request_review' => CreateIncidentOnDecisionMade::REVIEW_REASON,
+        ]))->handle(app(CreateIncidentFromEvent::class));
+
+        $incident = Incident::withoutGlobalScopes()->with('status')->where('related_event_id', $first->id)->sole();
+
+        $this->assertSame('open', $incident->status->code);
+    }
+
+    public function test_alert_job_opens_low_priority_incident(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+        $event = NormalizedEvent::factory()->create(['team_id' => $team->id]);
+        $decision = $this->makeDecision($team->id, $event->id, DecisionOutcomeCode::Alert);
+
+        (new CreateIncidentJob($event->id, [
+            'decision_id' => $decision->id,
+            'priority_code' => 'low',
+            'metadata' => ['decision_outcome' => 'ALERT'],
+        ]))->handle(app(CreateIncidentFromEvent::class));
+
+        $incident = Incident::withoutGlobalScopes()
+            ->with(['status', 'priority'])
+            ->where('related_event_id', $event->id)
+            ->sole();
+
+        $this->assertSame('low', $incident->priority->code);
+        $this->assertSame('open', $incident->status->code);
+    }
+
     public function test_listener_run_via_job_creates_only_one_incident_for_repeat_dispatch(): void
     {
         $user = User::factory()->create();

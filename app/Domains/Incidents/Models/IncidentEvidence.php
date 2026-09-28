@@ -2,6 +2,7 @@
 
 namespace App\Domains\Incidents\Models;
 
+use App\Contracts\ObjectStorage;
 use App\Domains\Incidents\Enums\EvidenceSourceType;
 use App\Domains\Incidents\Enums\EvidenceType;
 use App\Domains\Incidents\Enums\IncidentCreatorType;
@@ -9,6 +10,7 @@ use Database\Factories\Domains\Incidents\IncidentEvidenceFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Throwable;
 
 class IncidentEvidence extends Model
 {
@@ -30,6 +32,24 @@ class IncidentEvidence extends Model
         'added_by_type',
         'added_by_id',
     ];
+
+    /**
+     * URL para abrir la evidencia. Los archivos subidos a storage generan una
+     * URL temporal fresca en cada lectura (nunca se persiste una firmada, que
+     * caducaría); los enlaces externos sin storage_path se devuelven tal cual.
+     */
+    public function downloadUrl(int $minutes = 30): ?string
+    {
+        if ($this->storage_path === null) {
+            return $this->file_url;
+        }
+
+        try {
+            return app(ObjectStorage::class)->temporaryUrl($this->storage_path, now()->addMinutes($minutes));
+        } catch (Throwable) {
+            return null;
+        }
+    }
 
     /**
      * @return BelongsTo<Incident, $this>

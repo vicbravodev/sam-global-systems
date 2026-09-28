@@ -200,4 +200,74 @@ return [
 
     'skip_evaluation_categories' => ['safety', 'maintenance'],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Event Types Excluded From AI Evaluation
+    |--------------------------------------------------------------------------
+    |
+    | Low-value event types skipped by event type code, whatever their
+    | category. NOTE: the decision engine runs on `AIEvaluationCompleted`, so
+    | a skipped event gets no decision and no incident (same as the skipped
+    | categories above) — remove a type here if a tenant's decision rules
+    | must act on it.
+    |
+    */
+
+    'skip_evaluation_event_types' => [
+        'geofence_entry',
+        'geofence_exit',
+        'vehicle_idle',
+        'driving_context',
+        'defensive_driving',
+        // 'unmapped' NO se omite a propósito: puede ser una alerta nueva del
+        // proveedor aún sin regla de mapeo y no debe descartarse en silencio.
+        'no_seatbelt',
+        'hos_violation',
+        'smoking_drinking',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Tenant AI Quota
+    |--------------------------------------------------------------------------
+    |
+    | Per-tenant guard against floods of non-critical events: monthly tokens
+    | (in + out) and daily AI calls. Over quota, non-critical events fall back
+    | to rules-only and their images are not sent to the vision model.
+    | Critical-severity events ALWAYS reach the model regardless of quota.
+    |
+    */
+
+    'quota' => [
+        'monthly_token_limit' => (int) env('AI_QUOTA_MONTHLY_TOKEN_LIMIT', 5_000_000),
+        'daily_call_limit' => (int) env('AI_QUOTA_DAILY_CALL_LIMIT', 2_000),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Vision (Media Assessment) Limits
+    |--------------------------------------------------------------------------
+    |
+    | Images are validated by magic bytes (jpeg/png/webp/gif) and size before
+    | any model call; invalid or oversize files are recorded as `low_quality`
+    | at no cost. A burst of stills around a panic is capped per event so a
+    | single alert cannot fan out into dozens of paid vision calls.
+    |
+    */
+
+    'media' => [
+        'max_image_bytes' => (int) env('AI_MEDIA_MAX_IMAGE_BYTES', 8 * 1024 * 1024),
+        'max_images_per_event' => (int) env('AI_MEDIA_MAX_IMAGES_PER_EVENT', 8),
+
+        // Provider media downloads (SecureMediaDownloader): https only, to
+        // these hosts (suffix match or `*` glob; comma-separated in env),
+        // streamed to a temp file under a hard size cap and timeout.
+        'allowed_download_hosts' => array_values(array_filter(array_map('trim', explode(',', (string) env(
+            'AI_MEDIA_ALLOWED_DOWNLOAD_HOSTS',
+            'samsara.com,samsara-*.s3.amazonaws.com,amazonaws.com,cloudfront.net',
+        ))))),
+        'max_download_bytes' => (int) env('AI_MEDIA_MAX_DOWNLOAD_BYTES', 200 * 1024 * 1024),
+        'download_timeout' => (int) env('AI_MEDIA_DOWNLOAD_TIMEOUT', 120),
+    ],
+
 ];

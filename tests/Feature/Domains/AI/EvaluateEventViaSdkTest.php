@@ -10,6 +10,8 @@ use App\Infrastructure\AI\Agents\EventClassifierAgent;
 use App\Infrastructure\AI\Agents\SdkEventEvaluationAgent;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\JsonSchema\JsonSchemaTypeFactory;
+use Laravel\Ai\Contracts\HasStructuredOutput;
 use Laravel\Ai\Responses\Data\Meta;
 use Laravel\Ai\Responses\Data\Usage;
 use Laravel\Ai\Responses\TextResponse;
@@ -221,5 +223,108 @@ class EvaluateEventViaSdkTest extends TestCase
             recentHistory: [],
             tenantProfile: [],
         ));
+    }
+
+    public function test_classifier_declares_structured_output_schema(): void
+    {
+        $agent = new EventClassifierAgent;
+
+        $this->assertInstanceOf(HasStructuredOutput::class, $agent);
+
+        $schema = $agent->schema(new JsonSchemaTypeFactory);
+
+        $this->assertSame(
+            ['classification', 'confidence_score', 'risk_score_delta', 'explanation_summary', 'reasoning_steps', 'key_factors'],
+            array_keys($schema),
+        );
+    }
+
+    public function test_wrapper_consumes_native_structured_response(): void
+    {
+        EventClassifierAgent::fake([[
+            'classification' => 'real_event',
+            'confidence_score' => 0.8,
+            'risk_score_delta' => 0.2,
+            'explanation_summary' => 'Pánico en carretera con frenado brusco previo.',
+            'reasoning_steps' => ['Frenado brusco 2 min antes'],
+            'key_factors' => [['name' => 'harsh_driving_near_event', 'value' => 'true']],
+        ]]);
+
+        $result = app(SdkEventEvaluationAgent::class)->evaluate($this->emptyContext());
+
+        $this->assertSame(EventClassification::RealEvent, $result->classification);
+        $this->assertSame(0.8, $result->confidenceScore);
+        $this->assertSame(['harsh_driving_near_event' => 'true'], $result->keyFactors);
+    }
+
+    public function test_wrapper_strips_markdown_fences_from_text_response(): void
+    {
+        EventClassifierAgent::fake([
+            "Aquí está:\n```json\n".json_encode([
+                'classification' => 'false_positive',
+                'confidence_score' => 0.7,
+                'risk_score_delta' => -0.2,
+            ], JSON_THROW_ON_ERROR)."\n```",
+        ]);
+
+        $result = app(SdkEventEvaluationAgent::class)->evaluate($this->emptyContext());
+
+        $this->assertSame(EventClassification::FalsePositive, $result->classification);
+        $this->assertSame(-0.2, $result->riskScoreDelta);
+    }
+
+    public function test_wrapper_treats_confidence_above_one_as_percentage_and_clamps_delta(): void
+    {
+        EventClassifierAgent::fake([
+            json_encode([
+                'classification' => 'real_event',
+                'confidence_score' => 85,
+                'risk_score_delta' => 3.5,
+            ], JSON_THROW_ON_ERROR),
+        ]);
+
+        $result = app(SdkEventEvaluationAgent::class)->evaluate($this->emptyContext());
+
+        $this->assertSame(0.85, $result->confidenceScore);
+        $this->assertSame(1.0, $result->riskScoreDelta);
+    }
+
+    public function test_wrapper_clamps_out_of_range_confidence(): void
+    {
+        EventClassifierAgent::fake([
+            json_encode(['classification' => 'real_event', 'confidence_score' => 250, 'risk_score_delta' => -4], JSON_THROW_ON_ERROR),
+        ]);
+
+        $result = app(SdkEventEvaluationAgent::class)->evaluate($this->emptyContext());
+
+        $this->assertSame(1.0, $result->confidenceScore);
+        $this->assertSame(-1.0, $result->riskScoreDelta);
+    }
+
+    public function test_unknown_classification_falls_back_to_unclear(): void
+    {
+        EventClassifierAgent::fake([
+            json_encode(['classification' => 'robbery_confirmed', 'confidence_score' => 0.9], JSON_THROW_ON_ERROR),
+        ]);
+
+        $result = app(SdkEventEvaluationAgent::class)->evaluate($this->emptyContext());
+
+        $this->assertSame(EventClassification::Unclear, $result->classification);
+    }
+
+    private function emptyContext(): AIInputContext
+    {
+        $user = User::factory()->create();
+        $event = NormalizedEvent::factory()->create(['team_id' => $user->currentTeam->id]);
+
+        return new AIInputContext(
+            teamId: $user->currentTeam->id,
+            normalizedEventId: $event->id,
+            normalizedEvent: [],
+            contextSignals: [],
+            operationalProfile: [],
+            recentHistory: [],
+            tenantProfile: [],
+        );
     }
 }

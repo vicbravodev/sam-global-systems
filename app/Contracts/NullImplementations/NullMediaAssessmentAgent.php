@@ -26,8 +26,20 @@ class NullMediaAssessmentAgent implements MediaAssessmentAgent
 
     public float $forcedConfidence = 0.80;
 
+    /** Exception thrown instead of the generic simulated failure. */
+    public ?\Throwable $failWith = null;
+
+    /** @var list<MediaAssessmentInput> Inputs received, for assertions. */
+    public array $receivedInputs = [];
+
     public function assess(MediaAssessmentInput $input): MediaAssessmentOutput
     {
+        $this->receivedInputs[] = $input;
+
+        if ($this->failWith !== null) {
+            throw $this->failWith;
+        }
+
         if ($this->shouldFail) {
             throw new \RuntimeException('NullMediaAssessmentAgent simulated failure');
         }

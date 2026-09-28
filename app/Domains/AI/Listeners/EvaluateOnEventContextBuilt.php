@@ -17,7 +17,7 @@ class EvaluateOnEventContextBuilt
     public function handle(EventContextBuilt $event): void
     {
         $normalizedEvent = NormalizedEvent::withoutGlobalScopes()
-            ->with('eventCategory')
+            ->with(['eventCategory', 'eventType'])
             ->find($event->snapshot->normalized_event_id);
 
         if ($normalizedEvent === null || ! $this->gate->shouldEvaluate($normalizedEvent)) {

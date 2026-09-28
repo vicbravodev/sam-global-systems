@@ -40,19 +40,19 @@ class SdkEventEvaluationAgent implements EventEvaluationAgent
 
         $latencyMs = (int) intdiv(hrtime(true) - $startedAt, 1_000_000);
 
-        $structured = $this->parseStructuredResponse($response->text);
+        $structured = $this->parseStructuredResponse($response);
 
         $this->persistConversationLink($context, $response);
 
         // Pricing keys on the raw provider model id; when `meta` is absent
         // the cost resolves to 0.0 rather than failing the evaluation.
         return new AIEvaluationResult(
-            classification: EventClassification::from($structured['classification']),
-            confidenceScore: (float) $structured['confidence_score'],
-            riskScoreDelta: (float) ($structured['risk_score_delta'] ?? 0.0),
+            classification: EventClassification::tryFrom((string) $structured['classification']) ?? EventClassification::Unclear,
+            confidenceScore: StructuredOutputParser::confidence($structured['confidence_score']),
+            riskScoreDelta: StructuredOutputParser::clamp($structured['risk_score_delta'] ?? 0.0, -1.0, 1.0),
             explanationSummary: (string) ($structured['explanation_summary'] ?? ''),
-            reasoningSteps: array_values(array_map('strval', $structured['reasoning_steps'] ?? [])),
-            keyFactors: (array) ($structured['key_factors'] ?? []),
+            reasoningSteps: StructuredOutputParser::stringList($structured['reasoning_steps'] ?? []),
+            keyFactors: StructuredOutputParser::keyValueMap($structured['key_factors'] ?? []),
             modelUsed: 'laravel-ai-sdk:'.($response->meta?->model ?? 'event-classifier'),
             inputTokens: (int) $response->usage->promptTokens,
             outputTokens: (int) $response->usage->completionTokens,
@@ -68,16 +68,9 @@ class SdkEventEvaluationAgent implements EventEvaluationAgent
     /**
      * @return array<string, mixed>
      */
-    private function parseStructuredResponse(string $text): array
+    private function parseStructuredResponse(AgentResponse $response): array
     {
-        $trimmed = trim($text);
-
-        try {
-            /** @var array<string, mixed> $decoded */
-            $decoded = json_decode($trimmed, associative: true, flags: JSON_THROW_ON_ERROR);
-        } catch (Throwable $exception) {
-            throw new RuntimeException('SDK response was not valid JSON: '.$exception->getMessage(), previous: $exception);
-        }
+        $decoded = StructuredOutputParser::decode($response, 'SDK response');
 
         if (! isset($decoded['classification'], $decoded['confidence_score'])) {
             throw new RuntimeException('SDK response missing required fields (classification, confidence_score)');
