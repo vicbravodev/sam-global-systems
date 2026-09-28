@@ -14,6 +14,7 @@ use App\Domains\Tenancy\Models\UsageMeter;
 use App\Models\Team;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class AggregateUsageJobTest extends TestCase
@@ -172,5 +173,28 @@ class AggregateUsageJobTest extends TestCase
                 && $event->consumed === 1500
                 && $event->included === 1000;
         });
+    }
+
+    public function test_the_scheduled_run_fans_out_one_job_per_subscribed_tenant(): void
+    {
+        Queue::fake();
+
+        $plan = Plan::factory()->create();
+        $subscribed = Team::factory()->count(2)->create()->each(fn (Team $team) => Subscription::factory()->create([
+            'team_id' => $team->id,
+            'plan_id' => $plan->id,
+            'status' => SubscriptionStatus::Active,
+        ]));
+        Team::factory()->create(); // no subscription: nothing to aggregate
+
+        (new AggregateUsageJob(forMonth: '2026-08-15'))->handle();
+
+        Queue::assertPushed(AggregateUsageJob::class, 2);
+
+        foreach ($subscribed as $team) {
+            Queue::assertPushed(AggregateUsageJob::class, fn (AggregateUsageJob $job) => $job->teamId === $team->id
+                && $job->forMonth === '2026-08-15'
+                && $job->queue === 'billing');
+        }
     }
 }

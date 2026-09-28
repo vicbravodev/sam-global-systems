@@ -56,19 +56,28 @@ class AggregateUsageJob implements ShouldQueue
                     ]);
             });
 
-        if ($this->teamId) {
-            $teamsQuery->where('id', $this->teamId);
+        if ($this->teamId === null) {
+            // Scheduled run (no team): fan out one job per tenant, like the
+            // monthly invoicing. One job for every tenant grows past its timeout
+            // with the customer base, and a retry restarted everyone from zero.
+            $teamsQuery->select('teams.id')->chunkById(100, function ($teams) {
+                foreach ($teams as $team) {
+                    self::dispatch((int) $team->id, $this->forMonth);
+                }
+            });
+
+            return;
         }
 
-        $meters = UsageMeter::all();
+        $team = $teamsQuery->whereKey($this->teamId)->first();
 
-        $teamsQuery->chunkById(100, function ($teams) use ($meters) {
-            foreach ($teams as $team) {
-                foreach ($meters as $meter) {
-                    $this->aggregateForTeamMeter($team, $meter);
-                }
-            }
-        });
+        if ($team === null) {
+            return;
+        }
+
+        foreach (UsageMeter::all() as $meter) {
+            $this->aggregateForTeamMeter($team, $meter);
+        }
     }
 
     private function periodStart(): CarbonInterface
@@ -101,9 +110,10 @@ class AggregateUsageJob implements ShouldQueue
             ->groupBy(DB::raw('DATE(occurred_at)'))
             ->get();
 
-        foreach ($dailyData as $row) {
+        // One upsert for the whole month instead of one per day.
+        if ($dailyData->isNotEmpty()) {
             UsageDailyAggregate::query()->upsert(
-                [
+                $dailyData->map(fn ($row) => [
                     'team_id' => $team->id,
                     'usage_meter_id' => $meter->id,
                     'day' => $row->day,
@@ -111,7 +121,7 @@ class AggregateUsageJob implements ShouldQueue
                     'quantity_max' => $row->quantity_max,
                     'created_at' => now(),
                     'updated_at' => now(),
-                ],
+                ])->all(),
                 ['team_id', 'usage_meter_id', 'day'],
                 ['quantity_sum', 'quantity_max', 'updated_at'],
             );

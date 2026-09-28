@@ -47,22 +47,31 @@ class BuildAnalyticsSnapshotJob implements ShouldQueue
                     ]);
             });
 
-        if ($this->teamId) {
-            $teamsQuery->where('id', $this->teamId);
+        if ($this->teamId === null) {
+            // Scheduled run (no team): fan out one job per tenant, like the
+            // monthly invoicing. One job for every tenant grows past its timeout
+            // with the customer base, and a retry restarted everyone from zero.
+            $teamsQuery->select('teams.id')->chunkById(100, function ($teams) use ($day) {
+                foreach ($teams as $team) {
+                    self::dispatch((int) $team->id, $day->toDateString());
+                }
+            });
+
+            return;
         }
 
-        $teamsQuery->chunkById(100, function ($teams) use ($action, $config, $start, $end) {
-            foreach ($teams as $team) {
-                $enabled = $config->enabledSnapshotTypes($team->id);
+        if (! $teamsQuery->whereKey($this->teamId)->exists()) {
+            return;
+        }
 
-                foreach (SnapshotType::cases() as $type) {
-                    if (! in_array($type->value, $enabled, true)) {
-                        continue;
-                    }
+        $enabled = $config->enabledSnapshotTypes($this->teamId);
 
-                    $action->execute($team->id, $type, $start, $end);
-                }
+        foreach (SnapshotType::cases() as $type) {
+            if (! in_array($type->value, $enabled, true)) {
+                continue;
             }
-        });
+
+            $action->execute($this->teamId, $type, $start, $end);
+        }
     }
 }

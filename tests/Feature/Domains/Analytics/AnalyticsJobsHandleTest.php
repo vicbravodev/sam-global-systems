@@ -69,6 +69,11 @@ class AnalyticsJobsHandleTest extends TestCase
             }
         };
 
+        // The scheduled run fans out one job per tenant; those resolve the
+        // action and config from the container.
+        $this->app->instance(BuildAnalyticsSnapshot::class, $action);
+        $this->app->instance(TenantAnalyticsConfig::class, $config);
+
         (new BuildAnalyticsSnapshotJob)->handle($action, $config);
 
         $teamIds = array_column($action->calls, 0);
@@ -157,6 +162,11 @@ class AnalyticsJobsHandleTest extends TestCase
                 return [];
             }
         };
+
+        // The scheduled run fans out one job per tenant; those resolve the
+        // action and config from the container.
+        $this->app->instance(BuildAnalyticsSnapshot::class, $action);
+        $this->app->instance(TenantAnalyticsConfig::class, $config);
 
         (new BuildAnalyticsSnapshotJob)->handle($action, $config);
 
