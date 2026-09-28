@@ -1287,7 +1287,7 @@ export default function RulesIndex() {
     return (
         <>
             <Head title="Reglas" />
-            <div className="flex flex-col gap-4 p-5">
+            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5">
                 <PageHeader
                     title="Reglas"
                     description="Motor de decisiones y mapeo de eventos del proveedor."

@@ -1132,7 +1132,7 @@ export default function AutomationIndex() {
     return (
         <>
             <Head title="Automatizaciones" />
-            <div className="flex flex-col gap-4 p-5">
+            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5">
                 <PageHeader
                     title="Automatizaciones"
                     description="Automatizaciones que reaccionan a decisiones e incidentes, y el historial de acciones ejecutadas."

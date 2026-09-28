@@ -590,7 +590,7 @@ export default function AnalyticsIndex() {
     return (
         <>
             <Head title="Analítica" />
-            <div className="flex flex-col gap-4 p-5">
+            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5">
                 <PageHeader
                     title="Analítica"
                     description="KPIs operativos del tenant y reportes descargables."

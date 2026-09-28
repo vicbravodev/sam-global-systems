@@ -490,7 +490,7 @@ export default function BillingIndex() {
     return (
         <>
             <Head title="Facturación" />
-            <div className="flex flex-col gap-4 p-5">
+            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5">
                 <PageHeader
                     title="Facturación"
                     description="Pagas por cada día que una unidad está vigilada. Tú decides cuáles enciendes; lo que pasa del tope contratado se cobra como extra. El pago es por transferencia bancaria."
