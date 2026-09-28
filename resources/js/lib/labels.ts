@@ -395,6 +395,11 @@ export const FEATURE_LABELS: Record<string, string> = {
     reports: 'Analítica y reportes',
     tenancy: 'Facturación y equipo',
     users: 'Usuarios y roles',
+    ai_media_analysis: 'Análisis de video con IA',
+    api_access: 'Conexión con tus sistemas',
+    custom_branding: 'Marca propia',
+    driver_coaching_reports: 'Reportes para capacitar conductores',
+    voice_verification: 'Verificación por llamada',
 };
 
 export function featureLabel(code: string | null | undefined): string {

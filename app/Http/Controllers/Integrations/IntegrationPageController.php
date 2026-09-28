@@ -2,21 +2,36 @@
 
 namespace App\Http\Controllers\Integrations;
 
+use App\Contracts\Normalization\NormalizedEventStatsQuery;
+use App\Domains\Assets\Enums\AssetMonitoringState;
+use App\Domains\Assets\Models\Asset;
+use App\Domains\Assets\Models\TelematicsFeedCursor;
+use App\Domains\Drivers\Models\Driver;
 use App\Domains\Integrations\Enums\AuthType;
+use App\Domains\Integrations\Enums\IntegrationProblem;
 use App\Domains\Integrations\Enums\IntegrationProviderStatus;
+use App\Domains\Integrations\Enums\TenantIntegrationStatus;
 use App\Domains\Integrations\Models\IntegrationProvider;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Domains\Integrations\Models\WebhookEndpoint;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class IntegrationPageController extends Controller
 {
+    public function __construct(
+        private readonly NormalizedEventStatsQuery $eventStats,
+    ) {}
+
     /**
      * Render the integrations management page with the tenant's connected
-     * integrations and the catalog of providers available for connection.
+     * integrations, a tenant-wide pulse and the catalog of providers
+     * available for connection.
      */
     public function index(Team $current_team): Response
     {
@@ -28,35 +43,64 @@ class IntegrationPageController extends Controller
             ->orderByDesc('id')
             ->get();
 
+        $events24h = $this->eventStats->countByIntegrationSince($current_team->id, now()->subDay());
+        $fleet = $this->fleetByProvider($current_team->id);
+        $liveData = $this->newestLiveDataByIntegration($current_team->id);
+
+        // Fleet counts are per provider (assets/drivers carry provider_id, not
+        // the integration). Only attribute them to a card when it is the sole
+        // integration of that provider, so two Samsara accounts never both
+        // claim the same units.
+        $integrationsPerProvider = $integrations->countBy('provider_id');
+
         return Inertia::render('integrations/index', [
             'integrations' => $integrations
-                ->map(fn (TenantIntegration $integration) => $this->presentIntegration($integration))
+                ->map(fn (TenantIntegration $integration) => $this->presentIntegration(
+                    $integration,
+                    (int) ($events24h[$integration->id] ?? 0),
+                    $liveData[$integration->id] ?? null,
+                    ($integrationsPerProvider[$integration->provider_id] ?? 0) === 1
+                        ? ($fleet[$integration->provider_id] ?? ['assets' => 0, 'monitored' => 0, 'drivers' => 0])
+                        : null,
+                ))
                 ->all(),
+            'summary' => $this->summary($integrations, $events24h, $fleet),
             'providers' => fn () => $this->availableProviders(),
             'authTypes' => fn () => $this->authTypes(),
         ]);
     }
 
     /**
+     * @param  array{assets: int, monitored: int, drivers: int}|null  $fleet
      * @return array<string, mixed>
      */
-    private function presentIntegration(TenantIntegration $integration): array
+    private function presentIntegration(TenantIntegration $integration, int $events24h, ?string $liveDataAt, ?array $fleet): array
     {
         $endpoint = $integration->webhookEndpoint;
+        $problem = IntegrationProblem::classify($integration->last_error_message);
 
         return [
             'id' => (int) $integration->id,
             'name' => (string) $integration->name,
             'provider' => (string) ($integration->provider?->name ?? '—'),
             'providerCode' => (string) ($integration->provider?->code ?? ''),
+            'capabilities' => array_values($integration->provider?->capabilities_json ?? []),
             'status' => $integration->status->value,
             'health' => $integration->status->healthKey(),
             'authType' => $integration->auth_type->value,
+            'authTypeLabel' => $this->authTypeLabel($integration->auth_type),
             // Allowlist only: config_json may hold provider secrets.
             'config' => $integration->publicConfig(),
+            'connectedAt' => $integration->created_at?->toIso8601String(),
             'lastSyncAt' => $integration->last_sync_at?->toIso8601String(),
+            // Newest point the live feed delivered; the legacy poll column is
+            // only a fallback for integrations that predate the feed.
+            'lastLocationAt' => $liveDataAt ?? $integration->last_location_poll_at?->toIso8601String(),
             'lastErrorAt' => $integration->last_error_at?->toIso8601String(),
             'lastErrorMessage' => $integration->last_error_message,
+            'problem' => $problem?->value,
+            'events24h' => $events24h,
+            'fleet' => $fleet,
             'webhook' => $endpoint ? $this->presentWebhook($endpoint) : null,
         ];
     }
@@ -71,6 +115,89 @@ class IntegrationPageController extends Controller
             'status' => (string) $endpoint->status,
             'lastReceivedAt' => $endpoint->last_received_at?->toIso8601String(),
         ];
+    }
+
+    /**
+     * Tenant-wide pulse for the strip at the top of the page.
+     *
+     * @param  Collection<int, TenantIntegration>  $integrations
+     * @param  array<int, int>  $events24h
+     * @param  array<int, array{assets: int, monitored: int, drivers: int}>  $fleet
+     * @return array<string, int>
+     */
+    private function summary(Collection $integrations, array $events24h, array $fleet): array
+    {
+        $byStatus = $integrations->countBy(fn (TenantIntegration $i) => $i->status->value);
+
+        return [
+            'total' => $integrations->count(),
+            'working' => (int) ($byStatus[TenantIntegrationStatus::Active->value] ?? 0),
+            'attention' => (int) ($byStatus[TenantIntegrationStatus::Error->value] ?? 0),
+            'pending' => (int) ($byStatus[TenantIntegrationStatus::Pending->value] ?? 0),
+            'inactive' => (int) ($byStatus[TenantIntegrationStatus::Inactive->value] ?? 0),
+            'events24h' => array_sum($events24h),
+            'assets' => array_sum(array_column($fleet, 'assets')),
+            'monitored' => array_sum(array_column($fleet, 'monitored')),
+            'drivers' => array_sum(array_column($fleet, 'drivers')),
+        ];
+    }
+
+    /**
+     * Newest data point any telematics feed delivered, per integration.
+     *
+     * @return array<int, string> tenant_integration_id => ISO-8601
+     */
+    private function newestLiveDataByIntegration(int $teamId): array
+    {
+        return TelematicsFeedCursor::query()
+            ->where('team_id', $teamId)
+            ->whereNotNull('last_data_at')
+            ->groupBy('tenant_integration_id')
+            ->selectRaw('tenant_integration_id, MAX(last_data_at) AS newest')
+            ->pluck('newest', 'tenant_integration_id')
+            ->mapWithKeys(fn ($newest, $integrationId) => [
+                (int) $integrationId => Carbon::parse($newest)->toIso8601String(),
+            ])
+            ->all();
+    }
+
+    /**
+     * Units and drivers each provider has brought into this tenant.
+     *
+     * @return array<int, array{assets: int, monitored: int, drivers: int}>
+     */
+    private function fleetByProvider(int $teamId): array
+    {
+        $assets = Asset::query()
+            ->where('team_id', $teamId)
+            ->whereNotNull('provider_id')
+            ->selectRaw('provider_id, COUNT(*) AS total, SUM(CASE WHEN monitoring_state = ? THEN 1 ELSE 0 END) AS monitored', [AssetMonitoringState::Monitored->value])
+            ->groupBy('provider_id')
+            ->get();
+
+        $drivers = Driver::query()
+            ->join('driver_external_references', 'driver_external_references.driver_id', '=', 'drivers.id')
+            ->where('drivers.team_id', $teamId)
+            ->groupBy('driver_external_references.provider_id')
+            ->select('driver_external_references.provider_id', DB::raw('COUNT(DISTINCT drivers.id) AS total'))
+            ->pluck('total', 'provider_id');
+
+        $fleet = [];
+
+        foreach ($assets as $row) {
+            $fleet[(int) $row->provider_id] = [
+                'assets' => (int) $row->total,
+                'monitored' => (int) $row->monitored,
+                'drivers' => 0,
+            ];
+        }
+
+        foreach ($drivers as $providerId => $total) {
+            $fleet[(int) $providerId] ??= ['assets' => 0, 'monitored' => 0, 'drivers' => 0];
+            $fleet[(int) $providerId]['drivers'] = (int) $total;
+        }
+
+        return $fleet;
     }
 
     /**
@@ -110,10 +237,10 @@ class IntegrationPageController extends Controller
     private function authTypeLabel(AuthType $type): string
     {
         return match ($type) {
-            AuthType::ApiKey => 'API Key',
-            AuthType::Oauth2 => 'OAuth 2.0',
-            AuthType::BasicAuth => 'Basic Auth',
-            AuthType::Token => 'Token',
+            AuthType::ApiKey => 'Clave de API',
+            AuthType::Oauth2 => 'Inicio de sesión OAuth',
+            AuthType::BasicAuth => 'Usuario y contraseña',
+            AuthType::Token => 'Token de acceso',
         };
     }
 }
