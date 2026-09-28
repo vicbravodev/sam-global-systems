@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Domains\Tenancy;
 
+use App\Domains\Assets\Models\Asset;
 use App\Domains\Tenancy\Enums\InvoiceStatus;
 use App\Domains\Tenancy\Enums\SubscriptionStatus;
 use App\Domains\Tenancy\Models\BillingRate;
@@ -10,6 +11,7 @@ use App\Domains\Tenancy\Models\Plan;
 use App\Domains\Tenancy\Models\Subscription;
 use App\Domains\Tenancy\Models\TenantFeature;
 use App\Domains\Tenancy\Models\TenantUsageCounter;
+use App\Domains\Tenancy\Models\UsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
 use App\Models\Team;
 use App\Models\User;
@@ -214,6 +216,48 @@ class BillingPagePresentationTest extends TestCase
             ->has('usage', 0)
             ->has('features', 0)
             ->has('invoices', 0));
+    }
+
+    public function test_bank_transfer_details_show_only_once_the_clabe_is_configured(): void
+    {
+        config(['billing.transfer' => ['beneficiary' => null, 'bank' => null, 'clabe' => null]]);
+        $this->page()->assertInertia(fn (Assert $page) => $page->where('transfer', null));
+
+        config(['billing.transfer' => [
+            'beneficiary' => 'SAM Global Systems SA de CV',
+            'bank' => 'BBVA',
+            'clabe' => ' 012180001234567890 ',
+        ]]);
+        $this->page()->assertInertia(fn (Assert $page) => $page
+            ->where('transfer.beneficiary', 'SAM Global Systems SA de CV')
+            ->where('transfer.bank', 'BBVA')
+            ->where('transfer.clabe', '012180001234567890'));
+    }
+
+    public function test_month_estimate_and_fleet_count_only_the_tenants_own_units(): void
+    {
+        $other = User::factory()->create()->currentTeam;
+        Asset::factory()->count(4)->create(['team_id' => $other->id]);
+        Asset::factory()->pendingMonitoring()->create(['team_id' => $other->id]);
+        UsageEvent::factory()->create([
+            'team_id' => $other->id,
+            'usage_meter_id' => UsageMeter::query()->where('code', 'monitored_asset_days')->value('id'),
+            'quantity' => 40,
+            'occurred_at' => now()->startOfDay(),
+        ]);
+        Asset::factory()->create(['team_id' => $this->team->id]);
+
+        $response = $this->assertNoTenantLeak($this->team, fn () => $this->page());
+
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('billing/index')
+            ->where('fleet.monitored', 1)
+            ->where('fleet.pending', 0)
+            ->where('estimate.monitoredNow', 1)
+            ->where('estimate.assetDays', 0)
+            ->has('estimate.daysElapsed')
+            ->has('estimate.remainingDays')
+            ->has('estimate.assetsExtraProjected'));
     }
 
     private function page(): TestResponse
