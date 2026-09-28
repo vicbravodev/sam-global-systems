@@ -5,6 +5,8 @@ namespace App\Domains\Incidents\Support;
 use App\Domains\AI\Enums\EvaluationPriority;
 use App\Domains\AI\Enums\EventClassification;
 use App\Domains\AI\Models\AIEventEvaluation;
+use App\Domains\Context\Enums\GeofenceMatchType;
+use App\Domains\Context\Models\EventContextSnapshot;
 use App\Domains\Incidents\Enums\AssigneeType;
 use App\Domains\Incidents\Enums\CommentVisibility;
 use App\Domains\Incidents\Enums\EvidenceType;
@@ -19,6 +21,7 @@ use App\Domains\Incidents\Models\IncidentTimeline;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Models\User;
 use Carbon\CarbonInterface;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
@@ -303,8 +306,9 @@ class IncidentInboxPresenter
 
     private function location(?NormalizedEvent $event): string
     {
-        $context = $event?->context_json ?? [];
-        $location = $context['location'] ?? ($event?->payload_normalized_json['location'] ?? null);
+        // `normalized_events.context_json` is never written by the pipeline;
+        // the event payload is the location source for list rows.
+        $location = $event?->payload_normalized_json['location'] ?? null;
 
         if (is_string($location) && trim($location) !== '') {
             return $location;
@@ -619,22 +623,53 @@ class IncidentInboxPresenter
     }
 
     /**
+     * Operational context of the incident's source event, read from the
+     * snapshot the Context pipeline persists (`event_context_snapshots`).
+     * Weather, traffic and driving hours have no data source yet, so they stay
+     * "—" and the card hides them.
+     *
      * @return array{weather: string, traffic: string, driverRisk: int, geofenceStatus: string, drivingHours: string}
      */
     private function operationalContext(Incident $incident): array
     {
-        $context = $incident->relatedEvent?->context_json ?? [];
-        $risk = $context['driver_risk']
+        $snapshot = $incident->related_event_id === null ? null : EventContextSnapshot::query()
+            ->where('team_id', $incident->team_id)
+            ->where('normalized_event_id', $incident->related_event_id)
+            ->first();
+
+        $risk = Arr::get($snapshot?->driver_snapshot_json ?? [], 'risk_profile.risk_score')
             ?? $incident->driver?->riskProfile?->risk_score
             ?? 0;
 
         return [
-            'weather' => (string) ($context['weather'] ?? '—'),
-            'traffic' => (string) ($context['traffic'] ?? '—'),
-            'driverRisk' => (int) $risk,
-            'geofenceStatus' => (string) ($context['geofence_status'] ?? '—'),
-            'drivingHours' => (string) ($context['driving_hours'] ?? '—'),
+            'weather' => '—',
+            'traffic' => '—',
+            'driverRisk' => (int) round((float) $risk),
+            'geofenceStatus' => $snapshot === null ? '—' : $this->geofenceStatus($snapshot->geofence_snapshot_json ?? []),
+            'drivingHours' => '—',
         ];
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $matches  Stored geofence matches of the event.
+     */
+    private function geofenceStatus(array $matches): string
+    {
+        $named = fn (array $match): string => (string) ($match['name'] ?? $match['code'] ?? 'geocerca');
+
+        foreach ($matches as $match) {
+            if (($match['match_type'] ?? null) === GeofenceMatchType::Inside->value) {
+                return 'Dentro de '.$named($match);
+            }
+        }
+
+        foreach ($matches as $match) {
+            if (($match['match_type'] ?? null) === GeofenceMatchType::NearBoundary->value) {
+                return 'Cerca de '.$named($match);
+            }
+        }
+
+        return 'Fuera de geocercas';
     }
 
     private function initials(string $name): string

@@ -48,6 +48,11 @@ class BuildAnalyticsSnapshotTest extends TestCase
                     return [];
                 }
 
+                public function openBacklogPerDay(int $teamId, CarbonInterface $from, CarbonInterface $to): array
+                {
+                    return [];
+                }
+
                 public function slaCompliance(int $teamId, CarbonInterface $from, CarbonInterface $to): ?float
                 {
                     return null;

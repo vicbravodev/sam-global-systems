@@ -9,6 +9,7 @@ use App\Domains\Incidents\Models\IncidentStatus;
 use App\Domains\Incidents\Models\IncidentTimeline;
 use App\Support\TenantContext;
 use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Builder;
 
 class DbIncidentMetricsQuery implements IncidentMetricsQuery
 {
@@ -130,6 +131,57 @@ class DbIncidentMetricsQuery implements IncidentMetricsQuery
 
             return $buckets;
         });
+    }
+
+    public function openBacklogPerDay(int $teamId, CarbonInterface $from, CarbonInterface $to): array
+    {
+        return TenantContext::for($teamId, function () use ($from, $to) {
+            $buckets = [];
+            $cursor = $from->copy()->startOfDay();
+            $lastDay = $to->copy()->startOfDay();
+
+            while ($cursor->lessThanOrEqualTo($lastDay)) {
+                $at = $cursor->equalTo($lastDay) ? $to : $cursor->copy()->endOfDay();
+
+                $base = $this->openAt($at);
+
+                $buckets[] = [
+                    'date' => $cursor->toDateString(),
+                    'total' => (int) (clone $base)->count(),
+                    'critical' => (int) (clone $base)
+                        ->whereHas('priority', fn ($query) => $query->where('code', 'critical'))
+                        ->count(),
+                ];
+
+                $cursor = $cursor->addDay();
+            }
+
+            return $buckets;
+        });
+    }
+
+    /**
+     * Incidents open at the given instant. Every terminal transition stamps
+     * one of the closing timestamps (reopen clears them), so an incident
+     * with none is still open; one stamped after `$at` was open back then.
+     *
+     * @return Builder<Incident>
+     */
+    private function openAt(CarbonInterface $at): Builder
+    {
+        return Incident::query()
+            ->where('opened_at', '<=', $at)
+            ->where(fn (Builder $query) => $query
+                ->where(fn (Builder $stillOpen) => $stillOpen
+                    ->whereNull('resolved_at')
+                    ->whereNull('closed_at')
+                    ->whereNull('cancelled_at')
+                    ->whereNull('false_positive_at')
+                    ->open())
+                ->orWhereRaw(
+                    'COALESCE(resolved_at, closed_at, cancelled_at, false_positive_at) > ?',
+                    [$at->toDateTimeString()],
+                ));
     }
 
     public function slaCompliance(int $teamId, CarbonInterface $from, CarbonInterface $to): ?float

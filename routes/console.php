@@ -15,6 +15,7 @@ use App\Domains\Ingestion\Jobs\PruneDeduplicationKeysJob;
 use App\Domains\Integrations\Jobs\SyncDueIntegrationsJob;
 use App\Domains\Notifications\Jobs\ReconcileMessagingChargesJob;
 use App\Domains\Tenancy\Jobs\AggregateUsageJob;
+use App\Domains\Tenancy\Jobs\GenerateMonthlyInvoicesJob;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -26,6 +27,10 @@ Artisan::command('inspire', function () {
 Schedule::command('horizon:snapshot')->everyFiveMinutes()->onOneServer();
 
 Schedule::job(new AggregateUsageJob)->dailyAt('02:00')->onOneServer();
+
+// Monthly invoicing: on the 1st, close the previous month's usage counters
+// from usage_events and generate each operational tenant's draft invoice.
+Schedule::job(new GenerateMonthlyInvoicesJob)->monthlyOn(1, '05:00')->onOneServer();
 
 // Twilio feedback safety net + real provider cost (cost-plus billing): polls
 // non-finalized messages/calls whose status callback never landed and meters

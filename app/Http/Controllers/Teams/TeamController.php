@@ -70,8 +70,13 @@ class TeamController extends Controller
                 'role' => $member->pivot->role->value,
                 'role_label' => $member->pivot->role?->label(),
             ]),
+            // Solo pendientes: una invitación expirada ya no se puede aceptar
+            // (y UniqueTeamInvitation permite volver a invitar ese email).
             'invitations' => $team->invitations()
                 ->whereNull('accepted_at')
+                ->where(fn ($query) => $query
+                    ->whereNull('expires_at')
+                    ->orWhere('expires_at', '>', now()))
                 ->get()
                 // El `code` es el secreto del enlace de invitación: con él
                 // cualquiera acepta en nombre del invitado. Nunca se envía al
