@@ -207,7 +207,7 @@ return [
     'defaults' => [
         'supervisor-high' => [
             'connection' => 'redis',
-            'queue' => ['ingestion', 'normalization', 'decisions', 'incidents'],
+            'queue' => ['ingestion', 'normalization', 'decisions', 'incidents', 'broadcasts'],
             'balance' => 'auto',
             'autoScalingStrategy' => 'time',
             'maxProcesses' => 3,

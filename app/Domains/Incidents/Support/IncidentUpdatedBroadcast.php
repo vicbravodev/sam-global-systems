@@ -62,4 +62,13 @@ class IncidentUpdatedBroadcast implements ShouldBroadcast
             'updated_at' => $this->updatedAt,
         ];
     }
+
+    /**
+     * Operator-facing live updates: consumed by supervisor-high, not queued
+     * behind analytics and audit on `default`.
+     */
+    public function broadcastQueue(): string
+    {
+        return 'broadcasts';
+    }
 }

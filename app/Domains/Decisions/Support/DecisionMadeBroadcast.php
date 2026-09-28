@@ -63,4 +63,13 @@ class DecisionMadeBroadcast implements ShouldBroadcast
             'decided_at' => $this->decidedAt,
         ];
     }
+
+    /**
+     * Operator-facing live updates: consumed by supervisor-high, not queued
+     * behind analytics and audit on `default`.
+     */
+    public function broadcastQueue(): string
+    {
+        return 'broadcasts';
+    }
 }

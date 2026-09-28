@@ -57,4 +57,13 @@ class ActionExecutedBroadcast implements ShouldBroadcast
             'incident_id' => $this->incidentId,
         ];
     }
+
+    /**
+     * Operator-facing live updates: consumed by supervisor-high, not queued
+     * behind analytics and audit on `default`.
+     */
+    public function broadcastQueue(): string
+    {
+        return 'broadcasts';
+    }
 }

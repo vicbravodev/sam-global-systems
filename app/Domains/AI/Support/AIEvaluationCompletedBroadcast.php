@@ -66,4 +66,13 @@ class AIEvaluationCompletedBroadcast implements ShouldBroadcast
             'requires_action' => $this->requiresAction,
         ];
     }
+
+    /**
+     * Operator-facing live updates: consumed by supervisor-high, not queued
+     * behind analytics and audit on `default`.
+     */
+    public function broadcastQueue(): string
+    {
+        return 'broadcasts';
+    }
 }

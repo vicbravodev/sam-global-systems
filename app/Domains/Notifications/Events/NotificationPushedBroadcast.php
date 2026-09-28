@@ -47,4 +47,13 @@ class NotificationPushedBroadcast implements ShouldBroadcast
             'body_preview' => $this->bodyPreview,
         ];
     }
+
+    /**
+     * Operator-facing live updates: consumed by supervisor-high, not queued
+     * behind analytics and audit on `default`.
+     */
+    public function broadcastQueue(): string
+    {
+        return 'broadcasts';
+    }
 }

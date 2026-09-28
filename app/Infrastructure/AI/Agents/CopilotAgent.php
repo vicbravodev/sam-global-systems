@@ -2,6 +2,7 @@
 
 namespace App\Infrastructure\AI\Agents;
 
+use Laravel\Ai\Attributes\Timeout;
 use Laravel\Ai\Contracts\Agent;
 use Laravel\Ai\Contracts\Conversational;
 use Laravel\Ai\Messages\Message;
@@ -11,7 +12,12 @@ use Stringable;
 /**
  * SAM Copilot persona: a senior fleet-monitoring operator answering a
  * manager or owner. It only ever phrases the JSON facts it receives.
+ *
+ * Runs inside the HTTP request (not a job): a slow provider must not hold a
+ * php-fpm worker for the SDK's 60 s default. On timeout the narrator falls
+ * back to the template answer.
  */
+#[Timeout(20)]
 class CopilotAgent implements Agent, Conversational
 {
     use Promptable;
