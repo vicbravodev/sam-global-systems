@@ -31,7 +31,11 @@ class RunAutomationWorkflowJob implements ShouldQueue
 
     public function handle(RunAutomationWorkflow $runAutomationWorkflow): void
     {
-        $workflow = AutomationWorkflow::query()->find($this->automationWorkflowId);
+        // El modelo no lleva el trait (puede ser global), así que el scope no
+        // filtra: el workflow debe ser del tenant del job o de plataforma.
+        $workflow = AutomationWorkflow::query()
+            ->availableToTeam($this->teamId)
+            ->find($this->automationWorkflowId);
 
         if ($workflow === null) {
             return;
