@@ -78,8 +78,8 @@ class EvaluateEventWithAI
                     classification: $rulesDecision['classification'],
                     confidence: 0.95,
                     riskScore: $riskScore,
-                    explanationSummary: 'Resuelto por regla determinista: '.$rulesDecision['reason'],
-                    reasoningSteps: ['rules_match:'.$rulesDecision['reason']],
+                    explanationSummary: 'Resuelto sin IA por una regla automática: '.$this->describeRuleReason($rulesDecision['reason']).'.',
+                    reasoningSteps: ['Regla automática: '.$this->describeRuleReason($rulesDecision['reason']).'.'],
                     keyFactors: ['rule_reason' => $rulesDecision['reason']],
                     modelUsed: 'rules_engine:1.0',
                     agentInputSnapshot: $input,
@@ -228,6 +228,19 @@ class EvaluateEventWithAI
         ];
 
         return new AIInputContext(...$properties);
+    }
+
+    /**
+     * Texto en español para el operador a partir del código interno de la
+     * regla determinista (el código crudo se conserva en key_factors).
+     */
+    private function describeRuleReason(string $reason): string
+    {
+        return match (true) {
+            str_starts_with($reason, 'known_noise_signature:') => 'señal de ruido conocida ('.substr($reason, strlen('known_noise_signature:')).')',
+            $reason === 'recent_duplicates_in_window' => 'el mismo evento se repitió varias veces en poco tiempo',
+            default => $reason,
+        };
     }
 
     /**

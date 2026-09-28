@@ -614,7 +614,7 @@ class IncidentInboxPresenter
             'label' => $label,
             'sub' => (string) ($evidence->description ?? ''),
             'type' => $type,
-            'fileUrl' => $evidence->file_url,
+            'fileUrl' => $evidence->downloadUrl(),
         ];
     }
 

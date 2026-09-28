@@ -35,7 +35,6 @@ class AddIncidentEvidence
         ?int $addedById = null,
     ): IncidentEvidence {
         $storagePath = null;
-        $fileUrl = null;
 
         if ($file !== null) {
             $storagePath = sprintf(
@@ -50,8 +49,6 @@ class AddIncidentEvidence
                 (string) $file->get(),
                 ['ContentType' => (string) $file->getMimeType()],
             );
-
-            $fileUrl = $this->objectStorage->temporaryUrl($storagePath, now()->addHour());
         }
 
         $evidence = IncidentEvidence::query()->create([
@@ -61,7 +58,9 @@ class AddIncidentEvidence
             'source_reference_id' => $sourceReferenceId,
             'title' => $title,
             'description' => $description,
-            'file_url' => $fileUrl,
+            // Nunca se persiste una URL firmada (caduca): se genera al leer
+            // con IncidentEvidence::downloadUrl() a partir de storage_path.
+            'file_url' => null,
             'storage_path' => $storagePath,
             'metadata_json' => $metadata,
             'added_by_type' => $addedByType,

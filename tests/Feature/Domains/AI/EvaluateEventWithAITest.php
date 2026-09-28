@@ -68,6 +68,15 @@ class EvaluateEventWithAITest extends TestCase
         $this->assertSame(EvaluationMode::RulesOnly, $evaluation->evaluation_mode);
         $this->assertSame(EventClassification::FalsePositive, $evaluation->classification);
         $this->assertSame('rules_engine:1.0', $evaluation->model_used);
+        $this->assertSame(
+            'Resuelto sin IA por una regla automática: señal de ruido conocida (heartbeat).',
+            $evaluation->explanation_text,
+        );
+        $this->assertSame(
+            ['Regla automática: señal de ruido conocida (heartbeat).'],
+            $evaluation->signals_json['reasoning_steps'],
+        );
+        $this->assertSame('known_noise_signature:heartbeat', $evaluation->signals_json['key_factors']['rule_reason']);
     }
 
     public function test_fallback_to_rules_only_when_agent_throws(): void

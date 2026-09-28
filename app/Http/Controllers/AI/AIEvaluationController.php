@@ -13,6 +13,8 @@ use Illuminate\Http\Request;
 
 class AIEvaluationController extends Controller
 {
+    private const MAX_PER_PAGE = 100;
+
     public function index(Request $request, Team $current_team): JsonResponse
     {
         $this->authorize('viewAny', AIEventEvaluation::class);
@@ -32,7 +34,7 @@ class AIEvaluationController extends Controller
         }
 
         $evaluations = $query->orderByDesc('id')
-            ->paginate($request->integer('per_page', 15));
+            ->paginate(min(max($request->integer('per_page', 15), 1), self::MAX_PER_PAGE));
 
         return response()->json($evaluations);
     }
@@ -41,7 +43,15 @@ class AIEvaluationController extends Controller
     {
         $this->authorize('view', $evaluation);
 
-        $evaluation->load(['explanation', 'decisionSignals', 'recommendedActions', 'inferenceLogs']);
+        // Solo métricas operativas del log de inferencia: el snapshot de
+        // entrada (prompt completo con contexto), la salida cruda y el costo
+        // estimado son internos y no se exponen a los tenants.
+        $evaluation->load([
+            'explanation',
+            'decisionSignals',
+            'recommendedActions',
+            'inferenceLogs' => fn ($query) => $query->select(['id', 'evaluation_id', 'status', 'latency_ms', 'tokens_used', 'media_assets_count', 'created_at']),
+        ]);
 
         return response()->json(['data' => $evaluation]);
     }

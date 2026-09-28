@@ -22,12 +22,21 @@ use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class EvaluateEventMultimodally
 {
+    /**
+     * Lock por media para que dos jobs no paguen la misma imagen. Dura más
+     * que el timeout de EvaluateEventMediaJob (180s) por si el worker muere.
+     */
+    private const MEDIA_LOCK_PREFIX = 'ai-media-assessment:';
+
+    private const MEDIA_LOCK_SECONDS = 240;
+
     public function __construct(
         private readonly MediaAssessmentAgent $agent,
         private readonly RecordUsageEvent $recordUsageEvent,
@@ -96,118 +105,157 @@ class EvaluateEventMultimodally
                 continue;
             }
 
-            if ($remainingSlots <= 0) {
-                Log::info('Media assessment skipped: per-event image cap reached', [
-                    'evaluation_id' => $evaluation->id,
-                    'event_media_context_id' => $media->id,
-                    'max_images_per_event' => $this->maxImagesPerEvent(),
-                ]);
+            // La misma media ya evaluada con resultado concluyente bajo otra
+            // versión de la evaluación del evento: no se vuelve a pagar. Los
+            // veredictos se leen a través de todas las versiones (fusión y
+            // hechos de decisión), así que reutilizarlo no pierde señal.
+            $prior = $this->priorConclusiveAssessment($evaluation, $media);
+
+            if ($prior !== null) {
+                $assessments->push($prior);
 
                 continue;
             }
 
-            // Misma cuota que el texto: un evento crítico siempre pasa.
-            if ($event !== null && $this->quota->blocks($event, $profile)) {
-                Log::info('Media assessment skipped: tenant AI quota exceeded', [
+            // Dos jobs pueden cruzarse sobre la misma media (p. ej. el barrido
+            // de pendientes de v1 y el de v2): solo uno llama al modelo; el
+            // otro la salta y quien tiene el lock la persiste o la reintenta.
+            $lock = Cache::lock(self::MEDIA_LOCK_PREFIX.$media->id, self::MEDIA_LOCK_SECONDS);
+
+            if (! $lock->get()) {
+                Log::info('Media assessment skipped: already in progress in another job', [
                     'evaluation_id' => $evaluation->id,
                     'event_media_context_id' => $media->id,
                 ]);
 
                 continue;
             }
-
-            $assessmentType = $this->resolveAssessmentType($media->media_type);
-            $input = $this->buildInput($evaluation, $event, $media, $assessmentType);
 
             try {
-                $output = $this->agent->assess($input);
-            } catch (MediaFileMissingException $exception) {
-                Log::info('Media assessment skipped: file not on storage', [
-                    'evaluation_id' => $evaluation->id,
-                    'event_media_context_id' => $media->id,
-                    'error' => $exception->getMessage(),
-                ]);
+                // Re-chequeo dentro del lock: otro worker pudo terminarla justo antes.
+                $prior = $this->priorConclusiveAssessment($evaluation, $media);
 
-                continue;
-            } catch (MediaFileRejectedException $exception) {
-                $assessment = $this->persistRejected($evaluation, $media, $assessmentType, $exception);
+                if ($prior !== null) {
+                    $assessments->push($prior);
 
-                $assessments->push($assessment);
-                $createdAssessments->push($assessment);
-                $remainingSlots--;
+                    continue;
+                }
 
-                continue;
-            } catch (Throwable $exception) {
-                if (! $finalAttempt && RetryableAIError::isRetryable($exception)) {
-                    Log::warning('MediaAssessmentAgent transient failure; will retry', [
+                if ($remainingSlots <= 0) {
+                    Log::info('Media assessment skipped: per-event image cap reached', [
+                        'evaluation_id' => $evaluation->id,
+                        'event_media_context_id' => $media->id,
+                        'max_images_per_event' => $this->maxImagesPerEvent(),
+                    ]);
+
+                    continue;
+                }
+
+                // Misma cuota que el texto: un evento crítico siempre pasa.
+                if ($event !== null && $this->quota->blocks($event, $profile)) {
+                    Log::info('Media assessment skipped: tenant AI quota exceeded', [
+                        'evaluation_id' => $evaluation->id,
+                        'event_media_context_id' => $media->id,
+                    ]);
+
+                    continue;
+                }
+
+                $assessmentType = $this->resolveAssessmentType($media->media_type);
+                $input = $this->buildInput($evaluation, $event, $media, $assessmentType);
+
+                try {
+                    $output = $this->agent->assess($input);
+                } catch (MediaFileMissingException $exception) {
+                    Log::info('Media assessment skipped: file not on storage', [
                         'evaluation_id' => $evaluation->id,
                         'event_media_context_id' => $media->id,
                         'error' => $exception->getMessage(),
                     ]);
 
-                    $retryableFailure ??= $exception;
+                    continue;
+                } catch (MediaFileRejectedException $exception) {
+                    $assessment = $this->persistRejected($evaluation, $media, $assessmentType, $exception);
+
+                    $assessments->push($assessment);
+                    $createdAssessments->push($assessment);
+                    $remainingSlots--;
+
+                    continue;
+                } catch (Throwable $exception) {
+                    if (! $finalAttempt && RetryableAIError::isRetryable($exception)) {
+                        Log::warning('MediaAssessmentAgent transient failure; will retry', [
+                            'evaluation_id' => $evaluation->id,
+                            'event_media_context_id' => $media->id,
+                            'error' => $exception->getMessage(),
+                        ]);
+
+                        $retryableFailure ??= $exception;
+
+                        continue;
+                    }
+
+                    Log::warning('MediaAssessmentAgent failed; recording unavailable assessment', [
+                        'evaluation_id' => $evaluation->id,
+                        'event_media_context_id' => $media->id,
+                        'error_class' => $exception::class,
+                        'error' => $exception->getMessage(),
+                    ]);
+
+                    $assessment = DB::transaction(fn () => AIMediaAssessment::create([
+                        'evaluation_id' => $evaluation->id,
+                        'event_media_context_id' => $media->id,
+                        'media_type' => $media->media_type ?? MediaType::Snapshot,
+                        'assessment_type' => $assessmentType,
+                        'result' => MediaAssessmentResult::Unavailable,
+                        'confidence_score' => 0.0,
+                        // Mensaje crudo solo en el log; el operador ve un texto genérico.
+                        'extracted_signals_json' => ['error_class' => class_basename($exception)],
+                        'summary_text' => 'El análisis visual no estuvo disponible para esta media.',
+                        'latency_ms' => null,
+                        'input_tokens' => null,
+                        'output_tokens' => null,
+                        'cost_estimate' => null,
+                        'model_used' => 'media-agent:error',
+                        'assessed_at' => now(),
+                    ]));
+
+                    $assessments->push($assessment);
+                    $createdAssessments->push($assessment);
+                    $remainingSlots--;
 
                     continue;
                 }
 
-                Log::warning('MediaAssessmentAgent failed; recording unavailable assessment', [
-                    'evaluation_id' => $evaluation->id,
-                    'event_media_context_id' => $media->id,
-                    'error_class' => $exception::class,
-                    'error' => $exception->getMessage(),
-                ]);
+                $assessment = DB::transaction(function () use ($evaluation, $media, $assessmentType, $output) {
+                    $created = AIMediaAssessment::create([
+                        'evaluation_id' => $evaluation->id,
+                        'event_media_context_id' => $media->id,
+                        'media_type' => $media->media_type ?? MediaType::Snapshot,
+                        'assessment_type' => $assessmentType,
+                        'result' => $output->result,
+                        'confidence_score' => round($output->confidenceScore, 2),
+                        'extracted_signals_json' => $output->extractedSignals,
+                        'summary_text' => $output->summaryText,
+                        'latency_ms' => $output->latencyMs,
+                        'input_tokens' => $output->inputTokens,
+                        'output_tokens' => $output->outputTokens,
+                        'cost_estimate' => $output->costEstimate,
+                        'model_used' => $output->modelUsed,
+                        'assessed_at' => now(),
+                    ]);
 
-                $assessment = DB::transaction(fn () => AIMediaAssessment::create([
-                    'evaluation_id' => $evaluation->id,
-                    'event_media_context_id' => $media->id,
-                    'media_type' => $media->media_type ?? MediaType::Snapshot,
-                    'assessment_type' => $assessmentType,
-                    'result' => MediaAssessmentResult::Unavailable,
-                    'confidence_score' => 0.0,
-                    // Mensaje crudo solo en el log; el operador ve un texto genérico.
-                    'extracted_signals_json' => ['error_class' => class_basename($exception)],
-                    'summary_text' => 'El análisis visual no estuvo disponible para esta media.',
-                    'latency_ms' => null,
-                    'input_tokens' => null,
-                    'output_tokens' => null,
-                    'cost_estimate' => null,
-                    'model_used' => 'media-agent:error',
-                    'assessed_at' => now(),
-                ]));
+                    $this->recordMultimodalUsage($evaluation, $created, $output->inputTokens, $output->outputTokens);
+
+                    return $created;
+                });
 
                 $assessments->push($assessment);
                 $createdAssessments->push($assessment);
                 $remainingSlots--;
-
-                continue;
+            } finally {
+                $lock->release();
             }
-
-            $assessment = DB::transaction(function () use ($evaluation, $media, $assessmentType, $output) {
-                $created = AIMediaAssessment::create([
-                    'evaluation_id' => $evaluation->id,
-                    'event_media_context_id' => $media->id,
-                    'media_type' => $media->media_type ?? MediaType::Snapshot,
-                    'assessment_type' => $assessmentType,
-                    'result' => $output->result,
-                    'confidence_score' => round($output->confidenceScore, 2),
-                    'extracted_signals_json' => $output->extractedSignals,
-                    'summary_text' => $output->summaryText,
-                    'latency_ms' => $output->latencyMs,
-                    'input_tokens' => $output->inputTokens,
-                    'output_tokens' => $output->outputTokens,
-                    'cost_estimate' => $output->costEstimate,
-                    'model_used' => $output->modelUsed,
-                    'assessed_at' => now(),
-                ]);
-
-                $this->recordMultimodalUsage($evaluation, $created, $output->inputTokens, $output->outputTokens);
-
-                return $created;
-            });
-
-            $assessments->push($assessment);
-            $createdAssessments->push($assessment);
-            $remainingSlots--;
         }
 
         if ($assessments->isNotEmpty()) {
@@ -235,6 +283,26 @@ class EvaluateEventMultimodally
      * Images still assessable for this event: the cap counts distinct media
      * already assessed across every evaluation version of the event.
      */
+    /**
+     * Evaluación previa concluyente de esta media bajo cualquier versión de la
+     * evaluación del evento. `unavailable` no cuenta: fue un fallo del
+     * proveedor y la media merece otro intento.
+     */
+    private function priorConclusiveAssessment(AIEventEvaluation $evaluation, EventMediaContext $media): ?AIMediaAssessment
+    {
+        return AIMediaAssessment::query()
+            ->whereIn(
+                'evaluation_id',
+                AIEventEvaluation::query()
+                    ->where('normalized_event_id', $evaluation->normalized_event_id)
+                    ->select('id'),
+            )
+            ->where('event_media_context_id', $media->id)
+            ->where('result', '!=', MediaAssessmentResult::Unavailable->value)
+            ->orderByDesc('id')
+            ->first();
+    }
+
     private function remainingImageSlots(AIEventEvaluation $evaluation): int
     {
         $assessed = AIMediaAssessment::query()
