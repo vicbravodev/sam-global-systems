@@ -37,6 +37,16 @@ interface IncidentMetricsQuery
     public function openedPerDay(int $teamId, CarbonInterface $from, CarbonInterface $to): array;
 
     /**
+     * Open backlog at the end of each calendar day in the window (the last
+     * bucket is measured at `$to`): incidents opened by then and not yet
+     * resolved/closed/cancelled/false-positive at that instant. One bucket
+     * per day, oldest first.
+     *
+     * @return list<array{date: string, total: int, critical: int}>
+     */
+    public function openBacklogPerDay(int $teamId, CarbonInterface $from, CarbonInterface $to): array;
+
+    /**
      * Percentage (0-100) of incidents resolved in the window whose
      * resolution time stayed within their SLA. Null when nothing resolved.
      */

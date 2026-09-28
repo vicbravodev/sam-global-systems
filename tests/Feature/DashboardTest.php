@@ -159,6 +159,55 @@ class DashboardTest extends TestCase
         );
     }
 
+    public function test_open_incident_sparklines_track_the_open_backlog_per_day(): void
+    {
+        $this->travelTo(now()->setDate(2026, 9, 20)->setTime(12, 0));
+
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+        $critical = IncidentPriority::factory()->critical()->create();
+        $day = fn (int $d, int $h) => now()->setDate(2026, 9, $d)->setTime($h, 0);
+
+        // Open since before the window: part of the backlog every day.
+        Incident::factory()->open()->create(['team_id' => $team->id, 'opened_at' => $day(10, 9)]);
+
+        // Critical, open from the 15th until resolved on the morning of the 18th.
+        Incident::factory()->resolved()->create([
+            'team_id' => $team->id,
+            'incident_priority_id' => $critical->id,
+            'opened_at' => $day(15, 10),
+            'resolved_at' => $day(18, 9),
+        ]);
+
+        // Opened and resolved the same day: never open at a day's end.
+        Incident::factory()->resolved()->create([
+            'team_id' => $team->id,
+            'opened_at' => $day(17, 8),
+            'resolved_at' => $day(17, 11),
+        ]);
+
+        // Opened this morning, still open.
+        Incident::factory()->open()->create(['team_id' => $team->id, 'opened_at' => $day(20, 8)]);
+
+        // Another tenant's backlog never shows up.
+        Incident::factory()->open()->count(3)->create([
+            'team_id' => Team::factory()->create()->id,
+            'opened_at' => $day(16, 9),
+        ]);
+
+        $response = $this
+            ->actingAs($user)
+            ->get(route('dashboard', ['current_team' => $team->slug]));
+
+        $response->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('kpis.openIncidents.value', 2)
+            ->where('kpis.openIncidents.series', [1, 2, 2, 2, 1, 1, 2])
+            ->where('kpis.openIncidents.deltaPct', 100)
+            ->where('kpis.criticalOpen.value', 0)
+            ->where('kpis.criticalOpen.series', [0, 1, 1, 1, 0, 0, 0])
+        );
+    }
+
     public function test_sla_compliance_is_percentage_of_incidents_resolved_within_sla(): void
     {
         $user = User::factory()->create();
