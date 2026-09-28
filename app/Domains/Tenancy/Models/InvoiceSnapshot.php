@@ -62,6 +62,21 @@ class InvoiceSnapshot extends Model
         return $this->belongsTo(FileObject::class, 'payment_receipt_file_object_id');
     }
 
+    /**
+     * Whether the tenant owes this invoice and may upload a transfer receipt:
+     * issued (finalized/invoiced/disputed) or a draft of an already-closed
+     * period (the monthly job emits closed months as draft). A draft of the
+     * running period is only a preview; paid and void invoices are settled.
+     */
+    public function awaitsPayment(): bool
+    {
+        return match ($this->status) {
+            InvoiceStatus::Finalized, InvoiceStatus::Invoiced, InvoiceStatus::Disputed => true,
+            InvoiceStatus::Draft => $this->period_end !== null && $this->period_end->endOfDay()->isPast(),
+            default => false,
+        };
+    }
+
     protected static function newFactory(): InvoiceSnapshotFactory
     {
         return InvoiceSnapshotFactory::new();

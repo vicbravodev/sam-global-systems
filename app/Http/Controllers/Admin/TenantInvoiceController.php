@@ -27,6 +27,9 @@ class TenantInvoiceController extends Controller
     {
         $invoice = $this->invoiceFor($team, $invoice);
 
+        abort_if($invoice->status === InvoiceStatus::Void, 422, 'Una factura anulada no se puede marcar como pagada.');
+        abort_if($invoice->status === InvoiceStatus::Paid, 422, 'La factura ya está pagada.');
+
         $invoice->forceFill([
             'status' => InvoiceStatus::Paid,
             'paid_at' => now(),
@@ -43,6 +46,7 @@ class TenantInvoiceController extends Controller
         $invoice = $this->invoiceFor($team, $invoice);
 
         abort_if($invoice->status === InvoiceStatus::Paid, 422, 'Una factura pagada no se anula.');
+        abort_if($invoice->status === InvoiceStatus::Void, 422, 'La factura ya está anulada.');
 
         $invoice->forceFill(['status' => InvoiceStatus::Void])->save();
 

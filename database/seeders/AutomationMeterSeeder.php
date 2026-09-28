@@ -14,7 +14,7 @@ class AutomationMeterSeeder extends Seeder
         UsageMeter::query()->updateOrCreate(
             ['code' => 'incident_workflows'],
             [
-                'name' => 'Incident Workflows',
+                'name' => 'Flujos de incidente',
                 'description' => 'Automation workflow executions triggered by incidents or decisions.',
                 'unit' => 'workflow',
                 'aggregation_type' => AggregationType::Sum,
@@ -26,7 +26,7 @@ class AutomationMeterSeeder extends Seeder
         UsageMeter::query()->updateOrCreate(
             ['code' => 'automation_actions'],
             [
-                'name' => 'Automation Actions',
+                'name' => 'Acciones automáticas',
                 'description' => 'Individual automation actions executed successfully (notifications, incident ops, webhooks).',
                 'unit' => 'action',
                 'aggregation_type' => AggregationType::Sum,

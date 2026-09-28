@@ -14,7 +14,7 @@ class OtpMeterSeeder extends Seeder
         UsageMeter::query()->updateOrCreate(
             ['code' => 'otp_sms_sent'],
             [
-                'name' => 'OTP SMS Sent',
+                'name' => 'SMS de verificación (OTP)',
                 'description' => 'Number of phone-verification OTP SMS messages sent.',
                 'unit' => 'count',
                 'aggregation_type' => AggregationType::Sum,

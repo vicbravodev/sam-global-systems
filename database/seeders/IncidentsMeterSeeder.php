@@ -14,7 +14,7 @@ class IncidentsMeterSeeder extends Seeder
         UsageMeter::query()->updateOrCreate(
             ['code' => 'voice_calls'],
             [
-                'name' => 'Voice Calls',
+                'name' => 'Llamadas de verificación',
                 'description' => 'Outbound operator verification calls placed for incidents.',
                 'unit' => 'count',
                 'aggregation_type' => AggregationType::Sum,

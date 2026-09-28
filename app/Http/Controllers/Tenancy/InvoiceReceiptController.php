@@ -37,6 +37,7 @@ class InvoiceReceiptController extends Controller
         );
 
         abort_if($invoice->status === InvoiceStatus::Paid, 422, 'La factura ya está pagada.');
+        abort_unless($invoice->awaitsPayment(), 422, 'Esta factura no está pendiente de pago.');
 
         $validated = $request->validate([
             'receipt' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:4096'],

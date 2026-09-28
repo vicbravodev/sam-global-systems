@@ -13,21 +13,21 @@ class NotificationMeterSeeder extends Seeder
     {
         $meters = [
             'outbound_notifications' => [
-                'name' => 'Outbound Notifications',
+                'name' => 'Notificaciones enviadas',
                 'description' => 'Number of notification deliveries successfully sent.',
             ],
             // Messaging channels bill per message (Twilio fee per channel);
             // codes must match ChannelType::usageMeterCode().
             'sms_messages' => [
-                'name' => 'SMS Messages',
+                'name' => 'Mensajes SMS',
                 'description' => 'Outbound SMS notification messages sent via Twilio.',
             ],
             'whatsapp_messages' => [
-                'name' => 'WhatsApp Messages',
+                'name' => 'Mensajes de WhatsApp',
                 'description' => 'Outbound WhatsApp notification messages sent via Twilio.',
             ],
             'voice_notification_calls' => [
-                'name' => 'Voice Notification Calls',
+                'name' => 'Llamadas de aviso',
                 'description' => 'Outbound voice notification calls placed via Twilio (excludes incident DTMF verification calls, metered as voice_calls).',
             ],
         ];
