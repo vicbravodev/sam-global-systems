@@ -8,6 +8,7 @@ use App\Domains\Assets\Models\Asset;
 use App\Domains\Context\Actions\ResolveGeofenceContext;
 use App\Domains\Context\Enums\GeofenceMatchType;
 use App\Domains\Context\Models\Geofence;
+use App\Domains\Context\Support\HaversineDistance;
 use App\Domains\Ingestion\Actions\QueueRawEventForProcessing;
 use App\Domains\Ingestion\Actions\StoreRawEvent;
 use App\Domains\Ingestion\Enums\EventSourceType;
@@ -146,6 +147,15 @@ class DetectUnauthorizedStopJob implements ShouldQueue
         }
 
         $anchor = $asset->last_moving_at;
+
+        if ($this->isSamePlaceAsLastAlert($asset)) {
+            // A unit shuffling around the place it was already alerted at:
+            // the operator knows. Handle the episode without a new alert.
+            $asset->forceFill(['stop_alerted_for' => $anchor])->save();
+
+            return;
+        }
+
         $deduplicationKey = sprintf('suspicious_stop:%d:%d', $asset->id, $anchor->getTimestamp());
 
         $alreadyRaised = RawEvent::query()
@@ -181,7 +191,31 @@ class DetectUnauthorizedStopJob implements ShouldQueue
             $queueForProcessing->execute($rawEvent);
         }
 
-        // The episode is handled; drop it from the next sweeps' candidates.
-        $asset->forceFill(['stop_alerted_for' => $anchor])->save();
+        // The episode is handled; drop it from the next sweeps' candidates,
+        // and remember where, so a stop at the same place is not re-alerted.
+        $asset->forceFill([
+            'stop_alerted_for' => $anchor,
+            'stop_alerted_latitude' => $asset->stop_latitude ?? $asset->last_latitude,
+            'stop_alerted_longitude' => $asset->stop_longitude ?? $asset->last_longitude,
+        ])->save();
+    }
+
+    private function isSamePlaceAsLastAlert(Asset $asset): bool
+    {
+        if (
+            $asset->stop_alerted_for === null
+            || $asset->stop_alerted_latitude === null
+            || $asset->stop_alerted_longitude === null
+            || $asset->stop_alerted_for->lt(now()->subHours((int) config('telematics.stop_realert_hours', 6)))
+        ) {
+            return false;
+        }
+
+        return HaversineDistance::meters(
+            $asset->stop_alerted_latitude,
+            $asset->stop_alerted_longitude,
+            (float) ($asset->stop_latitude ?? $asset->last_latitude),
+            (float) ($asset->stop_longitude ?? $asset->last_longitude),
+        ) <= (float) config('telematics.stop_realert_radius_m', 200);
     }
 }

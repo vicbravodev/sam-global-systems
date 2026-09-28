@@ -222,11 +222,39 @@ class DetectUnauthorizedStopJobTest extends TestCase
         $this->runJob();
         $this->assertTrue($asset->fresh()->stop_alerted_for->equalTo($asset->last_moving_at));
 
-        // It moves, then stops again for long enough: a new episode, a new alert.
-        $asset->forceFill(['last_moving_at' => now()->subMinutes(15), 'stopped_since' => now()->subMinutes(14)])->save();
+        // It drives ~3 km away and stops again for long enough: a new
+        // episode at a new place, a new alert.
+        $asset->forceFill([
+            'last_moving_at' => now()->subMinutes(15),
+            'stopped_since' => now()->subMinutes(14),
+            'stop_latitude' => 19.46,
+            'stop_longitude' => -99.13,
+            'last_latitude' => 19.46,
+        ])->save();
         $this->runJob();
 
         $this->assertSame(2, RawEvent::withoutGlobalScopes()->count());
+    }
+
+    public function test_a_new_stop_at_the_place_already_alerted_is_not_alerted_again(): void
+    {
+        $this->makeGeofence();
+        $asset = $this->makeStoppedAsset(attributes: ['stop_latitude' => 19.43, 'stop_longitude' => -99.13]);
+
+        $this->runJob();
+
+        // Shuffles ~60 m around the same yard and stops again.
+        $asset->forceFill([
+            'last_moving_at' => now()->subMinutes(15),
+            'stopped_since' => now()->subMinutes(14),
+            'stop_latitude' => 19.4305,
+            'stop_longitude' => -99.13,
+        ])->save();
+        $this->runJob();
+
+        $this->assertSame(1, RawEvent::withoutGlobalScopes()->count());
+        // Handled all the same, so the next sweeps skip it.
+        $this->assertTrue($asset->fresh()->stop_alerted_for->equalTo(now()->subMinutes(15)->startOfSecond()));
     }
 
     public function test_it_only_reads_and_writes_the_swept_tenant(): void

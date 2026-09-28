@@ -7,6 +7,7 @@ use App\Domains\Assets\Enums\LocationSource;
 use App\Domains\Assets\Enums\TelemetryType;
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Assets\Models\AssetTelemetrySnapshot;
+use App\Domains\Context\Support\HaversineDistance;
 use App\Domains\Integrations\Data\VehicleStatsPage;
 use App\Domains\Integrations\Models\TenantIntegration;
 use Carbon\CarbonInterface;
@@ -171,7 +172,8 @@ class IngestVehicleStatsPage
     {
         usort($points, fn (array $a, array $b) => $a['at'] <=> $b['at']);
 
-        $threshold = (float) config('telematics.moving_speed_kph', 1.0);
+        $threshold = (float) config('telematics.moving_speed_kph', 5.0);
+        $exitRadius = (float) config('telematics.stop_exit_radius_m', 50);
         $latest = null;
 
         foreach ($points as $point) {
@@ -187,11 +189,36 @@ class IngestVehicleStatsPage
                 continue;
             }
 
-            if ($point['speed'] > $threshold) {
+            $fast = $point['speed'] >= $threshold;
+
+            if ($asset->stopped_since !== null) {
+                // Stopped: only leaving the place ends the stop. A parked
+                // unit's GPS reads phantom speeds, so speed alone is not a
+                // departure.
+                if ($asset->stop_latitude === null || $asset->stop_longitude === null) {
+                    $asset->stop_latitude = $point['latitude'];
+                    $asset->stop_longitude = $point['longitude'];
+                }
+
+                $leftPlace = HaversineDistance::meters(
+                    $asset->stop_latitude,
+                    $asset->stop_longitude,
+                    $point['latitude'],
+                    $point['longitude'],
+                ) > $exitRadius;
+
+                if ($fast && $leftPlace) {
+                    $asset->last_moving_at = $point['at'];
+                    $asset->stopped_since = null;
+                    $asset->stop_latitude = null;
+                    $asset->stop_longitude = null;
+                }
+            } elseif ($fast) {
                 $asset->last_moving_at = $point['at'];
-                $asset->stopped_since = null;
-            } elseif ($asset->stopped_since === null) {
+            } else {
                 $asset->stopped_since = $point['at'];
+                $asset->stop_latitude = $point['latitude'];
+                $asset->stop_longitude = $point['longitude'];
             }
         }
 
@@ -218,7 +245,7 @@ class IngestVehicleStatsPage
             'speed_kph' => $latest['speed'],
             'heading' => $latest['heading'],
             'recorded_at' => $latest['at']->toIso8601ZuluString(),
-            'moving' => $latest['speed'] === null ? null : $latest['speed'] > $threshold,
+            'moving' => $asset->stopped_since === null && $asset->last_moving_at !== null,
         ];
     }
 
