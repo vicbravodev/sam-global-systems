@@ -34,6 +34,9 @@ class Asset extends Model
         'metadata_json',
         'first_seen_at',
         'last_seen_at',
+        'device_last_connected_at',
+        'device_health_status',
+        'device_connectivity_polled_at',
     ];
 
     /**
@@ -151,6 +154,8 @@ class Asset extends Model
             'metadata_json' => 'array',
             'first_seen_at' => 'datetime',
             'last_seen_at' => 'datetime',
+            'device_last_connected_at' => 'datetime',
+            'device_connectivity_polled_at' => 'datetime',
         ];
     }
 

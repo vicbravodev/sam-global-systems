@@ -31,6 +31,11 @@ class NullProviderAdapter implements ProviderAdapter
         return [];
     }
 
+    public function fetchDeviceConnectivity(TenantIntegration $integration): array
+    {
+        return [];
+    }
+
     public function fetchLiveLocation(TenantIntegration $integration, string $externalAssetId): ?array
     {
         return null;

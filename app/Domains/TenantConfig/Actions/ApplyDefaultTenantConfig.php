@@ -96,6 +96,8 @@ class ApplyDefaultTenantConfig
             // Proactive monitoring: alert when an asset stops reporting (V2-C1)
             // or stands still outside every known geofence (V2-C3).
             ['key' => 'monitoring.offline_alert_minutes', 'group' => SettingGroup::Operational, 'type' => SettingValueType::Number, 'value' => 15],
+            // A parked vehicle's gateway may sleep: longer grace before alerting.
+            ['key' => 'monitoring.offline_parked_alert_minutes', 'group' => SettingGroup::Operational, 'type' => SettingValueType::Number, 'value' => 180],
             ['key' => 'monitoring.stop_alert_minutes', 'group' => SettingGroup::Operational, 'type' => SettingValueType::Number, 'value' => 10],
         ];
     }

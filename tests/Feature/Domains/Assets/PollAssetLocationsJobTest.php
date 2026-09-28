@@ -146,6 +146,28 @@ class PollAssetLocationsJobTest extends TestCase
         $this->assertDatabaseMissing('asset_location_snapshots', ['asset_id' => $otherTenantAsset->id]);
     }
 
+    public function test_an_unchanged_fix_is_not_stored_twice(): void
+    {
+        $integration = $this->makeSamsaraIntegration();
+        $asset = $this->linkAsset($integration, '100');
+
+        // A parked vehicle: the provider returns the same latest fix every poll.
+        Http::fake([
+            'api.samsara.com/fleet/vehicles/stats*' => Http::response([
+                'data' => [
+                    ['id' => '100', 'gps' => ['latitude' => 40.1, 'longitude' => -74.2, 'speedMilesPerHour' => 0, 'time' => '2026-09-27T23:06:11Z']],
+                ],
+                'pagination' => ['hasNextPage' => false],
+            ], 200),
+        ]);
+
+        app()->call([new PollAssetLocationsJob($integration), 'handle']);
+        app()->call([new PollAssetLocationsJob($integration), 'handle']);
+
+        $this->assertDatabaseCount('asset_location_snapshots', 1);
+        $this->assertSame('2026-09-27T23:06:11+00:00', $asset->fresh()->last_seen_at->toIso8601String());
+    }
+
     public function test_it_targets_the_sync_queue(): void
     {
         $job = new PollAssetLocationsJob(TenantIntegration::factory()->make());
