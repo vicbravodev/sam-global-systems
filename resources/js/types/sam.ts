@@ -153,6 +153,22 @@ export interface NavBadges {
     inbox: number;
 }
 
+/** Secciones del workspace que el usuario puede abrir (HandleInertiaRequests::navPermissions). */
+export interface NavPermissions {
+    incidents: boolean;
+    events: boolean;
+    drivers: boolean;
+    rules: boolean;
+    automation: boolean;
+    analytics: boolean;
+    integrations: boolean;
+    notifications: boolean;
+    audit: boolean;
+    billing: boolean;
+    tenantConfig: boolean;
+    roles: boolean;
+}
+
 // ---- Timeline entries for detail panel ----
 
 export type TimelineEntryType =
