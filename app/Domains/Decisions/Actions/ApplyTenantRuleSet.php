@@ -24,8 +24,7 @@ class ApplyTenantRuleSet
      */
     public function execute(int $teamId, AIEventEvaluation $eval, ?EventContextSnapshot $context = null): array
     {
-        $policy = $this->rulesResolver->resolve($teamId);
-        $ruleSet = $this->resolveRuleSet($teamId, $policy->defaultRuleSetCode);
+        $ruleSet = $this->effectiveRuleSet($teamId);
 
         $matched = collect();
 
@@ -55,6 +54,18 @@ class ApplyTenantRuleSet
         }
 
         return ['ruleset' => $ruleSet, 'matchedRules' => $matched];
+    }
+
+    /**
+     * The one ruleset the engine evaluates for this team: the team's own
+     * active default, else the platform default. The rules page uses it to
+     * tell the operator in which order each rule is actually checked.
+     */
+    public function effectiveRuleSet(int $teamId): ?RuleSet
+    {
+        $policy = $this->rulesResolver->resolve($teamId);
+
+        return $this->resolveRuleSet($teamId, $policy->defaultRuleSetCode);
     }
 
     private function resolveRuleSet(int $teamId, string $defaultCode): ?RuleSet

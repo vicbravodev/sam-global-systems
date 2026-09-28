@@ -155,6 +155,32 @@ export function decisionOutcomeLabel(code: string | null | undefined): string {
     return DECISION_OUTCOME_LABELS[code.toUpperCase()] ?? humanizeCode(code);
 }
 
+/**
+ * Qué le pasa al evento cuando una regla elige ese resultado, dicho como
+ * efecto ("Abre un incidente") para leer la regla como frase. `null` = la
+ * regla no fija resultado y decide la IA.
+ */
+export const DECISION_OUTCOME_EFFECT_LABELS: Record<string, string> = {
+    IGNORE: 'Se ignora',
+    LOG_ONLY: 'Solo se registra',
+    ALERT: 'Avisa con urgencia baja',
+    INCIDENT: 'Abre un incidente',
+    ESCALATE: 'Abre un incidente y lo escala',
+    REQUIRE_HUMAN_REVIEW: 'Pide revisión de una persona',
+};
+
+export function decisionOutcomeEffectLabel(
+    code: string | null | undefined,
+): string {
+    if (!code) {
+        return 'Decide la IA';
+    }
+
+    return (
+        DECISION_OUTCOME_EFFECT_LABELS[code.toUpperCase()] ?? humanizeCode(code)
+    );
+}
+
 // ── Activos ──────────────────────────────────────────────────────────────
 
 export const ASSET_TYPE_LABELS: Record<string, string> = {
