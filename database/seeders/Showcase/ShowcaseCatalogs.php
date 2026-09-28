@@ -8,9 +8,14 @@ use App\Domains\Assets\Models\AssetType;
 use App\Domains\Decisions\Models\DecisionOutcome;
 use App\Domains\Incidents\Models\IncidentStatus;
 use App\Domains\Normalization\Models\EventType;
+use App\Domains\Notifications\Actions\FinalizeMessagingCharge;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Models\NotificationTemplate;
+use App\Domains\Tenancy\Enums\BillingModel;
+use App\Domains\Tenancy\Models\BillingRate;
 use App\Domains\Tenancy\Models\Plan;
+use App\Domains\Tenancy\Models\UsageMeter;
+use App\Domains\Tenancy\Support\CostPlusPricing;
 use Database\Seeders\AccessSeeder;
 use Database\Seeders\AIMeterSeeder;
 use Database\Seeders\AnalyticsMeterSeeder;
@@ -73,6 +78,8 @@ class ShowcaseCatalogs
             $this->call(PlanSeeder::class, $command);
         }
 
+        $this->ensureCostPlusRates();
+
         $this->ensureModelVersions();
     }
 
@@ -89,6 +96,32 @@ class ShowcaseCatalogs
         }
 
         $instance->__invoke();
+    }
+
+    /**
+     * Tarifa cost-plus de mensajería Twilio en cada plan (la crea PlanSeeder
+     * en DBs nuevas). Sólo se añade donde falta: nunca se re-ejecuta
+     * PlanSeeder sobre planes existentes porque pisaría precios ajustados.
+     */
+    private function ensureCostPlusRates(): void
+    {
+        $meterId = UsageMeter::query()->where('code', FinalizeMessagingCharge::METER_CODE)->value('id');
+
+        if ($meterId === null) {
+            return;
+        }
+
+        foreach (Plan::query()->pluck('id') as $planId) {
+            BillingRate::query()->firstOrCreate(
+                ['plan_id' => $planId, 'usage_meter_id' => $meterId],
+                [
+                    'included_quantity' => 0,
+                    'overage_unit_price' => 0,
+                    'billing_model' => BillingModel::CostPlus,
+                    'markup_percent' => CostPlusPricing::defaultMarkup(),
+                ],
+            );
+        }
     }
 
     /**

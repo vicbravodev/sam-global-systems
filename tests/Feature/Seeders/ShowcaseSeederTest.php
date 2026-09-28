@@ -79,6 +79,13 @@ class ShowcaseSeederTest extends TestCase
         $incident = Incident::withoutGlobalScopes()->where('team_id', $team->id)->whereNotNull('metadata_json->showcase_key')->firstOrFail();
         $asset = Asset::withoutGlobalScopes()->where('team_id', $team->id)->firstOrFail();
         $driver = Driver::withoutGlobalScopes()->where('team_id', $team->id)->firstOrFail();
+        $notification = DB::table('notifications')->where('team_id', $team->id)->where('event_key', 'like', 'showcase:%')
+            ->whereExists(fn ($q) => $q->selectRaw('1')->from('notification_deliveries')
+                ->join('messaging_charges', 'messaging_charges.source_id', '=', 'notification_deliveries.id')
+                ->where('messaging_charges.source_type', 'notification_delivery')
+                ->whereColumn('notification_deliveries.notification_id', 'notifications.id'))
+            ->orderBy('id')
+            ->firstOrFail();
 
         $pages = [
             "{$base}/dashboard" => ['dashboard', fn (AssertableInertia $p) => $p->where('incidents', $nonEmpty)->where('stream', $nonEmpty)->where('integrations', $nonEmpty)->where('usage', $nonEmpty)],
@@ -93,10 +100,13 @@ class ShowcaseSeederTest extends TestCase
             "{$base}/drivers/{$driver->id}" => ['drivers/show', fn (AssertableInertia $p) => $p->where('driver.contacts', $nonEmpty)->where('driver.documents', $nonEmpty)->where('statusLog', $nonEmpty)->whereNot('driver.riskProfile', null)],
             "{$base}/integrations" => ['integrations/index', fn (AssertableInertia $p) => $p->where('integrations', fn ($i) => count($i) >= 3)],
             "{$base}/notifications" => ['notifications/index', fn (AssertableInertia $p) => $p->where('notifications', $nonEmpty)],
+            "{$base}/notifications/{$notification->id}" => ['notifications/show', fn (AssertableInertia $p) => $p->has('notification')->where('deliveries', $nonEmpty)->where('deliveries', fn ($d) => collect($d)->contains(fn ($row) => ($row['events'] ?? []) !== []))],
             "{$base}/automation" => ['automation/index', fn (AssertableInertia $p) => $p->where('workflows', $nonEmpty)->where('executions', $nonEmpty)],
             "{$base}/rules" => ['rules/index', fn (AssertableInertia $p) => $p->where('overrides', $nonEmpty)],
             "{$base}/audit" => ['audit/index', fn (AssertableInertia $p) => $p->where('logs', $nonEmpty)->where('events', $nonEmpty)],
-            "{$base}/billing" => ['billing/index', fn (AssertableInertia $p) => $p->whereNot('subscription', null)->where('features', $nonEmpty)->where('usage', $nonEmpty)->where('invoices', fn ($i) => count($i) >= 3)],
+            "{$base}/billing" => ['billing/index', fn (AssertableInertia $p) => $p->whereNot('subscription', null)->where('features', $nonEmpty)->where('usage', $nonEmpty)->where('invoices', fn ($i) => count($i) >= 3)
+                ->where('usage', fn ($u) => collect($u)->contains(fn ($row) => $row['meterCode'] === 'messaging_cost_micros' && $row['amount'] > 0))
+                ->where('invoices', fn ($i) => collect($i)->contains(fn ($inv) => collect($inv['breakdown'] ?? [])->contains(fn ($line) => ($line['billing_model'] ?? null) === 'cost_plus' && $line['overage_cost'] > 0)))],
             "{$base}/analytics" => ['analytics/index', fn (AssertableInertia $p) => $p->whereNot('overview', null)->where('kpis', $nonEmpty)->where('reports', $nonEmpty)->where('executions', $nonEmpty)],
             "{$base}/copilot" => ['copilot/index', fn (AssertableInertia $p) => $p->where('conversations', $nonEmpty)],
             "{$base}/copilot/usage?days=30" => ['copilot/usage', fn (AssertableInertia $p) => $p->has('usage')],
@@ -112,6 +122,40 @@ class ShowcaseSeederTest extends TestCase
                 ->assertOk()
                 ->assertInertia(fn (AssertableInertia $page) => $assert($page->component($component)));
         }
+    }
+
+    public function test_twilio_deliveries_have_charges_and_the_cost_is_metered_like_the_real_code(): void
+    {
+        $this->showcase(days: 10);
+
+        $twilio = DB::table('notification_deliveries')
+            ->join('notification_channels', 'notification_channels.id', '=', 'notification_deliveries.channel_id')
+            ->whereIn('notification_channels.channel_type', ['sms', 'whatsapp', 'voice'])
+            ->whereNotIn('notification_deliveries.status', ['skipped'])
+            ->select('notification_deliveries.*', 'notification_channels.channel_type')
+            ->get();
+
+        $this->assertNotEmpty($twilio);
+
+        foreach ($twilio as $delivery) {
+            $this->assertTrue(
+                DB::table('messaging_charges')->where('provider_sid', $delivery->provider_message_id)->where('source_id', $delivery->id)->exists(),
+                "La entrega {$delivery->id} no tiene cargo por su SID.",
+            );
+        }
+
+        // Ciclos de vida realistas: entregados, fallos permanentes con fallback, reintentos, leídos, contestadas.
+        $this->assertTrue($twilio->contains(fn ($d) => (bool) $d->permanent_failure));
+        $this->assertTrue($twilio->contains(fn ($d) => $d->attempt_number > 1));
+        $this->assertTrue($twilio->contains(fn ($d) => $d->channel_type === 'voice' && $d->answered_at !== null && $d->call_duration_seconds > 0));
+        $this->assertTrue(DB::table('messaging_charges')->where('source_type', 'verification_call')->exists());
+
+        $charged = (int) DB::table('messaging_charges')->whereNotNull('metered_at')->sum('price_micros');
+        $metered = (int) DB::table('usage_events')->where('event_key', 'like', 'twilio_charge:%')->sum('quantity');
+
+        $this->assertGreaterThan(0, $charged);
+        $this->assertSame($charged, $metered);
+        $this->assertSame(0, DB::table('messaging_charges')->where('price_micros', 0)->whereNotNull('metered_at')->count());
     }
 
     public function test_admin_console_is_populated_with_extra_tenants(): void

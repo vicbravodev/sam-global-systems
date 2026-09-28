@@ -79,6 +79,8 @@ class BillingShowcaseSeeder extends ShowcaseStep
             'trial_ends_at' => $status === 'trialing' ? $this->ctx->now->addDays(9) : null,
             'cancel_at_period_end' => false,
             'external_provider' => 'bank_transfer',
+            // Marca las facturas de esta suscripción como del showcase (se pueden regenerar).
+            'external_subscription_id' => 'showcase-'.$this->ctx->team->id,
             'created_at' => $starts,
         ]);
         $this->ctx->count('team_subscriptions');
@@ -235,10 +237,15 @@ class BillingShowcaseSeeder extends ShowcaseStep
                 $usage['active_cameras'][$d->toDateString()] = $cameras;
             }
 
-            if ($this->ctx->random('otp', $d->toDateString())->chance(0.2)) {
-                $usage['otp_sms_sent'][$d->toDateString()] = 1;
-            }
         }
+
+        // OTP y costo Twilio salen de los cargos que sembró NotificationsShowcaseSeeder.
+        $usage['otp_sms_sent'] = DB::table('messaging_charges')
+            ->where('team_id', $team)->where('source_type', 'otp')->where('created_at', '>=', $from)
+            ->groupBy('day')->select($day('created_at'), DB::raw('count(*) as qty'))->pluck('qty', 'day')->all();
+        $usage['messaging_cost_micros'] = DB::table('messaging_charges')
+            ->where('team_id', $team)->whereNotNull('metered_at')->where('metered_at', '>=', $from)
+            ->groupBy('day')->select($day('metered_at'), DB::raw('sum(price_micros) as qty'))->pluck('qty', 'day')->all();
 
         return array_intersect_key($usage, array_flip($meterCodes));
     }
@@ -272,6 +279,12 @@ class BillingShowcaseSeeder extends ShowcaseStep
 
             foreach ($days as $date => $quantity) {
                 if ($quantity <= 0 || CarbonImmutable::parse($date)->lessThan($firstDay)) {
+                    continue;
+                }
+
+                // Dentro de la ventana, el costo Twilio ya está medido por cargo
+                // (`twilio_charge:{sid}`); aquí sólo se rellena el historial previo.
+                if ($meter === 'messaging_cost_micros' && ! CarbonImmutable::parse($date)->lessThan($windowStart)) {
                     continue;
                 }
 
@@ -349,14 +362,22 @@ class BillingShowcaseSeeder extends ShowcaseStep
     {
         $month = CarbonImmutable::parse($subscription->starts_at)->startOfMonth();
         $current = $this->ctx->now->startOfMonth();
+        $owned = str_starts_with((string) $subscription->external_subscription_id, 'showcase-');
         $created = [];
 
         for (; $month->lessThanOrEqualTo($current); $month = $month->addMonth()) {
             $start = $month->toDateString();
             $end = $month->endOfMonth()->toDateString();
-            $exists = InvoiceSnapshot::query()->where('team_id', $this->ctx->team->id)->whereDate('period_start', $start)->exists();
+            $existing = InvoiceSnapshot::query()->where('team_id', $this->ctx->team->id)->whereDate('period_start', $start)->first();
 
-            if ($exists) {
+            // Facturas del showcase anteriores a la línea cost-plus de Twilio: se
+            // regeneran con el job para que la incluyan. Las demás nunca se tocan.
+            if ($existing !== null && $owned && $existing->subscription_id === $subscription->id && ! $this->hasCostPlusLine($existing)) {
+                $existing->delete();
+                $existing = null;
+            }
+
+            if ($existing !== null) {
                 continue;
             }
 
@@ -364,20 +385,30 @@ class BillingShowcaseSeeder extends ShowcaseStep
             $invoice = InvoiceSnapshot::query()->where('team_id', $this->ctx->team->id)->whereDate('period_start', $start)->first();
 
             if ($invoice !== null) {
-                $created[] = $invoice;
+                $created[$invoice->id] = true;
                 $this->ctx->count('invoice_snapshots');
             }
         }
 
-        $closed = array_values(array_filter($created, fn (InvoiceSnapshot $i) => $i->period_start->lessThan($current)));
-        $last = count($closed) - 1;
+        $closed = InvoiceSnapshot::query()
+            ->where('team_id', $this->ctx->team->id)
+            ->where('subscription_id', $subscription->id)
+            ->whereDate('period_start', '<', $current->toDateString())
+            ->orderBy('period_start')
+            ->get()
+            ->values();
+        $last = $closed->count() - 1;
 
         foreach ($closed as $i => $invoice) {
+            if (! isset($created[$invoice->id])) {
+                continue;
+            }
+
             $periodEnd = CarbonImmutable::parse($invoice->period_end);
             $pastDue = $this->ctx->subscriptionStatus === 'past_due';
 
             [$status, $paidAt, $note] = match (true) {
-                $i === 0 && count($closed) > 2 => ['void', null, 'Anulada: mes de cortesía por implementación.'],
+                $i === 0 && $closed->count() > 2 => ['void', null, 'Anulada: mes de cortesía por implementación.'],
                 $i === $last => ['invoiced', null, $pastDue ? 'Vencida: sin comprobante de pago a la fecha.' : 'Pendiente de transferencia.'],
                 $pastDue && $i === $last - 1 => ['invoiced', null, 'Vencida: recordatorio enviado al área de finanzas.'],
                 default => ['paid', $periodEnd->addDays(5 + $i % 6)->setTime(12, 30), sprintf('Transferencia SPEI ref. %s', strtoupper(substr(md5("{$invoice->id}"), 0, 10)))],
@@ -390,5 +421,16 @@ class BillingShowcaseSeeder extends ShowcaseStep
                 'generated_at' => $periodEnd->addDay()->setTime(2, 15),
             ])->save();
         }
+    }
+
+    private function hasCostPlusLine(InvoiceSnapshot $invoice): bool
+    {
+        foreach ((array) $invoice->breakdown_json as $line) {
+            if (($line['billing_model'] ?? null) === 'cost_plus') {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
