@@ -62,6 +62,9 @@ class RaiseAfterHoursMovementTest extends TestCase
         $asset = Asset::factory()->create(array_merge([
             'team_id' => $this->teamId,
             'status' => AssetStatus::Active,
+            // Estado de movimiento de la ingesta (MovementCriterion).
+            'last_moving_at' => $recordedAt ?? now()->subMinutes(2),
+            'stopped_since' => null,
         ], $attributes));
 
         $this->moving[] = [$asset, $speed, $recordedAt ?? now()->subMinutes(2)];
@@ -193,5 +196,20 @@ class RaiseAfterHoursMovementTest extends TestCase
         $this->runJob();
 
         $this->assertSame(2, RawEvent::withoutGlobalScopes()->count());
+    }
+
+    public function test_a_phantom_speed_on_a_parked_unit_is_not_after_hours_movement(): void
+    {
+        $this->makeSchedule();
+
+        // 6.4 km/h en el mismo punto del patio: la ingesta lo mantiene detenido.
+        $this->makeMovingAsset(speed: 6.4, attributes: [
+            'stopped_since' => now()->subHours(3),
+            'last_moving_at' => now()->subHours(3),
+        ]);
+
+        $this->runJob();
+
+        $this->assertSame(0, RawEvent::withoutGlobalScopes()->count());
     }
 }

@@ -11,6 +11,7 @@ use App\Domains\Assets\Events\FleetPositionsUpdatedBroadcast;
 use App\Domains\Assets\Events\FleetTelemetryUpdatedBroadcast;
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Assets\Models\TelematicsFeedCursor;
+use App\Domains\Assets\Support\MovementCriterion;
 use App\Domains\Integrations\Contracts\ProviderAdapter;
 use App\Domains\Integrations\Enums\TenantIntegrationStatus;
 use App\Domains\Integrations\Events\IntegrationStatusChanged;
@@ -272,7 +273,8 @@ class FollowVehicleStatsFeedJob implements ShouldBeUnique, ShouldQueue
 
         $moving = array_filter(
             $result->positions,
-            fn (array $position) => ($position['speed_kph'] ?? 0) >= RaiseAfterHoursMovement::MIN_SPEED_KPH,
+            fn (array $position) => ($position['moving'] ?? false) === true
+                && MovementCriterion::isMovingSpeed(isset($position['speed_kph']) ? (float) $position['speed_kph'] : null),
         );
 
         if ($moving === []) {

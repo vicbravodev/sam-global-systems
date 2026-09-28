@@ -64,6 +64,12 @@ class DetectOfflineAssetsJobTest extends TestCase
             'recorded_at' => $asset->device_last_connected_at->copy()->subMinute(),
         ]);
 
+        // Estado de movimiento que mantiene la ingesta (MovementCriterion).
+        $asset->forceFill([
+            'last_moving_at' => $asset->device_last_connected_at->copy()->subMinute(),
+            'stopped_since' => null,
+        ])->save();
+
         return $asset;
     }
 
@@ -442,5 +448,26 @@ class DetectOfflineAssetsJobTest extends TestCase
         $rawEvent = RawEvent::withoutGlobalScopes()->sole();
         $this->assertSame($teamB->id, $rawEvent->team_id);
         $this->assertSame($assetB->id, $rawEvent->payload_json['internal']['asset_id']);
+    }
+
+    public function test_a_phantom_speed_on_a_parked_unit_keeps_the_parked_threshold(): void
+    {
+        $asset = $this->makeAsset([
+            'device_last_connected_at' => now()->subMinutes(30),
+            'stopped_since' => now()->subHours(5),
+            'last_moving_at' => now()->subHours(5),
+        ]);
+
+        // Pico fantasma de GPS con el tracto estacionado en el patio.
+        AssetLocationSnapshot::factory()->create([
+            'asset_id' => $asset->id,
+            'speed' => 6.4,
+            'recorded_at' => $asset->device_last_connected_at->copy()->subMinute(),
+        ]);
+
+        $this->runJob();
+
+        // 30 min en silencio estacionado no llega al umbral de estacionado.
+        $this->assertSame(0, $this->rawCount());
     }
 }

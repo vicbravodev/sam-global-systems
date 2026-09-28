@@ -5,6 +5,7 @@ namespace App\Domains\Assets\Jobs;
 use App\Contracts\TenantConfig\TenantConfigResolver;
 use App\Domains\Assets\Enums\AssetStatus;
 use App\Domains\Assets\Models\Asset;
+use App\Domains\Assets\Support\MovementCriterion;
 use App\Domains\Incidents\Jobs\ApplyExternalResolutionJob;
 use App\Domains\Ingestion\Actions\QueueRawEventForProcessing;
 use App\Domains\Ingestion\Actions\StoreRawEvent;
@@ -125,8 +126,10 @@ class DetectOfflineAssetsJob implements ShouldQueue
         // Moving at the last fix taken around the moment the device dropped:
         // going silent mid-trip smells like jamming or a yanked device. An
         // old fix says nothing about the vehicle's state when it dropped.
+        // Criterio único de movimiento (MovementCriterion): una velocidad
+        // fantasma de 0.5 km/h de un tracto estacionado no baja el umbral.
         $wasInMotion = $location?->speed !== null
-            && (float) $location->speed > 0.1
+            && MovementCriterion::isMoving($asset, (float) $location->speed)
             && $location->recorded_at !== null
             && $location->recorded_at->gte($lastConnectedAt->copy()->subMinutes(self::CONNECTIVITY_FRESHNESS_MINUTES));
 

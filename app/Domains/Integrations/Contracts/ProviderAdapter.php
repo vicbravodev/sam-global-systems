@@ -124,6 +124,9 @@ interface ProviderAdapter
      * @param  string  $signature  Signature header value (may be prefixed, e.g. "v1=").
      * @param  string  $secret  The endpoint's shared secret.
      * @param  string|null  $timestamp  Optional signature timestamp header used in the signed message.
+     * @param  \DateTimeInterface|null  $receivedAt  When SAM received the request: the replay window is
+     *                                               measured against it, not against when a (possibly backed-up) queue
+     *                                               worker validates. Null = now.
      */
-    public function validateWebhookSignature(string $payload, string $signature, string $secret, ?string $timestamp = null): bool;
+    public function validateWebhookSignature(string $payload, string $signature, string $secret, ?string $timestamp = null, ?\DateTimeInterface $receivedAt = null): bool;
 }

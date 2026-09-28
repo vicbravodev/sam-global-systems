@@ -286,4 +286,73 @@ class WebhookProcessingTest extends TestCase
             'Processed webhook event should have a processed_at timestamp',
         );
     }
+
+    /**
+     * La ventana anti-replay se mide contra la hora de RECEPCIÓN, no contra
+     * cuándo lo procesa el worker: una cola atrasada 10 min (deploy, pico) ya
+     * no convierte un pánico auténtico en "firma inválida".
+     */
+    public function test_a_webhook_processed_late_by_a_backed_up_queue_is_still_valid(): void
+    {
+        [, , , , $endpoint] = $this->createEndpointWithIntegration();
+
+        $body = ['eventType' => 'AlertIncident', 'data' => ['id' => 43]];
+        $rawPayload = json_encode($body);
+        $timestamp = (string) now()->getTimestamp();
+        $signature = 'v1='.hash_hmac('sha256', 'v1:'.$timestamp.':'.$rawPayload, $endpoint->secret);
+
+        $webhookEvent = WebhookEvent::factory()->create([
+            'team_id' => $endpoint->tenantIntegration->team_id,
+            'provider_id' => $endpoint->tenantIntegration->provider_id,
+            'event_type' => 'AlertIncident',
+            'payload_json' => $body,
+            'signature' => $signature,
+            'signature_timestamp' => $timestamp,
+            'raw_payload' => $rawPayload,
+            'received_at' => now(),
+            'status' => WebhookEventStatus::Received,
+        ]);
+
+        $mockIngestion = Mockery::mock(RawEventIngestion::class);
+        $mockIngestion->shouldReceive('ingest')->once();
+        $this->app->instance(RawEventIngestion::class, $mockIngestion);
+
+        $this->travel(10)->minutes();
+
+        (new ProcessWebhookEventJob($webhookEvent, $endpoint))->handle(
+            app(ValidateWebhookSignature::class),
+            app(RawEventIngestion::class),
+        );
+
+        $this->assertSame(WebhookEventStatus::Processed, $webhookEvent->fresh()->status);
+    }
+
+    public function test_a_signature_older_than_the_window_at_receipt_is_still_rejected(): void
+    {
+        [, , , , $endpoint] = $this->createEndpointWithIntegration();
+
+        $body = ['eventType' => 'AlertIncident', 'data' => ['id' => 44]];
+        $rawPayload = json_encode($body);
+        $timestamp = (string) now()->subMinutes(10)->getTimestamp();
+        $signature = 'v1='.hash_hmac('sha256', 'v1:'.$timestamp.':'.$rawPayload, $endpoint->secret);
+
+        $webhookEvent = WebhookEvent::factory()->create([
+            'team_id' => $endpoint->tenantIntegration->team_id,
+            'provider_id' => $endpoint->tenantIntegration->provider_id,
+            'event_type' => 'AlertIncident',
+            'payload_json' => $body,
+            'signature' => $signature,
+            'signature_timestamp' => $timestamp,
+            'raw_payload' => $rawPayload,
+            'received_at' => now(),
+            'status' => WebhookEventStatus::Received,
+        ]);
+
+        (new ProcessWebhookEventJob($webhookEvent, $endpoint))->handle(
+            app(ValidateWebhookSignature::class),
+            app(RawEventIngestion::class),
+        );
+
+        $this->assertSame(WebhookEventStatus::InvalidSignature, $webhookEvent->fresh()->status);
+    }
 }

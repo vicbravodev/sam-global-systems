@@ -112,14 +112,29 @@ class StoreRawEvent
      */
     private function parseOccurredAt(array $payload): ?\DateTimeInterface
     {
+        // Safety events stream (v2): `startMs` es el inicio real del evento
+        // (ISO 8601 pese al nombre; o epoch ms) y `createdAtTime` cuando
+        // Samsara lo registró. Sin ellos, el evento quedaba fechado a la hora
+        // de recepción: tras una caída, todas las frenadas "ocurrían" al
+        // recuperarse y la correlación alrededor del pánico mentía.
         $timestamp = $payload['eventTime']
             ?? $payload['data']['happenedAtTime']
+            ?? $payload['startMs']
             ?? $payload['time']
+            ?? $payload['createdAtTime']
             ?? $payload['occurred_at']
             ?? null;
 
         if ($timestamp === null) {
             return null;
+        }
+
+        if (is_int($timestamp) || (is_string($timestamp) && ctype_digit($timestamp))) {
+            $value = (int) $timestamp;
+            // Epoch en segundos (≤ 10 dígitos) o en milisegundos.
+            $seconds = $value > 9_999_999_999 ? intdiv($value, 1000) : $value;
+
+            return (new \DateTimeImmutable('@'.$seconds))->setTimezone(new \DateTimeZone('UTC'));
         }
 
         try {

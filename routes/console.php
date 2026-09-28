@@ -12,6 +12,7 @@ use App\Domains\Assets\Jobs\PurgeOldAssetTelemetryJob;
 use App\Domains\Drivers\Jobs\RecalculateDriverRiskProfilesJob;
 use App\Domains\Ingestion\Jobs\PollSamsaraSafetyEventsJob;
 use App\Domains\Ingestion\Jobs\PruneDeduplicationKeysJob;
+use App\Domains\Integrations\Jobs\CheckIntegrationHealthJob;
 use App\Domains\Integrations\Jobs\SyncDueIntegrationsJob;
 use App\Domains\Notifications\Jobs\ReconcileMessagingChargesJob;
 use App\Domains\Tenancy\Jobs\AggregateUsageJob;
@@ -83,6 +84,9 @@ Schedule::job(new PurgeOldAssetLocationsJob)->dailyAt('03:50')->onOneServer();
 // Offline-asset watchdog (Roadmap V2-C1): silence beyond the tenant/asset
 // threshold raises an internal `device_offline` event through the pipeline.
 Schedule::job(new DetectOfflineAssetsJob)->everyFiveMinutes()->onOneServer();
+
+// Salud de la integración: integración en error o callada → aviso al admin.
+Schedule::job(new CheckIntegrationHealthJob)->everyFiveMinutes()->onOneServer();
 
 // After-hours movement (Roadmap V2-C2) is no longer swept: the telematics feed
 // evaluates it inline on every fresh moving point (RaiseAfterHoursMovement).

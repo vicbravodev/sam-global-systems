@@ -763,7 +763,7 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
      * back to a plain HMAC over the raw body, still accepting either the "v1="
      * prefixed or raw-hex signature form.
      */
-    public function validateWebhookSignature(string $payload, string $signature, string $secret, ?string $timestamp = null): bool
+    public function validateWebhookSignature(string $payload, string $signature, string $secret, ?string $timestamp = null, ?\DateTimeInterface $receivedAt = null): bool
     {
         $provided = str_starts_with($signature, 'v1=') ? substr($signature, 3) : $signature;
 
@@ -772,7 +772,7 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
         }
 
         if ($timestamp !== null && $timestamp !== '') {
-            if (! $this->timestampWithinTolerance($timestamp)) {
+            if (! $this->timestampWithinTolerance($timestamp, $receivedAt)) {
                 return false;
             }
 
@@ -819,7 +819,7 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
      * Samsara sends `X-Samsara-Timestamp` in seconds; we defensively also accept
      * a millisecond-precision value.
      */
-    private function timestampWithinTolerance(string $timestamp): bool
+    private function timestampWithinTolerance(string $timestamp, ?\DateTimeInterface $receivedAt = null): bool
     {
         $tolerance = (int) config('services.samsara.webhook_tolerance_seconds', 300);
 
@@ -835,7 +835,11 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
         // Treat <= 10-digit values as seconds, otherwise milliseconds.
         $seconds = $value > 9_999_999_999 ? intdiv($value, 1000) : $value;
 
-        return abs(now()->getTimestamp() - $seconds) <= $tolerance;
+        // Contra la hora de RECEPCIÓN: una cola atrasada (deploy, pico) no
+        // puede convertir pánicos auténticos en "firma inválida".
+        $reference = ($receivedAt ?? now())->getTimestamp();
+
+        return abs($reference - $seconds) <= $tolerance;
     }
 
     /**

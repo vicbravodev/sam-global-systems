@@ -16,12 +16,14 @@ class ValidateWebhookSignature
         string $payload,
         string $signature,
         ?string $timestamp = null,
+        ?\DateTimeInterface $receivedAt = null,
     ): bool {
         return $this->providerAdapter->validateWebhookSignature(
             $payload,
             $signature,
             $endpoint->secret,
             $timestamp,
+            $receivedAt,
         );
     }
 }

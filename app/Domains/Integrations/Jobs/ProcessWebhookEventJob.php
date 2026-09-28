@@ -63,6 +63,7 @@ class ProcessWebhookEventJob implements ShouldQueue
             $rawPayload,
             (string) $signature,
             $timestamp,
+            $this->webhookEvent->received_at,
         );
 
         if (! $isValid) {
