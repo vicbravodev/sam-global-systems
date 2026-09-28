@@ -75,6 +75,7 @@ class AssetsPageTest extends TestCase
                         ->where('name', 'Tractocamión Norte')
                         ->where('code', 'TR-042')
                         ->where('status', 'alert')
+                        ->where('monitoringState', 'monitored')
                         ->where('type.code', 'vehicle')
                         ->where('type.name', 'Vehicle')
                         ->where('type.category', 'vehicle')

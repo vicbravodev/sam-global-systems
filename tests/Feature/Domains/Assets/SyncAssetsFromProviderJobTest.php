@@ -2,16 +2,20 @@
 
 namespace Tests\Feature\Domains\Assets;
 
+use App\Domains\Assets\Enums\AssetMonitoringState;
 use App\Domains\Assets\Jobs\SyncAssetsFromProviderJob;
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Assets\Models\AssetExternalReference;
 use App\Domains\Assets\Models\AssetType;
+use App\Domains\Assets\Notifications\AssetsPendingMonitoringNotification;
 use App\Domains\Integrations\Models\IntegrationCredential;
 use App\Domains\Integrations\Models\IntegrationProvider;
 use App\Domains\Integrations\Models\TenantIntegration;
+use App\Enums\TeamRole;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Notification;
 use Tests\TestCase;
 
 class SyncAssetsFromProviderJobTest extends TestCase
@@ -97,5 +101,44 @@ class SyncAssetsFromProviderJobTest extends TestCase
                 ->where('external_primary_id', 'v-2')
                 ->exists(),
         );
+    }
+
+    public function test_discovered_units_land_as_pending_and_the_owner_is_told_once(): void
+    {
+        Notification::fake();
+        AssetType::factory()->vehicle()->create();
+
+        $integration = $this->makeSamsaraIntegration();
+        $team = $integration->team;
+        $owner = $team->members()->wherePivot('role', TeamRole::Owner->value)->first()
+            ?? $team->members()->first();
+
+        Http::fake([
+            'api.samsara.com/fleet/vehicles*' => Http::response([
+                'data' => [
+                    ['id' => 'v-10', 'name' => 'Truck 10'],
+                    ['id' => 'v-11', 'name' => 'Truck 11'],
+                ],
+                'pagination' => ['hasNextPage' => false],
+            ], 200),
+            'api.samsara.com/fleet/drivers*' => Http::response([
+                'data' => [],
+                'pagination' => ['hasNextPage' => false],
+            ], 200),
+        ]);
+
+        app()->call([new SyncAssetsFromProviderJob($integration), 'handle']);
+
+        $assets = Asset::withoutGlobalScopes()->where('team_id', $team->id)->get();
+        $this->assertCount(2, $assets);
+        $this->assertTrue($assets->every(fn (Asset $a) => $a->monitoring_state === AssetMonitoringState::Pending));
+
+        Notification::assertSentTo($owner, AssetsPendingMonitoringNotification::class, fn ($n) => $n->newlyPending === 2
+            && $n->totalPending === 2 && $n->monitored === 0);
+        Notification::assertCount(1);
+
+        // Second sync: nothing new, nobody is nagged again.
+        app()->call([new SyncAssetsFromProviderJob($integration), 'handle']);
+        Notification::assertCount(1);
     }
 }

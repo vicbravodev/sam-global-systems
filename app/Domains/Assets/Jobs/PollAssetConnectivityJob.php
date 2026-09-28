@@ -37,6 +37,9 @@ class PollAssetConnectivityJob implements ShouldBeUnique, ShouldQueue
 
     public int $timeout = 600;
 
+    /** Releases the lock if a worker dies mid-poll. */
+    public int $uniqueFor = 600;
+
     public function __construct(
         public readonly TenantIntegration $integration,
     ) {

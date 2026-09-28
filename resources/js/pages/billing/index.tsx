@@ -1,5 +1,5 @@
 import { Head, Link, router, usePage } from '@inertiajs/react';
-import { Mail, Users } from 'lucide-react';
+import { EyeOff, Mail, Users } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
@@ -17,7 +17,6 @@ interface SubscriptionProp {
     billingCycle: string;
     status: string;
     renewsAt: string | null;
-    trialEndsAt: string | null;
 }
 
 interface FeatureRow {
@@ -55,13 +54,79 @@ interface InvoiceRow {
     breakdown: Record<string, unknown> | null;
 }
 
+interface BillingTerms {
+    unit_price: number;
+    currency: string;
+    included_assets: number | null;
+    min_billable_assets: number;
+    ai_fair_use_per_asset: number;
+    ai_overage_unit_price: number;
+    messaging_markup_percent: number | null;
+    fx_usd_rate: number;
+    volume_tiers: { from: number; to: number | null; unit_price: number }[];
+    explicit: boolean;
+}
+
+interface PeriodEstimate {
+    periodStart: string;
+    periodEnd: string;
+    daysInPeriod: number;
+    daysRecorded: number;
+    currency: string;
+    unitPrice: number;
+    dailyRate: number;
+    monitoredNow: number;
+    cap: number | null;
+    overCap: boolean;
+    assetDays: number;
+    assetDaysExtra: number;
+    projectedAssetDays: number;
+    assetsToDate: number;
+    assetsProjected: number;
+    aiCalls: number;
+    aiIncluded: number;
+    aiOverage: number;
+    aiToDate: number;
+    aiProjected: number;
+    messagingToDate: number;
+    totalToDate: number;
+    totalProjected: number;
+    minBillableAssets: number;
+    aiFairUsePerAsset: number;
+    aiOverageUnitPrice: number;
+}
+
+interface FleetCounts {
+    monitored: number;
+    pending: number;
+    excluded: number;
+}
+
 interface BillingPageProps {
     supportEmail: string | null;
     subscription: SubscriptionProp | null;
     features: FeatureRow[];
     usage: UsageRow[];
     invoices: InvoiceRow[];
+    terms: BillingTerms;
+    estimate: PeriodEstimate;
+    fleet: FleetCounts;
 }
+
+const INVOICE_STATUS_LABEL: Record<string, string> = {
+    draft: 'Borrador',
+    finalized: 'Por pagar',
+    invoiced: 'Por pagar',
+    paid: 'Pagada',
+    disputed: 'En revisión',
+    void: 'Anulada',
+};
+
+const LINE_LABEL: Record<string, string> = {
+    monitored_asset_days: 'Tractos vigilados (por día)',
+    ai_calls: 'Evaluaciones de IA',
+    messaging_cost_micros: 'Mensajería y llamadas',
+};
 
 const SUBSCRIPTION_STATUS_COLOR: Record<string, string> = {
     active: 'text-severity-low',
@@ -87,6 +152,162 @@ function MetricCell({
                 {label}
             </span>
             {children}
+        </div>
+    );
+}
+
+function money2(value: number, currency: string): string {
+    return formatCurrency(value, currency.toUpperCase());
+}
+
+/**
+ * Lo que manda en la factura: unidades vigiladas contra lo contratado y
+ * cuánto va acumulado / proyectado este mes. Tope suave: pasarse no bloquea,
+ * se cobra como extra por día.
+ */
+function MonitoringCard({
+    terms,
+    estimate,
+    fleet,
+    teamSlug,
+}: {
+    terms: BillingTerms;
+    estimate: PeriodEstimate;
+    fleet: FleetCounts;
+    teamSlug: string | null;
+}) {
+    const cap = estimate.cap;
+    const currency = estimate.currency;
+
+    return (
+        <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+                <h2 className="text-2xs font-semibold tracking-caps text-fg-3 uppercase">
+                    Vigilancia y estimado del mes
+                </h2>
+                {teamSlug && (
+                    <Link
+                        href={`/${teamSlug}/assets`}
+                        className="text-xs text-primary hover:underline"
+                    >
+                        Elegir qué unidades vigilar
+                    </Link>
+                )}
+            </div>
+            <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border md:grid-cols-4">
+                <MetricCell label="Tractos vigilados">
+                    <span className="flex items-baseline gap-1.5">
+                        <span className="text-xl font-semibold text-fg-1 tabular-nums">
+                            {fleet.monitored}
+                        </span>
+                        <span className="text-xs text-fg-3">
+                            {cap === null ? 'sin tope' : `de ${cap}`}
+                        </span>
+                    </span>
+                    <span
+                        className={
+                            estimate.overCap
+                                ? 'text-2xs text-severity-medium'
+                                : 'text-2xs text-fg-3'
+                        }
+                    >
+                        {estimate.overCap && cap !== null
+                            ? `${fleet.monitored - cap} por encima del tope: se cobran como extra`
+                            : fleet.pending > 0
+                              ? `${fleet.pending} sin vigilar esperando tu decisión`
+                              : 'Sólo lo vigilado se cobra'}
+                    </span>
+                </MetricCell>
+                <MetricCell label="Precio por tracto">
+                    <span className="text-xl font-semibold text-fg-1 tabular-nums">
+                        {money2(estimate.unitPrice, currency)}
+                    </span>
+                    <span className="text-2xs text-fg-3">
+                        al mes · {money2(estimate.dailyRate, currency)} por día
+                        encendido
+                        {terms.min_billable_assets > 0 &&
+                            ` · mínimo ${terms.min_billable_assets} tractos`}
+                    </span>
+                </MetricCell>
+                <MetricCell label="Acumulado a hoy">
+                    <span className="text-xl font-semibold text-fg-1 tabular-nums">
+                        {money2(estimate.totalToDate, currency)}
+                    </span>
+                    <span className="text-2xs text-fg-3">
+                        {estimate.assetDays.toLocaleString('es')} tracto-días en{' '}
+                        {estimate.daysRecorded} de {estimate.daysInPeriod} días
+                    </span>
+                </MetricCell>
+                <MetricCell label="Proyección al cierre">
+                    <span className="text-xl font-semibold text-fg-1 tabular-nums">
+                        {money2(estimate.totalProjected, currency)}
+                    </span>
+                    <span className="text-2xs text-fg-3">
+                        si mantienes {estimate.monitoredNow} vigiladas hasta el{' '}
+                        {formatDate(estimate.periodEnd)}
+                    </span>
+                </MetricCell>
+            </div>
+            <div className="grid gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-3">
+                <MetricCell label="Tractos">
+                    <span className="text-sm text-fg-1 tabular-nums">
+                        {money2(estimate.assetsToDate, currency)}
+                        <span className="text-fg-3">
+                            {' '}
+                            → {money2(estimate.assetsProjected, currency)}
+                        </span>
+                    </span>
+                    {estimate.assetDaysExtra > 0 && (
+                        <span className="text-2xs text-severity-medium">
+                            {estimate.assetDaysExtra} tracto-días por encima del
+                            tope
+                        </span>
+                    )}
+                </MetricCell>
+                <MetricCell label="IA (uso justo)">
+                    <span className="text-sm text-fg-1 tabular-nums">
+                        {money2(estimate.aiToDate, currency)}
+                        <span className="text-fg-3">
+                            {' '}
+                            → {money2(estimate.aiProjected, currency)}
+                        </span>
+                    </span>
+                    <span className="text-2xs text-fg-3">
+                        {estimate.aiCalls.toLocaleString('es')} evaluaciones ·{' '}
+                        {estimate.aiIncluded.toLocaleString('es')} incluidas (
+                        {estimate.aiFairUsePerAsset} por tracto) ·{' '}
+                        {estimate.aiOverage.toLocaleString('es')} extra a{' '}
+                        {money2(estimate.aiOverageUnitPrice, currency)}
+                    </span>
+                </MetricCell>
+                <MetricCell label="Mensajería y llamadas">
+                    <span className="text-sm text-fg-1 tabular-nums">
+                        {money2(estimate.messagingToDate, currency)}
+                    </span>
+                    <span className="text-2xs text-fg-3">
+                        Costo real de SMS, WhatsApp y llamadas con margen
+                    </span>
+                </MetricCell>
+            </div>
+            {fleet.pending > 0 && teamSlug && (
+                <div className="flex flex-col gap-2 rounded-lg border border-severity-medium/40 bg-severity-medium/10 px-4 py-2.5 text-xs text-fg-2 sm:flex-row sm:items-center sm:justify-between">
+                    <p>
+                        <span className="font-medium text-fg-1">
+                            {fleet.pending}{' '}
+                            {fleet.pending === 1
+                                ? 'unidad nueva sin vigilar.'
+                                : 'unidades nuevas sin vigilar.'}
+                        </span>{' '}
+                        No se cobran hasta que las enciendas.
+                    </p>
+                    <Button size="sm" variant="outline" asChild>
+                        <Link href={`/${teamSlug}/assets?monitoring=pending`}>
+                            <EyeOff size={13} />
+                            Revisar pendientes
+                        </Link>
+                    </Button>
+                </div>
+            )}
         </div>
     );
 }
@@ -212,9 +433,18 @@ function ReceiptUploader({ invoice }: { invoice: InvoiceRow }) {
 
 export default function BillingIndex() {
     const page = usePage();
-    const { supportEmail, subscription, features, usage, invoices } =
-        page.props as unknown as BillingPageProps;
+    const {
+        supportEmail,
+        subscription,
+        features,
+        usage,
+        invoices,
+        terms,
+        estimate,
+        fleet,
+    } = page.props as unknown as BillingPageProps;
     const currentTeam = page.props.currentTeam;
+    const teamSlug = currentTeam?.slug ?? null;
 
     const mailtoHref = supportEmail
         ? `mailto:${supportEmail}?subject=${encodeURIComponent(
@@ -228,7 +458,14 @@ export default function BillingIndex() {
             <div className="flex flex-col gap-4 p-5">
                 <PageHeader
                     title="Facturación"
-                    description="Plan, consumo del periodo y facturas. El pago es por transferencia bancaria. Contacta a soporte para cambios de plan."
+                    description="Pagas por cada día que una unidad está vigilada. Tú decides cuáles enciendes; lo que pasa del tope contratado se cobra como extra. El pago es por transferencia bancaria."
+                />
+
+                <MonitoringCard
+                    terms={terms}
+                    estimate={estimate}
+                    fleet={fleet}
+                    teamSlug={teamSlug}
                 />
 
                 {/* Plan — tira compacta de métricas (B1): en vez de una
@@ -291,11 +528,11 @@ export default function BillingIndex() {
                                     {subscription.status}
                                 </Badge>
                             </MetricCell>
-                            <MetricCell label="Precio base">
+                            <MetricCell label="Tope contratado">
                                 <span className="text-base font-semibold text-fg-1">
-                                    {subscription.basePrice !== null
-                                        ? `${money(subscription.basePrice, subscription.currency)} / ${subscription.billingCycle}`
-                                        : '—'}
+                                    {terms.included_assets === null
+                                        ? 'Sin tope'
+                                        : `${terms.included_assets} tractos`}
                                 </span>
                             </MetricCell>
                             <MetricCell label="Próxima renovación">
@@ -346,7 +583,10 @@ export default function BillingIndex() {
                                         >
                                             <td className="py-2 pr-4">
                                                 <span className="text-fg-1">
-                                                    {row.meterName ??
+                                                    {LINE_LABEL[
+                                                        row.meterCode ?? ''
+                                                    ] ??
+                                                        row.meterName ??
                                                         row.meterCode}
                                                 </span>
                                                 {row.amount === null && (
@@ -500,9 +740,16 @@ export default function BillingIndex() {
                                             <td className="py-2 pr-4">
                                                 <Badge
                                                     variant="outline"
-                                                    className="text-fg-3"
+                                                    className={
+                                                        invoice.status ===
+                                                        'paid'
+                                                            ? 'text-severity-low'
+                                                            : 'text-fg-3'
+                                                    }
                                                 >
-                                                    {invoice.status}
+                                                    {INVOICE_STATUS_LABEL[
+                                                        invoice.status
+                                                    ] ?? invoice.status}
                                                 </Badge>
                                             </td>
                                             <td className="py-2 pr-4">

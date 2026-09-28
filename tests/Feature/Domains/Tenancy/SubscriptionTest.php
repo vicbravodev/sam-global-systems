@@ -38,7 +38,6 @@ class SubscriptionTest extends TestCase
         $activeSubscriptions = Subscription::withoutGlobalScopes()
             ->where('team_id', $team->id)
             ->whereIn('status', [
-                SubscriptionStatus::Trialing->value,
                 SubscriptionStatus::Active->value,
                 SubscriptionStatus::PastDue->value,
             ])
@@ -74,13 +73,13 @@ class SubscriptionTest extends TestCase
         );
     }
 
-    public function test_trialing_subscription_grants_operational_access(): void
+    public function test_past_due_subscription_still_grants_operational_access(): void
     {
-        $subscription = Subscription::factory()->trialing()->create();
+        $subscription = Subscription::factory()->pastDue()->create();
 
         $this->assertTrue(
             $subscription->status->grantsOperationalAccess(),
-            'Trialing subscription should grant operational access',
+            'A late payment must not cut a fleet off; the admin suspends explicitly',
         );
     }
 

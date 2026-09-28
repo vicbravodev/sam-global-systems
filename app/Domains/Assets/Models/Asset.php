@@ -3,6 +3,7 @@
 namespace App\Domains\Assets\Models;
 
 use App\Concerns\BelongsToTenant;
+use App\Domains\Assets\Enums\AssetMonitoringState;
 use App\Domains\Assets\Enums\AssetStatus;
 use App\Domains\Assets\Enums\TelemetryType;
 use App\Domains\Drivers\Enums\AssignmentType;
@@ -33,12 +34,23 @@ class Asset extends Model
         'name',
         'code',
         'status',
+        'monitoring_state',
+        'monitoring_changed_at',
         'metadata_json',
         'first_seen_at',
         'last_seen_at',
         'device_last_connected_at',
         'device_health_status',
         'device_connectivity_polled_at',
+        'last_latitude',
+        'last_longitude',
+        'last_speed_kph',
+        'last_heading',
+        'last_formatted_location',
+        'last_location_at',
+        'last_moving_at',
+        'stopped_since',
+        'stop_alerted_for',
     ];
 
     /**
@@ -182,15 +194,54 @@ class Asset extends Model
     /**
      * @return array<string, string>
      */
+    /**
+     * Activos que SAM vigila: los únicos que se sondean, normalizan, evalúan
+     * y facturan. Un activo `pending`/`excluded` existe en inventario pero el
+     * pipeline lo ignora.
+     *
+     * @param  Builder<Asset>  $query
+     * @return Builder<Asset>
+     */
+    public function scopeMonitored(Builder $query): Builder
+    {
+        return $query->where('monitoring_state', AssetMonitoringState::Monitored);
+    }
+
+    /**
+     * Activos descubiertos por el sync que el cliente aún no enciende.
+     *
+     * @param  Builder<Asset>  $query
+     * @return Builder<Asset>
+     */
+    public function scopePendingMonitoring(Builder $query): Builder
+    {
+        return $query->where('monitoring_state', AssetMonitoringState::Pending);
+    }
+
+    public function isMonitored(): bool
+    {
+        return $this->monitoring_state === AssetMonitoringState::Monitored;
+    }
+
     protected function casts(): array
     {
         return [
             'status' => AssetStatus::class,
+            'monitoring_state' => AssetMonitoringState::class,
+            'monitoring_changed_at' => 'datetime',
             'metadata_json' => 'array',
             'first_seen_at' => 'datetime',
             'last_seen_at' => 'datetime',
             'device_last_connected_at' => 'datetime',
             'device_connectivity_polled_at' => 'datetime',
+            'last_latitude' => 'float',
+            'last_longitude' => 'float',
+            'last_speed_kph' => 'float',
+            'last_heading' => 'integer',
+            'last_location_at' => 'datetime',
+            'last_moving_at' => 'datetime',
+            'stopped_since' => 'datetime',
+            'stop_alerted_for' => 'datetime',
         ];
     }
 

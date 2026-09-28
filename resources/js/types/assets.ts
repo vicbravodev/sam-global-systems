@@ -9,6 +9,9 @@ export type AssetStatusValue =
     | 'critical'
     | 'maintenance';
 
+/** Si SAM vigila (y cobra) la unidad. Sólo `monitored` entra al pipeline. */
+export type AssetMonitoringState = 'monitored' | 'pending' | 'excluded';
+
 export interface AssetTypeSummary {
     code: string;
     name: string;
@@ -66,6 +69,7 @@ export interface AssetRow {
     name: string;
     code: string | null;
     status: AssetStatusValue;
+    monitoringState: AssetMonitoringState;
     type: AssetTypeSummary | null;
     vehicle: AssetVehicleFacts | null;
     /** Currently assigned primary driver, null when none. */
@@ -83,11 +87,22 @@ export interface AssetFilters {
     q: string | null;
     status: string | null;
     type: string | null;
+    monitoring: string | null;
 }
 
 export interface AssetFilterOptions {
     statuses: { value: string; label: string }[];
     types: { value: string; label: string }[];
+    monitoring: { value: string; label: string }[];
+}
+
+/** Cupo de vigilancia del tenant. Tope suave: `overCap` sólo avisa. */
+export interface MonitoringSummary {
+    monitored: number;
+    pending: number;
+    excluded: number;
+    cap: number | null;
+    overCap: boolean;
 }
 
 export interface AssetsPagination {
@@ -115,6 +130,7 @@ export interface AssetsIndexProps {
     filters: AssetFilters;
     filterOptions: AssetFilterOptions;
     summary?: AssetsSummary;
+    monitoring?: MonitoringSummary;
 }
 
 export interface AssetDetail extends AssetRow {

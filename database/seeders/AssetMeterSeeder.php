@@ -22,6 +22,15 @@ class AssetMeterSeeder extends Seeder
                 'reset_period' => ResetPeriod::Monthly,
             ],
             [
+                'code' => 'monitored_asset_days',
+                'name' => 'Tracto-días vigilados',
+                'description' => 'Suma diaria de activos vigilados: base del cobro por tracto-día.',
+                'unit' => 'asset_day',
+                'aggregation_type' => AggregationType::Sum,
+                'is_billable' => true,
+                'reset_period' => ResetPeriod::Monthly,
+            ],
+            [
                 'code' => 'active_cameras',
                 'name' => 'Active Cameras',
                 'description' => 'Daily peak of active cameras: active camera devices attached to non-inactive assets plus stand-alone camera assets without an attached camera device.',

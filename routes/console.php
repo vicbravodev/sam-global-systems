@@ -3,11 +3,11 @@
 use App\Domains\Analytics\Jobs\BuildAnalyticsSnapshotJob;
 use App\Domains\Analytics\Jobs\CalculateDailyKPIsJob;
 use App\Domains\Analytics\Jobs\ExpireOldReportsJob;
-use App\Domains\Assets\Jobs\DetectAfterHoursMovementJob;
 use App\Domains\Assets\Jobs\DetectOfflineAssetsJob;
 use App\Domains\Assets\Jobs\DetectUnauthorizedStopJob;
-use App\Domains\Assets\Jobs\PollAllAssetLocationsJob;
-use App\Domains\Assets\Jobs\PollAllAssetTelemetryJob;
+use App\Domains\Assets\Jobs\DispatchTelematicsFeedsJob;
+use App\Domains\Assets\Jobs\PollAllDeviceConnectivityJob;
+use App\Domains\Assets\Jobs\PurgeOldAssetLocationsJob;
 use App\Domains\Assets\Jobs\PurgeOldAssetTelemetryJob;
 use App\Domains\Drivers\Jobs\RecalculateDriverRiskProfilesJob;
 use App\Domains\Ingestion\Jobs\PollSamsaraSafetyEventsJob;
@@ -43,7 +43,7 @@ Schedule::job(new CalculateDailyKPIsJob)->dailyAt('03:00')->onOneServer();
 Schedule::job(new PruneDeduplicationKeysJob)->dailyAt('03:15')->onOneServer();
 
 // ExpireOldReports (spec 15) is a per-tenant Action, not a console command:
-// this job fans it out across every team with an active/trialing/past-due
+// this job fans it out across every team with an active/past-due
 // subscription, same pattern as CalculateDailyKPIsJob/BuildAnalyticsSnapshotJob.
 // Without this, report retention policy was written but never enforced —
 // expired report files never got deleted from storage.
@@ -59,24 +59,31 @@ Schedule::job(new RecalculateDriverRiskProfilesJob)->dailyAt('04:30')->onOneServ
 // per-tenant work and self-gate by interval (configurable per integration via
 // config_json.sync), so these ticks are the floor cadence, not the exact rate.
 Schedule::job(new SyncDueIntegrationsJob)->everyFifteenMinutes()->onOneServer();
-Schedule::job(new PollAllAssetLocationsJob)->everyMinute()->onOneServer();
 Schedule::job(new PollSamsaraSafetyEventsJob)->everyTwoMinutes()->onOneServer();
 
-// Positions and onboard diagnostics (fuel, odometer, battery, engine state,
-// temperature) both tick every minute, the scheduler's floor, so the fleet
-// view is as live as the platform allows. Unchanged readings never reach the
-// database, so the cost of the faster tick is provider requests, not rows.
-Schedule::job(new PollAllAssetTelemetryJob)->everyMinute()->onOneServer();
+// Live fleet state: positions and diagnostics follow the provider's stats
+// feed with a cursor per tenant. This tick only decides which feeds are due
+// and queues one job per tenant on `telematics`; the cadence itself
+// (TELEMATICS_FEED_INTERVAL, 5 s floor) is enforced per feed. Sub-minute
+// tasks keep schedule:run alive for the whole minute; `schedule:interrupt`
+// stops it cleanly on deploy.
+Schedule::job(new DispatchTelematicsFeedsJob)->everyFiveSeconds()->onOneServer();
+
+// Gateway heartbeat for the offline watchdog, on the watchdog's own cadence.
+Schedule::job(new PollAllDeviceConnectivityJob)->everyFiveMinutes()->onOneServer();
+
 Schedule::job(new PurgeOldAssetTelemetryJob)->dailyAt('03:45')->onOneServer();
+Schedule::job(new PurgeOldAssetLocationsJob)->dailyAt('03:50')->onOneServer();
 
 // Offline-asset watchdog (Roadmap V2-C1): silence beyond the tenant/asset
 // threshold raises an internal `device_offline` event through the pipeline.
 Schedule::job(new DetectOfflineAssetsJob)->everyFiveMinutes()->onOneServer();
 
-// After-hours movement detector (Roadmap V2-C2): a unit moving while the
-// tenant's schedule says "closed" raises an internal event (theft/misuse).
-Schedule::job(new DetectAfterHoursMovementJob)->everyFiveMinutes()->onOneServer();
+// After-hours movement (Roadmap V2-C2) is no longer swept: the telematics feed
+// evaluates it inline on every fresh moving point (RaiseAfterHoursMovement).
 
 // Unauthorized-stop detector (Roadmap V2-C3): a prolonged stop outside every
-// known geofence raises an internal `suspicious_stop` event.
-Schedule::job(new DetectUnauthorizedStopJob)->everyFiveMinutes()->onOneServer();
+// known geofence raises an internal `suspicious_stop` event. Reads the motion
+// state the feed keeps on each asset, so a minute tick is one indexed query
+// per tenant.
+Schedule::job(new DetectUnauthorizedStopJob)->everyMinute()->onOneServer();

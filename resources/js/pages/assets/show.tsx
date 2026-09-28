@@ -21,6 +21,7 @@ import type { LucideIcon } from 'lucide-react';
 import { useEffect, useMemo, useRef } from 'react';
 import { AssetSignal } from '@/components/sam/assets/asset-signal';
 import { AssetStatusBadge } from '@/components/sam/assets/asset-status-badge';
+import { MonitoringSwitch } from '@/components/sam/assets/monitoring-switch';
 import { PlateChip, vehicleTitle } from '@/components/sam/assets/vehicle-line';
 import { EntityAvatar } from '@/components/sam/entity-avatar';
 import { LinkedIncidentsCard } from '@/components/sam/linked-incidents-card';
@@ -151,6 +152,14 @@ function AssetHero({
                         {asset.vehicle?.plate && (
                             <PlateChip plate={asset.vehicle.plate} />
                         )}
+                        <MonitoringSwitch
+                            assetId={asset.id}
+                            assetName={asset.name}
+                            state={asset.monitoringState}
+                            teamSlug={teamSlug}
+                            withLabel
+                            className="ml-1"
+                        />
                     </div>
                     <p className="sam-meta mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
                         {asset.code && (
@@ -780,7 +789,10 @@ export default function AssetShow() {
                 pendingKeys.current.add('asset');
                 pendingKeys.current.add('locationHistory');
                 pendingKeys.current.add('telemetry');
-            } else if (detail?.event === 'asset.status_changed') {
+            } else if (
+                detail?.event === 'asset.status_changed' ||
+                detail?.event === 'asset.monitoring_changed'
+            ) {
                 pendingKeys.current.add('asset');
             } else {
                 return;

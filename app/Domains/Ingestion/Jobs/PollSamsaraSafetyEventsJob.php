@@ -16,7 +16,7 @@ use Illuminate\Queue\SerializesModels;
  * active Samsara integration whose safety-event feed polling is enabled.
  *
  * Runs across all tenants (global scope bypassed) since the scheduler has no
- * tenant context — the same pattern as PollAllAssetLocationsJob.
+ * tenant context — the same pattern as PollAllDeviceConnectivityJob.
  */
 class PollSamsaraSafetyEventsJob implements ShouldQueue
 {

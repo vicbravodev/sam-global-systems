@@ -64,9 +64,7 @@ class BillingShowcaseSeeder extends ShowcaseStep
 
         $plan = Plan::query()->where('code', $this->ctx->subscriptionPlan)->first() ?? Plan::query()->orderBy('base_price')->firstOrFail();
         $status = $this->ctx->subscriptionStatus;
-        $starts = $status === 'trialing'
-            ? $this->ctx->now->subDays(5)->startOfDay()
-            : $this->ctx->now->subMonths(self::HISTORY_MONTHS)->startOfMonth()->addDays(3);
+        $starts = $this->ctx->now->subMonths(self::HISTORY_MONTHS)->startOfMonth()->addDays(3);
 
         $subscription = Subscription::query()->create([
             'team_id' => $this->ctx->team->id,
@@ -75,7 +73,6 @@ class BillingShowcaseSeeder extends ShowcaseStep
             'billing_cycle' => 'monthly',
             'starts_at' => $starts,
             'renews_at' => $this->ctx->now->addMonthNoOverflow()->startOfMonth(),
-            'trial_ends_at' => $status === 'trialing' ? $this->ctx->now->addDays(9) : null,
             'cancel_at_period_end' => false,
             'external_provider' => 'bank_transfer',
             // Marca las facturas de esta suscripción como del showcase (se pueden regenerar).

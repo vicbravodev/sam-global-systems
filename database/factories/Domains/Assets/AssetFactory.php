@@ -2,6 +2,7 @@
 
 namespace Database\Factories\Domains\Assets;
 
+use App\Domains\Assets\Enums\AssetMonitoringState;
 use App\Domains\Assets\Enums\AssetStatus;
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Assets\Models\AssetType;
@@ -22,9 +23,24 @@ class AssetFactory extends Factory
             'asset_type_id' => AssetType::factory(),
             'name' => fake()->words(3, true),
             'status' => AssetStatus::Active,
+            'monitoring_state' => AssetMonitoringState::Monitored,
             'first_seen_at' => now(),
             'last_seen_at' => now(),
         ];
+    }
+
+    public function pendingMonitoring(): static
+    {
+        return $this->state(fn () => [
+            'monitoring_state' => AssetMonitoringState::Pending,
+        ]);
+    }
+
+    public function excluded(): static
+    {
+        return $this->state(fn () => [
+            'monitoring_state' => AssetMonitoringState::Excluded,
+        ]);
     }
 
     public function active(): static

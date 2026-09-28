@@ -11,4 +11,5 @@ enum EvidenceSourceType: string
     case AiEvaluation = 'ai_evaluation';
     case ManualUpload = 'manual_upload';
     case ExternalProvider = 'external_provider';
+    case Telematics = 'telematics';
 }

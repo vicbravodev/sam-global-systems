@@ -12,7 +12,7 @@ use App\Support\TenantContext;
  * (SMS, WhatsApp, llamadas, correo, OTP, acciones de automatización).
  *
  * Política (2026-09-27):
- *  - `trialing`, `active` y `past_due` SÍ envían: un pago atrasado no puede
+ *  - `active` y `past_due` SÍ envían: un pago atrasado no puede
  *    dejar a una flota sin alertas de pánico; si el admin quiere cortar,
  *    suspende la suscripción.
  *  - `suspended`, `canceled` y `expired` NO envían.

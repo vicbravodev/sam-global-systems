@@ -12,6 +12,13 @@ use Illuminate\Database\Eloquent\Factories\Factory;
  */
 class AssetTelemetrySnapshotFactory extends Factory
 {
+    /**
+     * Each row lands one second further back: points are unique per asset and
+     * instant (the feed's idempotency index), so several rows for the same
+     * asset cannot share `now()`. Stays within the last hour, i.e. "fresh".
+     */
+    private static int $sequence = 0;
+
     protected $model = AssetTelemetrySnapshot::class;
 
     public function definition(): array
@@ -20,7 +27,7 @@ class AssetTelemetrySnapshotFactory extends Factory
             'asset_id' => Asset::factory(),
             'telemetry_type' => fake()->randomElement(TelemetryType::cases()),
             'data_json' => ['value' => fake()->randomFloat(2, 0, 100)],
-            'recorded_at' => now(),
+            'recorded_at' => now()->subSeconds(self::$sequence++ % 3600),
         ];
     }
 

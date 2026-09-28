@@ -58,7 +58,7 @@ class AggregateUsageJobBroadcastTest extends TestCase
         $this->assertEquals(
             2,
             TenantUsageCounter::withoutGlobalScopes()->where('usage_meter_id', $meter->id)->count(),
-            'Job should aggregate counters for every team with an active/trialing/past_due subscription',
+            'Job should aggregate counters for every team with an active/past_due subscription',
         );
 
         $this->assertDatabaseMissing('tenant_usage_counters', [
@@ -127,7 +127,7 @@ class AggregateUsageJobBroadcastTest extends TestCase
         Subscription::factory()->create([
             'team_id' => $team->id,
             'plan_id' => $plan->id,
-            'status' => SubscriptionStatus::Trialing,
+            'status' => SubscriptionStatus::PastDue,
         ]);
 
         UsageEvent::withoutGlobalScopes()->insert([
