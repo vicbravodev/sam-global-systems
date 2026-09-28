@@ -40,6 +40,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { useBroadcastReload } from '@/hooks/use-team-broadcasts';
 import { formatDateTime } from '@/lib/format';
 import {
     deleteJson,
@@ -726,6 +727,11 @@ function DisconnectDialog({
 // ---- Page ----
 
 export default function IntegrationsIndex() {
+    // Status flips from the feed (circuit opened) or another operator.
+    useBroadcastReload(
+        { 'integration.status_changed': ['integrations'] },
+        { debounceMs: 500 },
+    );
     const page = usePage();
     const pageProps = page.props as unknown as IntegrationsIndexProps;
     const integrations = useMemo(

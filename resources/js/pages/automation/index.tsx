@@ -28,6 +28,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { useBroadcastReload } from '@/hooks/use-team-broadcasts';
 import { formatDateTime, formatNumber } from '@/lib/format';
 import { delayLabel } from '@/lib/labels';
 import {
@@ -1121,6 +1122,9 @@ function ExecutionsTab({
 // ---- Page ----
 
 export default function AutomationIndex() {
+    useBroadcastReload({
+        'action.executed': ['executions', 'runStats'],
+    });
     const page = usePage();
     const props = page.props as unknown as AutomationPageProps;
     const [tab, setTab] = useState<TabKey>('workflows');

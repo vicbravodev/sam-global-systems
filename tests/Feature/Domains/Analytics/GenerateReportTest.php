@@ -65,6 +65,28 @@ class GenerateReportTest extends TestCase
         Event::assertDispatched(ReportReadyBroadcast::class);
     }
 
+    public function test_report_ready_names_the_requesting_user_and_not_scheduled_runs(): void
+    {
+        Storage::fake('rustfs');
+        Event::fake([ReportGenerated::class, ReportReadyBroadcast::class]);
+
+        $team = Team::factory()->create();
+        $definition = ReportDefinition::factory()->create(['team_id' => $team->id]);
+        $this->seedGeneratedReportsMeter();
+
+        app(GenerateReport::class)->execute($definition, $team->id, ReportOutputFormat::Json, ReportRequestedByType::User, 42);
+        app(GenerateReport::class)->execute($definition, $team->id, ReportOutputFormat::Json, ReportRequestedByType::Scheduler, 42);
+
+        Event::assertDispatched(
+            ReportReadyBroadcast::class,
+            fn (ReportReadyBroadcast $event) => $event->broadcastWith()['requested_by_user_id'] === 42,
+        );
+        Event::assertDispatched(
+            ReportReadyBroadcast::class,
+            fn (ReportReadyBroadcast $event) => $event->broadcastWith()['requested_by_user_id'] === null,
+        );
+    }
+
     public function test_csv_output_serializes_metrics_as_csv(): void
     {
         Storage::fake('rustfs');

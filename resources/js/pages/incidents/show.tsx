@@ -1,5 +1,4 @@
 import { Head, router, usePage } from '@inertiajs/react';
-import { useEffect, useRef } from 'react';
 import { Activity } from '@/components/sam/incident-detail/activity';
 import { AiEvaluationCard } from '@/components/sam/incident-detail/ai-evaluation';
 import { CommentsSection } from '@/components/sam/incident-detail/comments';
@@ -16,8 +15,7 @@ import { IncidentActionsProvider } from '@/components/sam/incident-detail/incide
 import { Management } from '@/components/sam/incident-detail/management';
 import { MediaStrip } from '@/components/sam/incident-detail/media-strip';
 import { PriorIncidents } from '@/components/sam/incident-detail/prior-incidents';
-import { TEAM_BROADCAST_EVENT_NAME } from '@/hooks/use-team-broadcasts';
-import type { TeamBroadcastDetail } from '@/hooks/use-team-broadcasts';
+import { useBroadcastReload } from '@/hooks/use-team-broadcasts';
 import type { IncidentShowProps } from '@/types/sam';
 
 const RELOAD_DEBOUNCE_MS = 1500;
@@ -50,48 +48,22 @@ export default function IncidentShow() {
             }
         ).currentTeam?.slug ?? null;
 
-    const timer = useRef<number | null>(null);
-
     const reloadDetail = () => {
         router.reload({ only: DETAIL_PROPS });
     };
 
-    // Realtime: cualquier update broadcast de ESTE incidente (ack, escalación,
-    // media evaluada vía B8) refresca los props, con debounce.
-    useEffect(() => {
-        const handler = (event: Event) => {
-            const detail = (event as CustomEvent<TeamBroadcastDetail>).detail;
+    // Realtime: updates of THIS incident (ack, escalation, media assessed) and
+    // automation actions run on it refresh the detail, debounced.
+    const forThisIncident = (payload: { incident_id: number | null }) =>
+        payload.incident_id === incident.incidentId ? DETAIL_PROPS : null;
 
-            if (detail?.event !== 'incidents.updated') {
-                return;
-            }
-
-            const payload = detail.payload as { incident_id?: number };
-
-            if (payload?.incident_id !== incident.incidentId) {
-                return;
-            }
-
-            if (timer.current !== null) {
-                window.clearTimeout(timer.current);
-            }
-
-            timer.current = window.setTimeout(() => {
-                timer.current = null;
-                reloadDetail();
-            }, RELOAD_DEBOUNCE_MS);
-        };
-
-        window.addEventListener(TEAM_BROADCAST_EVENT_NAME, handler);
-
-        return () => {
-            window.removeEventListener(TEAM_BROADCAST_EVENT_NAME, handler);
-
-            if (timer.current !== null) {
-                window.clearTimeout(timer.current);
-            }
-        };
-    }, [incident.incidentId]);
+    useBroadcastReload(
+        {
+            'incidents.updated': forThisIncident,
+            'action.executed': forThisIncident,
+        },
+        { debounceMs: RELOAD_DEBOUNCE_MS, resync: DETAIL_PROPS },
+    );
 
     return (
         <>
