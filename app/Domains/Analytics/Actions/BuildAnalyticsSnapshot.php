@@ -8,6 +8,7 @@ use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\Analytics\Enums\SnapshotType;
 use App\Domains\Analytics\Models\AnalyticsSnapshot;
 use App\Domains\Assets\Models\Asset;
+use App\Domains\Integrations\Enums\TenantIntegrationStatus;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Domains\Tenancy\Models\UsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
@@ -81,8 +82,11 @@ class BuildAnalyticsSnapshot
             'resolved_incidents' => (int) $totals['resolved'],
             'mean_resolution_time_minutes' => (float) $totals['mean_resolution_time_minutes'],
             'ai_accuracy_rate' => $accuracy,
-            'active_assets' => Asset::query()->where('team_id', $teamId)->count(),
-            'active_integrations' => TenantIntegration::query()->where('team_id', $teamId)->count(),
+            'active_assets' => Asset::query()->where('team_id', $teamId)->activeDuring($from, $to)->count(),
+            'active_integrations' => TenantIntegration::query()
+                ->where('team_id', $teamId)
+                ->where('status', TenantIntegrationStatus::Active)
+                ->count(),
             'usage_summary' => $this->usageSummary($teamId, $from, $to),
         ];
     }

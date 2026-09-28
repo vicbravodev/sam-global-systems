@@ -8,6 +8,7 @@ use App\Domains\Drivers\Enums\AssignmentType;
 use App\Domains\Drivers\Models\DriverAssignment;
 use App\Domains\Integrations\Models\IntegrationProvider;
 use App\Domains\Integrations\Models\TenantIntegration;
+use Carbon\CarbonInterface;
 use Database\Factories\Domains\Assets\AssetFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -142,6 +143,25 @@ class Asset extends Model
     public function scopeActive(Builder $query): Builder
     {
         return $query->where('status', '!=', AssetStatus::Inactive);
+    }
+
+    /**
+     * Non-inactive assets that were part of the fleet during [from, to]: first
+     * seen (or created) by the end of the window and not deleted before it
+     * started. Status history is not kept, so the current status decides
+     * whether the asset counts as active.
+     *
+     * @return Builder<Asset>
+     */
+    public function scopeActiveDuring(Builder $query, CarbonInterface $from, CarbonInterface $to): Builder
+    {
+        return $query
+            ->withTrashed()
+            ->where('status', '!=', AssetStatus::Inactive)
+            ->whereRaw('COALESCE(first_seen_at, created_at) <= ?', [$to->toDateTimeString()])
+            ->where(fn (Builder $deleted) => $deleted
+                ->whereNull('deleted_at')
+                ->orWhere('deleted_at', '>=', $from));
     }
 
     /**

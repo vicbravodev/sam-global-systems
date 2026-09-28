@@ -100,7 +100,7 @@ class CalculateKPI
             'decisions_human_review_rate' => $this->humanReviewRate($teamId, $from, $to),
             'ai_evaluations_total' => $this->aiEvaluationsCount($teamId, $from, $to, $dimensionType, $dimensionReference),
             'ai_average_confidence' => $this->aiAverageConfidence($teamId, $from, $to),
-            'active_assets' => $this->activeAssetsCount($teamId),
+            'active_assets' => $this->activeAssetsCount($teamId, $from, $to),
             default => $this->computeFromUsageMeter($metric, $teamId, $from, $to),
         };
     }
@@ -146,10 +146,11 @@ class CalculateKPI
         return round((float) $totals['human_reviewed'] / $total, 4);
     }
 
-    private function activeAssetsCount(int $teamId): float
+    private function activeAssetsCount(int $teamId, CarbonInterface $from, CarbonInterface $to): float
     {
         return (float) Asset::query()
             ->where('team_id', $teamId)
+            ->activeDuring($from, $to)
             ->count();
     }
 
