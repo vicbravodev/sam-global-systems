@@ -43,6 +43,9 @@ class PollAllAssetLocationsJob implements ShouldQueue
             ->each(fn (TenantIntegration $integration) => TenantContext::for($integration->team_id, function () use ($integration): void {
                 if ($this->isDue($integration)) {
                     PollAssetLocationsJob::dispatch($integration);
+                    // Same cadence: the offline watchdog needs a fresh
+                    // device heartbeat as often as it ticks.
+                    PollAssetConnectivityJob::dispatch($integration);
                 }
             })));
     }
