@@ -10,8 +10,9 @@ use App\Domains\Ingestion\Models\RawEventAttachment;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
+use App\Infrastructure\Storage\MediaDownloadException;
+use App\Infrastructure\Storage\SecureMediaDownloader;
 use Illuminate\Support\Arr;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class IngestSafetyEvent
@@ -33,6 +34,7 @@ class IngestSafetyEvent
         private QueueRawEventForProcessing $queueForProcessing,
         private ObjectStorage $storage,
         private RecordUsageEvent $recordUsageEvent,
+        private SecureMediaDownloader $downloader,
     ) {}
 
     /**
@@ -137,13 +139,16 @@ class IngestSafetyEvent
     }
 
     /**
+     * Download through the hardened downloader (https + host allowlist,
+     * streamed to a temp file, size-capped) and store as a raw attachment.
+     *
      * @param  array<string, mixed>  $metadata
      */
     private function storeMediaDownload(RawEvent $rawEvent, string $url, string $filename, array $metadata): void
     {
         try {
-            $response = Http::timeout((int) config('services.samsara.media_download_timeout', 30))->get($url);
-        } catch (\Throwable $e) {
+            $download = $this->downloader->download($url);
+        } catch (MediaDownloadException $e) {
             Log::warning('Safety event inline media download failed', [
                 'raw_event_id' => $rawEvent->id,
                 'url_key' => $metadata['source_url_key'] ?? null,
@@ -153,24 +158,32 @@ class IngestSafetyEvent
             return;
         }
 
-        if (! $response->successful() || $response->body() === '') {
-            return;
-        }
-
         $storagePath = "teams/{$rawEvent->team_id}/raw-events/{$rawEvent->id}/{$filename}";
-        $mimeType = $response->header('Content-Type') ?: 'video/mp4';
+        $mimeType = $download->contentType ?: 'video/mp4';
 
-        $this->storage->put($storagePath, $response->body(), [
-            'visibility' => 'private',
-            'ContentType' => $mimeType,
-        ]);
+        try {
+            $stream = $download->stream();
+
+            try {
+                $this->storage->put($storagePath, $stream, [
+                    'visibility' => 'private',
+                    'ContentType' => $mimeType,
+                ]);
+            } finally {
+                if (is_resource($stream)) {
+                    fclose($stream);
+                }
+            }
+        } finally {
+            $download->cleanup();
+        }
 
         RawEventAttachment::create([
             'raw_event_id' => $rawEvent->id,
             'attachment_type' => AttachmentType::Clip,
             'storage_path' => $storagePath,
             'mime_type' => $mimeType,
-            'size_bytes' => strlen($response->body()),
+            'size_bytes' => $download->size,
             'metadata_json' => $metadata,
         ]);
     }

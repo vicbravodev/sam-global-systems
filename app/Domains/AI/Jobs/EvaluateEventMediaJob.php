@@ -17,12 +17,17 @@ class EvaluateEventMediaJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 2;
+    /**
+     * Transient vision errors (429, 5xx, timeouts) are rethrown by
+     * `EvaluateEventMultimodally` until the last attempt, where they are
+     * recorded as `unavailable`.
+     */
+    public int $tries = 3;
 
     public int $timeout = 180;
 
     /** @var array<int, int> */
-    public array $backoff = [30, 120];
+    public array $backoff = [30, 120, 300];
 
     /**
      * @param  array<int, int>  $mediaContextIds
@@ -60,7 +65,7 @@ class EvaluateEventMediaJob implements ShouldQueue
                 return;
             }
 
-            $multimodal->execute($evaluation, $mediaContexts);
+            $multimodal->execute($evaluation, $mediaContexts, finalAttempt: $this->attempts() >= $this->tries);
         });
     }
 

@@ -19,12 +19,26 @@ enum DecisionOutcomeCode: string
         };
     }
 
+    /**
+     * Outcomes that open a full incident at the decision's own priority. The
+     * critical-severity floor in `ResolveDecisionOutcome` relies on this.
+     */
     public function createsIncident(): bool
     {
         return match ($this) {
             self::Incident, self::Escalate => true,
             default => false,
         };
+    }
+
+    /**
+     * Outcomes an operator must see in the inbox: full incidents plus review
+     * and alert outcomes, which open low-urgency incidents so they are never
+     * silently lost. IGNORE / LOG_ONLY surface nothing.
+     */
+    public function surfacesToOperators(): bool
+    {
+        return $this->createsIncident() || $this === self::RequireHumanReview || $this === self::Alert;
     }
 
     public function label(): string

@@ -4,6 +4,7 @@ namespace App\Domains\AI\Actions;
 
 use App\Contracts\AI\EventEvaluationAgent;
 use App\Domains\AI\Data\AIInputContext;
+use App\Domains\AI\Data\TenantAIProfileData;
 use App\Domains\AI\Enums\EvaluationMode;
 use App\Domains\AI\Enums\EvaluationPriority;
 use App\Domains\AI\Enums\EventClassification;
@@ -15,10 +16,10 @@ use App\Domains\AI\Models\AIExplanation;
 use App\Domains\AI\Models\AIInferenceLog;
 use App\Domains\AI\Support\HeuristicRulesRunner;
 use App\Domains\AI\Support\MediaVerdictFusion;
+use App\Domains\AI\Support\TenantAIQuota;
 use App\Domains\Context\Models\EventContextSnapshot;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\Tenancy\Actions\RecordUsageEvent;
-use App\Domains\Tenancy\Models\UsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -90,7 +91,7 @@ class EvaluateEventWithAI
             });
         }
 
-        if ($this->quotaExceeded($event->team_id, $profile->monthlyTokenLimit)) {
+        if ($this->quotaExceeded($event, $profile)) {
             return DB::transaction(function () use ($event, $version, $riskScore, $input, $fuseMedia) {
                 $fused = $this->applyFusion(
                     $fuseMedia(EventClassification::Unclear),
@@ -385,24 +386,13 @@ class EvaluateEventWithAI
             ->max('evaluation_version') + 1;
     }
 
-    private function quotaExceeded(int $teamId, int $monthlyLimit): bool
+    /**
+     * Monthly-token and daily-call quota; critical-severity events bypass it
+     * and always reach the model (see `TenantAIQuota`).
+     */
+    private function quotaExceeded(NormalizedEvent $event, TenantAIProfileData $profile): bool
     {
-        $periodKey = now()->format('Y-m');
-
-        $meterIds = UsageMeter::whereIn('code', ['ai_tokens_in', 'ai_tokens_out'])
-            ->pluck('id');
-
-        if ($meterIds->isEmpty()) {
-            return false;
-        }
-
-        $consumed = (int) UsageEvent::query()
-            ->where('team_id', $teamId)
-            ->whereIn('usage_meter_id', $meterIds)
-            ->where('billing_period_key', $periodKey)
-            ->sum('quantity');
-
-        return $consumed >= $monthlyLimit;
+        return app(TenantAIQuota::class)->blocks($event, $profile);
     }
 
     private function recordCallUsage(AIEventEvaluation $evaluation): void

@@ -200,6 +200,58 @@ class SafetyEventSkipsAIEvaluationTest extends TestCase
         Bus::assertDispatched(EvaluateEventJob::class, fn (EvaluateEventJob $job) => $job->normalizedEventId === $event->id);
     }
 
+    public function test_listener_skips_dispatch_for_low_value_event_type(): void
+    {
+        Bus::fake();
+
+        $type = EventType::factory()->create(['code' => 'geofence_exit']);
+        $event = $this->eventWithCategory('operational', ['event_type_id' => $type->id]);
+        [$snapshot, $profile] = $this->contextFor($event);
+
+        app(EvaluateOnEventContextBuilt::class)->handle(new EventContextBuilt($snapshot, $profile));
+
+        Bus::assertNotDispatched(EvaluateEventJob::class);
+    }
+
+    public function test_job_creates_no_evaluation_for_low_value_event_type(): void
+    {
+        $type = EventType::factory()->create(['code' => 'vehicle_idle']);
+        $event = $this->eventWithCategory('emergency', ['event_type_id' => $type->id]);
+
+        (new EvaluateEventJob($event->id))->handle(app(EvaluateEventWithAI::class), app(AIEvaluationGate::class));
+
+        $this->assertSame(0, AIEventEvaluation::withoutGlobalScopes()
+            ->where('normalized_event_id', $event->id)
+            ->count());
+    }
+
+    public function test_unmapped_events_are_still_evaluated(): void
+    {
+        Bus::fake();
+
+        $type = EventType::factory()->create(['code' => 'unmapped']);
+        $event = $this->eventWithCategory('operational', ['event_type_id' => $type->id]);
+        [$snapshot, $profile] = $this->contextFor($event);
+
+        app(EvaluateOnEventContextBuilt::class)->handle(new EventContextBuilt($snapshot, $profile));
+
+        Bus::assertDispatched(EvaluateEventJob::class, fn (EvaluateEventJob $job) => $job->normalizedEventId === $event->id);
+    }
+
+    public function test_skip_event_types_is_config_driven(): void
+    {
+        config(['ai.skip_evaluation_event_types' => []]);
+        Bus::fake();
+
+        $type = EventType::factory()->create(['code' => 'geofence_exit']);
+        $event = $this->eventWithCategory('operational', ['event_type_id' => $type->id]);
+        [$snapshot, $profile] = $this->contextFor($event);
+
+        app(EvaluateOnEventContextBuilt::class)->handle(new EventContextBuilt($snapshot, $profile));
+
+        Bus::assertDispatched(EvaluateEventJob::class, fn (EvaluateEventJob $job) => $job->normalizedEventId === $event->id);
+    }
+
     /**
      * @param  array<string, mixed>  $attributes
      */
