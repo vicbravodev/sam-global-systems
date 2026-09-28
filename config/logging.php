@@ -73,6 +73,17 @@ return [
             'replace_placeholders' => true,
         ],
 
+        // One structured line per telematics cycle and backfill (team, feed,
+        // duration, points, lag, error). Kept apart from laravel.log because
+        // it is high volume: 2 lines / 5 s / tenant.
+        'telematics' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/telematics.log'),
+            'level' => env('LOG_TELEMATICS_LEVEL', 'info'),
+            'days' => env('LOG_TELEMATICS_DAYS', 7),
+            'replace_placeholders' => true,
+        ],
+
         'slack' => [
             'driver' => 'slack',
             'url' => env('LOG_SLACK_WEBHOOK_URL'),

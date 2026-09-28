@@ -2,7 +2,6 @@
 
 namespace Tests\Feature\Domains\Integrations;
 
-use App\Domains\Assets\Jobs\PollAssetLocationsJob;
 use App\Domains\Integrations\Enums\SyncType;
 use App\Domains\Integrations\Jobs\SyncIntegrationJob;
 use App\Domains\Integrations\Models\IntegrationProvider;
@@ -22,9 +21,9 @@ class IntegrationAutoSyncOnConnectTest extends TestCase
         $this->seed(AccessSeeder::class);
     }
 
-    public function test_connecting_an_integration_kicks_off_catalog_sync_and_location_poll(): void
+    public function test_connecting_an_integration_kicks_off_catalog_sync(): void
     {
-        Bus::fake([SyncIntegrationJob::class, PollAssetLocationsJob::class]);
+        Bus::fake([SyncIntegrationJob::class]);
 
         $user = User::factory()->create();
         $team = $user->currentTeam;
@@ -42,8 +41,9 @@ class IntegrationAutoSyncOnConnectTest extends TestCase
 
         $response->assertCreated();
 
+        // Positions follow on their own: the telematics feed picks the
+        // integration up once this first catalog sync has created its assets.
         Bus::assertDispatched(SyncIntegrationJob::class);
-        Bus::assertDispatched(PollAssetLocationsJob::class);
 
         $this->assertDatabaseHas('integration_sync_jobs', [
             'type' => SyncType::Full->value,
