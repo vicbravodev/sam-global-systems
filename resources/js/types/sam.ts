@@ -79,6 +79,43 @@ export interface IntegrationRow {
     lastErrorAt: string | null;
     lastErrorMessage: string | null;
     webhook: IntegrationWebhook | null;
+    /** Human label of the auth method ("Clave de API"). */
+    authTypeLabel?: string;
+    /** Provider capability codes (gps, diagnostics, driver_behavior…). */
+    capabilities?: string[];
+    connectedAt?: string | null;
+    lastLocationAt?: string | null;
+    /** Classified `lastErrorMessage` (IntegrationProblem enum). */
+    problem?: IntegrationProblemKind | null;
+    /** Events received through this integration in the last 24 h. */
+    events24h?: number;
+    /** Units/drivers brought by the provider; null when shared by several integrations. */
+    fleet?: IntegrationFleet | null;
+}
+
+export type IntegrationProblemKind =
+    | 'credentials'
+    | 'rate_limited'
+    | 'unreachable'
+    | 'provider'
+    | 'unknown';
+
+export interface IntegrationFleet {
+    assets: number;
+    monitored: number;
+    drivers: number;
+}
+
+export interface IntegrationsSummary {
+    total: number;
+    working: number;
+    attention: number;
+    pending: number;
+    inactive: number;
+    events24h: number;
+    assets: number;
+    monitored: number;
+    drivers: number;
 }
 
 export interface IntegrationProviderOption {
