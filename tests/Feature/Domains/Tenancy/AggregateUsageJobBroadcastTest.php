@@ -53,9 +53,11 @@ class AggregateUsageJobBroadcastTest extends TestCase
 
         (new AggregateUsageJob)->handle();
 
+        // Scoped to this test's meter: the catalog also holds the messaging
+        // meters every install gets from migrations.
         $this->assertEquals(
             2,
-            TenantUsageCounter::withoutGlobalScopes()->count(),
+            TenantUsageCounter::withoutGlobalScopes()->where('usage_meter_id', $meter->id)->count(),
             'Job should aggregate counters for every team with an active/trialing/past_due subscription',
         );
 

@@ -5,10 +5,14 @@ namespace App\Http\Controllers\Notifications;
 use App\Domains\Notifications\Actions\MarkNotificationRead;
 use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Enums\DeliveryStatus;
+use App\Domains\Notifications\Enums\MessagingChargeSource;
 use App\Domains\Notifications\Enums\NotificationPriority;
 use App\Domains\Notifications\Enums\NotificationSourceType;
 use App\Domains\Notifications\Enums\NotificationStatus;
+use App\Domains\Notifications\Models\MessagingCharge;
 use App\Domains\Notifications\Models\Notification;
+use App\Domains\Notifications\Models\NotificationDelivery;
+use App\Domains\Notifications\Support\DeliveryFeedbackPresenter;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
 use Illuminate\Http\RedirectResponse;
@@ -33,13 +37,27 @@ class NotificationPageController extends Controller
         $status = NotificationStatus::tryFrom((string) $request->query('status'));
         $priority = NotificationPriority::tryFrom((string) $request->query('priority'));
         $unreadOnly = $request->boolean('unread');
+        $failuresOnly = $request->boolean('failures');
 
         $notifications = Notification::query()
             ->with([
                 'reads' => fn ($query) => $query->where('user_id', $user->id),
                 'deliveries.channel',
             ])
-            ->withCount(['recipients', 'deliveries'])
+            ->withCount([
+                'recipients',
+                'deliveries',
+                'deliveries as attempted_deliveries_count' => fn ($query) => $query
+                    ->whereNotIn('status', [DeliveryStatus::Skipped, DeliveryStatus::Cancelled]),
+                'deliveries as delivered_deliveries_count' => fn ($query) => $query
+                    ->where('status', DeliveryStatus::Delivered),
+                'deliveries as failed_deliveries_count' => fn ($query) => $query
+                    ->whereIn('status', [DeliveryStatus::Failed, DeliveryStatus::Bounced]),
+            ])
+            ->when($failuresOnly, fn ($query) => $query->whereHas(
+                'deliveries',
+                fn ($deliveryQuery) => $deliveryQuery->whereIn('status', [DeliveryStatus::Failed, DeliveryStatus::Bounced]),
+            ))
             ->when($status, fn ($query) => $query->where('status', $status))
             ->when($priority, fn ($query) => $query->where('priority', $priority))
             ->when($unreadOnly, fn ($query) => $query->whereDoesntHave(
@@ -64,12 +82,104 @@ class NotificationPageController extends Controller
                 'status' => $status?->value,
                 'priority' => $priority?->value,
                 'unread' => $unreadOnly,
+                'failures' => $failuresOnly,
             ],
             'filterOptions' => fn () => [
                 'statuses' => $this->statusOptions(),
                 'priorities' => $this->priorityOptions(),
             ],
             'summary' => fn () => $this->summary($user->id),
+        ]);
+    }
+
+    /**
+     * Delivery detail of one notification: who was contacted, through which
+     * channel, what the provider reported (delivered, read, answered call,
+     * failure reason) and the retry → fallback chain. Provider cost is never
+     * exposed to the tenant here.
+     */
+    public function show(Request $request, Team $current_team, Notification $notification): Response
+    {
+        $this->authorize('view', $notification);
+
+        $notification->loadCount(['recipients', 'deliveries']);
+        $notification->load([
+            'reads' => fn ($query) => $query->where('user_id', $request->user()->id),
+            'deliveries.channel',
+        ]);
+
+        $deliveries = NotificationDelivery::query()
+            ->where('notification_id', $notification->id)
+            ->with(['recipient', 'channel'])
+            ->orderBy('recipient_id')
+            ->orderBy('id')
+            ->get();
+
+        $charges = MessagingCharge::query()
+            ->where('source_type', MessagingChargeSource::NotificationDelivery)
+            ->whereIn('source_id', $deliveries->pluck('id'))
+            ->orderBy('id')
+            ->get(['source_id', 'provider_sid', 'events_json'])
+            ->groupBy('source_id');
+
+        $failedChannelsByRecipient = [];
+
+        $rows = $deliveries->map(function (NotificationDelivery $delivery) use ($charges, &$failedChannelsByRecipient): array {
+            $channelType = $delivery->channel?->channel_type;
+            $recipientKey = (int) $delivery->recipient_id;
+            $isFallback = ($failedChannelsByRecipient[$recipientKey] ?? []) !== []
+                && ! in_array($channelType?->value, $failedChannelsByRecipient[$recipientKey], true);
+
+            if (in_array($delivery->status, [DeliveryStatus::Failed, DeliveryStatus::Bounced], true) && $channelType !== null) {
+                $failedChannelsByRecipient[$recipientKey][] = $channelType->value;
+            }
+
+            $events = ($charges->get($delivery->id) ?? collect())
+                ->flatMap(fn (MessagingCharge $charge) => collect($charge->events_json ?? [])
+                    ->map(fn (array $event) => [
+                        'status' => (string) ($event['status'] ?? ''),
+                        'label' => DeliveryFeedbackPresenter::providerEventLabel((string) ($event['status'] ?? '')),
+                        'errorCode' => $event['error_code'] ?? null,
+                        'at' => $event['at'] ?? null,
+                        'source' => $event['source'] ?? null,
+                    ]))
+                ->values()
+                ->all();
+
+            return [
+                'id' => (int) $delivery->id,
+                'recipient' => [
+                    'id' => $recipientKey,
+                    'name' => $delivery->recipient?->name,
+                    'type' => $delivery->recipient?->recipient_type?->value,
+                ],
+                'channel' => [
+                    'type' => $channelType?->value,
+                    'label' => $channelType?->label(),
+                ],
+                'address' => DeliveryFeedbackPresenter::maskAddress(
+                    $delivery->payload_json['address'] ?? ($channelType !== null ? $delivery->recipient?->addressForChannel($channelType) : null),
+                ),
+                'status' => $delivery->status->value,
+                'statusLabel' => DeliveryFeedbackPresenter::label($delivery, $channelType),
+                'tone' => DeliveryFeedbackPresenter::tone($delivery),
+                'reason' => DeliveryFeedbackPresenter::reason($delivery),
+                'attempts' => (int) $delivery->attempt_number,
+                'isFallback' => $isFallback,
+                'callDurationSeconds' => $delivery->call_duration_seconds,
+                'acceptedAt' => $delivery->accepted_at?->toIso8601String(),
+                'sentAt' => $delivery->sent_at?->toIso8601String(),
+                'deliveredAt' => $delivery->delivered_at?->toIso8601String(),
+                'readAt' => $delivery->read_at?->toIso8601String(),
+                'answeredAt' => $delivery->answered_at?->toIso8601String(),
+                'failedAt' => $delivery->failed_at?->toIso8601String(),
+                'events' => $events,
+            ];
+        })->values()->all();
+
+        return Inertia::render('notifications/show', [
+            'notification' => $this->presentNotification($notification, $current_team),
+            'deliveries' => $rows,
         ]);
     }
 
@@ -123,6 +233,7 @@ class NotificationPageController extends Controller
             DeliveryStatus::Pending->value => 2,
             DeliveryStatus::Queued->value => 2,
             DeliveryStatus::Sending->value => 2,
+            DeliveryStatus::Sent->value => 2,
             DeliveryStatus::Delivered->value => 1,
         ];
 
@@ -190,6 +301,15 @@ class NotificationPageController extends Controller
             'statusReason' => $this->statusReason($notification),
             'recipientsCount' => (int) $notification->recipients_count,
             'channels' => $this->channels($notification),
+            'deliverySummary' => isset($notification->attempted_deliveries_count) ? [
+                'attempted' => (int) $notification->attempted_deliveries_count,
+                'delivered' => (int) $notification->delivered_deliveries_count,
+                'failed' => (int) $notification->failed_deliveries_count,
+            ] : null,
+            'detailUrl' => route('notifications.show', [
+                'current_team' => $team->slug,
+                'notification' => $notification->id,
+            ]),
         ];
     }
 

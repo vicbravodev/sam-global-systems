@@ -36,7 +36,7 @@ class ProcessInboundReply
     /**
      * @return string|null Reply message for the sender, or null for silence.
      */
-    public function execute(string $fromAddress, string $body, ?int $channelTeamId): ?string
+    public function execute(string $fromAddress, string $body): ?string
     {
         if (preg_match(self::KEYWORD_PATTERN, $body, $matches) !== 1) {
             Log::info('Twilio inbound reply without recognizable keyword', ['from' => $fromAddress]);
@@ -47,7 +47,7 @@ class ProcessInboundReply
         $keyword = strtoupper($matches[1]);
         $code = strtoupper($matches[2]);
 
-        return DB::transaction(function () use ($keyword, $code, $fromAddress, $body, $channelTeamId) {
+        return DB::transaction(function () use ($keyword, $code, $fromAddress, $body) {
             // Lookup de entrada: el webhook llega sin sesión y el tenant sale
             // del propio token, así que aquí no puede haber scope todavía.
             $token = NotificationReplyToken::withoutGlobalScopes()
@@ -61,16 +61,9 @@ class ProcessInboundReply
                 return null;
             }
 
-            // Tenant isolation: a token must only act through the Twilio
-            // number of its own tenant (or a system-wide channel).
-            if ($channelTeamId !== null && $token->team_id !== $channelTeamId) {
-                Log::warning('Twilio inbound reply token does not belong to the receiving channel tenant', [
-                    'token_id' => $token->id,
-                ]);
-
-                return null;
-            }
-
+            // Every Twilio number is SAM's (platform account): the token
+            // itself names the tenant, and it only acts when the reply comes
+            // from the exact address it was issued to.
             if ($this->normalizeAddress($token->address) !== $this->normalizeAddress($fromAddress)) {
                 Log::warning('Twilio inbound reply from unexpected sender', ['token_id' => $token->id]);
 

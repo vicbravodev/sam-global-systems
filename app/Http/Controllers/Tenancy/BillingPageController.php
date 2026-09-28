@@ -6,6 +6,7 @@ use App\Domains\Tenancy\Models\InvoiceSnapshot;
 use App\Domains\Tenancy\Models\Subscription;
 use App\Domains\Tenancy\Models\TenantFeature;
 use App\Domains\Tenancy\Models\TenantUsageCounter;
+use App\Domains\Tenancy\Support\CostPlusPricing;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
 use Inertia\Inertia;
@@ -71,6 +72,15 @@ class BillingPageController extends Controller
                     'meterCode' => $counter->usageMeter?->code,
                     'meterName' => $counter->usageMeter?->name,
                     'unit' => $counter->usageMeter?->unit,
+                    // Cost-plus meters (Twilio messaging) accumulate provider
+                    // cost in micro-USD: the tenant sees what it will be
+                    // charged, never a raw micro count nor our cost.
+                    'amount' => $counter->usageMeter?->unit === CostPlusPricing::MICRO_UNIT
+                        ? CostPlusPricing::charged(
+                            (float) $counter->consumed_value,
+                            CostPlusPricing::markupFor($current_team->id, (int) $counter->usage_meter_id),
+                        )
+                        : null,
                     'consumed' => (float) $counter->consumed_value,
                     'included' => (float) $counter->included_value,
                     'overage' => (float) $counter->overage_value,

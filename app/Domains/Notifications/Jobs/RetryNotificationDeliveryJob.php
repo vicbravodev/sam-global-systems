@@ -2,15 +2,15 @@
 
 namespace App\Domains\Notifications\Jobs;
 
-use App\Contracts\Notifications\ChannelDriverRegistry;
-use App\Domains\Notifications\Actions\RecordDeliveryAttempt;
+use App\Domains\Notifications\Actions\AttemptDelivery;
 use App\Domains\Notifications\Actions\RenderNotificationContent;
+use App\Domains\Notifications\Data\RenderedNotification;
 use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Enums\DeliveryStatus;
-use App\Domains\Notifications\Events\NotificationDelivered;
-use App\Domains\Notifications\Events\NotificationFailed;
 use App\Domains\Notifications\Models\NotificationDelivery;
-use App\Domains\Tenancy\Actions\RecordUsageEvent;
+use App\Domains\Notifications\Support\ChannelAddress;
+use App\Domains\Notifications\Support\DeliveryEscalationGuard;
+use App\Support\JobFailureReporter;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -18,9 +18,24 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 
+/**
+ * Reenvía UNA entrega fallida por el mismo canal.
+ *
+ * Reenvía exactamente el payload guardado de la entrega original (dirección,
+ * asunto, cuerpo — incluidas las instrucciones SI/NO/ESC): re-renderizar
+ * podía mandar el SMS al email del destinatario o perder el token.
+ *
+ * El número de intentos "de negocio" vive en `attempt_number` y lo controla
+ * {@see RetryOrFallbackOnNotificationFailed}: cada intento fallido emite
+ * NotificationFailed y el listener programa el siguiente (o el fallback).
+ * Por eso el job es `tries = 1` en la cola: si algo lanza después de un
+ * envío real, la cola NO debe re-ejecutarlo y reenviar.
+ */
 class RetryNotificationDeliveryJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+
+    public int $tries = 1;
 
     public int $timeout = 120;
 
@@ -31,21 +46,21 @@ class RetryNotificationDeliveryJob implements ShouldQueue
     }
 
     /**
-     * Per-channel attempt count. Webhook caps at 3 retries (PR #2a policy);
-     * everyone else keeps the spec-13 default of 5.
+     * Business attempts per channel. Webhook caps at 3 (spec-13 PR #2a
+     * policy); everyone else keeps the spec-13 default of 5.
      */
-    public function tries(): int
+    public function maxAttempts(): int
     {
         return $this->isWebhook() ? 3 : 5;
     }
 
     /**
-     * Per-channel exponential backoff. Webhook follows the spec-13 PR #2 policy
-     * (30s / 2min / 10min, 3 attempts); other channels keep the default ramp.
+     * Per-channel delay before each retry. Webhook follows the spec-13 PR #2
+     * policy (30s / 2min / 10min); other channels keep the default ramp.
      *
      * @return array<int, int>
      */
-    public function backoff(): array
+    public function retryDelays(): array
     {
         if ($this->isWebhook()) {
             return [30, 120, 600];
@@ -63,17 +78,13 @@ class RetryNotificationDeliveryJob implements ShouldQueue
         return $delivery?->channel?->channel_type === ChannelType::Webhook;
     }
 
-    public function handle(
-        ChannelDriverRegistry $drivers,
-        RenderNotificationContent $render,
-        RecordDeliveryAttempt $recordAttempt,
-        RecordUsageEvent $recordUsage,
-    ): void {
-        $delivery = NotificationDelivery::withoutGlobalScopes()
-            ->with(['notification', 'recipient', 'channel'])
-            ->find($this->deliveryId);
+    public function handle(AttemptDelivery $attemptDelivery, RenderNotificationContent $render): void
+    {
+        $delivery = NotificationDelivery::withoutGlobalScopes()->find($this->deliveryId);
 
-        if ($delivery === null || $delivery->status === DeliveryStatus::Delivered) {
+        // Sólo una entrega que sigue fallida se reintenta: si entretanto llegó
+        // (callback tardío) o ya está en vuelo, reenviar sería duplicar.
+        if ($delivery === null || $delivery->status !== DeliveryStatus::Failed) {
             return;
         }
 
@@ -81,46 +92,78 @@ class RetryNotificationDeliveryJob implements ShouldQueue
         // puede estar scopeado, todo lo que sigue sí. Ver §2.1.
         TenantContext::set($delivery->team_id);
 
-        $delivery->update([
-            'status' => DeliveryStatus::Sending,
-            'attempt_number' => $delivery->attempt_number + 1,
-        ]);
+        $delivery->load(['notification', 'recipient', 'channel']);
 
-        $rendered = $render->execute(
-            $delivery->notification,
-            $delivery->recipient,
-            $delivery->channel->channel_type,
-        );
+        if ($delivery->notification === null || $delivery->recipient === null || $delivery->channel === null) {
+            return;
+        }
 
-        $result = $drivers->driverFor($delivery->channel->channel_type)->send($rendered, $delivery->channel);
+        if ($delivery->permanent_failure || DeliveryEscalationGuard::blockReason($delivery) !== null) {
+            return;
+        }
 
-        $recordAttempt->execute($delivery, $result);
-        $delivery->refresh();
+        $rendered = $this->originalPayload($delivery) ?? $this->rerender($delivery, $render);
 
-        $recordUsage->execute(
-            teamId: $delivery->team_id,
-            meterCode: $delivery->channel->channel_type->usageMeterCode(),
-            quantity: 1,
-            eventKey: "notif_retry_{$delivery->id}_{$delivery->attempt_number}",
-        );
-
-        if ($result->success) {
-            NotificationDelivered::dispatch(
-                $delivery->team_id,
-                $delivery->notification_id,
-                $delivery->id,
-                $delivery->channel->channel_type->value,
-            );
+        if ($rendered === null) {
+            $delivery->update([
+                'status' => DeliveryStatus::Skipped,
+                'error_message' => "no valid {$delivery->channel->channel_type->value} address to retry",
+            ]);
 
             return;
         }
 
-        NotificationFailed::dispatch(
-            $delivery->team_id,
-            $delivery->notification_id,
-            $delivery->id,
-            $delivery->channel->channel_type->value,
-            $result->errorMessage ?? 'Unknown error',
+        $delivery->update(['attempt_number' => $delivery->attempt_number + 1]);
+
+        $attemptDelivery->execute(
+            $delivery,
+            $delivery->channel,
+            $rendered,
+            usageEventKey: "notif_retry_{$delivery->id}_{$delivery->attempt_number}",
         );
+    }
+
+    /**
+     * The exact message the first attempt sent.
+     */
+    private function originalPayload(NotificationDelivery $delivery): ?RenderedNotification
+    {
+        $payload = $delivery->payload_json ?? [];
+        $address = $payload['address'] ?? null;
+        $body = $payload['body'] ?? null;
+
+        if (! is_string($address) || $address === '' || ! is_string($body)) {
+            return null;
+        }
+
+        return new RenderedNotification(
+            channelType: $delivery->channel->channel_type,
+            address: $address,
+            subject: is_string($payload['subject'] ?? null) ? $payload['subject'] : null,
+            body: $body,
+        );
+    }
+
+    /**
+     * Deliveries that failed before storing a payload (legacy rows): render
+     * again against the channel-specific address, never the generic one.
+     */
+    private function rerender(NotificationDelivery $delivery, RenderNotificationContent $render): ?RenderedNotification
+    {
+        $type = $delivery->channel->channel_type;
+        $address = $delivery->recipient->addressForChannel($type);
+
+        if ($address === null || $address === '' || ChannelAddress::invalidReason($type, $address) !== null) {
+            return null;
+        }
+
+        return $render->execute($delivery->notification, $delivery->recipient, $type, null, $address);
+    }
+
+    public function failed(\Throwable $exception): void
+    {
+        JobFailureReporter::report(static::class, $exception, [
+            'delivery_id' => $this->deliveryId,
+        ]);
     }
 }

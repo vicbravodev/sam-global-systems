@@ -130,7 +130,7 @@ class CrossTenantUserReferenceTest extends TestCase
         Mail::fake();
         $this->seed(NotificationMeterSeeder::class);
 
-        NotificationChannel::factory()->email()->create(['team_id' => $this->team->id]);
+        NotificationChannel::factory()->email()->create();
 
         $execution = ActionExecution::factory()->create([
             'team_id' => $this->team->id,

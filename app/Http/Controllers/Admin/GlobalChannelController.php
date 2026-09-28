@@ -7,7 +7,9 @@ use App\Domains\Audit\Enums\AuditActorType;
 use App\Domains\Audit\Enums\AuditCategory;
 use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Models\NotificationChannel;
+use App\Domains\Notifications\Support\PlatformTwilioConfig;
 use App\Http\Controllers\Controller;
+use Closure;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -16,18 +18,27 @@ use Inertia\Response;
 
 /**
  * SAM platform notification channels (Roadmap V2-B1): the channels SAM
- * provides to every tenant (`team_id = null`). Credentials live here, in the
- * super-admin console — tenants only see masked summaries and an on/off
- * switch on their side.
+ * provides to every tenant. Tenants only get an on/off switch on their side.
+ *
+ * Twilio credentials never live here — they are platform env (TWILIO_*). A
+ * Twilio channel's `config_json` only accepts non-secret overrides
+ * ({@see PlatformTwilioConfig::ALLOWED_CHANNEL_KEYS}), and Twilio-style
+ * account credentials are rejected for every provider.
  */
 class GlobalChannelController extends Controller
 {
+    /**
+     * Twilio account credentials: platform env only, never a channel row.
+     *
+     * @var list<string>
+     */
+    private const CREDENTIAL_KEYS = ['account_sid', 'auth_token'];
+
     public function __construct(private readonly RecordAuditEntry $audit) {}
 
     public function index(): Response
     {
         $channels = NotificationChannel::query()
-            ->whereNull('team_id')
             ->orderBy('channel_type')
             ->orderBy('name')
             ->get()
@@ -57,12 +68,11 @@ class GlobalChannelController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'provider' => ['required', 'string', 'max:64'],
             'channel_type' => ['required', Rule::enum(ChannelType::class)],
-            'config_json' => ['nullable', 'array'],
+            'config_json' => ['nullable', 'array', $this->configRule((string) $request->input('provider'))],
             'is_active' => ['nullable', 'boolean'],
         ]);
 
         $channel = NotificationChannel::query()->create([
-            'team_id' => null,
             'code' => $data['code'],
             'name' => $data['name'],
             'provider' => $data['provider'],
@@ -81,12 +91,10 @@ class GlobalChannelController extends Controller
 
     public function update(Request $request, NotificationChannel $channel): RedirectResponse
     {
-        abort_unless($channel->team_id === null, 404);
-
         $data = $request->validate([
             'name' => ['nullable', 'string', 'max:255'],
             'provider' => ['nullable', 'string', 'max:64'],
-            'config_json' => ['nullable', 'array'],
+            'config_json' => ['nullable', 'array', $this->configRule((string) $request->input('provider', $channel->provider))],
             'is_active' => ['nullable', 'boolean'],
         ]);
 
@@ -100,14 +108,43 @@ class GlobalChannelController extends Controller
 
     public function destroy(Request $request, NotificationChannel $channel): RedirectResponse
     {
-        abort_unless($channel->team_id === null, 404);
-
         $this->record($request, 'platform-channel.deleted', $channel,
             "Canal de plataforma {$channel->code} eliminado.");
 
         $channel->delete();
 
         return redirect()->route('admin.channels.index')->with('status', 'Canal eliminado.');
+    }
+
+    /**
+     * Twilio channels accept only the non-secret overrides; no channel of any
+     * provider may carry Twilio/account credentials in its config.
+     */
+    private function configRule(string $provider): Closure
+    {
+        return function (string $attribute, mixed $value, Closure $fail) use ($provider): void {
+            if (! is_array($value)) {
+                return;
+            }
+
+            $keys = array_map('strval', array_keys($value));
+
+            $forbidden = array_values(array_filter(
+                $keys,
+                fn (string $key) => in_array($key, self::CREDENTIAL_KEYS, true) || str_starts_with($key, 'twilio_'),
+            ));
+
+            if ($provider === 'twilio') {
+                $forbidden = array_values(array_unique([
+                    ...$forbidden,
+                    ...array_diff($keys, PlatformTwilioConfig::ALLOWED_CHANNEL_KEYS),
+                ]));
+            }
+
+            if ($forbidden !== []) {
+                $fail('La configuración no puede incluir credenciales ni llaves no permitidas: '.implode(', ', $forbidden).'. Las credenciales de Twilio se configuran en el entorno de la plataforma (TWILIO_*).');
+            }
+        };
     }
 
     private function record(Request $request, string $action, NotificationChannel $channel, string $summary): void

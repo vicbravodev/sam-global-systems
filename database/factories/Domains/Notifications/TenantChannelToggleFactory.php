@@ -18,7 +18,7 @@ class TenantChannelToggleFactory extends Factory
     {
         return [
             'team_id' => Team::factory(),
-            'notification_channel_id' => NotificationChannel::factory()->state(['team_id' => null]),
+            'notification_channel_id' => NotificationChannel::factory(),
             'enabled' => true,
         ];
     }

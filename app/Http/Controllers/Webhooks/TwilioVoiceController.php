@@ -18,7 +18,6 @@ use App\Domains\Incidents\Enums\TimelineEntryType;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentCallVerification;
 use App\Domains\Incidents\Support\VerificationCallTwiml;
-use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Support\PlatformTwilioConfig;
 use App\Http\Controllers\Controller;
 use App\Support\TenantContext;
@@ -32,8 +31,7 @@ use Twilio\Security\RequestValidator;
  * `gather` receives the DTMF digit — 1 acknowledges the incident as a real
  * emergency, 2 closes it as a false alarm. `status` receives Twilio's call
  * status callback so unanswered/busy/failed calls advance the retry chain.
- * Both validate `X-Twilio-Signature` against the channel that placed the
- * call.
+ * Both validate `X-Twilio-Signature` with SAM's platform Twilio auth token.
  */
 class TwilioVoiceController extends Controller
 {
@@ -175,26 +173,21 @@ class TwilioVoiceController extends Controller
     }
 
     /**
-     * Find the verification and validate the request signature against the
-     * Twilio channel that placed the call.
+     * Find the verification and validate the request signature with the
+     * platform Twilio account that placed the call.
      */
     private function authorizeWebhook(Request $request, int $verificationId): IncidentCallVerification
     {
-        $row = IncidentCallVerification::withoutGlobalScopes()
-            ->with('channel')
-            ->find($verificationId);
+        $row = IncidentCallVerification::withoutGlobalScopes()->find($verificationId);
 
         abort_if($row === null, 404, 'Unknown verification.');
 
-        // Igual que PlaceVerificationCallJob: el canal de voz de plataforma
-        // no guarda credenciales, vienen de TWILIO_* vía PlatformTwilioConfig.
-        $config = $row->channel !== null
-            ? PlatformTwilioConfig::merge($row->channel->config_json ?? [], ChannelType::Voice)
-            : [];
-        $authToken = $config['twilio_auth_token'] ?? $config['auth_token'] ?? null;
+        // Las llamadas salen siempre de la cuenta Twilio de plataforma (env
+        // TWILIO_*): su auth token es el único que firma estos webhooks.
+        $authToken = PlatformTwilioConfig::authToken();
 
-        if (! is_string($authToken) || $authToken === '') {
-            abort(403, 'Verification has no Twilio channel to validate against.');
+        if ($authToken === null) {
+            abort(403, 'Twilio is not configured.');
         }
 
         $validator = new RequestValidator($authToken);

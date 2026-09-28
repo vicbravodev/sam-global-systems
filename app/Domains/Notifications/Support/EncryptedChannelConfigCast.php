@@ -9,8 +9,10 @@ use Illuminate\Support\Facades\Crypt;
 
 /**
  * Cast for `notification_channels.config_json` that transparently encrypts a
- * whitelist of sensitive keys (provider secrets / tokens) at rest while
- * keeping the rest of the JSON readable. Drivers consume plaintext values.
+ * whitelist of sensitive keys (platform Slack/Push/Webhook secrets set from
+ * the super-admin console) at rest while keeping the rest of the JSON
+ * readable. Drivers consume plaintext values. Twilio credentials are not
+ * here: they live only in platform env (TWILIO_*).
  *
  * Encrypted leaves are stored as `{"__enc": "<ciphertext>"}` so a reload
  * after a partial write still decrypts cleanly.
@@ -23,15 +25,11 @@ class EncryptedChannelConfigCast implements CastsAttributes
     public const SENSITIVE_KEYS = [
         'secret',
         'webhook_secret',
-        'auth_token',
-        'account_sid',
         'api_key',
         'api_secret',
         'server_key',
         'firebase_credentials',
         'slack_webhook_url',
-        'twilio_auth_token',
-        'twilio_account_sid',
     ];
 
     /**
