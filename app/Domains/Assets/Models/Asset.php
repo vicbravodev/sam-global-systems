@@ -41,6 +41,15 @@ class Asset extends Model
         'device_last_connected_at',
         'device_health_status',
         'device_connectivity_polled_at',
+        'last_latitude',
+        'last_longitude',
+        'last_speed_kph',
+        'last_heading',
+        'last_formatted_location',
+        'last_location_at',
+        'last_moving_at',
+        'stopped_since',
+        'stop_alerted_for',
     ];
 
     /**
@@ -210,6 +219,14 @@ class Asset extends Model
             'last_seen_at' => 'datetime',
             'device_last_connected_at' => 'datetime',
             'device_connectivity_polled_at' => 'datetime',
+            'last_latitude' => 'float',
+            'last_longitude' => 'float',
+            'last_speed_kph' => 'float',
+            'last_heading' => 'integer',
+            'last_location_at' => 'datetime',
+            'last_moving_at' => 'datetime',
+            'stopped_since' => 'datetime',
+            'stop_alerted_for' => 'datetime',
         ];
     }
 

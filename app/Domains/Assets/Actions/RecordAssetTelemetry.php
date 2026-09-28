@@ -56,34 +56,45 @@ class RecordAssetTelemetry
 
     /**
      * Whether a reading says something new over `$latest`, the newest stored
-     * snapshot of the same asset and type. Public so a batch caller can drop
-     * the readings that would be discarded before paying a query for each.
+     * snapshot of the same asset and type.
      */
     public function supersedes(?AssetTelemetrySnapshot $latest, float|string $value, CarbonInterface $recordedAt): bool
     {
-        if ($latest === null) {
+        return self::isNewReading(
+            $latest?->data_json['value'] ?? null,
+            $latest?->recorded_at,
+            $value,
+            $recordedAt,
+        );
+    }
+
+    /**
+     * The rule behind {@see supersedes()} over plain values, so a batch writer
+     * can apply it to a run of readings without a model per step: a reading
+     * counts only if it is newer than the previous one and its value differs.
+     */
+    public static function isNewReading(mixed $previousValue, ?CarbonInterface $previousAt, float|string $value, CarbonInterface $recordedAt): bool
+    {
+        if ($previousAt === null) {
             return true;
         }
 
         // Batches can come back out of order; an older reading must never
         // land on top of the current state.
-        if ($recordedAt->lessThanOrEqualTo($latest->recorded_at)) {
+        if ($recordedAt->lessThanOrEqualTo($previousAt)) {
             return false;
         }
 
-        return ! $this->isUnchanged($latest, $value);
-    }
+        if ($previousValue === null) {
+            return true;
+        }
 
-    private function isUnchanged(AssetTelemetrySnapshot $latest, float|string $value): bool
-    {
-        $previous = $latest->data_json['value'] ?? null;
-
-        if (is_string($value) || is_string($previous)) {
-            return (string) $previous === (string) $value;
+        if (is_string($value) || is_string($previousValue)) {
+            return (string) $previousValue !== (string) $value;
         }
 
         // Readings are rounded at the provider boundary, so an exact compare on
         // the stored precision is enough; the epsilon only guards float noise.
-        return $previous !== null && abs((float) $previous - $value) < 0.0001;
+        return abs((float) $previousValue - $value) >= 0.0001;
     }
 }

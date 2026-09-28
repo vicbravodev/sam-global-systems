@@ -12,6 +12,13 @@ use Illuminate\Database\Eloquent\Factories\Factory;
  */
 class AssetLocationSnapshotFactory extends Factory
 {
+    /**
+     * Each row lands one second further back: points are unique per asset and
+     * instant (the feed's idempotency index), so several rows for the same
+     * asset cannot share `now()`. Stays within the last hour, i.e. "fresh".
+     */
+    private static int $sequence = 0;
+
     protected $model = AssetLocationSnapshot::class;
 
     public function definition(): array
@@ -22,7 +29,7 @@ class AssetLocationSnapshotFactory extends Factory
             'longitude' => fake()->longitude(),
             'speed' => fake()->randomFloat(2, 0, 120),
             'heading' => fake()->numberBetween(0, 359),
-            'recorded_at' => now(),
+            'recorded_at' => now()->subSeconds(self::$sequence++ % 3600),
             'source' => LocationSource::Provider,
         ];
     }

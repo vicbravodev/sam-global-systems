@@ -3,11 +3,18 @@
 namespace App\Domains\Integrations\Adapters;
 
 use App\Contracts\Integrations\MediaRetrievalAdapter;
+use App\Domains\Assets\Enums\TelematicsFeed;
 use App\Domains\Assets\Enums\TelemetryType;
 use App\Domains\Integrations\Contracts\ProviderAdapter;
+use App\Domains\Integrations\Data\VehicleStatsPage;
+use App\Domains\Integrations\Exceptions\ProviderCursorRejected;
 use App\Domains\Integrations\Exceptions\ProviderCursorRejectedException;
+use App\Domains\Integrations\Exceptions\ProviderRateLimited;
 use App\Domains\Integrations\Exceptions\ProviderRequestFailedException;
+use App\Domains\Integrations\Exceptions\ProviderUnauthorized;
+use App\Domains\Integrations\Exceptions\ProviderUnavailable;
 use App\Domains\Integrations\Models\TenantIntegration;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Arr;
@@ -49,12 +56,12 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
     ];
 
     /**
-     * The stat types above grouped into requests of at most 3 — Samsara's
-     * documented cap on the `types` query parameter.
+     * Stat types per feed. Samsara caps `types` at 3 per request, so each feed
+     * is exactly one request per page and follows its own cursor.
      */
-    private const TELEMETRY_BATCHES = [
-        ['engineStates', 'fuelPercents', 'obdOdometerMeters'],
-        ['batteryMilliVolts', 'ambientAirTemperatureMilliC'],
+    private const FEED_TYPES = [
+        'motion' => ['gps', 'engineStates', 'fuelPercents'],
+        'diagnostics' => ['obdOdometerMeters', 'batteryMilliVolts', 'ambientAirTemperatureMilliC'],
     ];
 
     public function testConnection(TenantIntegration $integration): array
@@ -103,56 +110,145 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
         ];
     }
 
-    /**
-     * Fetch the latest GPS reading for every vehicle.
-     *
-     * Uses Samsara's `/fleet/vehicles/stats?types=gps` endpoint, which returns
-     * the most recent stat per vehicle. Records without usable coordinates are
-     * skipped so the caller only ever receives plottable positions.
-     *
-     * @return array<int, array<string, mixed>>
-     */
-    public function fetchAssetLocations(TenantIntegration $integration): array
+    public function fetchVehicleStatsFeed(TenantIntegration $integration, TelematicsFeed $feed, ?string $cursor = null): VehicleStatsPage
     {
         $token = $this->resolveToken($integration);
 
         if ($token === null) {
-            return [];
+            throw new ProviderUnauthorized('No hay token de API configurado para esta integración de Samsara.');
+        }
+
+        $query = ['types' => implode(',', self::FEED_TYPES[$feed->value])];
+
+        if ($cursor !== null && $cursor !== '') {
+            $query['after'] = $cursor;
+        }
+
+        return $this->statsPage($token, '/fleet/vehicles/stats/feed', $query, $feed, cursorSent: isset($query['after']));
+    }
+
+    public function fetchVehicleStatsHistory(
+        TenantIntegration $integration,
+        TelematicsFeed $feed,
+        \DateTimeInterface $start,
+        \DateTimeInterface $end,
+        ?string $cursor = null,
+    ): VehicleStatsPage {
+        $token = $this->resolveToken($integration);
+
+        if ($token === null) {
+            throw new ProviderUnauthorized('No hay token de API configurado para esta integración de Samsara.');
+        }
+
+        $query = [
+            'types' => implode(',', self::FEED_TYPES[$feed->value]),
+            'startTime' => Carbon::instance($start)->utc()->toIso8601ZuluString(),
+            'endTime' => Carbon::instance($end)->utc()->toIso8601ZuluString(),
+        ];
+
+        if ($cursor !== null && $cursor !== '') {
+            $query['after'] = $cursor;
+        }
+
+        return $this->statsPage($token, '/fleet/vehicles/stats/history', $query, $feed, cursorSent: false);
+    }
+
+    /**
+     * One request to a stats endpoint, mapped to a page. Every failure becomes
+     * a typed exception so the caller can pause, back off or resync without
+     * knowing Samsara's status codes.
+     *
+     * @param  array<string, string>  $query
+     */
+    private function statsPage(string $token, string $path, array $query, TelematicsFeed $feed, bool $cursorSent): VehicleStatsPage
+    {
+        try {
+            $response = $this->client($token)
+                ->connectTimeout((int) config('telematics.http.connect_timeout', 2))
+                ->timeout((int) config('telematics.http.timeout', 8))
+                ->get($path, $query);
+        } catch (ConnectionException $e) {
+            throw new ProviderUnavailable('Could not reach Samsara: '.$e->getMessage(), previous: $e);
+        }
+
+        $status = $response->status();
+
+        if ($status === 429) {
+            throw new ProviderRateLimited(max(0.0, (float) ($response->header('Retry-After') ?: 1)));
+        }
+
+        if ($status === 401 || $status === 403) {
+            throw new ProviderUnauthorized("Samsara rejected the API token (HTTP {$status}).");
+        }
+
+        if ($status >= 500) {
+            throw new ProviderUnavailable("Samsara returned HTTP {$status}.");
+        }
+
+        if (! $response->successful()) {
+            // A 4xx on a cursored feed call is the cursor itself: Samsara
+            // expires cursors after 30 days and rejects malformed ones.
+            if ($cursorSent) {
+                throw new ProviderCursorRejected("Samsara rejected the feed cursor (HTTP {$status}).");
+            }
+
+            throw new ProviderUnavailable("Samsara returned HTTP {$status}.");
         }
 
         $locations = [];
-        $cursor = null;
-        $pages = 0;
+        $readings = [];
 
-        do {
-            // /fleet/vehicles/stats has no `limit` param; it returns one row per
-            // vehicle and paginates via the `after` cursor.
-            $query = ['types' => 'gps'];
+        foreach ((array) $response->json('data', []) as $record) {
+            $record = (array) $record;
+            $id = Arr::get($record, 'id');
 
-            if ($cursor !== null) {
-                $query['after'] = $cursor;
+            if (! is_scalar($id) || (string) $id === '') {
+                continue;
             }
 
-            $response = $this->client($token)->get('/fleet/vehicles/stats', $query);
+            foreach (self::FEED_TYPES[$feed->value] as $statType) {
+                // Feed and history nest every point of a stat in a list; a
+                // snapshot-style response carries a single object.
+                $points = Arr::get($record, $statType);
 
-            if (! $response->successful()) {
-                break;
-            }
+                if (! is_array($points)) {
+                    continue;
+                }
 
-            foreach ((array) $response->json('data', []) as $record) {
-                $mapped = $this->mapVehicleLocation((array) $record);
+                foreach (array_is_list($points) ? $points : [$points] as $point) {
+                    if (! is_array($point)) {
+                        continue;
+                    }
 
-                if ($mapped !== null) {
-                    $locations[] = $mapped;
+                    $single = ['id' => $id, $statType => $point];
+
+                    if ($statType === 'gps') {
+                        $mapped = $this->mapVehicleLocation($single);
+
+                        if ($mapped !== null) {
+                            $locations[] = $mapped;
+                        }
+
+                        continue;
+                    }
+
+                    $mapped = $this->mapTelemetryReading($single, $statType);
+
+                    if ($mapped !== null) {
+                        $readings[] = $mapped;
+                    }
                 }
             }
+        }
 
-            $cursor = $response->json('pagination.endCursor');
-            $hasNext = (bool) $response->json('pagination.hasNextPage', false);
-            $pages++;
-        } while ($hasNext && $cursor && $pages < self::MAX_PAGES);
+        $endCursor = $response->json('pagination.endCursor');
 
-        return $locations;
+        return new VehicleStatsPage(
+            locations: $locations,
+            readings: $readings,
+            endCursor: is_string($endCursor) && $endCursor !== '' ? $endCursor : null,
+            hasNextPage: (bool) $response->json('pagination.hasNextPage', false),
+        );
     }
 
     /**
@@ -258,78 +354,6 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
         $time = fn (?string $iso): float => $iso !== null ? (float) Carbon::parse($iso)->format('U.u') : 0.0;
 
         return $time($candidate['last_connected_at']) > $time($current['last_connected_at']);
-    }
-
-    /**
-     * Fetch the latest onboard-diagnostic readings for every vehicle.
-     *
-     * Samsara caps `types` at 3 per request, so the stats we track are fetched
-     * in two batches and flattened into one list of readings. A batch that
-     * fails contributes nothing rather than aborting the whole poll — a rate
-     * limit on the second call should not discard the first call's data.
-     *
-     * @return array<int, array<string, mixed>>
-     */
-    public function fetchAssetTelemetry(TenantIntegration $integration): array
-    {
-        $token = $this->resolveToken($integration);
-
-        if ($token === null) {
-            return [];
-        }
-
-        $readings = [];
-
-        foreach (self::TELEMETRY_BATCHES as $batch) {
-            foreach ($this->fetchStatsBatch($token, $batch) as $record) {
-                foreach ($batch as $statType) {
-                    $mapped = $this->mapTelemetryReading((array) $record, $statType);
-
-                    if ($mapped !== null) {
-                        $readings[] = $mapped;
-                    }
-                }
-            }
-        }
-
-        return $readings;
-    }
-
-    /**
-     * Page through `/fleet/vehicles/stats` for one batch of stat types.
-     *
-     * @param  list<string>  $types
-     * @return array<int, array<string, mixed>>
-     */
-    private function fetchStatsBatch(string $token, array $types): array
-    {
-        $records = [];
-        $cursor = null;
-        $pages = 0;
-
-        do {
-            $query = ['types' => implode(',', $types)];
-
-            if ($cursor !== null) {
-                $query['after'] = $cursor;
-            }
-
-            $response = $this->client($token)->get('/fleet/vehicles/stats', $query);
-
-            if (! $response->successful()) {
-                break;
-            }
-
-            foreach ((array) $response->json('data', []) as $record) {
-                $records[] = $record;
-            }
-
-            $cursor = $response->json('pagination.endCursor');
-            $hasNext = (bool) $response->json('pagination.hasNextPage', false);
-            $pages++;
-        } while ($hasNext && $cursor && $pages < self::MAX_PAGES);
-
-        return $records;
     }
 
     /**

@@ -5,7 +5,6 @@ namespace App\Domains\Assets\Jobs;
 use App\Contracts\TenantConfig\TenantConfigResolver;
 use App\Domains\Assets\Enums\AssetStatus;
 use App\Domains\Assets\Models\Asset;
-use App\Domains\Assets\Models\AssetLocationSnapshot;
 use App\Domains\Context\Actions\ResolveGeofenceContext;
 use App\Domains\Context\Enums\GeofenceMatchType;
 use App\Domains\Context\Models\Geofence;
@@ -26,11 +25,18 @@ use Illuminate\Queue\SerializesModels;
  * internal `suspicious_stop` event — in the Mexican monitoring context a
  * prolonged stop in the middle of nowhere precedes cargo theft.
  *
+ * A stop is the absence of movement, so it cannot be caught by an event
+ * alone. The telematics feed keeps the motion state on each asset
+ * (`last_moving_at`, `stopped_since`) as points arrive; this sweep runs every
+ * minute and only reads the few assets whose stop has crossed the tenant's
+ * threshold — one indexed query per tenant, no history scan — so the alert
+ * fires within a minute of the threshold.
+ *
  * Guard rails against noise: requires the tenant to have configured at least
- * one active geofence (otherwise every stop is "outside" and the detector
- * stays silent), `0` disables it, and the episode is anchored to the last
- * moving position (`suspicious_stop:{asset}:{anchor ts}`) so each stop
- * alerts at most once.
+ * one active geofence (otherwise every stop is "outside"), `0` disables it, a
+ * stop with no movement in the last 24 h is long-term parking, and the device
+ * must still be reporting. Each episode is anchored to its last moving point
+ * (`suspicious_stop:{asset}:{anchor ts}`) and alerts at most once.
  */
 class DetectUnauthorizedStopJob implements ShouldQueue
 {
@@ -42,10 +48,7 @@ class DetectUnauthorizedStopJob implements ShouldQueue
 
     public const string EVENT_TYPE_CODE = 'suspicious_stop';
 
-    /** Speed (km/h) above which a snapshot counts as moving. */
-    public const float MOVING_SPEED_KPH = 1.0;
-
-    /** Positions older than this are not evidence of a current stop. */
+    /** Without a position or heartbeat this recent, the device may be dark, not stopped. */
     public const int FRESHNESS_MINUTES = 15;
 
     /** A stop with no movement in this window is long-term parking, not suspicious. */
@@ -62,78 +65,73 @@ class DetectUnauthorizedStopJob implements ShouldQueue
         StoreRawEvent $storeRawEvent,
         QueueRawEventForProcessing $queueForProcessing,
     ): void {
-        /** @var array<int, bool> $teamHasGeofences */
-        $teamHasGeofences = [];
-
-        // Vigilancia de plataforma: recorre todos los tenants a propósito,
-        // pero inspecciona cada activo dentro del contexto del suyo. Ver §2.1.
-        TenantContext::withoutTenant(fn () => Asset::query()
+        // Vigilancia de plataforma: recorre los tenants a propósito, pero
+        // inspecciona cada uno dentro de su propio contexto. Ver §2.1.
+        $teamIds = TenantContext::withoutTenant(fn () => Geofence::query()
+            ->where('is_active', true)
             ->whereNotNull('team_id')
-            ->monitored()
-            ->whereNotIn('status', [AssetStatus::Inactive, AssetStatus::Maintenance])
-            ->with('latestLocation')
-            ->chunkById(200, function ($assets) use (&$teamHasGeofences, $tenantConfig, $resolveGeofences, $storeRawEvent, $queueForProcessing) {
-                foreach ($assets as $asset) {
-                    TenantContext::for($asset->team_id, fn () => $this->inspectAsset($asset, $teamHasGeofences, $tenantConfig, $resolveGeofences, $storeRawEvent, $queueForProcessing));
-                }
-            }));
+            ->distinct()
+            ->pluck('team_id')
+            ->map(fn ($teamId) => (int) $teamId)
+            ->all());
+
+        foreach ($teamIds as $teamId) {
+            TenantContext::for($teamId, fn () => $this->sweepTeam(
+                $teamId,
+                $tenantConfig,
+                $resolveGeofences,
+                $storeRawEvent,
+                $queueForProcessing,
+            ));
+        }
     }
 
-    /**
-     * @param  array<int, bool>  $teamHasGeofences
-     */
-    private function inspectAsset(
-        Asset $asset,
-        array &$teamHasGeofences,
+    private function sweepTeam(
+        int $teamId,
         TenantConfigResolver $tenantConfig,
         ResolveGeofenceContext $resolveGeofences,
         StoreRawEvent $storeRawEvent,
         QueueRawEventForProcessing $queueForProcessing,
     ): void {
-        $teamId = (int) $asset->team_id;
-
         $stopMinutes = (int) $tenantConfig->resolve($teamId, self::SETTING_KEY, self::DEFAULT_STOP_MINUTES);
 
         if ($stopMinutes <= 0) {
             return;
         }
 
-        $location = $asset->latestLocation;
+        $fresh = now()->subMinutes(self::FRESHNESS_MINUTES);
 
-        if (
-            $location === null
-            || $location->latitude === null
-            || $location->recorded_at === null
-            || $location->recorded_at->lt(now()->subMinutes(self::FRESHNESS_MINUTES))
-            || ($location->speed !== null && (float) $location->speed > self::MOVING_SPEED_KPH)
-        ) {
-            return;
-        }
-
-        // Episode anchor: the last position where the unit was still moving.
-        $anchor = AssetLocationSnapshot::query()
-            ->where('asset_id', $asset->id)
-            ->where('speed', '>', self::MOVING_SPEED_KPH)
-            ->where('recorded_at', '>=', now()->subHours(self::MAX_ANCHOR_HOURS))
-            ->orderByDesc('recorded_at')
-            ->first();
-
-        if ($anchor === null || $anchor->recorded_at->gt(now()->subMinutes($stopMinutes))) {
-            return;
-        }
-
-        $teamHasGeofences[$teamId] ??= Geofence::query()
+        $candidates = Asset::query()
             ->where('team_id', $teamId)
-            ->where('is_active', true)
-            ->exists();
+            ->monitored()
+            ->whereNotIn('status', [AssetStatus::Inactive, AssetStatus::Maintenance])
+            ->whereNotNull('stopped_since')
+            ->whereNotNull('last_latitude')
+            ->where('last_moving_at', '<=', now()->subMinutes($stopMinutes))
+            ->where('last_moving_at', '>=', now()->subHours(self::MAX_ANCHOR_HOURS))
+            ->where(fn ($query) => $query
+                ->whereNull('stop_alerted_for')
+                ->orWhereColumn('stop_alerted_for', '!=', 'last_moving_at'))
+            ->where(fn ($query) => $query
+                ->where('last_location_at', '>=', $fresh)
+                ->orWhere('device_last_connected_at', '>=', $fresh))
+            ->get();
 
-        if (! $teamHasGeofences[$teamId]) {
-            return;
+        foreach ($candidates as $asset) {
+            $this->inspectAsset($asset, $teamId, $resolveGeofences, $storeRawEvent, $queueForProcessing);
         }
+    }
 
+    private function inspectAsset(
+        Asset $asset,
+        int $teamId,
+        ResolveGeofenceContext $resolveGeofences,
+        StoreRawEvent $storeRawEvent,
+        QueueRawEventForProcessing $queueForProcessing,
+    ): void {
         $insideKnownGeofence = collect($resolveGeofences->execute(
-            (float) $location->latitude,
-            (float) $location->longitude,
+            (float) $asset->last_latitude,
+            (float) $asset->last_longitude,
             $teamId,
         ))->contains(function (array $match) {
             $type = $match['match_type'] ?? null;
@@ -141,45 +139,49 @@ class DetectUnauthorizedStopJob implements ShouldQueue
             return ($type instanceof GeofenceMatchType ? $type : GeofenceMatchType::tryFrom((string) $type)) === GeofenceMatchType::Inside;
         });
 
+        // Inside a known place: not suspicious, but checked again next minute
+        // in case the unit is towed out while "stopped".
         if ($insideKnownGeofence) {
             return;
         }
 
-        $deduplicationKey = sprintf('suspicious_stop:%d:%d', $asset->id, $anchor->recorded_at->getTimestamp());
+        $anchor = $asset->last_moving_at;
+        $deduplicationKey = sprintf('suspicious_stop:%d:%d', $asset->id, $anchor->getTimestamp());
 
         $alreadyRaised = RawEvent::query()
             ->where('team_id', $teamId)
             ->where('deduplication_key', $deduplicationKey)
             ->exists();
 
-        if ($alreadyRaised) {
-            return;
+        if (! $alreadyRaised) {
+            $rawEvent = $storeRawEvent->execute(
+                payload: [
+                    'eventType' => self::EVENT_TYPE_CODE,
+                    'time' => now()->toIso8601String(),
+                    'internal' => [
+                        'monitor' => 'unauthorized_stop_watchdog',
+                        'asset_id' => $asset->id,
+                    ],
+                    'asset_name' => $asset->name,
+                    'asset_code' => $asset->code,
+                    'stopped_minutes' => (int) $anchor->diffInMinutes(now()),
+                    'last_moving_at' => $anchor->toIso8601String(),
+                    'location' => [
+                        'latitude' => (float) $asset->last_latitude,
+                        'longitude' => (float) $asset->last_longitude,
+                    ],
+                ],
+                sourceType: EventSourceType::InternalMonitor->value,
+                teamId: $teamId,
+                providerId: null,
+                deduplicationKey: $deduplicationKey,
+                eventTypeRaw: self::EVENT_TYPE_CODE,
+            );
+
+            $queueForProcessing->execute($rawEvent);
         }
 
-        $rawEvent = $storeRawEvent->execute(
-            payload: [
-                'eventType' => self::EVENT_TYPE_CODE,
-                'time' => now()->toIso8601String(),
-                'internal' => [
-                    'monitor' => 'unauthorized_stop_watchdog',
-                    'asset_id' => $asset->id,
-                ],
-                'asset_name' => $asset->name,
-                'asset_code' => $asset->code,
-                'stopped_minutes' => (int) $anchor->recorded_at->diffInMinutes(now()),
-                'last_moving_at' => $anchor->recorded_at->toIso8601String(),
-                'location' => [
-                    'latitude' => (float) $location->latitude,
-                    'longitude' => (float) $location->longitude,
-                ],
-            ],
-            sourceType: EventSourceType::InternalMonitor->value,
-            teamId: $teamId,
-            providerId: null,
-            deduplicationKey: $deduplicationKey,
-            eventTypeRaw: self::EVENT_TYPE_CODE,
-        );
-
-        $queueForProcessing->execute($rawEvent);
+        // The episode is handled; drop it from the next sweeps' candidates.
+        $asset->forceFill(['stop_alerted_for' => $anchor])->save();
     }
 }

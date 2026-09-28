@@ -2,6 +2,8 @@
 
 namespace App\Domains\Integrations\Contracts;
 
+use App\Domains\Assets\Enums\TelematicsFeed;
+use App\Domains\Integrations\Data\VehicleStatsPage;
 use App\Domains\Integrations\Models\TenantIntegration;
 
 class NullProviderAdapter implements ProviderAdapter
@@ -21,14 +23,19 @@ class NullProviderAdapter implements ProviderAdapter
         ];
     }
 
-    public function fetchAssetLocations(TenantIntegration $integration): array
+    public function fetchVehicleStatsFeed(TenantIntegration $integration, TelematicsFeed $feed, ?string $cursor = null): VehicleStatsPage
     {
-        return [];
+        return VehicleStatsPage::empty($cursor);
     }
 
-    public function fetchAssetTelemetry(TenantIntegration $integration): array
-    {
-        return [];
+    public function fetchVehicleStatsHistory(
+        TenantIntegration $integration,
+        TelematicsFeed $feed,
+        \DateTimeInterface $start,
+        \DateTimeInterface $end,
+        ?string $cursor = null,
+    ): VehicleStatsPage {
+        return VehicleStatsPage::empty();
     }
 
     public function fetchDeviceConnectivity(TenantIntegration $integration): array
