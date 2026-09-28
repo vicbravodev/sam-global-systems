@@ -1,0 +1,1591 @@
+[
+    {
+        "id": null,
+        "source": "api",
+        "kind": "safety_event",
+        "samsara_event_id": "5445e19a-c41b-5fb9-87b6-d1bdc91d14d6",
+        "event_type": "MaxSpeed",
+        "event_description": null,
+        "vehicle_id": "281474993665497",
+        "vehicle_name": null,
+        "driver_id": "60983679",
+        "driver_name": null,
+        "occurred_at": "2026-09-27T06:45:59.494Z",
+        "raw_payload": {
+            "tripStartTime": "2026-09-27T04:03:10.508Z",
+            "tripEndTime": "2026-09-27T08:01:23.535Z",
+            "createdAtTime": "2026-09-27T06:45:59.494Z",
+            "updatedAtTime": "2026-09-27T06:45:59.494Z",
+            "startMs": "2026-09-27T06:43:31.483Z",
+            "endMs": "2026-09-27T06:44:30.507Z",
+            "id": "5445e19a-c41b-5fb9-87b6-d1bdc91d14d6",
+            "asset": {
+                "id": "281474993665497"
+            },
+            "driver": {
+                "id": "60983679"
+            },
+            "behaviorLabels": [
+                {
+                    "label": "MaxSpeed",
+                    "source": "SYSTEM"
+                }
+            ],
+            "contextLabels": [
+                {
+                    "name": "Highway",
+                    "authorId": "0",
+                    "createdAtTime": "2026-09-27T06:46:00.100Z"
+                }
+            ],
+            "eventState": "needsReview",
+            "inboxEventUrl": "https://cloud.samsara.com/o/4006685/fleet/safety/event_review?aggregationUuid=5445e19a-c41b-5fb9-87b6-d1bdc91d14d6&selectedAggregationKey=event",
+            "incidentReportUrl": "https://cloud.samsara.com/o/4006685/fleet/reports/safety/speeding/devices/281474993665497/trip/1790491411483",
+            "location": {
+                "latitude": 30.458191,
+                "longitude": -90.943058,
+                "headingDegrees": 73,
+                "accuracyMeters": 3.1,
+                "address": {
+                    "streetNumber": "",
+                    "pointOfInterest": "",
+                    "neighborhood": "",
+                    "street": "West Florida Republic Parkway",
+                    "city": "Denham Springs",
+                    "state": "LA",
+                    "postalCode": "70727",
+                    "country": "US"
+                }
+            },
+            "maxAccelerationGForce": 0,
+            "speedingMetadata": {
+                "maxSpeedKilometersPerHour": 113,
+                "postedSpeedLimitKilometersPerHour": 110
+            }
+        }
+    },
+    {
+        "id": null,
+        "source": "api",
+        "kind": "safety_event",
+        "samsara_event_id": "5445e195-e22f-53be-a14c-1bdb8fa3842c",
+        "event_type": "MaxSpeed",
+        "event_description": null,
+        "vehicle_id": "281474993663992",
+        "vehicle_name": null,
+        "driver_id": "58516614",
+        "driver_name": null,
+        "occurred_at": "2026-09-27T06:43:24.238Z",
+        "raw_payload": {
+            "tripStartTime": "2026-09-27T05:57:23.512Z",
+            "tripEndTime": "2026-09-27T07:02:06.510Z",
+            "createdAtTime": "2026-09-27T06:43:24.238Z",
+            "updatedAtTime": "2026-09-27T06:43:24.238Z",
+            "startMs": "2026-09-27T06:38:11.503Z",
+            "endMs": "2026-09-27T06:42:29.480Z",
+            "id": "5445e195-e22f-53be-a14c-1bdb8fa3842c",
+            "asset": {
+                "id": "281474993663992"
+            },
+            "driver": {
+                "id": "58516614"
+            },
+            "behaviorLabels": [
+                {
+                    "label": "MaxSpeed",
+                    "source": "SYSTEM"
+                }
+            ],
+            "contextLabels": [
+                {
+                    "name": "Highway",
+                    "authorId": "0",
+                    "createdAtTime": "2026-09-27T06:43:24.368Z"
+                }
+            ],
+            "eventState": "needsReview",
+            "inboxEventUrl": "https://cloud.samsara.com/o/4006685/fleet/safety/event_review?aggregationUuid=5445e195-e22f-53be-a14c-1bdb8fa3842c&selectedAggregationKey=event",
+            "incidentReportUrl": "https://cloud.samsara.com/o/4006685/fleet/reports/safety/speeding/devices/281474993663992/trip/1790491091503",
+            "location": {
+                "latitude": 30.45388,
+                "longitude": -88.866686,
+                "headingDegrees": 89,
+                "accuracyMeters": 2.8,
+                "address": {
+                    "streetNumber": "",
+                    "pointOfInterest": "",
+                    "neighborhood": "",
+                    "street": "I 10",
+                    "city": "D'Iberville",
+                    "state": "MS",
+                    "postalCode": "39540",
+                    "country": "US"
+                }
+            },
+            "maxAccelerationGForce": 0,
+            "speedingMetadata": {
+                "maxSpeedKilometersPerHour": 120,
+                "postedSpeedLimitKilometersPerHour": 110
+            }
+        }
+    },
+    {
+        "id": null,
+        "source": "api",
+        "kind": "safety_event",
+        "samsara_event_id": "5445e197-05d2-59cc-ba30-d251451c5197",
+        "event_type": "MobileUsage",
+        "event_description": null,
+        "vehicle_id": "281474993055550",
+        "vehicle_name": null,
+        "driver_id": "53831560",
+        "driver_name": null,
+        "occurred_at": "2026-09-27T06:40:49.745Z",
+        "raw_payload": {
+            "tripStartTime": "2026-09-27T06:21:27.522Z",
+            "tripEndTime": "2026-09-27T07:00:53.500Z",
+            "createdAtTime": "2026-09-27T06:40:49.745Z",
+            "updatedAtTime": "2026-09-27T06:40:49.745Z",
+            "startMs": "2026-09-27T06:39:26.162Z",
+            "endMs": "2026-09-27T06:39:26.162Z",
+            "id": "5445e197-05d2-59cc-ba30-d251451c5197",
+            "asset": {
+                "id": "281474993055550"
+            },
+            "driver": {
+                "id": "53831560"
+            },
+            "behaviorLabels": [
+                {
+                    "label": "MobileUsage",
+                    "source": "SYSTEM"
+                }
+            ],
+            "contextLabels": [],
+            "eventState": "needsReview",
+            "inboxEventUrl": "https://cloud.samsara.com/o/4006685/fleet/safety/event_review?aggregationUuid=5445e197-05d2-59cc-ba30-d251451c5197&selectedAggregationKey=event",
+            "incidentReportUrl": "https://cloud.samsara.com/o/4006685/fleet/reports/safety/vehicle/281474993055550/incident/1790491166162",
+            "location": {
+                "latitude": 25.799111,
+                "longitude": -100.09381,
+                "headingDegrees": 110,
+                "accuracyMeters": 2.8,
+                "address": {
+                    "streetNumber": "",
+                    "pointOfInterest": "",
+                    "neighborhood": "",
+                    "street": "Boulevard Rogelio Pérez Arrambide",
+                    "city": "Pesquería",
+                    "state": "NLE",
+                    "postalCode": "66620",
+                    "country": "MX"
+                }
+            },
+            "maxAccelerationGForce": 0
+        }
+    },
+    {
+        "id": null,
+        "source": "api",
+        "kind": "safety_event",
+        "samsara_event_id": "5445e192-c936-55ee-aba2-3173b4575c38",
+        "event_type": "MaxSpeed",
+        "event_description": null,
+        "vehicle_id": "281474993663992",
+        "vehicle_name": null,
+        "driver_id": "58516614",
+        "driver_name": null,
+        "occurred_at": "2026-09-27T06:38:53.642Z",
+        "raw_payload": {
+            "tripStartTime": "2026-09-27T05:57:23.512Z",
+            "tripEndTime": "2026-09-27T07:02:06.510Z",
+            "createdAtTime": "2026-09-27T06:38:53.642Z",
+            "updatedAtTime": "2026-09-27T06:38:53.642Z",
+            "startMs": "2026-09-27T06:34:48.502Z",
+            "endMs": "2026-09-27T06:38:05.507Z",
+            "id": "5445e192-c936-55ee-aba2-3173b4575c38",
+            "asset": {
+                "id": "281474993663992"
+            },
+            "driver": {
+                "id": "58516614"
+            },
+            "behaviorLabels": [
+                {
+                    "label": "MaxSpeed",
+                    "source": "SYSTEM"
+                }
+            ],
+            "contextLabels": [
+                {
+                    "name": "Highway",
+                    "authorId": "0",
+                    "createdAtTime": "2026-09-27T06:38:53.712Z"
+                }
+            ],
+            "eventState": "needsReview",
+            "inboxEventUrl": "https://cloud.samsara.com/o/4006685/fleet/safety/event_review?aggregationUuid=5445e192-c936-55ee-aba2-3173b4575c38&selectedAggregationKey=event",
+            "incidentReportUrl": "https://cloud.samsara.com/o/4006685/fleet/reports/safety/speeding/devices/281474993663992/trip/1790490888502",
+            "location": {
+                "latitude": 30.448335,
+                "longitude": -88.931424,
+                "headingDegrees": 107,
+                "accuracyMeters": 2.8,
+                "address": {
+                    "streetNumber": "",
+                    "pointOfInterest": "",
+                    "neighborhood": "",
+                    "street": "I 10",
+                    "city": "Biloxi",
+                    "state": "MS",
+                    "postalCode": "39540",
+                    "country": "US"
+                }
+            },
+            "maxAccelerationGForce": 0,
+            "speedingMetadata": {
+                "maxSpeedKilometersPerHour": 119,
+                "postedSpeedLimitKilometersPerHour": 110
+            }
+        }
+    },
+    {
+        "id": null,
+        "source": "api",
+        "kind": "safety_event",
+        "samsara_event_id": "5445e192-c729-5ed6-8e12-645a0a21d975",
+        "event_type": "EdgeRailroadCrossingViolation",
+        "event_description": null,
+        "vehicle_id": "281474994288623",
+        "vehicle_name": null,
+        "driver_id": "51909875",
+        "driver_name": null,
+        "occurred_at": "2026-09-27T06:36:34.916Z",
+        "raw_payload": {
+            "tripStartTime": "2026-09-27T06:28:25.079Z",
+            "tripEndTime": "2026-09-27T06:57:54.022Z",
+            "createdAtTime": "2026-09-27T06:36:34.916Z",
+            "updatedAtTime": "2026-09-27T06:36:34.916Z",
+            "startMs": "2026-09-27T06:34:47.977Z",
+            "endMs": "2026-09-27T06:34:47.977Z",
+            "id": "5445e192-c729-5ed6-8e12-645a0a21d975",
+            "asset": {
+                "id": "281474994288623"
+            },
+            "driver": {
+                "id": "51909875"
+            },
+            "behaviorLabels": [
+                {
+                    "label": "EdgeRailroadCrossingViolation",
+                    "source": "SYSTEM"
+                }
+            ],
+            "contextLabels": [
+                {
+                    "name": "Wet Road",
+                    "authorId": "0",
+                    "createdAtTime": "2026-09-27T06:36:52.536Z"
+                },
+                {
+                    "name": "Night",
+                    "authorId": "0",
+                    "createdAtTime": "2026-09-27T06:36:52.536Z"
+                },
+                {
+                    "name": "Moderate Traffic",
+                    "authorId": "0",
+                    "createdAtTime": "2026-09-27T06:36:52.536Z"
+                }
+            ],
+            "eventState": "needsReview",
+            "inboxEventUrl": "https://cloud.samsara.com/o/4006685/fleet/safety/event_review?aggregationUuid=5445e192-c729-5ed6-8e12-645a0a21d975&selectedAggregationKey=event",
+            "incidentReportUrl": "https://cloud.samsara.com/o/4006685/fleet/reports/safety/vehicle/281474994288623/incident/1790490887977",
+            "location": {
+                "latitude": 25.740568,
+                "longitude": -100.239224,
+                "headingDegrees": 190,
+                "accuracyMeters": 2.8,
+                "address": {
+                    "streetNumber": "",
+                    "pointOfInterest": "",
+                    "neighborhood": "",
+                    "street": "Carretera Mezquital - Santa Rosa",
+                    "city": "San Nicolás de los Garza",
+                    "state": "NLE",
+                    "postalCode": "66470",
+                    "country": "MX"
+                }
+            },
+            "maxAccelerationGForce": 0
+        }
+    },
+    {
+        "id": null,
+        "source": "api",
+        "kind": "safety_event",
+        "samsara_event_id": "5445e18f-1fc0-51b2-b9fc-8d28f83998fa",
+        "event_type": "MaxSpeed",
+        "event_description": null,
+        "vehicle_id": "281474993663992",
+        "vehicle_name": null,
+        "driver_id": "58516614",
+        "driver_name": null,
+        "occurred_at": "2026-09-27T06:35:53.643Z",
+        "raw_payload": {
+            "tripStartTime": "2026-09-27T05:57:23.512Z",
+            "tripEndTime": "2026-09-27T07:02:06.510Z",
+            "createdAtTime": "2026-09-27T06:35:53.643Z",
+            "updatedAtTime": "2026-09-27T06:35:53.643Z",
+            "startMs": "2026-09-27T06:30:48.512Z",
+            "endMs": "2026-09-27T06:34:37.515Z",
+            "id": "5445e18f-1fc0-51b2-b9fc-8d28f83998fa",
+            "asset": {
+                "id": "281474993663992"
+            },
+            "driver": {
+                "id": "58516614"
+            },
+            "behaviorLabels": [
+                {
+                    "label": "MaxSpeed",
+                    "source": "SYSTEM"
+                }
+            ],
+            "contextLabels": [
+                {
+                    "name": "Highway",
+                    "authorId": "0",
+                    "createdAtTime": "2026-09-27T06:35:53.845Z"
+                }
+            ],
+            "eventState": "needsReview",
+            "inboxEventUrl": "https://cloud.samsara.com/o/4006685/fleet/safety/event_review?aggregationUuid=5445e18f-1fc0-51b2-b9fc-8d28f83998fa&selectedAggregationKey=event",
+            "incidentReportUrl": "https://cloud.samsara.com/o/4006685/fleet/reports/safety/speeding/devices/281474993663992/trip/1790490648512",
+            "location": {
+                "latitude": 30.449185,
+                "longitude": -89.003852,
+                "headingDegrees": 79,
+                "accuracyMeters": 2.8,
+                "address": {
+                    "streetNumber": "",
+                    "pointOfInterest": "",
+                    "neighborhood": "",
+                    "street": "I 10",
+                    "city": "Biloxi",
+                    "state": "MS",
+                    "postalCode": "39532",
+                    "country": "US"
+                }
+            },
+            "maxAccelerationGForce": 0,
+            "speedingMetadata": {
+                "maxSpeedKilometersPerHour": 120,
+                "postedSpeedLimitKilometersPerHour": 110
+            }
+        }
+    },
+    {
+        "id": null,
+        "source": "api",
+        "kind": "safety_event",
+        "samsara_event_id": "5445e189-380b-5977-ac36-f461723ee4ea",
+        "event_type": "MaxSpeed",
+        "event_description": null,
+        "vehicle_id": "281474993663992",
+        "vehicle_name": null,
+        "driver_id": "58516614",
+        "driver_name": null,
+        "occurred_at": "2026-09-27T06:31:25.469Z",
+        "raw_payload": {
+            "tripStartTime": "2026-09-27T05:57:23.512Z",
+            "tripEndTime": "2026-09-27T07:02:06.510Z",
+            "createdAtTime": "2026-09-27T06:31:25.469Z",
+            "updatedAtTime": "2026-09-27T06:31:25.469Z",
+            "startMs": "2026-09-27T06:24:21.515Z",
+            "endMs": "2026-09-27T06:30:38.513Z",
+            "id": "5445e189-380b-5977-ac36-f461723ee4ea",
+            "asset": {
+                "id": "281474993663992"
+            },
+            "driver": {
+                "id": "58516614"
+            },
+            "behaviorLabels": [
+                {
+                    "label": "MaxSpeed",
+                    "source": "SYSTEM"
+                }
+            ],
+            "contextLabels": [
+                {
+                    "name": "Highway",
+                    "authorId": "0",
+                    "createdAtTime": "2026-09-27T06:31:25.671Z"
+                }
+            ],
+            "eventState": "needsReview",
+            "inboxEventUrl": "https://cloud.samsara.com/o/4006685/fleet/safety/event_review?aggregationUuid=5445e189-380b-5977-ac36-f461723ee4ea&selectedAggregationKey=event",
+            "incidentReportUrl": "https://cloud.samsara.com/o/4006685/fleet/reports/safety/speeding/devices/281474993663992/trip/1790490261515",
+            "location": {
+                "latitude": 30.424161,
+                "longitude": -89.129498,
+                "headingDegrees": 85,
+                "accuracyMeters": 2.8,
+                "address": {
+                    "streetNumber": "",
+                    "pointOfInterest": "",
+                    "neighborhood": "",
+                    "street": "I 10",
+                    "city": "Gulfport",
+                    "state": "MS",
+                    "postalCode": "39503",
+                    "country": "US"
+                }
+            },
+            "maxAccelerationGForce": 0,
+            "speedingMetadata": {
+                "maxSpeedKilometersPerHour": 122,
+                "postedSpeedLimitKilometersPerHour": 110
+            }
+        }
+    },
+    {
+        "id": null,
+        "source": "api",
+        "kind": "safety_event",
+        "samsara_event_id": "5445e142-6124-505a-a4e5-bcb06900c067",
+        "event_type": "GenericDistraction",
+        "event_description": null,
+        "vehicle_id": "281474995801051",
+        "vehicle_name": null,
+        "driver_id": "59912748",
+        "driver_name": null,
+        "occurred_at": "2026-09-27T06:30:38.049Z",
+        "raw_payload": {
+            "tripStartTime": "2026-09-27T04:51:54.548Z",
+            "tripEndTime": "2026-09-27T07:04:58.490Z",
+            "createdAtTime": "2026-09-27T06:30:38.049Z",
+            "updatedAtTime": "2026-09-27T06:30:38.049Z",
+            "startMs": "2026-09-27T05:06:58.980Z",
+            "endMs": "2026-09-27T05:06:58.980Z",
+            "id": "5445e142-6124-505a-a4e5-bcb06900c067",
+            "asset": {
+                "id": "281474995801051"
+            },
+            "driver": {
+                "id": "59912748"
+            },
+            "behaviorLabels": [
+                {
+                    "label": "GenericDistraction",
+                    "source": "SYSTEM"
+                }
+            ],
+            "contextLabels": [
+                {
+                    "name": "Highway",
+                    "authorId": "0",
+                    "createdAtTime": "2026-09-27T06:30:48.166Z"
+                }
+            ],
+            "eventState": "needsReview",
+            "inboxEventUrl": "https://cloud.samsara.com/o/4006685/fleet/safety/event_review?aggregationUuid=5445e142-6124-505a-a4e5-bcb06900c067&selectedAggregationKey=event",
+            "incidentReportUrl": "https://cloud.samsara.com/o/4006685/fleet/reports/safety/vehicle/281474995801051/incident/1790485618980",
+            "location": {
+                "latitude": 29.78486,
+                "longitude": -95.69707,
+                "headingDegrees": 91,
+                "accuracyMeters": 2.8,
+                "address": {
+                    "streetNumber": "",
+                    "pointOfInterest": "",
+                    "neighborhood": "",
+                    "street": "Katy Freeway",
+                    "city": "Barker",
+                    "state": "TX",
+                    "postalCode": "77413",
+                    "country": "US"
+                }
+            },
+            "maxAccelerationGForce": 0
+        }
+    },
+    {
+        "id": null,
+        "source": "api",
+        "kind": "safety_event",
+        "samsara_event_id": "5445e15f-3ba8-55ad-84ca-34ef29ba78c4",
+        "event_type": "GenericDistraction",
+        "event_description": null,
+        "vehicle_id": "281474995801051",
+        "vehicle_name": null,
+        "driver_id": "59912748",
+        "driver_name": null,
+        "occurred_at": "2026-09-27T06:30:38.000Z",
+        "raw_payload": {
+            "tripStartTime": "2026-09-27T04:51:54.548Z",
+            "tripEndTime": "2026-09-27T07:04:58.490Z",
+            "createdAtTime": "2026-09-27T06:30:38.000Z",
+            "updatedAtTime": "2026-09-27T06:30:38.000Z",
+            "startMs": "2026-09-27T05:38:29.928Z",
+            "endMs": "2026-09-27T05:38:29.928Z",
+            "id": "5445e15f-3ba8-55ad-84ca-34ef29ba78c4",
+            "asset": {
+                "id": "281474995801051"
+            },
+            "driver": {
+                "id": "59912748"
+            },
+            "behaviorLabels": [
+                {
+                    "label": "GenericDistraction",
+                    "source": "SYSTEM"
+                }
+            ],
+            "contextLabels": [
+                {
+                    "name": "Highway",
+                    "authorId": "0",
+                    "createdAtTime": "2026-09-27T06:30:49.417Z"
+                }
+            ],
+            "eventState": "needsReview",
+            "inboxEventUrl": "https://cloud.samsara.com/o/4006685/fleet/safety/event_review?aggregationUuid=5445e15f-3ba8-55ad-84ca-34ef29ba78c4&selectedAggregationKey=event",
+            "incidentReportUrl": "https://cloud.samsara.com/o/4006685/fleet/reports/safety/vehicle/281474995801051/incident/1790487509928",
+            "location": {
+                "latitude": 29.770865,
+                "longitude": -95.156878,
+                "headingDegrees": 89,
+                "accuracyMeters": 2.8,
+                "address": {
+                    "streetNumber": "",
+                    "pointOfInterest": "",
+                    "neighborhood": "",
+                    "street": "East Freeway",
+                    "city": "Channelview",
+                    "state": "TX",
+                    "postalCode": "77530",
+                    "country": "US"
+                }
+            },
+            "maxAccelerationGForce": 0
+        }
+    },
+    {
+        "id": null,
+        "source": "api",
+        "kind": "safety_event",
+        "samsara_event_id": "5445e18d-959c-5507-a8ca-0af4f92854d9",
+        "event_type": "GenericDistraction",
+        "event_description": null,
+        "vehicle_id": "281474995801051",
+        "vehicle_name": null,
+        "driver_id": "59912748",
+        "driver_name": null,
+        "occurred_at": "2026-09-27T06:30:37.868Z",
+        "raw_payload": {
+            "tripStartTime": "2026-09-27T04:51:54.548Z",
+            "tripEndTime": "2026-09-27T07:04:58.490Z",
+            "createdAtTime": "2026-09-27T06:30:37.868Z",
+            "updatedAtTime": "2026-09-27T06:30:37.868Z",
+            "startMs": "2026-09-27T06:29:07.612Z",
+            "endMs": "2026-09-27T06:29:07.612Z",
+            "id": "5445e18d-959c-5507-a8ca-0af4f92854d9",
+            "asset": {
+                "id": "281474995801051"
+            },
+            "driver": {
+                "id": "59912748"
+            },
+            "behaviorLabels": [
+                {
+                    "label": "GenericDistraction",
+                    "source": "SYSTEM"
+                }
+            ],
+            "contextLabels": [
+                {
+                    "name": "Highway",
+                    "authorId": "0",
+                    "createdAtTime": "2026-09-27T06:30:50.465Z"
+                }
+            ],
+            "eventState": "needsReview",
+            "inboxEventUrl": "https://cloud.samsara.com/o/4006685/fleet/safety/event_review?aggregationUuid=5445e18d-959c-5507-a8ca-0af4f92854d9&selectedAggregationKey=event",
+            "incidentReportUrl": "https://cloud.samsara.com/o/4006685/fleet/reports/safety/vehicle/281474995801051/incident/1790490547612",
+            "location": {
+                "latitude": 29.949116,
+                "longitude": -94.247134,
+                "headingDegrees": 47,
+                "accuracyMeters": 2.8,
+                "address": {
+                    "streetNumber": "",
+                    "pointOfInterest": "",
+                    "neighborhood": "",
+                    "street": "I 10",
+                    "city": "Fannett",
+                    "state": "TX",
+                    "postalCode": "",
+                    "country": "US"
+                }
+            },
+            "maxAccelerationGForce": 0
+        }
+    },
+    {
+        "id": null,
+        "source": "api",
+        "kind": "safety_event",
+        "samsara_event_id": "5445e189-479f-5a83-9c9f-0e165d979079",
+        "event_type": "MaxSpeed",
+        "event_description": null,
+        "vehicle_id": "281474995801051",
+        "vehicle_name": null,
+        "driver_id": "59912748",
+        "driver_name": null,
+        "occurred_at": "2026-09-27T06:27:03.101Z",
+        "raw_payload": {
+            "tripStartTime": "2026-09-27T04:51:54.548Z",
+            "tripEndTime": "2026-09-27T07:04:58.490Z",
+            "createdAtTime": "2026-09-27T06:27:03.101Z",
+            "updatedAtTime": "2026-09-27T06:27:03.101Z",
+            "startMs": "2026-09-27T06:24:25.503Z",
+            "endMs": "2026-09-27T06:25:55.515Z",
+            "id": "5445e189-479f-5a83-9c9f-0e165d979079",
+            "asset": {
+                "id": "281474995801051"
+            },
+            "driver": {
+                "id": "59912748"
+            },
+            "behaviorLabels": [
+                {
+                    "label": "MaxSpeed",
+                    "source": "SYSTEM"
+                }
+            ],
+            "contextLabels": [
+                {
+                    "name": "Highway",
+                    "authorId": "0",
+                    "createdAtTime": "2026-09-27T06:31:03.142Z"
+                }
+            ],
+            "eventState": "needsReview",
+            "inboxEventUrl": "https://cloud.samsara.com/o/4006685/fleet/safety/event_review?aggregationUuid=5445e189-479f-5a83-9c9f-0e165d979079&selectedAggregationKey=event",
+            "incidentReportUrl": "https://cloud.samsara.com/o/4006685/fleet/reports/safety/speeding/devices/281474995801051/trip/1790490265503",
+            "location": {
+                "latitude": 29.899203,
+                "longitude": -94.308273,
+                "headingDegrees": 46,
+                "accuracyMeters": 2.8,
+                "address": {
+                    "streetNumber": "",
+                    "pointOfInterest": "",
+                    "neighborhood": "",
+                    "street": "I 10",
+                    "city": "Jefferson County",
+                    "state": "TX",
+                    "postalCode": "77622",
+                    "country": "US"
+                }
+            },
+            "maxAccelerationGForce": 0,
+            "speedingMetadata": {
+                "maxSpeedKilometersPerHour": 114,
+                "postedSpeedLimitKilometersPerHour": 110
+            }
+        }
+    },
+    {
+        "id": null,
+        "source": "api",
+        "kind": "safety_event",
+        "samsara_event_id": "5445e187-8cb3-52aa-a31b-069dca1d23c5",
+        "event_type": "MobileUsage",
+        "event_description": null,
+        "vehicle_id": "281474993055550",
+        "vehicle_name": null,
+        "driver_id": "53831560",
+        "driver_name": null,
+        "occurred_at": "2026-09-27T06:26:24.201Z",
+        "raw_payload": {
+            "tripStartTime": "2026-09-27T06:21:27.522Z",
+            "tripEndTime": "2026-09-27T07:00:53.500Z",
+            "createdAtTime": "2026-09-27T06:26:24.201Z",
+            "updatedAtTime": "2026-09-27T06:26:24.201Z",
+            "startMs": "2026-09-27T06:22:32.115Z",
+            "endMs": "2026-09-27T06:22:32.115Z",
+            "id": "5445e187-8cb3-52aa-a31b-069dca1d23c5",
+            "asset": {
+                "id": "281474993055550"
+            },
+            "driver": {
+                "id": "53831560"
+            },
+            "behaviorLabels": [
+                {
+                    "label": "MobileUsage",
+                    "source": "SYSTEM"
+                }
+            ],
+            "contextLabels": [],
+            "eventState": "needsReview",
+            "inboxEventUrl": "https://cloud.samsara.com/o/4006685/fleet/safety/event_review?aggregationUuid=5445e187-8cb3-52aa-a31b-069dca1d23c5&selectedAggregationKey=event",
+            "incidentReportUrl": "https://cloud.samsara.com/o/4006685/fleet/reports/safety/vehicle/281474993055550/incident/1790490152115",
+            "location": {
+                "latitude": 25.748437,
+                "longitude": -100.226082,
+                "headingDegrees": 52,
+                "accuracyMeters": 2.8,
+                "address": {
+                    "streetNumber": "",
+                    "pointOfInterest": "",
+                    "neighborhood": "",
+                    "street": "Avenida Isidro Sepúlveda Martínez",
+                    "city": "Apodaca",
+                    "state": "NLE",
+                    "postalCode": "66633",
+                    "country": "MX"
+                }
+            },
+            "maxAccelerationGForce": 0
+        }
+    },
+    {
+        "id": null,
+        "source": "api",
+        "kind": "safety_event",
+        "samsara_event_id": "5445e186-78e2-518e-afc7-f47e7f781f51",
+        "event_type": "MaxSpeed",
+        "event_description": null,
+        "vehicle_id": "281474993663992",
+        "vehicle_name": null,
+        "driver_id": "58516614",
+        "driver_name": null,
+        "occurred_at": "2026-09-27T06:23:53.971Z",
+        "raw_payload": {
+            "tripStartTime": "2026-09-27T05:57:23.512Z",
+            "tripEndTime": "2026-09-27T07:02:06.510Z",
+            "createdAtTime": "2026-09-27T06:23:53.971Z",
+            "updatedAtTime": "2026-09-27T06:23:53.971Z",
+            "startMs": "2026-09-27T06:21:21.506Z",
+            "endMs": "2026-09-27T06:23:49.495Z",
+            "id": "5445e186-78e2-518e-afc7-f47e7f781f51",
+            "asset": {
+                "id": "281474993663992"
+            },
+            "driver": {
+                "id": "58516614"
+            },
+            "behaviorLabels": [
+                {
+                    "label": "MaxSpeed",
+                    "source": "SYSTEM"
+                }
+            ],
+            "contextLabels": [
+                {
+                    "name": "Highway",
+                    "authorId": "0",
+                    "createdAtTime": "2026-09-27T06:23:54.139Z"
+                }
+            ],
+            "eventState": "needsReview",
+            "inboxEventUrl": "https://cloud.samsara.com/o/4006685/fleet/safety/event_review?aggregationUuid=5445e186-78e2-518e-afc7-f47e7f781f51&selectedAggregationKey=event",
+            "incidentReportUrl": "https://cloud.samsara.com/o/4006685/fleet/reports/safety/speeding/devices/281474993663992/trip/1790490081506",
+            "location": {
+                "latitude": 30.416894,
+                "longitude": -89.187344,
+                "headingDegrees": 89,
+                "accuracyMeters": 2.8,
+                "address": {
+                    "streetNumber": "",
+                    "pointOfInterest": "",
+                    "neighborhood": "",
+                    "street": "I 10",
+                    "city": "Harrison County",
+                    "state": "MS",
+                    "postalCode": "",
+                    "country": "US"
+                }
+            },
+            "maxAccelerationGForce": 0,
+            "speedingMetadata": {
+                "maxSpeedKilometersPerHour": 119,
+                "postedSpeedLimitKilometersPerHour": 110
+            }
+        }
+    },
+    {
+        "id": null,
+        "source": "api",
+        "kind": "safety_event",
+        "samsara_event_id": "5445e183-a804-5b8e-85f2-c38e8c43cef9",
+        "event_type": "EdgeRailroadCrossingViolation",
+        "event_description": null,
+        "vehicle_id": "281474993012247",
+        "vehicle_name": null,
+        "driver_id": "0",
+        "driver_name": null,
+        "occurred_at": "2026-09-27T06:19:56.695Z",
+        "raw_payload": {
+            "tripStartTime": "2026-09-27T06:14:35.522Z",
+            "tripEndTime": "2026-09-27T06:24:09.008Z",
+            "createdAtTime": "2026-09-27T06:19:56.695Z",
+            "updatedAtTime": "2026-09-27T06:19:56.695Z",
+            "startMs": "2026-09-27T06:18:16.964Z",
+            "endMs": "2026-09-27T06:18:16.964Z",
+            "id": "5445e183-a804-5b8e-85f2-c38e8c43cef9",
+            "asset": {
+                "id": "281474993012247"
+            },
+            "driver": {
+                "id": "0"
+            },
+            "behaviorLabels": [
+                {
+                    "label": "EdgeRailroadCrossingViolation",
+                    "source": "SYSTEM"
+                }
+            ],
+            "contextLabels": [
+                {
+                    "name": "Wet Road",
+                    "authorId": "0",
+                    "createdAtTime": "2026-09-27T06:20:11.541Z"
+                },
+                {
+                    "name": "Night",
+                    "authorId": "0",
+                    "createdAtTime": "2026-09-27T06:20:11.541Z"
+                },
+                {
+                    "name": "Light Traffic",
+                    "authorId": "0",
+                    "createdAtTime": "2026-09-27T06:20:11.541Z"
+                }
+            ],
+            "eventState": "needsReview",
+            "inboxEventUrl": "https://cloud.samsara.com/o/4006685/fleet/safety/event_review?aggregationUuid=5445e183-a804-5b8e-85f2-c38e8c43cef9&selectedAggregationKey=event",
+            "incidentReportUrl": "https://cloud.samsara.com/o/4006685/fleet/reports/safety/vehicle/281474993012247/incident/1790489896964",
+            "location": {
+                "latitude": 25.7153,
+                "longitude": -100.302311,
+                "headingDegrees": 296,
+                "accuracyMeters": 2.8,
+                "address": {
+                    "streetNumber": "",
+                    "pointOfInterest": "",
+                    "neighborhood": "",
+                    "street": "Avenida Ciudad de Los Ángeles",
+                    "city": "Monterrey",
+                    "state": "NLE",
+                    "postalCode": "64500",
+                    "country": "MX"
+                }
+            },
+            "maxAccelerationGForce": 0
+        }
+    },
+    {
+        "id": null,
+        "source": "api",
+        "kind": "safety_event",
+        "samsara_event_id": "5445e180-92f6-58ca-9bbd-04d0fe58d960",
+        "event_type": "EdgeRailroadCrossingViolation",
+        "event_description": null,
+        "vehicle_id": "281474993055550",
+        "vehicle_name": null,
+        "driver_id": "53831560",
+        "driver_name": null,
+        "occurred_at": "2026-09-27T06:16:39.971Z",
+        "raw_payload": {
+            "tripStartTime": "2026-09-27T06:05:36.522Z",
+            "tripEndTime": "2026-09-27T06:16:03.494Z",
+            "createdAtTime": "2026-09-27T06:16:39.971Z",
+            "updatedAtTime": "2026-09-27T06:16:39.971Z",
+            "startMs": "2026-09-27T06:14:54.966Z",
+            "endMs": "2026-09-27T06:14:54.966Z",
+            "id": "5445e180-92f6-58ca-9bbd-04d0fe58d960",
+            "asset": {
+                "id": "281474993055550"
+            },
+            "driver": {
+                "id": "53831560"
+            },
+            "behaviorLabels": [
+                {
+                    "label": "EdgeRailroadCrossingViolation",
+                    "source": "SYSTEM"
+                }
+            ],
+            "contextLabels": [
+                {
+                    "name": "Wet Road",
+                    "authorId": "0",
+                    "createdAtTime": "2026-09-27T06:16:55.824Z"
+                },
+                {
+                    "name": "Night",
+                    "authorId": "0",
+                    "createdAtTime": "2026-09-27T06:16:55.824Z"
+                },
+                {
+                    "name": "Moderate Traffic",
+                    "authorId": "0",
+                    "createdAtTime": "2026-09-27T06:16:55.824Z"
+                }
+            ],
+            "eventState": "needsReview",
+            "inboxEventUrl": "https://cloud.samsara.com/o/4006685/fleet/safety/event_review?aggregationUuid=5445e180-92f6-58ca-9bbd-04d0fe58d960&selectedAggregationKey=event",
+            "incidentReportUrl": "https://cloud.samsara.com/o/4006685/fleet/reports/safety/vehicle/281474993055550/incident/1790489694966",
+            "location": {
+                "latitude": 25.742233,
+                "longitude": -100.235054,
+                "headingDegrees": 52,
+                "accuracyMeters": 2.8,
+                "address": {
+                    "streetNumber": "",
+                    "pointOfInterest": "",
+                    "neighborhood": "",
+                    "street": "Avenida Licenciado Adolfo López Mateos",
+                    "city": "San Nicolás de los Garza",
+                    "state": "NLE",
+                    "postalCode": "66470",
+                    "country": "MX"
+                }
+            },
+            "maxAccelerationGForce": 0
+        }
+    },
+    {
+        "id": null,
+        "source": "api",
+        "kind": "safety_event",
+        "samsara_event_id": "5445e17e-684f-5efc-ad8d-6702b43a8c79",
+        "event_type": "EdgeRailroadCrossingViolation",
+        "event_description": null,
+        "vehicle_id": "281474993055550",
+        "vehicle_name": null,
+        "driver_id": "53831560",
+        "driver_name": null,
+        "occurred_at": "2026-09-27T06:14:11.585Z",
+        "raw_payload": {
+            "tripStartTime": "2026-09-27T06:05:36.522Z",
+            "tripEndTime": "2026-09-27T06:16:03.494Z",
+            "createdAtTime": "2026-09-27T06:14:11.585Z",
+            "updatedAtTime": "2026-09-27T06:14:11.585Z",
+            "startMs": "2026-09-27T06:12:32.975Z",
+            "endMs": "2026-09-27T06:12:32.975Z",
+            "id": "5445e17e-684f-5efc-ad8d-6702b43a8c79",
+            "asset": {
+                "id": "281474993055550"
+            },
+            "driver": {
+                "id": "53831560"
+            },
+            "behaviorLabels": [
+                {
+                    "label": "EdgeRailroadCrossingViolation",
+                    "source": "SYSTEM"
+                }
+            ],
+            "contextLabels": [
+                {
+                    "name": "Wet Road",
+                    "authorId": "0",
+                    "createdAtTime": "2026-09-27T06:14:27.143Z"
+                },
+                {
+                    "name": "Night",
+                    "authorId": "0",
+                    "createdAtTime": "2026-09-27T06:14:27.143Z"
+                },
+                {
+                    "name": "Moderate Traffic",
+                    "authorId": "0",
+                    "createdAtTime": "2026-09-27T06:14:27.143Z"
+                }
+            ],
+            "eventState": "needsReview",
+            "inboxEventUrl": "https://cloud.samsara.com/o/4006685/fleet/safety/event_review?aggregationUuid=5445e17e-684f-5efc-ad8d-6702b43a8c79&selectedAggregationKey=event",
+            "incidentReportUrl": "https://cloud.samsara.com/o/4006685/fleet/reports/safety/vehicle/281474993055550/incident/1790489552975",
+            "location": {
+                "latitude": 25.740487,
+                "longitude": -100.239196,
+                "headingDegrees": 185,
+                "accuracyMeters": 2.8,
+                "address": {
+                    "streetNumber": "",
+                    "pointOfInterest": "",
+                    "neighborhood": "",
+                    "street": "Carretera Mezquital - Santa Rosa",
+                    "city": "San Nicolás de los Garza",
+                    "state": "NLE",
+                    "postalCode": "66470",
+                    "country": "MX"
+                }
+            },
+            "maxAccelerationGForce": 0
+        }
+    },
+    {
+        "id": null,
+        "source": "api",
+        "kind": "safety_event",
+        "samsara_event_id": "5445e17c-666a-5a1a-bc30-6a8a68e9147b",
+        "event_type": "GenericDistraction",
+        "event_description": null,
+        "vehicle_id": "281474993056260",
+        "vehicle_name": null,
+        "driver_id": "51910004",
+        "driver_name": null,
+        "occurred_at": "2026-09-27T06:11:52.921Z",
+        "raw_payload": {
+            "tripStartTime": "2026-09-27T02:19:36.509Z",
+            "tripEndTime": "2026-09-27T06:17:01.508Z",
+            "createdAtTime": "2026-09-27T06:11:52.921Z",
+            "updatedAtTime": "2026-09-27T06:11:52.921Z",
+            "startMs": "2026-09-27T06:10:21.418Z",
+            "endMs": "2026-09-27T06:10:21.418Z",
+            "id": "5445e17c-666a-5a1a-bc30-6a8a68e9147b",
+            "asset": {
+                "id": "281474993056260"
+            },
+            "driver": {
+                "id": "51910004"
+            },
+            "behaviorLabels": [
+                {
+                    "label": "GenericDistraction",
+                    "source": "SYSTEM"
+                }
+            ],
+            "contextLabels": [
+                {
+                    "name": "Highway",
+                    "authorId": "0",
+                    "createdAtTime": "2026-09-27T06:12:14.254Z"
+                }
+            ],
+            "eventState": "needsReview",
+            "inboxEventUrl": "https://cloud.samsara.com/o/4006685/fleet/safety/event_review?aggregationUuid=5445e17c-666a-5a1a-bc30-6a8a68e9147b&selectedAggregationKey=event",
+            "incidentReportUrl": "https://cloud.samsara.com/o/4006685/fleet/reports/safety/vehicle/281474993056260/incident/1790489421418",
+            "location": {
+                "latitude": 24.226719,
+                "longitude": -99.404705,
+                "headingDegrees": 312,
+                "accuracyMeters": 2.8,
+                "address": {
+                    "streetNumber": "",
+                    "pointOfInterest": "",
+                    "neighborhood": "",
+                    "street": "Carretera Monterrey-Ciudad Victoria",
+                    "city": "Hidalgo",
+                    "state": "TAM",
+                    "postalCode": "",
+                    "country": "MX"
+                }
+            },
+            "maxAccelerationGForce": 0
+        }
+    },
+    {
+        "id": null,
+        "source": "api",
+        "kind": "safety_event",
+        "samsara_event_id": "5445e179-c710-5bbd-99fd-64cbd1f2e246",
+        "event_type": "EdgeRailroadCrossingViolation",
+        "event_description": null,
+        "vehicle_id": "281474993591185",
+        "vehicle_name": null,
+        "driver_id": "0",
+        "driver_name": null,
+        "occurred_at": "2026-09-27T06:09:16.623Z",
+        "raw_payload": {
+            "tripStartTime": "2026-09-27T05:59:51.476Z",
+            "tripEndTime": "2026-09-27T06:26:29.536Z",
+            "createdAtTime": "2026-09-27T06:09:16.623Z",
+            "updatedAtTime": "2026-09-27T06:09:16.623Z",
+            "startMs": "2026-09-27T06:07:29.552Z",
+            "endMs": "2026-09-27T06:07:29.552Z",
+            "id": "5445e179-c710-5bbd-99fd-64cbd1f2e246",
+            "asset": {
+                "id": "281474993591185"
+            },
+            "driver": {
+                "id": "0"
+            },
+            "behaviorLabels": [
+                {
+                    "label": "EdgeRailroadCrossingViolation",
+                    "source": "SYSTEM"
+                }
+            ],
+            "contextLabels": [
+                {
+                    "name": "Wet Road",
+                    "authorId": "0",
+                    "createdAtTime": "2026-09-27T06:09:32.473Z"
+                },
+                {
+                    "name": "Night",
+                    "authorId": "0",
+                    "createdAtTime": "2026-09-27T06:09:32.473Z"
+                },
+                {
+                    "name": "Moderate Traffic",
+                    "authorId": "0",
+                    "createdAtTime": "2026-09-27T06:09:32.473Z"
+                }
+            ],
+            "eventState": "needsReview",
+            "inboxEventUrl": "https://cloud.samsara.com/o/4006685/fleet/safety/event_review?aggregationUuid=5445e179-c710-5bbd-99fd-64cbd1f2e246&selectedAggregationKey=event",
+            "incidentReportUrl": "https://cloud.samsara.com/o/4006685/fleet/reports/safety/vehicle/281474993591185/incident/1790489249552",
+            "location": {
+                "latitude": 25.740533,
+                "longitude": -100.239149,
+                "headingDegrees": 12,
+                "accuracyMeters": 2.8,
+                "address": {
+                    "streetNumber": "",
+                    "pointOfInterest": "",
+                    "neighborhood": "",
+                    "street": "Carretera Mezquital - Santa Rosa",
+                    "city": "San Nicolás de los Garza",
+                    "state": "NLE",
+                    "postalCode": "66470",
+                    "country": "MX"
+                }
+            },
+            "maxAccelerationGForce": 0
+        }
+    },
+    {
+        "id": null,
+        "source": "api",
+        "kind": "safety_event",
+        "samsara_event_id": "5445e16b-49c5-502e-9cfd-51e07c2d7872",
+        "event_type": "EdgeRailroadCrossingViolation",
+        "event_description": null,
+        "vehicle_id": "281474993056260",
+        "vehicle_name": null,
+        "driver_id": "51910004",
+        "driver_name": null,
+        "occurred_at": "2026-09-27T05:53:46.048Z",
+        "raw_payload": {
+            "tripStartTime": "2026-09-27T02:19:36.509Z",
+            "tripEndTime": "2026-09-27T06:17:01.508Z",
+            "createdAtTime": "2026-09-27T05:53:46.048Z",
+            "updatedAtTime": "2026-09-27T05:53:46.048Z",
+            "startMs": "2026-09-27T05:51:39.973Z",
+            "endMs": "2026-09-27T05:51:39.973Z",
+            "id": "5445e16b-49c5-502e-9cfd-51e07c2d7872",
+            "asset": {
+                "id": "281474993056260"
+            },
+            "driver": {
+                "id": "51910004"
+            },
+            "behaviorLabels": [
+                {
+                    "label": "EdgeRailroadCrossingViolation",
+                    "source": "SYSTEM"
+                }
+            ],
+            "contextLabels": [
+                {
+                    "name": "Night",
+                    "authorId": "0",
+                    "createdAtTime": "2026-09-27T05:54:00.068Z"
+                },
+                {
+                    "name": "Highway",
+                    "authorId": "0",
+                    "createdAtTime": "2026-09-27T05:53:46.051Z"
+                },
+                {
+                    "name": "Light Traffic",
+                    "authorId": "0",
+                    "createdAtTime": "2026-09-27T05:54:00.068Z"
+                }
+            ],
+            "eventState": "needsReview",
+            "inboxEventUrl": "https://cloud.samsara.com/o/4006685/fleet/safety/event_review?aggregationUuid=5445e16b-49c5-502e-9cfd-51e07c2d7872&selectedAggregationKey=event",
+            "incidentReportUrl": "https://cloud.samsara.com/o/4006685/fleet/reports/safety/vehicle/281474993056260/incident/1790488299973",
+            "location": {
+                "latitude": 24.120207,
+                "longitude": -99.215959,
+                "headingDegrees": 284,
+                "accuracyMeters": 2.8,
+                "address": {
+                    "streetNumber": "",
+                    "pointOfInterest": "",
+                    "neighborhood": "",
+                    "street": "Carretera Monterrey-Ciudad Victoria",
+                    "city": "Oyama",
+                    "state": "TAM",
+                    "postalCode": "",
+                    "country": "MX"
+                }
+            },
+            "maxAccelerationGForce": 0
+        }
+    },
+    {
+        "id": null,
+        "source": "api",
+        "kind": "safety_event",
+        "samsara_event_id": "5445e15f-4fbf-5630-80bb-b423eac81671",
+        "event_type": "MobileUsage",
+        "event_description": null,
+        "vehicle_id": "281474992989997",
+        "vehicle_name": null,
+        "driver_id": "51910022",
+        "driver_name": null,
+        "occurred_at": "2026-09-27T05:40:34.813Z",
+        "raw_payload": {
+            "tripStartTime": "2026-09-27T05:15:16.526Z",
+            "tripEndTime": "2026-09-27T06:02:09.519Z",
+            "createdAtTime": "2026-09-27T05:40:34.813Z",
+            "updatedAtTime": "2026-09-27T05:40:34.813Z",
+            "startMs": "2026-09-27T05:38:35.071Z",
+            "endMs": "2026-09-27T05:38:35.071Z",
+            "id": "5445e15f-4fbf-5630-80bb-b423eac81671",
+            "asset": {
+                "id": "281474992989997"
+            },
+            "driver": {
+                "id": "51910022"
+            },
+            "behaviorLabels": [
+                {
+                    "label": "MobileUsage",
+                    "source": "SYSTEM"
+                }
+            ],
+            "contextLabels": [
+                {
+                    "name": "Highway",
+                    "authorId": "0",
+                    "createdAtTime": "2026-09-27T05:40:50.760Z"
+                }
+            ],
+            "eventState": "needsReview",
+            "inboxEventUrl": "https://cloud.samsara.com/o/4006685/fleet/safety/event_review?aggregationUuid=5445e15f-4fbf-5630-80bb-b423eac81671&selectedAggregationKey=event",
+            "incidentReportUrl": "https://cloud.samsara.com/o/4006685/fleet/reports/safety/vehicle/281474992989997/incident/1790487515071",
+            "location": {
+                "latitude": 30.638146,
+                "longitude": -110.946854,
+                "headingDegrees": 9,
+                "accuracyMeters": 9.1,
+                "address": {
+                    "streetNumber": "",
+                    "pointOfInterest": "",
+                    "neighborhood": "",
+                    "street": "Libramiento de Magdalena de Kino (Cuota)",
+                    "city": "El Tasícuri",
+                    "state": "SON",
+                    "postalCode": "",
+                    "country": "MX"
+                }
+            },
+            "maxAccelerationGForce": 0
+        }
+    },
+    {
+        "id": null,
+        "source": "api",
+        "kind": "safety_event",
+        "samsara_event_id": "5445e15e-b9c5-5653-8f02-62c2c0c2b190",
+        "event_type": "MobileUsage",
+        "event_description": null,
+        "vehicle_id": "281474992993657",
+        "vehicle_name": null,
+        "driver_id": "52704088",
+        "driver_name": null,
+        "occurred_at": "2026-09-27T05:39:25.848Z",
+        "raw_payload": {
+            "tripStartTime": "2026-09-27T05:27:28.515Z",
+            "tripEndTime": "2026-09-27T09:01:38.506Z",
+            "createdAtTime": "2026-09-27T05:39:25.848Z",
+            "updatedAtTime": "2026-09-27T05:39:25.848Z",
+            "startMs": "2026-09-27T05:37:56.677Z",
+            "endMs": "2026-09-27T05:37:56.677Z",
+            "id": "5445e15e-b9c5-5653-8f02-62c2c0c2b190",
+            "asset": {
+                "id": "281474992993657"
+            },
+            "driver": {
+                "id": "52704088"
+            },
+            "behaviorLabels": [
+                {
+                    "label": "MobileUsage",
+                    "source": "SYSTEM"
+                }
+            ],
+            "contextLabels": [
+                {
+                    "name": "Highway",
+                    "authorId": "0",
+                    "createdAtTime": "2026-09-27T05:39:32.952Z"
+                }
+            ],
+            "eventState": "needsReview",
+            "inboxEventUrl": "https://cloud.samsara.com/o/4006685/fleet/safety/event_review?aggregationUuid=5445e15e-b9c5-5653-8f02-62c2c0c2b190&selectedAggregationKey=event",
+            "incidentReportUrl": "https://cloud.samsara.com/o/4006685/fleet/reports/safety/vehicle/281474992993657/incident/1790487476677",
+            "location": {
+                "latitude": 31.427839,
+                "longitude": -112.652289,
+                "headingDegrees": 146,
+                "accuracyMeters": 10.7,
+                "address": {
+                    "streetNumber": "",
+                    "pointOfInterest": "",
+                    "neighborhood": "",
+                    "street": "Carretera Sonoyta-Santa Ana",
+                    "city": "Rocky Point",
+                    "state": "SON",
+                    "postalCode": "",
+                    "country": "MX"
+                }
+            },
+            "maxAccelerationGForce": 0
+        }
+    },
+    {
+        "id": null,
+        "source": "api",
+        "kind": "safety_event",
+        "samsara_event_id": "5445e153-44a5-54c9-b75b-ba83e36a3c2e",
+        "event_type": "NoSeatbelt",
+        "event_description": null,
+        "vehicle_id": "281475003401154",
+        "vehicle_name": null,
+        "driver_id": "53448492",
+        "driver_name": null,
+        "occurred_at": "2026-09-27T05:26:49.873Z",
+        "raw_payload": {
+            "tripStartTime": "2026-09-27T04:58:37.508Z",
+            "tripEndTime": "2026-09-27T06:04:28.508Z",
+            "createdAtTime": "2026-09-27T05:26:49.873Z",
+            "updatedAtTime": "2026-09-27T05:26:49.873Z",
+            "startMs": "2026-09-27T05:25:25.797Z",
+            "endMs": "2026-09-27T05:25:25.797Z",
+            "id": "5445e153-44a5-54c9-b75b-ba83e36a3c2e",
+            "asset": {
+                "id": "281475003401154"
+            },
+            "driver": {
+                "id": "53448492"
+            },
+            "behaviorLabels": [
+                {
+                    "label": "NoSeatbelt",
+                    "source": "SYSTEM"
+                }
+            ],
+            "contextLabels": [
+                {
+                    "name": "Highway",
+                    "authorId": "0",
+                    "createdAtTime": "2026-09-27T05:27:03.832Z"
+                }
+            ],
+            "eventState": "needsReview",
+            "inboxEventUrl": "https://cloud.samsara.com/o/4006685/fleet/safety/event_review?aggregationUuid=5445e153-44a5-54c9-b75b-ba83e36a3c2e&selectedAggregationKey=event",
+            "incidentReportUrl": "https://cloud.samsara.com/o/4006685/fleet/reports/safety/vehicle/281475003401154/incident/1790486725797",
+            "location": {
+                "latitude": 25.829305,
+                "longitude": -100.271882,
+                "headingDegrees": 260,
+                "accuracyMeters": 2.8,
+                "address": {
+                    "streetNumber": "",
+                    "pointOfInterest": "",
+                    "neighborhood": "",
+                    "street": "Libramiento Noroeste de Monterrey",
+                    "city": "General Escobedo",
+                    "state": "NLE",
+                    "postalCode": "66614",
+                    "country": "MX"
+                }
+            },
+            "maxAccelerationGForce": 0
+        }
+    },
+    {
+        "id": null,
+        "source": "api",
+        "kind": "safety_event",
+        "samsara_event_id": "5445e145-ca87-59cf-be92-5323d40da572",
+        "event_type": "NoSeatbelt",
+        "event_description": null,
+        "vehicle_id": "281475003401154",
+        "vehicle_name": null,
+        "driver_id": "53448492",
+        "driver_name": null,
+        "occurred_at": "2026-09-27T05:26:49.849Z",
+        "raw_payload": {
+            "tripStartTime": "2026-09-27T04:58:37.508Z",
+            "tripEndTime": "2026-09-27T06:04:28.508Z",
+            "createdAtTime": "2026-09-27T05:26:49.849Z",
+            "updatedAtTime": "2026-09-27T05:26:49.849Z",
+            "startMs": "2026-09-27T05:10:42.567Z",
+            "endMs": "2026-09-27T05:10:42.567Z",
+            "id": "5445e145-ca87-59cf-be92-5323d40da572",
+            "asset": {
+                "id": "281475003401154"
+            },
+            "driver": {
+                "id": "53448492"
+            },
+            "behaviorLabels": [
+                {
+                    "label": "NoSeatbelt",
+                    "source": "SYSTEM"
+                }
+            ],
+            "contextLabels": [],
+            "eventState": "needsReview",
+            "inboxEventUrl": "https://cloud.samsara.com/o/4006685/fleet/safety/event_review?aggregationUuid=5445e145-ca87-59cf-be92-5323d40da572&selectedAggregationKey=event",
+            "incidentReportUrl": "https://cloud.samsara.com/o/4006685/fleet/reports/safety/vehicle/281475003401154/incident/1790485842567",
+            "location": {
+                "latitude": 25.79298,
+                "longitude": -100.223488,
+                "headingDegrees": 357,
+                "accuracyMeters": 2.8,
+                "address": {
+                    "streetNumber": "",
+                    "pointOfInterest": "",
+                    "neighborhood": "",
+                    "street": "Boulevard Jesús Dionisio Gonzáles G.",
+                    "city": "Apodaca",
+                    "state": "NLE",
+                    "postalCode": "66610",
+                    "country": "MX"
+                }
+            },
+            "maxAccelerationGForce": 0
+        }
+    },
+    {
+        "id": null,
+        "source": "api",
+        "kind": "safety_event",
+        "samsara_event_id": "5445e152-67d1-5cc7-91f0-780bb6a2dfd0",
+        "event_type": "NoSeatbelt",
+        "event_description": null,
+        "vehicle_id": "281475003401154",
+        "vehicle_name": null,
+        "driver_id": "53448492",
+        "driver_name": null,
+        "occurred_at": "2026-09-27T05:26:49.840Z",
+        "raw_payload": {
+            "tripStartTime": "2026-09-27T04:58:37.508Z",
+            "tripEndTime": "2026-09-27T06:04:28.508Z",
+            "createdAtTime": "2026-09-27T05:26:49.840Z",
+            "updatedAtTime": "2026-09-27T05:26:49.840Z",
+            "startMs": "2026-09-27T05:24:29.265Z",
+            "endMs": "2026-09-27T05:24:29.265Z",
+            "id": "5445e152-67d1-5cc7-91f0-780bb6a2dfd0",
+            "asset": {
+                "id": "281475003401154"
+            },
+            "driver": {
+                "id": "53448492"
+            },
+            "behaviorLabels": [
+                {
+                    "label": "NoSeatbelt",
+                    "source": "SYSTEM"
+                }
+            ],
+            "contextLabels": [
+                {
+                    "name": "Highway",
+                    "authorId": "0",
+                    "createdAtTime": "2026-09-27T05:27:01.995Z"
+                }
+            ],
+            "eventState": "needsReview",
+            "inboxEventUrl": "https://cloud.samsara.com/o/4006685/fleet/safety/event_review?aggregationUuid=5445e152-67d1-5cc7-91f0-780bb6a2dfd0&selectedAggregationKey=event",
+            "incidentReportUrl": "https://cloud.samsara.com/o/4006685/fleet/reports/safety/vehicle/281475003401154/incident/1790486669265",
+            "location": {
+                "latitude": 25.830973,
+                "longitude": -100.261122,
+                "headingDegrees": 259,
+                "accuracyMeters": 2.8,
+                "address": {
+                    "streetNumber": "",
+                    "pointOfInterest": "",
+                    "neighborhood": "",
+                    "street": "Libramiento Noroeste de Monterrey",
+                    "city": "General Escobedo",
+                    "state": "NLE",
+                    "postalCode": "66614",
+                    "country": "MX"
+                }
+            },
+            "maxAccelerationGForce": 0
+        }
+    },
+    {
+        "id": null,
+        "source": "api",
+        "kind": "safety_event",
+        "samsara_event_id": "5445e141-5474-57e0-a7eb-f45ad8a550e8",
+        "event_type": "MobileUsage",
+        "event_description": null,
+        "vehicle_id": "281475003401154",
+        "vehicle_name": null,
+        "driver_id": "53448492",
+        "driver_name": null,
+        "occurred_at": "2026-09-27T05:23:08.458Z",
+        "raw_payload": {
+            "tripStartTime": "2026-09-27T04:58:37.508Z",
+            "tripEndTime": "2026-09-27T06:04:28.508Z",
+            "createdAtTime": "2026-09-27T05:23:08.458Z",
+            "updatedAtTime": "2026-09-27T05:23:08.458Z",
+            "startMs": "2026-09-27T05:05:50.196Z",
+            "endMs": "2026-09-27T05:05:50.196Z",
+            "id": "5445e141-5474-57e0-a7eb-f45ad8a550e8",
+            "asset": {
+                "id": "281475003401154"
+            },
+            "driver": {
+                "id": "53448492"
+            },
+            "behaviorLabels": [
+                {
+                    "label": "MobileUsage",
+                    "source": "SYSTEM"
+                }
+            ],
+            "contextLabels": [],
+            "eventState": "needsReview",
+            "inboxEventUrl": "https://cloud.samsara.com/o/4006685/fleet/safety/event_review?aggregationUuid=5445e141-5474-57e0-a7eb-f45ad8a550e8&selectedAggregationKey=event",
+            "incidentReportUrl": "https://cloud.samsara.com/o/4006685/fleet/reports/safety/vehicle/281475003401154/incident/1790485550196",
+            "location": {
+                "latitude": 25.781657,
+                "longitude": -100.225188,
+                "headingDegrees": 16,
+                "accuracyMeters": 2.8,
+                "address": {
+                    "streetNumber": "",
+                    "pointOfInterest": "",
+                    "neighborhood": "",
+                    "street": "Boulevard Jesús Dionisio Gonzáles G.",
+                    "city": "Apodaca",
+                    "state": "NLE",
+                    "postalCode": "66632",
+                    "country": "MX"
+                }
+            },
+            "maxAccelerationGForce": 0
+        }
+    }
+]
