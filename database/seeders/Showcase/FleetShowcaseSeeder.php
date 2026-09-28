@@ -2,6 +2,7 @@
 
 namespace Database\Seeders\Showcase;
 
+use App\Domains\Assets\Actions\RefreshAssetLivePosition;
 use App\Domains\Assets\Enums\AssetStatus;
 use App\Domains\Assets\Enums\TelemetryType;
 use App\Domains\Assets\Models\Asset;
@@ -202,6 +203,10 @@ class FleetShowcaseSeeder extends ShowcaseStep
         }
 
         $this->bulkInsert('asset_location_snapshots', $rows);
+
+        // The bulk insert skips model events: move the live position columns
+        // the map and the fleet list read.
+        app(RefreshAssetLivePosition::class)->forAssets($assetIds);
     }
 
     private function seedTelemetry(): void
