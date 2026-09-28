@@ -59,7 +59,11 @@ class ReconcileMessagingChargesJob implements ShouldQueue
 
     public int $tries = 1;
 
-    public int $timeout = 300;
+    /** Must stay below the `redis` retry_after (240 s) or the job is re-delivered mid-run. */
+    public int $timeout = 220;
+
+    /** Stop taking new charges after this; the rest stay due for the next run. */
+    public const TIME_BUDGET_SECONDS = 180;
 
     public function __construct()
     {
@@ -79,7 +83,13 @@ class ReconcileMessagingChargesJob implements ShouldQueue
             ->limit(self::BATCH_SIZE)
             ->get());
 
+        $deadline = microtime(true) + self::TIME_BUDGET_SECONDS;
+
         foreach ($due as $charge) {
+            if (microtime(true) >= $deadline) {
+                break;
+            }
+
             TenantContext::for($charge->team_id, function () use ($charge, $messenger, $caller, $applyStatus, $finalize) {
                 try {
                     $this->reconcile($charge, $messenger, $caller, $applyStatus, $finalize);

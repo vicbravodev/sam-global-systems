@@ -42,6 +42,9 @@ class RecalculateDriverRiskProfilesJob implements ShouldQueue
     /** @var array<int, string> */
     public const array SEVERE_CODES = ['collision', 'near_collision', 'severe_speeding', 'ran_red_light', 'rollover_protection'];
 
+    /** Above the supervisor default, below the `redis` retry_after (240 s). */
+    public int $timeout = 220;
+
     public function __construct()
     {
         $this->onQueue('analytics');
@@ -50,37 +53,55 @@ class RecalculateDriverRiskProfilesJob implements ShouldQueue
     public function handle(SendNotification $sendNotification): void
     {
         // Recorre todos los tenants a propósito, pero recalcula cada conductor
-        // dentro del contexto de SU tenant. Ver §2.1.
+        // dentro del contexto de SU tenant. Ver §2.1. Los conteos se agregan
+        // por lote de conductores (2 queries por tenant y chunk, no 2 por
+        // conductor).
         TenantContext::withoutTenant(fn () => Driver::query()
             ->whereNotNull('team_id')
             ->with('riskProfile')
             ->chunkById(200, function ($drivers) use ($sendNotification) {
-                foreach ($drivers as $driver) {
-                    TenantContext::for(
-                        $driver->team_id,
-                        fn () => $this->recalculate($driver, $sendNotification),
-                    );
+                foreach ($drivers->groupBy('team_id') as $teamId => $teamDrivers) {
+                    TenantContext::for((int) $teamId, function () use ($teamDrivers, $sendNotification) {
+                        $since = now()->subDays(self::WINDOW_DAYS);
+                        $driverIds = $teamDrivers->modelKeys();
+
+                        $eventCounts = NormalizedEvent::query()
+                            ->whereIn('driver_id', $driverIds)
+                            ->where('occurred_at', '>=', $since)
+                            ->join('event_types', 'event_types.id', '=', 'normalized_events.event_type_id')
+                            ->selectRaw('normalized_events.driver_id as driver_id, event_types.code as code, count(*) as total')
+                            ->groupBy('normalized_events.driver_id', 'event_types.code')
+                            ->get()
+                            ->groupBy('driver_id');
+
+                        $incidentCounts = Incident::query()
+                            ->whereIn('driver_id', $driverIds)
+                            ->where('opened_at', '>=', $since)
+                            ->selectRaw('driver_id, count(*) as total')
+                            ->groupBy('driver_id')
+                            ->pluck('total', 'driver_id');
+
+                        foreach ($teamDrivers as $driver) {
+                            $counts = ($eventCounts->get($driver->id) ?? collect())
+                                ->mapWithKeys(fn ($row) => [$row->code => (int) $row->total]);
+
+                            $this->recalculate(
+                                $driver,
+                                $counts,
+                                (int) ($incidentCounts->get($driver->id) ?? 0),
+                                $sendNotification,
+                            );
+                        }
+                    });
                 }
             }));
     }
 
-    private function recalculate(Driver $driver, SendNotification $sendNotification): void
+    /**
+     * @param  Collection<string, int>  $counts  event_types.code => events in the window
+     */
+    private function recalculate(Driver $driver, Collection $counts, int $incidentsCount, SendNotification $sendNotification): void
     {
-        $since = now()->subDays(self::WINDOW_DAYS);
-
-        $counts = NormalizedEvent::query()
-            ->where('driver_id', $driver->id)
-            ->where('occurred_at', '>=', $since)
-            ->join('event_types', 'event_types.id', '=', 'normalized_events.event_type_id')
-            ->selectRaw('event_types.code as code, count(*) as total')
-            ->groupBy('event_types.code')
-            ->pluck('total', 'code');
-
-        $incidentsCount = Incident::query()
-            ->where('driver_id', $driver->id)
-            ->where('opened_at', '>=', $since)
-            ->count();
-
         if ($counts->isEmpty() && $incidentsCount === 0 && $driver->riskProfile === null) {
             return;
         }

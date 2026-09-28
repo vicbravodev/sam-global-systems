@@ -220,7 +220,7 @@ return [
         ],
         'supervisor-medium' => [
             'connection' => 'redis',
-            'queue' => ['context', 'ai-evaluation', 'automation', 'notifications', 'billing', 'sync'],
+            'queue' => ['context', 'ai-evaluation', 'automation', 'notifications', 'billing'],
             'balance' => 'auto',
             'autoScalingStrategy' => 'time',
             'maxProcesses' => 2,
@@ -246,6 +246,23 @@ return [
             'timeout' => 210,
             'nice' => 0,
         ],
+        // Long-running work (whole-fleet catalog syncs, purges). Consumed over
+        // `redis-long`, whose retry_after (1900 s) exceeds the 1800 s job
+        // timeout — on the 240 s `redis` connection these jobs were
+        // re-delivered mid-run and executed twice in parallel.
+        'supervisor-long' => [
+            'connection' => 'redis-long',
+            'queue' => ['sync'],
+            'balance' => 'auto',
+            'autoScalingStrategy' => 'size',
+            'maxProcesses' => 1,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 256,
+            'tries' => 3,
+            'timeout' => 1800,
+            'nice' => 0,
+        ],
         'supervisor-low' => [
             'connection' => 'redis',
             'queue' => ['default', 'audit', 'analytics'],
@@ -268,13 +285,22 @@ return [
                 'balanceMaxShift' => 2,
                 'balanceCooldown' => 3,
             ],
+            // With balance=auto every queue keeps minProcesses (1), so
+            // maxProcesses must exceed the queue count or no queue can ever
+            // scale (ai-evaluation was pinned to a single LLM call at a time).
+            // Budget: ~40 workers + php-fpm against Postgres max_connections.
             'supervisor-medium' => [
-                'maxProcesses' => 6,
+                'maxProcesses' => 16,
+                'balanceMaxShift' => 2,
+                'balanceCooldown' => 3,
+            ],
+            'supervisor-long' => [
+                'maxProcesses' => 4,
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 3,
             ],
             'supervisor-low' => [
-                'maxProcesses' => 3,
+                'maxProcesses' => 6,
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 3,
             ],
@@ -292,6 +318,9 @@ return [
             ],
             'supervisor-medium' => [
                 'maxProcesses' => 2,
+            ],
+            'supervisor-long' => [
+                'maxProcesses' => 1,
             ],
             'supervisor-low' => [
                 'maxProcesses' => 1,

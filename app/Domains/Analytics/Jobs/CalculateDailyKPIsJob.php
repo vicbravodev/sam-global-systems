@@ -17,6 +17,9 @@ class CalculateDailyKPIsJob implements ShouldQueue
 
     public int $tries = 3;
 
+    /** Above the supervisor default, below the `redis` retry_after (240 s). */
+    public int $timeout = 220;
+
     /** @var array<int, int> */
     public array $backoff = [5, 30, 90];
 

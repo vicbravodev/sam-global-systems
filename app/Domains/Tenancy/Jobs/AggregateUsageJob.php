@@ -28,6 +28,9 @@ class AggregateUsageJob implements ShouldQueue
 
     public int $tries = 3;
 
+    /** Above the supervisor default, below the `redis` retry_after (240 s). */
+    public int $timeout = 220;
+
     public array $backoff = [1, 5, 10];
 
     /**

@@ -28,6 +28,8 @@ class SyncDueIntegrationsJob implements ShouldQueue
 
     public const DEFAULT_INTERVAL_MINUTES = 30;
 
+    public const STALE_SYNC_MINUTES = 120;
+
     public function __construct()
     {
         $this->onQueue('sync');
@@ -75,10 +77,17 @@ class SyncDueIntegrationsJob implements ShouldQueue
         return $lastSync === null || $lastSync->lte(now()->subMinutes($interval));
     }
 
+    /**
+     * A row left `pending`/`running` by a worker that was killed (OOM,
+     * deploy, SIGKILL on timeout) never reaches `failed()`; past the longest
+     * a sync can legitimately take (3 tries × 1800 s + backoff) it no longer
+     * counts as in flight, or the integration would never sync again.
+     */
     private function hasInFlightSync(TenantIntegration $integration): bool
     {
         return IntegrationSyncJob::where('tenant_integration_id', $integration->id)
             ->whereIn('status', [SyncStatus::Pending, SyncStatus::Running])
+            ->where('updated_at', '>=', now()->subMinutes(self::STALE_SYNC_MINUTES))
             ->exists();
     }
 }
