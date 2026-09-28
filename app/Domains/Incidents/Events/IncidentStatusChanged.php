@@ -14,5 +14,8 @@ class IncidentStatusChanged
         public readonly Incident $incident,
         public readonly string $previousStatus,
         public readonly string $newStatus,
+        // Usuario que provocó el cambio (null = sistema/automatización). Los
+        // listeners lo usan para no notificar a quien hizo el cambio.
+        public readonly ?int $actorUserId = null,
     ) {}
 }
