@@ -7,6 +7,7 @@ import {
     ProviderTag,
     TERMINAL_STATUSES,
 } from '@/components/sam';
+import { IncidentViewers } from '@/components/sam/incident-detail/viewers';
 import { Button } from '@/components/ui/button';
 import { formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -184,6 +185,7 @@ export function DetailHeader({
             {/* Col 2: SLA + navegación. Las acciones del incidente viven en la
                 tarjeta Gestión, no aquí. */}
             <div className="flex items-start gap-2">
+                <IncidentViewers incidentId={incident.incidentId} />
                 <SlaDisplay incident={incident} />
 
                 {detailHref && (

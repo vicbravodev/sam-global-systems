@@ -10,6 +10,7 @@ use App\Domains\Incidents\Enums\IncidentCreatorType;
 use App\Domains\Incidents\Enums\IncidentSourceType;
 use App\Domains\Incidents\Support\IncidentNumberSequence;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Support\NavBadgeCache;
 use Database\Factories\Domains\Incidents\IncidentFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -185,6 +186,20 @@ class Incident extends Model
         static::creating(function (Incident $incident): void {
             if ($incident->number === null && $incident->team_id !== null) {
                 $incident->number = IncidentNumberSequence::next((int) $incident->team_id);
+            }
+        });
+
+        // The inbox badge counts open incidents: a new one or a status change
+        // moves it.
+        static::created(function (Incident $incident): void {
+            if ($incident->team_id !== null) {
+                NavBadgeCache::forget((int) $incident->team_id);
+            }
+        });
+
+        static::updated(function (Incident $incident): void {
+            if ($incident->team_id !== null && $incident->wasChanged('incident_status_id')) {
+                NavBadgeCache::forget((int) $incident->team_id);
             }
         });
     }

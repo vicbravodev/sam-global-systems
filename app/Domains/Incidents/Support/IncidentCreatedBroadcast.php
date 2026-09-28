@@ -3,13 +3,15 @@
 namespace App\Domains\Incidents\Support;
 
 use App\Domains\Incidents\Models\Incident;
+use App\Support\Broadcasting\QueuesRealtimeBroadcast;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldRescue;
 use Illuminate\Queue\SerializesModels;
 
-class IncidentCreatedBroadcast implements ShouldBroadcast
+class IncidentCreatedBroadcast implements ShouldBroadcast, ShouldRescue
 {
-    use SerializesModels;
+    use QueuesRealtimeBroadcast, SerializesModels;
 
     public function __construct(
         public readonly int $teamId,

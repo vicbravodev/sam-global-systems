@@ -1,7 +1,6 @@
 <?php
 
 use App\Http\Controllers\AI\AIEvaluationController;
-use App\Http\Controllers\AI\AIStreamController;
 use App\Http\Controllers\Analytics\AiPerformanceController;
 use App\Http\Controllers\Analytics\AnalyticsDashboardController;
 use App\Http\Controllers\Analytics\AnalyticsSnapshotController;
@@ -76,7 +75,6 @@ Route::prefix('{current_team}')
         Route::get('ai/evaluations', [AIEvaluationController::class, 'index'])->name('api.ai.evaluations.index');
         Route::get('ai/evaluations/{evaluation}', [AIEvaluationController::class, 'show'])->name('api.ai.evaluations.show');
         Route::post('ai/evaluations/{evaluation}/reevaluate', [AIEvaluationController::class, 'reevaluate'])->name('api.ai.evaluations.reevaluate');
-        Route::get('ai/tasks/{taskId}/stream', [AIStreamController::class, 'stream'])->name('api.ai.tasks.stream');
 
         Route::get('events/raw', [RawEventController::class, 'index'])->name('api.events.raw.index');
 

@@ -1,6 +1,6 @@
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { ChevronRight, Gauge, RefreshCw } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import {
     Kpi,
     KpiStrip,
@@ -15,8 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { useRealtimeConnection } from '@/hooks/use-realtime-connection';
-import type { TeamBroadcastDetail } from '@/hooks/use-team-broadcasts';
-import { TEAM_BROADCAST_EVENT_NAME } from '@/hooks/use-team-broadcasts';
+import { useBroadcastReload } from '@/hooks/use-team-broadcasts';
 import { formatCurrency } from '@/lib/format';
 import { formatClock } from '@/lib/time';
 import { cn } from '@/lib/utils';
@@ -31,12 +30,14 @@ import type {
 
 // Reload keys to refresh when each broadcast event arrives. Decisions and AI
 // evaluations fire per ingested event, so reloads are debounced below.
-const RELOAD_KEYS_BY_EVENT: Record<string, string[]> = {
+const RELOAD_KEYS_BY_EVENT = {
     'incidents.created': ['kpis', 'incidents', 'stream'],
+    'incidents.updated': ['kpis', 'incidents'],
     'decisions.decision_made': ['kpis', 'stream'],
     'ai.evaluation_completed': ['kpis', 'stream'],
     'usage.updated': ['usage'],
-};
+    'integration.status_changed': ['integrations'],
+} as const;
 
 const RELOAD_DEBOUNCE_MS = 2000;
 
@@ -46,44 +47,9 @@ export default function Dashboard() {
         page.props as unknown as DashboardProps;
     const teamSlug = page.props.currentTeam?.slug ?? null;
 
-    // Coalesce bursts of broadcasts into one partial reload with the union
-    // of the affected prop keys.
-    const pendingKeys = useRef<Set<string>>(new Set());
-    const timer = useRef<number | null>(null);
-
-    useEffect(() => {
-        const handler = (event: Event) => {
-            const detail = (event as CustomEvent<TeamBroadcastDetail>).detail;
-            const keys = RELOAD_KEYS_BY_EVENT[detail?.event ?? ''];
-
-            if (!keys) {
-                return;
-            }
-
-            keys.forEach((key) => pendingKeys.current.add(key));
-
-            if (timer.current !== null) {
-                return;
-            }
-
-            timer.current = window.setTimeout(() => {
-                const only = [...pendingKeys.current];
-                pendingKeys.current.clear();
-                timer.current = null;
-                router.reload({ only });
-            }, RELOAD_DEBOUNCE_MS);
-        };
-
-        window.addEventListener(TEAM_BROADCAST_EVENT_NAME, handler);
-
-        return () => {
-            window.removeEventListener(TEAM_BROADCAST_EVENT_NAME, handler);
-
-            if (timer.current !== null) {
-                window.clearTimeout(timer.current);
-            }
-        };
-    }, []);
+    useBroadcastReload(RELOAD_KEYS_BY_EVENT, {
+        debounceMs: RELOAD_DEBOUNCE_MS,
+    });
 
     return (
         <>

@@ -2,19 +2,24 @@
 
 namespace App\Domains\Analytics\Events;
 
+use App\Support\Broadcasting\QueuesRealtimeBroadcast;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldRescue;
 use Illuminate\Queue\SerializesModels;
 
-class ReportReadyBroadcast implements ShouldBroadcast
+class ReportReadyBroadcast implements ShouldBroadcast, ShouldRescue
 {
-    use SerializesModels;
+    use QueuesRealtimeBroadcast, SerializesModels;
 
     public function __construct(
         public readonly int $teamId,
         public readonly int $reportExecutionId,
         public readonly string $reportName,
         public readonly string $outputFormat,
+        // The user who asked for it, so only their session raises the
+        // "ready" toast; null for scheduled and system runs.
+        public readonly ?int $requestedByUserId = null,
     ) {}
 
     /**
@@ -41,6 +46,7 @@ class ReportReadyBroadcast implements ShouldBroadcast
             'report_execution_id' => $this->reportExecutionId,
             'report_name' => $this->reportName,
             'output_format' => $this->outputFormat,
+            'requested_by_user_id' => $this->requestedByUserId,
         ];
     }
 }

@@ -2,16 +2,18 @@
 
 namespace App\Domains\Tenancy\Events;
 
+use App\Support\Broadcasting\QueuesRealtimeBroadcast;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldRescue;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class UsageUpdatedBroadcast implements ShouldBroadcast
+class UsageUpdatedBroadcast implements ShouldBroadcast, ShouldRescue
 {
-    use Dispatchable, InteractsWithSockets, SerializesModels;
+    use Dispatchable, InteractsWithSockets, QueuesRealtimeBroadcast, SerializesModels;
 
     public function __construct(
         public int $teamId,

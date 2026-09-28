@@ -103,6 +103,8 @@ return [
         // A telematics job waiting longer than two ticks means the map is
         // falling behind: add workers to supervisor-telematics.
         'redis:telematics' => 10,
+        // A socket message older than a few seconds is already stale on screen.
+        'redis:broadcasts' => 5,
     ],
 
     /*
@@ -249,6 +251,24 @@ return [
             'timeout' => 210,
             'nice' => 0,
         ],
+        // Socket delivery. Each job is one short HTTP call to Soketi; its own
+        // pool keeps the UI live while ingestion or analytics are backlogged.
+        // One try: a retried broadcast arrives late and the page has already
+        // reloaded from the database anyway.
+        'supervisor-realtime' => [
+            'connection' => 'redis',
+            'queue' => ['broadcasts'],
+            'balance' => 'auto',
+            'autoScalingStrategy' => 'size',
+            'minProcesses' => 1,
+            'maxProcesses' => 2,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 64,
+            'tries' => 1,
+            'timeout' => 15,
+            'nice' => 0,
+        ],
         'supervisor-low' => [
             'connection' => 'redis',
             'queue' => ['default', 'audit', 'analytics'],
@@ -281,6 +301,11 @@ return [
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 3,
             ],
+            'supervisor-realtime' => [
+                'maxProcesses' => 4,
+                'balanceMaxShift' => 2,
+                'balanceCooldown' => 1,
+            ],
             // ~1 process per 3–5 tenants at a 5 s interval; raise with the fleet.
             'supervisor-telematics' => [
                 'maxProcesses' => 6,
@@ -301,6 +326,9 @@ return [
             ],
             'supervisor-telematics' => [
                 'maxProcesses' => 2,
+            ],
+            'supervisor-realtime' => [
+                'maxProcesses' => 1,
             ],
         ],
     ],

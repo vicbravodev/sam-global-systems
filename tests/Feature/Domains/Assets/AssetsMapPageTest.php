@@ -71,7 +71,8 @@ class AssetsMapPageTest extends TestCase
                         ->where('longitude', -100.3161126)
                         ->where('recordedAt', $snapshot->recorded_at->toIso8601String())
                         ->has('speed')
-                        ->has('heading'),
+                        ->has('heading')
+                        ->where('driver', null),
                 )
                 ->where('unpositionedCount', 1)
                 ->has('statusLabels'),

@@ -19,6 +19,7 @@ import { PulseStat, PulseStrip } from '@/components/sam/pulse-strip';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
+import { useBroadcastReload } from '@/hooks/use-team-broadcasts';
 import { cn } from '@/lib/utils';
 import type {
     NotificationFilterOptions,
@@ -247,6 +248,10 @@ const EMPTY_PAGINATION: NotificationsPagination = {
 };
 
 export default function NotificationsIndex() {
+    // A notification addressed to me landed: refresh the list and counters.
+    useBroadcastReload({
+        'notification.pushed': ['notifications', 'pagination', 'summary'],
+    });
     const page = usePage();
     const pageProps = page.props as unknown as NotificationsIndexProps;
     const teamSlug = page.props.currentTeam?.slug ?? null;

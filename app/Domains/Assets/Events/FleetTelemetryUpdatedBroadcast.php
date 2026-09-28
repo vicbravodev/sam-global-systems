@@ -4,12 +4,13 @@ namespace App\Domains\Assets\Events;
 
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
+use Illuminate\Contracts\Broadcasting\ShouldRescue;
 
 /**
  * The diagnostics that changed in one telematics feed cycle (ignition, fuel,
  * odometer, battery, temperature), one socket message per tenant.
  */
-class FleetTelemetryUpdatedBroadcast implements ShouldBroadcastNow
+class FleetTelemetryUpdatedBroadcast implements ShouldBroadcastNow, ShouldRescue
 {
     /**
      * @param  list<array{asset_id: int, readings: array<string, array{value: float|string, unit: string|null, recorded_at: string}>}>  $assets

@@ -94,6 +94,7 @@ class GenerateReport
                 reportExecutionId: $execution->id,
                 reportName: $definition->name,
                 outputFormat: $format->value,
+                requestedByUserId: $requestedBy === ReportRequestedByType::User ? $requestedById : null,
             ));
 
             return $execution->refresh();
