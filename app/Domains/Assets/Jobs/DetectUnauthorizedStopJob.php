@@ -18,6 +18,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Collection;
 
 /**
  * Unauthorized-stop detector (Roadmap V2-C3): a unit standing still beyond
@@ -117,22 +118,34 @@ class DetectUnauthorizedStopJob implements ShouldQueue
                 ->orWhere('device_last_connected_at', '>=', $fresh))
             ->get();
 
+        if ($candidates->isEmpty()) {
+            return;
+        }
+
+        // One cache read + unserialize of the tenant's geofences per sweep,
+        // not one per stopped unit (a parked fleet at a depot is every unit).
+        $geofences = $resolveGeofences->activeGeofences($teamId);
+
         foreach ($candidates as $asset) {
-            $this->inspectAsset($asset, $teamId, $resolveGeofences, $storeRawEvent, $queueForProcessing);
+            $this->inspectAsset($asset, $teamId, $geofences, $resolveGeofences, $storeRawEvent, $queueForProcessing);
         }
     }
 
+    /**
+     * @param  Collection<int, Geofence>  $geofences  the tenant's active geofences
+     */
     private function inspectAsset(
         Asset $asset,
         int $teamId,
+        Collection $geofences,
         ResolveGeofenceContext $resolveGeofences,
         StoreRawEvent $storeRawEvent,
         QueueRawEventForProcessing $queueForProcessing,
     ): void {
-        $insideKnownGeofence = collect($resolveGeofences->execute(
+        $insideKnownGeofence = collect($resolveGeofences->matchAgainst(
+            $geofences,
             (float) $asset->last_latitude,
             (float) $asset->last_longitude,
-            $teamId,
         ))->contains(function (array $match) {
             $type = $match['match_type'] ?? null;
 

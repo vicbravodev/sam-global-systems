@@ -27,7 +27,26 @@ class ResolveGeofenceContext
             return [];
         }
 
-        $geofences = $this->loadActiveGeofences($teamId);
+        return $this->matchAgainst($this->loadActiveGeofences($teamId), $lat, $lng);
+    }
+
+    /**
+     * The tenant's active geofences (cached), for callers that match many
+     * points of the same tenant in one pass: load once, then matchAgainst().
+     *
+     * @return Collection<int, Geofence>
+     */
+    public function activeGeofences(int $teamId): Collection
+    {
+        return $this->loadActiveGeofences($teamId);
+    }
+
+    /**
+     * @param  Collection<int, Geofence>  $geofences  one tenant's geofences
+     * @return array<int, array<string, mixed>>
+     */
+    public function matchAgainst(Collection $geofences, float $lat, float $lng): array
+    {
         $matches = [];
 
         foreach ($geofences as $geofence) {
