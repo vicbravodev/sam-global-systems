@@ -95,4 +95,50 @@ class EstimatePeriodChargesTest extends TestCase
         $this->assertSame(0, $estimate['assetDays']);
         $this->assertSame(1, $estimate['monitoredNow']);
     }
+
+    /**
+     * Transparencia (decisión 2026-09-28): el cliente ve el cierre de cada
+     * día — tracto-días, emergencias de unidades no vigiladas e importe —,
+     * con una fila por unidad y día contada como día, no como fila.
+     */
+    public function test_it_lists_a_daily_close_per_local_day(): void
+    {
+        $team = Team::factory()->create();
+        TenantBillingTerms::factory()->create(['team_id' => $team->id, 'unit_price' => 300]);
+
+        $days = UsageMeter::query()->where('code', 'monitored_asset_days')->sole();
+        $emergencies = UsageMeter::query()->where('code', 'unmonitored_emergency_asset_days')->sole();
+
+        // 1 de septiembre: 2 unidades (una fila por unidad) + una emergencia.
+        UsageEvent::factory()->count(2)->create([
+            'team_id' => $team->id,
+            'usage_meter_id' => $days->id,
+            'quantity' => 1,
+            'occurred_at' => '2026-09-01 18:00:00',
+        ]);
+        UsageEvent::factory()->create([
+            'team_id' => $team->id,
+            'usage_meter_id' => $emergencies->id,
+            'quantity' => 1,
+            'occurred_at' => '2026-09-01 18:00:00',
+        ]);
+        UsageEvent::factory()->create([
+            'team_id' => $team->id,
+            'usage_meter_id' => $days->id,
+            'quantity' => 1,
+            'occurred_at' => '2026-09-02 18:00:00',
+        ]);
+
+        $estimate = app(EstimatePeriodCharges::class)->execute($team->id, CarbonImmutable::parse('2026-09-03'));
+
+        $this->assertSame(2, $estimate['daysRecorded']);
+        $this->assertSame(1, $estimate['unmonitoredEmergencyDays']);
+        $this->assertSame(['2026-09-02', '2026-09-01'], array_column($estimate['dailyCloses'], 'date'));
+
+        $first = $estimate['dailyCloses'][1];
+        $this->assertSame(2, $first['assetDays']);
+        $this->assertSame(1, $first['emergencyDays']);
+        // 300 / 30 = 10 por día → 2 × 10 + 1 × 11 = 31.
+        $this->assertSame(31.0, $first['amount']);
+    }
 }

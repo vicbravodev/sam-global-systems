@@ -108,11 +108,22 @@ interface PeriodEstimate {
     aiToDate: number;
     aiProjected: number;
     messagingToDate: number;
+    unmonitoredEmergencyDays: number;
+    unmonitoredEmergencySurchargePercent: number;
+    unmonitoredEmergencyToDate: number;
+    dailyCloses: DailyClose[];
     totalToDate: number;
     totalProjected: number;
     minBillableAssets: number;
     aiFairUsePerAsset: number;
     aiOverageUnitPrice: number;
+}
+
+interface DailyClose {
+    date: string;
+    assetDays: number;
+    emergencyDays: number;
+    amount: number;
 }
 
 interface FleetCounts {
@@ -309,6 +320,32 @@ function MonitoringCard({
                         Costo real de SMS, WhatsApp y llamadas con margen
                     </span>
                 </MetricCell>
+                {estimate.unmonitoredEmergencyDays > 0 && (
+                    <MetricCell label="Emergencias en unidades no vigiladas">
+                        <span className="text-sm text-fg-1 tabular-nums">
+                            {money2(
+                                estimate.unmonitoredEmergencyToDate,
+                                currency,
+                            )}
+                        </span>
+                        <span className="text-2xs text-severity-medium">
+                            {estimate.unmonitoredEmergencyDays} unidad-día
+                            {estimate.unmonitoredEmergencyDays === 1
+                                ? ''
+                                : 's'}{' '}
+                            atendida
+                            {estimate.unmonitoredEmergencyDays === 1
+                                ? ''
+                                : 's'}{' '}
+                            sin estar vigilada
+                            {estimate.unmonitoredEmergencyDays === 1
+                                ? ''
+                                : 's'}{' '}
+                            · tracto-día +
+                            {estimate.unmonitoredEmergencySurchargePercent}%
+                        </span>
+                    </MetricCell>
+                )}
             </div>
             {fleet.pending > 0 && teamSlug && (
                 <div className="flex flex-col gap-2 rounded-lg border border-severity-medium/40 bg-severity-medium/10 px-4 py-2.5 text-xs text-fg-2 sm:flex-row sm:items-center sm:justify-between">
@@ -329,7 +366,74 @@ function MonitoringCard({
                     </Button>
                 </div>
             )}
+            {estimate.dailyCloses.length > 0 && (
+                <DailyCloses
+                    closes={estimate.dailyCloses}
+                    currency={currency}
+                />
+            )}
         </div>
+    );
+}
+
+/**
+ * Cierre por día del mes en curso: qué se registró cada día y cuánto suma,
+ * para que el cliente vea su uso en claro antes de la factura.
+ */
+function DailyCloses({
+    closes,
+    currency,
+}: {
+    closes: DailyClose[];
+    currency: string;
+}) {
+    return (
+        <details className="rounded-lg border border-border">
+            <summary className="cursor-pointer px-4 py-2.5 text-xs font-medium text-fg-2">
+                Cierres diarios del mes ({closes.length})
+            </summary>
+            <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                    <thead className="text-fg-3">
+                        <tr>
+                            <th className="px-4 py-2 text-left font-medium">
+                                Día
+                            </th>
+                            <th className="px-4 py-2 text-right font-medium">
+                                Tracto-días
+                            </th>
+                            <th className="px-4 py-2 text-right font-medium">
+                                Emergencias no vigiladas
+                            </th>
+                            <th className="px-4 py-2 text-right font-medium">
+                                Importe
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {closes.map((close) => (
+                            <tr
+                                key={close.date}
+                                className="border-t border-border"
+                            >
+                                <td className="px-4 py-1.5 text-fg-1 tabular-nums">
+                                    {close.date}
+                                </td>
+                                <td className="px-4 py-1.5 text-right tabular-nums">
+                                    {close.assetDays}
+                                </td>
+                                <td className="px-4 py-1.5 text-right tabular-nums">
+                                    {close.emergencyDays}
+                                </td>
+                                <td className="px-4 py-1.5 text-right tabular-nums">
+                                    {money2(close.amount, currency)}
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </details>
     );
 }
 

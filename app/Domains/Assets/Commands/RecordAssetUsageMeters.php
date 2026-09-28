@@ -2,12 +2,14 @@
 
 namespace App\Domains\Assets\Commands;
 
+use App\Domains\Assets\Actions\RecordMonitoredAssetDay;
 use App\Domains\Assets\Enums\AssetCategory;
 use App\Domains\Assets\Enums\AssetStatus;
 use App\Domains\Assets\Enums\DeviceStatus;
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Assets\Models\AssetDevice;
 use App\Domains\Tenancy\Actions\RecordUsageEvent;
+use App\Domains\Tenancy\Support\AssetDayPricing;
 use App\Models\Team;
 use App\Support\TenantContext;
 use Illuminate\Console\Command;
@@ -15,9 +17,10 @@ use Illuminate\Database\Eloquent\Builder;
 
 class RecordAssetUsageMeters extends Command
 {
-    protected $signature = 'assets:record-usage-meters';
+    protected $signature = 'assets:record-usage-meters
+        {--date= : Fecha local (Y-m-d) a cerrar; por defecto, hoy en la zona de facturación. Sirve para rellenar un cierre que faltó}';
 
-    protected $description = 'Record daily usage meters (monitored assets, asset-days, active cameras) per team';
+    protected $description = 'Cierre diario de uso por tenant: tracto-día por unidad vigilada, pico de unidades y cámaras activas';
 
     /**
      * Device types that are a camera. Dashcams are synced from the provider as
@@ -30,36 +33,83 @@ class RecordAssetUsageMeters extends Command
 
     public const string ASSET_DAYS_METER = 'monitored_asset_days';
 
-    public function handle(RecordUsageEvent $recordUsage): int
+    public function handle(RecordUsageEvent $recordUsage, RecordMonitoredAssetDay $recordAssetDay): int
     {
-        $date = now()->toDateString();
+        $date = $this->resolveDate();
+
+        if ($date === null) {
+            $this->error('La fecha debe tener formato Y-m-d.');
+
+            return self::FAILURE;
+        }
+
+        $failures = 0;
 
         // Comando de plataforma: recorre todos los tenants a propósito, y
-        // cuenta los activos de cada uno dentro de su contexto. Ver §2.1.
-        Team::query()->each(function (Team $team) use ($recordUsage, $date) {
-            TenantContext::for($team->id, function () use ($team, $recordUsage, $date) {
-                $this->recordMonitoredAssets($team, $recordUsage, $date);
-                $this->recordActiveCameras($team, $recordUsage, $date);
-            });
-        });
+        // cuenta los activos de cada uno dentro de su contexto. Ver §2.1. Un
+        // tenant que falla no deja sin cierre a los que siguen.
+        TenantContext::withoutTenant(fn () => Team::query()->select('id')->chunkById(100, function ($teams) use ($recordUsage, $recordAssetDay, $date, &$failures) {
+            foreach ($teams as $team) {
+                try {
+                    TenantContext::for($team->id, function () use ($team, $recordUsage, $recordAssetDay, $date) {
+                        if (! RecordMonitoredAssetDay::tenantBillable((int) $team->id)) {
+                            return;
+                        }
 
-        $this->info('Asset usage meters recorded successfully.');
+                        $this->recordMonitoredAssets($team, $recordUsage, $recordAssetDay, $date);
+                        $this->recordActiveCameras($team, $recordUsage, $date);
+                    });
+                } catch (\Throwable $e) {
+                    $failures++;
+                    report($e);
+                    $this->warn("Tenant {$team->id}: cierre fallido ({$e->getMessage()}).");
+                }
+            }
+        }));
+
+        if ($failures > 0) {
+            $this->error("Cierre {$date} con {$failures} tenant(s) fallido(s): reintenta con --date={$date}.");
+
+            return self::FAILURE;
+        }
+
+        $this->info("Cierre de uso {$date} registrado.");
 
         return self::SUCCESS;
     }
 
-    /**
-     * Una muestra diaria de activos vigilados alimenta dos medidores: el gauge
-     * `monitored_assets` (máximo del mes, informa el tope) y el contador
-     * `monitored_asset_days` (suma del mes, base del cobro por tracto-día).
-     * Sólo cuenta lo que SAM realmente vigila: `pending`/`excluded` no cobran.
-     */
-    private function recordMonitoredAssets(Team $team, RecordUsageEvent $recordUsage, string $date): void
+    private function resolveDate(): ?string
     {
-        $count = Asset::query()
+        $option = $this->option('date');
+
+        if ($option === null || $option === '') {
+            return AssetDayPricing::localDate(now());
+        }
+
+        $parsed = \DateTimeImmutable::createFromFormat('!Y-m-d', (string) $option);
+
+        return $parsed !== false && $parsed->format('Y-m-d') === $option ? $option : null;
+    }
+
+    /**
+     * El cierre del día registra un tracto-día por cada unidad vigilada
+     * (idempotente: la que ya se cobró al encenderse hoy no se duplica) y el
+     * gauge `monitored_assets` (pico del mes, informa el tope).
+     */
+    private function recordMonitoredAssets(Team $team, RecordUsageEvent $recordUsage, RecordMonitoredAssetDay $recordAssetDay, string $date): void
+    {
+        $count = 0;
+
+        Asset::query()
+            ->where('team_id', $team->id)
             ->monitored()
             ->where('status', '!=', AssetStatus::Inactive)
-            ->count();
+            ->chunkById(200, function ($assets) use ($recordAssetDay, $date, &$count) {
+                foreach ($assets as $asset) {
+                    $recordAssetDay->execute($asset, $date, tenantBillable: true);
+                    $count++;
+                }
+            });
 
         if ($count > 0) {
             $recordUsage->execute(
@@ -67,13 +117,7 @@ class RecordAssetUsageMeters extends Command
                 meterCode: 'monitored_assets',
                 quantity: $count,
                 eventKey: "monitored_assets:{$team->id}:{$date}",
-            );
-
-            $recordUsage->execute(
-                teamId: $team->id,
-                meterCode: self::ASSET_DAYS_METER,
-                quantity: $count,
-                eventKey: "monitored_asset_days:{$team->id}:{$date}",
+                occurredAt: AssetDayPricing::localNoon($date),
             );
         }
     }
@@ -110,6 +154,7 @@ class RecordAssetUsageMeters extends Command
                 meterCode: 'active_cameras',
                 quantity: $count,
                 eventKey: "active_cameras:{$team->id}:{$date}",
+                occurredAt: AssetDayPricing::localNoon($date),
             );
         }
     }
