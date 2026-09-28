@@ -41,9 +41,14 @@ class NullProviderAdapter implements ProviderAdapter
         return null;
     }
 
-    public function fetchSafetyEvents(TenantIntegration $integration, ?string $cursor = null, ?\DateTimeInterface $startTime = null): array
+    public function fetchSafetyEvents(TenantIntegration $integration, ?string $cursor = null, \DateTimeInterface|string|null $startTime = null): array
     {
-        return ['events' => [], 'cursor' => $cursor];
+        return [
+            'events' => [],
+            'cursor' => $cursor,
+            'start_time' => is_string($startTime) ? $startTime : null,
+            'has_more' => false,
+        ];
     }
 
     public function validateWebhookSignature(string $payload, string $signature, string $secret, ?string $timestamp = null): bool

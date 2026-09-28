@@ -4,6 +4,8 @@ namespace App\Domains\Ingestion\Jobs;
 
 use App\Domains\Ingestion\Actions\IngestSafetyEvent;
 use App\Domains\Integrations\Contracts\ProviderAdapter;
+use App\Domains\Integrations\Exceptions\ProviderCursorRejectedException;
+use App\Domains\Integrations\Exceptions\ProviderRequestFailedException;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Support\JobFailureReporter;
 use Illuminate\Bus\Queueable;
@@ -12,16 +14,31 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Poll the provider's safety-event feed for a single integration and push
  * every event through the raw-event funnel.
  *
- * The feed cursor is persisted in `sync_state_json.safety_events.cursor` only
- * AFTER the page's events have been stored, so a crash mid-poll re-reads the
- * same window on the next run and the `safety:{id}:{eventState}` dedup keys
- * absorb the replay without duplicate side effects. The first poll (no
- * cursor) backfills from 24 hours ago.
+ * Feed state lives in `sync_state_json.safety_events`:
+ * - `cursor`: Samsara's `endCursor` to resume from.
+ * - `start_time`: the exact `startTime` string of the request that produced
+ *   the cursor. Samsara requires it on every page, byte-identical, so it is
+ *   pinned for as long as the cursor lives.
+ * - `last_polled_at`: the last SUCCESSFUL poll.
+ *
+ * State is persisted only AFTER the events have been stored, and never on a
+ * failed request, so a crash or a provider error re-reads the same window on
+ * the next run and the `safety:{id}:{eventState}` dedup keys absorb the
+ * replay without duplicate side effects.
+ *
+ * When Samsara rejects the cursor (expired, invalid, or the parameters no
+ * longer match), the feed restarts from `last_polled_at` minus a safety
+ * margin, clamped to the last {@see BACKFILL_HOURS} hours. State written
+ * before `start_time` was tracked cannot be resumed at all, and its
+ * `last_polled_at` was advanced even on failed polls, so it restarts from the
+ * full backfill window.
  *
  * Unique per integration so overlapping scheduler ticks never double-poll.
  */
@@ -30,6 +47,22 @@ class PollSafetyEventsJob implements ShouldBeUnique, ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public const int BACKFILL_HOURS = 24;
+
+    /**
+     * Overlap re-read when restarting after a rejected cursor; dedup absorbs it.
+     */
+    public const int RESTART_MARGIN_MINUTES = 15;
+
+    /**
+     * Fallback delay for a 429 without a usable `Retry-After` header.
+     */
+    public const int RATE_LIMIT_FALLBACK_SECONDS = 60;
+
+    /**
+     * Prefix of the `last_error_message` this poller writes, so a successful
+     * poll only clears its own error and never one left by another sync path.
+     */
+    public const string ERROR_PREFIX = 'Safety events poll: ';
 
     public int $tries = 3;
 
@@ -49,13 +82,29 @@ class PollSafetyEventsJob implements ShouldBeUnique, ShouldQueue
         IngestSafetyEvent $ingestSafetyEvent,
     ): void {
         $state = $this->integration->sync_state_json ?? [];
-        $cursor = $state['safety_events']['cursor'] ?? null;
+        $feed = (array) ($state['safety_events'] ?? []);
 
-        $result = $providerAdapter->fetchSafetyEvents(
-            $this->integration,
-            is_string($cursor) && $cursor !== '' ? $cursor : null,
-            now()->subHours(self::BACKFILL_HOURS),
-        );
+        $cursor = $this->nonEmptyString($feed['cursor'] ?? null);
+        $startTime = $this->nonEmptyString($feed['start_time'] ?? null);
+
+        if ($cursor === null || $startTime === null) {
+            $cursor = null;
+            $startTime = $this->restartFrom($feed);
+        }
+
+        try {
+            $result = $this->fetch($providerAdapter, $feed, $cursor, $startTime);
+        } catch (\Throwable $e) {
+            $this->recordError($e);
+
+            if ($e instanceof ProviderRequestFailedException && $e->isRateLimited()) {
+                $this->release($e->retryAfterSeconds ?? self::RATE_LIMIT_FALLBACK_SECONDS);
+
+                return;
+            }
+
+            throw $e;
+        }
 
         foreach ($result['events'] as $payload) {
             $ingestSafetyEvent->execute($this->integration, (array) $payload);
@@ -63,10 +112,18 @@ class PollSafetyEventsJob implements ShouldBeUnique, ShouldQueue
 
         $state['safety_events'] = [
             'cursor' => $result['cursor'],
+            'start_time' => $result['start_time'] ?? $startTime,
             'last_polled_at' => now()->toIso8601String(),
         ];
 
-        $this->integration->update(['sync_state_json' => $state]);
+        $attributes = ['sync_state_json' => $state];
+
+        if (str_starts_with((string) $this->integration->last_error_message, self::ERROR_PREFIX)) {
+            $attributes['last_error_at'] = null;
+            $attributes['last_error_message'] = null;
+        }
+
+        $this->integration->update($attributes);
     }
 
     public function failed(\Throwable $exception): void
@@ -75,14 +132,85 @@ class PollSafetyEventsJob implements ShouldBeUnique, ShouldQueue
             'integration_id' => $this->integration->id,
         ]);
 
-        $this->integration->update([
-            'last_error_at' => now(),
-            'last_error_message' => $exception->getMessage(),
-        ]);
+        $this->recordError($exception);
     }
 
     public function uniqueId(): string
     {
         return "poll-safety-events-{$this->integration->id}";
+    }
+
+    /**
+     * Fetch from the stored position; if the provider rejects the cursor,
+     * drop it and restart once from a fresh start time.
+     *
+     * @param  array<string, mixed>  $feed
+     * @return array{events: array<int, array<string, mixed>>, cursor: string|null, start_time: string|null, has_more: bool}
+     */
+    private function fetch(ProviderAdapter $providerAdapter, array $feed, ?string $cursor, string $startTime): array
+    {
+        try {
+            return $providerAdapter->fetchSafetyEvents($this->integration, $cursor, $startTime);
+        } catch (ProviderCursorRejectedException $e) {
+            if ($cursor === null) {
+                throw $e;
+            }
+
+            $restartFrom = $this->restartFrom($feed);
+
+            Log::warning('Samsara rejected the safety-events cursor; restarting the feed', [
+                'integration_id' => $this->integration->id,
+                'team_id' => $this->integration->team_id,
+                'http_status' => $e->status,
+                'provider_message' => $e->providerMessage,
+                'restart_from' => $restartFrom,
+            ]);
+
+            return $providerAdapter->fetchSafetyEvents($this->integration, null, $restartFrom);
+        }
+    }
+
+    /**
+     * Start time for a fresh feed: `last_polled_at` minus the margin, never
+     * further back than the backfill window. A legacy state (no pinned
+     * `start_time`) had `last_polled_at` bumped even on failed polls, so it
+     * cannot be trusted and the full window is re-read instead.
+     *
+     * @param  array<string, mixed>  $feed
+     */
+    private function restartFrom(array $feed): string
+    {
+        $floor = now()->subHours(self::BACKFILL_HOURS);
+        $lastPolledAt = $this->nonEmptyString($feed['last_polled_at'] ?? null);
+        $trustworthy = $this->nonEmptyString($feed['start_time'] ?? null) !== null;
+
+        if ($lastPolledAt === null || ! $trustworthy) {
+            return $floor->toIso8601String();
+        }
+
+        try {
+            $candidate = Carbon::parse($lastPolledAt)->subMinutes(self::RESTART_MARGIN_MINUTES);
+        } catch (\Throwable) {
+            return $floor->toIso8601String();
+        }
+
+        if ($candidate->greaterThan(now())) {
+            $candidate = now()->subMinutes(self::RESTART_MARGIN_MINUTES);
+        }
+
+        return $candidate->max($floor)->toIso8601String();
+    }
+
+    private function recordError(\Throwable $exception): void
+    {
+        $this->integration->update([
+            'last_error_at' => now(),
+            'last_error_message' => self::ERROR_PREFIX.mb_substr($exception->getMessage(), 0, 500),
+        ]);
+    }
+
+    private function nonEmptyString(mixed $value): ?string
+    {
+        return is_string($value) && $value !== '' ? $value : null;
     }
 }

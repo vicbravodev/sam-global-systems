@@ -32,10 +32,12 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use Tests\Concerns\FakesSamsaraSafetyStream;
 use Tests\TestCase;
 
 class SafetyEventsPollingTest extends TestCase
 {
+    use FakesSamsaraSafetyStream;
     use RefreshDatabase;
 
     protected function setUp(): void
@@ -123,31 +125,38 @@ class SafetyEventsPollingTest extends TestCase
         $state = $integration->fresh()->sync_state_json;
         $this->assertSame('cursor-abc', $state['safety_events']['cursor']);
         $this->assertNotNull($state['safety_events']['last_polled_at']);
+        $this->assertNotEmpty($state['safety_events']['start_time']);
     }
 
-    public function test_poll_resumes_from_persisted_cursor(): void
+    public function test_poll_resumes_from_persisted_cursor_with_its_pinned_start_time(): void
     {
         Queue::fake();
 
+        $pinned = '2026-09-26T08:00:00+00:00';
+
         $integration = $this->makeIntegration(attributes: [
-            'sync_state_json' => ['safety_events' => ['cursor' => 'cursor-prev']],
+            'sync_state_json' => ['safety_events' => [
+                'cursor' => 'cursor-prev',
+                'start_time' => $pinned,
+                'last_polled_at' => now()->subMinutes(2)->toIso8601String(),
+            ]],
         ]);
 
-        Http::fake([
-            'api.samsara.com/safety-events/stream*' => Http::response([
-                'data' => [],
-                'pagination' => ['endCursor' => 'cursor-next', 'hasNextPage' => false],
-            ], 200),
-        ]);
+        $this->fakeSafetyStream(
+            [['data' => [], 'endCursor' => 'cursor-next']],
+            knownCursors: ['cursor-prev' => $pinned],
+        );
 
         (new PollSafetyEventsJob($integration))->handle(
             app(ProviderAdapter::class),
             app(IngestSafetyEvent::class),
         );
 
-        Http::assertSent(fn ($request) => str_contains($request->url(), 'after=cursor-prev'));
+        $this->assertSame([['startTime' => $pinned, 'after' => 'cursor-prev']], $this->sentSafetyStreamQueries());
 
-        $this->assertSame('cursor-next', $integration->fresh()->sync_state_json['safety_events']['cursor']);
+        $feed = $integration->fresh()->sync_state_json['safety_events'];
+        $this->assertSame('cursor-next', $feed['cursor']);
+        $this->assertSame($pinned, $feed['start_time']);
     }
 
     public function test_same_state_redelivery_is_marked_duplicate(): void
