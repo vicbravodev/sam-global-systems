@@ -162,10 +162,21 @@ export interface LocationHistoryEntry {
 
 export type LinkedIncident = LinkedIncidentEntry;
 
+/** One point of the detail map's route, oldest first. */
+export interface LocationTrailPoint {
+    latitude: number;
+    longitude: number;
+    recordedAt: string;
+}
+
 export interface AssetShowProps {
     asset: AssetDetail;
     telemetry: TelemetryEntry[];
+    /** Newest first, one row per minute over the last `trailWindowHours`. */
     locationHistory: LocationHistoryEntry[];
+    /** Route over the same window, thinned, oldest first. */
+    locationTrail: LocationTrailPoint[];
+    trailWindowHours: number;
     incidents: LinkedIncident[];
     recentEvents: RecentEventEntry[];
 }

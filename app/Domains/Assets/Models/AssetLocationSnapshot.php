@@ -2,6 +2,7 @@
 
 namespace App\Domains\Assets\Models;
 
+use App\Domains\Assets\Actions\RefreshAssetLivePosition;
 use App\Domains\Assets\Enums\LocationSource;
 use Database\Factories\Domains\Assets\AssetLocationSnapshotFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -24,6 +25,13 @@ class AssetLocationSnapshot extends Model
         'source',
         'geocoding_metadata_json',
     ];
+
+    protected static function booted(): void
+    {
+        // Snapshots written outside the telematics feed (which bulk-inserts
+        // and maintains the columns itself) still move the live position.
+        static::created(fn (self $snapshot) => app(RefreshAssetLivePosition::class)->fromSnapshot($snapshot));
+    }
 
     /**
      * @return BelongsTo<Asset, $this>
