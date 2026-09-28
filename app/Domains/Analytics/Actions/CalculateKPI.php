@@ -15,6 +15,8 @@ use App\Domains\Tenancy\Models\UsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
 use App\Support\TenantContext;
 use Carbon\CarbonInterface;
+use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Facades\DB;
 
 class CalculateKPI
 {
@@ -79,7 +81,16 @@ class CalculateKPI
                 return $record;
             }
 
-            return KpiRecord::query()->create($payload);
+            try {
+                // Savepoint: a concurrent run may insert the same key first
+                // (unique with NULLS NOT DISTINCT on pgsql); then update it.
+                return DB::transaction(fn () => KpiRecord::query()->create($payload));
+            } catch (UniqueConstraintViolationException) {
+                $record = $query->firstOrFail();
+                $record->forceFill($payload)->save();
+
+                return $record;
+            }
         });
     }
 

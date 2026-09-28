@@ -14,6 +14,8 @@ use App\Domains\Tenancy\Models\UsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
 use App\Support\TenantContext;
 use Carbon\CarbonInterface;
+use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Facades\DB;
 
 class BuildAnalyticsSnapshot
 {
@@ -40,13 +42,15 @@ class BuildAnalyticsSnapshot
                 ]],
             };
 
-            $existing = AnalyticsSnapshot::query()
+            $find = fn (): ?AnalyticsSnapshot => AnalyticsSnapshot::query()
                 ->where('team_id', $teamId)
                 ->where('snapshot_type', $type->value)
                 ->whereNull('entity_type')
                 ->whereNull('entity_id')
                 ->whereDate('period_start', $periodStart->toDateString())
                 ->first();
+
+            $existing = $find();
 
             $payload = [
                 'team_id' => $teamId,
@@ -64,7 +68,16 @@ class BuildAnalyticsSnapshot
                 return $existing;
             }
 
-            return AnalyticsSnapshot::query()->create($payload);
+            try {
+                // Savepoint: a concurrent run may insert the same key first
+                // (unique with NULLS NOT DISTINCT on pgsql); then update it.
+                return DB::transaction(fn () => AnalyticsSnapshot::query()->create($payload));
+            } catch (UniqueConstraintViolationException) {
+                $existing = $find() ?? throw new \RuntimeException('Analytics snapshot vanished after a unique violation.');
+                $existing->forceFill($payload)->save();
+
+                return $existing;
+            }
         });
     }
 

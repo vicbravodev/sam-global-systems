@@ -22,6 +22,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * Cierra un periodo en una factura (decisión 2026-09-28, cobro por
@@ -61,16 +62,28 @@ class GenerateInvoiceSnapshotJob implements ShouldQueue
         $resolveTerms ??= app(ResolveBillingTerms::class);
         $resolveAssetLimit ??= app(ResolveAssetLimit::class);
 
-        TenantContext::for($this->teamId, function () use ($resolveTerms, $resolveAssetLimit) {
+        $periodStart = CarbonImmutable::parse($this->periodStart ?? now()->startOfMonth()->toDateString())->startOfDay();
+        $periodEnd = CarbonImmutable::parse($this->periodEnd ?? now()->endOfMonth()->toDateString())->startOfDay();
+
+        // The admin trigger and the scheduled run (or a double click) can
+        // generate the same period concurrently: the check-then-create below
+        // runs under a per-tenant, per-period lock (the unique index on
+        // (team_id, period_start, period_end) is the final guard).
+        $lockKey = sprintf('billing:invoice-snapshot:%d:%s:%s', $this->teamId, $periodStart->toDateString(), $periodEnd->toDateString());
+
+        Cache::lock($lockKey, 120)->block(30, fn () => $this->generate($resolveTerms, $resolveAssetLimit, $periodStart, $periodEnd));
+    }
+
+    private function generate(ResolveBillingTerms $resolveTerms, ResolveAssetLimit $resolveAssetLimit, CarbonImmutable $periodStart, CarbonImmutable $periodEnd): void
+    {
+        TenantContext::for($this->teamId, function () use ($resolveTerms, $resolveAssetLimit, $periodStart, $periodEnd) {
             $team = Team::findOrFail($this->teamId);
-            $periodStart = CarbonImmutable::parse($this->periodStart ?? now()->startOfMonth()->toDateString())->startOfDay();
-            $periodEnd = CarbonImmutable::parse($this->periodEnd ?? now()->endOfMonth()->toDateString())->startOfDay();
 
             $existingSnapshot = InvoiceSnapshot::query()
                 ->where('team_id', $team->id)
                 ->whereDate('period_start', $periodStart->toDateString())
                 ->whereDate('period_end', $periodEnd->toDateString())
-                ->first();
+                ->exists();
 
             if ($existingSnapshot) {
                 return;
