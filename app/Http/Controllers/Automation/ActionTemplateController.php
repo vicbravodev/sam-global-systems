@@ -6,6 +6,7 @@ use App\Domains\Automation\Models\ActionTemplate;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Automation\StoreActionTemplateRequest;
 use App\Models\Team;
+use App\Support\Http\PerPage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -25,7 +26,7 @@ class ActionTemplateController extends Controller
             $query->where('is_active', true);
         }
 
-        $templates = $query->orderBy('id')->paginate($request->integer('per_page', 25));
+        $templates = $query->orderBy('id')->paginate(PerPage::from($request, 25));
 
         return response()->json($templates);
     }

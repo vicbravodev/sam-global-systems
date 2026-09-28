@@ -8,6 +8,7 @@ use App\Domains\Context\Enums\GeofenceType;
 use App\Domains\Context\Models\Geofence;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
+use App\Support\Http\PerPage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -30,7 +31,7 @@ class GeofenceController extends Controller
             }
         }
 
-        $geofences = $query->orderByDesc('id')->paginate($request->integer('per_page', 15));
+        $geofences = $query->orderByDesc('id')->paginate(PerPage::from($request, 15));
 
         return response()->json($geofences);
     }

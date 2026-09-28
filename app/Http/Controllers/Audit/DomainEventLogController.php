@@ -6,6 +6,7 @@ use App\Domains\Audit\Models\AuditLog;
 use App\Domains\Audit\Models\DomainEventLog;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
+use App\Support\Http\PerPage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -36,7 +37,7 @@ class DomainEventLogController extends Controller
         }
 
         $events = $query->orderByDesc('occurred_at')
-            ->paginate($request->integer('per_page', 25));
+            ->paginate(PerPage::from($request, 25));
 
         return response()->json($events);
     }

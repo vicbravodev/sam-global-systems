@@ -6,6 +6,7 @@ use App\Domains\Audit\Models\AuditLog;
 use App\Domains\Audit\Models\ChangeHistory;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
+use App\Support\Http\PerPage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -30,7 +31,7 @@ class ChangeHistoryController extends Controller
         }
 
         $changes = $query->orderByDesc('occurred_at')
-            ->paginate($request->integer('per_page', 25));
+            ->paginate(PerPage::from($request, 25));
 
         return response()->json($changes);
     }

@@ -152,4 +152,49 @@ class AssetLocationTest extends TestCase
             'Response should include a cursor for pagination when more records exist',
         );
     }
+
+    public function test_latest_location_is_bounded_by_last_location_at_without_losing_newer_points(): void
+    {
+        [, $asset] = $this->createAssetWithUser();
+        $other = Asset::factory()->create([
+            'team_id' => $asset->team_id,
+            'asset_type_id' => $asset->asset_type_id,
+        ]);
+
+        $base = now()->startOfSecond()->subHour();
+
+        foreach ([30, 20, 10] as $minutesAgo) {
+            AssetLocationSnapshot::factory()->create([
+                'asset_id' => $asset->id,
+                'recorded_at' => $base->copy()->subMinutes($minutesAgo),
+            ]);
+        }
+
+        // The feed stored the point at `$base` and stamped the asset with it…
+        AssetLocationSnapshot::factory()->create(['asset_id' => $asset->id, 'recorded_at' => $base]);
+        $asset->forceFill(['last_location_at' => $base])->save();
+
+        // …and a later point arrived through another path (sync / per event).
+        $newest = AssetLocationSnapshot::factory()->create([
+            'asset_id' => $asset->id,
+            'recorded_at' => $base->copy()->addMinutes(5),
+        ]);
+
+        // Never touched by the feed: the whole range is still considered.
+        $otherLatest = AssetLocationSnapshot::factory()->create([
+            'asset_id' => $other->id,
+            'recorded_at' => $base->copy()->subDay(),
+        ]);
+
+        $this->assertSame($newest->id, $asset->fresh()->latestLocation?->id);
+
+        $loaded = Asset::withoutGlobalScopes()
+            ->whereKey([$asset->id, $other->id])
+            ->with('latestLocation')
+            ->get()
+            ->keyBy('id');
+
+        $this->assertSame($newest->id, $loaded[$asset->id]->latestLocation?->id);
+        $this->assertSame($otherLatest->id, $loaded[$other->id]->latestLocation?->id);
+    }
 }

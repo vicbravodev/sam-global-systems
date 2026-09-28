@@ -5,6 +5,7 @@ namespace App\Http\Controllers\TenantConfig;
 use App\Domains\TenantConfig\Models\TenantConfigVersion;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
+use App\Support\Http\PerPage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -17,7 +18,7 @@ class TenantConfigVersionController extends Controller
         $versions = TenantConfigVersion::query()
             ->where('team_id', $current_team->id)
             ->orderByDesc('version')
-            ->paginate($request->integer('per_page', 15));
+            ->paginate(PerPage::from($request, 15));
 
         return response()->json($versions);
     }

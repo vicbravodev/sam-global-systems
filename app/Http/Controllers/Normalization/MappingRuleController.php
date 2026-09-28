@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Normalization\StoreMappingRuleRequest;
 use App\Http\Requests\Normalization\UpdateMappingRuleRequest;
 use App\Models\Team;
+use App\Support\Http\PerPage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -28,7 +29,7 @@ class MappingRuleController extends Controller
             $query->where('provider_id', $request->input('provider_id'));
         }
 
-        $rules = $query->paginate($request->integer('per_page', 50));
+        $rules = $query->paginate(PerPage::from($request, 50));
 
         return response()->json($rules);
     }

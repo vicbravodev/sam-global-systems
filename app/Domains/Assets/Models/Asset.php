@@ -98,7 +98,21 @@ class Asset extends Model
      */
     public function latestLocation(): HasOne
     {
-        return $this->hasOne(AssetLocationSnapshot::class)->latestOfMany('recorded_at');
+        // Bounded by the asset's own `last_location_at` (set by the telematics
+        // feed from a point it has just stored, same whole-second UTC value).
+        // Without it the one-of-many subquery computes MAX(recorded_at) by
+        // reading EVERY retained GPS point of each asset (hundreds of
+        // thousands per unit at feed rate); with it the index seeks straight
+        // to the newest ones. Newer points written by other paths (sync, per
+        // event) are still >= and still win; assets the feed never touched
+        // (NULL) fall back to the full range.
+        return $this->hasOne(AssetLocationSnapshot::class)->ofMany(
+            ['recorded_at' => 'max', 'id' => 'max'],
+            fn (Builder $query) => $query->join('assets as latest_location_asset', fn ($join) => $join
+                ->on('latest_location_asset.id', '=', 'asset_location_snapshots.asset_id')
+                ->whereRaw("asset_location_snapshots.recorded_at >= COALESCE(latest_location_asset.last_location_at, '1970-01-01 00:00:00')")),
+            'latestLocation',
+        );
     }
 
     /**

@@ -8,6 +8,7 @@ use App\Domains\Automation\Jobs\ExecuteActionJob;
 use App\Domains\Automation\Models\ActionExecution;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
+use App\Support\Http\PerPage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -30,7 +31,7 @@ class ActionExecutionController extends Controller
             $query->where('incident_id', $request->integer('incident_id'));
         }
 
-        $executions = $query->orderByDesc('id')->paginate($request->integer('per_page', 25));
+        $executions = $query->orderByDesc('id')->paginate(PerPage::from($request, 25));
 
         return response()->json($executions);
     }

@@ -303,10 +303,17 @@ class AssetPageController extends Controller
      */
     private function movingCount(\Closure $assets, \DateTimeInterface $freshSince): int
     {
+        // "Latest reading is fresh" == "some reading is fresh". whereHas on
+        // the latestOfMany relations joined an unconstrained
+        // MAX(recorded_at) GROUP BY asset_id over the whole snapshot tables
+        // (every tenant); these EXISTS use the (asset_id, …, recorded_at)
+        // indexes.
         return $assets()
             ->where(fn (Builder $q) => $q
-                ->whereHas('latestLocation', fn (Builder $s) => $s->where('recorded_at', '>=', $freshSince))
-                ->orWhereHas('latestSpeedTelemetry', fn (Builder $s) => $s->where('recorded_at', '>=', $freshSince)))
+                ->whereHas('locationSnapshots', fn (Builder $s) => $s->where('recorded_at', '>=', $freshSince))
+                ->orWhereHas('telemetrySnapshots', fn (Builder $s) => $s
+                    ->where('telemetry_type', TelemetryType::Speed)
+                    ->where('recorded_at', '>=', $freshSince)))
             ->with(['latestLocation', 'latestSpeedTelemetry'])
             ->get()
             ->filter(function (Asset $asset): bool {

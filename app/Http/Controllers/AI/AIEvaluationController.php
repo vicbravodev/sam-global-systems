@@ -8,13 +8,12 @@ use App\Domains\AI\Jobs\ReevaluateEventJob;
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
+use App\Support\Http\PerPage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class AIEvaluationController extends Controller
 {
-    private const MAX_PER_PAGE = 100;
-
     public function index(Request $request, Team $current_team): JsonResponse
     {
         $this->authorize('viewAny', AIEventEvaluation::class);
@@ -34,7 +33,7 @@ class AIEvaluationController extends Controller
         }
 
         $evaluations = $query->orderByDesc('id')
-            ->paginate(min(max($request->integer('per_page', 15), 1), self::MAX_PER_PAGE));
+            ->paginate(PerPage::from($request, 15));
 
         return response()->json($evaluations);
     }

@@ -9,6 +9,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Drivers\UpdateDriverContactsRequest;
 use App\Http\Requests\Drivers\UpdateDriverDocumentsRequest;
 use App\Models\Team;
+use App\Support\Http\PerPage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -36,7 +37,7 @@ class DriverController extends Controller
         }
 
         $drivers = $query->orderByDesc('id')
-            ->paginate($request->integer('per_page', 15));
+            ->paginate(PerPage::from($request, 15));
 
         return response()->json($drivers);
     }
@@ -57,7 +58,7 @@ class DriverController extends Controller
         $assignments = DriverAssignment::with('asset')
             ->where('driver_id', $driver->id)
             ->orderByDesc('started_at')
-            ->paginate($request->integer('per_page', 15));
+            ->paginate(PerPage::from($request, 15));
 
         return response()->json($assignments);
     }
