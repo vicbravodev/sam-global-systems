@@ -428,6 +428,7 @@ function FactsCard({ event }: { event: EventDetail }) {
                             latitude={facts.location.latitude}
                             longitude={facts.location.longitude}
                             label={event.eventType ?? undefined}
+                            variant="pin"
                             tone={
                                 severity === 'critical'
                                     ? 'critical'

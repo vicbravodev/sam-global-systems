@@ -285,6 +285,28 @@
     --line-tight: 1.15;
     --line-snug: 1.35;
     --line-normal: 1.5;
+
+    /* Map (basemap palette, read at runtime by components/sam/map). The
+       basemap recedes: low contrast, tinted to the UI hue, so the only color
+       on a map is the status of the fleet. */
+    --map-bg: oklch(0.935 0.006 250);
+    --map-land: oklch(0.918 0.007 250);
+    --map-park: oklch(0.9 0.035 150);
+    --map-water: oklch(0.82 0.05 232);
+    --map-building: oklch(0.885 0.008 250);
+    --map-road: oklch(0.99 0.002 250);
+    --map-road-major: oklch(0.965 0.045 85);
+    --map-road-casing: oklch(0.8 0.01 250);
+    --map-rail: oklch(0.76 0.008 250);
+    --map-boundary: oklch(0.58 0.03 280);
+    --map-label: oklch(0.46 0.012 250);
+    --map-label-strong: oklch(0.27 0.012 250);
+    --map-label-water: oklch(0.45 0.08 232);
+    --map-label-halo: oklch(0.96 0.005 250);
+    /* Ring around markers: separates a marker from any basemap color. */
+    --map-marker-ring: oklch(0.995 0.002 260);
+    --map-trail: var(--primary);
+    --map-shield-opacity: 1;
 }
 
 /* -------------------- Root tokens (DARK — the real default) -------------------- */
@@ -371,6 +393,24 @@
     --sidebar-primary: var(--primary);
     --sidebar-primary-foreground: var(--primary-foreground);
     --sidebar-ring: var(--ring);
+
+    --map-bg: oklch(0.235 0.012 255);
+    --map-land: oklch(0.25 0.012 255);
+    --map-park: oklch(0.265 0.03 160);
+    --map-water: oklch(0.175 0.035 240);
+    --map-building: oklch(0.29 0.012 255);
+    --map-road: oklch(0.35 0.01 255);
+    --map-road-major: oklch(0.46 0.035 75);
+    --map-road-casing: oklch(0.2 0.01 255);
+    --map-rail: oklch(0.38 0.01 255);
+    --map-boundary: oklch(0.55 0.04 280);
+    --map-label: oklch(0.7 0.01 255);
+    --map-label-strong: oklch(0.88 0.008 255);
+    --map-label-water: oklch(0.68 0.06 232);
+    --map-label-halo: oklch(0.22 0.012 255);
+    --map-marker-ring: oklch(0.14 0.006 260);
+    --map-trail: var(--primary);
+    --map-shield-opacity: 0.4;
 }
 
 /* -------------------- Semantic typography classes -------------------- */
@@ -537,6 +577,202 @@
         opacity: 1;
         transform: translateY(-2px);
     }
+}
+
+/* -------------------- Maps (components/sam/map) -------------------- */
+/* Markers are DOM overlays (maplibre Marker). They read the status color
+   from --unit, set inline from the status token. */
+.sam-map-unit {
+    --unit: var(--fg-3);
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+    outline: none;
+}
+.sam-map-unit__body {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    background: var(--unit);
+    color: var(--map-marker-ring);
+    box-shadow:
+        0 0 0 2px var(--map-marker-ring),
+        0 1px 3px 0 var(--shadow-color-2);
+    transition: transform var(--motion-fast) var(--ease-out);
+}
+.sam-map-unit__dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: currentColor;
+}
+.sam-map-unit__arrow {
+    width: 11px;
+    height: 11px;
+    transition: transform var(--motion-normal) var(--ease-out);
+}
+/* Not reporting: hollow, so a dead unit never reads as a healthy one. */
+.sam-map-unit[data-muted] .sam-map-unit__body {
+    background: var(--map-marker-ring);
+    color: var(--unit);
+    box-shadow:
+        inset 0 0 0 2px var(--unit),
+        0 0 0 2px var(--map-marker-ring),
+        0 1px 3px 0 var(--shadow-color-2);
+}
+/* Needs attention: a slow halo, the one piece of motion on a quiet map. */
+.sam-map-unit[data-alert]::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 999px;
+    background: var(--unit);
+    animation: sam-pulse 1.8s var(--ease-out) infinite;
+}
+.sam-map-unit:hover .sam-map-unit__body,
+.sam-map-unit:focus-visible .sam-map-unit__body {
+    transform: scale(1.18);
+}
+.sam-map-unit:focus-visible .sam-map-unit__body {
+    box-shadow:
+        0 0 0 2px var(--map-marker-ring),
+        0 0 0 4px var(--ring);
+}
+.sam-map-unit[data-selected] .sam-map-unit__body {
+    transform: scale(1.25);
+    box-shadow:
+        0 0 0 2px var(--map-marker-ring),
+        0 0 0 5px color-mix(in oklch, var(--primary) 55%, transparent),
+        0 2px 6px 0 var(--shadow-color-2);
+}
+.sam-map-unit[data-emphasis] .sam-map-unit__body {
+    width: 22px;
+    height: 22px;
+}
+/* Unit code plate, shown once the map is zoomed in far enough to read it. */
+.sam-map-unit__label {
+    position: absolute;
+    top: 50%;
+    left: calc(100% + 2px);
+    display: none;
+    padding: 1px 5px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-1);
+    color: var(--fg-1);
+    font-size: var(--text-3xs);
+    font-weight: 600;
+    line-height: 1.4;
+    white-space: nowrap;
+    box-shadow: var(--shadow-xs);
+    transform: translateY(-50%);
+    pointer-events: none;
+}
+.sam-map[data-labels] .sam-map-unit__label,
+.sam-map-unit[data-selected] .sam-map-unit__label {
+    display: block;
+}
+
+/* Cluster bubble: the ring is the status mix of its members (conic
+   gradient set inline), the center the count. */
+.sam-map-cluster {
+    display: grid;
+    place-items: center;
+    width: var(--size, 32px);
+    height: var(--size, 32px);
+    padding: 3px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--mix, var(--fg-3));
+    box-shadow:
+        0 0 0 2px var(--map-marker-ring),
+        var(--shadow-md);
+    cursor: pointer;
+    outline: none;
+    transition: transform var(--motion-fast) var(--ease-out);
+}
+.sam-map-cluster:hover,
+.sam-map-cluster:focus-visible {
+    transform: scale(1.08);
+}
+.sam-map-cluster:focus-visible {
+    box-shadow:
+        0 0 0 2px var(--map-marker-ring),
+        0 0 0 4px var(--ring);
+}
+.sam-map-cluster__count {
+    display: grid;
+    place-items: center;
+    width: 100%;
+    height: 100%;
+    border-radius: 999px;
+    background: var(--surface-1);
+    color: var(--fg-1);
+    font-size: var(--text-2xs);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Event / incident location pin. */
+.sam-map-pin {
+    --unit: var(--primary);
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+}
+.sam-map-pin::before {
+    content: '';
+    position: absolute;
+    inset: -8px;
+    border-radius: 999px;
+    background: color-mix(in oklch, var(--unit) 22%, transparent);
+}
+.sam-map-pin__core {
+    width: 14px;
+    height: 14px;
+    border-radius: 999px;
+    background: var(--unit);
+    box-shadow:
+        0 0 0 2px var(--map-marker-ring),
+        0 1px 3px 0 var(--shadow-color-2);
+}
+
+/* maplibre chrome, restyled to the UI. */
+.sam-map .maplibregl-canvas:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: -2px;
+}
+.sam-map .maplibregl-ctrl.maplibregl-ctrl-attrib {
+    border-radius: var(--radius-sm);
+    background: color-mix(in oklch, var(--surface-1) 88%, transparent);
+    color: var(--fg-3);
+    font-size: var(--text-3xs);
+}
+.sam-map .maplibregl-ctrl-attrib a {
+    color: var(--fg-2);
+}
+.sam-map .maplibregl-ctrl-attrib-inner {
+    color: var(--fg-3);
+}
+.sam-map .maplibregl-ctrl-attrib.maplibregl-compact {
+    min-height: 22px;
+}
+.sam-map .maplibregl-ctrl-attrib-button {
+    background-color: var(--surface-1);
+}
+.dark .sam-map .maplibregl-ctrl-attrib-button {
+    filter: invert(1);
 }
 
 @media (prefers-reduced-motion: reduce) {

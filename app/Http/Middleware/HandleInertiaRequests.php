@@ -17,6 +17,7 @@ use App\Domains\Tenancy\Enums\SubscriptionStatus;
 use App\Domains\Tenancy\Models\Subscription;
 use App\Domains\TenantConfig\Models\TenantSetting;
 use App\Models\User;
+use App\Support\NavBadgeCache;
 use App\Support\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -139,8 +140,8 @@ class HandleInertiaRequests extends Middleware
     private function navBadges(int $teamId): array
     {
         return Cache::remember(
-            "nav-badges:{$teamId}",
-            now()->addMinute(),
+            NavBadgeCache::key($teamId),
+            NavBadgeCache::TTL_SECONDS,
             fn (): array => TenantContext::for($teamId, fn (): array => [
                 'inbox' => Incident::query()->open()->count(),
             ]),

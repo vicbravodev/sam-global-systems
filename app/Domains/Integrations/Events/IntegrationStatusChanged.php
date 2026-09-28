@@ -2,14 +2,16 @@
 
 namespace App\Domains\Integrations\Events;
 
+use App\Support\Broadcasting\QueuesRealtimeBroadcast;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldRescue;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class IntegrationStatusChanged implements ShouldBroadcast
+class IntegrationStatusChanged implements ShouldBroadcast, ShouldRescue
 {
-    use Dispatchable, SerializesModels;
+    use Dispatchable, QueuesRealtimeBroadcast, SerializesModels;
 
     public function __construct(
         public readonly int $teamId,

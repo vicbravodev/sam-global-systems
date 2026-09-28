@@ -259,6 +259,7 @@ class DispatchNotification
             priority: $notification->priority->value,
             subject: $notification->subject,
             bodyPreview: $notification->body_preview,
+            teamId: (int) $notification->team_id,
         ));
     }
 }

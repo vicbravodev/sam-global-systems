@@ -112,6 +112,30 @@ export type IncidentUpdatedPayload = {
     updated_at: string;
 };
 
+export type IntegrationStatusChangedPayload = {
+    integration_id: number;
+    provider_code: string;
+    status: 'active' | 'inactive' | 'error' | 'pending';
+};
+
+export type ReportReadyPayload = {
+    report_execution_id: number;
+    report_name: string;
+    output_format: string;
+    /** Null for scheduled and system runs. */
+    requested_by_user_id: number | null;
+};
+
+/** In-app notification, sent on the recipient's own `users.{id}` channel. */
+export type NotificationPushedPayload = {
+    notification_id: number;
+    notification_type: string;
+    priority: string;
+    subject: string | null;
+    body_preview: string | null;
+    team_id: number | null;
+};
+
 export type TeamBroadcastEventMap = {
     'asset.location_updated': AssetLocationUpdatedPayload;
     'fleet.positions_updated': FleetPositionsUpdatedPayload;
@@ -124,6 +148,14 @@ export type TeamBroadcastEventMap = {
     'action.executed': ActionExecutedPayload;
     'incidents.created': IncidentCreatedPayload;
     'incidents.updated': IncidentUpdatedPayload;
+    'integration.status_changed': IntegrationStatusChangedPayload;
+    'report.ready': ReportReadyPayload;
 };
 
 export type TeamBroadcastEvent = keyof TeamBroadcastEventMap;
+
+export type UserBroadcastEventMap = {
+    'notification.pushed': NotificationPushedPayload;
+};
+
+export type UserBroadcastEvent = keyof UserBroadcastEventMap;
