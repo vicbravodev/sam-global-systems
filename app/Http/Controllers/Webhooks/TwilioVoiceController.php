@@ -164,7 +164,7 @@ class TwilioVoiceController extends Controller
             category: AuditCategory::Domain,
             entityType: 'incident',
             entityId: $incident->id,
-            summary: "Verificación telefónica del incidente #{$incident->id}: {$result} (DTMF desde {$row->phone}).",
+            summary: "Verificación telefónica del incidente {$incident->reference()}: {$result} (DTMF desde {$row->phone}).",
             teamId: $row->team_id,
             metadata: ['verification_id' => $row->id, 'attempt' => $row->attempt],
             sourceType: 'twilio_voice',

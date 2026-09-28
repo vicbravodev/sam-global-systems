@@ -75,20 +75,23 @@ class ProcessInboundReply
             // aquí no había contexto que scopeara nada. Ver §2.1.
             TenantContext::set($token->team_id);
 
+            // La referencia visible es el número por tenant, nunca el id
+            // global (que revela el volumen de toda la plataforma).
+            $incident = $token->incident()->first();
+            $reference = $incident?->reference() ?? 'solicitado';
+
             if ($token->isConsumed()) {
-                return "Ya registramos tu respuesta para el incidente #{$token->incident_id}.";
+                return "Ya registramos tu respuesta para el incidente {$reference}.";
             }
 
             if ($token->isExpired()) {
-                return "El código {$code} ha expirado. Gestiona el incidente #{$token->incident_id} desde el portal.";
+                return "El código {$code} ha expirado. Gestiona el incidente {$reference} desde el portal.";
             }
-
-            $incident = $token->incident()->first();
 
             if ($incident === null || $incident->isTerminal()) {
                 $token->update(['consumed_at' => now(), 'consumed_action' => 'noop_terminal']);
 
-                return "El incidente #{$token->incident_id} ya está cerrado.";
+                return "El incidente {$reference} ya está cerrado.";
             }
 
             $via = $token->channel_type->value;
@@ -112,7 +115,7 @@ class ProcessInboundReply
                 category: AuditCategory::Domain,
                 entityType: 'incident',
                 entityId: $incident->id,
-                summary: "Respuesta {$keyword} vía {$via} de {$fromAddress} para el incidente #{$incident->id}.",
+                summary: "Respuesta {$keyword} vía {$via} de {$fromAddress} para el incidente {$incident->reference()}.",
                 teamId: $token->team_id,
                 metadata: ['token_id' => $token->id, 'channel_type' => $via],
                 sourceType: 'twilio_inbound',
@@ -127,7 +130,7 @@ class ProcessInboundReply
     {
         $this->acknowledgeIncident->execute($incident, $token->user_id, via: $via);
 
-        return "✔ Incidente #{$incident->id} confirmado. SLA detenido.";
+        return "✔ Incidente {$incident->reference()} confirmado. SLA detenido.";
     }
 
     private function dismiss(Incident $incident, NotificationReplyToken $token, string $via): string
@@ -140,7 +143,7 @@ class ProcessInboundReply
             resolvedById: $token->user_id,
         );
 
-        return "✖ Incidente #{$incident->id} descartado como falsa alarma.";
+        return "✖ Incidente {$incident->reference()} descartado como falsa alarma.";
     }
 
     private function escalate(Incident $incident, NotificationReplyToken $token, string $via): string
@@ -152,7 +155,7 @@ class ProcessInboundReply
             escalatedById: $token->user_id,
         );
 
-        return "▲ Incidente #{$incident->id} escalado.";
+        return "▲ Incidente {$incident->reference()} escalado.";
     }
 
     private function normalizeAddress(string $address): string

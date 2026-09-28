@@ -20,7 +20,7 @@ class VerificationCallTwiml
             : 'alerta de pánico en su flota';
 
         $say = self::escape(
-            "Atención. SAM reporta una {$subject}, incidente número {$incident->id}. "
+            "Atención. SAM reporta una {$subject}, incidente número {$incident->number}. "
             .'Presione 1 para confirmar una emergencia real. '
             .'Presione 2 si se trata de un error o falsa alarma.',
         );

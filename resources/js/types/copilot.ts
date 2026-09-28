@@ -145,6 +145,8 @@ export interface BarsBlock {
 
 export interface IncidentRow {
     id: number;
+    /** Referencia visible por tenant (`INC-00036`), si hay incidente. */
+    reference?: string | null;
     title: string;
     severity: Severity;
     statusLabel: string;

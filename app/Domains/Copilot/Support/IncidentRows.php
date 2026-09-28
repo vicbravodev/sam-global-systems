@@ -14,9 +14,10 @@ final class IncidentRows
     {
         return [
             'id' => (int) $incident->id,
+            'reference' => $incident->reference(),
             'title' => (string) $incident->title,
             'severity' => $incident->priority?->code ?? 'info',
-            'statusLabel' => IncidentStatusPresenter::label($incident->status?->code, $incident->currentAssignment !== null),
+            'statusLabel' => IncidentStatusPresenter::labelForIncident($incident),
             'assetCode' => $incident->asset?->code ?? $incident->asset?->name,
             'driverName' => $incident->driver?->full_name,
             'openedAt' => $incident->opened_at?->toIso8601String(),
@@ -34,7 +35,7 @@ final class IncidentRows
         return [
             'kind' => 'incident',
             'id' => (int) $incident->id,
-            'label' => (string) $incident->title,
+            'label' => $incident->reference().' · '.$incident->title,
             'href' => CopilotPresenter::incidentHref($teamSlug, (int) $incident->id),
         ];
     }

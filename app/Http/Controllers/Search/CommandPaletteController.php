@@ -21,14 +21,16 @@ class CommandPaletteController extends Controller
         $this->authorize('viewAny', Incident::class);
 
         $query = trim((string) $request->query('q', ''));
+        // "INC-00036" / "36": the per-tenant number, never the global id.
+        $number = preg_match('/^(?:inc-?)?0*(\d{1,9})$/i', $query, $matches) === 1 ? (int) $matches[1] : null;
 
         $incidents = Incident::query()
             ->where('team_id', $current_team->id)
             ->with(['priority', 'status', 'currentAssignment'])
-            ->when($query !== '', function ($builder) use ($query) {
-                $builder->where(function ($q) use ($query) {
+            ->when($query !== '', function ($builder) use ($query, $number) {
+                $builder->where(function ($q) use ($query, $number) {
                     $q->where('title', 'like', "%{$query}%")
-                        ->orWhere('id', 'like', "%{$query}%");
+                        ->when($number !== null, fn ($inner) => $inner->orWhere('number', $number));
                 });
             })
             ->orderByDesc('id')
@@ -36,14 +38,12 @@ class CommandPaletteController extends Controller
             ->get()
             ->map(fn (Incident $incident): array => [
                 'id' => (int) $incident->id,
+                'reference' => $incident->reference(),
                 'title' => (string) $incident->title,
                 'severity' => $incident->priority?->code,
                 'status' => $incident->status?->code,
                 // Same rendered string as the inbox/detail/asset surfaces.
-                'statusLabel' => IncidentStatusPresenter::label(
-                    $incident->status?->code,
-                    $incident->currentAssignment !== null,
-                ),
+                'statusLabel' => IncidentStatusPresenter::labelForIncident($incident),
             ])
             ->all();
 
