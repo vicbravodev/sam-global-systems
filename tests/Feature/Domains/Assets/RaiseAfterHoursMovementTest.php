@@ -4,11 +4,8 @@ namespace Tests\Feature\Domains\Assets;
 
 use App\Contracts\TenantConfig\TenantScheduleResolver;
 use App\Domains\Assets\Enums\AssetStatus;
-use App\Domains\Assets\Jobs\DetectAfterHoursMovementJob;
+use App\Domains\Assets\Actions\RaiseAfterHoursMovement;
 use App\Domains\Assets\Models\Asset;
-use App\Domains\Assets\Models\AssetLocationSnapshot;
-use App\Domains\Ingestion\Actions\QueueRawEventForProcessing;
-use App\Domains\Ingestion\Actions\StoreRawEvent;
 use App\Domains\Ingestion\Jobs\ProcessRawEventJob;
 use App\Domains\Ingestion\Models\RawEvent;
 use App\Domains\TenantConfig\Models\TenantScheduleProfile;
@@ -21,8 +18,9 @@ use Tests\TestCase;
 /**
  * Roadmap V2-C2: a unit moving while the tenant's schedule says "closed"
  * raises one internal `after_hours_movement` event per asset per local day.
+ * The telematics feed calls this inline for every fresh moving point.
  */
-class DetectAfterHoursMovementJobTest extends TestCase
+class RaiseAfterHoursMovementTest extends TestCase
 {
     use RefreshDatabase;
 
@@ -56,6 +54,9 @@ class DetectAfterHoursMovementJobTest extends TestCase
         ]);
     }
 
+    /** @var list<array{0: Asset, 1: float, 2: \DateTimeInterface}> */
+    private array $moving = [];
+
     private function makeMovingAsset(float $speed = 40.0, ?\DateTimeInterface $recordedAt = null, array $attributes = []): Asset
     {
         $asset = Asset::factory()->create(array_merge([
@@ -63,24 +64,27 @@ class DetectAfterHoursMovementJobTest extends TestCase
             'status' => AssetStatus::Active,
         ], $attributes));
 
-        AssetLocationSnapshot::factory()->create([
-            'asset_id' => $asset->id,
-            'speed' => $speed,
-            'latitude' => 19.43,
-            'longitude' => -99.13,
-            'recorded_at' => $recordedAt ?? now()->subMinutes(2),
-        ]);
+        $this->moving[] = [$asset, $speed, $recordedAt ?? now()->subMinutes(2)];
 
         return $asset;
     }
 
+    /**
+     * Stands in for one feed cycle: every moving point goes through the
+     * action with the tenant's resolved schedule.
+     */
     private function runJob(): void
     {
-        (new DetectAfterHoursMovementJob)->handle(
-            app(TenantScheduleResolver::class),
-            app(StoreRawEvent::class),
-            app(QueueRawEventForProcessing::class),
-        );
+        foreach ($this->moving as [$asset, $speed, $recordedAt]) {
+            app(RaiseAfterHoursMovement::class)->execute(
+                asset: $asset,
+                schedule: app(TenantScheduleResolver::class)->resolve($asset->team_id),
+                latitude: 19.43,
+                longitude: -99.13,
+                speedKph: $speed,
+                recordedAt: Carbon::instance($recordedAt),
+            );
+        }
     }
 
     public function test_moving_asset_outside_operating_hours_raises_an_internal_event(): void

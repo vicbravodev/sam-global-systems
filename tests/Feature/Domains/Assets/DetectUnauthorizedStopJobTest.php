@@ -6,7 +6,6 @@ use App\Contracts\TenantConfig\TenantConfigResolver;
 use App\Domains\Assets\Enums\AssetStatus;
 use App\Domains\Assets\Jobs\DetectUnauthorizedStopJob;
 use App\Domains\Assets\Models\Asset;
-use App\Domains\Assets\Models\AssetLocationSnapshot;
 use App\Domains\Context\Actions\ResolveGeofenceContext;
 use App\Domains\Context\Models\Geofence;
 use App\Domains\Ingestion\Actions\QueueRawEventForProcessing;
@@ -18,6 +17,7 @@ use App\Domains\TenantConfig\Models\TenantSetting;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
+use Tests\Concerns\AssertsTenantIsolation;
 use Tests\TestCase;
 
 /**
@@ -26,7 +26,7 @@ use Tests\TestCase;
  */
 class DetectUnauthorizedStopJobTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsTenantIsolation, RefreshDatabase;
 
     private int $teamId;
 
@@ -60,32 +60,23 @@ class DetectUnauthorizedStopJobTest extends TestCase
         ]);
     }
 
+    /**
+     * The motion state the telematics feed keeps on the asset: last moving
+     * point N minutes ago (the episode anchor), still ever since, and a fresh
+     * stationary position outside every geofence.
+     */
     private function makeStoppedAsset(int $stoppedMinutes = 30, array $attributes = []): Asset
     {
-        $asset = Asset::factory()->create(array_merge([
+        return Asset::factory()->create(array_merge([
             'team_id' => $this->teamId,
             'status' => AssetStatus::Active,
+            'last_moving_at' => now()->subMinutes($stoppedMinutes),
+            'stopped_since' => now()->subMinutes($stoppedMinutes - 1),
+            'last_latitude' => 19.43,
+            'last_longitude' => -99.13,
+            'last_speed_kph' => 0.0,
+            'last_location_at' => now()->subMinutes(2),
         ], $attributes));
-
-        // Last moving position N minutes ago (the episode anchor)…
-        AssetLocationSnapshot::factory()->create([
-            'asset_id' => $asset->id,
-            'speed' => 60.0,
-            'latitude' => 19.40,
-            'longitude' => -99.10,
-            'recorded_at' => now()->subMinutes($stoppedMinutes),
-        ]);
-
-        // …and a fresh stationary position outside every geofence.
-        AssetLocationSnapshot::factory()->create([
-            'asset_id' => $asset->id,
-            'speed' => 0.0,
-            'latitude' => 19.43,
-            'longitude' => -99.13,
-            'recorded_at' => now()->subMinutes(2),
-        ]);
-
-        return $asset;
     }
 
     private function runJob(): void
@@ -181,15 +172,7 @@ class DetectUnauthorizedStopJobTest extends TestCase
     public function test_moving_assets_never_alert(): void
     {
         $this->makeGeofence();
-
-        $asset = Asset::factory()->create(['team_id' => $this->teamId, 'status' => AssetStatus::Active]);
-        AssetLocationSnapshot::factory()->create([
-            'asset_id' => $asset->id,
-            'speed' => 45.0,
-            'latitude' => 19.43,
-            'longitude' => -99.13,
-            'recorded_at' => now()->subMinutes(2),
-        ]);
+        $this->makeStoppedAsset(attributes: ['stopped_since' => null, 'last_moving_at' => now()->subMinute(), 'last_speed_kph' => 45.0]);
 
         $this->runJob();
 
@@ -199,20 +182,71 @@ class DetectUnauthorizedStopJobTest extends TestCase
     public function test_long_term_parking_without_recent_movement_is_ignored(): void
     {
         $this->makeGeofence();
-
-        $asset = Asset::factory()->create(['team_id' => $this->teamId, 'status' => AssetStatus::Active]);
-
-        // Only stationary positions: no movement anchor inside the 24h window.
-        AssetLocationSnapshot::factory()->create([
-            'asset_id' => $asset->id,
-            'speed' => 0.0,
-            'latitude' => 19.43,
-            'longitude' => -99.13,
-            'recorded_at' => now()->subMinutes(2),
-        ]);
+        // No movement anchor inside the 24 h window.
+        $this->makeStoppedAsset(attributes: ['last_moving_at' => now()->subDays(3), 'stopped_since' => now()->subDays(3)]);
+        $this->makeStoppedAsset(attributes: ['last_moving_at' => null]);
 
         $this->runJob();
 
         $this->assertSame(0, RawEvent::withoutGlobalScopes()->count());
+    }
+
+    public function test_a_stop_with_a_dark_device_is_left_to_the_offline_watchdog(): void
+    {
+        $this->makeGeofence();
+        // Neither a recent position nor a recent gateway heartbeat.
+        $this->makeStoppedAsset(attributes: ['last_location_at' => now()->subHour(), 'device_last_connected_at' => now()->subHour()]);
+
+        $this->runJob();
+
+        $this->assertSame(0, RawEvent::withoutGlobalScopes()->count());
+    }
+
+    public function test_a_parked_unit_with_a_live_gateway_still_alerts(): void
+    {
+        $this->makeGeofence();
+        // Parked units stop producing GPS fixes, but the gateway heartbeat
+        // proves the device is alive.
+        $this->makeStoppedAsset(attributes: ['last_location_at' => now()->subHour(), 'device_last_connected_at' => now()->subMinutes(3)]);
+
+        $this->runJob();
+
+        $this->assertSame(1, RawEvent::withoutGlobalScopes()->count());
+    }
+
+    public function test_a_handled_episode_leaves_the_candidate_set_until_the_unit_moves_again(): void
+    {
+        $this->makeGeofence();
+        $asset = $this->makeStoppedAsset();
+
+        $this->runJob();
+        $this->assertTrue($asset->fresh()->stop_alerted_for->equalTo($asset->last_moving_at));
+
+        // It moves, then stops again for long enough: a new episode, a new alert.
+        $asset->forceFill(['last_moving_at' => now()->subMinutes(15), 'stopped_since' => now()->subMinutes(14)])->save();
+        $this->runJob();
+
+        $this->assertSame(2, RawEvent::withoutGlobalScopes()->count());
+    }
+
+    public function test_it_only_reads_and_writes_the_swept_tenant(): void
+    {
+        $this->makeGeofence();
+        $this->makeStoppedAsset();
+
+        // Another tenant with a stopped unit but no geofences of its own.
+        $otherTeamId = User::factory()->create()->currentTeam->id;
+        Asset::factory()->create([
+            'team_id' => $otherTeamId,
+            'last_moving_at' => now()->subMinutes(30),
+            'stopped_since' => now()->subMinutes(29),
+            'last_latitude' => 19.43,
+            'last_longitude' => -99.13,
+            'last_location_at' => now()->subMinutes(2),
+        ]);
+
+        $this->assertNoTenantLeak($this->teamId, fn () => $this->runJob());
+
+        $this->assertSame(0, RawEvent::withoutGlobalScopes()->where('team_id', $otherTeamId)->count());
     }
 }
