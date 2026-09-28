@@ -20,6 +20,7 @@ use App\Domains\Tenancy\Jobs\GenerateMonthlyInvoicesJob;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
+use Laravel\Telescope\Telescope;
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
@@ -96,3 +97,9 @@ Schedule::job(new CheckIntegrationHealthJob)->everyFiveMinutes()->onOneServer();
 // state the feed keeps on each asset, so a minute tick is one indexed query
 // per tenant.
 Schedule::job(new DetectUnauthorizedStopJob)->everyMinute()->onOneServer();
+
+// Telescope (sólo local, dependencia de desarrollo): poda diaria de entradas
+// de más de 48 h para que la tabla no crezca sin límite.
+if (app()->environment('local') && class_exists(Telescope::class)) {
+    Schedule::command('telescope:prune --hours=48')->dailyAt('04:45')->onOneServer();
+}
