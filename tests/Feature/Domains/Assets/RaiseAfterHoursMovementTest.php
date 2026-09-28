@@ -3,8 +3,8 @@
 namespace Tests\Feature\Domains\Assets;
 
 use App\Contracts\TenantConfig\TenantScheduleResolver;
-use App\Domains\Assets\Enums\AssetStatus;
 use App\Domains\Assets\Actions\RaiseAfterHoursMovement;
+use App\Domains\Assets\Enums\AssetStatus;
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Ingestion\Jobs\ProcessRawEventJob;
 use App\Domains\Ingestion\Models\RawEvent;
