@@ -14,6 +14,7 @@ use App\Domains\Automation\Jobs\ExecuteActionJob;
 use App\Domains\Automation\Models\ActionExecution;
 use App\Domains\Automation\Models\AutomationWorkflow;
 use App\Domains\Automation\Models\WorkflowExecution;
+use App\Domains\Incidents\Models\Incident;
 use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use Illuminate\Support\Facades\DB;
 
@@ -68,6 +69,8 @@ class RunAutomationWorkflow
                 eventKey: "workflow_exec_{$workflowExecution->id}",
             );
 
+            $incidentId = $this->linkedIncidentId($teamId, $sourceType, $sourceReferenceId);
+
             $steps = $workflow->steps_json ?? [];
             $hasSteps = false;
             $cumulativeDelay = 0;
@@ -80,6 +83,7 @@ class RunAutomationWorkflow
                     workflowExecution: $workflowExecution,
                     step: $step,
                     cumulativeDelay: $cumulativeDelay,
+                    incidentId: $incidentId,
                 );
             }
 
@@ -103,6 +107,7 @@ class RunAutomationWorkflow
         WorkflowExecution $workflowExecution,
         array $step,
         int $cumulativeDelay,
+        ?int $incidentId,
     ): void {
         $actionType = ActionType::from((string) $step['action_type']);
         $executionMode = ExecutionMode::from((string) ($step['execution_mode'] ?? 'async'));
@@ -129,6 +134,7 @@ class RunAutomationWorkflow
             ],
             [
                 'automation_workflow_id' => $workflow->id,
+                'incident_id' => $incidentId,
                 'action_template_id' => $template?->id,
                 'status' => $executionMode === ExecutionMode::RequiresConfirmation
                     ? ActionExecutionStatus::Pending
@@ -149,5 +155,28 @@ class RunAutomationWorkflow
         if ($cumulativeDelay > 0) {
             $job->delay(now()->addSeconds($cumulativeDelay));
         }
+    }
+
+    /**
+     * Incidente sobre el que corre el workflow, cuando lo disparó un
+     * incidente (creado o escalado). Cada paso lo hereda en `incident_id`:
+     * sin él, asignar/escalar/pedir revisión fallaban con "requires a linked
+     * incident" (el paso nace con source_type=workflow) y las plantillas no
+     * recibían `{{incident.*}}`. El id se verifica contra el team (§2.1.4).
+     */
+    private function linkedIncidentId(int $teamId, ActionExecutionSourceType $sourceType, ?string $sourceReferenceId): ?int
+    {
+        if (! in_array($sourceType, [ActionExecutionSourceType::Incident, ActionExecutionSourceType::Escalation], true)
+            || $sourceReferenceId === null
+            || ! ctype_digit($sourceReferenceId)) {
+            return null;
+        }
+
+        $incidentId = (int) $sourceReferenceId;
+
+        return Incident::query()
+            ->whereKey($incidentId)
+            ->where('team_id', $teamId)
+            ->exists() ? $incidentId : null;
     }
 }

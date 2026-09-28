@@ -12,6 +12,7 @@ use App\Domains\Automation\Models\ActionExecution;
 use App\Domains\Automation\Models\AutomationWorkflow;
 use App\Domains\Automation\Models\WorkflowExecution;
 use App\Domains\Automation\Services\RunAutomationWorkflow;
+use App\Domains\Incidents\Models\Incident;
 use App\Domains\Tenancy\Events\UsageRecorded;
 use App\Models\User;
 use Database\Seeders\AutomationMeterSeeder;
@@ -154,5 +155,53 @@ class RunAutomationWorkflowTest extends TestCase
         );
 
         Event::assertDispatched(UsageRecorded::class, fn (UsageRecorded $ev) => $ev->meterCode === 'incident_workflows');
+    }
+
+    public function test_steps_inherit_the_incident_that_triggered_the_workflow(): void
+    {
+        Bus::fake();
+
+        $teamId = User::factory()->create()->currentTeam->id;
+        $incident = Incident::factory()->create(['team_id' => $teamId]);
+
+        $workflow = AutomationWorkflow::factory()
+            ->withSteps([
+                ['order' => 1, 'action_type' => ActionType::Escalate->value, 'execution_mode' => ExecutionMode::Async->value],
+                ['order' => 2, 'action_type' => ActionType::SendEmail->value, 'execution_mode' => ExecutionMode::Async->value, 'target_type' => 'role', 'target_reference' => 'admin'],
+            ])
+            ->create(['team_id' => $teamId]);
+
+        app(RunAutomationWorkflow::class)->execute(
+            workflow: $workflow,
+            teamId: $teamId,
+            sourceType: ActionExecutionSourceType::Incident,
+            sourceReferenceId: (string) $incident->id,
+        );
+
+        $this->assertSame(
+            [$incident->id, $incident->id],
+            ActionExecution::withoutGlobalScopes()->where('team_id', $teamId)->orderBy('id')->pluck('incident_id')->all(),
+        );
+    }
+
+    public function test_steps_never_link_an_incident_of_another_team(): void
+    {
+        Bus::fake();
+
+        $teamId = User::factory()->create()->currentTeam->id;
+        $foreign = Incident::factory()->create();
+
+        $workflow = AutomationWorkflow::factory()->create(['team_id' => $teamId]);
+
+        app(RunAutomationWorkflow::class)->execute(
+            workflow: $workflow,
+            teamId: $teamId,
+            sourceType: ActionExecutionSourceType::Incident,
+            sourceReferenceId: (string) $foreign->id,
+        );
+
+        $this->assertNull(
+            ActionExecution::withoutGlobalScopes()->where('team_id', $teamId)->value('incident_id'),
+        );
     }
 }
