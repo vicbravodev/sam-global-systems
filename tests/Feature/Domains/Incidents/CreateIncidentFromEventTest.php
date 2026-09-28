@@ -251,6 +251,9 @@ class CreateIncidentFromEventTest extends TestCase
             'sla_seconds' => 120,
         ]);
 
+        // El SLA corre desde max(occurred_at, now()): con el reloj suelto, un
+        // cambio de segundo entre crear el evento y el incidente lo desplaza.
+        $this->freezeSecond();
         $occurredAt = now();
         $event = NormalizedEvent::factory()->create([
             'team_id' => $team->id,
@@ -274,6 +277,9 @@ class CreateIncidentFromEventTest extends TestCase
         $team = $user->currentTeam;
 
         // Catalog default for `critical` (IncidentPrioritySeeder): sla_seconds = 300.
+        // El SLA corre desde max(occurred_at, now()): con el reloj suelto, un
+        // cambio de segundo entre crear el evento y el incidente lo desplaza.
+        $this->freezeSecond();
         $occurredAt = now();
         $event = NormalizedEvent::factory()->create([
             'team_id' => $team->id,
