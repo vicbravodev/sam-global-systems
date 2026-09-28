@@ -14,27 +14,22 @@ use Twilio\Security\RequestValidator;
 /**
  * Inbound Twilio webhook (Roadmap B9): the operator answers the critical
  * incident SMS/WhatsApp ("SI-4F2A" / "NO-4F2A" / "ESC-4F2A") and SAM
- * acknowledges, dismisses or escalates the incident. The receiving Twilio
- * number (the `To` param) identifies the tenant channel whose auth token
- * validates `X-Twilio-Signature`.
+ * acknowledges, dismisses or escalates the incident. Every sender number is
+ * SAM's platform account (env TWILIO_*), whose auth token validates
+ * `X-Twilio-Signature`; the reply token identifies the tenant.
  */
 class TwilioInboundController extends Controller
 {
     public function handle(Request $request, ProcessInboundReply $processInboundReply): Response
     {
-        $channel = $this->resolveChannel((string) $request->input('To', ''));
-
-        if ($channel === null) {
+        if (! $this->isPlatformNumber((string) $request->input('To', ''))) {
             abort(403, 'Unknown Twilio number.');
         }
 
-        // Igual que los drivers salientes: las credenciales de plataforma
-        // (TWILIO_*) rellenan lo que el config_json del canal no trae.
-        $config = $this->effectiveConfig($channel);
-        $authToken = $config['twilio_auth_token'] ?? $config['auth_token'] ?? null;
+        $authToken = PlatformTwilioConfig::authToken();
 
-        if (! is_string($authToken) || $authToken === '') {
-            abort(403, 'Twilio channel has no auth token configured.');
+        if ($authToken === null) {
+            abort(403, 'Twilio is not configured.');
         }
 
         $validator = new RequestValidator($authToken);
@@ -52,56 +47,35 @@ class TwilioInboundController extends Controller
         $reply = $processInboundReply->execute(
             fromAddress: (string) $request->input('From', ''),
             body: (string) $request->input('Body', ''),
-            channelTeamId: $channel->team_id !== null ? (int) $channel->team_id : null,
         );
 
         return response($this->twiml($reply), 200)->header('Content-Type', 'text/xml');
     }
 
     /**
-     * The `To` of an inbound message is one of our Twilio senders — match it
-     * against the configured `from` of active twilio channels. config_json is
-     * encrypted at rest, so the match happens in PHP, not SQL.
-     *
-     * Primero gana un canal con `from` propio en su config_json (override
-     * explícito). Si ninguno, el número es de plataforma: se compara contra
-     * los canales de plataforma (team_id null) con la config efectiva de
-     * PlatformTwilioConfig — sus credenciales viven en TWILIO_*, no en la
-     * fila. Un canal de tenant sin `from` propio comparte el número de
-     * plataforma y no debe capturar las respuestas de todos los tenants.
+     * The `To` of an inbound message must be one of SAM's Twilio senders: the
+     * effective `from` (channel override or platform env) of an active
+     * platform SMS/WhatsApp channel. config_json is encrypted at rest, so the
+     * match happens in PHP, not SQL.
      */
-    private function resolveChannel(string $to): ?NotificationChannel
+    private function isPlatformNumber(string $to): bool
     {
         $normalized = $this->normalize($to);
 
         if ($normalized === '') {
-            return null;
+            return false;
         }
 
-        $channels = NotificationChannel::query()
+        return NotificationChannel::query()
             ->where('provider', 'twilio')
             ->where('is_active', true)
-            ->orderBy('id')
-            ->get();
+            ->whereIn('channel_type', [ChannelType::Sms, ChannelType::Whatsapp])
+            ->get()
+            ->contains(function (NotificationChannel $channel) use ($normalized): bool {
+                $from = PlatformTwilioConfig::resolve($channel->config_json ?? [], $channel->channel_type)['from'];
 
-        $matches = fn (array $config): bool => ($from = (string) ($config['from'] ?? '')) !== ''
-            && $this->normalize($from) === $normalized;
-
-        return $channels->first(fn (NotificationChannel $channel): bool => $matches($channel->config_json ?? []))
-            ?? $channels
-                ->filter(fn (NotificationChannel $channel): bool => $channel->team_id === null)
-                ->first(fn (NotificationChannel $channel): bool => $matches($this->effectiveConfig($channel)));
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function effectiveConfig(NotificationChannel $channel): array
-    {
-        return PlatformTwilioConfig::merge(
-            $channel->config_json ?? [],
-            $channel->channel_type ?? ChannelType::Sms,
-        );
+                return $from !== null && $this->normalize($from) === $normalized;
+            });
     }
 
     private function normalize(string $address): string

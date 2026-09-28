@@ -193,6 +193,7 @@ Route::prefix('{current_team}')
         // Notification center: tenant-wide outbound notifications with
         // per-user read markers (NotificationPolicy gates access).
         Route::get('notifications', [NotificationPageController::class, 'index'])->name('notifications.index');
+        Route::get('notifications/{notification}', [NotificationPageController::class, 'show'])->name('notifications.show');
         Route::post('notifications/{notification}/read', [NotificationPageController::class, 'read'])->name('notifications.read');
 
         Route::get('integrations', [IntegrationPageController::class, 'index'])->name('integrations.index');

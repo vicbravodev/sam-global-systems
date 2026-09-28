@@ -59,7 +59,7 @@ class ExecuteActionBridgesTest extends TestCase
     {
         Mail::fake();
 
-        NotificationChannel::factory()->email()->create(['team_id' => $this->team->id]);
+        NotificationChannel::factory()->email()->create();
 
         $execution = $this->makeExecution(ActionType::SendEmail, [
             'target_type' => 'email',
@@ -86,17 +86,16 @@ class ExecuteActionBridgesTest extends TestCase
         $messenger = Mockery::mock(TwilioMessenger::class);
         $messenger->shouldReceive('createMessage')
             ->once()
-            ->withArgs(fn (array $config, string $to, array $params): bool => $to === '+5215512345678')
+            ->withArgs(fn (string $to, array $params): bool => $to === '+5215512345678')
             ->andReturn((object) ['sid' => 'SM123', 'status' => 'queued']);
         $this->app->instance(TwilioMessenger::class, $messenger);
 
+        // Twilio credentials are platform env only (TWILIO_*).
+        config()->set('services.twilio.account_sid', 'AC123');
+        config()->set('services.twilio.auth_token', 'tok-456');
+
         NotificationChannel::factory()->sms()->create([
-            'team_id' => $this->team->id,
-            'config_json' => [
-                'twilio_account_sid' => 'AC123',
-                'twilio_auth_token' => 'tok-456',
-                'from' => '+14155238886',
-            ],
+            'config_json' => ['from' => '+14155238886'],
         ]);
 
         $execution = $this->makeExecution(ActionType::SendSms, [
@@ -223,7 +222,7 @@ class ExecuteActionBridgesTest extends TestCase
         $this->seed(AutomationMeterSeeder::class);
         Mail::fake();
 
-        NotificationChannel::factory()->email()->create(['team_id' => $this->team->id]);
+        NotificationChannel::factory()->email()->create();
 
         $execution = $this->makeExecution(ActionType::SendEmail, [
             'target_type' => 'email',

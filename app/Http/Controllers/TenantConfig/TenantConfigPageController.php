@@ -182,9 +182,6 @@ class TenantConfigPageController extends Controller
                     ->all();
 
                 return NotificationChannel::query()
-                    ->where(fn ($query) => $query
-                        ->where('team_id', $current_team->id)
-                        ->orWhereNull('team_id'))
                     ->orderBy('channel_type')
                     ->orderBy('name')
                     ->get()
@@ -195,7 +192,6 @@ class TenantConfigPageController extends Controller
                         'provider' => $channel->provider,
                         'channelType' => $channel->channel_type?->value,
                         'isActive' => (bool) $channel->is_active,
-                        'isGlobal' => $channel->team_id === null,
                         // Per-tenant switch over SAM platform channels (V2-B1).
                         'enabledForTeam' => ! in_array($channel->id, $disabledGlobals, true),
                     ])
@@ -229,7 +225,7 @@ class TenantConfigPageController extends Controller
                     'logoUrl' => $logoUrl,
                 ];
             },
-            'canManageChannels' => fn () => (bool) request()->user()?->can('manage', NotificationChannel::class),
+            'canManageChannels' => fn () => (bool) request()->user()?->can('toggleGlobal', NotificationChannel::class),
             'canManage' => fn () => (bool) request()->user()?->can('update', TenantSetting::class),
         ]);
     }

@@ -6,19 +6,21 @@ use App\Contracts\Notifications\NotificationDriver;
 use App\Domains\Notifications\Data\DeliveryResult;
 use App\Domains\Notifications\Data\RenderedNotification;
 use App\Domains\Notifications\Enums\ChannelType;
+use App\Domains\Notifications\Enums\MessagingResourceType;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Support\PlatformTwilioConfig;
-use Twilio\Exceptions\TwilioException;
+use App\Domains\Notifications\Support\TwilioStatusCallbackUrl;
 
 /**
  * Twilio SMS driver. Body is truncated to 160 chars (155 + " (ver portal)")
  * so it always fits in a single segment.
  *
- * Credentials resolve config_json → platform env (services.twilio):
- *   - twilio_account_sid (or account_sid) — cifrado at rest.
- *   - twilio_auth_token  (or auth_token)  — cifrado at rest.
- *   - from               — Twilio sender (E.164, e.g. "+14155238886") or
- *                          messaging service SID (starts with "MG").
+ * Credentials are SAM's platform Twilio account (env TWILIO_*). The channel
+ * `config_json` may only override the sender (`from`: E.164 number or a
+ * messaging service SID starting with "MG").
+ *
+ * Success means Twilio queued the message; delivery is confirmed later by the
+ * status callback / reconciler.
  */
 class SmsNotificationDriver implements NotificationDriver
 {
@@ -32,18 +34,15 @@ class SmsNotificationDriver implements NotificationDriver
 
     public function send(RenderedNotification $notification, NotificationChannel $channel): DeliveryResult
     {
-        $config = PlatformTwilioConfig::merge($channel->config_json ?? [], ChannelType::Sms);
+        $config = PlatformTwilioConfig::resolve($channel->config_json ?? [], ChannelType::Sms);
+        $from = $config['from'];
 
-        $from = $config['from'] ?? null;
-        $sid = $config['twilio_account_sid'] ?? $config['account_sid'] ?? null;
-        $token = $config['twilio_auth_token'] ?? $config['auth_token'] ?? null;
-
-        if (! is_string($from) || $from === '') {
-            return DeliveryResult::failure('sms `from` missing');
+        if ($from === null) {
+            return TwilioDeliveryResults::misconfigured('sms `from` missing', 'sms');
         }
 
-        if (! is_string($sid) || $sid === '' || ! is_string($token) || $token === '') {
-            return DeliveryResult::failure('sms twilio credentials missing');
+        if (! PlatformTwilioConfig::hasCredentials()) {
+            return TwilioDeliveryResults::misconfigured('sms twilio credentials missing', 'sms');
         }
 
         $body = $this->truncate($notification->body);
@@ -59,28 +58,19 @@ class SmsNotificationDriver implements NotificationDriver
             $params['from'] = $from;
         }
 
-        try {
-            $message = $this->messenger->createMessage($config, $notification->address, $params);
-        } catch (TwilioException $e) {
-            return DeliveryResult::failure('twilio sms error: '.$e->getMessage(), [
-                'driver' => 'sms',
-                'twilio_code' => $e->getCode(),
-            ]);
-        } catch (\Throwable $e) {
-            return DeliveryResult::failure('sms error: '.$e->getMessage(), [
-                'driver' => 'sms',
-            ]);
+        if (($callback = TwilioStatusCallbackUrl::resolve()) !== null) {
+            $params['statusCallback'] = $callback;
         }
 
-        return DeliveryResult::success(
-            providerMessageId: (string) ($message->sid ?? ''),
-            response: [
-                'driver' => 'sms',
-                'status' => (string) ($message->status ?? ''),
-                'sid' => (string) ($message->sid ?? ''),
-                'truncated_body_length' => mb_strlen($body),
-            ],
-        );
+        try {
+            $message = $this->messenger->createMessage($notification->address, $params);
+        } catch (\Throwable $e) {
+            return TwilioDeliveryResults::fromException($e, 'sms');
+        }
+
+        return TwilioDeliveryResults::accepted($message, MessagingResourceType::Message, 'sms', [
+            'truncated_body_length' => mb_strlen($body),
+        ]);
     }
 
     private function truncate(string $body): string

@@ -51,6 +51,23 @@ return [
         'sms_from' => env('TWILIO_SMS_FROM'),
         'whatsapp_from' => env('TWILIO_WHATSAPP_FROM'),
         'voice_from' => env('TWILIO_VOICE_FROM'),
+        // Public URL Twilio posts message/call status to. Defaults to the
+        // `webhooks.twilio.status` route; set it when APP_URL is not the
+        // public host (proxy, tunnel). Non-public URLs are never sent —
+        // the reconciler polls Twilio instead.
+        'status_callback_url' => env('TWILIO_STATUS_CALLBACK_URL'),
+        // Dev-only simulated Twilio (fake SIDs, deterministic outcomes).
+        // Ignored in production.
+        'sandbox' => (bool) env('TWILIO_SANDBOX', false),
+        // Margin over Twilio's real cost billed to tenants (cost-plus).
+        'markup_percent' => (float) env('TWILIO_MARKUP_PERCENT', 30),
+        // Fallback USD prices when Twilio never reports a price for a
+        // terminal resource within 24 h (charge marked as estimated).
+        'estimated_prices' => [
+            'sms_segment' => (float) env('TWILIO_ESTIMATED_SMS_SEGMENT_USD', 0.0079),
+            'whatsapp_message' => (float) env('TWILIO_ESTIMATED_WHATSAPP_MESSAGE_USD', 0.005),
+            'voice_minute' => (float) env('TWILIO_ESTIMATED_VOICE_MINUTE_USD', 0.014),
+        ],
     ],
 
     'samsara' => [

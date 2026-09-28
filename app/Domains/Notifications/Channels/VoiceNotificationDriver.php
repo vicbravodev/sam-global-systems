@@ -6,9 +6,10 @@ use App\Contracts\Notifications\NotificationDriver;
 use App\Domains\Notifications\Data\DeliveryResult;
 use App\Domains\Notifications\Data\RenderedNotification;
 use App\Domains\Notifications\Enums\ChannelType;
+use App\Domains\Notifications\Enums\MessagingResourceType;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Support\PlatformTwilioConfig;
-use Twilio\Exceptions\TwilioException;
+use App\Domains\Notifications\Support\TwilioStatusCallbackUrl;
 
 /**
  * Twilio Voice driver (Roadmap V2-A3): delivers a notification as an outbound
@@ -17,57 +18,56 @@ use Twilio\Exceptions\TwilioException;
  * (`PlaceVerificationCallJob`); this driver covers escalation steps that
  * choose `voice` as a plain notification channel (Roadmap V2-A4).
  *
- * Credentials resolve config_json → platform env (services.twilio):
- *   - twilio_account_sid (or account_sid) — cifrado at rest.
- *   - twilio_auth_token  (or auth_token)  — cifrado at rest.
- *   - from               — Twilio voice number (E.164).
+ * Credentials are SAM's platform Twilio account (env TWILIO_*). The channel
+ * `config_json` may only override `from` (E.164) and `ring_timeout_seconds`.
+ *
+ * No DTMF here: the notification counts as delivered when the call is
+ * answered (status callback `in-progress`, or `completed` with duration).
+ * Success means Twilio queued the call.
  */
 class VoiceNotificationDriver implements NotificationDriver
 {
+    /**
+     * Call progress events Twilio reports to the status callback.
+     *
+     * @var list<string>
+     */
+    public const STATUS_CALLBACK_EVENTS = ['initiated', 'ringing', 'answered', 'completed'];
+
     public function __construct(
         private readonly TwilioVoiceCaller $caller,
     ) {}
 
     public function send(RenderedNotification $notification, NotificationChannel $channel): DeliveryResult
     {
-        $config = PlatformTwilioConfig::merge($channel->config_json ?? [], ChannelType::Voice);
+        $config = PlatformTwilioConfig::resolve($channel->config_json ?? [], ChannelType::Voice);
+        $from = $config['from'];
 
-        $from = $config['from'] ?? null;
-        $sid = $config['twilio_account_sid'] ?? $config['account_sid'] ?? null;
-        $token = $config['twilio_auth_token'] ?? $config['auth_token'] ?? null;
-
-        if (! is_string($from) || $from === '') {
-            return DeliveryResult::failure('voice `from` missing');
+        if ($from === null) {
+            return TwilioDeliveryResults::misconfigured('voice `from` missing', 'voice');
         }
 
-        if (! is_string($sid) || $sid === '' || ! is_string($token) || $token === '') {
-            return DeliveryResult::failure('voice twilio credentials missing');
+        if (! PlatformTwilioConfig::hasCredentials()) {
+            return TwilioDeliveryResults::misconfigured('voice twilio credentials missing', 'voice');
+        }
+
+        $params = [
+            'twiml' => $this->twiml($notification),
+            'timeout' => $config['ring_timeout_seconds'] ?? 25,
+        ];
+
+        if (($callback = TwilioStatusCallbackUrl::resolve()) !== null) {
+            $params['statusCallback'] = $callback;
+            $params['statusCallbackEvent'] = self::STATUS_CALLBACK_EVENTS;
         }
 
         try {
-            $call = $this->caller->createCall($config, $notification->address, $from, [
-                'twiml' => $this->twiml($notification),
-                'timeout' => (int) ($config['ring_timeout_seconds'] ?? 25),
-            ]);
-        } catch (TwilioException $e) {
-            return DeliveryResult::failure('twilio voice error: '.$e->getMessage(), [
-                'driver' => 'voice',
-                'twilio_code' => $e->getCode(),
-            ]);
+            $call = $this->caller->createCall($notification->address, $from, $params);
         } catch (\Throwable $e) {
-            return DeliveryResult::failure('voice error: '.$e->getMessage(), [
-                'driver' => 'voice',
-            ]);
+            return TwilioDeliveryResults::fromException($e, 'voice');
         }
 
-        return DeliveryResult::success(
-            providerMessageId: (string) ($call->sid ?? ''),
-            response: [
-                'driver' => 'voice',
-                'status' => (string) ($call->status ?? ''),
-                'sid' => (string) ($call->sid ?? ''),
-            ],
-        );
+        return TwilioDeliveryResults::accepted($call, MessagingResourceType::Call, 'voice');
     }
 
     private function twiml(RenderedNotification $notification): string

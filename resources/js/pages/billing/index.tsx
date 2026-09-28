@@ -31,6 +31,8 @@ interface UsageRow {
     meterCode: string | null;
     meterName: string | null;
     unit: string | null;
+    /** Cost-plus meters (Twilio messaging): amount to be charged, in USD. */
+    amount: number | null;
     consumed: number;
     included: number;
     overage: number;
@@ -347,30 +349,52 @@ export default function BillingIndex() {
                                                     {row.meterName ??
                                                         row.meterCode}
                                                 </span>
-                                                <span className="ml-1 text-2xs text-fg-3">
-                                                    ({row.unit})
-                                                </span>
-                                            </td>
-                                            <td className="py-2 pr-4 tabular-nums">
-                                                {row.consumed.toLocaleString(
-                                                    'es',
+                                                {row.amount === null && (
+                                                    <span className="ml-1 text-2xs text-fg-3">
+                                                        ({row.unit})
+                                                    </span>
                                                 )}
                                             </td>
-                                            <td className="py-2 pr-4 tabular-nums">
-                                                {row.included.toLocaleString(
-                                                    'es',
-                                                )}
-                                            </td>
-                                            <td className="py-2 pr-4">
-                                                <UsageBar row={row} />
-                                            </td>
-                                            <td
-                                                className={`py-2 pr-4 tabular-nums ${row.overage > 0 ? 'font-semibold text-severity-critical' : ''}`}
-                                            >
-                                                {row.overage.toLocaleString(
-                                                    'es',
-                                                )}
-                                            </td>
+                                            {row.amount !== null ? (
+                                                <>
+                                                    <td className="py-2 pr-4 font-medium text-fg-1 tabular-nums">
+                                                        {money(
+                                                            row.amount,
+                                                            'usd',
+                                                        )}
+                                                    </td>
+                                                    <td
+                                                        className="py-2 pr-4 text-2xs text-fg-3"
+                                                        colSpan={3}
+                                                    >
+                                                        Según consumo real de
+                                                        mensajes y llamadas
+                                                    </td>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <td className="py-2 pr-4 tabular-nums">
+                                                        {row.consumed.toLocaleString(
+                                                            'es',
+                                                        )}
+                                                    </td>
+                                                    <td className="py-2 pr-4 tabular-nums">
+                                                        {row.included.toLocaleString(
+                                                            'es',
+                                                        )}
+                                                    </td>
+                                                    <td className="py-2 pr-4">
+                                                        <UsageBar row={row} />
+                                                    </td>
+                                                    <td
+                                                        className={`py-2 pr-4 tabular-nums ${row.overage > 0 ? 'font-semibold text-severity-critical' : ''}`}
+                                                    >
+                                                        {row.overage.toLocaleString(
+                                                            'es',
+                                                        )}
+                                                    </td>
+                                                </>
+                                            )}
                                         </tr>
                                     ))}
                                 </tbody>

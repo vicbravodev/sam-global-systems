@@ -43,13 +43,12 @@ class TwilioVoiceWebhookTest extends TestCase
 
         $this->team = User::factory()->create()->currentTeam;
 
+        // Voice webhooks are signed by SAM's platform Twilio account.
+        config()->set('services.twilio.account_sid', 'AC-voice');
+        config()->set('services.twilio.auth_token', self::AUTH_TOKEN);
+
         $this->channel = NotificationChannel::factory()->voice()->create([
-            'team_id' => $this->team->id,
-            'config_json' => [
-                'twilio_account_sid' => 'AC-voice',
-                'twilio_auth_token' => self::AUTH_TOKEN,
-                'from' => '+15005550006',
-            ],
+            'config_json' => ['from' => '+15005550006'],
         ]);
     }
 

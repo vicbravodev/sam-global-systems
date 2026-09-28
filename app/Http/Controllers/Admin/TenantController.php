@@ -18,6 +18,7 @@ use App\Domains\Tenancy\Models\Subscription;
 use App\Domains\Tenancy\Models\TenantBranding;
 use App\Domains\Tenancy\Models\TenantFeature;
 use App\Domains\Tenancy\Models\TenantUsageCounter;
+use App\Domains\Tenancy\Support\CostPlusPricing;
 use App\Enums\TeamRole;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
@@ -148,6 +149,17 @@ class TenantController extends Controller
                     'consumed' => (int) $counter->consumed_value,
                     'included' => (int) $counter->included_value,
                     'overage' => (int) $counter->overage_value,
+                    // Cost-plus meters (Twilio): provider cost and what the
+                    // tenant is charged, in USD — not a raw micro count.
+                    'money' => $counter->usageMeter?->unit === CostPlusPricing::MICRO_UNIT
+                        ? [
+                            'providerCost' => CostPlusPricing::providerCost((float) $counter->consumed_value),
+                            'charged' => CostPlusPricing::charged(
+                                (float) $counter->consumed_value,
+                                CostPlusPricing::markupFor($team->id, (int) $counter->usage_meter_id),
+                            ),
+                        ]
+                        : null,
                 ])->values()->all();
 
             $branding = TenantBranding::query()

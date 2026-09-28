@@ -34,7 +34,6 @@ class QuietHoursChannelSelectionTest extends TestCase
 
         foreach ([ChannelType::Email, ChannelType::Web, ChannelType::Sms, ChannelType::Whatsapp, ChannelType::Voice] as $type) {
             NotificationChannel::factory()->create([
-                'team_id' => null,
                 'channel_type' => $type,
                 'is_active' => true,
             ]);

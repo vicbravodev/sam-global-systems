@@ -13,6 +13,7 @@ use App\Domains\Drivers\Jobs\RecalculateDriverRiskProfilesJob;
 use App\Domains\Ingestion\Jobs\PollSamsaraSafetyEventsJob;
 use App\Domains\Ingestion\Jobs\PruneDeduplicationKeysJob;
 use App\Domains\Integrations\Jobs\SyncDueIntegrationsJob;
+use App\Domains\Notifications\Jobs\ReconcileMessagingChargesJob;
 use App\Domains\Tenancy\Jobs\AggregateUsageJob;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -25,6 +26,11 @@ Artisan::command('inspire', function () {
 Schedule::command('horizon:snapshot')->everyFiveMinutes()->onOneServer();
 
 Schedule::job(new AggregateUsageJob)->dailyAt('02:00')->onOneServer();
+
+// Twilio feedback safety net + real provider cost (cost-plus billing): polls
+// non-finalized messages/calls whose status callback never landed and meters
+// their price into messaging_cost_micros once Twilio reports it.
+Schedule::job(new ReconcileMessagingChargesJob)->everyFiveMinutes()->onOneServer();
 Schedule::job(new CalculateDailyKPIsJob)->dailyAt('03:00')->onOneServer();
 
 // Deduplication keys expire after 24h but nothing removed the rows: the table

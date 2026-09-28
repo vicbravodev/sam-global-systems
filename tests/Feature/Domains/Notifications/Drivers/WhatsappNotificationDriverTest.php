@@ -18,6 +18,15 @@ class WhatsappNotificationDriverTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Twilio credentials are platform env only (never channel config).
+        config()->set('services.twilio.account_sid', 'AC123');
+        config()->set('services.twilio.auth_token', 'tok-456');
+    }
+
     private function rendered(array $variables = [], string $body = 'world'): RenderedNotification
     {
         return new RenderedNotification(
@@ -33,12 +42,9 @@ class WhatsappNotificationDriverTest extends TestCase
     private function channel(Team $team, array $config): NotificationChannel
     {
         return NotificationChannel::factory()->create([
-            'team_id' => $team->id,
             'channel_type' => ChannelType::Whatsapp,
             'provider' => 'twilio',
             'config_json' => array_merge([
-                'twilio_account_sid' => 'AC123',
-                'twilio_auth_token' => 'tok-456',
                 'from' => 'whatsapp:+14155238886',
             ], $config),
         ]);
@@ -57,12 +63,11 @@ class WhatsappNotificationDriverTest extends TestCase
         $messenger = $this->bindMessenger();
         $messenger->shouldReceive('createMessage')
             ->once()
-            ->withArgs(function (array $config, string $to, array $params) {
+            ->withArgs(function (string $to, array $params) {
                 $this->assertSame('whatsapp:+34666123456', $to);
                 $this->assertSame('whatsapp:+14155238886', $params['from']);
                 $this->assertSame('world', $params['body']);
                 $this->assertArrayNotHasKey('contentSid', $params);
-                $this->assertSame('AC123', $config['twilio_account_sid']);
 
                 return true;
             })
@@ -83,7 +88,7 @@ class WhatsappNotificationDriverTest extends TestCase
         $messenger = $this->bindMessenger();
         $messenger->shouldReceive('createMessage')
             ->once()
-            ->withArgs(function (array $config, string $to, array $params) {
+            ->withArgs(function (string $to, array $params) {
                 $this->assertSame('whatsapp:+34666123456', $to);
                 $this->assertSame('HX_TEMPLATE', $params['contentSid']);
                 $this->assertArrayNotHasKey('body', $params);
@@ -144,12 +149,18 @@ class WhatsappNotificationDriverTest extends TestCase
         $messenger = $this->bindMessenger();
         $messenger->shouldNotReceive('createMessage');
 
+        // No platform account: legacy per-channel credentials are ignored,
+        // never used as a fallback.
+        config()->set('services.twilio.account_sid', null);
+        config()->set('services.twilio.auth_token', null);
+
         $team = Team::factory()->create();
         $channel = NotificationChannel::factory()->create([
-            'team_id' => $team->id,
             'channel_type' => ChannelType::Whatsapp,
             'provider' => 'twilio',
             'config_json' => [
+                'twilio_account_sid' => 'AC_LEGACY',
+                'twilio_auth_token' => 'tok_legacy',
                 'from' => 'whatsapp:+14155238886',
             ],
         ]);
@@ -158,6 +169,7 @@ class WhatsappNotificationDriverTest extends TestCase
 
         $this->assertFalse($result->success);
         $this->assertStringContainsString('credentials missing', $result->errorMessage);
+        $this->assertTrue($result->permanent);
     }
 
     public function test_addresses_already_prefixed_are_preserved(): void
@@ -165,7 +177,7 @@ class WhatsappNotificationDriverTest extends TestCase
         $messenger = $this->bindMessenger();
         $messenger->shouldReceive('createMessage')
             ->once()
-            ->withArgs(function (array $config, string $to, array $params) {
+            ->withArgs(function (string $to, array $params) {
                 $this->assertSame('whatsapp:+34666123456', $to);
 
                 return true;

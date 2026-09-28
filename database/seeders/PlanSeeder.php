@@ -66,6 +66,7 @@ class PlanSeeder extends Seeder
         ];
 
         $meters = UsageMeter::query()->pluck('id', 'code');
+        $messagingCostMeterId = $meters['messaging_cost_micros'] ?? null;
 
         foreach ($plans as $definition) {
             $plan = Plan::query()->updateOrCreate(
@@ -93,6 +94,20 @@ class PlanSeeder extends Seeder
                         'included_quantity' => $included,
                         'overage_unit_price' => 0,
                         'billing_model' => BillingModel::IncludedOnly,
+                    ],
+                );
+            }
+
+            // Twilio messaging (SMS/WhatsApp/voice/OTP) is billed at real
+            // provider cost plus margin, on every plan.
+            if ($messagingCostMeterId !== null) {
+                BillingRate::query()->updateOrCreate(
+                    ['plan_id' => $plan->id, 'usage_meter_id' => $messagingCostMeterId],
+                    [
+                        'included_quantity' => 0,
+                        'overage_unit_price' => 0,
+                        'billing_model' => BillingModel::CostPlus,
+                        'markup_percent' => (float) config('services.twilio.markup_percent', 30),
                     ],
                 );
             }

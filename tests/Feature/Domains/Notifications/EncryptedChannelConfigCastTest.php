@@ -19,13 +19,12 @@ class EncryptedChannelConfigCastTest extends TestCase
         $team = Team::factory()->create();
 
         $channel = NotificationChannel::factory()->create([
-            'team_id' => $team->id,
             'channel_type' => ChannelType::Webhook,
             'provider' => 'webhook',
             'config_json' => [
                 'endpoint_url' => 'https://example.com/hook',
                 'secret' => 'super-secret-value',
-                'auth_token' => 'twilio-token',
+                'api_key' => 'provider-api-key',
                 'unrelated' => 'plain-text',
             ],
         ]);
@@ -35,16 +34,16 @@ class EncryptedChannelConfigCastTest extends TestCase
             ->value('config_json');
 
         $this->assertStringNotContainsString('super-secret-value', $rawJson);
-        $this->assertStringNotContainsString('twilio-token', $rawJson);
+        $this->assertStringNotContainsString('provider-api-key', $rawJson);
         $this->assertStringContainsString('plain-text', $rawJson);
 
         $rawDecoded = json_decode($rawJson, true);
         $this->assertArrayHasKey('__enc', $rawDecoded['secret']);
-        $this->assertArrayHasKey('__enc', $rawDecoded['auth_token']);
+        $this->assertArrayHasKey('__enc', $rawDecoded['api_key']);
 
         $reloaded = NotificationChannel::query()->find($channel->id);
         $this->assertSame('super-secret-value', $reloaded->config_json['secret']);
-        $this->assertSame('twilio-token', $reloaded->config_json['auth_token']);
+        $this->assertSame('provider-api-key', $reloaded->config_json['api_key']);
         $this->assertSame('plain-text', $reloaded->config_json['unrelated']);
         $this->assertSame('https://example.com/hook', $reloaded->config_json['endpoint_url']);
     }
@@ -54,7 +53,6 @@ class EncryptedChannelConfigCastTest extends TestCase
         $team = Team::factory()->create();
 
         $channel = NotificationChannel::factory()->create([
-            'team_id' => $team->id,
             'channel_type' => ChannelType::Webhook,
             'provider' => 'webhook',
             'config_json' => [
@@ -79,7 +77,6 @@ class EncryptedChannelConfigCastTest extends TestCase
         $team = Team::factory()->create();
 
         $channel = NotificationChannel::factory()->create([
-            'team_id' => $team->id,
             'channel_type' => ChannelType::Webhook,
             'provider' => 'webhook',
             'config_json' => null,
@@ -90,10 +87,12 @@ class EncryptedChannelConfigCastTest extends TestCase
 
     public function test_sensitive_key_list_is_complete(): void
     {
+        // Twilio credentials are platform env only (TWILIO_*): no channel
+        // row ever carries them, so they are not part of this list.
         $expected = [
-            'secret', 'webhook_secret', 'auth_token', 'account_sid',
+            'secret', 'webhook_secret',
             'api_key', 'api_secret', 'server_key', 'firebase_credentials',
-            'slack_webhook_url', 'twilio_auth_token', 'twilio_account_sid',
+            'slack_webhook_url',
         ];
 
         $this->assertSame($expected, EncryptedChannelConfigCast::SENSITIVE_KEYS);

@@ -46,13 +46,12 @@ Deliver operational notifications across multiple channels (email, SMS, WhatsApp
 
 ### 4.1 Notification Channels (`notification_channels`)
 
-Catalog of available delivery channels per tenant. System-wide channels have `team_id = null`.
+Catalog of **platform** delivery channels. SAM operates messaging for every tenant with a single platform Twilio account (env `TWILIO_*`); tenants never own channels or credentials — they can only switch a platform channel off for their team (`tenant_channel_toggles`). A Twilio channel's `config_json` only accepts non-secret overrides (`from`, `content_sid`, `ring_timeout_seconds`).
 
 ```php
 Schema::create('notification_channels', function (Blueprint $table) {
     $table->id();
-    $table->foreignId('team_id')->nullable()->constrained()->cascadeOnDelete();
-    $table->string('code');
+    $table->string('code')->unique();
     $table->string('name');
     $table->string('provider');
     $table->string('channel_type'); // enum
@@ -170,7 +169,11 @@ Schema::create('notification_deliveries', function (Blueprint $table) {
 });
 ```
 
-**Enum `DeliveryStatus`**: `Pending`, `Queued`, `Sending`, `Delivered`, `Failed`, `Bounced`, `Retrying`, `Cancelled`
+**Enum `DeliveryStatus`**: `Pending`, `Queued`, `Sending`, `Sent`, `Delivered`, `Failed`, `Bounced`, `Retrying`, `Cancelled`, `Skipped`
+
+Twilio channels (SMS, WhatsApp, voice) do not deliver on API acceptance: the driver result is `Queued` (Twilio accepted, SID assigned) and the final state comes from Twilio's status callback (`POST /api/webhooks/twilio/status`) or, as a safety net, from `ReconcileMessagingChargesJob` polling the resource. `Sent` = handed to the carrier; `Delivered` = message `delivered`/`read` or voice call answered (`in-progress`, or `completed` with talk time); `Failed` = `failed`/`undelivered` or `no-answer`/`busy`/`failed`/`canceled`. Transitions are monotonic (late/out-of-order callbacks never move a delivery backwards). Additional feedback columns: `provider_status`, `provider_error_code`, `permanent_failure`, `accepted_at`, `read_at`, `answered_at`, `call_duration_seconds`, `segments`, `last_provider_event_at`.
+
+Every Twilio resource SAM originates (notifications, OTP, verification calls) is recorded in `messaging_charges` (tenant-scoped); the reconciler meters its real Twilio price into `messaging_cost_micros`, billed cost-plus (`billing_rates.markup_percent`, default 30%).
 
 ### 4.6 Notification Preferences (`notification_preferences`)
 
@@ -223,20 +226,20 @@ Schema::create('notification_preferences', function (Blueprint $table) {
 - **Retry**: 5 attempts
 - **Backoff**: `[30, 60, 120, 300, 600]` (exponential)
 - **Logic**:
-  1. Load the `notification_deliveries` record
-  2. Re-attempt delivery via `DispatchNotificationDelivery`
-  3. On success: update status to `delivered`, set `delivered_at`
-  4. On failure: update status to `retrying` or `failed` (if retries exhausted)
-  5. If retries exhausted and fallback configured, dispatch `FallbackNotificationChannelJob`
+  1. Load the `notification_deliveries` record (only `failed` ones are retried)
+  2. Re-send the exact stored `payload_json` (address, subject, body — reply instructions included) through `AttemptDelivery`
+  3. Queue-level `tries = 1`: business attempts live in `attempt_number` and are driven by `RetryOrFallbackOnNotificationFailed`
+  4. Permanent failures (Twilio 21211/21610/21614/30005/30006/63016…) are never retried: they go straight to fallback
+  5. No retry/fallback once the source incident was handled after the notification was created, the notification is older than 30 min, or the recipient was already reached by another channel
 
 ### `FallbackNotificationChannelJob`
 
 - **Queue**: `notifications`
 - **Logic**:
   1. Load the failed `notification_deliveries` record
-  2. Determine fallback channel from preferences or tenant notification policy
-  3. Create a new `notification_deliveries` record for the fallback channel
-  4. Dispatch delivery via `DispatchNotificationDelivery`
+  2. Determine fallback channel type from the tenant notification policy, skipping types the recipient already used and channels the tenant switched off (`usableByTeam`)
+  3. Create a new `notification_deliveries` record for the fallback channel with the recipient's channel-specific address (`Skipped` if none)
+  4. Send through `AttemptDelivery`
 
 ## 7. Domain Events
 
@@ -387,7 +390,7 @@ Each delivery attempt counts separately — if a notification goes to 3 recipien
 
 ### Rate Limiting
 
-- SMS and WhatsApp channels enforce per-tenant rate limits (configurable in `notification_channels.config_json`) to prevent provider throttling.
+- SMS and WhatsApp channels enforce per-tenant rate limits to prevent provider throttling.
 - Rate limiting is implemented via Valkey counters with sliding window.
 
 ## 14. Test Scenarios

@@ -3,6 +3,7 @@ import {
     Bell,
     Check,
     ExternalLink,
+    ListChecks,
     Mail,
     MessageCircle,
     MessageSquare,
@@ -30,6 +31,7 @@ import { dayLabel, formatClock, minutesSince } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import type {
     NotificationChannelSummary,
+    NotificationDeliverySummary,
     NotificationPriorityValue,
     NotificationRow,
     NotificationStatusValue,
@@ -101,6 +103,7 @@ const DELIVERY_LABELS: Record<string, string> = {
     pending: 'pendiente',
     queued: 'en cola',
     sending: 'enviando',
+    sent: 'enviado al operador',
     delivered: 'entregado',
     failed: 'falló',
     bounced: 'rebotó',
@@ -234,10 +237,42 @@ function StatusCell({
     );
 }
 
+function DeliveryCell({
+    summary,
+    onOpen,
+}: {
+    summary: NotificationDeliverySummary | null;
+    onOpen: () => void;
+}) {
+    if (summary === null || summary.attempted === 0) {
+        return <CellEmpty />;
+    }
+
+    return (
+        <button
+            type="button"
+            className="flex cursor-pointer flex-col items-start gap-0.5 text-left"
+            onClick={onOpen}
+            title="Ver detalle de entregas"
+        >
+            <span className="flex items-center gap-1 text-2xs text-fg-2 hover:text-fg-1">
+                <ListChecks size={11} aria-hidden="true" />
+                {summary.delivered}/{summary.attempted} entregadas
+            </span>
+            {summary.failed > 0 && (
+                <span className="inline-flex items-center rounded-sm border border-severity-critical/40 bg-severity-critical/10 px-1.5 py-0.5 text-3xs font-semibold text-severity-critical">
+                    {summary.failed} {summary.failed === 1 ? 'falla' : 'fallas'}
+                </span>
+            )}
+        </button>
+    );
+}
+
 interface NotificationsTableProps {
     rows: NotificationRow[];
     onMarkRead: (id: number) => void;
     onOpenSource: (url: string) => void;
+    onOpenDetail: (url: string) => void;
     empty?: React.ReactNode;
 }
 
@@ -245,6 +280,7 @@ export function NotificationsTable({
     rows,
     onMarkRead,
     onOpenSource,
+    onOpenDetail,
     empty,
 }: NotificationsTableProps) {
     const columns = React.useMemo<DataTableColumn<NotificationRow>[]>(
@@ -320,6 +356,19 @@ export function NotificationsTable({
                 width: 'w-52',
                 cell: (notification) => (
                     <ChannelChips channels={notification.channels ?? []} />
+                ),
+            },
+            {
+                key: 'deliveries',
+                header: 'Entregas',
+                width: 'w-32',
+                sortValue: (notification) =>
+                    notification.deliverySummary?.failed ?? 0,
+                cell: (notification) => (
+                    <DeliveryCell
+                        summary={notification.deliverySummary}
+                        onOpen={() => onOpenDetail(notification.detailUrl)}
+                    />
                 ),
             },
             {
@@ -416,7 +465,7 @@ export function NotificationsTable({
                 ),
             },
         ],
-        [onMarkRead, onOpenSource],
+        [onMarkRead, onOpenSource, onOpenDetail],
     );
 
     // Delivery columns only earn their space once some notification on the
@@ -426,6 +475,12 @@ export function NotificationsTable({
             columns.filter((column) => {
                 if (column.key === 'channels') {
                     return rows.some((n) => (n.channels ?? []).length > 0);
+                }
+
+                if (column.key === 'deliveries') {
+                    return rows.some(
+                        (n) => (n.deliverySummary?.attempted ?? 0) > 0,
+                    );
                 }
 
                 if (column.key === 'recipients') {

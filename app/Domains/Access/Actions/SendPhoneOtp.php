@@ -7,10 +7,12 @@ use App\Domains\Access\Data\OtpResult;
 use App\Domains\Audit\Actions\RecordAuditEntry;
 use App\Domains\Audit\Enums\AuditActorType;
 use App\Domains\Audit\Enums\AuditCategory;
+use App\Domains\Notifications\Actions\RecordMessagingCharge;
+use App\Domains\Notifications\Actions\RecordMessagingUsage;
 use App\Domains\Notifications\Data\RenderedNotification;
 use App\Domains\Notifications\Enums\ChannelType;
+use App\Domains\Notifications\Enums\MessagingChargeSource;
 use App\Domains\Notifications\Models\NotificationChannel;
-use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Domains\Tenancy\Support\TenantCanSend;
 use App\Models\User;
 use App\Support\OtpCacheKeys;
@@ -22,7 +24,8 @@ class SendPhoneOtp
 {
     public function __construct(
         private readonly ChannelDriverRegistry $drivers,
-        private readonly RecordUsageEvent $recordUsage,
+        private readonly RecordMessagingUsage $recordUsage,
+        private readonly RecordMessagingCharge $recordCharge,
         private readonly RecordAuditEntry $audit,
     ) {}
 
@@ -90,12 +93,29 @@ class SendPhoneOtp
 
         $result = $this->drivers->driverFor(ChannelType::Sms)->send($rendered, $channel);
 
-        $this->recordUsage->execute(
-            teamId: $teamId,
-            meterCode: 'otp_sms_sent',
-            quantity: 1,
-            eventKey: "otp_sms_{$user->id}_".now()->valueOf(),
-        );
+        // Sólo un SMS que Twilio aceptó cuenta (y cuesta): un fallo en la API
+        // no se mide ni se cobra.
+        if ($result->success) {
+            $this->recordUsage->execute(
+                teamId: $teamId,
+                meterCode: 'otp_sms_sent',
+                quantity: 1,
+                eventKey: "otp_sms_{$user->id}_".now()->valueOf(),
+            );
+
+            if ($result->resourceType !== null && $result->providerMessageId !== null) {
+                $this->recordCharge->execute(
+                    teamId: $teamId,
+                    providerSid: $result->providerMessageId,
+                    resourceType: $result->resourceType,
+                    sourceType: MessagingChargeSource::Otp,
+                    sourceId: (int) $user->id,
+                    channelType: ChannelType::Sms,
+                    status: $result->providerStatus,
+                    segments: $result->segments,
+                );
+            }
+        }
 
         $this->record($user, $teamId, $result->success ? 'phone_otp.sent' : 'phone_otp.send_failed', $result->success ? 'sent' : 'delivery_failed');
 
