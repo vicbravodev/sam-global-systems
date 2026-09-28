@@ -7,6 +7,9 @@ use App\Domains\Assets\Models\AssetDevice;
 use App\Domains\Assets\Models\AssetLocationSnapshot;
 use App\Domains\Assets\Models\AssetTelemetrySnapshot;
 use App\Domains\Assets\Models\AssetType;
+use App\Domains\Drivers\Models\Driver;
+use App\Domains\Drivers\Models\DriverAssignment;
+use App\Models\Team;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -88,7 +91,9 @@ class AssetsPageTest extends TestCase
                                 ->has('heading'),
                         )
                         ->where('lastSeenAt', $asset->last_seen_at->toIso8601String())
-                        ->where('lastSignalAt', $latest->recorded_at->toIso8601String()),
+                        ->where('lastSignalAt', $latest->recorded_at->toIso8601String())
+                        ->where('vehicle', null)
+                        ->where('driver', null),
                 )
                 ->where('pagination.page', 1)
                 ->where('pagination.total', 1)
@@ -387,6 +392,97 @@ class AssetsPageTest extends TestCase
             fn (Assert $page) => $page
                 ->has('assets', 10)
                 ->where('pagination.page', 2),
+        );
+    }
+
+    public function test_rows_expose_vehicle_facts_and_assigned_driver(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+
+        $asset = Asset::factory()->create([
+            'team_id' => $team->id,
+            'metadata_json' => ['make' => 'Kenworth', 'model' => 'T680', 'year' => 2022, 'license_plate' => 'ABC-123-D', 'vin' => '1XKYD49X1NJ', 'has_camera' => true],
+        ]);
+        $driver = Driver::factory()->create(['team_id' => $team->id, 'full_name' => 'Ana Torres']);
+        DriverAssignment::factory()->create([
+            'team_id' => $team->id,
+            'driver_id' => $driver->id,
+            'asset_id' => $asset->id,
+            'ended_at' => null,
+        ]);
+        // No metadata at all: the vehicle block is null, not a bag of nulls.
+        Asset::factory()->create(['team_id' => $team->id, 'metadata_json' => null, 'last_seen_at' => null]);
+
+        $response = $this->actingAs($user)->get(
+            route('assets.index', ['current_team' => $team->slug]),
+        );
+
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->has('assets', 2)
+                ->where('assets.0.vehicle.make', 'Kenworth')
+                ->where('assets.0.vehicle.plate', 'ABC-123-D')
+                ->where('assets.0.vehicle.year', 2022)
+                ->where('assets.0.vehicle.hasCamera', true)
+                ->where('assets.0.driver.id', $driver->id)
+                ->where('assets.0.driver.name', 'Ana Torres')
+                ->where('assets.1.vehicle', null)
+                ->where('assets.1.driver', null),
+        );
+    }
+
+    public function test_summary_reflects_the_whole_fleet_pulse_of_the_tenant(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+        $other = Team::factory()->create();
+
+        $moving = Asset::factory()->create(['team_id' => $team->id]);
+        AssetLocationSnapshot::factory()->create([
+            'asset_id' => $moving->id,
+            'recorded_at' => now()->subMinutes(2),
+            'speed' => 62,
+        ]);
+        AssetDevice::factory()->create(['asset_id' => $moving->id, 'device_type' => 'camera']);
+
+        $parked = Asset::factory()->create(['team_id' => $team->id]);
+        AssetLocationSnapshot::factory()->create([
+            'asset_id' => $parked->id,
+            'recorded_at' => now()->subMinutes(4),
+            'speed' => 0,
+        ]);
+
+        $silent = Asset::factory()->alert()->create(['team_id' => $team->id]);
+        AssetLocationSnapshot::factory()->create([
+            'asset_id' => $silent->id,
+            'recorded_at' => now()->subDays(3),
+            'speed' => 40,
+        ]);
+
+        Asset::factory()->create(['team_id' => $team->id, 'status' => 'maintenance']);
+
+        // Other tenant: never counted.
+        Asset::factory()->count(3)->create(['team_id' => $other->id]);
+
+        $response = $this->actingAs($user)->get(
+            // The active filter must not shrink the summary.
+            route('assets.index', ['current_team' => $team->slug, 'status' => 'alert']),
+        );
+
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->has('assets', 1)
+                ->where('summary.total', 4)
+                ->where('summary.statuses.active', 2)
+                ->where('summary.statuses.alert', 1)
+                ->where('summary.statuses.maintenance', 1)
+                ->where('summary.reporting', 2)
+                ->where('summary.moving', 1)
+                ->where('summary.silent', 2)
+                ->where('summary.alerting', 1)
+                ->where('summary.maintenance', 1)
+                ->where('summary.withCamera', 1),
         );
     }
 }

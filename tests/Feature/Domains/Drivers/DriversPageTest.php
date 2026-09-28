@@ -7,6 +7,7 @@ use App\Domains\Access\Models\Permission;
 use App\Domains\Access\Models\Role;
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Drivers\Enums\DriverStatus;
+use App\Domains\Drivers\Enums\RiskLevel;
 use App\Domains\Drivers\Models\Driver;
 use App\Domains\Drivers\Models\DriverAssignment;
 use App\Domains\Drivers\Models\DriverContact;
@@ -289,6 +290,75 @@ class DriversPageTest extends TestCase
                 ->component('drivers/index')
                 ->has('drivers', 1)
                 ->where('drivers.0.fullName', 'Carlos Mendoza'),
+        );
+    }
+
+    public function test_rows_expose_risk_level_trend_and_counters(): void
+    {
+        [$user, $team] = $this->createUserWithRole('roster_viewer', ['drivers.view']);
+
+        $driver = Driver::factory()->create(['team_id' => $team->id]);
+        DriverRiskProfile::factory()->create([
+            'driver_id' => $driver->id,
+            'risk_score' => 81.2,
+            'risk_level' => RiskLevel::High,
+            'incidents_count' => 2,
+            'harsh_events_count' => 9,
+            'metadata_json' => ['trend' => 'deteriorating'],
+        ]);
+
+        $response = $this->actingAs($user)->get(
+            route('drivers.index', ['current_team' => $team->slug]),
+        );
+
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->component('drivers/index')
+                ->where('drivers.0.riskLevel', 'high')
+                ->where('drivers.0.riskTrend', 'deteriorating')
+                ->where('drivers.0.incidentsCount', 2)
+                ->where('drivers.0.harshEventsCount', 9),
+        );
+    }
+
+    public function test_summary_describes_the_whole_roster_of_the_tenant_only(): void
+    {
+        [$user, $team] = $this->createUserWithRole('roster_viewer', ['drivers.view']);
+        $other = Team::factory()->create();
+
+        $assigned = Driver::factory()->create(['team_id' => $team->id, 'last_seen_at' => now()->subHours(2)]);
+        Driver::factory()->create([
+            'team_id' => $team->id,
+            'status' => DriverStatus::Suspended,
+            'last_seen_at' => now()->subDays(3),
+        ]);
+        $risky = Driver::factory()->create(['team_id' => $team->id, 'last_seen_at' => null]);
+        DriverRiskProfile::factory()->create(['driver_id' => $risky->id, 'risk_level' => RiskLevel::Critical]);
+        DriverAssignment::factory()->create([
+            'team_id' => $team->id,
+            'driver_id' => $assigned->id,
+            'asset_id' => Asset::factory()->create(['team_id' => $team->id])->id,
+            'ended_at' => null,
+        ]);
+
+        // Other tenant: never counted.
+        Driver::factory()->count(4)->create(['team_id' => $other->id]);
+
+        $response = $this->actingAs($user)->get(
+            // The active filter must not shrink the summary.
+            route('drivers.index', ['current_team' => $team->slug, 'status' => 'suspended']),
+        );
+
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->component('drivers/index')
+                ->has('drivers', 1)
+                ->where('summary.total', 3)
+                ->where('summary.statuses.active', 2)
+                ->where('summary.statuses.suspended', 1)
+                ->where('summary.highRisk', 1)
+                ->where('summary.unassigned', 2)
+                ->where('summary.seenToday', 1),
         );
     }
 

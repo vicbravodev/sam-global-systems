@@ -1,3 +1,6 @@
+import type { LinkedIncidentEntry } from '@/components/sam/linked-incidents-card';
+import type { RecentEventEntry } from '@/components/sam/recent-events-card';
+
 export type AssetStatusValue =
     | 'active'
     | 'inactive'
@@ -30,12 +33,31 @@ export interface AssetLocationSummary {
     recordedAt: string;
 }
 
+/** Vehicle facts synced from the provider (Samsara: make/model/year, plate, VIN). */
+export interface AssetVehicleFacts {
+    make: string | null;
+    model: string | null;
+    year: number | null;
+    plate: string | null;
+    vin: string | null;
+    hasCamera: boolean;
+}
+
+export interface AssetDriverSummary {
+    id: number;
+    name: string;
+    employeeCode: string | null;
+}
+
 export interface AssetRow {
     id: number;
     name: string;
     code: string | null;
     status: AssetStatusValue;
     type: AssetTypeSummary | null;
+    vehicle: AssetVehicleFacts | null;
+    /** Currently assigned primary driver, null when none. */
+    driver: AssetDriverSummary | null;
     devices: AssetDeviceSummary[];
     lastLocation: AssetLocationSummary | null;
     /** Inventory-sync timestamp (bumps in bulk; NOT a real signal). */
@@ -62,17 +84,24 @@ export interface AssetsPagination {
     lastPage: number;
 }
 
+/** Pulso de toda la flota del tenant (ignora filtros). */
+export interface AssetsSummary {
+    total: number;
+    statuses: Record<AssetStatusValue, number>;
+    reporting: number;
+    moving: number;
+    silent: number;
+    alerting: number;
+    maintenance: number;
+    withCamera: number;
+}
+
 export interface AssetsIndexProps {
     assets: AssetRow[];
     pagination: AssetsPagination;
     filters: AssetFilters;
     filterOptions: AssetFilterOptions;
-}
-
-export interface AssetDriverSummary {
-    id: number;
-    name: string;
-    employeeCode: string | null;
+    summary?: AssetsSummary;
 }
 
 export interface AssetDetail extends AssetRow {
@@ -80,8 +109,6 @@ export interface AssetDetail extends AssetRow {
     provider: string | null;
     sourceIntegration: string | null;
     firstSeenAt: string | null;
-    /** Currently assigned primary driver, null when none (C-08). */
-    driver: AssetDriverSummary | null;
 }
 
 export interface TelemetryEntry {
@@ -102,20 +129,14 @@ export interface LocationHistoryEntry {
     recordedAt: string;
 }
 
-export interface LinkedIncident {
-    id: number;
-    title: string;
-    status: { code: string; name: string } | null;
-    priority: { code: string; name: string } | null;
-    type: string | null;
-    openedAt: string | null;
-}
+export type LinkedIncident = LinkedIncidentEntry;
 
 export interface AssetShowProps {
     asset: AssetDetail;
     telemetry: TelemetryEntry[];
     locationHistory: LocationHistoryEntry[];
     incidents: LinkedIncident[];
+    recentEvents: RecentEventEntry[];
 }
 
 export interface AssetMarker {

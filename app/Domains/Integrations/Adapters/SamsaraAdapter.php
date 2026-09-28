@@ -732,6 +732,10 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
                 'model' => Arr::get($vehicle, 'model'),
                 'year' => Arr::get($vehicle, 'year'),
                 'serial' => Arr::get($vehicle, 'serial'),
+                // Plate and VIN also travel in metadata: the asset sync only
+                // persists `metadata`, and the fleet UI shows both.
+                'license_plate' => Arr::get($vehicle, 'licensePlate'),
+                'vin' => Arr::get($vehicle, 'vin'),
             ], fn ($value) => $value !== null && $value !== ''),
             'raw' => $vehicle,
         ];
@@ -781,11 +785,33 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
      */
     private function mapDriver(array $driver): array
     {
+        $tags = Arr::get($driver, 'tags');
+        $tagNames = is_array($tags)
+            ? array_values(array_filter(array_map(
+                fn ($tag) => is_array($tag) ? Arr::get($tag, 'name') : null,
+                $tags,
+            ), fn ($name) => is_string($name) && $name !== ''))
+            : [];
+
         return [
             'external_id' => (string) Arr::get($driver, 'id'),
             'name' => Arr::get($driver, 'name'),
             'username' => Arr::get($driver, 'username'),
             'phone' => Arr::get($driver, 'phone'),
+            // Profile facts the Samsara driver record carries and the driver
+            // detail page surfaces (license, username, timezone, tags...).
+            // The driver sync persists `metadata` as-is into `metadata_json`.
+            'metadata' => array_filter([
+                'license_number' => Arr::get($driver, 'licenseNumber'),
+                'license_state' => Arr::get($driver, 'licenseState'),
+                'username' => Arr::get($driver, 'username'),
+                'activation_status' => Arr::get($driver, 'driverActivationStatus'),
+                'static_vehicle' => Arr::get($driver, 'staticAssignedVehicle.name'),
+                'timezone' => Arr::get($driver, 'timezone'),
+                'locale' => Arr::get($driver, 'locale'),
+                'notes' => Arr::get($driver, 'notes'),
+                'tags' => $tagNames,
+            ], fn ($value) => $value !== null && $value !== '' && $value !== []),
             'raw' => $driver,
         ];
     }

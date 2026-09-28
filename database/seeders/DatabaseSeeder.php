@@ -44,8 +44,10 @@ class DatabaseSeeder extends Seeder
         $this->call(SamsaraTestSeeder::class);
         $this->call(SamsaraTestDecisionRulesSeeder::class);
 
-        // Marca al admin del tenant de prueba como super-admin (acceso a /admin/*).
-        // DEBE ir después de SamsaraTestSeeder, que es quien crea ese usuario.
+        // Operador SaaS de desarrollo (super-admin GLOBAL, sin membresía en el
+        // tenant de prueba): el admin de ServiExpress representa al cliente y
+        // sólo ve su empresa. Va después de SamsaraTestSeeder para poder
+        // retirar el rol a un admin promovido por versiones anteriores.
         $this->call(SuperAdminSeeder::class);
     }
 }
