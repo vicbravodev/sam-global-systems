@@ -21,6 +21,7 @@ class RawEvent extends Model
     protected $fillable = [
         'team_id',
         'event_source_id',
+        'trace_id',
         'provider_id',
         'external_event_id',
         'event_type_raw',
