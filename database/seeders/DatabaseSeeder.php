@@ -25,8 +25,17 @@ class DatabaseSeeder extends Seeder
         $this->call(ContextMeterSeeder::class);
         $this->call(IncidentsMeterSeeder::class);
         $this->call(OtpMeterSeeder::class);
+        // incident_workflows / automation_actions: sin ellos PlanSeeder omite
+        // el límite de workflows y RecordUsageEvent revienta (firstOrFail).
+        $this->call(AutomationMeterSeeder::class);
+        $this->call(AnalyticsMeterSeeder::class);
         // PlanSeeder must run after every *MeterSeeder so meter codes resolve.
         $this->call(PlanSeeder::class);
+
+        // Catálogos de Analítica: sin métricas activas los KPIs diarios no
+        // calculan nada; los reportes globales los ve todo tenant.
+        $this->call(MetricDefinitionSeeder::class);
+        $this->call(ReportDefinitionSeeder::class);
 
         // Samsara mapping rules so replayed/live webhook events normalize.
         $this->call(NormalizationSeeder::class);
@@ -49,5 +58,7 @@ class DatabaseSeeder extends Seeder
         // sólo ve su empresa. Va después de SamsaraTestSeeder para poder
         // retirar el rol a un admin promovido por versiones anteriores.
         $this->call(SuperAdminSeeder::class);
+
+        $this->command?->info('Para poblar todas las pantallas con 90 días simulados: php artisan sam:showcase (ver Showcase/ShowcaseSeeder).');
     }
 }
