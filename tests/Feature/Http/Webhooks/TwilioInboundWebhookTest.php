@@ -44,13 +44,12 @@ class TwilioInboundWebhookTest extends TestCase
         $this->operator = User::factory()->create();
         $this->team = $this->operator->currentTeam;
 
+        // SAM's platform Twilio account signs every webhook (TWILIO_*).
+        config()->set('services.twilio.account_sid', 'AC123');
+        config()->set('services.twilio.auth_token', self::AUTH_TOKEN);
+
         NotificationChannel::factory()->sms()->create([
-            'team_id' => $this->team->id,
-            'config_json' => [
-                'twilio_account_sid' => 'AC123',
-                'twilio_auth_token' => self::AUTH_TOKEN,
-                'from' => self::TWILIO_NUMBER,
-            ],
+            'config_json' => ['from' => self::TWILIO_NUMBER],
         ]);
     }
 
@@ -203,8 +202,12 @@ class TwilioInboundWebhookTest extends TestCase
         $this->assertNull($token->incident()->first()->acknowledged_at);
     }
 
-    public function test_token_of_another_tenant_cannot_act_through_this_channel(): void
+    public function test_reply_token_acts_only_on_its_own_tenant(): void
     {
+        // Every number is SAM's: the token itself names the tenant. A reply
+        // must act on the token's incident and never touch another tenant.
+        $mine = Incident::factory()->open()->create(['team_id' => $this->team->id]);
+
         $otherTeam = User::factory()->create()->currentTeam;
         $otherIncident = Incident::factory()->open()->create(['team_id' => $otherTeam->id]);
 
@@ -219,8 +222,16 @@ class TwilioInboundWebhookTest extends TestCase
         $response = $this->postReply('SI-X7P2');
 
         $response->assertOk();
-        $this->assertStringNotContainsString('<Message>', $response->getContent());
-        $this->assertNull($otherIncident->fresh()->acknowledged_at);
+        $this->assertNotNull($otherIncident->fresh()->acknowledged_at);
+        $this->assertNull($mine->fresh()->acknowledged_at);
+    }
+
+    public function test_no_platform_account_rejects_every_reply(): void
+    {
+        config()->set('services.twilio.auth_token', null);
+        $this->makeToken();
+
+        $this->postReply('SI-W4K9')->assertForbidden();
     }
 
     public function test_message_without_keyword_is_answered_with_silence(): void

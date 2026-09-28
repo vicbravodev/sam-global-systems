@@ -9,6 +9,12 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * Canal de notificación de PLATAFORMA (catálogo global, sin `team_id`): SAM lo
+ * opera para todos los tenants y cada tenant sólo puede apagarlo para su
+ * equipo ({@see TenantChannelToggle}). No lleva `BelongsToTenant` porque no
+ * es un dato de tenant.
+ */
 class NotificationChannel extends Model
 {
     /** @use HasFactory<NotificationChannelFactory> */
@@ -17,7 +23,6 @@ class NotificationChannel extends Model
     protected $table = 'notification_channels';
 
     protected $fillable = [
-        'team_id',
         'code',
         'name',
         'provider',
@@ -54,9 +59,10 @@ class NotificationChannel extends Model
     }
 
     /**
-     * Channels a team can actually deliver through (Roadmap V2-B1): its own
-     * active channels plus SAM's platform channels (`team_id = null`) that
-     * the tenant has not switched off via `tenant_channel_toggles`.
+     * Channels a team can actually deliver through (Roadmap V2-B1): SAM's
+     * active platform channels that the tenant has not switched off via
+     * `tenant_channel_toggles`. Channels are platform-only — tenants never
+     * own channels or messaging credentials.
      *
      * @param  Builder<self>  $query
      * @return Builder<self>
@@ -65,7 +71,6 @@ class NotificationChannel extends Model
     {
         return $query
             ->where('is_active', true)
-            ->where(fn (Builder $q) => $q->where('team_id', $teamId)->orWhereNull('team_id'))
             ->whereNotExists(function ($sub) use ($teamId) {
                 $sub->from('tenant_channel_toggles')
                     ->whereColumn('tenant_channel_toggles.notification_channel_id', 'notification_channels.id')

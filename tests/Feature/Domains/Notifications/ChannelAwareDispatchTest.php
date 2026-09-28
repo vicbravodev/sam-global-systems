@@ -33,7 +33,6 @@ class ChannelAwareDispatchTest extends TestCase
         $this->actingAs($user);
 
         NotificationChannel::factory()->sms()->create([
-            'team_id' => $team->id,
             'is_active' => true,
             'channel_type' => ChannelType::Sms,
         ]);
@@ -67,7 +66,6 @@ class ChannelAwareDispatchTest extends TestCase
         $this->actingAs($user);
 
         NotificationChannel::factory()->sms()->create([
-            'team_id' => $team->id,
             'is_active' => true,
             'channel_type' => ChannelType::Sms,
         ]);
@@ -103,7 +101,6 @@ class ChannelAwareDispatchTest extends TestCase
         // Single critical SMS channel, recipient has no phone: every channel is
         // skipped, so the dispatcher makes zero real attempts and cancels.
         NotificationChannel::factory()->sms()->create([
-            'team_id' => $team->id,
             'is_active' => true,
             'channel_type' => ChannelType::Sms,
         ]);
@@ -136,11 +133,9 @@ class ChannelAwareDispatchTest extends TestCase
         // delivers and the SMS is skipped — a skip must NOT degrade the overall
         // status to PartiallySent.
         NotificationChannel::factory()->email()->create([
-            'team_id' => $team->id,
             'is_active' => true,
         ]);
         NotificationChannel::factory()->sms()->create([
-            'team_id' => $team->id,
             'is_active' => true,
             'channel_type' => ChannelType::Sms,
         ]);

@@ -93,7 +93,7 @@ class TemplateInjectionTest extends TestCase
         $user = User::factory()->create(['name' => 'Original']);
         $team = $user->currentTeam;
 
-        NotificationChannel::factory()->email()->create(['team_id' => $team->id]);
+        NotificationChannel::factory()->email()->create();
 
         $template = ActionTemplate::factory()->create([
             'team_id' => $team->id,

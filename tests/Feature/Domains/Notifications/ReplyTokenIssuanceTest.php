@@ -37,13 +37,12 @@ class ReplyTokenIssuanceTest extends TestCase
 
         $this->team = User::factory()->create()->currentTeam;
 
+        // Twilio credentials are platform env only (TWILIO_*).
+        config()->set('services.twilio.account_sid', 'AC123');
+        config()->set('services.twilio.auth_token', 'tok-456');
+
         NotificationChannel::factory()->sms()->create([
-            'team_id' => $this->team->id,
-            'config_json' => [
-                'twilio_account_sid' => 'AC123',
-                'twilio_auth_token' => 'tok-456',
-                'from' => '+14155238886',
-            ],
+            'config_json' => ['from' => '+14155238886'],
         ]);
     }
 
@@ -54,7 +53,7 @@ class ReplyTokenIssuanceTest extends TestCase
 
         $messenger = Mockery::mock(TwilioMessenger::class);
         $messenger->shouldReceive('createMessage')
-            ->andReturnUsing(function (array $config, string $to, array $params) use ($captured) {
+            ->andReturnUsing(function (string $to, array $params) use ($captured) {
                 $captured->body = $params['body'] ?? null;
 
                 return (object) ['sid' => 'SM123', 'status' => 'queued'];

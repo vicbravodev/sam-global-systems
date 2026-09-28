@@ -5,53 +5,67 @@ namespace App\Domains\Notifications\Support;
 use App\Domains\Notifications\Enums\ChannelType;
 
 /**
- * SAM opera la mensajería central: las credenciales Twilio de plataforma viven
- * en config/services.php (env) y el `config_json` del canal actúa solo como
- * override puntual. El canal gana llave por llave; la plataforma rellena lo
- * que falte para que los tenants nunca configuren mensajería.
+ * SAM opera la mensajería con UNA cuenta Twilio de plataforma: las
+ * credenciales viven sólo en config/services.php (env TWILIO_*), nunca en la
+ * base de datos ni por tenant. El `config_json` de un canal de plataforma
+ * sólo puede ajustar valores no secretos (remitente, plantilla de WhatsApp,
+ * timeout de timbrado); cualquier otra llave se ignora.
  */
 final class PlatformTwilioConfig
 {
     /**
-     * @param  array<string, mixed>  $config  Channel `config_json`.
-     * @return array<string, mixed>
+     * Llaves no secretas que un canal Twilio puede sobreescribir.
+     *
+     * @var list<string>
      */
-    public static function merge(array $config, ChannelType $type): array
+    public const ALLOWED_CHANNEL_KEYS = ['from', 'content_sid', 'ring_timeout_seconds'];
+
+    public static function accountSid(): ?string
     {
-        $platform = (array) config('services.twilio', []);
+        return self::string(config('services.twilio.account_sid'));
+    }
 
-        $defaults = [
-            'twilio_account_sid' => $platform['account_sid'] ?? null,
-            'twilio_auth_token' => $platform['auth_token'] ?? null,
-            'from' => match ($type) {
-                ChannelType::Sms => $platform['sms_from'] ?? null,
-                ChannelType::Whatsapp => $platform['whatsapp_from'] ?? null,
-                ChannelType::Voice => $platform['voice_from'] ?? null,
-                default => null,
-            },
+    public static function authToken(): ?string
+    {
+        return self::string(config('services.twilio.auth_token'));
+    }
+
+    /**
+     * ¿Se puede hablar con Twilio? En sandbox no hace falta cuenta real.
+     */
+    public static function hasCredentials(): bool
+    {
+        return TwilioSandbox::enabled()
+            || (self::accountSid() !== null && self::authToken() !== null);
+    }
+
+    /**
+     * Configuración efectiva (no secreta) de un canal Twilio: los overrides
+     * permitidos del canal y, si el canal no fija remitente, el de plataforma.
+     *
+     * @param  array<string, mixed>  $channelConfig  `config_json` del canal.
+     * @return array{from: string|null, content_sid: string|null, ring_timeout_seconds: int|null}
+     */
+    public static function resolve(array $channelConfig, ChannelType $type): array
+    {
+        $platformFrom = match ($type) {
+            ChannelType::Sms => config('services.twilio.sms_from'),
+            ChannelType::Whatsapp => config('services.twilio.whatsapp_from'),
+            ChannelType::Voice => config('services.twilio.voice_from'),
+            default => null,
+        };
+
+        $timeout = $channelConfig['ring_timeout_seconds'] ?? null;
+
+        return [
+            'from' => self::string($channelConfig['from'] ?? null) ?? self::string($platformFrom),
+            'content_sid' => self::string($channelConfig['content_sid'] ?? null),
+            'ring_timeout_seconds' => is_numeric($timeout) ? (int) $timeout : null,
         ];
+    }
 
-        // Legacy alias keys the drivers also accept; a channel using the alias
-        // must not be shadowed by a platform default under the canonical key.
-        $aliases = [
-            'twilio_account_sid' => 'account_sid',
-            'twilio_auth_token' => 'auth_token',
-        ];
-
-        $merged = $config;
-
-        foreach ($defaults as $key => $value) {
-            if (! is_string($value) || $value === '') {
-                continue;
-            }
-
-            $current = $config[$key] ?? $config[$aliases[$key] ?? ''] ?? null;
-
-            if (! is_string($current) || $current === '') {
-                $merged[$key] = $value;
-            }
-        }
-
-        return $merged;
+    private static function string(mixed $value): ?string
+    {
+        return is_string($value) && trim($value) !== '' ? trim($value) : null;
     }
 }

@@ -29,21 +29,18 @@ interface AdminChannelsIndexProps {
     channelTypes: { value: string; label: string }[];
 }
 
+// Twilio credentials are platform env (TWILIO_*), never channel config: a
+// Twilio channel only overrides non-secret values. Empty fields fall back to
+// the platform defaults (TWILIO_SMS_FROM / _WHATSAPP_FROM / _VOICE_FROM).
 const CONFIG_FIELDS: Record<string, { key: string; label: string }[]> = {
-    sms: [
-        { key: 'twilio_account_sid', label: 'Twilio Account SID' },
-        { key: 'twilio_auth_token', label: 'Twilio Auth Token' },
-        { key: 'from', label: 'Número emisor (E.164 o MG…)' },
-    ],
+    sms: [{ key: 'from', label: 'Número emisor (E.164 o MG…), opcional' }],
     whatsapp: [
-        { key: 'twilio_account_sid', label: 'Twilio Account SID' },
-        { key: 'twilio_auth_token', label: 'Twilio Auth Token' },
-        { key: 'from', label: 'Emisor (whatsapp:+…)' },
+        { key: 'from', label: 'Emisor (whatsapp:+…), opcional' },
+        { key: 'content_sid', label: 'Plantilla aprobada (Content SID)' },
     ],
     voice: [
-        { key: 'twilio_account_sid', label: 'Twilio Account SID' },
-        { key: 'twilio_auth_token', label: 'Twilio Auth Token' },
-        { key: 'from', label: 'Número de voz (E.164)' },
+        { key: 'from', label: 'Número de voz (E.164), opcional' },
+        { key: 'ring_timeout_seconds', label: 'Segundos de timbrado' },
     ],
     push: [
         { key: 'firebase_credentials', label: 'Credenciales Firebase (JSON)' },

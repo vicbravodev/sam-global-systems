@@ -99,7 +99,6 @@ interface ChannelRow {
     provider: string | null;
     channelType: string | null;
     isActive: boolean;
-    isGlobal: boolean;
     enabledForTeam: boolean;
 }
 
@@ -1639,33 +1638,28 @@ function ChannelsTab({
                                 <span className="font-medium text-fg-1">
                                     {channel.name}
                                 </span>
-                                {channel.isGlobal && (
-                                    <Badge
-                                        variant="outline"
-                                        className="text-3xs text-fg-3"
-                                    >
-                                        Provisto por SAM
-                                    </Badge>
-                                )}
+                                <Badge
+                                    variant="outline"
+                                    className="text-3xs text-fg-3"
+                                >
+                                    Provisto por SAM
+                                </Badge>
                                 <Badge
                                     variant="outline"
                                     className={
                                         channel.isActive &&
-                                        (!channel.isGlobal ||
-                                            channel.enabledForTeam)
+                                        channel.enabledForTeam
                                             ? 'text-severity-low'
                                             : 'text-fg-3'
                                     }
                                 >
-                                    {channel.isGlobal
-                                        ? channel.enabledForTeam
-                                            ? 'activo'
-                                            : 'apagado para tu equipo'
-                                        : channel.isActive
+                                    {!channel.isActive
+                                        ? 'inactivo'
+                                        : channel.enabledForTeam
                                           ? 'activo'
-                                          : 'inactivo'}
+                                          : 'apagado para tu equipo'}
                                 </Badge>
-                                {canManage && channel.isGlobal && (
+                                {canManage && (
                                     <span className="ml-auto">
                                         <Button
                                             size="sm"

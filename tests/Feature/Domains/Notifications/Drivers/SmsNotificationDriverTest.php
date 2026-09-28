@@ -18,6 +18,15 @@ class SmsNotificationDriverTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Twilio credentials are platform env only (never channel config).
+        config()->set('services.twilio.account_sid', 'AC123');
+        config()->set('services.twilio.auth_token', 'tok-456');
+    }
+
     private function rendered(string $body = 'short body'): RenderedNotification
     {
         return new RenderedNotification(
@@ -32,12 +41,9 @@ class SmsNotificationDriverTest extends TestCase
     private function channel(Team $team, array $overrides = []): NotificationChannel
     {
         return NotificationChannel::factory()->create([
-            'team_id' => $team->id,
             'channel_type' => ChannelType::Sms,
             'provider' => 'twilio',
             'config_json' => array_merge([
-                'twilio_account_sid' => 'AC123',
-                'twilio_auth_token' => 'tok-456',
                 'from' => '+14155238886',
             ], $overrides),
         ]);
@@ -56,7 +62,7 @@ class SmsNotificationDriverTest extends TestCase
         $messenger = $this->bindMessenger();
         $messenger->shouldReceive('createMessage')
             ->once()
-            ->withArgs(function (array $config, string $to, array $params) {
+            ->withArgs(function (string $to, array $params) {
                 $this->assertSame('+34666123456', $to);
                 $this->assertSame('+14155238886', $params['from']);
                 $this->assertSame('short body', $params['body']);
@@ -82,7 +88,7 @@ class SmsNotificationDriverTest extends TestCase
         $messenger = $this->bindMessenger();
         $messenger->shouldReceive('createMessage')
             ->once()
-            ->withArgs(function (array $config, string $to, array $params) {
+            ->withArgs(function (string $to, array $params) {
                 $this->assertLessThanOrEqual(SmsNotificationDriver::MAX_LENGTH, mb_strlen($params['body']));
                 $this->assertStringEndsWith(SmsNotificationDriver::SUFFIX, $params['body']);
 
@@ -104,7 +110,7 @@ class SmsNotificationDriverTest extends TestCase
         $messenger = $this->bindMessenger();
         $messenger->shouldReceive('createMessage')
             ->once()
-            ->withArgs(function (array $config, string $to, array $params) {
+            ->withArgs(function (string $to, array $params) {
                 $this->assertSame('MG1234567890abcdef', $params['messagingServiceSid']);
                 $this->assertArrayNotHasKey('from', $params);
 
@@ -154,17 +160,22 @@ class SmsNotificationDriverTest extends TestCase
         $messenger = $this->bindMessenger();
         $messenger->shouldNotReceive('createMessage');
 
+        // No platform account: legacy per-channel credentials are ignored,
+        // never used as a fallback.
+        config()->set('services.twilio.account_sid', null);
+        config()->set('services.twilio.auth_token', null);
+
         $team = Team::factory()->create();
         $channel = NotificationChannel::factory()->create([
-            'team_id' => $team->id,
             'channel_type' => ChannelType::Sms,
             'provider' => 'twilio',
-            'config_json' => ['from' => '+14155238886'],
+            'config_json' => ['from' => '+14155238886', 'twilio_account_sid' => 'AC_LEGACY', 'twilio_auth_token' => 'tok_legacy'],
         ]);
 
         $result = app(SmsNotificationDriver::class)->send($this->rendered(), $channel);
 
         $this->assertFalse($result->success);
         $this->assertStringContainsString('credentials missing', $result->errorMessage);
+        $this->assertTrue($result->permanent);
     }
 }

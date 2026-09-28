@@ -264,7 +264,6 @@ class NotificationCenterPageTest extends TestCase
         // A critical SMS-only notification whose recipient has no phone: the
         // dispatcher records a Skipped delivery and cancels the notification.
         NotificationChannel::factory()->sms()->create([
-            'team_id' => $team->id,
             'is_active' => true,
             'channel_type' => ChannelType::Sms,
         ]);

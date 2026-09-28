@@ -25,9 +25,7 @@ class ExecuteActionJobTest extends TestCase
 
         $user = User::factory()->create();
 
-        NotificationChannel::factory()->email()->create([
-            'team_id' => $user->currentTeam->id,
-        ]);
+        NotificationChannel::factory()->email()->create();
 
         $execution = ActionExecution::factory()->create([
             'team_id' => $user->currentTeam->id,

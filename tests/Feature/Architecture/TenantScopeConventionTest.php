@@ -141,7 +141,6 @@ class TenantScopeConventionTest extends TestCase
         DecisionRule::class => 'Regla default de SAM, overrideable por tenant.',
         RuleSet::class => 'Ruleset default de SAM, overrideable por tenant.',
         EventDeduplicationKey::class => 'El aislamiento efectivo viene de event_source_id; team_id se copia del RawEvent.',
-        NotificationChannel::class => 'Canal gestionado por SAM (team_id null) que el tenant sólo activa/desactiva.',
         NotificationTemplate::class => 'Plantilla de plataforma, overrideable por tenant.',
         Role::class => 'Rol de sistema (team_id null, sólo lo cambia el super-admin) o rol personalizado del tenant. Consultar con visibleToTeam().',
     ];
@@ -169,6 +168,10 @@ class TenantScopeConventionTest extends TestCase
         BillingRate::class,
         Plan::class,
         UsageMeter::class,
+        // Canales de notificación: sólo de plataforma (SAM opera la mensajería
+        // con credenciales de env). El tenant sólo los apaga para su equipo vía
+        // TenantChannelToggle, que sí es tenant-scoped.
+        NotificationChannel::class,
         Team::class,
         User::class,
     ];

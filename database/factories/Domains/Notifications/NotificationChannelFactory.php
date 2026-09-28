@@ -4,10 +4,12 @@ namespace Database\Factories\Domains\Notifications;
 
 use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Models\NotificationChannel;
-use App\Models\Team;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
+ * Platform channels only: channels have no tenant. Twilio credentials come
+ * from `services.twilio` (env), never from `config_json`.
+ *
  * @extends Factory<NotificationChannel>
  */
 class NotificationChannelFactory extends Factory
@@ -17,7 +19,6 @@ class NotificationChannelFactory extends Factory
     public function definition(): array
     {
         return [
-            'team_id' => Team::factory(),
             'code' => 'email_default_'.fake()->unique()->numerify('####'),
             'name' => 'Default Email Channel',
             'provider' => 'mail',
@@ -75,8 +76,6 @@ class NotificationChannelFactory extends Factory
             'channel_type' => ChannelType::Voice,
             'provider' => 'twilio',
             'config_json' => [
-                'twilio_account_sid' => 'AC'.fake()->regexify('[a-f0-9]{32}'),
-                'twilio_auth_token' => fake()->regexify('[a-f0-9]{32}'),
                 'from' => '+15005550006',
             ],
         ]);
