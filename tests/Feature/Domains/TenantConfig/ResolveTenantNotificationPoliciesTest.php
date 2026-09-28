@@ -7,8 +7,8 @@ use App\Domains\Notifications\Data\TenantNotificationPolicy as TenantNotificatio
 use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\TenantConfig\Actions\ResolveTenantNotificationPolicies;
 use App\Domains\TenantConfig\Models\TenantNotificationPolicy;
-use App\Models\User;
 use App\Domains\TenantConfig\Support\CacheKeys;
+use App\Models\User;
 use Database\Seeders\AccessSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
