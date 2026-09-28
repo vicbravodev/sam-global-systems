@@ -6,12 +6,13 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * Unique keys the code already relies on but the schema did not enforce, so
- * concurrent writers could create duplicates:
+ * concurrent writers could create duplicates. (`event_sources` is left out on
+ * purpose: one source per integration is a valid shape, since per-integration
+ * event counts key on `tenant_integration_id`; StoreRawEvent serialises its
+ * own resolution with a lock.)
  *
  * - invoice_snapshots: one invoice per tenant and period (admin trigger vs
  *   scheduled run).
- * - event_sources: one source per (tenant, provider, type); dedup keys are
- *   scoped by source, so a duplicated source silently splits dedup.
  * - kpi_records / analytics_snapshots: their existing uniques include
  *   nullable dimension columns, and PostgreSQL treats NULLs as distinct, so
  *   the rows written with NULL dimensions were never protected.
@@ -40,7 +41,6 @@ return new class extends Migration
 
         if ($pgsql) {
             $indexes += [
-                'event_sources_team_provider_type_unique' => ['event_sources', ['team_id', 'provider_id', 'source_type'], true],
                 'kpi_records_team_metric_period_dim_nnd_unique' => ['kpi_records', ['team_id', 'kpi_code', 'period_type', 'period_start', 'dimension_type', 'dimension_reference'], true],
                 'analytics_snapshots_team_type_entity_period_nnd_unique' => ['analytics_snapshots', ['team_id', 'snapshot_type', 'entity_type', 'entity_id', 'period_start'], true],
             ];
