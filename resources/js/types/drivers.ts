@@ -137,6 +137,8 @@ export interface DriverDetail {
     status: DriverStatusValue;
     firstSeenAt: string | null;
     lastSeenAt: string | null;
+    /** Latest real activity: driver event or current unit's signal. */
+    lastSignalAt: string | null;
     currentAsset: DriverAssetSummary | null;
     riskProfile: DriverRiskProfile | null;
     providerFields: DriverProviderField[];

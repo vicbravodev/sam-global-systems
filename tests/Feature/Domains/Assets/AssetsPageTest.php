@@ -92,6 +92,7 @@ class AssetsPageTest extends TestCase
                         )
                         ->where('lastSeenAt', $asset->last_seen_at->toIso8601String())
                         ->where('lastSignalAt', $latest->recorded_at->toIso8601String())
+                        ->has('currentSpeed')
                         ->where('vehicle', null)
                         ->where('driver', null),
                 )
