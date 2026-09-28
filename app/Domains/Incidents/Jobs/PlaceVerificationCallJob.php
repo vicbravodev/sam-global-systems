@@ -10,8 +10,11 @@ use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentCallVerification;
 use App\Domains\Incidents\Support\IncidentSuppression;
 use App\Domains\Incidents\Support\VerificationCallTwiml;
+use App\Domains\Notifications\Actions\RecordMessagingCharge;
 use App\Domains\Notifications\Channels\TwilioVoiceCaller;
 use App\Domains\Notifications\Enums\ChannelType;
+use App\Domains\Notifications\Enums\MessagingChargeSource;
+use App\Domains\Notifications\Enums\MessagingResourceType;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Support\PlatformTwilioConfig;
 use App\Domains\Tenancy\Actions\RecordUsageEvent;
@@ -26,8 +29,8 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Place one operator verification call through the tenant's (or SAM's
- * platform) Twilio voice channel (Roadmap V2-A3). The DTMF answer arrives at
+ * Place one operator verification call through SAM's platform Twilio voice
+ * channel (Roadmap V2-A3). The DTMF answer arrives at
  * the gather webhook; Twilio's status callback reports unanswered calls, and
  * a delayed `EvaluateVerificationCallOutcomeJob` acts as the safety net when
  * no callback ever lands.
@@ -60,6 +63,7 @@ class PlaceVerificationCallJob implements ShouldQueue
         TenantConfigResolver $tenantConfig,
         HandleVerificationCallAttemptFailure $handleFailure,
         RecordUsageEvent $recordUsage,
+        RecordMessagingCharge $recordCharge,
     ): void {
         $verification = IncidentCallVerification::withoutGlobalScopes()->find($this->verificationId);
 
@@ -97,12 +101,10 @@ class PlaceVerificationCallJob implements ShouldQueue
         }
 
         $channel = $this->resolveVoiceChannel((int) $verification->team_id);
-        $config = PlatformTwilioConfig::merge($channel?->config_json ?? [], ChannelType::Voice);
-        $from = $config['from'] ?? null;
-        $sid = $config['twilio_account_sid'] ?? $config['account_sid'] ?? null;
-        $token = $config['twilio_auth_token'] ?? $config['auth_token'] ?? null;
+        $config = PlatformTwilioConfig::resolve($channel?->config_json ?? [], ChannelType::Voice);
+        $from = $config['from'];
 
-        if ($channel === null || ! is_string($from) || $from === '' || ! is_string($sid) || $sid === '' || ! is_string($token) || $token === '') {
+        if ($channel === null || $from === null || ! PlatformTwilioConfig::hasCredentials()) {
             // A misconfigured channel would fail every retry the same way:
             // close the attempt without consuming the attempts budget.
             $verification->forceFill([
@@ -121,14 +123,14 @@ class PlaceVerificationCallJob implements ShouldQueue
         $incident->loadMissing('asset');
 
         try {
-            $call = $caller->createCall($config, $verification->phone, $from, [
+            $call = $caller->createCall($verification->phone, $from, [
                 'twiml' => VerificationCallTwiml::prompt(
                     $verification,
                     $incident,
                     route('webhooks.twilio.voice.gather', ['verification' => $verification->id]),
                 ),
                 'statusCallback' => route('webhooks.twilio.voice.status', ['verification' => $verification->id]),
-                'timeout' => (int) ($config['ring_timeout_seconds'] ?? 25),
+                'timeout' => $config['ring_timeout_seconds'] ?? 25,
             ]);
         } catch (\Throwable $e) {
             Log::warning('Verification call placement failed', [
@@ -151,6 +153,18 @@ class PlaceVerificationCallJob implements ShouldQueue
 
         $this->recordUsage($verification, $recordUsage);
 
+        // Cost of the call itself (Twilio price, cost-plus billing): the
+        // reconciler fetches it once the call is over.
+        $recordCharge->execute(
+            teamId: (int) $verification->team_id,
+            providerSid: (string) ($call->sid ?? ''),
+            resourceType: MessagingResourceType::Call,
+            sourceType: MessagingChargeSource::VerificationCall,
+            sourceId: (int) $verification->id,
+            channelType: ChannelType::Voice,
+            status: isset($call->status) ? (string) $call->status : null,
+        );
+
         $retryDelay = max(30, (int) $tenantConfig->resolve(
             (int) $verification->team_id,
             StartIncidentCallVerification::SETTING_RETRY_DELAY,
@@ -162,15 +176,15 @@ class PlaceVerificationCallJob implements ShouldQueue
     }
 
     /**
-     * The tenant's own voice channel wins over SAM's platform-wide one;
-     * globals the tenant switched off (Roadmap V2-B1) never serve calls.
+     * SAM's platform voice channel, unless the tenant switched it off
+     * (Roadmap V2-B1): then no verification calls are placed.
      */
     private function resolveVoiceChannel(int $teamId): ?NotificationChannel
     {
         return NotificationChannel::query()
             ->usableByTeam($teamId)
             ->where('channel_type', ChannelType::Voice)
-            ->orderByRaw('team_id IS NULL')
+            ->orderBy('id')
             ->first();
     }
 

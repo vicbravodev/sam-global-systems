@@ -12,7 +12,10 @@ use App\Domains\Incidents\Jobs\PlaceVerificationCallJob;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentCallVerification;
 use App\Domains\Incidents\Models\IncidentTimeline;
+use App\Domains\Notifications\Actions\RecordMessagingCharge;
 use App\Domains\Notifications\Channels\TwilioVoiceCaller;
+use App\Domains\Notifications\Enums\MessagingChargeSource;
+use App\Domains\Notifications\Models\MessagingCharge;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Models\TenantChannelToggle;
 use App\Domains\Tenancy\Actions\RecordUsageEvent;
@@ -38,6 +41,10 @@ class PlaceVerificationCallJobTest extends TestCase
         $this->seed(IncidentStatusSeeder::class);
 
         $this->teamId = User::factory()->create()->currentTeam->id;
+
+        // Twilio credentials are platform env only (TWILIO_*).
+        config()->set('services.twilio.account_sid', 'AC_PLATFORM');
+        config()->set('services.twilio.auth_token', 'tok_platform');
     }
 
     private function makeVerification(array $attributes = []): IncidentCallVerification
@@ -58,6 +65,7 @@ class PlaceVerificationCallJobTest extends TestCase
             app(TenantConfigResolver::class),
             app(HandleVerificationCallAttemptFailure::class),
             app(RecordUsageEvent::class),
+            app(RecordMessagingCharge::class),
         );
     }
 
@@ -65,15 +73,15 @@ class PlaceVerificationCallJobTest extends TestCase
     {
         $this->seed(IncidentsMeterSeeder::class);
 
-        $channel = NotificationChannel::factory()->voice()->create(['team_id' => $this->teamId]);
+        $channel = NotificationChannel::factory()->voice()->create();
         $verification = $this->makeVerification();
 
         $this->mock(TwilioVoiceCaller::class, function ($mock) use ($verification) {
             $mock->shouldReceive('createCall')
                 ->once()
-                ->withArgs(function (array $config, string $to, string $from, array $params) use ($verification) {
+                ->withArgs(function (string $to, string $from, array $params) use ($verification) {
                     return $to === '+5215512345678'
-                        && $from === $config['from']
+                        && $from === '+15005550006'
                         && str_contains($params['twiml'], '<Gather')
                         && str_contains($params['twiml'], 'Presione 1')
                         && str_contains($params['twiml'], "voice/{$verification->id}/gather")
@@ -95,15 +103,21 @@ class PlaceVerificationCallJobTest extends TestCase
             ->where('event_key', "voice_call:{$verification->id}")
             ->count());
 
+        // The call's Twilio cost is tracked for cost-plus billing.
+        $charge = MessagingCharge::withoutGlobalScopes()->where('provider_sid', 'CA-test-1')->sole();
+        $this->assertSame($this->teamId, $charge->team_id);
+        $this->assertSame(MessagingChargeSource::VerificationCall, $charge->source_type);
+        $this->assertSame($verification->id, $charge->source_id);
+
         Queue::assertPushed(
             EvaluateVerificationCallOutcomeJob::class,
             fn (EvaluateVerificationCallOutcomeJob $job) => $job->verificationId === $verification->id,
         );
     }
 
-    public function test_uses_the_platform_global_channel_when_the_tenant_has_none(): void
+    public function test_uses_the_platform_voice_channel(): void
     {
-        $global = NotificationChannel::factory()->voice()->create(['team_id' => null]);
+        $global = NotificationChannel::factory()->voice()->create();
         $verification = $this->makeVerification();
 
         $this->mock(TwilioVoiceCaller::class, function ($mock) {
@@ -115,16 +129,11 @@ class PlaceVerificationCallJobTest extends TestCase
         $this->assertSame($global->id, $verification->fresh()->notification_channel_id);
     }
 
-    public function test_falls_back_to_platform_env_credentials_when_channel_has_no_config(): void
+    public function test_uses_the_platform_env_sender_when_channel_has_no_config(): void
     {
-        config()->set('services.twilio', [
-            'account_sid' => 'AC_PLATFORM',
-            'auth_token' => 'tok_platform',
-            'voice_from' => '+15550003333',
-        ]);
+        config()->set('services.twilio.voice_from', '+15550003333');
 
         NotificationChannel::factory()->voice()->create([
-            'team_id' => null,
             'config_json' => null,
         ]);
         $verification = $this->makeVerification();
@@ -132,10 +141,8 @@ class PlaceVerificationCallJobTest extends TestCase
         $this->mock(TwilioVoiceCaller::class, function ($mock) {
             $mock->shouldReceive('createCall')
                 ->once()
-                ->withArgs(function (array $config, string $to, string $from) {
-                    return $config['twilio_account_sid'] === 'AC_PLATFORM'
-                        && $config['twilio_auth_token'] === 'tok_platform'
-                        && $from === '+15550003333';
+                ->withArgs(function (string $to, string $from) {
+                    return $from === '+15550003333';
                 })
                 ->andReturn((object) ['sid' => 'CA-env', 'status' => 'queued']);
         });
@@ -145,24 +152,29 @@ class PlaceVerificationCallJobTest extends TestCase
         $this->assertSame(CallVerificationStatus::Calling, $verification->fresh()->status);
     }
 
-    public function test_prefers_the_tenant_channel_over_the_global_one(): void
+    public function test_does_not_call_without_platform_twilio_credentials(): void
     {
-        NotificationChannel::factory()->voice()->create(['team_id' => null]);
-        $own = NotificationChannel::factory()->voice()->create(['team_id' => $this->teamId]);
+        config()->set('services.twilio.account_sid', null);
+        config()->set('services.twilio.auth_token', null);
+
+        // Legacy per-channel credentials must never be used.
+        NotificationChannel::factory()->voice()->create([
+            'config_json' => ['from' => '+15005550006', 'twilio_account_sid' => 'AC_TENANT', 'twilio_auth_token' => 'tok_tenant'],
+        ]);
         $verification = $this->makeVerification();
 
         $this->mock(TwilioVoiceCaller::class, function ($mock) {
-            $mock->shouldReceive('createCall')->once()->andReturn((object) ['sid' => 'CA-t', 'status' => 'queued']);
+            $mock->shouldReceive('createCall')->never();
         });
 
         $this->runJob($verification);
 
-        $this->assertSame($own->id, $verification->fresh()->notification_channel_id);
+        $this->assertSame('voice_channel_unavailable', $verification->fresh()->metadata_json['failure_reason']);
     }
 
     public function test_global_voice_channel_disabled_by_the_tenant_never_serves_calls(): void
     {
-        $global = NotificationChannel::factory()->voice()->create(['team_id' => null]);
+        $global = NotificationChannel::factory()->voice()->create();
 
         TenantChannelToggle::factory()->disabled()->create([
             'team_id' => $this->teamId,
@@ -198,7 +210,7 @@ class PlaceVerificationCallJobTest extends TestCase
 
     public function test_placement_exception_chains_the_next_attempt(): void
     {
-        NotificationChannel::factory()->voice()->create(['team_id' => $this->teamId]);
+        NotificationChannel::factory()->voice()->create();
         $verification = $this->makeVerification();
 
         $this->mock(TwilioVoiceCaller::class, function ($mock) {
@@ -222,7 +234,7 @@ class PlaceVerificationCallJobTest extends TestCase
 
     public function test_exhausted_attempts_escalate_the_incident_with_no_answer_outcome(): void
     {
-        NotificationChannel::factory()->voice()->create(['team_id' => $this->teamId]);
+        NotificationChannel::factory()->voice()->create();
 
         // Last attempt of the default budget (3).
         $verification = $this->makeVerification(['attempt' => 3]);
@@ -250,7 +262,7 @@ class PlaceVerificationCallJobTest extends TestCase
 
     public function test_no_ops_when_request_is_not_pending(): void
     {
-        NotificationChannel::factory()->voice()->create(['team_id' => $this->teamId]);
+        NotificationChannel::factory()->voice()->create();
         $verification = $this->makeVerification(['status' => CallVerificationStatus::Answered]);
 
         $this->mock(TwilioVoiceCaller::class, function ($mock) {
@@ -264,7 +276,7 @@ class PlaceVerificationCallJobTest extends TestCase
 
     public function test_terminal_incident_cancels_the_call(): void
     {
-        NotificationChannel::factory()->voice()->create(['team_id' => $this->teamId]);
+        NotificationChannel::factory()->voice()->create();
 
         $incident = Incident::factory()->closed()->create(['team_id' => $this->teamId]);
         $verification = IncidentCallVerification::factory()->create([

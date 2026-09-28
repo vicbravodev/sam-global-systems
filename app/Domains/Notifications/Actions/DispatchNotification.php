@@ -2,22 +2,17 @@
 
 namespace App\Domains\Notifications\Actions;
 
-use App\Contracts\Notifications\ChannelDriverRegistry;
 use App\Domains\Notifications\Data\RecipientDescriptor;
-use App\Domains\Notifications\Data\RenderedNotification;
 use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Enums\DeliveryStatus;
-use App\Domains\Notifications\Enums\NotificationSourceType;
 use App\Domains\Notifications\Enums\NotificationStatus;
 use App\Domains\Notifications\Events\NotificationCreated;
-use App\Domains\Notifications\Events\NotificationDelivered;
-use App\Domains\Notifications\Events\NotificationFailed;
 use App\Domains\Notifications\Events\NotificationPushedBroadcast;
 use App\Domains\Notifications\Models\Notification;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Models\NotificationDelivery;
 use App\Domains\Notifications\Models\NotificationRecipient;
-use App\Domains\Tenancy\Actions\RecordUsageEvent;
+use App\Domains\Notifications\Support\ChannelAddress;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -27,10 +22,9 @@ class DispatchNotification
         private readonly ResolveRecipients $resolveRecipients,
         private readonly SelectNotificationChannels $selectChannels,
         private readonly RenderNotificationContent $render,
-        private readonly RecordDeliveryAttempt $recordAttempt,
-        private readonly ChannelDriverRegistry $drivers,
-        private readonly RecordUsageEvent $recordUsage,
-        private readonly IssueNotificationReplyToken $issueReplyToken,
+        private readonly AppendReplyInstructions $appendReplyInstructions,
+        private readonly AttemptDelivery $attemptDelivery,
+        private readonly RefreshNotificationStatus $refreshStatus,
     ) {}
 
     public function execute(Notification $notification): Notification
@@ -65,10 +59,6 @@ class DispatchNotification
             );
         }
 
-        $deliveredCount = 0;
-        $failedCount = 0;
-        $totalAttempts = 0;
-
         foreach ($recipients as $recipient) {
             $channels = $this->selectChannels->execute($notification, $recipient);
 
@@ -86,7 +76,13 @@ class DispatchNotification
                     continue;
                 }
 
-                $totalAttempts++;
+                // A phone channel fed an email (or vice versa) is a billable
+                // send doomed to fail at the provider: skip it with a reason.
+                if (($invalid = ChannelAddress::invalidReason($channel->channel_type, $targetAddress)) !== null) {
+                    $this->recordSkippedDelivery($notification, $recipient, $channel, $invalid);
+
+                    continue;
+                }
 
                 $delivery = $this->createDeliveryOrSkip($notification, $recipient, $channel);
 
@@ -95,102 +91,25 @@ class DispatchNotification
                 }
 
                 $rendered = $this->render->execute($notification, $recipient, $channel->channel_type, null, $targetAddress);
-                $rendered = $this->appendReplyInstructions($notification, $recipient, $rendered);
+                $rendered = $this->appendReplyInstructions->execute($notification, $recipient, $rendered);
 
-                $driver = $this->drivers->driverFor($channel->channel_type);
-
-                $delivery->update([
-                    'status' => DeliveryStatus::Sending,
-                    'sent_at' => now(),
-                    'payload_json' => [
-                        'address' => $rendered->address,
-                        'subject' => $rendered->subject,
-                        'body' => $rendered->body,
-                    ],
-                ]);
-
-                $result = $driver->send($rendered, $channel);
-
-                $this->recordAttempt->execute($delivery, $result);
-
-                $delivery->refresh();
-
-                $this->recordUsage->execute(
-                    teamId: $notification->team_id,
-                    meterCode: $channel->channel_type->usageMeterCode(),
-                    quantity: 1,
-                    eventKey: "notif_delivery_{$delivery->id}",
+                $result = $this->attemptDelivery->execute(
+                    $delivery,
+                    $channel,
+                    $rendered,
+                    usageEventKey: "notif_delivery_{$delivery->id}",
+                    refreshNotificationStatus: false,
                 );
 
                 if ($result->success) {
-                    $deliveredCount++;
-                    $this->afterSuccessfulDelivery($notification, $recipient, $delivery, $channel->channel_type);
-                } else {
-                    $failedCount++;
-                    NotificationFailed::dispatch(
-                        $notification->team_id,
-                        $notification->id,
-                        $delivery->id,
-                        $channel->channel_type->value,
-                        $result->errorMessage ?? 'Unknown error',
-                    );
+                    $this->broadcastWebDelivery($notification, $recipient, $channel->channel_type);
                 }
             }
         }
 
-        $this->finalizeStatus($notification, $deliveredCount, $failedCount, $totalAttempts);
+        $this->refreshStatus->execute($notification);
 
         return $notification->refresh();
-    }
-
-    /**
-     * Critical incident SMS/WhatsApp carry a reply token (Roadmap B9) so the
-     * operator can confirm/dismiss/escalate by answering the message. The SMS
-     * body is pre-fitted so the driver's 160-char truncation never eats the
-     * instructions.
-     */
-    private function appendReplyInstructions(
-        Notification $notification,
-        NotificationRecipient $recipient,
-        RenderedNotification $rendered,
-    ): RenderedNotification {
-        if (! in_array($rendered->channelType, [ChannelType::Sms, ChannelType::Whatsapp], true)) {
-            return $rendered;
-        }
-
-        if ($notification->source_type !== NotificationSourceType::Incident
-            || ! is_numeric($notification->source_reference_id)
-            || ! $notification->priority->isCritical()) {
-            return $rendered;
-        }
-
-        $token = $this->issueReplyToken->execute(
-            $notification,
-            $recipient,
-            $rendered->channelType,
-            (int) $notification->source_reference_id,
-        );
-
-        $instructions = "\nResponde SI-{$token->token} confirma / NO-{$token->token} descarta / ESC-{$token->token} escala";
-
-        $body = $rendered->body;
-
-        if ($rendered->channelType === ChannelType::Sms) {
-            $maxBase = 160 - mb_strlen($instructions);
-
-            if (mb_strlen($body) > $maxBase) {
-                $body = mb_substr($body, 0, $maxBase - 1).'…';
-            }
-        }
-
-        return new RenderedNotification(
-            channelType: $rendered->channelType,
-            address: $rendered->address,
-            subject: $rendered->subject,
-            body: $body.$instructions,
-            variables: $rendered->variables,
-            recipientName: $rendered->recipientName,
-        );
     }
 
     private function recordSkippedDelivery(
@@ -311,19 +230,11 @@ class DispatchNotification
         }
     }
 
-    private function afterSuccessfulDelivery(
+    private function broadcastWebDelivery(
         Notification $notification,
         NotificationRecipient $recipient,
-        NotificationDelivery $delivery,
         ChannelType $channelType,
     ): void {
-        NotificationDelivered::dispatch(
-            $notification->team_id,
-            $notification->id,
-            $delivery->id,
-            $channelType->value,
-        );
-
         if ($channelType !== ChannelType::Web) {
             return;
         }
@@ -344,29 +255,5 @@ class DispatchNotification
             subject: $notification->subject,
             bodyPreview: $notification->body_preview,
         ));
-    }
-
-    private function finalizeStatus(
-        Notification $notification,
-        int $deliveredCount,
-        int $failedCount,
-        int $totalAttempts,
-    ): void {
-        if ($totalAttempts === 0) {
-            $notification->update(['status' => NotificationStatus::Cancelled]);
-
-            return;
-        }
-
-        $status = match (true) {
-            $deliveredCount > 0 && $failedCount === 0 => NotificationStatus::Sent,
-            $deliveredCount > 0 && $failedCount > 0 => NotificationStatus::PartiallySent,
-            default => NotificationStatus::Failed,
-        };
-
-        $notification->update([
-            'status' => $status,
-            'sent_at' => $deliveredCount > 0 ? now() : $notification->sent_at,
-        ]);
     }
 }

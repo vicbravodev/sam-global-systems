@@ -8,6 +8,7 @@ use App\Domains\Notifications\Enums\NotificationStatus;
 use App\Domains\Notifications\Enums\NotificationTriggeredByType;
 use App\Domains\Notifications\Jobs\SendNotificationJob;
 use App\Domains\Notifications\Models\Notification;
+use Illuminate\Database\UniqueConstraintViolationException;
 
 class SendNotification
 {
@@ -41,21 +42,31 @@ class SendNotification
             return $existing;
         }
 
-        $notification = Notification::query()->create([
-            'team_id' => $teamId,
-            'source_type' => $sourceType,
-            'source_reference_id' => $sourceReferenceId,
-            'notification_type' => $notificationType,
-            'priority' => $priority,
-            'status' => NotificationStatus::Queued,
-            'subject' => $subject,
-            'body_preview' => $bodyPreview,
-            'template_id' => $templateId,
-            'triggered_by_type' => $triggeredByType,
-            'triggered_by_id' => $triggeredById,
-            'event_key' => $eventKey,
-            'payload_json' => $payload,
-        ]);
+        try {
+            $notification = Notification::query()->create([
+                'team_id' => $teamId,
+                'source_type' => $sourceType,
+                'source_reference_id' => $sourceReferenceId,
+                'notification_type' => $notificationType,
+                'priority' => $priority,
+                'status' => NotificationStatus::Queued,
+                'subject' => $subject,
+                'body_preview' => $bodyPreview,
+                'template_id' => $templateId,
+                'triggered_by_type' => $triggeredByType,
+                'triggered_by_id' => $triggeredById,
+                'event_key' => $eventKey,
+                'payload_json' => $payload,
+            ]);
+        } catch (UniqueConstraintViolationException) {
+            // Lost a race against a concurrent caller with the same event_key:
+            // the unique (team_id, event_key) index kept the first row, which
+            // already owns its dispatch.
+            return Notification::query()
+                ->where('team_id', $teamId)
+                ->where('event_key', $eventKey)
+                ->firstOrFail();
+        }
 
         if ($dispatchJob) {
             SendNotificationJob::dispatch($notification->id);
