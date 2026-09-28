@@ -3,8 +3,10 @@
 namespace App\Domains\Integrations\Adapters;
 
 use App\Contracts\Integrations\MediaRetrievalAdapter;
+use App\Domains\Assets\Enums\TelematicsFeed;
 use App\Domains\Integrations\Contracts\NullProviderAdapter;
 use App\Domains\Integrations\Contracts\ProviderAdapter;
+use App\Domains\Integrations\Data\VehicleStatsPage;
 use App\Domains\Integrations\Models\TenantIntegration;
 
 /**
@@ -29,14 +31,19 @@ class ProviderAdapterManager implements MediaRetrievalAdapter, ProviderAdapter
         return $this->forIntegration($integration)->sync($integration, $type);
     }
 
-    public function fetchAssetLocations(TenantIntegration $integration): array
+    public function fetchVehicleStatsFeed(TenantIntegration $integration, TelematicsFeed $feed, ?string $cursor = null): VehicleStatsPage
     {
-        return $this->forIntegration($integration)->fetchAssetLocations($integration);
+        return $this->forIntegration($integration)->fetchVehicleStatsFeed($integration, $feed, $cursor);
     }
 
-    public function fetchAssetTelemetry(TenantIntegration $integration): array
-    {
-        return $this->forIntegration($integration)->fetchAssetTelemetry($integration);
+    public function fetchVehicleStatsHistory(
+        TenantIntegration $integration,
+        TelematicsFeed $feed,
+        \DateTimeInterface $start,
+        \DateTimeInterface $end,
+        ?string $cursor = null,
+    ): VehicleStatsPage {
+        return $this->forIntegration($integration)->fetchVehicleStatsHistory($integration, $feed, $start, $end, $cursor);
     }
 
     public function fetchDeviceConnectivity(TenantIntegration $integration): array
