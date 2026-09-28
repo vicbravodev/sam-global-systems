@@ -78,9 +78,13 @@ class IntegrationController extends Controller
     {
         $this->authorize('update', $integration);
 
+        $submittedConfig = $request->validated('config');
+
         $data = array_filter([
             'name' => $request->validated('name'),
-            'config_json' => $request->validated('config'),
+            'config_json' => is_array($submittedConfig)
+                ? $integration->mergeSubmittedConfig($submittedConfig)
+                : null,
         ], fn ($v) => $v !== null);
 
         if ($request->has('credentials')) {
