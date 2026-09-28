@@ -109,7 +109,9 @@ class GenerateInvoiceSnapshotJob implements ShouldQueue
             'subtotal' => $subtotal,
             'overage_total' => $overageTotal,
             'total' => $total,
-            'currency' => $team->currency ?? 'usd',
+            // Plan prices (base + overage rates) are denominated in the plan's
+            // currency; the team currency is only a display preference.
+            'currency' => $subscription?->plan?->currency ?? 'usd',
             'status' => InvoiceStatus::Draft,
             'breakdown_json' => $breakdown,
             'generated_at' => now(),
