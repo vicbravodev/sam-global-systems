@@ -490,9 +490,11 @@ class NotificationPageController extends Controller
 
         // Past this point deliveries_count > 0, so "no non-skipped delivery
         // exists" means every channel was skipped for lack of a destination.
-        if (! $notification->deliveries()
-            ->where('status', '!=', DeliveryStatus::Skipped)
-            ->exists()) {
+        $hasNonSkipped = $notification->relationLoaded('deliveries')
+            ? $notification->deliveries->contains(fn ($delivery) => $delivery->status !== DeliveryStatus::Skipped)
+            : $notification->deliveries()->where('status', '!=', DeliveryStatus::Skipped)->exists();
+
+        if (! $hasNonSkipped) {
             return 'No se envió: faltan datos de contacto (teléfono o email) para los canales seleccionados.';
         }
 

@@ -142,6 +142,10 @@ class LoadRecentAssetHistory
             $breakdown[$code] = ($breakdown[$code] ?? 0) + 1;
         }
 
+        // Stable order whatever row order the database returns: this lands
+        // in the AI input context.
+        ksort($breakdown);
+
         $harsh = $events->contains(
             fn (NormalizedEvent $event) => in_array($event->eventType?->code, self::HARSH_DRIVING_CODES, true),
         );

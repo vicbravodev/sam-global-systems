@@ -30,6 +30,15 @@ class AuthorizeAction
         'member' => 'viewer',
     ];
 
+    /**
+     * Per-request memo (the action is bound `scoped`): every policy check
+     * used to re-query the subscription and the feature row, 4–10 times on
+     * a typical Inertia page.
+     *
+     * @var array<int, array{subscription: Subscription|null, features: array<string, bool>}>
+     */
+    private array $teamAccess = [];
+
     public function execute(User $user, string $permissionCode, ?Team $team = null): bool
     {
         if ($user->isSuperAdmin()) {
@@ -138,13 +147,7 @@ class AuthorizeAction
             return true;
         }
 
-        // Explicit team lookup, independent of the ambient tenant scope: the
-        // target team may differ from the current one (or from a queued
-        // TenantContext), and a scoped miss here would fail OPEN.
-        $subscription = Subscription::withoutGlobalScopes()
-            ->where('team_id', $team->id)
-            ->latest('starts_at')
-            ->first();
+        $subscription = $this->teamAccess($team)['subscription'];
 
         if (! $subscription) {
             return true;
@@ -157,17 +160,37 @@ class AuthorizeAction
     {
         $module = $this->extractModule($permissionCode);
 
-        // Same as above: explicit team, never the ambient scope (fail-open).
-        $feature = TenantFeature::withoutGlobalScopes()
-            ->where('team_id', $team->id)
-            ->where('feature_key', $module)
-            ->first();
+        return $this->teamAccess($team)['features'][$module] ?? true;
+    }
 
-        if (! $feature) {
-            return true;
-        }
+    /**
+     * Drop the memoized subscription/features of a team (called when either
+     * changes, so a check later in the same request sees the new state).
+     */
+    public function forgetTeamAccess(int $teamId): void
+    {
+        unset($this->teamAccess[$teamId]);
+    }
 
-        return $feature->enabled;
+    /**
+     * @return array{subscription: Subscription|null, features: array<string, bool>}
+     */
+    private function teamAccess(Team $team): array
+    {
+        // Explicit team lookups, independent of the ambient tenant scope: the
+        // target team may differ from the current one (or from a queued
+        // TenantContext), and a scoped miss here would fail OPEN.
+        return $this->teamAccess[$team->id] ??= [
+            'subscription' => Subscription::withoutGlobalScopes()
+                ->where('team_id', $team->id)
+                ->latest('starts_at')
+                ->first(),
+            'features' => TenantFeature::withoutGlobalScopes()
+                ->where('team_id', $team->id)
+                ->get(['feature_key', 'enabled'])
+                ->mapWithKeys(fn (TenantFeature $feature) => [$feature->feature_key => (bool) $feature->enabled])
+                ->all(),
+        ];
     }
 
     private function extractModule(string $permissionCode): string

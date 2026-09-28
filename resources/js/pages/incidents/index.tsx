@@ -9,7 +9,7 @@ import {
     Search,
     X,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { DetailResizer } from '@/components/sam/detail-resizer';
 import { InboxGrouped } from '@/components/sam/inbox/inbox-grouped';
@@ -632,6 +632,8 @@ const EMPTY_OPTIONS: InboxFilterOptions = {
     shifts: [],
 };
 
+// Coalescing window for live inbox reloads.
+const INBOX_RELOAD_DEBOUNCE_MS = 1500;
 export default function IncidentsIndex() {
     const page = usePage();
     const pageProps = page.props as unknown as IncidentsIndexProps;
@@ -822,23 +824,98 @@ export default function IncidentsIndex() {
     }, [selectedId]);
 
     // Live updates: a freshly created or updated incident (status change,
-    // assignment, media assessed) refreshes the inbox list.
+    // assignment, media assessed) refreshes the inbox list. Bursts (a
+    // reevaluation, an escalation wave, the operator's own action echoing
+    // back) coalesce into one 200-row reload, and a hidden tab waits until it
+    // is visible again. An update to an incident whose detail is cached drops
+    // that cache entry so the open panel is not left stale.
+    const incidentsRef = useRef(incidents);
+    const reloadTimer = useRef<number | null>(null);
+    const reloadPending = useRef(false);
+
     useEffect(() => {
+        incidentsRef.current = incidents;
+    }, [incidents]);
+
+    useEffect(() => {
+        const hidden = () => document.visibilityState === 'hidden';
+
+        const flush = () => {
+            reloadTimer.current = null;
+
+            if (hidden() || !reloadPending.current) {
+                return;
+            }
+
+            reloadPending.current = false;
+            router.reload({ only: ['incidents'] });
+        };
+
+        const schedule = () => {
+            if (reloadTimer.current === null) {
+                reloadTimer.current = window.setTimeout(
+                    flush,
+                    INBOX_RELOAD_DEBOUNCE_MS,
+                );
+            }
+        };
+
         const handler = (event: Event) => {
             const detail = (event as CustomEvent<TeamBroadcastDetail>).detail;
 
             if (
-                detail?.event === 'incidents.created' ||
-                detail?.event === 'incidents.updated'
+                detail?.event !== 'incidents.created' &&
+                detail?.event !== 'incidents.updated'
             ) {
-                router.reload({ only: ['incidents'] });
+                return;
+            }
+
+            if (detail.event === 'incidents.updated') {
+                const incidentId = (
+                    detail as TeamBroadcastDetail<'incidents.updated'>
+                ).payload?.incident_id;
+                const rowId = incidentsRef.current.find(
+                    (row) => row.incidentId === incidentId,
+                )?.id;
+
+                if (rowId !== undefined) {
+                    setDetailCache((prev) => {
+                        if (!(rowId in prev)) {
+                            return prev;
+                        }
+
+                        const next = { ...prev };
+                        delete next[rowId];
+
+                        return next;
+                    });
+                }
+            }
+
+            reloadPending.current = true;
+            schedule();
+        };
+
+        const onVisibilityChange = () => {
+            if (!hidden() && reloadPending.current) {
+                schedule();
             }
         };
 
         window.addEventListener(TEAM_BROADCAST_EVENT_NAME, handler);
+        document.addEventListener('visibilitychange', onVisibilityChange);
 
-        return () =>
+        return () => {
             window.removeEventListener(TEAM_BROADCAST_EVENT_NAME, handler);
+            document.removeEventListener(
+                'visibilitychange',
+                onVisibilityChange,
+            );
+
+            if (reloadTimer.current !== null) {
+                window.clearTimeout(reloadTimer.current);
+            }
+        };
     }, []);
 
     // Atajos de teclado que el footer anuncia (F2.2): J/K navegar, Enter

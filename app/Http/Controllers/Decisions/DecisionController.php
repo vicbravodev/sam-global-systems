@@ -7,6 +7,7 @@ use App\Domains\Decisions\Models\Decision;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Decisions\OverrideDecisionRequest;
 use App\Models\Team;
+use App\Support\Http\PerPage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -29,7 +30,7 @@ class DecisionController extends Controller
         }
 
         $decisions = $query->orderByDesc('decided_at')
-            ->paginate($request->integer('per_page', 15));
+            ->paginate(PerPage::from($request, 15));
 
         return response()->json($decisions);
     }

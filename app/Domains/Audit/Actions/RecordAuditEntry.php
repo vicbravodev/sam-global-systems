@@ -8,6 +8,7 @@ use App\Domains\Audit\Models\AuditLog;
 use DateTimeInterface;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Synchronous append of an audit_logs row. Used by domain modules that
@@ -77,7 +78,10 @@ class RecordAuditEntry
             $log->ip_address = $ipAddress;
             $log->user_agent = $userAgent;
             $log->occurred_at = $occurredAt;
-            $log->save();
+            // Savepoint: on PostgreSQL a failed INSERT aborts the enclosing
+            // transaction (ProcessInboundReply calls this inside one), so
+            // without it the catch below could not query.
+            DB::transaction(fn () => $log->save());
 
             return $log;
         } catch (UniqueConstraintViolationException) {

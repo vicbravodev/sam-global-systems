@@ -12,8 +12,10 @@ use App\Domains\Ingestion\Models\EventDeduplicationKey;
 use App\Domains\Ingestion\Models\EventSource;
 use App\Domains\Ingestion\Models\RawEvent;
 use App\Models\User;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
 
@@ -221,5 +223,58 @@ class DeduplicationTest extends TestCase
             ->firstOrFail();
 
         $this->assertSame('alert-evt-3', $event->deduplication_key);
+    }
+
+    public function test_losing_the_insert_race_marks_the_event_as_duplicate_instead_of_failing(): void
+    {
+        Event::fake([RawEventDuplicated::class]);
+
+        [, $team, $eventSource] = $this->createEventSource();
+
+        $winner = RawEvent::withoutGlobalScopes()->create([
+            'team_id' => $team->id,
+            'event_source_id' => $eventSource->id,
+            'payload_json' => ['eventType' => 'Test'],
+            'received_at' => now(),
+            'status' => RawEventStatus::Received,
+            'deduplication_key' => 'race-key',
+        ]);
+        $loser = RawEvent::withoutGlobalScopes()->create([
+            'team_id' => $team->id,
+            'event_source_id' => $eventSource->id,
+            'payload_json' => ['eventType' => 'Test'],
+            'received_at' => now(),
+            'status' => RawEventStatus::Received,
+            'deduplication_key' => 'race-key',
+        ]);
+
+        // A concurrent worker (the provider retried the webhook) stores the
+        // key right after this worker's existence check found nothing.
+        $raced = false;
+        DB::listen(function (QueryExecuted $query) use (&$raced, $team, $eventSource, $winner) {
+            if ($raced
+                || ! str_starts_with(strtolower($query->sql), 'select')
+                || ! str_contains($query->sql, 'event_deduplication_keys')) {
+                return;
+            }
+
+            $raced = true;
+            EventDeduplicationKey::query()->insert([
+                'team_id' => $team->id,
+                'event_source_id' => $eventSource->id,
+                'deduplication_key' => 'race-key',
+                'raw_event_id' => $winner->id,
+                'first_seen_at' => now(),
+                'expires_at' => now()->addDay(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        });
+
+        $this->assertTrue(app(DetectDuplicateEvent::class)->execute($loser));
+        $this->assertTrue($raced);
+        $this->assertSame(RawEventStatus::DuplicateDetected, $loser->fresh()->status);
+        $this->assertSame(1, EventDeduplicationKey::query()->where('deduplication_key', 'race-key')->count());
+        Event::assertDispatched(RawEventDuplicated::class);
     }
 }

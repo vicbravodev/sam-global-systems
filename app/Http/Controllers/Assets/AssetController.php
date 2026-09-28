@@ -9,6 +9,7 @@ use App\Domains\Assets\Models\AssetLocationSnapshot;
 use App\Domains\Assets\Models\AssetTelemetrySnapshot;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
+use App\Support\Http\PerPage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -40,7 +41,7 @@ class AssetController extends Controller
             });
         }
 
-        $assets = $query->orderByDesc('id')->paginate($request->integer('per_page', 15));
+        $assets = $query->orderByDesc('id')->paginate(PerPage::from($request, 15));
 
         return response()->json($assets);
     }
@@ -62,7 +63,7 @@ class AssetController extends Controller
         $snapshots = AssetLocationSnapshot::query()
             ->where('asset_id', $asset->id)
             ->orderByDesc('recorded_at')
-            ->cursorPaginate($request->integer('per_page', 50));
+            ->cursorPaginate(PerPage::from($request, 50));
 
         return response()->json($snapshots);
     }
@@ -83,7 +84,7 @@ class AssetController extends Controller
         }
 
         $snapshots = $query->orderByDesc('recorded_at')
-            ->cursorPaginate($request->integer('per_page', 50));
+            ->cursorPaginate(PerPage::from($request, 50));
 
         return response()->json($snapshots);
     }

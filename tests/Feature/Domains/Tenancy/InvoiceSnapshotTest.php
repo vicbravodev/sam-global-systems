@@ -11,6 +11,7 @@ use App\Domains\Tenancy\Models\Subscription;
 use App\Domains\Tenancy\Models\TenantUsageCounter;
 use App\Domains\Tenancy\Models\UsageMeter;
 use App\Models\Team;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -153,5 +154,24 @@ class InvoiceSnapshotTest extends TestCase
             ->count();
 
         $this->assertEquals(1, $secondCount, 'Second invocation should not create a duplicate snapshot');
+    }
+
+    public function test_the_database_rejects_a_second_invoice_for_the_same_period(): void
+    {
+        $team = Team::factory()->create();
+
+        InvoiceSnapshot::factory()->create([
+            'team_id' => $team->id,
+            'period_start' => '2026-09-01',
+            'period_end' => '2026-09-30',
+        ]);
+
+        $this->expectException(UniqueConstraintViolationException::class);
+
+        InvoiceSnapshot::factory()->create([
+            'team_id' => $team->id,
+            'period_start' => '2026-09-01',
+            'period_end' => '2026-09-30',
+        ]);
     }
 }

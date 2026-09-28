@@ -41,6 +41,9 @@ const RELOAD_KEYS_BY_EVENT = {
 
 const RELOAD_DEBOUNCE_MS = 2000;
 
+// The KPI strip is a two-week aggregate: a live event barely moves it.
+const KPI_MIN_INTERVAL_MS = 30000;
+
 export default function Dashboard() {
     const page = usePage();
     const { kpis, incidents, stream, integrations, usage } =
@@ -49,6 +52,7 @@ export default function Dashboard() {
 
     useBroadcastReload(RELOAD_KEYS_BY_EVENT, {
         debounceMs: RELOAD_DEBOUNCE_MS,
+        minIntervalMs: { kpis: KPI_MIN_INTERVAL_MS },
     });
 
     return (

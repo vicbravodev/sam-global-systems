@@ -73,6 +73,19 @@ return [
             'after_commit' => true,
         ],
 
+        // Same Redis lists as `redis`, consumed only by Horizon's
+        // supervisor-long. `retry_after` is applied by the consumer when it
+        // reserves a job, so whole-fleet syncs (timeout 1800 s) are not
+        // re-delivered to a second worker while the first is still running.
+        'redis-long' => [
+            'driver' => 'redis',
+            'connection' => env('REDIS_QUEUE_CONNECTION', 'queue'),
+            'queue' => 'sync',
+            'retry_after' => (int) env('REDIS_LONG_QUEUE_RETRY_AFTER', 1900),
+            'block_for' => null,
+            'after_commit' => true,
+        ],
+
         'deferred' => [
             'driver' => 'deferred',
         ],

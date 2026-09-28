@@ -72,6 +72,26 @@ class SyncDueIntegrationsJobTest extends TestCase
         Bus::assertNotDispatched(SyncIntegrationJob::class);
     }
 
+    public function test_a_sync_stuck_running_past_the_stale_window_no_longer_blocks(): void
+    {
+        Bus::fake([SyncIntegrationJob::class]);
+
+        $integration = $this->makeIntegration(['last_sync_at' => null]);
+        $stuck = IntegrationSyncJob::create([
+            'tenant_integration_id' => $integration->id,
+            'type' => SyncType::Full,
+            'status' => SyncStatus::Running,
+        ]);
+        // Worker killed mid-run: the row never reached failed().
+        IntegrationSyncJob::whereKey($stuck->id)->update([
+            'updated_at' => now()->subMinutes(SyncDueIntegrationsJob::STALE_SYNC_MINUTES + 1),
+        ]);
+
+        (new SyncDueIntegrationsJob)->handle();
+
+        Bus::assertDispatchedTimes(SyncIntegrationJob::class, 1);
+    }
+
     public function test_it_respects_a_per_integration_catalog_interval(): void
     {
         Bus::fake([SyncIntegrationJob::class]);

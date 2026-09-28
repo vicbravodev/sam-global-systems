@@ -4,6 +4,8 @@ namespace Tests\Feature\Domains\Assets;
 
 use App\Domains\Assets\Enums\AssetMonitoringState;
 use App\Domains\Assets\Models\Asset;
+use App\Domains\Audit\Models\AuditLog;
+use App\Domains\Tenancy\Models\TenantBillingTerms;
 use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Models\User;
@@ -75,6 +77,36 @@ class AssetMonitoringEndpointTest extends TestCase
 
         $this->assertSame(2, Asset::withoutGlobalScopes()->where('team_id', $team->id)->monitored()->count());
         $this->assertSame(AssetMonitoringState::Pending, $foreign->fresh()->monitoring_state, 'A foreign id must be ignored');
+    }
+
+    public function test_bulk_counts_each_unit_against_the_cap_in_order(): void
+    {
+        $team = Team::factory()->create();
+        $user = $this->memberOf($team);
+        TenantBillingTerms::factory()->create(['team_id' => $team->id, 'included_assets' => 2]);
+
+        Asset::factory()->create(['team_id' => $team->id, 'monitoring_state' => AssetMonitoringState::Monitored]);
+        $pending = Asset::factory()->pendingMonitoring()->count(3)->create(['team_id' => $team->id]);
+
+        $this->actingAs($user)
+            ->put(route('assets.monitoring.bulk', ['current_team' => $team->slug]), [
+                'state' => 'monitored',
+                'asset_ids' => $pending->pluck('id')->all(),
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('status', fn (string $status) => str_contains($status, '3 unidades encendidas')
+                && str_contains($status, 'tope de 2'));
+
+        $this->assertSame(4, Asset::withoutGlobalScopes()->where('team_id', $team->id)->monitored()->count());
+
+        $audits = AuditLog::withoutGlobalScopes()
+            ->where('team_id', $team->id)
+            ->where('action', 'asset.monitoring_changed')
+            ->orderBy('id')
+            ->get();
+
+        $this->assertSame([2, 3, 4], $audits->map(fn (AuditLog $log) => $log->metadata_json['monitored'])->all());
+        $this->assertSame([false, true, true], $audits->map(fn (AuditLog $log) => $log->metadata_json['over_cap'])->all());
     }
 
     public function test_a_unit_of_another_tenant_is_not_found(): void

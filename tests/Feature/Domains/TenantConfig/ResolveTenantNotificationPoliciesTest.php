@@ -67,7 +67,8 @@ class ResolveTenantNotificationPoliciesTest extends TestCase
             $policy->allowedChannels,
         );
         $this->assertEquals([ChannelType::Email], $policy->fallbackChannels);
-        $this->assertSame(['start' => '22:00', 'end' => '07:00'], $policy->quietHours);
+        // assertEquals: key order is not part of the contract (jsonb reorders keys).
+        $this->assertEquals(['start' => '22:00', 'end' => '07:00'], $policy->quietHours);
     }
 
     public function test_ignores_inactive_or_typed_rows(): void

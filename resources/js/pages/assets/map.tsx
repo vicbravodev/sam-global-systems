@@ -256,6 +256,7 @@ export default function AssetsMap() {
     // partial reload only fires when an unknown unit shows up (it just got
     // its first position).
     const reloadTimer = useRef<number | null>(null);
+    const reloadRequestedFor = useRef<Set<number>>(new Set());
 
     const scheduleReload = useCallback(() => {
         if (reloadTimer.current !== null) {
@@ -303,7 +304,7 @@ export default function AssetsMap() {
                 );
 
                 setMarkers((prev) => {
-                    let unknown = byId.size;
+                    const onMap = new Set<number>();
 
                     const next = prev.map((m) => {
                         const p = byId.get(m.id);
@@ -312,7 +313,7 @@ export default function AssetsMap() {
                             return m;
                         }
 
-                        unknown--;
+                        onMap.add(m.id);
 
                         return Date.parse(p.recorded_at) >=
                             Date.parse(m.recordedAt)
@@ -328,7 +329,20 @@ export default function AssetsMap() {
                             : m;
                     });
 
-                    if (unknown > 0) {
+                    // An asset reporting its first position is not on the map
+                    // yet: reload once for it, not on every feed tick (an
+                    // asset the map never lists would otherwise reload it
+                    // forever).
+                    const firstSeen = [...byId.keys()].filter(
+                        (id) =>
+                            !onMap.has(id) &&
+                            !reloadRequestedFor.current.has(id),
+                    );
+
+                    if (firstSeen.length > 0) {
+                        firstSeen.forEach((id) =>
+                            reloadRequestedFor.current.add(id),
+                        );
                         scheduleReload();
                     }
 

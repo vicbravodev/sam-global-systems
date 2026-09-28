@@ -17,7 +17,7 @@ import {
     Truck,
     User,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { lazy, Suspense, useMemo, useState } from 'react';
 import { SparkArea } from '@/components/sam/charts';
 import { SeverityBadge } from '@/components/sam/severity-badge';
 import { cn } from '@/lib/utils';
@@ -44,7 +44,31 @@ import type {
     Tone,
 } from '@/types/copilot';
 import { timeAgo, timeOfDay } from './copilot-format';
-import { CopilotMiniMap } from './copilot-mini-map';
+
+// maplibre-gl (~1 MB) only loads when an answer actually shows a map: this
+// module ships with the Copilot launcher on every Ops page.
+const LazyMiniMap = lazy(() =>
+    import('./copilot-mini-map').then((module) => ({
+        default: module.CopilotMiniMap,
+    })),
+);
+
+type MiniMapProps = Parameters<typeof LazyMiniMap>[0];
+
+function CopilotMiniMap(props: MiniMapProps) {
+    return (
+        <Suspense
+            fallback={
+                <div
+                    className="w-full bg-surface-2"
+                    style={{ height: props.height ?? 200 }}
+                />
+            }
+        >
+            <LazyMiniMap {...props} />
+        </Suspense>
+    );
+}
 
 export interface BlockActions {
     /** Re-ask with an explicit unit (asset picker, "ver más" links). */

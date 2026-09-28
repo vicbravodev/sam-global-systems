@@ -19,6 +19,7 @@ use App\Http\Requests\Incidents\ReclassifyIncidentRequest;
 use App\Http\Requests\Incidents\StoreIncidentRequest;
 use App\Http\Requests\Incidents\UpdateIncidentRequest;
 use App\Models\Team;
+use App\Support\Http\PerPage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
@@ -70,7 +71,7 @@ class IncidentController extends Controller
         }
 
         $incidents = $query->orderByDesc('opened_at')
-            ->paginate($request->integer('per_page', 25));
+            ->paginate(PerPage::from($request, 25));
 
         return response()->json($incidents);
     }

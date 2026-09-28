@@ -9,6 +9,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Automation\StoreAutomationWorkflowRequest;
 use App\Http\Requests\Automation\UpdateAutomationWorkflowRequest;
 use App\Models\Team;
+use App\Support\Http\PerPage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -28,7 +29,7 @@ class AutomationWorkflowController extends Controller
             $query->active();
         }
 
-        $workflows = $query->orderBy('id')->paginate($request->integer('per_page', 25));
+        $workflows = $query->orderBy('id')->paginate(PerPage::from($request, 25));
 
         return response()->json($workflows);
     }

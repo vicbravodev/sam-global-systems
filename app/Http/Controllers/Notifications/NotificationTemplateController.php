@@ -6,6 +6,7 @@ use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Models\NotificationTemplate;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
+use App\Support\Http\PerPage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -21,7 +22,7 @@ class NotificationTemplateController extends Controller
             })
             ->orderBy('channel_type')
             ->orderBy('event_type')
-            ->paginate($request->integer('per_page', 25));
+            ->paginate(PerPage::from($request, 25));
 
         return response()->json($templates);
     }

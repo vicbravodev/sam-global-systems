@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Normalization;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
+use App\Support\Http\PerPage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -47,7 +48,7 @@ class NormalizedEventController extends Controller
             $query->where('occurred_at', '<=', $request->input('occurred_until'));
         }
 
-        $events = $query->paginate($request->integer('per_page', 25));
+        $events = $query->paginate(PerPage::from($request, 25));
 
         return response()->json($events);
     }
@@ -78,7 +79,7 @@ class NormalizedEventController extends Controller
             ->unmapped()
             ->with(['rawEvent', 'provider'])
             ->orderByDesc('occurred_at')
-            ->paginate($request->integer('per_page', 25));
+            ->paginate(PerPage::from($request, 25));
 
         return response()->json($events);
     }

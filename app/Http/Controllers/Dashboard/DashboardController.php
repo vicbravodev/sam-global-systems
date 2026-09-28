@@ -26,6 +26,7 @@ use Carbon\CarbonInterface;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -39,6 +40,8 @@ use Inertia\Response;
  */
 class DashboardController extends Controller
 {
+    private const KPI_CACHE_SECONDS = 20;
+
     public function __construct(
         private readonly IncidentMetricsQuery $incidentMetrics,
         private readonly NormalizedEventStatsQuery $eventStats,
@@ -50,7 +53,13 @@ class DashboardController extends Controller
         $canViewBilling = (bool) $request->user()?->can('viewAny', Subscription::class);
 
         return Inertia::render('dashboard', [
-            'kpis' => fn () => $this->kpis($current_team),
+            // Two-week aggregates, reloaded by every open dashboard on live
+            // events: shared per tenant for a few seconds.
+            'kpis' => fn () => Cache::remember(
+                "dashboard:kpis:{$current_team->id}",
+                self::KPI_CACHE_SECONDS,
+                fn () => $this->kpis($current_team),
+            ),
             'incidents' => fn () => $this->openIncidents($current_team),
             'stream' => fn () => $this->stream($current_team),
             'integrations' => fn () => $this->integrations($current_team),
@@ -243,6 +252,7 @@ class DashboardController extends Controller
             ->whereHas('priority', fn ($query) => $query->where('code', 'critical'))
             ->with($relations)
             ->orderByDesc('opened_at')
+            ->orderByDesc('id')
             ->limit(5)
             ->get();
 
@@ -255,6 +265,7 @@ class DashboardController extends Controller
                 ->whereNotIn('id', $critical->pluck('id'))
                 ->with($relations)
                 ->orderByDesc('opened_at')
+                ->orderByDesc('id')
                 ->limit(5 - $critical->count())
                 ->get();
 

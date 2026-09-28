@@ -16,6 +16,9 @@ class RebuildHistoricalMetricsJob implements ShouldQueue
 
     public int $tries = 1;
 
+    /** Above the supervisor default, below the `redis` retry_after (240 s). */
+    public int $timeout = 220;
+
     public function __construct(
         public int $teamId,
         public string $fromDate,

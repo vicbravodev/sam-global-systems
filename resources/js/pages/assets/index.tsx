@@ -43,15 +43,26 @@ import type {
     FleetPositionsUpdatedPayload,
 } from '@/types/realtime';
 
-// Broadcast events that refresh the fleet list, debounced below. Positions do
-// not: they arrive every few seconds and are applied to the rows in memory.
-const RELOAD_EVENTS = new Set([
-    'asset.location_updated',
-    'asset.status_changed',
-    'asset.monitoring_changed',
-]);
+// Props each broadcast refreshes (debounced below). Feed positions
+// (`fleet.positions_updated`) are applied to the rows in memory instead. A
+// single position event only changes the rows: the
+// fleet pulse (`summary`, several EXISTS over the snapshot tables) and the
+// monitoring counts only move on status / monitoring changes.
+const RELOAD_KEYS_BY_EVENT: Record<string, string[]> = {
+    'asset.location_updated': ['assets'],
+    'asset.status_changed': ['assets', 'pagination', 'summary', 'monitoring'],
+    'asset.monitoring_changed': [
+        'assets',
+        'pagination',
+        'summary',
+        'monitoring',
+    ],
+};
 
+// Location events arrive in bursts (one per asset): coalesce them over a
+// wider window than the rarer status / monitoring transitions.
 const RELOAD_DEBOUNCE_MS = 2000;
+const LOCATION_RELOAD_DEBOUNCE_MS = 10000;
 
 // The pulse strip (moving / reporting counts) follows live positions, but a
 // server roundtrip every feed cycle would be waste: at most this often.
@@ -585,11 +596,44 @@ export default function AssetsIndex() {
     }, []);
 
     // Live updates: location polls and status transitions refresh the list
-    // and the pulse strip. Bursts are coalesced into a single partial reload.
+    // and the pulse strip. Bursts are coalesced into a single partial reload
+    // with the union of the affected props; a hidden tab waits until it is
+    // visible again.
     const timer = useRef<number | null>(null);
+    const timerDueAt = useRef(0);
+    const pendingKeys = useRef<Set<string>>(new Set());
     const lastSummaryRefresh = useRef(0);
 
     useEffect(() => {
+        const hidden = () => document.visibilityState === 'hidden';
+
+        const flush = () => {
+            timer.current = null;
+
+            if (hidden() || pendingKeys.current.size === 0) {
+                return;
+            }
+
+            const only = [...pendingKeys.current];
+            pendingKeys.current.clear();
+            router.reload({ only });
+        };
+
+        const schedule = (delay: number) => {
+            const dueAt = Date.now() + delay;
+
+            if (timer.current !== null) {
+                if (timerDueAt.current <= dueAt) {
+                    return;
+                }
+
+                window.clearTimeout(timer.current);
+            }
+
+            timerDueAt.current = dueAt;
+            timer.current = window.setTimeout(flush, delay);
+        };
+
         const handler = (event: Event) => {
             const detail = (event as CustomEvent<TeamBroadcastDetail>).detail;
 
@@ -605,8 +649,8 @@ export default function AssetsIndex() {
                 });
 
                 if (
-                    Date.now() - lastSummaryRefresh.current >
-                    SUMMARY_REFRESH_MS
+                    !hidden() &&
+                    Date.now() - lastSummaryRefresh.current > SUMMARY_REFRESH_MS
                 ) {
                     lastSummaryRefresh.current = Date.now();
                     router.reload({ only: ['summary', 'monitoring'] });
@@ -615,26 +659,35 @@ export default function AssetsIndex() {
                 return;
             }
 
-            if (!RELOAD_EVENTS.has(detail?.event ?? '')) {
+            const keys = RELOAD_KEYS_BY_EVENT[detail?.event ?? ''];
+
+            if (!keys) {
                 return;
             }
 
-            if (timer.current !== null) {
-                return;
-            }
+            keys.forEach((key) => pendingKeys.current.add(key));
+            schedule(
+                detail?.event === 'asset.location_updated'
+                    ? LOCATION_RELOAD_DEBOUNCE_MS
+                    : RELOAD_DEBOUNCE_MS,
+            );
+        };
 
-            timer.current = window.setTimeout(() => {
-                timer.current = null;
-                router.reload({
-                    only: ['assets', 'pagination', 'summary', 'monitoring'],
-                });
-            }, RELOAD_DEBOUNCE_MS);
+        const onVisibilityChange = () => {
+            if (!hidden() && pendingKeys.current.size > 0) {
+                schedule(RELOAD_DEBOUNCE_MS);
+            }
         };
 
         window.addEventListener(TEAM_BROADCAST_EVENT_NAME, handler);
+        document.addEventListener('visibilitychange', onVisibilityChange);
 
         return () => {
             window.removeEventListener(TEAM_BROADCAST_EVENT_NAME, handler);
+            document.removeEventListener(
+                'visibilitychange',
+                onVisibilityChange,
+            );
 
             if (timer.current !== null) {
                 window.clearTimeout(timer.current);

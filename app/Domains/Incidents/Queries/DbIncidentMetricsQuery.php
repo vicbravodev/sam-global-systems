@@ -5,11 +5,12 @@ namespace App\Domains\Incidents\Queries;
 use App\Contracts\Incidents\IncidentMetricsQuery;
 use App\Domains\Incidents\Enums\TimelineEntryType;
 use App\Domains\Incidents\Models\Incident;
+use App\Domains\Incidents\Models\IncidentPriority;
 use App\Domains\Incidents\Models\IncidentStatus;
 use App\Domains\Incidents\Models\IncidentTimeline;
 use App\Support\TenantContext;
 use Carbon\CarbonInterface;
-use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Carbon;
 
 class DbIncidentMetricsQuery implements IncidentMetricsQuery
 {
@@ -136,52 +137,71 @@ class DbIncidentMetricsQuery implements IncidentMetricsQuery
     public function openBacklogPerDay(int $teamId, CarbonInterface $from, CarbonInterface $to): array
     {
         return TenantContext::for($teamId, function () use ($from, $to) {
-            $buckets = [];
+            $instants = [];
             $cursor = $from->copy()->startOfDay();
             $lastDay = $to->copy()->startOfDay();
 
             while ($cursor->lessThanOrEqualTo($lastDay)) {
-                $at = $cursor->equalTo($lastDay) ? $to : $cursor->copy()->endOfDay();
+                $instants[$cursor->toDateString()] = $cursor->equalTo($lastDay) ? $to : $cursor->copy()->endOfDay();
+                $cursor = $cursor->addDay();
+            }
 
-                $base = $this->openAt($at);
+            if ($instants === []) {
+                return [];
+            }
+
+            // One pass over the incidents open at some point of the window,
+            // bucketed in PHP (2 counts per day used to scan the tenant's whole
+            // incident history, unindexable through the OR + COALESCE).
+            // Open at `$at` = opened by then and either still open (every
+            // terminal transition stamps a closing timestamp; reopen clears
+            // them) or closed after it.
+            $firstInstant = reset($instants);
+            $criticalPriorityIds = IncidentPriority::query()->where('code', 'critical')->pluck('id')->all();
+
+            $stillOpen = Incident::query()
+                ->where('opened_at', '<=', $to)
+                ->whereNull('resolved_at')
+                ->whereNull('closed_at')
+                ->whereNull('cancelled_at')
+                ->whereNull('false_positive_at')
+                ->open()
+                ->toBase()
+                ->get(['opened_at', 'incident_priority_id'])
+                ->map(fn (object $row) => [$row->opened_at, null, $row->incident_priority_id]);
+
+            $closedLater = Incident::query()
+                ->where('opened_at', '<=', $to)
+                ->whereRaw(
+                    'COALESCE(resolved_at, closed_at, cancelled_at, false_positive_at) > ?',
+                    [$firstInstant->toDateTimeString()],
+                )
+                ->toBase()
+                ->selectRaw('opened_at, incident_priority_id, COALESCE(resolved_at, closed_at, cancelled_at, false_positive_at) as ended_at')
+                ->get()
+                ->map(fn (object $row) => [$row->opened_at, $row->ended_at, $row->incident_priority_id]);
+
+            $candidates = $stillOpen->concat($closedLater)->map(fn (array $row) => [
+                'opened_at' => Carbon::parse($row[0]),
+                'ended_at' => $row[1] !== null ? Carbon::parse($row[1]) : null,
+                'critical' => in_array($row[2], $criticalPriorityIds, false),
+            ]);
+
+            $buckets = [];
+
+            foreach ($instants as $date => $at) {
+                $open = $candidates->filter(fn (array $row) => $row['opened_at']->lessThanOrEqualTo($at)
+                    && ($row['ended_at'] === null || $row['ended_at']->greaterThan($at)));
 
                 $buckets[] = [
-                    'date' => $cursor->toDateString(),
-                    'total' => (int) (clone $base)->count(),
-                    'critical' => (int) (clone $base)
-                        ->whereHas('priority', fn ($query) => $query->where('code', 'critical'))
-                        ->count(),
+                    'date' => $date,
+                    'total' => $open->count(),
+                    'critical' => $open->where('critical', true)->count(),
                 ];
-
-                $cursor = $cursor->addDay();
             }
 
             return $buckets;
         });
-    }
-
-    /**
-     * Incidents open at the given instant. Every terminal transition stamps
-     * one of the closing timestamps (reopen clears them), so an incident
-     * with none is still open; one stamped after `$at` was open back then.
-     *
-     * @return Builder<Incident>
-     */
-    private function openAt(CarbonInterface $at): Builder
-    {
-        return Incident::query()
-            ->where('opened_at', '<=', $at)
-            ->where(fn (Builder $query) => $query
-                ->where(fn (Builder $stillOpen) => $stillOpen
-                    ->whereNull('resolved_at')
-                    ->whereNull('closed_at')
-                    ->whereNull('cancelled_at')
-                    ->whereNull('false_positive_at')
-                    ->open())
-                ->orWhereRaw(
-                    'COALESCE(resolved_at, closed_at, cancelled_at, false_positive_at) > ?',
-                    [$at->toDateTimeString()],
-                ));
     }
 
     public function slaCompliance(int $teamId, CarbonInterface $from, CarbonInterface $to): ?float

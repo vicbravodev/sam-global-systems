@@ -6,6 +6,7 @@ use App\Domains\Analytics\Enums\ReportExecutionStatus;
 use App\Domains\Analytics\Models\ReportExecution;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
+use App\Support\Http\PerPage;
 use App\Support\ObjectStorageFailure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -36,7 +37,7 @@ class ReportExecutionController extends Controller
         }
 
         $executions = $query->orderByDesc('id')
-            ->paginate($request->integer('per_page', 25));
+            ->paginate(PerPage::from($request, 25));
 
         return response()->json($executions);
     }

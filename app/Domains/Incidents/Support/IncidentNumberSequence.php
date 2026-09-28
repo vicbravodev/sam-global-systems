@@ -11,6 +11,12 @@ use Illuminate\Support\Facades\DB;
  * row lock serialises concurrent creators of the same tenant (two workers
  * opening incidents at once get consecutive numbers) without touching other
  * tenants; the `(team_id, number)` unique index is the final guard.
+ *
+ * On PostgreSQL the lock is `FOR NO KEY UPDATE`, not `FOR UPDATE`: every
+ * insert into a table with a `team_id` foreign key takes `FOR KEY SHARE` on
+ * the team row, which `FOR UPDATE` blocks. Since the caller holds this lock
+ * until its incident transaction commits, `FOR UPDATE` stalled all of the
+ * tenant's ingestion/normalization/usage inserts behind every incident.
  */
 final class IncidentNumberSequence
 {
@@ -19,7 +25,7 @@ final class IncidentNumberSequence
         return (int) DB::transaction(function () use ($teamId): int {
             $current = DB::table('teams')
                 ->where('id', $teamId)
-                ->lockForUpdate()
+                ->lock(DB::getDriverName() === 'pgsql' ? 'for no key update' : true)
                 ->value('last_incident_number');
 
             // A team created before the counter existed (or a counter reset

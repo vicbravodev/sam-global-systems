@@ -7,6 +7,7 @@ use App\Domains\Audit\Enums\AuditCategory;
 use App\Domains\Audit\Models\AuditLog;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
+use App\Support\Http\PerPage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -49,7 +50,7 @@ class AuditLogController extends Controller
         }
 
         $logs = $query->orderByDesc('occurred_at')
-            ->paginate($request->integer('per_page', 25));
+            ->paginate(PerPage::from($request, 25));
 
         return response()->json($logs);
     }

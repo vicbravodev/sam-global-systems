@@ -216,25 +216,49 @@ type ReloadRules<E extends AnyBroadcastEvent> = Partial<
  * and one `router.reload({ only })` goes out after `debounceMs`. A hidden tab
  * does not reload; it flushes once when it becomes visible again. After a
  * socket drop every static key (plus `resync`) reloads once.
+ *
+ * `minIntervalMs` caps how often an expensive key reloads (e.g. aggregates
+ * that a single live event barely moves): within its interval the key stays
+ * pending and goes out with the first flush after it expires.
  */
 export function useBroadcastReload<E extends AnyBroadcastEvent>(
     rules: ReloadRules<E>,
     {
         debounceMs = 1500,
         resync = [],
-    }: { debounceMs?: number; resync?: readonly string[] } = {},
+        minIntervalMs = {},
+    }: {
+        debounceMs?: number;
+        resync?: readonly string[];
+        minIntervalMs?: Readonly<Record<string, number>>;
+    } = {},
 ): void {
     const rulesRef = useRef(rules);
     const resyncRef = useRef(resync);
+    const minIntervalRef = useRef(minIntervalMs);
     const pending = useRef<Set<string>>(new Set());
     const timer = useRef<number | null>(null);
+    // Props arrive fresh with the page, so each key's interval starts at mount.
+    const lastReload = useRef<Map<string, number>>(new Map());
 
     useEffect(() => {
         rulesRef.current = rules;
         resyncRef.current = resync;
+        minIntervalRef.current = minIntervalMs;
     });
 
     useEffect(() => {
+        const mountedAt = Date.now();
+
+        const waitFor = (key: string, now: number): number => {
+            const interval = minIntervalRef.current[key] ?? 0;
+
+            return Math.max(
+                0,
+                (lastReload.current.get(key) ?? mountedAt) + interval - now,
+            );
+        };
+
         const flush = () => {
             timer.current = null;
 
@@ -242,9 +266,29 @@ export function useBroadcastReload<E extends AnyBroadcastEvent>(
                 return;
             }
 
-            const only = [...pending.current];
-            pending.current.clear();
-            router.reload({ only });
+            const now = Date.now();
+            const only = [...pending.current].filter(
+                (key) => waitFor(key, now) === 0,
+            );
+
+            only.forEach((key) => {
+                pending.current.delete(key);
+                lastReload.current.set(key, now);
+            });
+
+            if (only.length > 0) {
+                router.reload({ only });
+            }
+
+            if (pending.current.size > 0) {
+                const next = Math.min(
+                    ...[...pending.current].map((key) => waitFor(key, now)),
+                );
+                timer.current = window.setTimeout(
+                    flush,
+                    Math.max(next, debounceMs),
+                );
+            }
         };
 
         const schedule = (keys: readonly string[]) => {

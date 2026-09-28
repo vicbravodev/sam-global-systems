@@ -10,6 +10,7 @@ use App\Domains\Notifications\Enums\NotificationTriggeredByType;
 use App\Domains\Notifications\Models\Notification;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
+use App\Support\Http\PerPage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -41,7 +42,7 @@ class NotificationController extends Controller
         }
 
         $notifications = $query->orderByDesc('id')
-            ->paginate($request->integer('per_page', 15));
+            ->paginate(PerPage::from($request, 15));
 
         return response()->json($notifications);
     }

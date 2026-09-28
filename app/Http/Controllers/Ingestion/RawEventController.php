@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Ingestion;
 use App\Domains\Ingestion\Models\RawEvent;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
+use App\Support\Http\PerPage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -35,7 +36,7 @@ class RawEventController extends Controller
             $query->where('received_at', '<=', $request->input('received_until'));
         }
 
-        $rawEvents = $query->paginate($request->integer('per_page', 25));
+        $rawEvents = $query->paginate(PerPage::from($request, 25));
 
         return response()->json($rawEvents);
     }

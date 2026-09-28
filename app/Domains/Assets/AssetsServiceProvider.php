@@ -50,7 +50,8 @@ class AssetsServiceProvider extends ServiceProvider
         $this->app->booted(function () {
             /** @var Schedule $schedule */
             $schedule = $this->app->make(Schedule::class);
-            $schedule->command('assets:record-usage-meters')->daily();
+            // In background so the every-5-s telematics tick isn't held behind it.
+            $schedule->command('assets:record-usage-meters')->daily()->onOneServer()->runInBackground();
         });
     }
 }

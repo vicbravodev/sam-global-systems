@@ -189,7 +189,7 @@ class NotificationsShowcaseSeeder extends ShowcaseStep
         $incidents = Incident::query()
             ->where('team_id', $this->ctx->team->id)
             ->whereNotNull('metadata_json->showcase_key')
-            ->with(['priority', 'status', 'type', 'driver'])
+            ->with(['priority', 'status', 'type', 'driver', 'resolution'])
             ->orderBy('opened_at')
             ->get();
 

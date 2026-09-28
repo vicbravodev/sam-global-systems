@@ -2,6 +2,7 @@
 
 namespace App\Domains\Copilot\Tools;
 
+use App\Domains\Assets\Queries\LatestAssetTelemetry;
 use App\Domains\Copilot\Data\CopilotToolContext;
 use App\Domains\Copilot\Data\CopilotToolResult;
 use App\Domains\Copilot\Support\CopilotPresenter;
@@ -20,7 +21,8 @@ final class AssetSummaryTool implements CopilotTool
         $asset = $context->asset;
         abort_if($asset === null || $asset->team_id !== $context->teamId, 404);
 
-        $asset->loadMissing(['assetType', 'latestLocation', 'latestTelemetry', 'provider', 'currentDriverAssignment.driver']);
+        $asset->loadMissing(['assetType', 'latestLocation', 'provider', 'currentDriverAssignment.driver']);
+        app(LatestAssetTelemetry::class)->loadInto([$asset]);
 
         $location = $asset->latestLocation;
         $driver = $asset->currentDriverAssignment?->driver;

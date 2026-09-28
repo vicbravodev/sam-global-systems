@@ -20,6 +20,7 @@ use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Cae al siguiente canal de la política de fallback del tenant cuando una
@@ -161,7 +162,9 @@ class FallbackNotificationChannelJob implements ShouldQueue
         ?string $skipReason,
     ): ?NotificationDelivery {
         try {
-            return NotificationDelivery::query()->create([
+            // Savepoint: on PostgreSQL a failed INSERT aborts the enclosing
+            // transaction, so without it the catch below could not query.
+            return DB::transaction(fn () => NotificationDelivery::query()->create([
                 'notification_id' => $primary->notification_id,
                 'recipient_id' => $primary->recipient_id,
                 'channel_id' => $channel->id,
@@ -170,7 +173,7 @@ class FallbackNotificationChannelJob implements ShouldQueue
                 'status' => $skipReason === null ? DeliveryStatus::Pending : DeliveryStatus::Skipped,
                 'attempt_number' => $skipReason === null ? 1 : 0,
                 'error_message' => $skipReason,
-            ]);
+            ]));
         } catch (UniqueConstraintViolationException) {
             return null;
         }

@@ -7,6 +7,7 @@ use App\Domains\Assets\Enums\LocationSource;
 use App\Domains\Assets\Enums\TelemetryType;
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Assets\Models\AssetTelemetrySnapshot;
+use App\Domains\Assets\Queries\LatestAssetTelemetry;
 use App\Domains\Context\Support\HaversineDistance;
 use App\Domains\Integrations\Data\VehicleStatsPage;
 use App\Domains\Integrations\Models\TenantIntegration;
@@ -337,32 +338,15 @@ class IngestVehicleStatsPage
 
     /**
      * The newest stored reading of every (asset, type) pair of these assets,
-     * keyed "assetId|type", in one query over the unique
-     * (asset_id, telemetry_type, recorded_at) index.
+     * keyed "assetId|type". Runs on every feed tick: see LatestAssetTelemetry
+     * for why it is not a grouped MAX over the whole retention window.
      *
      * @param  list<int>  $assetIds
      * @return array<string, AssetTelemetrySnapshot|null>
      */
     private function latestReadings(array $assetIds): array
     {
-        $newest = AssetTelemetrySnapshot::query()
-            ->selectRaw('asset_id, telemetry_type, MAX(recorded_at) AS newest_at')
-            ->whereIn('asset_id', $assetIds)
-            ->groupBy('asset_id', 'telemetry_type');
-
-        $latest = [];
-
-        AssetTelemetrySnapshot::query()
-            ->joinSub($newest, 'newest', fn ($join) => $join
-                ->on('asset_telemetry_snapshots.asset_id', '=', 'newest.asset_id')
-                ->on('asset_telemetry_snapshots.telemetry_type', '=', 'newest.telemetry_type')
-                ->on('asset_telemetry_snapshots.recorded_at', '=', 'newest.newest_at'))
-            ->get(['asset_telemetry_snapshots.*'])
-            ->each(function (AssetTelemetrySnapshot $snapshot) use (&$latest): void {
-                $latest[$snapshot->asset_id.'|'.$snapshot->telemetry_type->value] = $snapshot;
-            });
-
-        return $latest;
+        return app(LatestAssetTelemetry::class)->byType($assetIds);
     }
 
     /**
