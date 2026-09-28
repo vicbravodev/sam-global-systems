@@ -354,4 +354,53 @@ class SamsaraAdapterTest extends TestCase
         // Null adapter returns empty buckets without hitting any HTTP API.
         $this->assertSame(0, $result['records_processed']);
     }
+
+    public function test_sync_keeps_the_driver_profile_facts_and_the_vehicle_plate_as_metadata(): void
+    {
+        Http::fake([
+            'api.samsara.com/fleet/vehicles*' => Http::response([
+                'data' => [
+                    ['id' => '100', 'name' => 'Truck 1', 'vin' => 'VIN100', 'licensePlate' => 'ABC-123', 'make' => 'Volvo'],
+                ],
+                'pagination' => ['hasNextPage' => false],
+            ], 200),
+            'api.samsara.com/fleet/drivers*' => Http::response([
+                'data' => [
+                    [
+                        'id' => '200',
+                        'name' => 'Jane Doe',
+                        'username' => 'jane',
+                        'phone' => '+528112345678',
+                        'licenseNumber' => 'LIC-1',
+                        'licenseState' => 'NL',
+                        'driverActivationStatus' => 'active',
+                        'timezone' => 'America/Mexico_City',
+                        'staticAssignedVehicle' => ['id' => '100', 'name' => 'Truck 1'],
+                        'tags' => [['id' => '1', 'name' => 'Norte'], ['id' => '2']],
+                        'notes' => '',
+                    ],
+                    ['id' => '201', 'name' => 'No Extras'],
+                ],
+                'pagination' => ['hasNextPage' => false],
+            ], 200),
+        ]);
+
+        $result = app(SamsaraAdapter::class)->sync($this->makeIntegration(), 'full');
+
+        $this->assertSame('ABC-123', $result['assets'][0]['metadata']['license_plate']);
+        $this->assertSame('VIN100', $result['assets'][0]['metadata']['vin']);
+
+        $this->assertSame([
+            'license_number' => 'LIC-1',
+            'license_state' => 'NL',
+            'username' => 'jane',
+            'activation_status' => 'active',
+            'static_vehicle' => 'Truck 1',
+            'timezone' => 'America/Mexico_City',
+            'tags' => ['Norte'],
+        ], $result['drivers'][0]['metadata']);
+
+        // A bare driver record yields empty metadata, never a bag of nulls.
+        $this->assertSame([], $result['drivers'][1]['metadata']);
+    }
 }

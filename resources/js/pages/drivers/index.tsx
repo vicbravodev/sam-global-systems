@@ -1,24 +1,25 @@
 import { Head, router, usePage } from '@inertiajs/react';
 import {
-    ChevronLeft,
-    ChevronRight,
-    Filter,
+    Clock,
+    Moon,
     RefreshCw,
-    Search,
+    ShieldAlert,
+    Truck,
+    UserCheck,
+    UserX,
     Users,
-    X,
 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { DriversTable } from '@/components/sam/drivers/drivers-table';
-import { Button } from '@/components/ui/button';
 import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuRadioGroup,
-    DropdownMenuRadioItem,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+    ClearFiltersButton,
+    FilterDropdown,
+    ListFooter,
+    SearchInput,
+} from '@/components/sam/list';
+import { PulseStat, PulseStrip } from '@/components/sam/pulse-strip';
+import { SegmentedFilter } from '@/components/sam/segmented-filter';
+import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
 import { cn } from '@/lib/utils';
@@ -27,16 +28,27 @@ import type {
     DriverFilters,
     DriversIndexProps,
     DriversPagination,
+    DriversSummary,
 } from '@/types/drivers';
+
+const STATUS_DOT: Record<string, string> = {
+    active: 'bg-severity-low',
+    off_duty: 'bg-fg-3',
+    unavailable: 'bg-fg-3',
+    suspended: 'bg-severity-critical',
+    under_review: 'bg-severity-medium',
+};
 
 // ---- PageHead ----
 
 function PageHead({
     total,
+    activeNow,
     onRefresh,
     refreshing,
 }: {
     total: number;
+    activeNow: number | null;
     onRefresh: () => void;
     refreshing: boolean;
 }) {
@@ -47,6 +59,14 @@ function PageHead({
                 <span className="text-xs text-fg-3">
                     <span className="font-medium text-fg-1">{total}</span>{' '}
                     {total === 1 ? 'conductor' : 'conductores'}
+                    {activeNow !== null && (
+                        <>
+                            {' · '}
+                            <span className="text-severity-low">
+                                {activeNow} en servicio
+                            </span>
+                        </>
+                    )}
                 </span>
             }
             actions={
@@ -68,171 +88,134 @@ function PageHead({
     );
 }
 
-// ---- FilterBar ----
+// ---- Pulse strip ----
 
-interface FilterDropdownProps {
-    label: string;
-    value: string | null;
-    options: { value: string; label: string }[];
-    onChange: (value: string | null) => void;
-}
-
-function FilterDropdown({
-    label,
-    value,
-    options,
-    onChange,
-}: FilterDropdownProps) {
-    const active = value !== null;
-    const activeLabel = options.find((o) => o.value === value)?.label;
+function RosterPulse({
+    summary,
+    status,
+    onStatus,
+}: {
+    summary: DriversSummary;
+    status: string | null;
+    onStatus: (value: string | null) => void;
+}) {
+    const toggle = (value: string) => () =>
+        onStatus(status === value ? null : value);
+    const attention =
+        summary.statuses.under_review + summary.statuses.suspended;
 
     return (
-        <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-                <button
-                    type="button"
-                    className={cn(
-                        'flex items-center gap-1 rounded-sm border px-2.5 py-1.5 text-2xs transition-colors',
-                        active
-                            ? 'border-primary/40 bg-primary/10 text-primary'
-                            : 'border-border bg-surface-1 text-fg-2 hover:border-border-strong',
-                    )}
-                >
-                    <Filter size={11} />
-                    {active && activeLabel ? `${label}: ${activeLabel}` : label}
-                </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-                align="start"
-                className="max-h-72 overflow-y-auto"
-            >
-                <DropdownMenuRadioGroup
-                    value={value ?? ''}
-                    onValueChange={(v) => onChange(v === '' ? null : v)}
-                >
-                    <DropdownMenuRadioItem value="">
-                        Todos
-                    </DropdownMenuRadioItem>
-                    {options.length > 0 && <DropdownMenuSeparator />}
-                    {options.map((o) => (
-                        <DropdownMenuRadioItem key={o.value} value={o.value}>
-                            {o.label}
-                        </DropdownMenuRadioItem>
-                    ))}
-                </DropdownMenuRadioGroup>
-            </DropdownMenuContent>
-        </DropdownMenu>
+        <PulseStrip>
+            <PulseStat
+                label="Roster"
+                value={summary.total}
+                icon={Users}
+                hint="conductores registrados"
+                onClick={() => onStatus(null)}
+                active={status === null}
+            />
+            <PulseStat
+                label="Activos"
+                value={summary.statuses.active}
+                icon={UserCheck}
+                tone="ok"
+                hint="en servicio"
+                onClick={toggle('active')}
+                active={status === 'active'}
+            />
+            <PulseStat
+                label="Fuera de turno"
+                value={summary.statuses.off_duty}
+                icon={Moon}
+                hint="descansando"
+                onClick={toggle('off_duty')}
+                active={status === 'off_duty'}
+            />
+            <PulseStat
+                label="Atención"
+                value={attention}
+                icon={UserX}
+                tone={attention > 0 ? 'warn' : 'neutral'}
+                hint={`${summary.statuses.under_review} en revisión · ${summary.statuses.suspended} suspendidos`}
+                onClick={toggle('under_review')}
+                active={status === 'under_review'}
+            />
+            <PulseStat
+                label="Riesgo alto"
+                value={summary.highRisk}
+                icon={ShieldAlert}
+                tone={summary.highRisk > 0 ? 'critical' : 'neutral'}
+                hint="perfil alto o crítico"
+            />
+            <PulseStat
+                label="Sin unidad"
+                value={summary.unassigned}
+                icon={Truck}
+                tone={summary.unassigned > 0 ? 'warn' : 'neutral'}
+                hint="sin vehículo asignado"
+            />
+            <PulseStat
+                label="Vistos 24 h"
+                value={summary.seenToday}
+                icon={Clock}
+                tone="info"
+                live={summary.seenToday > 0}
+                hint="con señal del proveedor"
+            />
+        </PulseStrip>
     );
 }
+
+// ---- FilterBar ----
 
 interface FilterBarProps {
     filters: DriverFilters;
     options: DriverFilterOptions;
+    summary: DriversSummary | null;
     onApply: (next: DriverFilters) => void;
 }
 
-function FilterBar({ filters, options, onApply }: FilterBarProps) {
-    const [search, setSearch] = useState(filters.q ?? '');
-
-    // Keep the input in sync when filters are reset/changed externally.
-    useEffect(() => {
-        setSearch(filters.q ?? '');
-    }, [filters.q]);
-
-    // Debounce the free-text search before firing a reload.
-    useEffect(() => {
-        const current = filters.q ?? '';
-        const next = search.trim();
-
-        if (next === current) {
-            return;
-        }
-
-        const timer = setTimeout(() => {
-            onApply({ ...filters, q: next === '' ? null : next });
-        }, 350);
-
-        return () => clearTimeout(timer);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [search]);
-
+function FilterBar({ filters, options, summary, onApply }: FilterBarProps) {
     const hasActive = filters.q !== null || filters.status !== null;
 
     return (
-        <div className="flex shrink-0 items-center gap-2 border-b border-border bg-background px-5 py-2">
-            <div className="mr-1 flex items-center gap-1.5 rounded-md border border-border bg-surface-1 px-2.5 py-1.5 text-xs text-fg-3">
-                <Search size={12} />
-                <input
-                    type="text"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Buscar por nombre o código…"
-                    className="w-48 border-none bg-transparent text-xs text-fg-1 outline-none placeholder:text-fg-3"
-                />
-            </div>
-
-            <FilterDropdown
-                label="Estado"
-                value={filters.status}
-                options={options.statuses}
-                onChange={(v) => onApply({ ...filters, status: v })}
+        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-background px-5 py-2">
+            <SearchInput
+                value={filters.q}
+                onApply={(q) => onApply({ ...filters, q })}
+                placeholder="Buscar por nombre o código…"
+                className="mr-1"
             />
 
-            {hasActive && (
-                <button
-                    type="button"
-                    onClick={() => onApply({ q: null, status: null })}
-                    className="flex items-center gap-1 rounded-sm border border-dashed border-border px-2.5 py-1.5 text-2xs text-fg-3 transition-colors hover:border-border-strong"
-                >
-                    <X size={11} />
-                    Limpiar
-                </button>
+            {summary ? (
+                <SegmentedFilter
+                    aria-label="Filtrar por estado"
+                    value={filters.status}
+                    onChange={(status) => onApply({ ...filters, status })}
+                    allCount={summary.total}
+                    options={options.statuses.map((o) => ({
+                        value: o.value,
+                        label: o.label,
+                        count: summary.statuses[
+                            o.value as keyof DriversSummary['statuses']
+                        ],
+                        dot: STATUS_DOT[o.value],
+                    }))}
+                />
+            ) : (
+                <FilterDropdown
+                    label="Estado"
+                    value={filters.status}
+                    options={options.statuses}
+                    onChange={(status) => onApply({ ...filters, status })}
+                />
             )}
-        </div>
-    );
-}
 
-// ---- Footer / pagination ----
-
-function RosterFooter({
-    pagination,
-    shown,
-    onPage,
-}: {
-    pagination: DriversPagination;
-    shown: number;
-    onPage: (page: number) => void;
-}) {
-    const from =
-        shown === 0 ? 0 : (pagination.page - 1) * pagination.perPage + 1;
-    const to = (pagination.page - 1) * pagination.perPage + shown;
-
-    return (
-        <div className="flex shrink-0 items-center justify-between border-t border-border bg-surface-1 px-5 py-2">
-            <span className="text-2xs text-fg-3">
-                {from}–{to} de {pagination.total}{' '}
-                {pagination.total === 1 ? 'conductor' : 'conductores'}
-            </span>
-            <div className="flex items-center gap-1">
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={pagination.page <= 1}
-                    onClick={() => onPage(pagination.page - 1)}
-                >
-                    <ChevronLeft size={13} />
-                    Anterior
-                </Button>
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={pagination.page >= pagination.lastPage}
-                    onClick={() => onPage(pagination.page + 1)}
-                >
-                    Siguiente
-                    <ChevronRight size={13} />
-                </Button>
-            </div>
+            {hasActive && (
+                <ClearFiltersButton
+                    onClick={() => onApply({ q: null, status: null })}
+                />
+            )}
         </div>
     );
 }
@@ -275,6 +258,7 @@ export default function DriversIndex() {
     const pagination = pageProps.pagination ?? EMPTY_PAGINATION;
     const serverFilters = pageProps.filters ?? EMPTY_FILTERS;
     const filterOptions = pageProps.filterOptions ?? EMPTY_OPTIONS;
+    const summary = pageProps.summary ?? null;
 
     const [refreshing, setRefreshing] = useState(false);
     const [filters, setFilters] = useState<DriverFilters>(serverFilters);
@@ -289,7 +273,7 @@ export default function DriversIndex() {
     const refresh = () => {
         setRefreshing(true);
         router.reload({
-            only: ['drivers', 'pagination'],
+            only: ['drivers', 'pagination', 'summary'],
             onFinish: () => setRefreshing(false),
         });
     };
@@ -331,14 +315,26 @@ export default function DriversIndex() {
             <Head title="Conductores" />
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                 <PageHead
-                    total={pagination.total}
+                    total={summary?.total ?? pagination.total}
+                    activeNow={summary?.statuses.active ?? null}
                     onRefresh={refresh}
                     refreshing={refreshing}
                 />
 
+                {summary && (
+                    <RosterPulse
+                        summary={summary}
+                        status={filters.status}
+                        onStatus={(status) =>
+                            applyFilters({ ...filters, status })
+                        }
+                    />
+                )}
+
                 <FilterBar
                     filters={filters}
                     options={filterOptions}
+                    summary={summary}
                     onApply={applyFilters}
                 />
 
@@ -349,10 +345,11 @@ export default function DriversIndex() {
                     presence={pageProps.columns}
                 />
 
-                <RosterFooter
+                <ListFooter
                     pagination={pagination}
                     shown={drivers.length}
                     onPage={goToPage}
+                    noun={['conductor', 'conductores']}
                 />
             </div>
         </>

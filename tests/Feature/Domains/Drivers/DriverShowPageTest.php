@@ -13,6 +13,8 @@ use App\Domains\Drivers\Models\DriverContact;
 use App\Domains\Drivers\Models\DriverDocument;
 use App\Domains\Drivers\Models\DriverRiskProfile;
 use App\Domains\Drivers\Models\DriverStatusLog;
+use App\Domains\Incidents\Models\Incident;
+use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Models\User;
@@ -234,6 +236,96 @@ class DriverShowPageTest extends TestCase
                 ->has('driver.contacts', 0)
                 ->has('assignments', 0)
                 ->has('statusLog', 0),
+        );
+    }
+
+    public function test_detail_exposes_activity_incidents_provider_fields_and_document_expiry(): void
+    {
+        [$user, $team] = $this->createUserWithRole('detail_activity', ['drivers.view']);
+        $other = Team::factory()->create();
+
+        $driver = Driver::factory()->create([
+            'team_id' => $team->id,
+            'metadata_json' => [
+                'license_number' => 'LIC-998877',
+                'license_state' => 'NL',
+                'username' => 'ana.torres',
+                'tags' => ['Norte', 'Turno A'],
+                'internal_only' => 'never shown',
+            ],
+        ]);
+        $asset = Asset::factory()->create(['team_id' => $team->id, 'name' => 'Camión 7']);
+
+        DriverRiskProfile::factory()->create([
+            'driver_id' => $driver->id,
+            'risk_score' => 64,
+            'metadata_json' => ['trend' => 'improving', 'previous_score' => 70.5, 'window_days' => 30, 'severe_events_count' => 2],
+        ]);
+
+        DriverDocument::factory()->create([
+            'driver_id' => $driver->id,
+            'expires_at' => now()->addDays(10)->toDateString(),
+        ]);
+
+        $recent = NormalizedEvent::factory()->create([
+            'team_id' => $team->id,
+            'driver_id' => $driver->id,
+            'asset_id' => $asset->id,
+            'occurred_at' => now()->subMinutes(5),
+        ]);
+        NormalizedEvent::factory()->create([
+            'team_id' => $team->id,
+            'driver_id' => $driver->id,
+            'occurred_at' => now()->subDays(2),
+        ]);
+        // Outside the 14-day activity window: listed in recent events but not
+        // in the per-day series.
+        NormalizedEvent::factory()->create([
+            'team_id' => $team->id,
+            'driver_id' => $driver->id,
+            'occurred_at' => now()->subDays(40),
+        ]);
+        // Other tenant's driver id collision must never leak.
+        NormalizedEvent::factory()->create([
+            'team_id' => $other->id,
+            'driver_id' => Driver::factory()->create(['team_id' => $other->id])->id,
+        ]);
+
+        $incident = Incident::factory()->open()->create([
+            'team_id' => $team->id,
+            'driver_id' => $driver->id,
+            'title' => 'Pánico verificado',
+        ]);
+        Incident::factory()->open()->create([
+            'team_id' => $other->id,
+            'driver_id' => $driver->id,
+        ]);
+
+        $response = $this->actingAs($user)->get(
+            route('drivers.show', ['current_team' => $team->slug, 'driver' => $driver->id]),
+        );
+
+        $response->assertOk();
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->component('drivers/show')
+                ->where('driver.riskProfile.trend', 'improving')
+                ->where('driver.riskProfile.previousScore', 70.5)
+                ->where('driver.riskProfile.severeEventsCount', 2)
+                ->has('driver.providerFields', 4)
+                ->where('driver.providerFields.0.key', 'license_number')
+                ->where('driver.providerFields.0.value', 'LIC-998877')
+                ->where('driver.providerFields.3.value', 'Norte, Turno A')
+                ->where('driver.documents.0.daysToExpiry', 10)
+                ->has('recentEvents', 3)
+                ->where('recentEvents.0.id', $recent->id)
+                ->where('recentEvents.0.asset.name', 'Camión 7')
+                ->has('incidents', 1)
+                ->where('incidents.0.id', $incident->id)
+                ->where('incidents.0.status.name', 'Nuevo')
+                ->has('activity', 14)
+                ->where('activity.13.count', 1)
+                ->where('activity.11.count', 1),
         );
     }
 
