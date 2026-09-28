@@ -2,22 +2,28 @@
 
 namespace App\Http\Controllers\Dashboard;
 
-use App\Contracts\Decisions\DecisionMetricsQuery;
 use App\Contracts\Incidents\IncidentMetricsQuery;
 use App\Contracts\Normalization\NormalizedEventStatsQuery;
+use App\Domains\AI\Models\AIEventEvaluation;
+use App\Domains\AI\Support\PlaceholderEvaluation;
 use App\Domains\Decisions\Enums\DecisionOutcomeCode;
 use App\Domains\Decisions\Models\Decision;
+use App\Domains\Decisions\Models\DecisionOverride;
 use App\Domains\Incidents\Enums\AssigneeType;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Support\IncidentInboxPresenter;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Domains\Tenancy\Models\Subscription;
 use App\Domains\Tenancy\Models\TenantUsageCounter;
+use App\Domains\Tenancy\Support\CostPlusPricing;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
 use App\Models\User;
 use App\Support\TeamMembers;
+use App\Support\TenantContext;
 use Carbon\CarbonInterface;
+use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Inertia\Inertia;
@@ -35,19 +41,20 @@ class DashboardController extends Controller
 {
     public function __construct(
         private readonly IncidentMetricsQuery $incidentMetrics,
-        private readonly DecisionMetricsQuery $decisionMetrics,
         private readonly NormalizedEventStatsQuery $eventStats,
         private readonly IncidentInboxPresenter $presenter,
     ) {}
 
-    public function index(Team $current_team): Response
+    public function index(Request $request, Team $current_team): Response
     {
+        $canViewBilling = (bool) $request->user()?->can('viewAny', Subscription::class);
+
         return Inertia::render('dashboard', [
             'kpis' => fn () => $this->kpis($current_team),
             'incidents' => fn () => $this->openIncidents($current_team),
             'stream' => fn () => $this->stream($current_team),
             'integrations' => fn () => $this->integrations($current_team),
-            'usage' => fn () => $this->usage($current_team),
+            'usage' => fn () => $this->usage($current_team, $canViewBilling),
         ]);
     }
 
@@ -70,8 +77,8 @@ class DashboardController extends Controller
         $slaCurrent = $this->incidentMetrics->slaCompliance($team->id, $weekAgo, $now);
         $slaPrevious = $this->incidentMetrics->slaCompliance($team->id, $previousWeekStart, $previousWeekEnd);
 
-        $decisionsCurrent = $this->decisionMetrics->totalsForTenant($team->id, $weekAgo, $now);
-        $decisionsPrevious = $this->decisionMetrics->totalsForTenant($team->id, $previousWeekStart, $previousWeekEnd);
+        $decisionsCurrent = $this->aiVerdictTotals($team->id, $weekAgo, $now);
+        $decisionsPrevious = $this->aiVerdictTotals($team->id, $previousWeekStart, $previousWeekEnd);
 
         $today = end($perDay) ?: ['total' => 0, 'critical' => 0];
         $yesterday = count($perDay) > 1 ? $perDay[count($perDay) - 2] : ['total' => 0, 'critical' => 0];
@@ -103,8 +110,38 @@ class DashboardController extends Controller
     }
 
     /**
+     * Decisions backed by a REAL AI verdict in the window, and how many of
+     * them a human overrode. Decisions without an evaluation, or whose
+     * evaluation came from the stand-in `null-agent`, are not AI verdicts and
+     * must not inflate the precision KPI (UI audit P0-3).
+     *
+     * @return array{total: int, human_overrides: int}
+     */
+    private function aiVerdictTotals(int $teamId, CarbonInterface $from, CarbonInterface $to): array
+    {
+        return TenantContext::for($teamId, function () use ($teamId, $from, $to): array {
+            $realEvaluations = PlaceholderEvaluation::excludeFrom(
+                AIEventEvaluation::query()->where('team_id', $teamId)->select('id'),
+            );
+
+            $decisions = Decision::query()
+                ->where('team_id', $teamId)
+                ->whereBetween('decided_at', [$from, $to])
+                ->whereIn('ai_evaluation_id', $realEvaluations);
+
+            return [
+                'total' => (int) (clone $decisions)->count(),
+                'human_overrides' => (int) DecisionOverride::query()
+                    ->whereIn('decision_id', (clone $decisions)->select('id'))
+                    ->count(),
+            ];
+        });
+    }
+
+    /**
      * Same precision semantics as Analytics' EvaluateAIEffectiveness:
-     * decisions not overridden by a human / total decisions.
+     * decisions not overridden by a human / total decisions — restricted to
+     * decisions with a real AI verdict.
      *
      * @param  array{total: int, human_overrides: int}  $totals
      */
@@ -293,7 +330,9 @@ class DashboardController extends Controller
     {
         return [
             'id' => (int) $event->id,
-            'ts' => $event->occurred_at?->format('H:i:s') ?? '—',
+            // ISO 8601: the client formats it in the viewer's timezone like
+            // every other timestamp (the server used to print UTC, P1-1).
+            'occurredAt' => $event->occurred_at?->toIso8601String(),
             'provider' => (string) ($event->provider?->name ?? '—'),
             'type' => (string) ($event->eventType?->name ?? $event->eventType?->code ?? '—'),
             'asset' => (string) ($event->asset?->code ?? $event->asset?->name ?? '—'),
@@ -348,15 +387,18 @@ class DashboardController extends Controller
             ->orderByDesc('id')
             ->get();
 
-        $counts = $this->eventStats->countByProviderSince($team->id, $now->copy()->subDay());
+        // Per integration, not per provider: two Samsara integrations must not
+        // both show the provider-wide total (UI audit P1-3).
+        $counts = $this->eventStats->countByIntegrationSince($team->id, $now->copy()->subDay());
 
         return $integrations
             ->map(fn (TenantIntegration $integration) => [
                 'id' => (int) $integration->id,
                 'key' => (string) ($integration->provider?->code ?? $integration->id),
-                'name' => (string) ($integration->provider?->name ?? $integration->name),
+                'name' => (string) ($integration->name ?: ($integration->provider?->name ?? '—')),
+                'provider' => (string) ($integration->provider?->name ?? '—'),
                 'health' => $integration->status->healthKey(),
-                'events24h' => (int) ($counts[$integration->provider_id] ?? 0),
+                'events24h' => (int) ($counts[$integration->id] ?? 0),
                 'lastSync' => $integration->last_sync_at !== null
                     ? $this->relativeTime($integration->last_sync_at, $now)
                     : null,
@@ -367,9 +409,15 @@ class DashboardController extends Controller
     /**
      * Usage counters for the billing period containing today.
      *
+     * Money meters (cost-plus Twilio messaging, unit `usd_micros`) are billing
+     * data: they are hidden from roles without `tenancy.billing.view`, and for
+     * the rest they show what the tenant will be CHARGED — never our raw
+     * provider cost in micro-dollars (UI audit P0-1). Same pricing as the
+     * billing page (CostPlusPricing::charged).
+     *
      * @return list<array<string, mixed>>
      */
-    private function usage(Team $team): array
+    private function usage(Team $team, bool $canViewBilling): array
     {
         $today = Carbon::today();
 
@@ -379,12 +427,20 @@ class DashboardController extends Controller
             ->whereDate('period_end', '>=', $today)
             ->with('usageMeter')
             ->get()
+            ->filter(fn (TenantUsageCounter $counter) => $canViewBilling
+                || $counter->usageMeter?->unit !== CostPlusPricing::MICRO_UNIT)
             ->sortBy(fn (TenantUsageCounter $counter) => (string) $counter->usageMeter?->name)
             ->values()
             ->map(fn (TenantUsageCounter $counter) => [
                 'meterCode' => (string) ($counter->usageMeter?->code ?? ''),
                 'meterName' => (string) ($counter->usageMeter?->name ?? '—'),
                 'unit' => (string) ($counter->usageMeter?->unit ?? ''),
+                'amount' => $counter->usageMeter?->unit === CostPlusPricing::MICRO_UNIT
+                    ? CostPlusPricing::charged(
+                        (float) $counter->consumed_value,
+                        CostPlusPricing::markupFor($team->id, (int) $counter->usage_meter_id),
+                    )
+                    : null,
                 'consumed' => (int) $counter->consumed_value,
                 'included' => (int) $counter->included_value,
                 'overage' => (int) $counter->overage_value,

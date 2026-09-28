@@ -17,6 +17,8 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { useRealtimeConnection } from '@/hooks/use-realtime-connection';
 import type { TeamBroadcastDetail } from '@/hooks/use-team-broadcasts';
 import { TEAM_BROADCAST_EVENT_NAME } from '@/hooks/use-team-broadcasts';
+import { formatCurrency } from '@/lib/format';
+import { formatClock } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { dashboard } from '@/routes';
 import type {
@@ -331,10 +333,7 @@ function OpenIncidentsPanel({
                                 >
                                     <SeverityBadge level={incident.severity} />
                                     <span className="w-16 shrink-0 font-mono text-2xs text-fg-3 tabular-nums">
-                                        {incident.id.replace(
-                                            /^INC-\d+-/,
-                                            'INC-',
-                                        )}
+                                        {incident.id}
                                     </span>
                                     <span className="flex-1 truncate text-sm">
                                         {incident.title}
@@ -393,7 +392,7 @@ function LiveStreamPanel({ events }: { events: DashboardStreamEvent[] }) {
                                 )}
                             >
                                 <span className="w-14 shrink-0 font-mono text-2xs text-fg-3 tabular-nums">
-                                    {event.ts}
+                                    {formatClock(event.occurredAt)}
                                 </span>
                                 <ProviderTag name={event.provider} />
                                 <span className="flex-1 truncate text-xs text-fg-2">
@@ -488,7 +487,7 @@ function IntegrationsPanel({
                             className="rounded-md border border-border bg-surface-2 p-3"
                         >
                             <div className="mb-2 flex items-center gap-2">
-                                <ProviderTag name={integration.name} />
+                                <ProviderTag name={integration.provider} />
                                 <span className="flex-1 truncate text-sm font-semibold">
                                     {integration.name}
                                 </span>
@@ -540,6 +539,32 @@ function UsagePanel({ usage }: { usage: UsageCounterRow[] }) {
             ) : (
                 <CardContent className="grid gap-3 p-3 sm:grid-cols-2 xl:grid-cols-4">
                     {usage.map((counter) => {
+                        // Medidores de dinero (mensajería cost-plus): se
+                        // muestra el importe a cobrar, nunca micro-USD crudos.
+                        if (counter.amount !== null) {
+                            return (
+                                <div
+                                    key={counter.meterCode}
+                                    className="rounded-md border border-border bg-surface-2 p-3"
+                                >
+                                    <div className="truncate text-sm font-semibold">
+                                        {counter.meterName}
+                                    </div>
+                                    <div className="mt-1 font-mono text-xl tabular-nums">
+                                        {formatCurrency(counter.amount, 'USD')}
+                                    </div>
+                                    <div className="mt-2 flex items-center justify-between font-mono text-3xs text-fg-3">
+                                        <span>a cobrar en el periodo</span>
+                                        {counter.periodEnd ? (
+                                            <span>
+                                                renueva {counter.periodEnd}
+                                            </span>
+                                        ) : null}
+                                    </div>
+                                </div>
+                            );
+                        }
+
                         const hasOverage = counter.overage > 0;
                         const fillPct = Math.min(counter.percentUsed ?? 0, 100);
 

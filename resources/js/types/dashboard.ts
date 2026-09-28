@@ -31,7 +31,8 @@ export interface DashboardKpis {
 
 export interface DashboardStreamEvent {
     id: number;
-    ts: string;
+    /** ISO 8601; se formatea en el cliente. */
+    occurredAt: string | null;
     provider: string;
     type: string;
     asset: string;
@@ -42,7 +43,9 @@ export interface DashboardStreamEvent {
 export interface DashboardIntegration {
     id: number;
     key: string;
+    /** Nombre de la integración del tenant (no del proveedor). */
     name: string;
+    provider: string;
     health: IntegrationHealth;
     events24h: number;
     lastSync: string | null;
@@ -52,6 +55,8 @@ export interface UsageCounterRow {
     meterCode: string;
     meterName: string;
     unit: string;
+    /** Importe a cobrar (medidores cost-plus en usd_micros); null si no aplica. */
+    amount: number | null;
     consumed: number;
     included: number;
     overage: number;
