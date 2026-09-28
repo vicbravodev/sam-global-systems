@@ -3,6 +3,8 @@
 namespace App\Domains\Integrations\Contracts;
 
 use App\Domains\Assets\Enums\TelemetryType;
+use App\Domains\Integrations\Exceptions\ProviderCursorRejectedException;
+use App\Domains\Integrations\Exceptions\ProviderRequestFailedException;
 use App\Domains\Integrations\Models\TenantIntegration;
 
 interface ProviderAdapter
@@ -78,15 +80,25 @@ interface ProviderAdapter
      * Fetch safety events from the provider's streaming feed.
      *
      * The feed is cursor-based: pass the cursor persisted from the previous
-     * poll to resume where it left off, or a start time for the first poll.
-     * Implementations return the raw provider payload per event (the ingestion
-     * pipeline stores it untransformed) plus the cursor to persist for the
-     * next poll. Providers without a safety-event feed return no events and
-     * echo the cursor back unchanged.
+     * poll together with the exact `start_time` string returned alongside it
+     * (Samsara rejects a resumed page whose `startTime` differs from the one
+     * that produced the cursor), or no cursor and a start time for a fresh
+     * start. Implementations return the raw provider payload per event (the
+     * ingestion pipeline stores it untransformed), the cursor and the pinned
+     * `start_time` to persist for the next poll, and whether the page cap cut
+     * the run short. Providers without a safety-event feed return no events
+     * and echo the cursor back unchanged.
      *
-     * @return array{events: array<int, array<string, mixed>>, cursor: string|null}
+     * A provider error is never reported as an empty result: it throws
+     * {@see ProviderRequestFailedException}, or its subclass
+     * {@see ProviderCursorRejectedException} when the cursor itself is no
+     * longer usable and the feed must restart from a fresh start time.
+     *
+     * @return array{events: array<int, array<string, mixed>>, cursor: string|null, start_time: string|null, has_more: bool}
+     *
+     * @throws ProviderRequestFailedException
      */
-    public function fetchSafetyEvents(TenantIntegration $integration, ?string $cursor = null, ?\DateTimeInterface $startTime = null): array;
+    public function fetchSafetyEvents(TenantIntegration $integration, ?string $cursor = null, \DateTimeInterface|string|null $startTime = null): array;
 
     /**
      * Validate a webhook signature against the provider's algorithm.
