@@ -20,6 +20,7 @@ class BillingRate extends Model
         'overage_unit_price',
         'billing_model',
         'tiers_json',
+        'markup_percent',
     ];
 
     /**
@@ -45,6 +46,7 @@ class BillingRate extends Model
             'overage_unit_price' => 'decimal:4',
             'billing_model' => BillingModel::class,
             'tiers_json' => 'array',
+            'markup_percent' => 'decimal:2',
         ];
     }
 

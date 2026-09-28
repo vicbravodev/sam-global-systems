@@ -30,6 +30,15 @@ class NotificationDelivery extends Model
         'sent_at',
         'delivered_at',
         'failed_at',
+        'provider_status',
+        'provider_error_code',
+        'permanent_failure',
+        'accepted_at',
+        'read_at',
+        'answered_at',
+        'call_duration_seconds',
+        'segments',
+        'last_provider_event_at',
     ];
 
     /**
@@ -69,6 +78,13 @@ class NotificationDelivery extends Model
             'sent_at' => 'datetime',
             'delivered_at' => 'datetime',
             'failed_at' => 'datetime',
+            'permanent_failure' => 'boolean',
+            'accepted_at' => 'datetime',
+            'read_at' => 'datetime',
+            'answered_at' => 'datetime',
+            'call_duration_seconds' => 'integer',
+            'segments' => 'integer',
+            'last_provider_event_at' => 'datetime',
         ];
     }
 
