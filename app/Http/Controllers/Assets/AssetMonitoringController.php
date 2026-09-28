@@ -63,19 +63,14 @@ class AssetMonitoringController extends Controller
             ->whereKey($data['asset_ids'])
             ->get();
 
-        $last = null;
-        $changed = 0;
-
-        foreach ($assets as $asset) {
-            $last = $this->setMonitoring->execute($asset, $state, $request->user());
-            $changed += $last['changed'] ? 1 : 0;
-        }
+        $result = $this->setMonitoring->executeMany((int) $current_team->id, $assets, $state, $request->user());
+        $changed = $result['changed'];
 
         $verb = $state === AssetMonitoringState::Monitored ? 'encendidas' : 'apagadas';
         $message = "{$changed} ".($changed === 1 ? 'unidad' : 'unidades')." {$verb}.";
 
-        if ($last !== null && $last['over_cap']) {
-            $message .= " Estás por encima de tu tope de {$last['cap']}: el excedente se cobra como extra por día.";
+        if ($result['over_cap']) {
+            $message .= " Estás por encima de tu tope de {$result['cap']}: el excedente se cobra como extra por día.";
         }
 
         return back()->with('status', $message);
