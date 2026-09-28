@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Domains\Ingestion\Actions\IngestSafetyEvent;
 use App\Domains\Integrations\Actions\HandleWebhook;
 use App\Domains\Integrations\Models\WebhookEndpoint;
 use App\Models\Team;
@@ -11,8 +12,11 @@ use Illuminate\Console\Command;
  * Replays real Samsara panic-button (AlertIncident) webhook payloads through
  * the full ingestion pipeline for manual end-to-end validation.
  *
- * Events live in database/fixtures/samsara-panic-events.json — the `raw_payload`
- * of each is the exact body Samsara POSTs. Each is HMAC-signed with the tenant's
+ * Events live in database/fixtures/samsara-*.json (regenerate them from the
+ * tenant's latest real events with `samsara:export-fixtures`). The `raw_payload`
+ * of a webhook fixture is the exact body Samsara POSTs; `kind: safety_event`
+ * fixtures are `/safety-events/stream` records and go through IngestSafetyEvent
+ * (the polling path) instead. Each is HMAC-signed with the tenant's
  * webhook secret and handed to HandleWebhook, so it exercises the same path as a
  * live webhook: WebhookEvent → ProcessWebhookEventJob (signature) → RawEvent →
  * NormalizedEvent → Context → AI → Decision → Incident.
@@ -20,16 +24,22 @@ use Illuminate\Console\Command;
  * Requires Horizon (or a queue worker) running to process the async chain.
  *
  * Usage: php artisan samsara:replay --team=serviexpress-jc
+ *        php artisan samsara:replay --file=samsara-safety-events.json --types=MaxSpeed,MobileUsage --limit=5
  */
 class SamsaraReplayCommand extends Command
 {
-    protected $signature = 'samsara:replay {--team=serviexpress-jc : Team slug that owns the Samsara integration}';
+    protected $signature = 'samsara:replay
+        {--team=serviexpress-jc : Team slug that owns the Samsara integration}
+        {--file=samsara-panic-events.json : Fixture under database/fixtures/ (or an absolute path)}
+        {--types= : Comma-separated event types / behavior labels to keep (e.g. AlertIncident,MaxSpeed)}
+        {--limit=0 : Replay at most N events (0 = all)}';
 
-    protected $description = 'Replay real Samsara panic-button events through the webhook pipeline for testing.';
+    protected $description = 'Replay real Samsara events (panic webhooks or safety-event feed) through the pipeline for testing.';
 
-    public function handle(HandleWebhook $handleWebhook): int
+    public function handle(HandleWebhook $handleWebhook, IngestSafetyEvent $ingestSafetyEvent): int
     {
-        $path = database_path('fixtures/samsara-panic-events.json');
+        $file = (string) $this->option('file');
+        $path = str_starts_with($file, '/') ? $file : database_path('fixtures/'.$file);
 
         if (! is_file($path)) {
             $this->error("Fixture not found: {$path}");
@@ -43,6 +53,16 @@ class SamsaraReplayCommand extends Command
             $this->error('Fixture is not valid JSON.');
 
             return self::FAILURE;
+        }
+
+        $types = array_filter(array_map('trim', explode(',', (string) $this->option('types'))));
+
+        if ($types !== []) {
+            $events = array_values(array_filter($events, fn ($event) => in_array($event['event_type'] ?? null, $types, true)));
+        }
+
+        if ((int) $this->option('limit') > 0) {
+            $events = array_slice($events, 0, (int) $this->option('limit'));
         }
 
         $team = Team::query()->where('slug', $this->option('team'))->first();
@@ -76,6 +96,14 @@ class SamsaraReplayCommand extends Command
 
             if (! is_array($body)) {
                 $this->warn("  [{$i}] skipped: no raw_payload");
+
+                continue;
+            }
+
+            if (($event['kind'] ?? 'webhook') === 'safety_event') {
+                $ingestSafetyEvent->execute($endpoint->tenantIntegration, $body);
+                $this->line('  ['.$i.'] '.($body['id'] ?? '?').'  '.($event['event_type'] ?? 'SafetyEvent'));
+                $sent++;
 
                 continue;
             }
