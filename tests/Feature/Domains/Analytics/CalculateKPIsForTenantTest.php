@@ -166,9 +166,7 @@ class CalculateKPIsForTenantTest extends TestCase
 
                 public function openBacklogPerDay(int $teamId, CarbonInterface $from, CarbonInterface $to): array
                 {
-
                     return [];
-
                 }
 
                 public function slaCompliance(int $teamId, CarbonInterface $from, CarbonInterface $to): ?float
