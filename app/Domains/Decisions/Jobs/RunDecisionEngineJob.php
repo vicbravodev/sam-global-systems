@@ -6,6 +6,7 @@ use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\Decisions\Actions\EvaluateDecisionRules;
 use App\Domains\Decisions\Models\Decision;
 use App\Support\JobFailureReporter;
+use App\Support\PipelineTrace;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -45,6 +46,11 @@ class RunDecisionEngineJob implements ShouldBeUnique, ShouldQueue
         if ($eval === null) {
             return;
         }
+
+        PipelineTrace::adopt(null, $eval->team_id, [
+            'normalized_event_id' => $eval->normalized_event_id,
+            'ai_evaluation_id' => $eval->id,
+        ]);
 
         // Entra en el tenant de la evaluación: el motor lee las reglas y la
         // política de escalación del tenant. Ver §2.1.

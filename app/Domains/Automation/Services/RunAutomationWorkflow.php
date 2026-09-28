@@ -16,6 +16,7 @@ use App\Domains\Automation\Models\AutomationWorkflow;
 use App\Domains\Automation\Models\WorkflowExecution;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Tenancy\Actions\RecordUsageEvent;
+use App\Support\PipelineTrace;
 use Illuminate\Support\Facades\DB;
 
 class RunAutomationWorkflow
@@ -61,6 +62,8 @@ class RunAutomationWorkflow
                 'status' => WorkflowExecutionStatus::Running,
                 'started_at' => now(),
             ]);
+
+            PipelineTrace::add(['workflow_execution_id' => $workflowExecution->id]);
 
             $this->recordUsageEvent->execute(
                 teamId: $teamId,

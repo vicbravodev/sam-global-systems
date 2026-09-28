@@ -12,6 +12,7 @@ use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
 use App\Infrastructure\Storage\MediaDownloadException;
 use App\Infrastructure\Storage\SecureMediaDownloader;
+use App\Support\PipelineTrace;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Log;
 
@@ -72,19 +73,23 @@ class IngestSafetyEvent
             eventTypeRaw: Arr::get($payload, 'behaviorLabels.0.label') ?? 'SafetyEvent',
         );
 
-        // Duplicates are still stored (full audit trail) and still flow through
-        // ProcessRawEventJob, which marks them and stops the pipeline — but
-        // their media was already captured by the first delivery, so the
-        // expiring URLs are not re-downloaded.
-        if (! $isKnownDuplicate) {
-            $this->downloadInlineMedia($rawEvent, $payload);
-        }
+        // El resto (descarga de media, encolado, uso) va en la traza del evento
+        // recién guardado: el poll procesa muchos eventos en el mismo job.
+        return PipelineTrace::within($rawEvent->trace_id, $rawEvent->team_id, function () use ($rawEvent, $payload, $integration, $isKnownDuplicate, $externalEventId, $eventState): RawEvent {
+            // Duplicates are still stored (full audit trail) and still flow through
+            // ProcessRawEventJob, which marks them and stops the pipeline — but
+            // their media was already captured by the first delivery, so the
+            // expiring URLs are not re-downloaded.
+            if (! $isKnownDuplicate) {
+                $this->downloadInlineMedia($rawEvent, $payload);
+            }
 
-        $this->queueForProcessing->execute($rawEvent);
+            $this->queueForProcessing->execute($rawEvent);
 
-        $this->recordUsage($integration, $externalEventId ?? (string) $rawEvent->id, $eventState, $rawEvent);
+            $this->recordUsage($integration, $externalEventId ?? (string) $rawEvent->id, $eventState, $rawEvent);
 
-        return $rawEvent;
+            return $rawEvent;
+        }, $integration->provider?->code);
     }
 
     /**

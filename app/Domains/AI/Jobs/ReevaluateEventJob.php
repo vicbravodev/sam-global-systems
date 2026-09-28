@@ -6,6 +6,7 @@ use App\Domains\AI\Actions\ReevaluateEventWithNewEvidence;
 use App\Domains\AI\Enums\ReevaluationTrigger;
 use App\Domains\AI\Support\AIEvaluationGate;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Support\PipelineTrace;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUniqueUntilProcessing;
@@ -59,6 +60,8 @@ class ReevaluateEventJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
         if ($normalizedEvent === null) {
             return;
         }
+
+        PipelineTrace::adopt($normalizedEvent->trace_id, $normalizedEvent->team_id, ['normalized_event_id' => $normalizedEvent->id]);
 
         if (! $gate->shouldEvaluate($normalizedEvent)) {
             return;

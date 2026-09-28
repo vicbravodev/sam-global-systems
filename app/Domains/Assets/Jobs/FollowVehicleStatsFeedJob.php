@@ -21,6 +21,7 @@ use App\Domains\Integrations\Exceptions\ProviderRequestFailed;
 use App\Domains\Integrations\Exceptions\ProviderUnauthorized;
 use App\Domains\Integrations\Exceptions\ProviderUnavailable;
 use App\Domains\Integrations\Models\TenantIntegration;
+use App\Support\PipelineTrace;
 use App\Support\TenantContext;
 use Carbon\CarbonInterface;
 use Illuminate\Bus\Queueable;
@@ -75,6 +76,12 @@ class FollowVehicleStatsFeedJob implements ShouldBeUnique, ShouldQueue
         RaiseAfterHoursMovement $raiseAfterHours,
     ): void {
         TenantContext::set($this->integration->team_id);
+        // Cada ciclo del feed es una operación; los eventos que levante (fuera
+        // de horario) abren su propia traza hija. Sin query extra: hot path.
+        PipelineTrace::beginOperation(
+            $this->integration->team_id,
+            $this->integration->relationLoaded('provider') ? $this->integration->provider?->code : null,
+        );
 
         $cursor = TelematicsFeedCursor::query()->firstOrCreate(
             ['tenant_integration_id' => $this->integration->id, 'feed' => $this->feed],

@@ -5,6 +5,7 @@ namespace App\Domains\AI\Jobs;
 use App\Domains\AI\Actions\EvaluateEventMultimodally;
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\Context\Models\EventMediaContext;
+use App\Support\PipelineTrace;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -46,6 +47,11 @@ class EvaluateEventMediaJob implements ShouldQueue
         if ($evaluation === null) {
             return;
         }
+
+        PipelineTrace::adopt(null, $evaluation->team_id, [
+            'normalized_event_id' => $evaluation->normalized_event_id,
+            'ai_evaluation_id' => $evaluation->id,
+        ]);
 
         $mediaIds = array_values(array_unique($this->mediaContextIds));
 

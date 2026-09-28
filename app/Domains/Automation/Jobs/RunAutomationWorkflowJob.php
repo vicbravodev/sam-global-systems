@@ -5,6 +5,7 @@ namespace App\Domains\Automation\Jobs;
 use App\Domains\Automation\Enums\ActionExecutionSourceType;
 use App\Domains\Automation\Models\AutomationWorkflow;
 use App\Domains\Automation\Services\RunAutomationWorkflow;
+use App\Support\PipelineTrace;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -31,6 +32,8 @@ class RunAutomationWorkflowJob implements ShouldQueue
 
     public function handle(RunAutomationWorkflow $runAutomationWorkflow): void
     {
+        PipelineTrace::adopt(null, $this->teamId);
+
         // El modelo no lleva el trait (puede ser global), así que el scope no
         // filtra: el workflow debe ser del tenant del job o de plataforma.
         $workflow = AutomationWorkflow::query()

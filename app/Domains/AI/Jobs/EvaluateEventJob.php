@@ -6,6 +6,7 @@ use App\Domains\AI\Actions\EvaluateEventWithAI;
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\AI\Support\AIEvaluationGate;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Support\PipelineTrace;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -48,6 +49,8 @@ class EvaluateEventJob implements ShouldBeUnique, ShouldQueue
         if ($normalizedEvent === null) {
             return;
         }
+
+        PipelineTrace::adopt($normalizedEvent->trace_id, $normalizedEvent->team_id, ['normalized_event_id' => $normalizedEvent->id]);
 
         if (! $gate->shouldEvaluate($normalizedEvent)) {
             return;

@@ -6,6 +6,7 @@ use App\Domains\Incidents\Actions\AssignIncident;
 use App\Domains\Incidents\Enums\AssigneeType;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentAssignment;
+use App\Support\PipelineTrace;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -34,6 +35,8 @@ class AutoAssignIncidentJob implements ShouldQueue
         if ($incident === null) {
             return;
         }
+
+        PipelineTrace::adopt(null, $incident->team_id, ['incident_id' => $incident->id]);
 
         // Trabaja dentro del tenant del propio registro: el lookup de
         // entrada no puede estar scopeado, todo lo que sigue sí. Ver §2.1.

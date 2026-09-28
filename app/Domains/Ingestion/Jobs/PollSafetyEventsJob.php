@@ -8,6 +8,7 @@ use App\Domains\Integrations\Exceptions\ProviderCursorRejectedException;
 use App\Domains\Integrations\Exceptions\ProviderRequestFailedException;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Support\JobFailureReporter;
+use App\Support\PipelineTrace;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -82,6 +83,10 @@ class PollSafetyEventsJob implements ShouldBeUnique, ShouldQueue
         ProviderAdapter $providerAdapter,
         IngestSafetyEvent $ingestSafetyEvent,
     ): void {
+        // Un ciclo de poll es una operación: cada evento que ingiere abre su
+        // propia traza, enlazada a ésta por parent_trace_id.
+        PipelineTrace::beginOperation($this->integration->team_id, 'samsara');
+
         $state = $this->integration->sync_state_json ?? [];
         $feed = (array) ($state['safety_events'] ?? []);
 

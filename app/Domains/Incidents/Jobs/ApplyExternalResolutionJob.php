@@ -6,6 +6,7 @@ use App\Domains\Incidents\Actions\ApplyExternalResolution;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Support\JobFailureReporter;
+use App\Support\PipelineTrace;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -35,6 +36,8 @@ class ApplyExternalResolutionJob implements ShouldQueue
         if ($event === null || ($event->payload_normalized_json['is_resolved'] ?? null) !== true) {
             return;
         }
+
+        PipelineTrace::adopt($event->trace_id, $event->team_id, ['normalized_event_id' => $event->id]);
 
         // Trabaja dentro del tenant del propio registro: el lookup de
         // entrada no puede estar scopeado, todo lo que sigue sí. Ver §2.1.
