@@ -23,7 +23,7 @@ class ReportDefinitionSeeder extends Seeder
             [
                 'code' => 'operational_daily',
                 'name' => 'Resumen operativo diario',
-                'description' => 'Incidentes abiertos, resueltos y MTTR del día, con volumen de eventos ingeridos.',
+                'description' => 'Incidentes abiertos y resueltos del día, cuánto se tardó en cerrarlos y cuántos eventos llegaron.',
                 'report_type' => ReportType::Operational,
                 'metrics' => ['incidents_total', 'incidents_resolved', 'incidents_open', 'incidents_mttr_minutes', 'ingested_events'],
                 'schedule' => ['frequency' => 'daily', 'time' => '07:00', 'timezone' => 'America/Mexico_City'],
@@ -31,7 +31,7 @@ class ReportDefinitionSeeder extends Seeder
             [
                 'code' => 'executive_monthly',
                 'name' => 'Reporte ejecutivo mensual',
-                'description' => 'Visión de dirección: incidentes, decisiones, activos monitoreados y consumo.',
+                'description' => 'Para dirección: incidentes, decisiones, unidades vigiladas y avisos enviados en el mes.',
                 'report_type' => ReportType::Executive,
                 'metrics' => ['incidents_total', 'incidents_mttr_minutes', 'decisions_total', 'active_assets', 'outbound_notifications'],
                 'schedule' => ['frequency' => 'monthly', 'day_of_month' => 1, 'time' => '08:00', 'timezone' => 'America/Mexico_City'],
@@ -39,7 +39,7 @@ class ReportDefinitionSeeder extends Seeder
             [
                 'code' => 'sla_compliance',
                 'name' => 'Cumplimiento de SLA',
-                'description' => 'Tiempo de resolución frente al SLA por prioridad.',
+                'description' => 'Cuánto se tardó en resolver los incidentes frente al tiempo comprometido, por prioridad.',
                 'report_type' => ReportType::Sla,
                 'metrics' => ['incidents_mttr_minutes', 'incidents_resolved', 'incidents_open'],
                 'schedule' => ['frequency' => 'weekly', 'day_of_week' => 'monday', 'time' => '08:00', 'timezone' => 'America/Mexico_City'],
@@ -47,7 +47,7 @@ class ReportDefinitionSeeder extends Seeder
             [
                 'code' => 'ai_performance',
                 'name' => 'Desempeño de la IA',
-                'description' => 'Exactitud, falsos positivos, confianza media y tasa de corrección humana.',
+                'description' => 'Qué tanto acierta la IA, cuántas falsas alarmas filtra, qué tan segura está y cuántas veces la corrige una persona.',
                 'report_type' => ReportType::AiPerformance,
                 'metrics' => ['ai_total_evaluations', 'ai_accuracy_rate', 'ai_false_positive_rate', 'ai_average_confidence', 'ai_human_override_rate'],
                 'schedule' => null,
@@ -63,7 +63,7 @@ class ReportDefinitionSeeder extends Seeder
             [
                 'code' => 'asset_risk',
                 'name' => 'Riesgo por activo',
-                'description' => 'Activos monitoreados y volumen de eventos que alimentan el perfil de riesgo.',
+                'description' => 'Unidades activas y cuántos eventos genera cada una: la base de su perfil de riesgo.',
                 'report_type' => ReportType::AssetRisk,
                 'metrics' => ['active_assets', 'ingested_events', 'ai_evaluations_total'],
                 'schedule' => null,

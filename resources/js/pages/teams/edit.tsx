@@ -1,14 +1,18 @@
-import { Form, Head, router } from '@inertiajs/react';
+import { Form, Head, Link, router, usePage } from '@inertiajs/react';
 import { ChevronDown, Mail, UserPlus, X } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import CancelInvitationModal from '@/components/cancel-invitation-modal';
 import DeleteTeamModal from '@/components/delete-team-modal';
-import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
 import InviteMemberModal from '@/components/invite-member-modal';
 import RemoveMemberModal from '@/components/remove-member-modal';
+import { Field, FormCard } from '@/components/sam/field';
+import {
+    FormActions,
+    SettingsPage,
+    SettingsSection,
+} from '@/components/sam/settings/settings-page';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
     DropdownMenu,
@@ -17,11 +21,9 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import {
     Tooltip,
     TooltipContent,
-    TooltipProvider,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useInitials } from '@/hooks/use-initials';
@@ -51,7 +53,7 @@ export default function TeamEdit({
     availableRoles,
 }: Props) {
     const getInitials = useInitials();
-
+    const page = usePage();
     const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
     const [removeMemberDialogOpen, setRemoveMemberDialogOpen] = useState(false);
@@ -63,13 +65,18 @@ export default function TeamEdit({
     const [invitationToCancel, setInvitationToCancel] =
         useState<TeamInvitation | null>(null);
 
-    const pageTitle = useMemo(
-        () =>
-            permissions.canUpdateTeam
-                ? `Editar ${team.name}`
-                : `Ver ${team.name}`,
-        [permissions.canUpdateTeam, team.name],
-    );
+    // Enlace a los roles de acceso sólo si se pueden abrir (permiso de roles)
+    // y el equipo que se mira es el activo.
+    const currentSlug =
+        (
+            page.props as unknown as {
+                currentTeam?: { slug?: string | null } | null;
+            }
+        ).currentTeam?.slug ?? null;
+    const rolesHref =
+        page.props.nav?.roles && currentSlug === team.slug
+            ? `/${team.slug}/settings/roles`
+            : null;
 
     const updateMemberRole = (member: TeamMember, newRole: string) => {
         router.visit(updateMember([team.slug, member.id]), {
@@ -90,122 +97,120 @@ export default function TeamEdit({
 
     return (
         <>
-            <Head title={pageTitle} />
+            <Head title={team.name} />
+            <SettingsPage
+                title={team.name}
+                description="Quién pertenece a este equipo y quién puede administrarlo."
+                meta={
+                    <span className="text-xs text-fg-3">
+                        <span className="font-medium text-fg-1">
+                            {members.length}
+                        </span>{' '}
+                        {members.length === 1 ? 'persona' : 'personas'}
+                        {invitations.length > 0
+                            ? ` · ${invitations.length} ${invitations.length === 1 ? 'invitación' : 'invitaciones'}`
+                            : ''}
+                    </span>
+                }
+                actions={
+                    permissions.canCreateInvitation ? (
+                        <Button
+                            size="sm"
+                            data-test="invite-member-button"
+                            onClick={() => setInviteDialogOpen(true)}
+                        >
+                            <UserPlus /> Invitar persona
+                        </Button>
+                    ) : null
+                }
+            >
+                {permissions.canUpdateTeam ? (
+                    <SettingsSection
+                        title="Datos del equipo"
+                        description="El nombre se muestra en el selector de equipos y en los correos de invitación."
+                    >
+                        <Form {...update.form(team.slug)}>
+                            {({ errors, processing }) => (
+                                <FormCard>
+                                    <Field
+                                        label="Nombre del equipo"
+                                        htmlFor="name"
+                                    >
+                                        <Input
+                                            id="name"
+                                            name="name"
+                                            data-test="team-name-input"
+                                            defaultValue={team.name}
+                                            required
+                                        />
+                                        <InputError message={errors.name} />
+                                    </Field>
+                                    <FormActions>
+                                        <Button
+                                            type="submit"
+                                            size="sm"
+                                            data-test="team-save-button"
+                                            disabled={processing}
+                                        >
+                                            Guardar cambios
+                                        </Button>
+                                    </FormActions>
+                                </FormCard>
+                            )}
+                        </Form>
+                    </SettingsSection>
+                ) : null}
 
-            <h1 className="sr-only">{pageTitle}</h1>
-
-            <div className="flex flex-col space-y-10">
-                <div className="space-y-6">
-                    {permissions.canUpdateTeam ? (
-                        <>
-                            <Heading
-                                variant="small"
-                                title="Configuración del equipo"
-                                description="Actualiza el nombre y la configuración de tu equipo"
-                            />
-
-                            <Form
-                                {...update.form(team.slug)}
-                                className="space-y-6"
-                            >
-                                {({ errors, processing }) => (
-                                    <>
-                                        <div className="grid gap-2">
-                                            <Label htmlFor="name">
-                                                Nombre del equipo
-                                            </Label>
-                                            <Input
-                                                id="name"
-                                                name="name"
-                                                data-test="team-name-input"
-                                                defaultValue={team.name}
-                                                required
-                                            />
-                                            <InputError message={errors.name} />
-                                        </div>
-
-                                        <div className="flex items-center gap-4">
-                                            <Button
-                                                type="submit"
-                                                data-test="team-save-button"
-                                                disabled={processing}
-                                            >
-                                                Guardar
-                                            </Button>
-                                        </div>
-                                    </>
-                                )}
-                            </Form>
-                        </>
-                    ) : (
-                        <>
-                            <Heading variant="small" title={team.name} />
-                        </>
-                    )}
-                </div>
-
-                <div className="space-y-6">
-                    <div className="flex items-center justify-between">
-                        <Heading
-                            variant="small"
-                            title="Miembros del equipo"
-                            description={
-                                permissions.canCreateInvitation
-                                    ? 'Gestiona quién pertenece a este equipo'
-                                    : ''
-                            }
-                        />
-
-                        {permissions.canCreateInvitation ? (
-                            <Button
-                                data-test="invite-member-button"
-                                onClick={() => setInviteDialogOpen(true)}
-                            >
-                                <UserPlus /> Invitar miembro
-                            </Button>
-                        ) : null}
-                    </div>
-
-                    <p className="text-xs text-muted-foreground">
-                        El <strong>rol en el equipo</strong> (Propietario,
-                        Administrador, Miembro) sólo decide quién administra el
-                        equipo: invitar, quitar miembros y renombrarlo. Qué
-                        puede ver y hacer cada persona en la operación
-                        (incidentes, flota, facturación…) lo define su{' '}
-                        <strong>rol de acceso</strong> en{' '}
-                        <em>Ajustes › Equipo y roles</em>.
+                <SettingsSection
+                    title="Personas"
+                    description="El papel en el equipo sólo decide quién invita, quita personas o cambia el nombre."
+                >
+                    <p className="text-xs text-fg-3">
+                        Qué puede ver y hacer cada persona en la operación
+                        (incidentes, flota, facturación…) lo define su rol de
+                        acceso
+                        {rolesHref ? (
+                            <>
+                                {' en '}
+                                <Link
+                                    href={rolesHref}
+                                    className="text-fg-1 underline underline-offset-4"
+                                >
+                                    Equipo y roles
+                                </Link>
+                            </>
+                        ) : (
+                            ' en Ajustes › Equipo y roles'
+                        )}
+                        .
                     </p>
-
-                    <div className="space-y-3">
+                    <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface-1">
                         {members.map((member) => (
-                            <div
+                            <li
                                 key={member.id}
                                 data-test="member-row"
-                                className="flex items-center justify-between rounded-lg border p-4"
+                                className="flex flex-wrap items-center gap-3 px-5 py-3"
                             >
-                                <div className="flex items-center gap-4">
-                                    <Avatar className="h-10 w-10">
-                                        {member.avatar ? (
-                                            <AvatarImage
-                                                src={member.avatar}
-                                                alt={member.name}
-                                            />
-                                        ) : null}
-                                        <AvatarFallback>
-                                            {getInitials(member.name)}
-                                        </AvatarFallback>
-                                    </Avatar>
-                                    <div>
-                                        <div className="font-medium">
-                                            {member.name}
-                                        </div>
-                                        <div className="text-sm text-muted-foreground">
-                                            {member.email}
-                                        </div>
+                                <Avatar className="size-9">
+                                    {member.avatar ? (
+                                        <AvatarImage
+                                            src={member.avatar}
+                                            alt={member.name}
+                                        />
+                                    ) : null}
+                                    <AvatarFallback>
+                                        {getInitials(member.name)}
+                                    </AvatarFallback>
+                                </Avatar>
+                                <div className="min-w-0 flex-1">
+                                    <div className="truncate text-sm font-medium text-fg-1">
+                                        {member.name}
+                                    </div>
+                                    <div className="truncate text-xs text-fg-3">
+                                        {member.email}
                                     </div>
                                 </div>
-
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-1">
                                     {member.role !== 'owner' &&
                                     permissions.canUpdateMember ? (
                                         <DropdownMenu>
@@ -216,10 +221,10 @@ export default function TeamEdit({
                                                     data-test="member-role-trigger"
                                                 >
                                                     {member.role_label}
-                                                    <ChevronDown className="ml-2 h-4 w-4 opacity-50" />
+                                                    <ChevronDown className="size-4 opacity-50" />
                                                 </Button>
                                             </DropdownMenuTrigger>
-                                            <DropdownMenuContent>
+                                            <DropdownMenuContent align="end">
                                                 {availableRoles.map((role) => (
                                                     <DropdownMenuItem
                                                         key={role.value}
@@ -237,143 +242,131 @@ export default function TeamEdit({
                                             </DropdownMenuContent>
                                         </DropdownMenu>
                                     ) : (
-                                        <Badge variant="secondary">
+                                        <span className="rounded-sm bg-surface-3 px-2 py-1 text-xs text-fg-2">
                                             {member.role_label}
-                                        </Badge>
+                                        </span>
                                     )}
-
                                     {member.role !== 'owner' &&
                                     permissions.canRemoveMember ? (
-                                        <TooltipProvider>
-                                            <Tooltip>
-                                                <TooltipTrigger asChild>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        data-test="member-remove-button"
-                                                        onClick={() =>
-                                                            confirmRemoveMember(
-                                                                member,
-                                                            )
-                                                        }
-                                                    >
-                                                        <X className="h-4 w-4" />
-                                                    </Button>
-                                                </TooltipTrigger>
-                                                <TooltipContent>
-                                                    <p>Quitar miembro</p>
-                                                </TooltipContent>
-                                            </Tooltip>
-                                        </TooltipProvider>
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="size-8 text-fg-3 hover:text-severity-critical"
+                                                    aria-label={`Quitar a ${member.name}`}
+                                                    data-test="member-remove-button"
+                                                    onClick={() =>
+                                                        confirmRemoveMember(
+                                                            member,
+                                                        )
+                                                    }
+                                                >
+                                                    <X className="size-4" />
+                                                </Button>
+                                            </TooltipTrigger>
+                                            <TooltipContent>
+                                                <p>Quitar del equipo</p>
+                                            </TooltipContent>
+                                        </Tooltip>
                                     ) : null}
                                 </div>
-                            </div>
+                            </li>
                         ))}
-                    </div>
-                </div>
+                    </ul>
+                </SettingsSection>
 
                 {invitations.length > 0 ? (
-                    <div className="space-y-6">
-                        <Heading
-                            variant="small"
-                            title="Invitaciones pendientes"
-                            description="Invitaciones que aún no han sido aceptadas"
-                        />
-
-                        <div className="space-y-3">
+                    <SettingsSection
+                        title="Invitaciones pendientes"
+                        description="Personas invitadas que aún no aceptan. La invitación les llegó por correo."
+                    >
+                        <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface-1">
                             {invitations.map((invitation) => (
-                                <div
+                                <li
                                     key={invitation.id}
                                     data-test="invitation-row"
-                                    className="flex items-center justify-between rounded-lg border p-4"
+                                    className="flex items-center gap-3 px-5 py-3"
                                 >
-                                    <div className="flex items-center gap-4">
-                                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
-                                            <Mail className="h-5 w-5 text-muted-foreground" />
+                                    <div className="grid size-9 shrink-0 place-items-center rounded-full bg-surface-3">
+                                        <Mail className="size-4 text-fg-3" />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <div className="truncate text-sm font-medium text-fg-1">
+                                            {invitation.email}
                                         </div>
-                                        <div>
-                                            <div className="font-medium">
-                                                {invitation.email}
-                                            </div>
-                                            <div className="text-sm text-muted-foreground">
-                                                {invitation.role_label}
-                                            </div>
+                                        <div className="text-xs text-fg-3">
+                                            {invitation.role_label}
                                         </div>
                                     </div>
-
                                     {permissions.canCancelInvitation ? (
-                                        <TooltipProvider>
-                                            <Tooltip>
-                                                <TooltipTrigger asChild>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        data-test="invitation-cancel-button"
-                                                        onClick={() =>
-                                                            confirmCancelInvitation(
-                                                                invitation,
-                                                            )
-                                                        }
-                                                    >
-                                                        <X className="h-4 w-4" />
-                                                    </Button>
-                                                </TooltipTrigger>
-                                                <TooltipContent>
-                                                    <p>Cancelar invitación</p>
-                                                </TooltipContent>
-                                            </Tooltip>
-                                        </TooltipProvider>
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="size-8 text-fg-3 hover:text-severity-critical"
+                                                    aria-label={`Cancelar la invitación de ${invitation.email}`}
+                                                    data-test="invitation-cancel-button"
+                                                    onClick={() =>
+                                                        confirmCancelInvitation(
+                                                            invitation,
+                                                        )
+                                                    }
+                                                >
+                                                    <X className="size-4" />
+                                                </Button>
+                                            </TooltipTrigger>
+                                            <TooltipContent>
+                                                <p>Cancelar invitación</p>
+                                            </TooltipContent>
+                                        </Tooltip>
                                     ) : null}
-                                </div>
+                                </li>
                             ))}
-                        </div>
-                    </div>
+                        </ul>
+                    </SettingsSection>
                 ) : null}
 
                 {permissions.canDeleteTeam && !team.isPersonal ? (
-                    <div className="space-y-6">
-                        <Heading
-                            variant="small"
-                            title="Eliminar equipo"
-                            description="Elimina tu equipo de forma permanente"
-                        />
-                        <div className="space-y-4 rounded-lg border border-destructive/20 bg-destructive/5 p-4">
-                            <div className="relative space-y-0.5 text-destructive">
-                                <p className="font-medium">Advertencia</p>
-                                <p className="text-sm">
-                                    Procede con precaución, esta acción no se
-                                    puede deshacer.
-                                </p>
-                            </div>
+                    <SettingsSection
+                        title="Eliminar equipo"
+                        description="Borra el equipo para siempre. No se puede deshacer."
+                        tone="danger"
+                    >
+                        <div className="flex max-w-3xl flex-wrap items-center justify-between gap-3 rounded-lg border border-severity-critical/30 bg-severity-critical/5 p-4">
+                            <p className="text-sm text-fg-2">
+                                Se pierden sus personas, invitaciones y
+                                configuración.
+                            </p>
                             <Button
                                 variant="destructive"
+                                size="sm"
                                 data-test="delete-team-button"
                                 onClick={() => setDeleteDialogOpen(true)}
                             >
                                 Eliminar equipo
                             </Button>
                         </div>
-                    </div>
+                    </SettingsSection>
                 ) : null}
 
                 {!permissions.canDeleteTeam &&
                 !team.isPersonal &&
                 team.role === 'owner' ? (
-                    <div className="space-y-2">
-                        <Heading
-                            variant="small"
-                            title="Eliminar equipo"
-                            description="Este equipo es una cuenta activa de SAM"
-                        />
-                        <p className="text-sm text-muted-foreground">
+                    <SettingsSection
+                        title="Dar de baja la cuenta"
+                        description="Este equipo es una cuenta activa de SAM."
+                    >
+                        <p className="max-w-3xl text-sm text-fg-3">
                             Dar de baja la cuenta elimina la operación completa
                             (incidentes, integraciones e historial de
                             facturación), así que no se hace desde aquí.
                             Contacta al equipo de SAM para cancelar el servicio.
                         </p>
-                    </div>
+                    </SettingsSection>
                 ) : null}
-            </div>
+            </SettingsPage>
 
             {permissions.canCreateInvitation ? (
                 <InviteMemberModal
@@ -412,7 +405,7 @@ export default function TeamEdit({
 TeamEdit.layout = (props: { team: { name: string; slug: string } }) => ({
     breadcrumbs: [
         {
-            title: 'Equipos',
+            title: 'Mis equipos',
             href: index(),
         },
         {

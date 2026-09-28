@@ -85,7 +85,7 @@ class AiProfileFormExposesOnlyLiveFieldsTest extends TestCase
             "/api/{$team->slug}/settings/ai-profile",
             [
                 'profile_code' => 'custom',
-                'name' => 'Perfil del tenant',
+                'name' => 'Perfil de la empresa',
                 'risk_tolerance' => 'high',
                 'false_positive_tolerance' => 'low',
                 'automation_level' => 'assisted',
@@ -100,7 +100,7 @@ class AiProfileFormExposesOnlyLiveFieldsTest extends TestCase
             route('tenant-config.ai-profile.update', ['current_team' => $team->slug]),
             [
                 'profile_code' => 'custom',
-                'name' => 'Perfil del tenant',
+                'name' => 'Perfil de la empresa',
                 'automation_level' => 'highly_automated',
             ],
         )->assertOk();

@@ -331,7 +331,7 @@ All tenant-scoped routes are prefixed with `/{current_team}`.
 | GET | `/{current_team}/decisions/rules` | `DecisionRuleController@index` | List tenant rule sets and rules |
 | POST | `/{current_team}/decisions/rules` | `DecisionRuleController@store` | Create a new decision rule |
 | PUT | `/{current_team}/decisions/rules/{rule}` | `DecisionRuleController@update` | Update an existing rule |
-| DELETE | `/{current_team}/decisions/rules/{rule}` | `DecisionRuleController@destroy` | Deactivate a rule |
+| DELETE | `/{current_team}/decisions/rules/{rule}` | `DecisionRuleController@destroy` | Delete a tenant rule (deactivating is `PUT is_active=false`) |
 | GET | `/{current_team}/decisions/escalation-policies` | `EscalationPolicyController@index` | List escalation policies |
 | POST | `/{current_team}/decisions/escalation-policies` | `EscalationPolicyController@store` | Create escalation policy |
 | PUT | `/{current_team}/decisions/escalation-policies/{policy}` | `EscalationPolicyController@update` | Update escalation policy |
