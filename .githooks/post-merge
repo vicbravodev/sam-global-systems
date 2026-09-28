@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Tras cada `git pull`/merge: poda los worktrees de .claude/worktrees/ ya mergeados a main.
+# Usa el script del checkout principal (una rama vieja en un worktree podría no tenerlo).
+# Nunca bloquea el merge.
+root=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+[[ -x "$root/scripts/prune-merged-worktrees.sh" ]] && "$root/scripts/prune-merged-worktrees.sh" || true
