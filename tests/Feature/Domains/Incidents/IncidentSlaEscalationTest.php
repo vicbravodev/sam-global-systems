@@ -271,6 +271,9 @@ class IncidentSlaEscalationTest extends TestCase
     public function test_create_incident_from_event_sets_sla_and_arms_the_watchdog(): void
     {
         Queue::fake();
+        // El SLA corre desde max(occurred_at, now()): se congela el reloj para
+        // que ambos coincidan en un evento en vivo.
+        $this->freezeSecond();
 
         $critical = IncidentPriority::query()->updateOrCreate(
             ['code' => 'critical'],
