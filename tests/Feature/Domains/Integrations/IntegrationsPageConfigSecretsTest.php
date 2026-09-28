@@ -2,11 +2,14 @@
 
 namespace Tests\Feature\Domains\Integrations;
 
+use App\Domains\Integrations\Events\IntegrationConnected;
+use App\Domains\Integrations\Events\IntegrationStatusChanged;
 use App\Domains\Integrations\Models\IntegrationProvider;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Models\User;
 use Database\Seeders\AccessSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -93,5 +96,53 @@ class IntegrationsPageConfigSecretsTest extends TestCase
             ['api_token' => self::SECRET, 'sync' => ['catalog_interval_minutes' => 60]],
             $integration->refresh()->config_json,
         );
+    }
+
+    /**
+     * PR #130 follow-up: the JSON API (store/update/index) used to echo the
+     * full `config_json` back, secrets included.
+     */
+    public function test_api_responses_only_expose_public_config_keys(): void
+    {
+        // Connecting dispatches the auto-sync; keep the test off the network.
+        Event::fake([IntegrationConnected::class, IntegrationStatusChanged::class]);
+
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+        $provider = IntegrationProvider::factory()->samsara()->create();
+
+        $store = $this->actingAs($user)->postJson(
+            route('api.integrations.store', ['current_team' => $team->slug]),
+            [
+                'provider_id' => $provider->id,
+                'name' => 'Samsara',
+                'auth_type' => 'api_key',
+                'credentials' => self::SECRET,
+                'config' => ['sync' => ['catalog_interval_minutes' => 30], 'api_token' => self::SECRET],
+            ],
+        );
+
+        $store->assertCreated()
+            ->assertJsonPath('data.config_json', ['sync' => ['catalog_interval_minutes' => 30]]);
+        $this->assertStringNotContainsString(self::SECRET, $store->getContent());
+
+        $integrationId = $store->json('data.id');
+
+        $update = $this->putJson(
+            route('api.integrations.update', ['current_team' => $team->slug, 'integration' => $integrationId]),
+            ['name' => 'Samsara 2', 'config' => ['sync' => ['catalog_interval_minutes' => 60]]],
+        );
+
+        $update->assertOk()
+            ->assertJsonPath('data.config_json', ['sync' => ['catalog_interval_minutes' => 60]]);
+        $this->assertStringNotContainsString(self::SECRET, $update->getContent());
+
+        $index = $this->getJson(route('api.integrations.index', ['current_team' => $team->slug]));
+
+        $index->assertOk()->assertJsonPath('data.0.config_json', ['sync' => ['catalog_interval_minutes' => 60]]);
+        $this->assertStringNotContainsString(self::SECRET, $index->getContent());
+
+        // The hidden key is still stored server-side.
+        $this->assertSame(self::SECRET, TenantIntegration::query()->findOrFail($integrationId)->config_json['api_token']);
     }
 }
