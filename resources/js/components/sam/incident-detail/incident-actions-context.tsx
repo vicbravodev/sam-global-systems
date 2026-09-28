@@ -10,10 +10,20 @@ import type { ReactNode } from 'react';
 import { toast } from 'sonner';
 import { postJson, readErrorMessage } from '@/lib/sam-fetch';
 import type {
+    IncidentAbilities,
     IncidentDetail,
     InboxMember,
     ReclassifyOptions,
 } from '@/types/sam';
+
+/** Sin la prop `can` (página que no la envía) nada se ofrece: el servidor manda. */
+const NO_ABILITIES: IncidentAbilities = {
+    manage: false,
+    resolve: false,
+    close: false,
+    requestMedia: false,
+    reevaluate: false,
+};
 
 export type CommentVisibilityUi = 'internal' | 'tenant' | 'audit';
 
@@ -36,6 +46,8 @@ export interface IncidentActionsValue {
     members: InboxMember[];
     reclassifyOptions: ReclassifyOptions;
     currentUserId: number | null;
+    /** Acciones que el rol permite; ocultar/deshabilitar lo demás. */
+    can: IncidentAbilities;
     /** Key of the action currently in flight, or null when idle. */
     pending: string | null;
     assignTo: (userId: number) => Promise<boolean>;
@@ -64,6 +76,7 @@ interface PageProps {
     auth?: { user?: { id?: number | null } | null } | null;
     members?: InboxMember[];
     reclassifyOptions?: ReclassifyOptions;
+    can?: IncidentAbilities;
 }
 
 interface ProviderProps {
@@ -89,6 +102,7 @@ export function IncidentActionsProvider({
         [props.reclassifyOptions],
     );
 
+    const can = props.can ?? NO_ABILITIES;
     const [pending, setPending] = useState<string | null>(null);
 
     const base = teamSlug
@@ -162,6 +176,7 @@ export function IncidentActionsProvider({
             members,
             reclassifyOptions,
             currentUserId,
+            can,
             pending,
             assignTo,
             assignToMe: () => {
@@ -281,6 +296,7 @@ export function IncidentActionsProvider({
         };
     }, [
         base,
+        can,
         currentUserId,
         incident,
         members,

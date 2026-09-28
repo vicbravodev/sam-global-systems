@@ -16,6 +16,7 @@ import { InboxGrouped } from '@/components/sam/inbox/inbox-grouped';
 import { InboxStream } from '@/components/sam/inbox/inbox-stream';
 import { InboxTable } from '@/components/sam/inbox/inbox-table';
 import { IncidentDetailPanel } from '@/components/sam/incident-detail';
+import { PermissionTooltip } from '@/components/sam/permission-tooltip';
 import { Button } from '@/components/ui/button';
 import {
     DropdownMenu,
@@ -42,6 +43,7 @@ import type {
     InboxFilters,
     InboxLayout,
     InboxTab,
+    IncidentAbilities,
     IncidentDetail,
     MockIncident,
 } from '@/types/sam';
@@ -51,6 +53,8 @@ import type {
 interface BulkBarProps {
     count: number;
     pending: string | null;
+    canManage: boolean;
+    canResolve: boolean;
     onAssign: () => void;
     onEscalate: () => void;
     onDiscard: () => void;
@@ -60,6 +64,8 @@ interface BulkBarProps {
 function BulkBar({
     count,
     pending,
+    canManage,
+    canResolve,
     onAssign,
     onEscalate,
     onDiscard,
@@ -72,39 +78,50 @@ function BulkBar({
             <span className="text-xs font-semibold text-primary">
                 {count} seleccionados
             </span>
-            <Button
-                size="sm"
-                variant="outline"
-                onClick={onAssign}
-                disabled={busy}
-            >
-                {pending === 'assign' ? (
-                    <Loader2 size={12} className="animate-spin" />
-                ) : null}
-                Asignarme
-            </Button>
-            <Button
-                size="sm"
-                variant="outline"
-                onClick={onEscalate}
-                disabled={busy}
-            >
-                {pending === 'escalate' ? (
-                    <Loader2 size={12} className="animate-spin" />
-                ) : null}
-                Escalar
-            </Button>
-            <Button
-                size="sm"
-                variant="outline"
-                onClick={onDiscard}
-                disabled={busy}
-            >
-                {pending === 'discard' ? (
-                    <Loader2 size={12} className="animate-spin" />
-                ) : null}
-                Descartar
-            </Button>
+            {canManage && (
+                <>
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={onAssign}
+                        disabled={busy}
+                    >
+                        {pending === 'assign' ? (
+                            <Loader2 size={12} className="animate-spin" />
+                        ) : null}
+                        Asignarme
+                    </Button>
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={onEscalate}
+                        disabled={busy}
+                    >
+                        {pending === 'escalate' ? (
+                            <Loader2 size={12} className="animate-spin" />
+                        ) : null}
+                        Escalar
+                    </Button>
+                </>
+            )}
+            {canResolve && (
+                <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={onDiscard}
+                    disabled={busy}
+                >
+                    {pending === 'discard' ? (
+                        <Loader2 size={12} className="animate-spin" />
+                    ) : null}
+                    Descartar
+                </Button>
+            )}
+            {!canManage && !canResolve && (
+                <span className="text-xs text-fg-3">
+                    Tu rol no permite acciones en lote.
+                </span>
+            )}
             <Button
                 size="sm"
                 variant="ghost"
@@ -129,6 +146,7 @@ interface PageHeadProps {
     refreshing: boolean;
     onAssignOldestCritical: () => void;
     assigningOldest: boolean;
+    canAssign: boolean;
 }
 
 function PageHead({
@@ -140,6 +158,7 @@ function PageHead({
     refreshing,
     onAssignOldestCritical,
     assigningOldest,
+    canAssign,
 }: PageHeadProps) {
     const layouts: {
         value: InboxLayout;
@@ -222,7 +241,16 @@ function PageHead({
                         Refrescar
                     </Button>
 
-                    {criticalCount === 0 ? (
+                    {!canAssign ? (
+                        <PermissionTooltip
+                            allowed={false}
+                            reason="Tu rol no permite asignar incidentes."
+                        >
+                            <Button variant="outline" size="sm" disabled>
+                                Asignarme crítico más viejo
+                            </Button>
+                        </PermissionTooltip>
+                    ) : criticalCount === 0 ? (
                         <Tooltip>
                             <TooltipTrigger asChild>
                                 <span tabIndex={0}>
@@ -317,8 +345,8 @@ function TabBar({
                 ))}
             </nav>
 
-            {/* Density */}
-            <div className="flex shrink-0 items-center gap-1 py-1.5">
+            {/* Density: en móvil la bandeja usa tarjetas, no filas. */}
+            <div className="hidden shrink-0 items-center gap-1 py-1.5 sm:flex">
                 {DENSITY_OPTS.map((d) => (
                     <button
                         key={d.value}
@@ -502,7 +530,15 @@ function FilterBar({ filters, options, onApply }: FilterBarProps) {
 
 // ---- InboxFooter ----
 
-function InboxFooter({ count, total }: { count: number; total: number }) {
+function InboxFooter({
+    count,
+    total,
+    canAssign,
+}: {
+    count: number;
+    total: number;
+    canAssign: boolean;
+}) {
     return (
         <div className="flex shrink-0 items-center justify-between border-t border-border bg-surface-1 px-5 py-2">
             <span className="text-2xs text-fg-3">
@@ -514,8 +550,12 @@ function InboxFooter({ count, total }: { count: number; total: number }) {
                 <span className="sam-kbd">J</span>
                 <span className="sam-kbd">K</span>
                 <span>navegar</span>
-                <span className="sam-kbd ml-2">A</span>
-                <span>asignar</span>
+                {canAssign && (
+                    <>
+                        <span className="sam-kbd ml-2">A</span>
+                        <span>asignar</span>
+                    </>
+                )}
                 <span className="sam-kbd ml-2">X</span>
                 <span>seleccionar</span>
                 <span className="sam-kbd ml-2">Enter</span>
@@ -566,7 +606,16 @@ interface IncidentsIndexProps {
     incidents: MockIncident[];
     filters: InboxFilters;
     filterOptions: InboxFilterOptions;
+    can?: IncidentAbilities;
 }
+
+const NO_ABILITIES: IncidentAbilities = {
+    manage: false,
+    resolve: false,
+    close: false,
+    requestMedia: false,
+    reevaluate: false,
+};
 
 const EMPTY_FILTERS: InboxFilters = {
     q: null,
@@ -592,6 +641,7 @@ export default function IncidentsIndex() {
     );
     const serverFilters = pageProps.filters ?? EMPTY_FILTERS;
     const filterOptions = pageProps.filterOptions ?? EMPTY_OPTIONS;
+    const can = pageProps.can ?? NO_ABILITIES;
     const teamSlug = page.props.currentTeam?.slug ?? null;
     const currentUserId =
         (page.props.auth?.user?.id as number | undefined) ?? null;
@@ -836,7 +886,7 @@ export default function IncidentsIndex() {
             } else if (key === 'x' && selectedId !== null) {
                 e.preventDefault();
                 handleToggle(selectedId);
-            } else if (key === 'a' && selectedId !== null) {
+            } else if (key === 'a' && selectedId !== null && can.manage) {
                 e.preventDefault();
                 const row = rows.find((r) => r.id === selectedId);
 
@@ -1107,6 +1157,8 @@ export default function IncidentsIndex() {
                         <BulkBar
                             count={selectedSet.size}
                             pending={bulkPending}
+                            canManage={can.manage}
+                            canResolve={can.resolve}
                             onAssign={bulkAssign}
                             onEscalate={bulkEscalate}
                             onDiscard={bulkDiscard}
@@ -1125,6 +1177,7 @@ export default function IncidentsIndex() {
                             void assignOldestCritical()
                         }
                         assigningOldest={assigningOldest}
+                        canAssign={can.manage}
                     />
 
                     <TabBar
@@ -1172,7 +1225,9 @@ export default function IncidentsIndex() {
                                     }
                                     currentUserId={currentUserId}
                                     claimPendingId={claimPendingId}
-                                    onClaimToggle={toggleClaim}
+                                    onClaimToggle={
+                                        can.manage ? toggleClaim : undefined
+                                    }
                                 />
                             )}
                             {layout === 'grouped' && (
@@ -1185,7 +1240,9 @@ export default function IncidentsIndex() {
                                     onToggle={handleToggle}
                                     currentUserId={currentUserId}
                                     claimPendingId={claimPendingId}
-                                    onClaimToggle={toggleClaim}
+                                    onClaimToggle={
+                                        can.manage ? toggleClaim : undefined
+                                    }
                                 />
                             )}
                             {layout === 'stream' && (
@@ -1198,7 +1255,11 @@ export default function IncidentsIndex() {
                         </>
                     )}
 
-                    <InboxFooter count={rows.length} total={incidents.length} />
+                    <InboxFooter
+                        count={rows.length}
+                        total={incidents.length}
+                        canAssign={can.manage}
+                    />
                 </div>
 
                 {/* DETAIL PANEL — side column on md+, full-screen overlay on

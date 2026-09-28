@@ -113,19 +113,29 @@ function LauncherForTeam({ teamSlug }: { teamSlug: string }) {
 
     return (
         <>
+            {/* Burbuja compacta y por encima de la franja inferior: las
+                páginas ponen ahí pies de tabla, paginación, atajos de teclado
+                y la atribución del mapa, y una píldora ancha en la esquina
+                los tapaba. */}
             {!open && (
-                <button
-                    type="button"
-                    onClick={show}
-                    className="fixed right-5 bottom-5 z-40 inline-flex cursor-pointer items-center gap-2 rounded-full bg-ai-accent py-2.5 pr-3.5 pl-3 text-sm font-semibold text-white shadow-lg transition-[transform,filter] duration-(--motion-fast) hover:brightness-110 active:scale-[0.97] motion-safe:animate-[sam-copilot-in_var(--motion-slow)_var(--ease-out)_both]"
-                    aria-label="Pregúntale a SAM (Ctrl+J)"
-                >
-                    <Sparkles className="size-4" />
-                    <span className="hidden sm:inline">Pregúntale a SAM</span>
-                    <kbd className="hidden rounded-sm border border-white/25 bg-white/15 px-1.5 py-0.5 font-mono text-3xs sm:inline">
-                        ⌘J
-                    </kbd>
-                </button>
+                <Tooltip>
+                    <TooltipTrigger asChild>
+                        <button
+                            type="button"
+                            onClick={show}
+                            className="fixed right-4 bottom-16 z-40 grid size-11 cursor-pointer place-items-center rounded-full bg-ai-accent text-white shadow-lg transition-[transform,filter] duration-(--motion-fast) hover:brightness-110 active:scale-[0.97] motion-safe:animate-[sam-copilot-in_var(--motion-slow)_var(--ease-out)_both]"
+                            aria-label="Pregúntale a SAM (Ctrl+J)"
+                        >
+                            <Sparkles className="size-5" />
+                        </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="left">
+                        Pregúntale a SAM
+                        <kbd className="ml-1.5 font-mono text-3xs opacity-70">
+                            ⌘J
+                        </kbd>
+                    </TooltipContent>
+                </Tooltip>
             )}
 
             {open && (

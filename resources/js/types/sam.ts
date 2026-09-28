@@ -383,3 +383,12 @@ export interface IncidentShowProps {
     members: InboxMember[];
     reclassifyOptions: ReclassifyOptions;
 }
+
+/** Acciones sobre incidentes que el rol permite (IncidentInboxController::abilities). */
+export interface IncidentAbilities {
+    manage: boolean;
+    resolve: boolean;
+    close: boolean;
+    requestMedia: boolean;
+    reevaluate: boolean;
+}

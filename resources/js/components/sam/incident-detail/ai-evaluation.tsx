@@ -297,7 +297,7 @@ export function AiEvaluationCard({
     const [showReasoning, setShowReasoning] = useState(false);
     const [reclassifyOpen, setReclassifyOpen] = useState(false);
     const [feedbackOpen, setFeedbackOpen] = useState(false);
-    const { confirmAi, pending } = useIncidentActions();
+    const { confirmAi, pending, can } = useIncidentActions();
 
     const summary = mediaSummary ?? incident.mediaSummary ?? null;
     const modeLabel = incident.aiMode
@@ -402,34 +402,47 @@ export function AiEvaluationCard({
                 </>
             )}
 
-            {/* Actions */}
-            <div className="flex flex-wrap gap-2">
-                <Button
-                    size="sm"
-                    variant="default"
-                    onClick={() => void confirmAi()}
-                    disabled={pending === 'confirm-ai'}
-                >
-                    {pending === 'confirm-ai' ? (
-                        <Loader2 size={12} className="animate-spin" />
-                    ) : null}
-                    Confirmar
-                </Button>
-                <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setReclassifyOpen(true)}
-                >
-                    Reclasificar
-                </Button>
-                <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setFeedbackOpen(true)}
-                >
-                    Feedback
-                </Button>
-            </div>
+            {/* Actions: sólo las que el rol permite (el servidor responde
+                403 al resto). Confirmar/Reclasificar = incidents.manage;
+                Feedback pide una reevaluación = ai.analysis.execute. */}
+            {(can.manage || can.reevaluate) && (
+                <div className="flex flex-wrap gap-2">
+                    {can.manage && (
+                        <>
+                            <Button
+                                size="sm"
+                                variant="default"
+                                onClick={() => void confirmAi()}
+                                disabled={pending === 'confirm-ai'}
+                            >
+                                {pending === 'confirm-ai' ? (
+                                    <Loader2
+                                        size={12}
+                                        className="animate-spin"
+                                    />
+                                ) : null}
+                                Confirmar
+                            </Button>
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => setReclassifyOpen(true)}
+                            >
+                                Reclasificar
+                            </Button>
+                        </>
+                    )}
+                    {can.reevaluate && (
+                        <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setFeedbackOpen(true)}
+                        >
+                            Feedback
+                        </Button>
+                    )}
+                </div>
+            )}
 
             <ReclassifyDialog
                 open={reclassifyOpen}

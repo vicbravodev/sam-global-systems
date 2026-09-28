@@ -12,7 +12,8 @@ interface InboxTableProps {
     allChecked: boolean;
     currentUserId: number | null;
     claimPendingId: number | null;
-    onClaimToggle: (incident: MockIncident) => void;
+    /** Ausente cuando el rol no puede tomar incidentes. */
+    onClaimToggle?: (incident: MockIncident) => void;
 }
 
 export function InboxTable({
@@ -43,11 +44,15 @@ export function InboxTable({
                         claimBusy={claimPendingId === incident.incidentId}
                         onClick={() => onSelect(incident.id)}
                         onToggle={() => onToggle(incident.id)}
-                        onClaimToggle={() => onClaimToggle(incident)}
+                        onClaimToggle={
+                            onClaimToggle
+                                ? () => onClaimToggle(incident)
+                                : undefined
+                        }
                     />
                 ))}
             </div>
-            <table className="hidden w-full min-w-[760px] border-collapse md:table">
+            <table className="hidden w-full min-w-[1080px] table-fixed border-collapse md:table">
                 <thead>
                     <tr className="sticky top-0 z-10 border-b border-border bg-surface-3 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
                         <th className="w-[34px] px-2.5 py-2 text-left">
@@ -102,7 +107,11 @@ export function InboxTable({
                             claimBusy={claimPendingId === incident.incidentId}
                             onClick={() => onSelect(incident.id)}
                             onToggle={() => onToggle(incident.id)}
-                            onClaimToggle={() => onClaimToggle(incident)}
+                            onClaimToggle={
+                                onClaimToggle
+                                    ? () => onClaimToggle(incident)
+                                    : undefined
+                            }
                         />
                     ))}
                 </tbody>

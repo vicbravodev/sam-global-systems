@@ -1,5 +1,5 @@
 import { router, usePage } from '@inertiajs/react';
-import { Search } from 'lucide-react';
+import { Search, Truck, User } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 
@@ -12,11 +12,32 @@ interface PaletteIncident {
     statusLabel: string | null;
 }
 
+interface PaletteAsset {
+    id: number;
+    name: string;
+    code: string | null;
+    plate: string | null;
+}
+
+interface PaletteDriver {
+    id: number;
+    name: string;
+    employeeCode: string | null;
+}
+
+interface PaletteResults {
+    incidents?: PaletteIncident[];
+    assets?: PaletteAsset[];
+    drivers?: PaletteDriver[];
+}
+
 interface PaletteAction {
     id: string;
     label: string;
     description: string;
     href: (slug: string) => string;
+    /** Sección requerida (props.nav); sin ella la acción no se ofrece. */
+    can?: 'incidents';
 }
 
 interface CommandPaletteProps {
@@ -36,6 +57,13 @@ const ACTIONS: PaletteAction[] = [
         label: 'Ir a Incidentes',
         description: 'Bandeja de incidentes activos',
         href: (slug) => `/${slug}/incidents`,
+        can: 'incidents',
+    },
+    {
+        id: 'action-fleet',
+        label: 'Ir a Flota',
+        description: 'Unidades y su última señal',
+        href: (slug) => `/${slug}/assets`,
     },
     {
         id: 'action-map',
@@ -53,6 +81,9 @@ const SEVERITY_CLASS: Record<string, string> = {
     info: 'text-severity-info',
 };
 
+const GROUP_TITLE =
+    'border-t border-border px-3.5 py-2.5 text-3xs font-semibold tracking-caps text-fg-3 uppercase';
+
 export function CommandPalette({ open, onClose }: CommandPaletteProps) {
     const page = usePage();
     const slug =
@@ -61,18 +92,32 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
                 currentTeam?: { slug?: string | null } | null;
             }
         ).currentTeam?.slug ?? null;
+    const nav = page.props.nav;
 
     const [query, setQuery] = useState('');
     const [incidents, setIncidents] = useState<PaletteIncident[]>([]);
+    const [assets, setAssets] = useState<PaletteAsset[]>([]);
+    const [drivers, setDrivers] = useState<PaletteDriver[]>([]);
     const [activeIdx, setActiveIdx] = useState(0);
     const inputRef = useRef<HTMLInputElement>(null);
 
-    // Focus the input when the palette mounts (which only happens when open=true).
+    // El componente vive montado en el layout: enfocar en cada apertura, no
+    // sólo al montar. El frame de espera deja que el overlay exista en el DOM
+    // antes de pedir el foco.
     useEffect(() => {
-        inputRef.current?.focus();
-    }, []);
+        if (!open) {
+            return;
+        }
 
-    // Real data: most recent tenant incidents, debounced while typing.
+        const frame = window.requestAnimationFrame(() =>
+            inputRef.current?.focus(),
+        );
+
+        return () => window.cancelAnimationFrame(frame);
+    }, [open]);
+
+    // Real data: incidents, fleet units and drivers of the tenant, debounced
+    // while typing. Each group only comes back if the role may open it.
     useEffect(() => {
         if (!open || slug === null) {
             return;
@@ -85,9 +130,11 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
                 signal: controller.signal,
             })
                 .then((response) => (response.ok ? response.json() : null))
-                .then((data: { incidents?: PaletteIncident[] } | null) => {
-                    if (data?.incidents) {
-                        setIncidents(data.incidents);
+                .then((data: PaletteResults | null) => {
+                    if (data) {
+                        setIncidents(data.incidents ?? []);
+                        setAssets(data.assets ?? []);
+                        setDrivers(data.drivers ?? []);
                         setActiveIdx(0);
                     }
                 })
@@ -104,35 +151,70 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
 
     const filteredActions = ACTIONS.filter(
         (a) =>
-            a.label.toLowerCase().includes(query.toLowerCase()) ||
-            a.description.toLowerCase().includes(query.toLowerCase()),
+            (a.can === undefined || nav?.[a.can] === true) &&
+            (a.label.toLowerCase().includes(query.toLowerCase()) ||
+                a.description.toLowerCase().includes(query.toLowerCase())),
     );
 
-    const totalItems = incidents.length + filteredActions.length;
+    // Orden de navegación con flechas: incidentes → unidades → conductores
+    // → acciones. Los índices absolutos de cada grupo parten de estos offsets.
+    const assetOffset = incidents.length;
+    const driverOffset = assetOffset + assets.length;
+    const actionOffset = driverOffset + drivers.length;
+    const totalItems = actionOffset + filteredActions.length;
+
+    const go = (href: string) => {
+        onClose();
+        router.visit(href);
+    };
 
     const pick = (index: number) => {
         if (slug === null) {
             return;
         }
 
-        if (index < incidents.length) {
+        if (index < assetOffset) {
             const incident = incidents[index];
 
             if (incident) {
-                onClose();
-                router.visit(`/${slug}/incidents/${incident.id}`);
+                go(`/${slug}/incidents/${incident.id}`);
             }
 
             return;
         }
 
-        const action = filteredActions[index - incidents.length];
+        if (index < driverOffset) {
+            const asset = assets[index - assetOffset];
+
+            if (asset) {
+                go(`/${slug}/assets/${asset.id}`);
+            }
+
+            return;
+        }
+
+        if (index < actionOffset) {
+            const driver = drivers[index - driverOffset];
+
+            if (driver) {
+                go(`/${slug}/drivers/${driver.id}`);
+            }
+
+            return;
+        }
+
+        const action = filteredActions[index - actionOffset];
 
         if (action) {
-            onClose();
-            router.visit(action.href(slug));
+            go(action.href(slug));
         }
     };
+
+    const rowClass = (index: number) =>
+        cn(
+            'flex cursor-pointer items-center gap-2.5 px-3.5 py-2 text-sm transition-colors duration-75',
+            index === activeIdx ? 'bg-primary/20' : 'hover:bg-surface-2',
+        );
 
     useEffect(() => {
         const handleKey = (e: KeyboardEvent) => {
@@ -184,6 +266,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
                         ref={inputRef}
                         type="text"
                         value={query}
+                        autoFocus
                         onChange={(e) => {
                             setQuery(e.target.value);
                             setActiveIdx(0);
@@ -192,15 +275,19 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
                         role="combobox"
                         aria-expanded="true"
                         aria-controls="command-palette-results"
+                        aria-label="Buscar incidentes, unidades, placas o conductores"
                         className="flex-1 border-none bg-transparent text-base font-medium text-fg-1 outline-none placeholder:text-fg-3"
-                        placeholder="Buscar incidentes, acciones…"
+                        placeholder="Buscar incidentes, unidades, placas, conductores…"
                     />
                     <kbd className="rounded-sm border border-b-2 border-border bg-surface-2 px-1.5 py-0.5 font-mono text-3xs text-fg-2">
                         ESC
                     </kbd>
                 </div>
 
-                <div id="command-palette-results">
+                <div
+                    id="command-palette-results"
+                    className="max-h-[60vh] overflow-y-auto"
+                >
                     {/* Incidents group */}
                     {incidents.length > 0 && (
                         <div>
@@ -210,12 +297,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
                             {incidents.map((incident, idx) => (
                                 <div
                                     key={incident.id}
-                                    className={cn(
-                                        'flex cursor-pointer items-center gap-2.5 px-3.5 py-2 text-sm transition-colors duration-75',
-                                        idx === activeIdx
-                                            ? 'bg-primary/20'
-                                            : 'hover:bg-surface-2',
-                                    )}
+                                    className={rowClass(idx)}
                                     onClick={() => pick(idx)}
                                     onMouseEnter={() => setActiveIdx(idx)}
                                 >
@@ -242,24 +324,79 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
                         </div>
                     )}
 
+                    {/* Fleet units group */}
+                    {assets.length > 0 && (
+                        <div>
+                            <div className={GROUP_TITLE}>Unidades</div>
+                            {assets.map((asset, idx) => {
+                                const absoluteIdx = assetOffset + idx;
+
+                                return (
+                                    <div
+                                        key={asset.id}
+                                        className={rowClass(absoluteIdx)}
+                                        onClick={() => pick(absoluteIdx)}
+                                        onMouseEnter={() =>
+                                            setActiveIdx(absoluteIdx)
+                                        }
+                                    >
+                                        <Truck className="size-3.5 shrink-0 text-fg-3" />
+                                        <span className="flex-1 truncate text-fg-1">
+                                            {asset.name}
+                                        </span>
+                                        <span className="shrink-0 font-mono text-2xs text-fg-3">
+                                            {[asset.code, asset.plate]
+                                                .filter(Boolean)
+                                                .join(' · ')}
+                                        </span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+
+                    {/* Drivers group */}
+                    {drivers.length > 0 && (
+                        <div>
+                            <div className={GROUP_TITLE}>Conductores</div>
+                            {drivers.map((driver, idx) => {
+                                const absoluteIdx = driverOffset + idx;
+
+                                return (
+                                    <div
+                                        key={driver.id}
+                                        className={rowClass(absoluteIdx)}
+                                        onClick={() => pick(absoluteIdx)}
+                                        onMouseEnter={() =>
+                                            setActiveIdx(absoluteIdx)
+                                        }
+                                    >
+                                        <User className="size-3.5 shrink-0 text-fg-3" />
+                                        <span className="flex-1 truncate text-fg-1">
+                                            {driver.name}
+                                        </span>
+                                        {driver.employeeCode && (
+                                            <span className="shrink-0 font-mono text-2xs text-fg-3">
+                                                {driver.employeeCode}
+                                            </span>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+
                     {/* Actions group */}
                     {filteredActions.length > 0 && (
                         <div>
-                            <div className="border-t border-border px-3.5 py-2.5 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
-                                Acciones
-                            </div>
+                            <div className={GROUP_TITLE}>Acciones</div>
                             {filteredActions.map((action, idx) => {
-                                const absoluteIdx = incidents.length + idx;
+                                const absoluteIdx = actionOffset + idx;
 
                                 return (
                                     <div
                                         key={action.id}
-                                        className={cn(
-                                            'flex cursor-pointer items-center gap-2.5 px-3.5 py-2 text-sm transition-colors duration-75',
-                                            absoluteIdx === activeIdx
-                                                ? 'bg-primary/20'
-                                                : 'hover:bg-surface-2',
-                                        )}
+                                        className={rowClass(absoluteIdx)}
                                         onClick={() => pick(absoluteIdx)}
                                         onMouseEnter={() =>
                                             setActiveIdx(absoluteIdx)
