@@ -19,6 +19,7 @@ use App\Domains\Tenancy\Actions\ResolveAssetLimit;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -88,9 +89,17 @@ class AssetPageController extends Controller
     ];
 
     /**
-     * Location snapshots shown in the detail history panel.
+     * Window of the detail page's trail and history. The feed stores a point
+     * every few seconds while a unit moves, so the history is a time window,
+     * not "the last N points" (which at that density would be minutes).
      */
-    private const LOCATION_HISTORY_LIMIT = 20;
+    private const TRAIL_WINDOW_HOURS = 2;
+
+    /** Points drawn on the detail map's trail, evenly thinned across the window. */
+    private const TRAIL_MAX_POINTS = 400;
+
+    /** History table: at most one row per this many seconds, newest first. */
+    private const HISTORY_BUCKET_SECONDS = 60;
 
     /**
      * Linked incidents shown in the detail panel.
@@ -125,7 +134,6 @@ class AssetPageController extends Controller
             ->where('team_id', $current_team->id)
             ->with([
                 'assetType',
-                'latestLocation',
                 'currentDriverAssignment.driver',
                 // Only devices currently attached (mirrors AssetDevice::isAttached()).
                 'devices' => fn (HasMany $q) => $q
@@ -195,13 +203,14 @@ class AssetPageController extends Controller
 
     public function map(Team $current_team): Response
     {
+        // One row per unit: the live position lives on the asset itself.
         $assets = Asset::query()
             ->where('team_id', $current_team->id)
-            ->with(['assetType', 'latestLocation'])
+            ->with('assetType')
             ->get();
 
         [$positioned, $unpositioned] = $assets->partition(
-            fn (Asset $asset) => $asset->latestLocation !== null,
+            fn (Asset $asset) => $this->hasLivePosition($asset),
         );
 
         return Inertia::render('assets/map', [
@@ -222,7 +231,6 @@ class AssetPageController extends Controller
 
         $asset->load([
             'assetType',
-            'latestLocation',
             'provider',
             'sourceIntegration',
             'currentDriverAssignment.driver',
@@ -237,6 +245,8 @@ class AssetPageController extends Controller
             'asset' => $this->toDetail($asset),
             'telemetry' => fn () => $this->telemetry($asset),
             'locationHistory' => fn () => $this->locationHistory($asset),
+            'locationTrail' => fn () => $this->locationTrail($asset),
+            'trailWindowHours' => self::TRAIL_WINDOW_HOURS,
             'incidents' => fn () => $this->incidents($asset),
             'recentEvents' => fn () => $this->recentEvents($asset),
         ]);
@@ -305,18 +315,17 @@ class AssetPageController extends Controller
      */
     private function movingCount(\Closure $assets, \DateTimeInterface $freshSince): int
     {
-        // "Latest reading is fresh" == "some reading is fresh". whereHas on
-        // the latestOfMany relations joined an unconstrained
-        // MAX(recorded_at) GROUP BY asset_id over the whole snapshot tables
-        // (every tenant); these EXISTS use the (asset_id, …, recorded_at)
-        // indexes.
+        // "Latest speed reading is fresh" == "some speed reading is fresh":
+        // whereHas on the latestOfMany relation joined an unconstrained
+        // MAX(recorded_at) GROUP BY asset_id over the whole snapshot table
+        // (every tenant); this EXISTS uses the (asset_id, type, recorded_at)
+        // index. The position comes from the asset's own live columns.
         return $assets()
             ->where(fn (Builder $q) => $q
-                ->whereHas('locationSnapshots', fn (Builder $s) => $s->where('recorded_at', '>=', $freshSince))
+                ->where('last_location_at', '>=', $freshSince)
                 ->orWhereHas('telemetrySnapshots', fn (Builder $s) => $s
                     ->where('telemetry_type', TelemetryType::Speed)
                     ->where('recorded_at', '>=', $freshSince)))
-            ->with('latestLocation')
             ->get()
             ->tap(fn ($candidates) => app(LatestAssetTelemetry::class)->loadInto($candidates))
             ->filter(function (Asset $asset): bool {
@@ -339,10 +348,9 @@ class AssetPageController extends Controller
     private function currentSpeed(Asset $asset): ?array
     {
         $candidates = [];
-        $location = $asset->latestLocation;
 
-        if ($location !== null && $location->speed !== null) {
-            $candidates[] = ['kph' => (float) $location->speed, 'at' => $location->recorded_at, 'source' => 'location'];
+        if ($this->hasLivePosition($asset) && $asset->last_speed_kph !== null) {
+            $candidates[] = ['kph' => (float) $asset->last_speed_kph, 'at' => $asset->last_location_at, 'source' => 'location'];
         }
 
         $telemetry = $asset->latestSpeedTelemetry;
@@ -517,7 +525,6 @@ class AssetPageController extends Controller
      */
     private function toRow(Asset $asset): array
     {
-        $location = $asset->latestLocation;
         $driver = $asset->currentDriverAssignment?->driver;
 
         return [
@@ -549,13 +556,13 @@ class AssetPageController extends Controller
                 ])
                 ->values()
                 ->all(),
-            'lastLocation' => $location ? [
-                'latitude' => (float) $location->latitude,
-                'longitude' => (float) $location->longitude,
-                'formattedLocation' => $location->formatted_location,
-                'speed' => $location->speed !== null ? (float) $location->speed : null,
-                'heading' => $location->heading !== null ? (int) $location->heading : null,
-                'recordedAt' => $location->recorded_at->toIso8601String(),
+            'lastLocation' => $this->hasLivePosition($asset) ? [
+                'latitude' => (float) $asset->last_latitude,
+                'longitude' => (float) $asset->last_longitude,
+                'formattedLocation' => $asset->last_formatted_location,
+                'speed' => $asset->last_speed_kph !== null ? (float) $asset->last_speed_kph : null,
+                'heading' => $asset->last_heading,
+                'recordedAt' => $asset->last_location_at->toIso8601String(),
             ] : null,
             'currentSpeed' => $this->currentSpeed($asset),
             'lastSeenAt' => $asset->last_seen_at?->toIso8601String(),
@@ -573,7 +580,7 @@ class AssetPageController extends Controller
     private function lastSignalAt(Asset $asset): ?string
     {
         $candidates = array_filter([
-            $asset->latestLocation?->recorded_at,
+            $asset->last_location_at,
             $asset->latestTelemetry?->recorded_at,
         ]);
 
@@ -592,20 +599,25 @@ class AssetPageController extends Controller
      */
     private function toMarker(Asset $asset): array
     {
-        $location = $asset->latestLocation;
-
         return [
             'id' => (int) $asset->id,
             'name' => (string) $asset->name,
             'code' => $asset->code,
             'status' => $asset->status->value,
             'category' => $asset->assetType?->category->value,
-            'latitude' => (float) $location->latitude,
-            'longitude' => (float) $location->longitude,
-            'speed' => $location->speed !== null ? (float) $location->speed : null,
-            'heading' => $location->heading !== null ? (int) $location->heading : null,
-            'recordedAt' => $location->recorded_at->toIso8601String(),
+            'latitude' => (float) $asset->last_latitude,
+            'longitude' => (float) $asset->last_longitude,
+            'speed' => $asset->last_speed_kph !== null ? (float) $asset->last_speed_kph : null,
+            'heading' => $asset->last_heading,
+            'recordedAt' => $asset->last_location_at->toIso8601String(),
         ];
+    }
+
+    private function hasLivePosition(Asset $asset): bool
+    {
+        return $asset->last_location_at !== null
+            && $asset->last_latitude !== null
+            && $asset->last_longitude !== null;
     }
 
     /**
@@ -692,19 +704,26 @@ class AssetPageController extends Controller
     }
 
     /**
-     * Most recent location snapshots for the history panel.
+     * History table of the detail page: the last TRAIL_WINDOW_HOURS, at most
+     * one row per HISTORY_BUCKET_SECONDS (the newest point of each bucket),
+     * newest first. A unit parked all window long shows its few real fixes.
      *
      * @return list<array<string, mixed>>
      */
     private function locationHistory(Asset $asset): array
     {
-        return AssetLocationSnapshot::query()
-            ->where('asset_id', $asset->id)
-            ->orderByDesc('recorded_at')
-            ->orderByDesc('id')
-            ->limit(self::LOCATION_HISTORY_LIMIT)
-            ->get()
-            ->map(fn (AssetLocationSnapshot $snapshot) => [
+        $rows = [];
+        $seen = [];
+
+        foreach ($this->windowPoints($asset)->reverse() as $snapshot) {
+            $bucket = intdiv($snapshot->recorded_at->getTimestamp(), self::HISTORY_BUCKET_SECONDS);
+
+            if (isset($seen[$bucket])) {
+                continue;
+            }
+
+            $seen[$bucket] = true;
+            $rows[] = [
                 'id' => (int) $snapshot->id,
                 'latitude' => (float) $snapshot->latitude,
                 'longitude' => (float) $snapshot->longitude,
@@ -713,8 +732,49 @@ class AssetPageController extends Controller
                 'heading' => $snapshot->heading !== null ? (int) $snapshot->heading : null,
                 'source' => $snapshot->source->value,
                 'recordedAt' => $snapshot->recorded_at->toIso8601String(),
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * The route over the window for the detail map, oldest first, evenly
+     * thinned to TRAIL_MAX_POINTS. The newest point always stays so the line
+     * ends on the marker.
+     *
+     * @return list<array{latitude: float, longitude: float, recordedAt: string}>
+     */
+    private function locationTrail(Asset $asset): array
+    {
+        $points = $this->windowPoints($asset)->values();
+        $count = $points->count();
+        $step = max(1, (int) ceil($count / self::TRAIL_MAX_POINTS));
+
+        return $points
+            ->filter(fn ($snapshot, int $index) => $index % $step === 0 || $index === $count - 1)
+            ->map(fn (AssetLocationSnapshot $snapshot) => [
+                'latitude' => (float) $snapshot->latitude,
+                'longitude' => (float) $snapshot->longitude,
+                'recordedAt' => $snapshot->recorded_at->toIso8601String(),
             ])
+            ->values()
             ->all();
+    }
+
+    /**
+     * Every stored point of the window, oldest first, over the unique
+     * (asset_id, recorded_at) index.
+     *
+     * @return EloquentCollection<int, AssetLocationSnapshot>
+     */
+    private function windowPoints(Asset $asset): EloquentCollection
+    {
+        return AssetLocationSnapshot::query()
+            ->where('asset_id', $asset->id)
+            ->where('recorded_at', '>=', now()->subHours(self::TRAIL_WINDOW_HOURS))
+            ->orderBy('recorded_at')
+            ->get(['id', 'latitude', 'longitude', 'formatted_location', 'speed', 'heading', 'source', 'recorded_at']);
     }
 
     /**

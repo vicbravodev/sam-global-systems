@@ -238,6 +238,9 @@ return [
             'queue' => ['telematics'],
             'balance' => 'auto',
             'autoScalingStrategy' => 'size',
+            // Never below two: the motion and diagnostics cycles of a tenant
+            // must not wait on each other, or 5 s turns into 10.
+            'minProcesses' => 2,
             'maxProcesses' => 2,
             'maxTime' => 0,
             'maxJobs' => 0,

@@ -10,12 +10,12 @@ class DecisionOutcomeSeeder extends Seeder
     public function run(): void
     {
         $outcomes = [
-            ['code' => 'IGNORE', 'name' => 'Ignore', 'description' => 'Discard the event entirely.', 'is_terminal' => true],
-            ['code' => 'LOG_ONLY', 'name' => 'Log Only', 'description' => 'Record the event without further action.', 'is_terminal' => true],
-            ['code' => 'ALERT', 'name' => 'Alert', 'description' => 'Surface as a soft alert without creating an incident.', 'is_terminal' => false],
-            ['code' => 'INCIDENT', 'name' => 'Create Incident', 'description' => 'Open an incident for operational response.', 'is_terminal' => false],
-            ['code' => 'ESCALATE', 'name' => 'Escalate', 'description' => 'Trigger an escalation policy.', 'is_terminal' => false],
-            ['code' => 'REQUIRE_HUMAN_REVIEW', 'name' => 'Require Human Review', 'description' => 'Hold for manual review before any further action.', 'is_terminal' => false],
+            ['code' => 'IGNORE', 'name' => 'Ignorar', 'description' => 'Descarta el evento por completo.', 'is_terminal' => true],
+            ['code' => 'LOG_ONLY', 'name' => 'Solo registrar', 'description' => 'Registra el evento sin ninguna otra acción.', 'is_terminal' => true],
+            ['code' => 'ALERT', 'name' => 'Alerta', 'description' => 'Muestra una alerta ligera sin crear incidente.', 'is_terminal' => false],
+            ['code' => 'INCIDENT', 'name' => 'Crear incidente', 'description' => 'Abre un incidente para respuesta operativa.', 'is_terminal' => false],
+            ['code' => 'ESCALATE', 'name' => 'Escalar', 'description' => 'Activa la política de escalación.', 'is_terminal' => false],
+            ['code' => 'REQUIRE_HUMAN_REVIEW', 'name' => 'Revisión humana', 'description' => 'Retiene el evento para revisión manual antes de cualquier acción.', 'is_terminal' => false],
         ];
 
         foreach ($outcomes as $outcome) {

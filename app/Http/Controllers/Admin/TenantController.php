@@ -51,7 +51,10 @@ class TenantController extends Controller
 
     public function index(): Response
     {
+        // Personal teams are a per-user workspace invariant, not customers:
+        // the tenant directory lists only real (non-personal) tenants.
         $teams = Team::query()
+            ->where('is_personal', false)
             ->withCount('members')
             ->orderByDesc('id')
             ->get();

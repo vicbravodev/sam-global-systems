@@ -2,9 +2,11 @@
 
 namespace App\Policies;
 
+use App\Domains\Tenancy\Models\Subscription;
 use App\Enums\TeamPermission;
 use App\Models\Team;
 use App\Models\User;
+use App\Support\TenantContext;
 
 class TeamPolicy
 {
@@ -85,6 +87,21 @@ class TeamPolicy
      */
     public function delete(User $user, Team $team): bool
     {
-        return ! $team->is_personal && $user->hasTeamPermission($team, TeamPermission::DeleteTeam);
+        return ! $team->is_personal
+            && ! $this->isBilledTenant($team)
+            && $user->hasTeamPermission($team, TeamPermission::DeleteTeam);
+    }
+
+    /**
+     * A team with a SAM subscription is an operating tenant: deleting it takes
+     * the whole fleet operation (incidents, integrations, billing history) down
+     * with it. That is never self-service — only the SaaS operator can retire
+     * a tenant, from the admin console.
+     */
+    private function isBilledTenant(Team $team): bool
+    {
+        return TenantContext::for($team->id, fn (): bool => Subscription::query()
+            ->where('team_id', $team->id)
+            ->exists());
     }
 }

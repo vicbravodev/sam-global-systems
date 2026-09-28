@@ -22,6 +22,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { decisionOutcomeLabel, priorityLabel } from '@/lib/labels';
 import { postJson, putJson, readErrorPayload } from '@/lib/sam-fetch';
 
 // Sentinel para representar "sin selección" en los <Select> del DS: Radix
@@ -176,7 +177,7 @@ function ActiveBadge({ active }: { active: boolean }) {
             variant="outline"
             className={active ? 'text-severity-low' : 'text-fg-3'}
         >
-            {active ? 'activa' : 'inactiva'}
+            {active ? 'Activa' : 'Inactiva'}
         </Badge>
     );
 }
@@ -330,7 +331,7 @@ function RuleConditionsEditor({
                             htmlFor={`rule-${rule.id}-outcome`}
                             className="text-2xs text-fg-3 uppercase"
                         >
-                            Outcome
+                            Resultado
                         </Label>
                         <Select
                             value={
@@ -354,7 +355,7 @@ function RuleConditionsEditor({
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value={NONE_OPTION}>
-                                    Outcome: ninguno
+                                    Resultado: sin cambio
                                 </SelectItem>
                                 {outcomes.map((outcome) => (
                                     <SelectItem
@@ -695,7 +696,7 @@ function DecisionRulesTab({
                                         htmlFor="rule-new-outcome"
                                         className="text-2xs text-fg-3 uppercase"
                                     >
-                                        Outcome
+                                        Resultado
                                     </Label>
                                     <Select
                                         value={
@@ -721,7 +722,7 @@ function DecisionRulesTab({
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value={NONE_OPTION}>
-                                                Outcome: ninguno
+                                                Resultado: sin cambio
                                             </SelectItem>
                                             {outcomes.map((outcome) => (
                                                 <SelectItem
@@ -755,7 +756,8 @@ function DecisionRulesTab({
                                             })
                                         }
                                     />
-                                    stop
+                                    Detener evaluación (no evaluar reglas
+                                    siguientes)
                                 </label>
                             </div>
                             <span className="text-xs text-fg-3">
@@ -808,7 +810,7 @@ function DecisionRulesTab({
                         <EmptyState
                             icon={Scale}
                             title="Todavía no hay reglas de decisión"
-                            description="Las reglas de decisión definen qué outcome aplica según las condiciones de un evento. Créalas para automatizar la clasificación."
+                            description="Las reglas de decisión definen qué resultado aplica según las condiciones de un evento. Créalas para automatizar la clasificación."
                             action={
                                 canManage && !creating ? (
                                     <Button
@@ -825,10 +827,10 @@ function DecisionRulesTab({
                         <table className="w-full text-left text-xs">
                             <thead className="text-2xs text-fg-3 uppercase">
                                 <tr>
-                                    <th className="py-1.5 pr-4">Prio</th>
+                                    <th className="py-1.5 pr-4">Prioridad</th>
                                     <th className="py-1.5 pr-4">Código</th>
                                     <th className="py-1.5 pr-4">Nombre</th>
-                                    <th className="py-1.5 pr-4">Outcome</th>
+                                    <th className="py-1.5 pr-4">Resultado</th>
                                     <th className="py-1.5 pr-4">Origen</th>
                                     <th className="py-1.5 pr-4">Estado</th>
                                     <th className="py-1.5 pr-4" />
@@ -860,20 +862,22 @@ function DecisionRulesTab({
                                                     <Badge
                                                         variant="outline"
                                                         className="ml-1.5 text-3xs text-fg-3"
+                                                        title="Si coincide, no se evalúan las reglas siguientes"
                                                     >
-                                                        stop
+                                                        Detiene evaluación
                                                     </Badge>
                                                 )}
                                             </td>
-                                            <td className="py-2 pr-4 font-mono text-2xs">
+                                            <td className="py-2 pr-4">
                                                 {rule.outcomeLabel ??
-                                                    rule.outcomeCode ??
-                                                    '—'}
+                                                    decisionOutcomeLabel(
+                                                        rule.outcomeCode,
+                                                    )}
                                             </td>
                                             <td className="py-2 pr-4">
                                                 {rule.isGlobal
-                                                    ? 'global'
-                                                    : 'tenant'}
+                                                    ? 'De plataforma'
+                                                    : 'Del tenant'}
                                             </td>
                                             <td className="py-2 pr-4">
                                                 <ActiveBadge
@@ -1112,14 +1116,16 @@ function MappingRulesTab({
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value={NONE_OPTION}>
-                                    Severidad: default
+                                    Severidad: predeterminada
                                 </SelectItem>
                                 {options.severities.map((option) => (
                                     <SelectItem
                                         key={option.value}
                                         value={option.value}
                                     >
-                                        {option.label}
+                                        {priorityLabel(
+                                            option.label.toLowerCase(),
+                                        )}
                                     </SelectItem>
                                 ))}
                             </SelectContent>
@@ -1201,7 +1207,7 @@ function MappingRulesTab({
                     <table className="w-full text-left text-xs">
                         <thead className="text-2xs text-fg-3 uppercase">
                             <tr>
-                                <th className="py-1.5 pr-4">Prio</th>
+                                <th className="py-1.5 pr-4">Prioridad</th>
                                 <th className="py-1.5 pr-4">Proveedor</th>
                                 <th className="py-1.5 pr-4">Evento externo</th>
                                 <th className="py-1.5 pr-4">→ Tipo</th>
@@ -1229,7 +1235,7 @@ function MappingRulesTab({
                                                 variant="outline"
                                                 className="ml-1 text-3xs text-fg-3"
                                             >
-                                                cond
+                                                con condiciones
                                             </Badge>
                                         )}
                                     </td>
@@ -1237,7 +1243,11 @@ function MappingRulesTab({
                                         {rule.mappedEventType}
                                     </td>
                                     <td className="py-2 pr-4">
-                                        {rule.mappedSeverity ?? 'default'}
+                                        {rule.mappedSeverity
+                                            ? priorityLabel(
+                                                  rule.mappedSeverity.toLowerCase(),
+                                              )
+                                            : 'Predeterminada'}
                                     </td>
                                     <td className="py-2 pr-4">
                                         <ActiveBadge active={rule.isActive} />

@@ -8,6 +8,7 @@ import { Field, FormCard } from '@/components/sam/field';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PageHeader } from '@/components/ui/page-header';
+import { priorityLabel } from '@/lib/labels';
 
 interface PriorityRow {
     id: number;
@@ -97,7 +98,7 @@ export default function TenantConfigSlas() {
                             return (
                                 <Field
                                     key={priority.id}
-                                    label={priority.name}
+                                    label={priorityLabel(priority.code)}
                                     help={
                                         defaultSeconds !== null
                                             ? `Recomendado: ${toMinutes(defaultSeconds)} min`

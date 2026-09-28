@@ -1,6 +1,7 @@
 import { Head, router, usePage } from '@inertiajs/react';
 import { RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { DataFreshness } from '@/components/sam/assets/data-freshness';
 import { LiveMap } from '@/components/sam/assets/live-map';
 import { RealtimeStatus } from '@/components/sam/realtime-status';
 import type { RealtimeState } from '@/components/sam/realtime-status';
@@ -14,6 +15,7 @@ import type {
     AssetsMapProps,
     AssetStatusValue,
 } from '@/types/assets';
+import type { FleetPositionsUpdatedPayload } from '@/types/realtime';
 
 // Reload (to pick up brand-new positioned assets) at most this often.
 const RELOAD_DEBOUNCE_MS = 5000;
@@ -73,6 +75,20 @@ export default function AssetsMap() {
         setMarkers(serverMarkers);
     }, [serverMarkers]);
 
+    // Newest position on screen, for the freshness badge.
+    const newestAt = useMemo(
+        () =>
+            markers.reduce<string | null>(
+                (newest, m) =>
+                    newest === null ||
+                    Date.parse(m.recordedAt) > Date.parse(newest)
+                        ? m.recordedAt
+                        : newest,
+                null,
+            ),
+        [markers],
+    );
+
     const refresh = () => {
         setRefreshing(true);
         router.reload({
@@ -102,7 +118,49 @@ export default function AssetsMap() {
         const handler = (event: Event) => {
             const detail = (event as CustomEvent<TeamBroadcastDetail>).detail;
 
-            if (detail?.event === 'asset.location_updated') {
+            if (detail?.event === 'fleet.positions_updated') {
+                // One batch per feed cycle (~5 s) for the whole fleet.
+                const { positions } =
+                    detail.payload as unknown as FleetPositionsUpdatedPayload;
+                const byId = new Map(positions.map((p) => [p.asset_id, p]));
+
+                setMarkers((prev) => {
+                    // An asset reporting its first position is not on the map
+                    // yet: reload once for it, not on every feed tick (an
+                    // asset the map never lists would otherwise reload it
+                    // forever).
+                    const known = new Set(prev.map((m) => m.id));
+                    const firstSeen = positions.filter(
+                        (p) =>
+                            !known.has(p.asset_id) &&
+                            !reloadRequestedFor.current.has(p.asset_id),
+                    );
+
+                    if (firstSeen.length > 0) {
+                        firstSeen.forEach((p) =>
+                            reloadRequestedFor.current.add(p.asset_id),
+                        );
+                        scheduleReload();
+                    }
+
+                    return prev.map((m) => {
+                        const p = byId.get(m.id);
+
+                        return p &&
+                            Date.parse(p.recorded_at) >=
+                                Date.parse(m.recordedAt)
+                            ? {
+                                  ...m,
+                                  latitude: p.latitude,
+                                  longitude: p.longitude,
+                                  speed: p.speed_kph,
+                                  heading: p.heading,
+                                  recordedAt: p.recorded_at,
+                              }
+                            : m;
+                    });
+                });
+            } else if (detail?.event === 'asset.location_updated') {
                 const payload = detail.payload as unknown as LocationPayload;
 
                 setMarkers((prev) => {
@@ -124,43 +182,6 @@ export default function AssetsMap() {
                               }
                             : m,
                     );
-                });
-            } else if (detail?.event === 'fleet.positions_updated') {
-                const positions = (
-                    detail as TeamBroadcastDetail<'fleet.positions_updated'>
-                ).payload.positions;
-                const byAsset = new Map(positions.map((p) => [p.asset_id, p]));
-
-                setMarkers((prev) => {
-                    const known = new Set(prev.map((m) => m.id));
-
-                    // An asset reporting its first position is not on the map
-                    // yet: reload once for it, never on every feed tick.
-                    const firstSeen = positions.some(
-                        (p) =>
-                            !known.has(p.asset_id) &&
-                            !reloadRequestedFor.current.has(p.asset_id),
-                    );
-
-                    if (firstSeen) {
-                        positions.forEach((p) =>
-                            reloadRequestedFor.current.add(p.asset_id),
-                        );
-                        scheduleReload();
-                    }
-
-                    return prev.map((m) => {
-                        const position = byAsset.get(m.id);
-
-                        return position
-                            ? {
-                                  ...m,
-                                  latitude: position.latitude,
-                                  longitude: position.longitude,
-                                  recordedAt: position.recorded_at,
-                              }
-                            : m;
-                    });
                 });
             } else if (detail?.event === 'asset.status_changed') {
                 const payload = detail.payload as unknown as StatusPayload;
@@ -238,6 +259,7 @@ export default function AssetsMap() {
                                 </span>
                             ))}
                         </div>
+                        <DataFreshness newestAt={newestAt} />
                         <RealtimeStatus
                             state={connectionToStatus(connection)}
                         />

@@ -237,17 +237,28 @@ export default function Dashboard() {
                     />
                 </KpiStrip>
                 {/* Jerarquía cockpit (F3.1): incidentes abiertos es el panel
-                    dominante; el stream vive como columna lateral persistente. */}
+                    dominante; el stream vive como columna lateral persistente.
+                    En móvil (una columna) la columna izquierda se disuelve
+                    (`max-lg:contents`) para ordenar: incidentes y stream en
+                    vivo antes que integraciones y medidores de uso. */}
                 <div className="grid items-start gap-4 lg:grid-cols-[2fr_1fr]">
-                    <div className="flex min-w-0 flex-col gap-4">
-                        <OpenIncidentsPanel
-                            incidents={incidents}
-                            teamSlug={teamSlug}
-                        />
-                        <IntegrationsPanel integrations={integrations} />
-                        <UsagePanel usage={usage} />
+                    <div className="flex min-w-0 flex-col gap-4 max-lg:contents">
+                        <div className="min-w-0 max-lg:order-1">
+                            <OpenIncidentsPanel
+                                incidents={incidents}
+                                teamSlug={teamSlug}
+                            />
+                        </div>
+                        <div className="min-w-0 max-lg:order-3">
+                            <IntegrationsPanel integrations={integrations} />
+                        </div>
+                        <div className="min-w-0 max-lg:order-4">
+                            <UsagePanel usage={usage} />
+                        </div>
                     </div>
-                    <LiveStreamPanel events={stream} />
+                    <div className="min-w-0 max-lg:order-2">
+                        <LiveStreamPanel events={stream} />
+                    </div>
                 </div>
             </div>
         </>

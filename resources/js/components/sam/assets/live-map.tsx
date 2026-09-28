@@ -30,6 +30,28 @@ const CLUSTER_PIXEL_RADIUS = 34;
 // separates them, so we fan them out in a ring (spiderfy) instead.
 const SPIDER_RADIUS = 26;
 
+// Live positions arrive in batches every few seconds; markers glide to the new
+// point over this long instead of jumping. Kept well under the feed interval
+// so a glide always ends before the next batch lands.
+const GLIDE_MS = 1200;
+
+// Past this many markers moving at once, gliding costs more than it helps.
+const GLIDE_MAX_MARKERS = 400;
+
+type LngLat = [number, number];
+
+function prefersReducedMotion(): boolean {
+    return (
+        typeof window !== 'undefined' &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    );
+}
+
+// Ease-out: fast start, gentle arrival.
+function easeOutCubic(t: number): number {
+    return 1 - Math.pow(1 - t, 3);
+}
+
 const STATUS_COLORS: Record<AssetStatusValue, string> = {
     active: 'var(--severity-low)',
     inactive: 'var(--fg-3)',
@@ -179,6 +201,11 @@ export function LiveMap({ markers, statusLabels, onSelect }: LiveMapProps) {
     // Redraw is assigned inside the init effect and called from prop effects.
     const redrawRef = useRef<() => void>(() => {});
 
+    // Where each asset is DRAWN right now. During a glide this trails the
+    // target position carried by `markers`; at rest the two are equal.
+    const displayRef = useRef<Map<number, LngLat>>(new Map());
+    const glideFrameRef = useRef<number | null>(null);
+
     useEffect(() => {
         markersRef.current = markers;
         onSelectRef.current = onSelect;
@@ -204,7 +231,14 @@ export function LiveMap({ markers, statusLabels, onSelect }: LiveMapProps) {
         // upsert one DOM marker per cluster (single asset or bubble). Spiderfy
         // is preserved across redraws while its cluster still exists.
         const redraw = (): void => {
-            const all = markersRef.current;
+            const display = displayRef.current;
+            const all = markersRef.current.map((asset) => {
+                const drawn = display.get(asset.id);
+
+                return drawn
+                    ? { ...asset, longitude: drawn[0], latitude: drawn[1] }
+                    : asset;
+            });
             const labels = statusLabelsRef.current;
             const select = onSelectRef.current;
             const rendered = renderedRef.current;
@@ -413,6 +447,11 @@ export function LiveMap({ markers, statusLabels, onSelect }: LiveMapProps) {
         const rendered = renderedRef.current;
 
         return () => {
+            if (glideFrameRef.current !== null) {
+                cancelAnimationFrame(glideFrameRef.current);
+                glideFrameRef.current = null;
+            }
+
             rendered.forEach((marker) => marker.remove());
             rendered.clear();
             spiderKeyRef.current = null;
@@ -423,13 +462,77 @@ export function LiveMap({ markers, statusLabels, onSelect }: LiveMapProps) {
         };
     }, []);
 
-    // Re-cluster whenever the asset list changes (live position/status updates).
+    // Re-cluster whenever the asset list changes (live position/status
+    // updates). Moved markers glide from where they are drawn to their new
+    // position; clustering is recomputed once, when the glide lands.
     useEffect(() => {
         if (mapRef.current === null || !loaded) {
             return;
         }
 
-        redrawRef.current();
+        const display = displayRef.current;
+        const glides: { id: number; from: LngLat; to: LngLat }[] = [];
+        const liveIds = new Set<number>();
+
+        markers.forEach((asset) => {
+            liveIds.add(asset.id);
+            const to: LngLat = [asset.longitude, asset.latitude];
+            const from = display.get(asset.id);
+
+            if (from === undefined) {
+                display.set(asset.id, to);
+            } else if (from[0] !== to[0] || from[1] !== to[1]) {
+                glides.push({ id: asset.id, from, to });
+            }
+        });
+
+        display.forEach((_, id) => {
+            if (!liveIds.has(id)) {
+                display.delete(id);
+            }
+        });
+
+        if (glideFrameRef.current !== null) {
+            cancelAnimationFrame(glideFrameRef.current);
+            glideFrameRef.current = null;
+        }
+
+        if (
+            glides.length === 0 ||
+            glides.length > GLIDE_MAX_MARKERS ||
+            prefersReducedMotion()
+        ) {
+            glides.forEach(({ id, to }) => display.set(id, to));
+            redrawRef.current();
+        } else {
+            const rendered = renderedRef.current;
+            const start = performance.now();
+
+            const step = (now: number): void => {
+                const t = Math.min(1, (now - start) / GLIDE_MS);
+                const k = easeOutCubic(t);
+
+                glides.forEach(({ id, from, to }) => {
+                    const at: LngLat = [
+                        from[0] + (to[0] - from[0]) * k,
+                        from[1] + (to[1] - from[1]) * k,
+                    ];
+                    display.set(id, at);
+                    // Only a marker drawn on its own (not grouped in a
+                    // cluster bubble) follows the glide frame by frame.
+                    rendered.get(String(id))?.setLngLat(at);
+                });
+
+                if (t < 1) {
+                    glideFrameRef.current = requestAnimationFrame(step);
+                } else {
+                    glideFrameRef.current = null;
+                    redrawRef.current();
+                }
+            };
+
+            glideFrameRef.current = requestAnimationFrame(step);
+        }
 
         if (!didFitRef.current && markers.length > 0) {
             didFitRef.current = true;

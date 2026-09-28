@@ -203,19 +203,28 @@ class AssetDetailPageTest extends TestCase
         );
     }
 
-    public function test_location_history_is_ordered_and_limited(): void
+    public function test_location_history_is_one_row_per_minute_over_the_last_two_hours(): void
     {
         $user = User::factory()->create();
         $team = $user->currentTeam;
 
         $asset = Asset::factory()->create(['team_id' => $team->id]);
 
+        // The feed writes a point every few seconds; the history keeps the
+        // newest point of each minute over the last two hours.
         foreach (range(1, 25) as $minutesAgo) {
-            AssetLocationSnapshot::factory()->create([
-                'asset_id' => $asset->id,
-                'recorded_at' => now()->subMinutes($minutesAgo),
-            ]);
+            foreach ([0, 20, 40] as $secondsLater) {
+                AssetLocationSnapshot::factory()->create([
+                    'asset_id' => $asset->id,
+                    'recorded_at' => now()->subMinutes($minutesAgo)->startOfMinute()->addSeconds($secondsLater),
+                ]);
+            }
         }
+        // Outside the two-hour window: not shown.
+        AssetLocationSnapshot::factory()->create([
+            'asset_id' => $asset->id,
+            'recorded_at' => now()->subHours(3),
+        ]);
         $latest = AssetLocationSnapshot::factory()->create([
             'asset_id' => $asset->id,
             'formatted_location' => 'La más reciente',
@@ -229,7 +238,7 @@ class AssetDetailPageTest extends TestCase
 
         $response->assertInertia(
             fn (Assert $page) => $page
-                ->has('locationHistory', 20)
+                ->has('locationHistory', 26)
                 ->where('locationHistory.0.id', $latest->id)
                 ->where('locationHistory.0.formattedLocation', 'La más reciente'),
         );

@@ -30,6 +30,11 @@ import type { IncidentStatus } from '@/components/sam/status-pill';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatDateTime } from '@/lib/format';
+import {
+    actionLabel,
+    mediaRoleLabel,
+    providerDescriptionLabel,
+} from '@/lib/labels';
 import { minutesSince } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import type {
@@ -148,9 +153,15 @@ function EventHero({
                             event.eventTypeCode ??
                             `Evento #${event.id}`}
                     </h1>
-                    {event.description && (
+                    {providerDescriptionLabel(
+                        event.description,
+                        event.eventType,
+                    ) && (
                         <p className="mt-0.5 text-sm text-fg-2">
-                            {event.description}
+                            {providerDescriptionLabel(
+                                event.description,
+                                event.eventType,
+                            )}
                         </p>
                     )}
                     <p className="sam-meta mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5">
@@ -597,7 +608,10 @@ function EvaluationCard({
                                     <dd className="mt-0.5 text-sm text-fg-1">
                                         {ACTION_LABELS[
                                             evaluation.recommendedAction
-                                        ] ?? evaluation.recommendedAction}
+                                        ] ??
+                                            actionLabel(
+                                                evaluation.recommendedAction,
+                                            )}
                                     </dd>
                                 </div>
                             )}
@@ -785,7 +799,7 @@ function MediaCard({ media }: { media: EventMediaItem[] }) {
                                         <span className="text-2xs text-fg-2">
                                             {label}
                                             {item.mediaRole &&
-                                                ` · ${item.mediaRole}`}
+                                                ` · ${mediaRoleLabel(item.mediaRole)}`}
                                         </span>
                                         {item.capturedAt && (
                                             <span className="font-mono text-3xs text-fg-3">

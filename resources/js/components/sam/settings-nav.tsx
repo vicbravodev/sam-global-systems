@@ -46,23 +46,29 @@ export function SettingsNav() {
         },
     ];
 
-    // Las secciones del tenant requieren un equipo activo en contexto.
-    if (teamSlug !== null) {
-        groups.push({
-            title: 'Tenant',
-            items: [
-                {
-                    title: 'Configuración',
-                    href: `/${teamSlug}/settings/tenant-config`,
-                    icon: null,
-                },
-                {
-                    title: 'Equipo y roles',
-                    href: `/${teamSlug}/settings/roles`,
-                    icon: null,
-                },
-            ],
+    // Las secciones del tenant requieren un equipo activo en contexto y el
+    // permiso de sección correspondiente (sin él la página responde 403).
+    const nav = page.props.nav;
+    const tenantItems: NavItem[] = [];
+
+    if (teamSlug !== null && nav?.tenantConfig) {
+        tenantItems.push({
+            title: 'Configuración',
+            href: `/${teamSlug}/settings/tenant-config`,
+            icon: null,
         });
+    }
+
+    if (teamSlug !== null && nav?.roles) {
+        tenantItems.push({
+            title: 'Equipo y roles',
+            href: `/${teamSlug}/settings/roles`,
+            icon: null,
+        });
+    }
+
+    if (tenantItems.length > 0) {
+        groups.push({ title: 'Tenant', items: tenantItems });
     }
 
     return (

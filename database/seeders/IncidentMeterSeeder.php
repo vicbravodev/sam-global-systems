@@ -14,7 +14,7 @@ class IncidentMeterSeeder extends Seeder
         UsageMeter::query()->updateOrCreate(
             ['code' => 'incident_workflows'],
             [
-                'name' => 'Incident Workflows',
+                'name' => 'Flujos de incidente',
                 'description' => 'Incidents created (automated or manual).',
                 'unit' => 'count',
                 'aggregation_type' => AggregationType::Sum,

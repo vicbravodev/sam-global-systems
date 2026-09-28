@@ -6,13 +6,23 @@ use App\Domains\Assets\Models\AssetLocationSnapshot;
 use App\Domains\Copilot\Data\CopilotToolContext;
 use App\Domains\Copilot\Data\CopilotToolResult;
 use App\Domains\Copilot\Support\CopilotPresenter;
+use Carbon\CarbonInterface;
+use Illuminate\Support\Collection;
 
 /**
- * Where a unit is right now, plus its recent trail.
+ * Where a unit is right now, plus its recent route.
+ *
+ * The telematics feed stores a point every few seconds while a unit moves,
+ * so "the last 30 points" would be a couple of minutes. The trail is instead
+ * the last TRAIL_WINDOW_HOURS (never before the asked period) split into
+ * TRAIL_LIMIT slots, one indexed lookup per slot for its newest point. A
+ * "where is it" question wants the recent route, not a week-wide sketch.
  */
 final class AssetLocationTool implements CopilotTool
 {
     private const TRAIL_LIMIT = 30;
+
+    private const TRAIL_WINDOW_HOURS = 2;
 
     public function run(CopilotToolContext $context): CopilotToolResult
     {
@@ -23,12 +33,8 @@ final class AssetLocationTool implements CopilotTool
         $asset = $context->asset;
         abort_if($asset === null || $asset->team_id !== $context->teamId, 404);
 
-        $trail = AssetLocationSnapshot::query()
-            ->where('asset_id', $asset->id)
-            ->where('recorded_at', '>=', $context->period->from)
-            ->orderByDesc('recorded_at')
-            ->limit(self::TRAIL_LIMIT)
-            ->get();
+        $trailFrom = $context->period->to->subHours(self::TRAIL_WINDOW_HOURS)->max($context->period->from);
+        $trail = $this->sampledTrail((int) $asset->id, $trailFrom, $context->period->to);
 
         $latest = AssetLocationSnapshot::query()
             ->where('asset_id', $asset->id)
@@ -50,7 +56,11 @@ final class AssetLocationTool implements CopilotTool
 
         $location = CopilotPresenter::location($latest);
         $motion = CopilotPresenter::motionState($latest);
-        $maxSpeed = $trail->max(fn (AssetLocationSnapshot $s) => (float) $s->speed);
+        // Over every point of the period, not just the sampled ones.
+        $maxSpeed = AssetLocationSnapshot::query()
+            ->where('asset_id', $asset->id)
+            ->whereBetween('recorded_at', [$context->period->from, $context->period->to])
+            ->max('speed');
 
         $block = [
             'type' => 'location',
@@ -60,7 +70,7 @@ final class AssetLocationTool implements CopilotTool
             'motionLabel' => CopilotPresenter::motionLabel($motion),
             ...$location,
             'maxSpeed' => $maxSpeed !== null ? round((float) $maxSpeed, 1) : null,
-            'trail' => $trail->reverse()->values()->map(fn (AssetLocationSnapshot $s) => [
+            'trail' => $trail->map(fn (AssetLocationSnapshot $s) => [
                 'latitude' => (float) $s->latitude,
                 'longitude' => (float) $s->longitude,
                 'speed' => $s->speed !== null ? (float) $s->speed : null,
@@ -94,5 +104,36 @@ final class AssetLocationTool implements CopilotTool
                 "Última posición de {$label}: {$where}{$speed}, ".CopilotPresenter::describeAge($location['recordedAt']).'.',
             ],
         );
+    }
+
+    /**
+     * Up to TRAIL_LIMIT points, oldest first: the newest point of each of
+     * TRAIL_LIMIT equal slots of the period. Slots without a point (parked,
+     * no fix) are skipped.
+     *
+     * @return Collection<int, AssetLocationSnapshot>
+     */
+    private function sampledTrail(int $assetId, CarbonInterface $from, CarbonInterface $to): Collection
+    {
+        $span = max(1, $to->getTimestamp() - $from->getTimestamp());
+        $trail = collect();
+
+        for ($slot = 0; $slot < self::TRAIL_LIMIT; $slot++) {
+            $slotStart = $from->addSeconds((int) floor($span * $slot / self::TRAIL_LIMIT));
+            $slotEnd = $from->addSeconds((int) floor($span * ($slot + 1) / self::TRAIL_LIMIT));
+
+            $point = AssetLocationSnapshot::query()
+                ->where('asset_id', $assetId)
+                ->where('recorded_at', '>=', $slotStart)
+                ->where('recorded_at', $slot === self::TRAIL_LIMIT - 1 ? '<=' : '<', $slotEnd)
+                ->orderByDesc('recorded_at')
+                ->first();
+
+            if ($point !== null) {
+                $trail->push($point);
+            }
+        }
+
+        return $trail;
     }
 }

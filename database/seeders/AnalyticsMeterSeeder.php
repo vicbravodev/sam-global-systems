@@ -19,7 +19,7 @@ class AnalyticsMeterSeeder extends Seeder
         UsageMeter::query()->updateOrCreate(
             ['code' => 'generated_reports'],
             [
-                'name' => 'Generated Reports',
+                'name' => 'Reportes generados',
                 'description' => 'Analytics report executions completed (dashboard, PDF, XLSX, CSV, JSON).',
                 'unit' => 'report',
                 'aggregation_type' => AggregationType::Sum,

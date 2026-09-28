@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { TERMINAL_STATUSES } from '@/components/sam';
+import { PermissionTooltip } from '@/components/sam/permission-tooltip';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -219,6 +220,7 @@ export function Management({ incident }: ManagementProps) {
         discard,
         pending,
         currentUserId,
+        can,
     } = useIncidentActions();
     const [resolveOpen, setResolveOpen] = useState(false);
 
@@ -253,7 +255,12 @@ export function Management({ incident }: ManagementProps) {
                                     Responsable actual
                                 </div>
                             </div>
-                            <AssigneeMenu label="Reasignar" variant="link" />
+                            {can.manage && (
+                                <AssigneeMenu
+                                    label="Reasignar"
+                                    variant="link"
+                                />
+                            )}
                         </>
                     ) : (
                         <>
@@ -263,7 +270,12 @@ export function Management({ incident }: ManagementProps) {
                                     Sin asignar
                                 </div>
                             </div>
-                            <AssigneeMenu label="Asignarme" variant="button" />
+                            {can.manage && (
+                                <AssigneeMenu
+                                    label="Asignarme"
+                                    variant="button"
+                                />
+                            )}
                         </>
                     )}
                 </div>
@@ -271,115 +283,142 @@ export function Management({ incident }: ManagementProps) {
                 {/* Actions */}
                 <div className="border-t border-border p-3">
                     {isTerminal ? (
-                        <Button
-                            variant="default"
-                            className="w-full justify-center"
-                            onClick={() => void reopen()}
-                            disabled={pending === 'reopen'}
+                        <PermissionTooltip
+                            allowed={can.manage}
+                            reason="Tu rol no permite reabrir incidentes."
+                            className="w-full"
                         >
-                            {pending === 'reopen' ? (
-                                <Loader2 size={13} className="animate-spin" />
-                            ) : (
-                                <RefreshCw size={13} />
-                            )}
-                            Reabrir incidente
-                        </Button>
-                    ) : (
-                        <Button
-                            variant="default"
-                            className="w-full justify-center"
-                            onClick={() => setResolveOpen(true)}
-                            disabled={pending === 'resolve'}
-                        >
-                            {pending === 'resolve' ? (
-                                <Loader2 size={13} className="animate-spin" />
-                            ) : null}
-                            Resolver incidente
-                        </Button>
-                    )}
-
-                    {!isTerminal && (
-                        <div className="mt-2 flex flex-wrap gap-x-3.5 gap-y-1">
-                            <button
-                                type="button"
-                                onClick={() => void acknowledge()}
-                                disabled={pending === 'acknowledge'}
-                                className={quietButton}
+                            <Button
+                                variant="default"
+                                className="w-full justify-center"
+                                onClick={() => void reopen()}
+                                disabled={!can.manage || pending === 'reopen'}
                             >
-                                {pending === 'acknowledge' ? (
+                                {pending === 'reopen' ? (
                                     <Loader2
-                                        size={12}
+                                        size={13}
                                         className="animate-spin"
                                     />
                                 ) : (
-                                    <Check size={12} />
+                                    <RefreshCw size={13} />
                                 )}
-                                Atender (ACK)
-                            </button>
-                            {claimedByOther ? (
-                                <span
-                                    className="inline-flex items-center gap-1.5 py-1 text-xs font-medium text-fg-3"
-                                    title={`Tomado por ${incident.claimedBy?.name}`}
-                                >
-                                    <Hand size={12} />
-                                    Tomado por {incident.claimedBy?.name}
-                                </span>
-                            ) : (
+                                Reabrir incidente
+                            </Button>
+                        </PermissionTooltip>
+                    ) : (
+                        <PermissionTooltip
+                            allowed={can.resolve}
+                            reason="Tu rol no permite resolver incidentes."
+                            className="w-full"
+                        >
+                            <Button
+                                variant="default"
+                                className="w-full justify-center"
+                                onClick={() => setResolveOpen(true)}
+                                disabled={!can.resolve || pending === 'resolve'}
+                            >
+                                {pending === 'resolve' ? (
+                                    <Loader2
+                                        size={13}
+                                        className="animate-spin"
+                                    />
+                                ) : null}
+                                Resolver incidente
+                            </Button>
+                        </PermissionTooltip>
+                    )}
+
+                    {!isTerminal && (can.manage || can.resolve) && (
+                        <div className="mt-2 flex flex-wrap gap-x-3.5 gap-y-1">
+                            {can.manage && (
+                                <>
+                                    <button
+                                        type="button"
+                                        onClick={() => void acknowledge()}
+                                        disabled={pending === 'acknowledge'}
+                                        className={quietButton}
+                                    >
+                                        {pending === 'acknowledge' ? (
+                                            <Loader2
+                                                size={12}
+                                                className="animate-spin"
+                                            />
+                                        ) : (
+                                            <Check size={12} />
+                                        )}
+                                        Atender (ACK)
+                                    </button>
+                                    {claimedByOther ? (
+                                        <span
+                                            className="inline-flex items-center gap-1.5 py-1 text-xs font-medium text-fg-3"
+                                            title={`Tomado por ${incident.claimedBy?.name}`}
+                                        >
+                                            <Hand size={12} />
+                                            Tomado por{' '}
+                                            {incident.claimedBy?.name}
+                                        </span>
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                void (claimedByMe
+                                                    ? release()
+                                                    : claim())
+                                            }
+                                            disabled={
+                                                pending === 'claim' ||
+                                                pending === 'release'
+                                            }
+                                            className={quietButton}
+                                        >
+                                            {pending === 'claim' ||
+                                            pending === 'release' ? (
+                                                <Loader2
+                                                    size={12}
+                                                    className="animate-spin"
+                                                />
+                                            ) : (
+                                                <Hand size={12} />
+                                            )}
+                                            {claimedByMe ? 'Soltar' : 'Tomar'}
+                                        </button>
+                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={() => void escalate()}
+                                        disabled={pending === 'escalate'}
+                                        className={quietButton}
+                                    >
+                                        {pending === 'escalate' ? (
+                                            <Loader2
+                                                size={12}
+                                                className="animate-spin"
+                                            />
+                                        ) : (
+                                            <TriangleAlert size={12} />
+                                        )}
+                                        Escalar
+                                    </button>
+                                </>
+                            )}
+                            {can.resolve && (
                                 <button
                                     type="button"
-                                    onClick={() =>
-                                        void (claimedByMe ? release() : claim())
-                                    }
-                                    disabled={
-                                        pending === 'claim' ||
-                                        pending === 'release'
-                                    }
+                                    onClick={() => void discard()}
+                                    disabled={pending === 'discard'}
                                     className={quietButton}
                                 >
-                                    {pending === 'claim' ||
-                                    pending === 'release' ? (
+                                    {pending === 'discard' ? (
                                         <Loader2
                                             size={12}
                                             className="animate-spin"
                                         />
                                     ) : (
-                                        <Hand size={12} />
+                                        <X size={12} />
                                     )}
-                                    {claimedByMe ? 'Soltar' : 'Tomar'}
+                                    Descartar
                                 </button>
                             )}
-                            <button
-                                type="button"
-                                onClick={() => void escalate()}
-                                disabled={pending === 'escalate'}
-                                className={quietButton}
-                            >
-                                {pending === 'escalate' ? (
-                                    <Loader2
-                                        size={12}
-                                        className="animate-spin"
-                                    />
-                                ) : (
-                                    <TriangleAlert size={12} />
-                                )}
-                                Escalar
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => void discard()}
-                                disabled={pending === 'discard'}
-                                className={quietButton}
-                            >
-                                {pending === 'discard' ? (
-                                    <Loader2
-                                        size={12}
-                                        className="animate-spin"
-                                    />
-                                ) : (
-                                    <X size={12} />
-                                )}
-                                Descartar
-                            </button>
                         </div>
                     )}
                 </div>

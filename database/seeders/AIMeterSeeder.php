@@ -14,7 +14,7 @@ class AIMeterSeeder extends Seeder
         $meters = [
             [
                 'code' => 'ai_calls',
-                'name' => 'AI Evaluations',
+                'name' => 'Evaluaciones de IA',
                 'description' => 'Number of AI evaluations executed.',
                 'unit' => 'call',
                 'aggregation_type' => AggregationType::Sum,
@@ -23,7 +23,7 @@ class AIMeterSeeder extends Seeder
             ],
             [
                 'code' => 'ai_tokens_in',
-                'name' => 'AI Input Tokens',
+                'name' => 'Tokens de IA (entrada)',
                 'description' => 'Input tokens consumed by the AI evaluator.',
                 'unit' => 'tokens',
                 'aggregation_type' => AggregationType::Sum,
@@ -32,7 +32,7 @@ class AIMeterSeeder extends Seeder
             ],
             [
                 'code' => 'ai_tokens_out',
-                'name' => 'AI Output Tokens',
+                'name' => 'Tokens de IA (salida)',
                 'description' => 'Output tokens produced by the AI evaluator.',
                 'unit' => 'tokens',
                 'aggregation_type' => AggregationType::Sum,
@@ -41,7 +41,7 @@ class AIMeterSeeder extends Seeder
             ],
             [
                 'code' => 'copilot_queries',
-                'name' => 'SAM Copilot Queries',
+                'name' => 'Consultas a SAM Copilot',
                 'description' => 'Questions answered by the SAM Copilot assistant.',
                 'unit' => 'query',
                 'aggregation_type' => AggregationType::Sum,

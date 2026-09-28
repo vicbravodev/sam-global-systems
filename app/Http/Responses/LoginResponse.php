@@ -20,8 +20,16 @@ class LoginResponse implements LoginResponseContract
 
         URL::defaults(['current_team' => $team->slug]);
 
-        return $request->wantsJson()
-            ? new JsonResponse(['two_factor' => false], 200)
-            : redirect()->intended(route('dashboard'));
+        if ($request->wantsJson()) {
+            return new JsonResponse(['two_factor' => false], 200);
+        }
+
+        // The SaaS operator works from the cross-tenant console, not from
+        // their personal workspace.
+        if ($user->isSuperAdmin()) {
+            return redirect()->intended(route('admin.tenants.index'));
+        }
+
+        return redirect()->intended(route('dashboard'));
     }
 }

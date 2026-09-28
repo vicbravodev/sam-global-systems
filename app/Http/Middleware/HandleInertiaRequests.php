@@ -3,12 +3,24 @@
 namespace App\Http\Middleware;
 
 use App\Domains\Access\Actions\AuthorizeAction;
+use App\Domains\Access\Models\Role;
+use App\Domains\Analytics\Models\KpiRecord;
+use App\Domains\Audit\Models\AuditLog;
+use App\Domains\Automation\Models\AutomationWorkflow;
+use App\Domains\Decisions\Models\DecisionRule;
+use App\Domains\Drivers\Models\Driver;
 use App\Domains\Incidents\Models\Incident;
+use App\Domains\Integrations\Models\TenantIntegration;
+use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Domains\Notifications\Models\Notification;
 use App\Domains\Tenancy\Enums\SubscriptionStatus;
 use App\Domains\Tenancy\Models\Subscription;
+use App\Domains\TenantConfig\Models\TenantSetting;
+use App\Models\User;
 use App\Support\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Gate;
 use Inertia\Middleware;
 
 class HandleInertiaRequests extends Middleware
@@ -85,10 +97,39 @@ class HandleInertiaRequests extends Middleware
                     'canViewUsage' => app(AuthorizeAction::class)->execute($user, 'copilot.usage.view', $current),
                 ]
                 : null,
+            // Which workspace sections the user may open. Resolved through the
+            // same policies the page controllers authorize with, so the
+            // sidebar never links to a page that answers 403.
+            'nav' => fn () => $user && $team()
+                ? $this->navPermissions($user)
+                : null,
             // Tenant-scoped counters for the workspace sidebar badges.
             'navBadges' => fn () => ($current = $team())
                 ? $this->navBadges($current->id)
                 : null,
+        ];
+    }
+
+    /**
+     * @return array<string, bool>
+     */
+    private function navPermissions(User $user): array
+    {
+        $gate = Gate::forUser($user);
+
+        return [
+            'incidents' => $gate->allows('viewAny', Incident::class),
+            'events' => $gate->allows('viewAny', NormalizedEvent::class),
+            'drivers' => $gate->allows('viewAny', Driver::class),
+            'rules' => $gate->allows('viewAny', DecisionRule::class),
+            'automation' => $gate->allows('viewAny', AutomationWorkflow::class),
+            'analytics' => $gate->allows('viewAny', KpiRecord::class),
+            'integrations' => $gate->allows('viewAny', TenantIntegration::class),
+            'notifications' => $gate->allows('viewAny', Notification::class),
+            'audit' => $gate->allows('viewAny', AuditLog::class),
+            'billing' => $gate->allows('viewAny', Subscription::class),
+            'tenantConfig' => $gate->allows('viewAny', TenantSetting::class),
+            'roles' => $gate->allows('viewAny', Role::class),
         ];
     }
 

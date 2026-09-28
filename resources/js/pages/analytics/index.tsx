@@ -3,12 +3,20 @@ import { BarChart3, Download, FileBarChart2 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { SparkArea } from '@/components/sam/charts';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
-import { formatDate, formatDateTime } from '@/lib/format';
+import {
+    formatDate,
+    formatDateTime,
+    formatNumber,
+    formatPercent,
+} from '@/lib/format';
+import { kpiLabel, reportStatusLabel } from '@/lib/labels';
 import { postJson, readErrorMessage } from '@/lib/sam-fetch';
+import { cn } from '@/lib/utils';
 
 interface OverviewProp {
     periodStart: string | null;
@@ -16,16 +24,18 @@ interface OverviewProp {
     data: Record<string, unknown> | null;
 }
 
-interface KpiRow {
-    id: number;
+type MetricGroup = 'incidents' | 'ai' | 'decisions' | 'usage';
+
+interface MetricRow {
     code: string;
-    value: number | null;
+    /** Nombre del catálogo metric_definitions (es), si existe. */
+    name: string | null;
+    group: MetricGroup;
     unit: string | null;
-    periodType: string;
-    periodStart: string | null;
-    dimensionType: string | null;
-    dimensionReference: string | null;
-    calculatedAt: string | null;
+    /** sum = actividad del periodo, avg = promedio diario, latest = nivel actual. */
+    aggregation: 'sum' | 'avg' | 'latest';
+    value: number | null;
+    series: { date: string; value: number }[];
 }
 
 interface ReportRow {
@@ -48,7 +58,9 @@ interface ExecutionRow {
 
 interface AnalyticsPageProps {
     overview: OverviewProp | null;
-    kpis: KpiRow[];
+    period: number;
+    periods: number[];
+    metrics: MetricRow[];
     reports: ReportRow[];
     executions: ExecutionRow[];
     formats: string[];
@@ -72,16 +84,49 @@ const STATUS_COLOR: Record<string, string> = {
 
 const DOWNLOAD_FORMATS = ['pdf', 'xlsx', 'csv', 'json'];
 
-function formatValue(value: number | null, unit: string | null): string {
+const GROUP_LABELS: Record<MetricGroup, string> = {
+    incidents: 'Incidentes',
+    ai: 'Inteligencia artificial',
+    decisions: 'Decisiones',
+    usage: 'Uso de la plataforma',
+};
+
+const AGGREGATION_HINT: Record<MetricRow['aggregation'], string> = {
+    sum: 'Total del periodo',
+    avg: 'Promedio diario',
+    latest: 'Valor más reciente',
+};
+
+/** Unidades de proporción (0..1) que se muestran como porcentaje. */
+const RATIO_UNITS = new Set(['ratio', 'score', 'rate']);
+
+function formatMetric(value: number | null, unit: string | null): string {
     if (value === null) {
         return '—';
     }
 
-    const formatted = Number.isInteger(value)
-        ? value.toLocaleString('es')
-        : value.toFixed(2);
+    if (unit !== null && RATIO_UNITS.has(unit)) {
+        return formatPercent(value);
+    }
 
-    return unit ? `${formatted} ${unit}` : formatted;
+    if (unit === 'minutes') {
+        return `${formatNumber(value, { maximumFractionDigits: 1 })} min`;
+    }
+
+    return formatNumber(value, { maximumFractionDigits: 1 });
+}
+
+/** Unidad implícita de las claves del resumen del tenant. */
+function overviewUnit(key: string): string | null {
+    if (key.endsWith('_rate')) {
+        return 'ratio';
+    }
+
+    if (key.endsWith('_minutes')) {
+        return 'minutes';
+    }
+
+    return null;
 }
 
 function OverviewCards({
@@ -113,12 +158,12 @@ function OverviewCards({
                     key={key}
                     className="rounded-md border border-border bg-surface-1 p-3"
                 >
-                    <div className="text-2xs text-fg-3 uppercase">
-                        {key.replaceAll('_', ' ')}
+                    <div className="text-2xs tracking-label text-fg-3">
+                        {kpiLabel(key)}
                     </div>
                     <div className="text-xl font-semibold text-fg-1 tabular-nums">
                         {typeof value === 'number'
-                            ? value.toLocaleString('es')
+                            ? formatMetric(value, overviewUnit(key))
                             : String(value)}
                     </div>
                 </div>
@@ -127,14 +172,125 @@ function OverviewCards({
     );
 }
 
+function MetricsTable({ metrics }: { metrics: MetricRow[] }) {
+    const groups = (Object.keys(GROUP_LABELS) as MetricGroup[])
+        .map((group) => ({
+            group,
+            rows: metrics.filter((metric) => metric.group === group),
+        }))
+        .filter((entry) => entry.rows.length > 0);
+
+    return (
+        <table className="w-full text-left text-xs">
+            <thead className="text-2xs tracking-label text-fg-3">
+                <tr>
+                    <th className="py-1.5 pr-4 font-medium">Métrica</th>
+                    <th className="py-1.5 pr-4 font-medium">Valor</th>
+                    <th className="hidden py-1.5 pr-4 font-medium sm:table-cell">
+                        Tendencia diaria
+                    </th>
+                </tr>
+            </thead>
+            {groups.map(({ group, rows }) => (
+                <tbody key={group}>
+                    <tr>
+                        <th
+                            colSpan={3}
+                            className="pt-4 pb-1 text-2xs font-semibold tracking-caps text-fg-3 uppercase"
+                        >
+                            {GROUP_LABELS[group]}
+                        </th>
+                    </tr>
+                    {rows.map((metric) => (
+                        <tr
+                            key={metric.code}
+                            className="border-t border-border/50 text-fg-2"
+                        >
+                            <td className="py-2 pr-4 text-fg-1">
+                                {kpiLabel(metric.code, metric.name)}
+                            </td>
+                            <td className="py-2 pr-4">
+                                <div className="font-semibold text-fg-1 tabular-nums">
+                                    {formatMetric(metric.value, metric.unit)}
+                                </div>
+                                <div className="text-2xs text-fg-3">
+                                    {AGGREGATION_HINT[metric.aggregation]}
+                                </div>
+                            </td>
+                            <td className="hidden w-48 py-2 pr-4 sm:table-cell">
+                                {metric.series.length > 1 ? (
+                                    <SparkArea
+                                        data={metric.series.map(
+                                            (point) => point.value,
+                                        )}
+                                        width={180}
+                                        height={32}
+                                        aria-label={`Tendencia de ${kpiLabel(metric.code, metric.name)}`}
+                                    />
+                                ) : (
+                                    <span className="text-2xs text-fg-3">
+                                        Un solo día con datos
+                                    </span>
+                                )}
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            ))}
+        </table>
+    );
+}
+
+function PeriodPicker({
+    period,
+    periods,
+}: {
+    period: number;
+    periods: number[];
+}) {
+    return (
+        <div
+            className="flex gap-0.5 rounded-md border border-border bg-surface-2 p-0.5"
+            role="group"
+            aria-label="Periodo"
+        >
+            {periods.map((days) => (
+                <button
+                    key={days}
+                    type="button"
+                    aria-pressed={period === days}
+                    onClick={() =>
+                        router.reload({
+                            data: { period: days },
+                            only: ['metrics', 'period'],
+                        })
+                    }
+                    className={cn(
+                        'cursor-pointer rounded-sm px-2.5 py-1 text-xs font-medium',
+                        period === days
+                            ? 'bg-surface-1 text-fg-1 shadow-xs'
+                            : 'text-fg-3 hover:text-fg-1',
+                    )}
+                >
+                    {days} días
+                </button>
+            ))}
+        </div>
+    );
+}
+
 function KpisTab({
     overview,
-    kpis,
+    metrics,
+    period,
+    periods,
     hasReports,
     onShowReports,
 }: {
     overview: OverviewProp | null;
-    kpis: KpiRow[];
+    metrics: MetricRow[];
+    period: number;
+    periods: number[];
     hasReports: boolean;
     onShowReports: () => void;
 }) {
@@ -142,7 +298,7 @@ function KpisTab({
     // empty-states casi idénticos apilados. Fusionar en uno solo.
     const noOverview = overview === null || overview.data === null;
 
-    if (noOverview && kpis.length === 0) {
+    if (noOverview && metrics.length === 0 && period === periods[1]) {
         return (
             <Card>
                 <CardContent className="py-2">
@@ -203,57 +359,20 @@ function KpisTab({
             </Card>
 
             <Card>
-                <CardHeader>
+                <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
                     <CardTitle className="text-sm uppercase">
-                        KPIs recientes ({kpis.length})
+                        Indicadores de los últimos {period} días
                     </CardTitle>
+                    <PeriodPicker period={period} periods={periods} />
                 </CardHeader>
                 <CardContent>
-                    {kpis.length === 0 ? (
+                    {metrics.length === 0 ? (
                         <EmptyState
-                            title="Todavía no hay KPIs calculados"
-                            description="Se calculan automáticamente cada noche. Mientras tanto, el panel muestra la actividad en vivo."
+                            title="Sin indicadores en este periodo"
+                            description="Los KPIs se calculan automáticamente cada noche. Prueba un periodo más largo o vuelve mañana."
                         />
                     ) : (
-                        <table className="w-full text-left text-xs">
-                            <thead className="text-2xs text-fg-3 uppercase">
-                                <tr>
-                                    <th className="py-1.5 pr-4">KPI</th>
-                                    <th className="py-1.5 pr-4">Valor</th>
-                                    <th className="py-1.5 pr-4">Periodo</th>
-                                    <th className="py-1.5 pr-4">Dimensión</th>
-                                    <th className="py-1.5 pr-4">Calculado</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {kpis.map((kpi) => (
-                                    <tr
-                                        key={kpi.id}
-                                        className="border-t border-border/50 text-fg-2"
-                                    >
-                                        <td className="py-2 pr-4 font-mono text-2xs">
-                                            {kpi.code}
-                                        </td>
-                                        <td className="py-2 pr-4 font-semibold text-fg-1 tabular-nums">
-                                            {formatValue(kpi.value, kpi.unit)}
-                                        </td>
-                                        <td className="py-2 pr-4">
-                                            {kpi.periodType}
-                                            {kpi.periodStart &&
-                                                ` · ${formatDate(kpi.periodStart)}`}
-                                        </td>
-                                        <td className="py-2 pr-4">
-                                            {kpi.dimensionType
-                                                ? `${kpi.dimensionType}${kpi.dimensionReference ? ` #${kpi.dimensionReference}` : ''}`
-                                                : 'global'}
-                                        </td>
-                                        <td className="py-2 pr-4 font-mono text-2xs whitespace-nowrap">
-                                            {formatDateTime(kpi.calculatedAt)}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                        <MetricsTable metrics={metrics} />
                     )}
                 </CardContent>
             </Card>
@@ -412,9 +531,16 @@ function ReportsTab({
                                         </td>
                                         <td
                                             className={`py-2 pr-4 ${STATUS_COLOR[execution.status ?? ''] ?? 'text-fg-3'}`}
-                                            title={execution.error ?? ''}
                                         >
-                                            {execution.status}
+                                            {reportStatusLabel(
+                                                execution.status,
+                                            )}
+                                            {execution.status === 'failed' && (
+                                                <div className="max-w-xs text-2xs text-fg-3">
+                                                    {execution.error ??
+                                                        'Sin detalle del error. Vuelve a generarlo o escríbenos.'}
+                                                </div>
+                                            )}
                                         </td>
                                         <td className="py-2 pr-4 font-mono text-2xs whitespace-nowrap">
                                             {formatDateTime(
@@ -485,7 +611,9 @@ export default function AnalyticsIndex() {
                 {tab === 'kpis' && (
                     <KpisTab
                         overview={props.overview}
-                        kpis={props.kpis}
+                        metrics={props.metrics}
+                        period={props.period}
+                        periods={props.periods}
                         hasReports={props.reports.length > 0}
                         onShowReports={() => setTab('reports')}
                     />

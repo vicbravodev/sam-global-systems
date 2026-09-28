@@ -11,8 +11,8 @@ use Illuminate\Support\Facades\Log;
  * event counts key on `tenant_integration_id`; StoreRawEvent serialises its
  * own resolution with a lock.)
  *
- * - invoice_snapshots: one invoice per tenant and period (admin trigger vs
- *   scheduled run).
+ * - invoice_snapshots: one live invoice per tenant and period (admin trigger
+ *   vs scheduled run). Partial: a voided invoice may sit next to its reissue.
  * - kpi_records / analytics_snapshots: their existing uniques include
  *   nullable dimension columns, and PostgreSQL treats NULLs as distinct, so
  *   the rows written with NULL dimensions were never protected.
@@ -27,16 +27,16 @@ return new class extends Migration
     public $withinTransaction = false;
 
     /**
-     * name => [table, columns, nulls not distinct (pgsql only)]
+     * name => [table, columns, nulls not distinct (pgsql only), partial WHERE]
      *
-     * @return array<string, array{0: string, 1: list<string>, 2: bool}>
+     * @return array<string, array{0: string, 1: list<string>, 2: bool, 3?: string}>
      */
     private function indexes(): array
     {
         $pgsql = DB::getDriverName() === 'pgsql';
 
         $indexes = [
-            'invoice_snapshots_team_period_unique' => ['invoice_snapshots', ['team_id', 'period_start', 'period_end'], false],
+            'invoice_snapshots_team_period_unique' => ['invoice_snapshots', ['team_id', 'period_start', 'period_end'], false, "status <> 'void'"],
         ];
 
         if ($pgsql) {
@@ -53,8 +53,12 @@ return new class extends Migration
     {
         $concurrently = DB::getDriverName() === 'pgsql' ? 'CONCURRENTLY ' : '';
 
-        foreach ($this->indexes() as $name => [$table, $columns, $nullsNotDistinct]) {
+        foreach ($this->indexes() as $name => $index) {
+            [$table, $columns, $nullsNotDistinct] = $index;
+            $where = $index[3] ?? null;
+
             $duplicates = DB::table($table)
+                ->when($where !== null, fn ($query) => $query->whereRaw($where))
                 ->select($columns)
                 ->groupBy($columns)
                 ->havingRaw('COUNT(*) > 1')
@@ -68,12 +72,13 @@ return new class extends Migration
             }
 
             DB::statement(sprintf(
-                'CREATE UNIQUE INDEX %sIF NOT EXISTS "%s" ON "%s" (%s)%s',
+                'CREATE UNIQUE INDEX %sIF NOT EXISTS "%s" ON "%s" (%s)%s%s',
                 $concurrently,
                 $name,
                 $table,
                 implode(', ', array_map(fn (string $column) => '"'.$column.'"', $columns)),
                 $nullsNotDistinct ? ' NULLS NOT DISTINCT' : '',
+                $where !== null ? ' WHERE '.$where : '',
             ));
         }
     }

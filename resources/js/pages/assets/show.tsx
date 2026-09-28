@@ -18,7 +18,7 @@ import {
     BatteryMedium,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AssetSignal } from '@/components/sam/assets/asset-signal';
 import { AssetStatusBadge } from '@/components/sam/assets/asset-status-badge';
 import { MonitoringSwitch } from '@/components/sam/assets/monitoring-switch';
@@ -34,16 +34,70 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { TEAM_BROADCAST_EVENT_NAME } from '@/hooks/use-team-broadcasts';
 import type { TeamBroadcastDetail } from '@/hooks/use-team-broadcasts';
 import { formatDate, formatDateTime, formatNumber } from '@/lib/format';
+import {
+    assetTypeLabel,
+    connectivityLabel,
+    CONNECTIVITY_LABELS,
+    sourceLabel,
+} from '@/lib/labels';
 import { isFresh, minutesSince } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import type {
     AssetShowProps,
     AssetStatusValue,
     LocationHistoryEntry,
+    LocationTrailPoint,
     TelemetryEntry,
 } from '@/types/assets';
+import type {
+    FleetPosition,
+    FleetPositionsUpdatedPayload,
+    FleetTelemetryUpdatedPayload,
+} from '@/types/realtime';
 
 const RELOAD_DEBOUNCE_MS = 2000;
+
+// Live positions move the header and the map in memory every feed cycle; the
+// history table (and the geocoded address) re-read the server at most this
+// often while the unit reports.
+const HISTORY_REFRESH_MS = 60_000;
+
+/** The asset with a live position laid over it, when that one is newer. */
+function withLivePosition(
+    asset: AssetShowProps['asset'],
+    live: FleetPosition | null,
+): AssetShowProps['asset'] {
+    if (
+        live === null ||
+        (asset.lastLocation !== null &&
+            Date.parse(live.recorded_at) <=
+                Date.parse(asset.lastLocation.recordedAt))
+    ) {
+        return asset;
+    }
+
+    return {
+        ...asset,
+        lastLocation: {
+            latitude: live.latitude,
+            longitude: live.longitude,
+            formattedLocation: asset.lastLocation?.formattedLocation ?? null,
+            speed: live.speed_kph,
+            heading: live.heading,
+            recordedAt: live.recorded_at,
+        },
+        currentSpeed:
+            live.speed_kph === null
+                ? asset.currentSpeed
+                : {
+                      kph: live.speed_kph,
+                      recordedAt: live.recorded_at,
+                      source: 'location',
+                      stale: false,
+                  },
+        lastSignalAt: live.recorded_at,
+    };
+}
 
 const MOVING_SPEED_KPH = 5;
 
@@ -104,7 +158,12 @@ function telemetryValue(data: TelemetryEntry['data']): {
             : null;
 
     if (typeof raw === 'string') {
-        return { value: ENGINE_STATE_LABELS[raw] ?? raw, unit };
+        return {
+            value:
+                ENGINE_STATE_LABELS[raw] ??
+                (raw in CONNECTIVITY_LABELS ? connectivityLabel(raw) : raw),
+            unit,
+        };
     }
 
     if (typeof raw === 'number') {
@@ -166,7 +225,14 @@ function AssetHero({
                             <span className="font-mono">{asset.code}</span>
                         )}
                         {title && <span className="text-fg-2">{title}</span>}
-                        {asset.type?.name && <span>{asset.type.name}</span>}
+                        {asset.type && (
+                            <span>
+                                {assetTypeLabel(
+                                    asset.type.code,
+                                    asset.type.name,
+                                )}
+                            </span>
+                        )}
                         {asset.provider && (
                             <span>
                                 vía{' '}
@@ -375,21 +441,13 @@ function NowStrip({
 
 function LocationCard({
     asset,
-    history,
+    trail,
 }: {
     asset: AssetShowProps['asset'];
-    history: LocationHistoryEntry[];
+    /** Oldest first, so the line draws toward the current position. */
+    trail: LocationTrailPoint[];
 }) {
     const location = asset.lastLocation;
-    // Oldest first so the trail draws toward the current position.
-    const trail = useMemo(
-        () =>
-            [...history].reverse().map((entry) => ({
-                latitude: entry.latitude,
-                longitude: entry.longitude,
-            })),
-        [history],
-    );
 
     return (
         <Card className="gap-0 overflow-hidden py-0">
@@ -513,7 +571,12 @@ function VehicleCard({ asset }: { asset: AssetShowProps['asset'] }) {
                 <span className="font-mono text-xs">{vehicle.vin}</span>
             ) : null,
         ],
-        ['Tipo', asset.type?.name ?? null],
+        [
+            'Tipo',
+            asset.type
+                ? assetTypeLabel(asset.type.code, asset.type.name)
+                : null,
+        ],
         ['Proveedor', asset.provider ?? null],
         [
             'ID en proveedor',
@@ -657,7 +720,13 @@ function TelemetryCard({ telemetry }: { telemetry: TelemetryEntry[] }) {
     );
 }
 
-function LocationHistoryCard({ history }: { history: LocationHistoryEntry[] }) {
+function LocationHistoryCard({
+    history,
+    windowHours,
+}: {
+    history: LocationHistoryEntry[];
+    windowHours: number;
+}) {
     return (
         <Card className="gap-0 overflow-hidden py-0">
             <CardHeader className="flex flex-row items-center justify-between border-b border-border px-4 py-3">
@@ -665,8 +734,7 @@ function LocationHistoryCard({ history }: { history: LocationHistoryEntry[] }) {
                     <History size={15} /> Recorrido reciente
                 </CardTitle>
                 <span className="sam-meta">
-                    últimas {history.length}{' '}
-                    {history.length === 1 ? 'posición' : 'posiciones'}
+                    últimas {windowHours} h · una posición por minuto
                 </span>
             </CardHeader>
             <CardContent className="p-0">
@@ -747,7 +815,7 @@ function LocationHistoryCard({ history }: { history: LocationHistoryEntry[] }) {
                                                 : '—'}
                                         </td>
                                         <td className="px-2.5 py-2 font-mono text-3xs text-fg-3">
-                                            {entry.source}
+                                            {sourceLabel(entry.source)}
                                         </td>
                                     </tr>
                                 ))}
@@ -764,8 +832,41 @@ function LocationHistoryCard({ history }: { history: LocationHistoryEntry[] }) {
 
 export default function AssetShow() {
     const page = usePage();
-    const { asset, telemetry, locationHistory, incidents, recentEvents } =
-        page.props as unknown as AssetShowProps;
+    const {
+        asset: serverAsset,
+        telemetry,
+        locationHistory,
+        locationTrail,
+        trailWindowHours,
+        incidents,
+        recentEvents,
+    } = page.props as unknown as AssetShowProps;
+
+    // Newest live position of THIS unit, and the points received live. The
+    // trail below only uses the ones newer than the server's last point, so a
+    // server reload supersedes them without resetting anything.
+    const [live, setLive] = useState<FleetPosition | null>(null);
+    const [liveTrail, setLiveTrail] = useState<LocationTrailPoint[]>([]);
+
+    const asset = useMemo(
+        () => withLivePosition(serverAsset, live),
+        [serverAsset, live],
+    );
+
+    const trail = useMemo(() => {
+        const server = locationTrail ?? [];
+        const lastServerAt =
+            server.length > 0
+                ? Date.parse(server[server.length - 1].recordedAt)
+                : 0;
+
+        return [
+            ...server,
+            ...liveTrail.filter(
+                (point) => Date.parse(point.recordedAt) > lastServerAt,
+            ),
+        ];
+    }, [locationTrail, liveTrail]);
     const teamSlug = page.props.currentTeam?.slug ?? null;
 
     // Live updates for THIS asset only: location polls refresh position +
@@ -773,30 +874,16 @@ export default function AssetShow() {
     // into one partial reload with the union of affected props.
     const pendingKeys = useRef<Set<string>>(new Set());
     const timer = useRef<number | null>(null);
+    const lastHistoryRefresh = useRef(0);
 
     useEffect(() => {
-        const handler = (event: Event) => {
-            const detail = (event as CustomEvent<TeamBroadcastDetail>).detail;
-            const payload = detail?.payload as
-                | { asset_id?: number }
-                | undefined;
+        // The page was just rendered from the server: no history refresh
+        // for the first interval.
+        lastHistoryRefresh.current = Date.now();
 
-            if (payload?.asset_id !== asset.id) {
-                return;
-            }
-
-            if (detail?.event === 'asset.location_updated') {
-                pendingKeys.current.add('asset');
-                pendingKeys.current.add('locationHistory');
-                pendingKeys.current.add('telemetry');
-            } else if (
-                detail?.event === 'asset.status_changed' ||
-                detail?.event === 'asset.monitoring_changed'
-            ) {
-                pendingKeys.current.add('asset');
-            } else {
-                return;
-            }
+        // Coalesce into one partial reload with the union of affected props.
+        const schedule = (...keys: string[]): void => {
+            keys.forEach((key) => pendingKeys.current.add(key));
 
             if (timer.current !== null) {
                 return;
@@ -810,6 +897,84 @@ export default function AssetShow() {
             }, RELOAD_DEBOUNCE_MS);
         };
 
+        const handler = (event: Event) => {
+            const detail = (event as CustomEvent<TeamBroadcastDetail>).detail;
+
+            switch (detail?.event) {
+                case 'fleet.positions_updated': {
+                    const { positions } =
+                        detail.payload as unknown as FleetPositionsUpdatedPayload;
+                    const mine = positions.find((p) => p.asset_id === asset.id);
+
+                    if (mine === undefined) {
+                        return;
+                    }
+
+                    setLive(mine);
+                    // Bounded to the trail window, however long the page
+                    // stays open.
+                    const cutoff =
+                        Date.now() - (trailWindowHours ?? 2) * 3_600_000;
+                    setLiveTrail((prev) => [
+                        ...prev.filter(
+                            (point) => Date.parse(point.recordedAt) > cutoff,
+                        ),
+                        {
+                            latitude: mine.latitude,
+                            longitude: mine.longitude,
+                            recordedAt: mine.recorded_at,
+                        },
+                    ]);
+
+                    if (
+                        Date.now() - lastHistoryRefresh.current >
+                        HISTORY_REFRESH_MS
+                    ) {
+                        lastHistoryRefresh.current = Date.now();
+                        schedule('asset', 'locationHistory', 'locationTrail');
+                    }
+
+                    return;
+                }
+                case 'fleet.telemetry_updated': {
+                    const { assets } =
+                        detail.payload as unknown as FleetTelemetryUpdatedPayload;
+
+                    if (assets.some((entry) => entry.asset_id === asset.id)) {
+                        schedule('telemetry');
+                    }
+
+                    return;
+                }
+                case 'asset.location_updated':
+                case 'asset.status_changed':
+                case 'asset.monitoring_changed': {
+                    const payload = detail.payload as { asset_id?: number };
+
+                    if (payload.asset_id !== asset.id) {
+                        return;
+                    }
+
+                    // A one-off live lookup (critical event) still arrives
+                    // per asset.
+                    if (detail.event === 'asset.location_updated') {
+                        schedule(
+                            'asset',
+                            'locationHistory',
+                            'locationTrail',
+                            'telemetry',
+                        );
+                    } else {
+                        schedule('asset');
+                    }
+
+                    return;
+                }
+                default:
+                    return;
+            }
+        };
+
         window.addEventListener(TEAM_BROADCAST_EVENT_NAME, handler);
 
         return () => {
@@ -819,7 +984,7 @@ export default function AssetShow() {
                 window.clearTimeout(timer.current);
             }
         };
-    }, [asset.id]);
+    }, [asset.id, trailWindowHours]);
 
     return (
         <>
@@ -834,7 +999,7 @@ export default function AssetShow() {
                     telemetría). */}
                 <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
                     <div className="flex min-w-0 flex-col gap-4">
-                        <LocationCard asset={asset} history={locationHistory} />
+                        <LocationCard asset={asset} trail={trail} />
                         <RecentEventsCard
                             events={recentEvents ?? []}
                             teamSlug={teamSlug}
@@ -845,7 +1010,10 @@ export default function AssetShow() {
                             teamSlug={teamSlug}
                             subject="Esta unidad"
                         />
-                        <LocationHistoryCard history={locationHistory} />
+                        <LocationHistoryCard
+                            history={locationHistory}
+                            windowHours={trailWindowHours ?? 2}
+                        />
                     </div>
                     <div className="flex min-w-0 flex-col gap-4">
                         <DriverCard driver={asset.driver} teamSlug={teamSlug} />

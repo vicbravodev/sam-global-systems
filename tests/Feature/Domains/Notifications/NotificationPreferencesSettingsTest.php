@@ -2,9 +2,11 @@
 
 namespace Tests\Feature\Domains\Notifications;
 
+use App\Domains\Incidents\Models\IncidentType;
 use App\Domains\Notifications\Models\Notification;
 use App\Domains\Notifications\Models\NotificationPreference;
 use App\Models\User;
+use Database\Seeders\PlatformChannelSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -21,6 +23,9 @@ class NotificationPreferencesSettingsTest extends TestCase
 
     public function test_page_renders_user_preferences_and_known_types(): void
     {
+        $this->seed(PlatformChannelSeeder::class);
+        IncidentType::factory()->create(['code' => 'panic_emergency', 'name' => 'Emergencia de pánico']);
+
         $user = User::factory()->create();
         $team = $user->currentTeam;
 
@@ -58,11 +63,17 @@ class NotificationPreferencesSettingsTest extends TestCase
                     fn ($types) => collect($types)->contains('incident.panic_emergency.created')
                         && collect($types)->contains('incident.sla_breached'),
                 )
+                // Las claves llevan puntos: se comparan con closure, no con dot-path.
+                ->where('typeLabels', fn ($labels) => $labels['incident.created'] === 'Incidente nuevo (cualquier tipo)'
+                    && $labels['incident.sla_breached'] === 'Incidente sin atender a tiempo (SLA vencido)'
+                    && $labels['incident.panic_emergency.created'] === 'Incidente nuevo: emergencia de pánico')
                 ->has('channelOptions')
                 ->where(
                     'channelOptions',
                     fn ($options) => collect($options)->contains(['value' => 'sms', 'label' => 'SMS'])
-                        && collect($options)->contains(['value' => 'whatsapp', 'label' => 'WhatsApp']),
+                        && collect($options)->contains(['value' => 'whatsapp', 'label' => 'WhatsApp'])
+                        // SAM no entrega Push/Slack/Webhook: no se ofrecen.
+                        && collect($options)->pluck('value')->intersect(['push', 'slack', 'webhook'])->isEmpty(),
                 ),
         );
     }

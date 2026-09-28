@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Teams;
 
+use App\Domains\Tenancy\Models\Subscription;
 use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Models\TeamInvitation;
@@ -194,6 +195,26 @@ class TeamTest extends TestCase
         $this->assertSoftDeleted('teams', [
             'id' => $team->id,
         ]);
+    }
+
+    public function test_billed_tenants_cannot_be_deleted_by_their_owner()
+    {
+        $user = User::factory()->create();
+        $team = Team::factory()->create();
+        $team->members()->attach($user, ['role' => TeamRole::Owner->value]);
+        Subscription::factory()->create(['team_id' => $team->id]);
+
+        $this->actingAs($user)
+            ->delete(route('teams.destroy', $team), ['name' => $team->name])
+            ->assertForbidden();
+
+        $this->assertDatabaseHas('teams', ['id' => $team->id, 'deleted_at' => null]);
+
+        $this->actingAs($user)
+            ->get(route('teams.edit', $team))
+            ->assertInertia(fn ($page) => $page
+                ->component('teams/edit')
+                ->where('permissions.canDeleteTeam', false));
     }
 
     public function test_team_deletion_requires_name_confirmation()
