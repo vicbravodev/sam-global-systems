@@ -6,22 +6,23 @@ use App\Contracts\Notifications\ChannelDriverRegistry;
 use App\Contracts\Notifications\NotificationDriver;
 use App\Contracts\TenantConfig\TenantNotificationPoliciesResolver;
 use App\Domains\Notifications\Actions\DispatchNotification;
-use App\Domains\Notifications\Actions\RecordDeliveryAttempt;
-use App\Domains\Notifications\Actions\RenderNotificationContent;
 use App\Domains\Notifications\Data\DeliveryResult;
 use App\Domains\Notifications\Data\RenderedNotification;
 use App\Domains\Notifications\Data\TenantNotificationPolicy;
 use App\Domains\Notifications\Enums\ChannelType;
+use App\Domains\Notifications\Enums\DeliveryStatus;
+use App\Domains\Notifications\Enums\MessagingChargeSource;
+use App\Domains\Notifications\Enums\MessagingResourceType;
 use App\Domains\Notifications\Enums\NotificationPriority;
 use App\Domains\Notifications\Enums\NotificationStatus;
 use App\Domains\Notifications\Enums\RecipientType;
 use App\Domains\Notifications\Jobs\FallbackNotificationChannelJob;
 use App\Domains\Notifications\Jobs\RetryNotificationDeliveryJob;
+use App\Domains\Notifications\Models\MessagingCharge;
 use App\Domains\Notifications\Models\Notification;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Models\NotificationDelivery;
 use App\Domains\Notifications\Models\NotificationRecipient;
-use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Domains\Tenancy\Models\UsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
 use App\Models\Team;
@@ -30,6 +31,8 @@ use Database\Seeders\IncidentsMeterSeeder;
 use Database\Seeders\NotificationMeterSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 /**
@@ -50,25 +53,15 @@ class DispatchNotificationChannelMeterTest extends TestCase
         // notifications do not bill the DTMF meter" assertions are meaningful.
         $this->seed(IncidentsMeterSeeder::class);
 
-        $this->app->instance(ChannelDriverRegistry::class, new class implements ChannelDriverRegistry
-        {
-            public function driverFor(ChannelType $channelType): NotificationDriver
-            {
-                return new class implements NotificationDriver
-                {
-                    public function send(RenderedNotification $notification, NotificationChannel $channel): DeliveryResult
-                    {
-                        return DeliveryResult::success(providerMessageId: 'fake-message-id');
-                    }
-                };
-            }
-        });
+        $this->bindDriver(fn (ChannelType $type) => $type === ChannelType::Voice
+            ? DeliveryResult::accepted('CA'.uniqid(), MessagingResourceType::Call, 'queued')
+            : DeliveryResult::accepted('SM'.uniqid(), MessagingResourceType::Message, 'queued', segments: 1));
     }
 
     public function test_sms_delivery_bills_sms_messages_meter(): void
     {
         $team = $this->actingTeam();
-        NotificationChannel::factory()->sms()->create(['team_id' => $team->id, 'is_active' => true]);
+        NotificationChannel::factory()->sms()->create(['is_active' => true]);
 
         $notification = $this->makeMessagingNotification($team, ChannelType::Sms);
 
@@ -85,7 +78,7 @@ class DispatchNotificationChannelMeterTest extends TestCase
     public function test_whatsapp_delivery_bills_whatsapp_messages_meter(): void
     {
         $team = $this->actingTeam();
-        NotificationChannel::factory()->whatsapp()->create(['team_id' => $team->id, 'is_active' => true]);
+        NotificationChannel::factory()->whatsapp()->create(['is_active' => true]);
 
         $notification = $this->makeMessagingNotification($team, ChannelType::Whatsapp);
 
@@ -102,7 +95,7 @@ class DispatchNotificationChannelMeterTest extends TestCase
     public function test_voice_delivery_bills_voice_notification_calls_not_dtmf_voice_calls(): void
     {
         $team = $this->actingTeam();
-        NotificationChannel::factory()->voice()->create(['team_id' => $team->id, 'is_active' => true]);
+        NotificationChannel::factory()->voice()->create(['is_active' => true]);
 
         $notification = $this->makeMessagingNotification($team, ChannelType::Voice);
 
@@ -122,7 +115,7 @@ class DispatchNotificationChannelMeterTest extends TestCase
     public function test_re_dispatch_does_not_double_bill_channel_meter(): void
     {
         $team = $this->actingTeam();
-        NotificationChannel::factory()->sms()->create(['team_id' => $team->id, 'is_active' => true]);
+        NotificationChannel::factory()->sms()->create(['is_active' => true]);
 
         $notification = $this->makeMessagingNotification($team, ChannelType::Sms);
 
@@ -136,7 +129,7 @@ class DispatchNotificationChannelMeterTest extends TestCase
     public function test_retried_sms_delivery_bills_sms_messages_meter(): void
     {
         $team = $this->actingTeam();
-        $channel = NotificationChannel::factory()->sms()->create(['team_id' => $team->id, 'is_active' => true]);
+        $channel = NotificationChannel::factory()->sms()->create(['is_active' => true]);
 
         $notification = Notification::factory()->create(['team_id' => $team->id]);
         $recipient = NotificationRecipient::factory()->create([
@@ -152,12 +145,7 @@ class DispatchNotificationChannelMeterTest extends TestCase
             'attempt_number' => 1,
         ]);
 
-        (new RetryNotificationDeliveryJob($delivery->id))->handle(
-            app(ChannelDriverRegistry::class),
-            app(RenderNotificationContent::class),
-            app(RecordDeliveryAttempt::class),
-            app(RecordUsageEvent::class),
-        );
+        app()->call([new RetryNotificationDeliveryJob($delivery->id), 'handle']);
 
         $events = $this->usageEventsFor('sms_messages');
         $this->assertCount(1, $events);
@@ -181,8 +169,8 @@ class DispatchNotificationChannelMeterTest extends TestCase
             }
         });
 
-        $primaryChannel = NotificationChannel::factory()->email()->create(['team_id' => $team->id, 'is_active' => true]);
-        NotificationChannel::factory()->sms()->create(['team_id' => $team->id, 'is_active' => true]);
+        $primaryChannel = NotificationChannel::factory()->email()->create(['is_active' => true]);
+        NotificationChannel::factory()->sms()->create(['is_active' => true]);
 
         $notification = Notification::factory()->create(['team_id' => $team->id]);
         $recipient = NotificationRecipient::factory()->create([
@@ -197,13 +185,7 @@ class DispatchNotificationChannelMeterTest extends TestCase
             'team_id' => $team->id,
         ]);
 
-        (new FallbackNotificationChannelJob($failed->id))->handle(
-            app(ChannelDriverRegistry::class),
-            app(TenantNotificationPoliciesResolver::class),
-            app(RenderNotificationContent::class),
-            app(RecordDeliveryAttempt::class),
-            app(RecordUsageEvent::class),
-        );
+        app()->call([new FallbackNotificationChannelJob($failed->id), 'handle']);
 
         $fallbackDelivery = NotificationDelivery::withoutGlobalScopes()
             ->where('notification_id', $notification->id)
@@ -214,6 +196,108 @@ class DispatchNotificationChannelMeterTest extends TestCase
         $this->assertCount(1, $events);
         $this->assertSame("notif_fallback_{$fallbackDelivery->id}", $events->first()->event_key);
         $this->assertCount(0, $this->usageEventsFor('outbound_notifications'));
+    }
+
+    public function test_sms_meter_counts_twilio_segments(): void
+    {
+        $this->bindDriver(fn () => DeliveryResult::accepted('SM_TWO_SEGMENTS', MessagingResourceType::Message, 'queued', segments: 2));
+
+        $team = $this->actingTeam();
+        NotificationChannel::factory()->sms()->create(['is_active' => true]);
+
+        app(DispatchNotification::class)->execute($this->makeMessagingNotification($team, ChannelType::Sms));
+
+        $this->assertSame(2, (int) $this->usageEventsFor('sms_messages')->sole()->quantity);
+    }
+
+    public function test_accepted_twilio_send_is_queued_not_delivered_and_registers_its_charge(): void
+    {
+        $team = $this->actingTeam();
+        NotificationChannel::factory()->sms()->create(['is_active' => true]);
+
+        $notification = $this->makeMessagingNotification($team, ChannelType::Sms);
+        app(DispatchNotification::class)->execute($notification);
+
+        $delivery = NotificationDelivery::query()->where('notification_id', $notification->id)->sole();
+
+        // Twilio accepting the API call is NOT a delivery.
+        $this->assertSame(DeliveryStatus::Queued, $delivery->status);
+        $this->assertNotNull($delivery->accepted_at);
+        $this->assertNull($delivery->delivered_at);
+
+        $charge = MessagingCharge::query()->where('provider_sid', $delivery->provider_message_id)->sole();
+        $this->assertSame(MessagingChargeSource::NotificationDelivery, $charge->source_type);
+        $this->assertSame($delivery->id, $charge->source_id);
+        $this->assertSame($team->id, $charge->team_id);
+        $this->assertNull($charge->finalized_at);
+    }
+
+    public function test_send_rejected_by_the_api_is_not_metered(): void
+    {
+        Queue::fake();
+        $this->bindDriver(fn () => DeliveryResult::failure('twilio sms error: invalid number', permanent: true, providerErrorCode: '21211'));
+
+        $team = $this->actingTeam();
+        NotificationChannel::factory()->sms()->create(['is_active' => true]);
+
+        app(DispatchNotification::class)->execute($this->makeMessagingNotification($team, ChannelType::Sms));
+
+        $this->assertCount(0, $this->usageEventsFor('sms_messages'));
+        $this->assertSame(0, MessagingCharge::query()->count());
+    }
+
+    public function test_missing_meter_never_breaks_a_send_that_already_happened(): void
+    {
+        UsageMeter::query()->where('code', 'sms_messages')->delete();
+        Cache::flush();
+
+        $team = $this->actingTeam();
+        NotificationChannel::factory()->sms()->create(['is_active' => true]);
+        NotificationChannel::factory()->email()->create(['is_active' => true]);
+
+        $notification = Notification::factory()->create([
+            'team_id' => $team->id,
+            'notification_type' => 'manual.test',
+            'priority' => NotificationPriority::Normal,
+            'status' => NotificationStatus::Queued,
+            'payload_json' => [
+                'force_channels' => [ChannelType::Sms->value, ChannelType::Email->value],
+                'recipients' => [
+                    ['recipient_type' => RecipientType::ExternalContact->value, 'address' => 'a@example.com', 'phone' => '+5215512345678', 'name' => 'A'],
+                    ['recipient_type' => RecipientType::ExternalContact->value, 'address' => 'b@example.com', 'phone' => '+5215587654321', 'name' => 'B'],
+                ],
+            ],
+        ]);
+
+        app(DispatchNotification::class)->execute($notification);
+
+        // Both recipients got both channels even though sms metering failed.
+        $this->assertSame(4, NotificationDelivery::query()->where('notification_id', $notification->id)->count());
+        $this->assertCount(4, NotificationDelivery::query()->where('notification_id', $notification->id)->get()->filter(fn ($d) => $d->status->isReached()));
+    }
+
+    /**
+     * @param  \Closure(ChannelType): DeliveryResult  $result
+     */
+    private function bindDriver(\Closure $result): void
+    {
+        $this->app->instance(ChannelDriverRegistry::class, new class($result) implements ChannelDriverRegistry
+        {
+            public function __construct(private readonly \Closure $result) {}
+
+            public function driverFor(ChannelType $channelType): NotificationDriver
+            {
+                return new class($this->result, $channelType) implements NotificationDriver
+                {
+                    public function __construct(private readonly \Closure $result, private readonly ChannelType $type) {}
+
+                    public function send(RenderedNotification $notification, NotificationChannel $channel): DeliveryResult
+                    {
+                        return ($this->result)($this->type);
+                    }
+                };
+            }
+        });
     }
 
     private function actingTeam(): Team

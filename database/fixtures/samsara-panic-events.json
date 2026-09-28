@@ -1,1 +1,657 @@
-[{"id":"019ff2c9-54d6-7186-bf40-15733a6c9794","company_id":2,"source":"webhook","samsara_event_id":"15795cdc-8d89-48db-86dc-a1d248c23727","event_type":"AlertIncident","event_description":"Botón de pánico","vehicle_id":"281474994288623","vehicle_name":"ROBUST VW PS1994B","driver_id":null,"driver_name":null,"severity":"critical","occurred_at":"2026-08-11T21:45:03.000000Z","raw_payload":{"data":{"conditions":[{"details":{"panicButton":{"vehicle":{"id":"281474994288623","name":"ROBUST VW PS1994B","tags":[{"id":"4849471","name":"MONITOREO 2"},{"id":"6107225","name":"UTILITARIOS JC"}],"serial":"GDC7BC3UCN","externalIds":{"samsara.vin":"9BWKB45U2PP044823","samsara.serial":"GDC7BC3UCN"}}}},"triggerId":1034,"description":"Panic Button"}],"isResolved":false,"incidentUrl":"https://cloud.samsara.com/o/4006685/fleet/workflows/incidents/a0818d04-f303-4361-b1c9-5aac8befcc13/1/281474994288623/1786484703378","updatedAtTime":"2026-08-11T21:45:08Z","happenedAtTime":"2026-08-11T21:45:03Z","configurationId":"a0818d04-f303-4361-b1c9-5aac8befcc13"},"orgId":4006685,"eventId":"15795cdc-8d89-48db-86dc-a1d248c23727","eventTime":"2026-08-11T21:45:03.378Z","eventType":"AlertIncident","webhookId":"541115021054798"},"created_at":"2026-08-11T21:45:08.000000Z"},{"id":"019ff2c5-48a0-729c-a69a-30ef014878f0","company_id":2,"source":"webhook","samsara_event_id":"ea0679ac-ddda-400c-b081-533b4990acc2","event_type":"AlertIncident","event_description":"Botón de pánico","vehicle_id":"281474994288623","vehicle_name":"ROBUST VW PS1994B","driver_id":null,"driver_name":null,"severity":"critical","occurred_at":"2026-08-11T21:40:33.000000Z","raw_payload":{"data":{"conditions":[{"details":{"panicButton":{"vehicle":{"id":"281474994288623","name":"ROBUST VW PS1994B","tags":[{"id":"4849471","name":"MONITOREO 2"},{"id":"6107225","name":"UTILITARIOS JC"}],"serial":"GDC7BC3UCN","externalIds":{"samsara.vin":"9BWKB45U2PP044823","samsara.serial":"GDC7BC3UCN"}}}},"triggerId":1034,"description":"Panic Button"}],"isResolved":true,"incidentUrl":"https://cloud.samsara.com/o/4006685/fleet/workflows/incidents/a0818d04-f303-4361-b1c9-5aac8befcc13/1/281474994288623/1786484433766","updatedAtTime":"2026-08-11T21:40:42Z","happenedAtTime":"2026-08-11T21:40:33Z","resolvedAtTime":"2026-08-11T21:40:34Z","configurationId":"a0818d04-f303-4361-b1c9-5aac8befcc13"},"orgId":4006685,"eventId":"ea0679ac-ddda-400c-b081-533b4990acc2","eventTime":"2026-08-11T21:40:33.766Z","eventType":"AlertIncident","webhookId":"541115021054798"},"created_at":"2026-08-11T21:40:43.000000Z"},{"id":"019ff2b3-a740-70b9-b146-2db3d91288bf","company_id":2,"source":"webhook","samsara_event_id":"b9e8e2da-535e-43b4-abbf-6b6e79562006","event_type":"AlertIncident","event_description":"Botón de pánico","vehicle_id":"281474994288623","vehicle_name":"ROBUST VW PS1994B","driver_id":null,"driver_name":null,"severity":"critical","occurred_at":"2026-08-11T21:21:13.000000Z","raw_payload":{"data":{"conditions":[{"details":{"panicButton":{"vehicle":{"id":"281474994288623","name":"ROBUST VW PS1994B","tags":[{"id":"4849471","name":"MONITOREO 2"},{"id":"6107225","name":"UTILITARIOS JC"}],"serial":"GDC7BC3UCN","externalIds":{"samsara.vin":"9BWKB45U2PP044823","samsara.serial":"GDC7BC3UCN"}}}},"triggerId":1034,"description":"Panic Button"}],"isResolved":true,"incidentUrl":"https://cloud.samsara.com/o/4006685/fleet/workflows/incidents/a0818d04-f303-4361-b1c9-5aac8befcc13/1/281474994288623/1786483273381","updatedAtTime":"2026-08-11T21:21:27Z","happenedAtTime":"2026-08-11T21:21:13Z","resolvedAtTime":"2026-08-11T21:21:16Z","configurationId":"a0818d04-f303-4361-b1c9-5aac8befcc13"},"orgId":4006685,"eventId":"b9e8e2da-535e-43b4-abbf-6b6e79562006","eventTime":"2026-08-11T21:21:13.381Z","eventType":"AlertIncident","webhookId":"541115021054798"},"created_at":"2026-08-11T21:21:27.000000Z"},{"id":"019ff112-47a5-7304-b93f-f91ee297f492","company_id":2,"source":"webhook","samsara_event_id":"470b0fce-cc00-414d-850f-8f603140f10c","event_type":"AlertIncident","event_description":"Botón de pánico","vehicle_id":"281474993188152","vehicle_name":"T-77 JC PZ4388A","driver_id":null,"driver_name":null,"severity":"critical","occurred_at":"2026-08-11T13:45:21.000000Z","raw_payload":{"data":{"conditions":[{"details":{"panicButton":{"vehicle":{"id":"281474993188152","name":"T-77 JC PZ4388A","tags":[{"id":"4724218","name":"KRONH"},{"id":"4691922","name":"LOCAL JC"}],"serial":"GCNRBGECSG","externalIds":{"samsara.vin":"1FUJGLDR2BSAZ9708","samsara.serial":"GCNRBGECSG"}}}},"triggerId":1034,"description":"Panic Button"}],"isResolved":true,"incidentUrl":"https://cloud.samsara.com/o/4006685/fleet/workflows/incidents/a0818d04-f303-4361-b1c9-5aac8befcc13/1/281474993188152/1786455921583","updatedAtTime":"2026-08-11T13:45:34Z","happenedAtTime":"2026-08-11T13:45:21Z","resolvedAtTime":"2026-08-11T13:45:22Z","configurationId":"a0818d04-f303-4361-b1c9-5aac8befcc13"},"orgId":4006685,"eventId":"470b0fce-cc00-414d-850f-8f603140f10c","eventTime":"2026-08-11T13:45:21.583Z","eventType":"AlertIncident","webhookId":"541115021054798"},"created_at":"2026-08-11T13:45:34.000000Z"},{"id":"019fe9af-8242-7314-bdb4-40f21b135fb3","company_id":2,"source":"webhook","samsara_event_id":"5466e260-9e27-4c87-b1bd-227f76b4c6ff","event_type":"AlertIncident","event_description":"Botón de pánico","vehicle_id":"281474995801051","vehicle_name":"T-0524 USA 32LA3T","driver_id":null,"driver_name":null,"severity":"critical","occurred_at":"2026-08-10T03:20:12.000000Z","raw_payload":{"data":{"conditions":[{"details":{"panicButton":{"driver":{"id":"56062138","name":"CRISTIAN ESTEBAN GONZALEZ PERALTA","tags":[{"id":"7076291","name":"OPERADORES B1 USA"},{"id":"4738197","name":"USA"}]},"vehicle":{"id":"281474995801051","name":"T-0524 USA 32LA3T","tags":[{"id":"5061603","name":"EN VIVO"},{"id":"4691862","name":"FORANEO JC"},{"id":"7489630","name":"IFTA"},{"id":"5289081","name":"TRACTOS USA"},{"id":"4738197","name":"USA"}],"serial":"GRF6UG4S2E","externalIds":{"samsara.vin":"1XKYD49X9RJ348681","samsara.serial":"GRF6UG4S2E"}}}},"triggerId":1034,"description":"Panic Button"}],"isResolved":true,"incidentUrl":"https://cloud.samsara.com/o/4006685/fleet/workflows/incidents/a0818d04-f303-4361-b1c9-5aac8befcc13/1/281474995801051/1786332012749","updatedAtTime":"2026-08-10T03:20:21Z","happenedAtTime":"2026-08-10T03:20:12Z","resolvedAtTime":"2026-08-10T03:20:13Z","configurationId":"a0818d04-f303-4361-b1c9-5aac8befcc13"},"orgId":4006685,"eventId":"5466e260-9e27-4c87-b1bd-227f76b4c6ff","eventTime":"2026-08-10T03:20:12.749Z","eventType":"AlertIncident","webhookId":"541115021054798"},"created_at":"2026-08-10T03:20:21.000000Z"},{"id":"019fe968-8d65-7158-8c03-5a4ec963a43c","company_id":2,"source":"webhook","samsara_event_id":"56ccde94-deb7-4a76-a5dc-0b661af88ec7","event_type":"AlertIncident","event_description":"Botón de pánico","vehicle_id":"281474995442045","vehicle_name":"T-887 JC 72BJ4N","driver_id":null,"driver_name":null,"severity":"critical","occurred_at":"2026-08-10T02:02:37.000000Z","raw_payload":{"data":{"conditions":[{"details":{"panicButton":{"driver":{"id":"51910033","name":"JESUS ISAIAS GONZALEZ BERNAL","tags":[{"id":"4691864","name":"CREDENCIALIZADO"},{"id":"5259276","name":"FLOTA ERUBIEL"},{"id":"4691862","name":"FORANEO JC"}]},"vehicle":{"id":"281474995442045","name":"T-887 JC 72BJ4N","tags":[{"id":"5259276","name":"FLOTA ERUBIEL"},{"id":"4691862","name":"FORANEO JC"},{"id":"4724218","name":"KRONH"}],"serial":"G6UAN38K3V","externalIds":{"samsara.vin":"3WKYD40X9TF567102","samsara.serial":"G6UAN38K3V"}}}},"triggerId":1034,"description":"Panic Button"}],"isResolved":true,"incidentUrl":"https://cloud.samsara.com/o/4006685/fleet/workflows/incidents/a0818d04-f303-4361-b1c9-5aac8befcc13/1/281474995442045/1786327357548","updatedAtTime":"2026-08-10T02:02:50Z","happenedAtTime":"2026-08-10T02:02:37Z","resolvedAtTime":"2026-08-10T02:02:40Z","configurationId":"a0818d04-f303-4361-b1c9-5aac8befcc13"},"orgId":4006685,"eventId":"56ccde94-deb7-4a76-a5dc-0b661af88ec7","eventTime":"2026-08-10T02:02:37.548Z","eventType":"AlertIncident","webhookId":"541115021054798"},"created_at":"2026-08-10T02:02:51.000000Z"},{"id":"019fe746-c5fc-7165-937e-3e4cfb7537af","company_id":2,"source":"webhook","samsara_event_id":"946a094f-3dcf-4918-a138-5b9d3bb3a7b3","event_type":"AlertIncident","event_description":"Botón de pánico","vehicle_id":"281474994162620","vehicle_name":"TR-004 JC 19AN7N","driver_id":null,"driver_name":null,"severity":"critical","occurred_at":"2026-08-09T16:06:36.000000Z","raw_payload":{"data":{"conditions":[{"details":{"panicButton":{"vehicle":{"id":"281474994162620","name":"TR-004 JC 19AN7N","tags":[{"id":"6668230","name":"ERICK RODRIGUEZ"},{"id":"4724218","name":"KRONH"},{"id":"4691922","name":"LOCAL JC"},{"id":"4849471","name":"MONITOREO 2"},{"id":"4674603","name":"SOCIO COMERCIAL"}],"serial":"GMPTKMXCXB","externalIds":{"samsara.vin":"3HSDZAPT6NN812101","samsara.serial":"GMPTKMXCXB"}}}},"triggerId":1034,"description":"Panic Button"}],"isResolved":false,"incidentUrl":"https://cloud.samsara.com/o/4006685/fleet/workflows/incidents/a0818d04-f303-4361-b1c9-5aac8befcc13/1/281474994162620/1786291596873","updatedAtTime":"2026-08-09T16:06:42Z","happenedAtTime":"2026-08-09T16:06:36Z","configurationId":"a0818d04-f303-4361-b1c9-5aac8befcc13"},"orgId":4006685,"eventId":"946a094f-3dcf-4918-a138-5b9d3bb3a7b3","eventTime":"2026-08-09T16:06:36.873Z","eventType":"AlertIncident","webhookId":"541115021054798"},"created_at":"2026-08-09T16:06:42.000000Z"},{"id":"019fe746-27b3-7025-a6d6-da6a78ef271e","company_id":2,"source":"webhook","samsara_event_id":"d4908278-6725-4d32-ba8c-02f9bd37f4f9","event_type":"AlertIncident","event_description":"Botón de pánico","vehicle_id":"281474994162620","vehicle_name":"TR-004 JC 19AN7N","driver_id":null,"driver_name":null,"severity":"critical","occurred_at":"2026-08-09T16:05:54.000000Z","raw_payload":{"data":{"conditions":[{"details":{"panicButton":{"vehicle":{"id":"281474994162620","name":"TR-004 JC 19AN7N","tags":[{"id":"6668230","name":"ERICK RODRIGUEZ"},{"id":"4724218","name":"KRONH"},{"id":"4691922","name":"LOCAL JC"},{"id":"4849471","name":"MONITOREO 2"},{"id":"4674603","name":"SOCIO COMERCIAL"}],"serial":"GMPTKMXCXB","externalIds":{"samsara.vin":"3HSDZAPT6NN812101","samsara.serial":"GMPTKMXCXB"}}}},"triggerId":1034,"description":"Panic Button"}],"isResolved":false,"incidentUrl":"https://cloud.samsara.com/o/4006685/fleet/workflows/incidents/a0818d04-f303-4361-b1c9-5aac8befcc13/1/281474994162620/1786291554473","updatedAtTime":"2026-08-09T16:06:01Z","happenedAtTime":"2026-08-09T16:05:54Z","configurationId":"a0818d04-f303-4361-b1c9-5aac8befcc13"},"orgId":4006685,"eventId":"d4908278-6725-4d32-ba8c-02f9bd37f4f9","eventTime":"2026-08-09T16:05:54.473Z","eventType":"AlertIncident","webhookId":"541115021054798"},"created_at":"2026-08-09T16:06:02.000000Z"},{"id":"019fdfbd-1252-7010-9871-bfea6150daf1","company_id":2,"source":"webhook","samsara_event_id":"1c1068ab-69ed-41bf-9368-7eb00941bcd1","event_type":"AlertIncident","event_description":"Botón de pánico","vehicle_id":"281474994361064","vehicle_name":"T-360 SC PV3606B","driver_id":null,"driver_name":null,"severity":"critical","occurred_at":"2026-08-08T04:58:48.000000Z","raw_payload":{"data":{"conditions":[{"details":{"panicButton":{"vehicle":{"id":"281474994361064","name":"T-360 SC PV3606B","tags":[{"id":"8057823","name":"CLIENTE CARTON"},{"id":"4823291","name":"CRISTINA OBREGON SOCIO"},{"id":"4724218","name":"KRONH"},{"id":"4691922","name":"LOCAL JC"},{"id":"4849050","name":"MONITOREO 1"},{"id":"4674603","name":"SOCIO COMERCIAL"}],"serial":"GHE2M4FA36","externalIds":{"samsara.vin":"4V4NC9KK6BN531570","samsara.serial":"GHE2M4FA36"}}}},"triggerId":1034,"description":"Panic Button"}],"isResolved":true,"incidentUrl":"https://cloud.samsara.com/o/4006685/fleet/workflows/incidents/a0818d04-f303-4361-b1c9-5aac8befcc13/1/281474994361064/1786165128117","updatedAtTime":"2026-08-08T04:58:57Z","happenedAtTime":"2026-08-08T04:58:48Z","resolvedAtTime":"2026-08-08T04:58:49Z","configurationId":"a0818d04-f303-4361-b1c9-5aac8befcc13"},"orgId":4006685,"eventId":"1c1068ab-69ed-41bf-9368-7eb00941bcd1","eventTime":"2026-08-08T04:58:48.117Z","eventType":"AlertIncident","webhookId":"541115021054798"},"created_at":"2026-08-08T04:58:58.000000Z"},{"id":"019fdea1-c1e0-72ca-9979-3c1880fbef08","company_id":2,"source":"webhook","samsara_event_id":"504f7374-508b-4797-bf28-78545745cc40","event_type":"AlertIncident","event_description":"Botón de pánico","vehicle_id":"281474994288623","vehicle_name":"ROBUST VW PS1994B","driver_id":null,"driver_name":null,"severity":"critical","occurred_at":"2026-08-07T23:49:15.000000Z","raw_payload":{"data":{"conditions":[{"details":{"panicButton":{"vehicle":{"id":"281474994288623","name":"ROBUST VW PS1994B","tags":[{"id":"4849471","name":"MONITOREO 2"},{"id":"6107225","name":"UTILITARIOS JC"}],"serial":"GDC7BC3UCN","externalIds":{"samsara.vin":"9BWKB45U2PP044823","samsara.serial":"GDC7BC3UCN"}}}},"triggerId":1034,"description":"Panic Button"}],"isResolved":true,"incidentUrl":"https://cloud.samsara.com/o/4006685/fleet/workflows/incidents/a0818d04-f303-4361-b1c9-5aac8befcc13/1/281474994288623/1786146555466","updatedAtTime":"2026-08-07T23:49:29Z","happenedAtTime":"2026-08-07T23:49:15Z","resolvedAtTime":"2026-08-07T23:49:16Z","configurationId":"a0818d04-f303-4361-b1c9-5aac8befcc13"},"orgId":4006685,"eventId":"504f7374-508b-4797-bf28-78545745cc40","eventTime":"2026-08-07T23:49:15.466Z","eventType":"AlertIncident","webhookId":"541115021054798"},"created_at":"2026-08-07T23:49:30.000000Z"}]
+[
+    {
+        "id": 1637,
+        "source": "webhook",
+        "kind": "webhook",
+        "samsara_event_id": "15795cdc-8d89-48db-86dc-a1d248c23727",
+        "event_type": "AlertIncident",
+        "event_description": "Panic Button",
+        "vehicle_id": "281474994288623",
+        "vehicle_name": "ROBUST VW PS1994B",
+        "driver_id": null,
+        "driver_name": null,
+        "occurred_at": "2026-08-11T21:45:03+00:00",
+        "raw_payload": {
+            "data": {
+                "conditions": [
+                    {
+                        "details": {
+                            "panicButton": {
+                                "vehicle": {
+                                    "id": "281474994288623",
+                                    "name": "ROBUST VW PS1994B",
+                                    "tags": [
+                                        {
+                                            "id": "4849471",
+                                            "name": "MONITOREO 2"
+                                        },
+                                        {
+                                            "id": "6107225",
+                                            "name": "UTILITARIOS JC"
+                                        }
+                                    ],
+                                    "serial": "GDC7BC3UCN",
+                                    "externalIds": {
+                                        "samsara.vin": "9BWKB45U2PP044823",
+                                        "samsara.serial": "GDC7BC3UCN"
+                                    }
+                                }
+                            }
+                        },
+                        "triggerId": 1034,
+                        "description": "Panic Button"
+                    }
+                ],
+                "isResolved": false,
+                "incidentUrl": "https://cloud.samsara.com/o/4006685/fleet/workflows/incidents/a0818d04-f303-4361-b1c9-5aac8befcc13/1/281474994288623/1786484703378",
+                "updatedAtTime": "2026-08-11T21:45:08Z",
+                "happenedAtTime": "2026-08-11T21:45:03Z",
+                "configurationId": "a0818d04-f303-4361-b1c9-5aac8befcc13"
+            },
+            "orgId": 4006685,
+            "eventId": "15795cdc-8d89-48db-86dc-a1d248c23727",
+            "eventTime": "2026-08-11T21:45:03.378Z",
+            "eventType": "AlertIncident",
+            "webhookId": "541115021054798"
+        }
+    },
+    {
+        "id": 1638,
+        "source": "webhook",
+        "kind": "webhook",
+        "samsara_event_id": "ea0679ac-ddda-400c-b081-533b4990acc2",
+        "event_type": "AlertIncident",
+        "event_description": "Panic Button",
+        "vehicle_id": "281474994288623",
+        "vehicle_name": "ROBUST VW PS1994B",
+        "driver_id": null,
+        "driver_name": null,
+        "occurred_at": "2026-08-11T21:40:33+00:00",
+        "raw_payload": {
+            "data": {
+                "conditions": [
+                    {
+                        "details": {
+                            "panicButton": {
+                                "vehicle": {
+                                    "id": "281474994288623",
+                                    "name": "ROBUST VW PS1994B",
+                                    "tags": [
+                                        {
+                                            "id": "4849471",
+                                            "name": "MONITOREO 2"
+                                        },
+                                        {
+                                            "id": "6107225",
+                                            "name": "UTILITARIOS JC"
+                                        }
+                                    ],
+                                    "serial": "GDC7BC3UCN",
+                                    "externalIds": {
+                                        "samsara.vin": "9BWKB45U2PP044823",
+                                        "samsara.serial": "GDC7BC3UCN"
+                                    }
+                                }
+                            }
+                        },
+                        "triggerId": 1034,
+                        "description": "Panic Button"
+                    }
+                ],
+                "isResolved": true,
+                "incidentUrl": "https://cloud.samsara.com/o/4006685/fleet/workflows/incidents/a0818d04-f303-4361-b1c9-5aac8befcc13/1/281474994288623/1786484433766",
+                "updatedAtTime": "2026-08-11T21:40:42Z",
+                "happenedAtTime": "2026-08-11T21:40:33Z",
+                "resolvedAtTime": "2026-08-11T21:40:34Z",
+                "configurationId": "a0818d04-f303-4361-b1c9-5aac8befcc13"
+            },
+            "orgId": 4006685,
+            "eventId": "ea0679ac-ddda-400c-b081-533b4990acc2",
+            "eventTime": "2026-08-11T21:40:33.766Z",
+            "eventType": "AlertIncident",
+            "webhookId": "541115021054798"
+        }
+    },
+    {
+        "id": 1639,
+        "source": "webhook",
+        "kind": "webhook",
+        "samsara_event_id": "b9e8e2da-535e-43b4-abbf-6b6e79562006",
+        "event_type": "AlertIncident",
+        "event_description": "Panic Button",
+        "vehicle_id": "281474994288623",
+        "vehicle_name": "ROBUST VW PS1994B",
+        "driver_id": null,
+        "driver_name": null,
+        "occurred_at": "2026-08-11T21:21:13+00:00",
+        "raw_payload": {
+            "data": {
+                "conditions": [
+                    {
+                        "details": {
+                            "panicButton": {
+                                "vehicle": {
+                                    "id": "281474994288623",
+                                    "name": "ROBUST VW PS1994B",
+                                    "tags": [
+                                        {
+                                            "id": "4849471",
+                                            "name": "MONITOREO 2"
+                                        },
+                                        {
+                                            "id": "6107225",
+                                            "name": "UTILITARIOS JC"
+                                        }
+                                    ],
+                                    "serial": "GDC7BC3UCN",
+                                    "externalIds": {
+                                        "samsara.vin": "9BWKB45U2PP044823",
+                                        "samsara.serial": "GDC7BC3UCN"
+                                    }
+                                }
+                            }
+                        },
+                        "triggerId": 1034,
+                        "description": "Panic Button"
+                    }
+                ],
+                "isResolved": true,
+                "incidentUrl": "https://cloud.samsara.com/o/4006685/fleet/workflows/incidents/a0818d04-f303-4361-b1c9-5aac8befcc13/1/281474994288623/1786483273381",
+                "updatedAtTime": "2026-08-11T21:21:27Z",
+                "happenedAtTime": "2026-08-11T21:21:13Z",
+                "resolvedAtTime": "2026-08-11T21:21:16Z",
+                "configurationId": "a0818d04-f303-4361-b1c9-5aac8befcc13"
+            },
+            "orgId": 4006685,
+            "eventId": "b9e8e2da-535e-43b4-abbf-6b6e79562006",
+            "eventTime": "2026-08-11T21:21:13.381Z",
+            "eventType": "AlertIncident",
+            "webhookId": "541115021054798"
+        }
+    },
+    {
+        "id": 1640,
+        "source": "webhook",
+        "kind": "webhook",
+        "samsara_event_id": "470b0fce-cc00-414d-850f-8f603140f10c",
+        "event_type": "AlertIncident",
+        "event_description": "Panic Button",
+        "vehicle_id": "281474993188152",
+        "vehicle_name": "T-77 JC PZ4388A",
+        "driver_id": null,
+        "driver_name": null,
+        "occurred_at": "2026-08-11T13:45:21+00:00",
+        "raw_payload": {
+            "data": {
+                "conditions": [
+                    {
+                        "details": {
+                            "panicButton": {
+                                "vehicle": {
+                                    "id": "281474993188152",
+                                    "name": "T-77 JC PZ4388A",
+                                    "tags": [
+                                        {
+                                            "id": "4724218",
+                                            "name": "KRONH"
+                                        },
+                                        {
+                                            "id": "4691922",
+                                            "name": "LOCAL JC"
+                                        }
+                                    ],
+                                    "serial": "GCNRBGECSG",
+                                    "externalIds": {
+                                        "samsara.vin": "1FUJGLDR2BSAZ9708",
+                                        "samsara.serial": "GCNRBGECSG"
+                                    }
+                                }
+                            }
+                        },
+                        "triggerId": 1034,
+                        "description": "Panic Button"
+                    }
+                ],
+                "isResolved": true,
+                "incidentUrl": "https://cloud.samsara.com/o/4006685/fleet/workflows/incidents/a0818d04-f303-4361-b1c9-5aac8befcc13/1/281474993188152/1786455921583",
+                "updatedAtTime": "2026-08-11T13:45:34Z",
+                "happenedAtTime": "2026-08-11T13:45:21Z",
+                "resolvedAtTime": "2026-08-11T13:45:22Z",
+                "configurationId": "a0818d04-f303-4361-b1c9-5aac8befcc13"
+            },
+            "orgId": 4006685,
+            "eventId": "470b0fce-cc00-414d-850f-8f603140f10c",
+            "eventTime": "2026-08-11T13:45:21.583Z",
+            "eventType": "AlertIncident",
+            "webhookId": "541115021054798"
+        }
+    },
+    {
+        "id": 1641,
+        "source": "webhook",
+        "kind": "webhook",
+        "samsara_event_id": "5466e260-9e27-4c87-b1bd-227f76b4c6ff",
+        "event_type": "AlertIncident",
+        "event_description": "Panic Button",
+        "vehicle_id": "281474995801051",
+        "vehicle_name": "T-0524 USA 32LA3T",
+        "driver_id": null,
+        "driver_name": null,
+        "occurred_at": "2026-08-10T03:20:12+00:00",
+        "raw_payload": {
+            "data": {
+                "conditions": [
+                    {
+                        "details": {
+                            "panicButton": {
+                                "driver": {
+                                    "id": "56062138",
+                                    "name": "CRISTIAN ESTEBAN GONZALEZ PERALTA",
+                                    "tags": [
+                                        {
+                                            "id": "7076291",
+                                            "name": "OPERADORES B1 USA"
+                                        },
+                                        {
+                                            "id": "4738197",
+                                            "name": "USA"
+                                        }
+                                    ]
+                                },
+                                "vehicle": {
+                                    "id": "281474995801051",
+                                    "name": "T-0524 USA 32LA3T",
+                                    "tags": [
+                                        {
+                                            "id": "5061603",
+                                            "name": "EN VIVO"
+                                        },
+                                        {
+                                            "id": "4691862",
+                                            "name": "FORANEO JC"
+                                        },
+                                        {
+                                            "id": "7489630",
+                                            "name": "IFTA"
+                                        },
+                                        {
+                                            "id": "5289081",
+                                            "name": "TRACTOS USA"
+                                        },
+                                        {
+                                            "id": "4738197",
+                                            "name": "USA"
+                                        }
+                                    ],
+                                    "serial": "GRF6UG4S2E",
+                                    "externalIds": {
+                                        "samsara.vin": "1XKYD49X9RJ348681",
+                                        "samsara.serial": "GRF6UG4S2E"
+                                    }
+                                }
+                            }
+                        },
+                        "triggerId": 1034,
+                        "description": "Panic Button"
+                    }
+                ],
+                "isResolved": true,
+                "incidentUrl": "https://cloud.samsara.com/o/4006685/fleet/workflows/incidents/a0818d04-f303-4361-b1c9-5aac8befcc13/1/281474995801051/1786332012749",
+                "updatedAtTime": "2026-08-10T03:20:21Z",
+                "happenedAtTime": "2026-08-10T03:20:12Z",
+                "resolvedAtTime": "2026-08-10T03:20:13Z",
+                "configurationId": "a0818d04-f303-4361-b1c9-5aac8befcc13"
+            },
+            "orgId": 4006685,
+            "eventId": "5466e260-9e27-4c87-b1bd-227f76b4c6ff",
+            "eventTime": "2026-08-10T03:20:12.749Z",
+            "eventType": "AlertIncident",
+            "webhookId": "541115021054798"
+        }
+    },
+    {
+        "id": 1642,
+        "source": "webhook",
+        "kind": "webhook",
+        "samsara_event_id": "56ccde94-deb7-4a76-a5dc-0b661af88ec7",
+        "event_type": "AlertIncident",
+        "event_description": "Panic Button",
+        "vehicle_id": "281474995442045",
+        "vehicle_name": "T-887 JC 72BJ4N",
+        "driver_id": null,
+        "driver_name": null,
+        "occurred_at": "2026-08-10T02:02:37+00:00",
+        "raw_payload": {
+            "data": {
+                "conditions": [
+                    {
+                        "details": {
+                            "panicButton": {
+                                "driver": {
+                                    "id": "51910033",
+                                    "name": "JESUS ISAIAS GONZALEZ BERNAL",
+                                    "tags": [
+                                        {
+                                            "id": "4691864",
+                                            "name": "CREDENCIALIZADO"
+                                        },
+                                        {
+                                            "id": "5259276",
+                                            "name": "FLOTA ERUBIEL"
+                                        },
+                                        {
+                                            "id": "4691862",
+                                            "name": "FORANEO JC"
+                                        }
+                                    ]
+                                },
+                                "vehicle": {
+                                    "id": "281474995442045",
+                                    "name": "T-887 JC 72BJ4N",
+                                    "tags": [
+                                        {
+                                            "id": "5259276",
+                                            "name": "FLOTA ERUBIEL"
+                                        },
+                                        {
+                                            "id": "4691862",
+                                            "name": "FORANEO JC"
+                                        },
+                                        {
+                                            "id": "4724218",
+                                            "name": "KRONH"
+                                        }
+                                    ],
+                                    "serial": "G6UAN38K3V",
+                                    "externalIds": {
+                                        "samsara.vin": "3WKYD40X9TF567102",
+                                        "samsara.serial": "G6UAN38K3V"
+                                    }
+                                }
+                            }
+                        },
+                        "triggerId": 1034,
+                        "description": "Panic Button"
+                    }
+                ],
+                "isResolved": true,
+                "incidentUrl": "https://cloud.samsara.com/o/4006685/fleet/workflows/incidents/a0818d04-f303-4361-b1c9-5aac8befcc13/1/281474995442045/1786327357548",
+                "updatedAtTime": "2026-08-10T02:02:50Z",
+                "happenedAtTime": "2026-08-10T02:02:37Z",
+                "resolvedAtTime": "2026-08-10T02:02:40Z",
+                "configurationId": "a0818d04-f303-4361-b1c9-5aac8befcc13"
+            },
+            "orgId": 4006685,
+            "eventId": "56ccde94-deb7-4a76-a5dc-0b661af88ec7",
+            "eventTime": "2026-08-10T02:02:37.548Z",
+            "eventType": "AlertIncident",
+            "webhookId": "541115021054798"
+        }
+    },
+    {
+        "id": 1643,
+        "source": "webhook",
+        "kind": "webhook",
+        "samsara_event_id": "946a094f-3dcf-4918-a138-5b9d3bb3a7b3",
+        "event_type": "AlertIncident",
+        "event_description": "Panic Button",
+        "vehicle_id": "281474994162620",
+        "vehicle_name": "TR-004 JC 19AN7N",
+        "driver_id": null,
+        "driver_name": null,
+        "occurred_at": "2026-08-09T16:06:36+00:00",
+        "raw_payload": {
+            "data": {
+                "conditions": [
+                    {
+                        "details": {
+                            "panicButton": {
+                                "vehicle": {
+                                    "id": "281474994162620",
+                                    "name": "TR-004 JC 19AN7N",
+                                    "tags": [
+                                        {
+                                            "id": "6668230",
+                                            "name": "ERICK RODRIGUEZ"
+                                        },
+                                        {
+                                            "id": "4724218",
+                                            "name": "KRONH"
+                                        },
+                                        {
+                                            "id": "4691922",
+                                            "name": "LOCAL JC"
+                                        },
+                                        {
+                                            "id": "4849471",
+                                            "name": "MONITOREO 2"
+                                        },
+                                        {
+                                            "id": "4674603",
+                                            "name": "SOCIO COMERCIAL"
+                                        }
+                                    ],
+                                    "serial": "GMPTKMXCXB",
+                                    "externalIds": {
+                                        "samsara.vin": "3HSDZAPT6NN812101",
+                                        "samsara.serial": "GMPTKMXCXB"
+                                    }
+                                }
+                            }
+                        },
+                        "triggerId": 1034,
+                        "description": "Panic Button"
+                    }
+                ],
+                "isResolved": false,
+                "incidentUrl": "https://cloud.samsara.com/o/4006685/fleet/workflows/incidents/a0818d04-f303-4361-b1c9-5aac8befcc13/1/281474994162620/1786291596873",
+                "updatedAtTime": "2026-08-09T16:06:42Z",
+                "happenedAtTime": "2026-08-09T16:06:36Z",
+                "configurationId": "a0818d04-f303-4361-b1c9-5aac8befcc13"
+            },
+            "orgId": 4006685,
+            "eventId": "946a094f-3dcf-4918-a138-5b9d3bb3a7b3",
+            "eventTime": "2026-08-09T16:06:36.873Z",
+            "eventType": "AlertIncident",
+            "webhookId": "541115021054798"
+        }
+    },
+    {
+        "id": 1644,
+        "source": "webhook",
+        "kind": "webhook",
+        "samsara_event_id": "d4908278-6725-4d32-ba8c-02f9bd37f4f9",
+        "event_type": "AlertIncident",
+        "event_description": "Panic Button",
+        "vehicle_id": "281474994162620",
+        "vehicle_name": "TR-004 JC 19AN7N",
+        "driver_id": null,
+        "driver_name": null,
+        "occurred_at": "2026-08-09T16:05:54+00:00",
+        "raw_payload": {
+            "data": {
+                "conditions": [
+                    {
+                        "details": {
+                            "panicButton": {
+                                "vehicle": {
+                                    "id": "281474994162620",
+                                    "name": "TR-004 JC 19AN7N",
+                                    "tags": [
+                                        {
+                                            "id": "6668230",
+                                            "name": "ERICK RODRIGUEZ"
+                                        },
+                                        {
+                                            "id": "4724218",
+                                            "name": "KRONH"
+                                        },
+                                        {
+                                            "id": "4691922",
+                                            "name": "LOCAL JC"
+                                        },
+                                        {
+                                            "id": "4849471",
+                                            "name": "MONITOREO 2"
+                                        },
+                                        {
+                                            "id": "4674603",
+                                            "name": "SOCIO COMERCIAL"
+                                        }
+                                    ],
+                                    "serial": "GMPTKMXCXB",
+                                    "externalIds": {
+                                        "samsara.vin": "3HSDZAPT6NN812101",
+                                        "samsara.serial": "GMPTKMXCXB"
+                                    }
+                                }
+                            }
+                        },
+                        "triggerId": 1034,
+                        "description": "Panic Button"
+                    }
+                ],
+                "isResolved": false,
+                "incidentUrl": "https://cloud.samsara.com/o/4006685/fleet/workflows/incidents/a0818d04-f303-4361-b1c9-5aac8befcc13/1/281474994162620/1786291554473",
+                "updatedAtTime": "2026-08-09T16:06:01Z",
+                "happenedAtTime": "2026-08-09T16:05:54Z",
+                "configurationId": "a0818d04-f303-4361-b1c9-5aac8befcc13"
+            },
+            "orgId": 4006685,
+            "eventId": "d4908278-6725-4d32-ba8c-02f9bd37f4f9",
+            "eventTime": "2026-08-09T16:05:54.473Z",
+            "eventType": "AlertIncident",
+            "webhookId": "541115021054798"
+        }
+    },
+    {
+        "id": 1645,
+        "source": "webhook",
+        "kind": "webhook",
+        "samsara_event_id": "1c1068ab-69ed-41bf-9368-7eb00941bcd1",
+        "event_type": "AlertIncident",
+        "event_description": "Panic Button",
+        "vehicle_id": "281474994361064",
+        "vehicle_name": "T-360 SC PV3606B",
+        "driver_id": null,
+        "driver_name": null,
+        "occurred_at": "2026-08-08T04:58:48+00:00",
+        "raw_payload": {
+            "data": {
+                "conditions": [
+                    {
+                        "details": {
+                            "panicButton": {
+                                "vehicle": {
+                                    "id": "281474994361064",
+                                    "name": "T-360 SC PV3606B",
+                                    "tags": [
+                                        {
+                                            "id": "8057823",
+                                            "name": "CLIENTE CARTON"
+                                        },
+                                        {
+                                            "id": "4823291",
+                                            "name": "CRISTINA OBREGON SOCIO"
+                                        },
+                                        {
+                                            "id": "4724218",
+                                            "name": "KRONH"
+                                        },
+                                        {
+                                            "id": "4691922",
+                                            "name": "LOCAL JC"
+                                        },
+                                        {
+                                            "id": "4849050",
+                                            "name": "MONITOREO 1"
+                                        },
+                                        {
+                                            "id": "4674603",
+                                            "name": "SOCIO COMERCIAL"
+                                        }
+                                    ],
+                                    "serial": "GHE2M4FA36",
+                                    "externalIds": {
+                                        "samsara.vin": "4V4NC9KK6BN531570",
+                                        "samsara.serial": "GHE2M4FA36"
+                                    }
+                                }
+                            }
+                        },
+                        "triggerId": 1034,
+                        "description": "Panic Button"
+                    }
+                ],
+                "isResolved": true,
+                "incidentUrl": "https://cloud.samsara.com/o/4006685/fleet/workflows/incidents/a0818d04-f303-4361-b1c9-5aac8befcc13/1/281474994361064/1786165128117",
+                "updatedAtTime": "2026-08-08T04:58:57Z",
+                "happenedAtTime": "2026-08-08T04:58:48Z",
+                "resolvedAtTime": "2026-08-08T04:58:49Z",
+                "configurationId": "a0818d04-f303-4361-b1c9-5aac8befcc13"
+            },
+            "orgId": 4006685,
+            "eventId": "1c1068ab-69ed-41bf-9368-7eb00941bcd1",
+            "eventTime": "2026-08-08T04:58:48.117Z",
+            "eventType": "AlertIncident",
+            "webhookId": "541115021054798"
+        }
+    },
+    {
+        "id": 1646,
+        "source": "webhook",
+        "kind": "webhook",
+        "samsara_event_id": "504f7374-508b-4797-bf28-78545745cc40",
+        "event_type": "AlertIncident",
+        "event_description": "Panic Button",
+        "vehicle_id": "281474994288623",
+        "vehicle_name": "ROBUST VW PS1994B",
+        "driver_id": null,
+        "driver_name": null,
+        "occurred_at": "2026-08-07T23:49:15+00:00",
+        "raw_payload": {
+            "data": {
+                "conditions": [
+                    {
+                        "details": {
+                            "panicButton": {
+                                "vehicle": {
+                                    "id": "281474994288623",
+                                    "name": "ROBUST VW PS1994B",
+                                    "tags": [
+                                        {
+                                            "id": "4849471",
+                                            "name": "MONITOREO 2"
+                                        },
+                                        {
+                                            "id": "6107225",
+                                            "name": "UTILITARIOS JC"
+                                        }
+                                    ],
+                                    "serial": "GDC7BC3UCN",
+                                    "externalIds": {
+                                        "samsara.vin": "9BWKB45U2PP044823",
+                                        "samsara.serial": "GDC7BC3UCN"
+                                    }
+                                }
+                            }
+                        },
+                        "triggerId": 1034,
+                        "description": "Panic Button"
+                    }
+                ],
+                "isResolved": true,
+                "incidentUrl": "https://cloud.samsara.com/o/4006685/fleet/workflows/incidents/a0818d04-f303-4361-b1c9-5aac8befcc13/1/281474994288623/1786146555466",
+                "updatedAtTime": "2026-08-07T23:49:29Z",
+                "happenedAtTime": "2026-08-07T23:49:15Z",
+                "resolvedAtTime": "2026-08-07T23:49:16Z",
+                "configurationId": "a0818d04-f303-4361-b1c9-5aac8befcc13"
+            },
+            "orgId": 4006685,
+            "eventId": "504f7374-508b-4797-bf28-78545745cc40",
+            "eventTime": "2026-08-07T23:49:15.466Z",
+            "eventType": "AlertIncident",
+            "webhookId": "541115021054798"
+        }
+    }
+]

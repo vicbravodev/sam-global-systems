@@ -39,7 +39,7 @@ class DelayedStepIncidentRecheckTest extends TestCase
         $this->seed(NotificationMeterSeeder::class);
         Mail::fake();
 
-        NotificationChannel::factory()->email()->create(['team_id' => null, 'is_active' => true]);
+        NotificationChannel::factory()->email()->create(['is_active' => true]);
     }
 
     public function test_step_is_cancelled_when_a_human_claimed_the_incident(): void

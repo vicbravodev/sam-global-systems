@@ -3,11 +3,13 @@
 namespace App\Domains\Assets\Models;
 
 use App\Concerns\BelongsToTenant;
+use App\Domains\Assets\Enums\AssetMonitoringState;
 use App\Domains\Assets\Enums\AssetStatus;
 use App\Domains\Drivers\Enums\AssignmentType;
 use App\Domains\Drivers\Models\DriverAssignment;
 use App\Domains\Integrations\Models\IntegrationProvider;
 use App\Domains\Integrations\Models\TenantIntegration;
+use Carbon\CarbonInterface;
 use Database\Factories\Domains\Assets\AssetFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -31,6 +33,8 @@ class Asset extends Model
         'name',
         'code',
         'status',
+        'monitoring_state',
+        'monitoring_changed_at',
         'metadata_json',
         'first_seen_at',
         'last_seen_at',
@@ -154,12 +158,62 @@ class Asset extends Model
     }
 
     /**
+     * Non-inactive assets that were part of the fleet during [from, to]: first
+     * seen (or created) by the end of the window and not deleted before it
+     * started. Status history is not kept, so the current status decides
+     * whether the asset counts as active.
+     *
+     * @return Builder<Asset>
+     */
+    public function scopeActiveDuring(Builder $query, CarbonInterface $from, CarbonInterface $to): Builder
+    {
+        return $query
+            ->withTrashed()
+            ->where('status', '!=', AssetStatus::Inactive)
+            ->whereRaw('COALESCE(first_seen_at, created_at) <= ?', [$to->toDateTimeString()])
+            ->where(fn (Builder $deleted) => $deleted
+                ->whereNull('deleted_at')
+                ->orWhere('deleted_at', '>=', $from));
+    }
+
+    /**
      * @return array<string, string>
      */
+    /**
+     * Activos que SAM vigila: los únicos que se sondean, normalizan, evalúan
+     * y facturan. Un activo `pending`/`excluded` existe en inventario pero el
+     * pipeline lo ignora.
+     *
+     * @param  Builder<Asset>  $query
+     * @return Builder<Asset>
+     */
+    public function scopeMonitored(Builder $query): Builder
+    {
+        return $query->where('monitoring_state', AssetMonitoringState::Monitored);
+    }
+
+    /**
+     * Activos descubiertos por el sync que el cliente aún no enciende.
+     *
+     * @param  Builder<Asset>  $query
+     * @return Builder<Asset>
+     */
+    public function scopePendingMonitoring(Builder $query): Builder
+    {
+        return $query->where('monitoring_state', AssetMonitoringState::Pending);
+    }
+
+    public function isMonitored(): bool
+    {
+        return $this->monitoring_state === AssetMonitoringState::Monitored;
+    }
+
     protected function casts(): array
     {
         return [
             'status' => AssetStatus::class,
+            'monitoring_state' => AssetMonitoringState::class,
+            'monitoring_changed_at' => 'datetime',
             'metadata_json' => 'array',
             'first_seen_at' => 'datetime',
             'last_seen_at' => 'datetime',

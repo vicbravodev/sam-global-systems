@@ -8,12 +8,15 @@ use App\Domains\Assets\Enums\TelemetryType;
 use App\Domains\Integrations\Contracts\ProviderAdapter;
 use App\Domains\Integrations\Data\VehicleStatsPage;
 use App\Domains\Integrations\Exceptions\ProviderCursorRejected;
+use App\Domains\Integrations\Exceptions\ProviderCursorRejectedException;
 use App\Domains\Integrations\Exceptions\ProviderRateLimited;
+use App\Domains\Integrations\Exceptions\ProviderRequestFailedException;
 use App\Domains\Integrations\Exceptions\ProviderUnauthorized;
 use App\Domains\Integrations\Exceptions\ProviderUnavailable;
 use App\Domains\Integrations\Models\TenantIntegration;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
@@ -459,37 +462,53 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
      *
      * The stream is keyed by `updatedAtTime`, so the same event reappears when
      * its state changes (e.g. needsReview → dismissed); callers dedup on
-     * `{id}:{eventState}` to let state transitions through. Resumes from the
-     * persisted `after` cursor when given one; otherwise starts from
-     * `startTime` (the caller's backfill window). Pagination stops at the last
-     * page and returns the final `endCursor` so the caller can persist it.
+     * `{id}:{eventState}` to let state transitions through.
      *
-     * @return array{events: array<int, array<string, mixed>>, cursor: string|null}
+     * Samsara's pagination contract (verified against the live API):
+     * `startTime` is REQUIRED on every request, including pages fetched with
+     * `after`, and it must be byte-identical to the `startTime` of the request
+     * that produced the cursor — otherwise Samsara answers 400 ("Parameters
+     * differ from previous paginated request"). So the exact `startTime`
+     * string is pinned for the lifetime of a cursor: pass back the
+     * `start_time` returned here together with the cursor on the next poll.
+     *
+     * Pages are followed while `hasNextPage` (capped at MAX_PAGES; `has_more`
+     * reports whether the cap cut the run short). Any non-2xx aborts the whole
+     * call with an exception so the caller never persists a cursor over a
+     * failed request; a rejected/expired cursor raises
+     * {@see ProviderCursorRejectedException} so the caller can restart.
+     *
+     * @return array{events: array<int, array<string, mixed>>, cursor: string|null, start_time: string, has_more: bool}
+     *
+     * @throws ProviderRequestFailedException
      */
-    public function fetchSafetyEvents(TenantIntegration $integration, ?string $cursor = null, ?\DateTimeInterface $startTime = null): array
+    public function fetchSafetyEvents(TenantIntegration $integration, ?string $cursor = null, \DateTimeInterface|string|null $startTime = null): array
     {
+        $startTime = is_string($startTime) && $startTime !== ''
+            ? $startTime
+            : Carbon::instance($startTime instanceof \DateTimeInterface ? $startTime : now()->subDay())->toIso8601String();
+
+        $cursor = $cursor !== null && $cursor !== '' ? $cursor : null;
         $token = $this->resolveToken($integration);
 
         if ($token === null) {
-            return ['events' => [], 'cursor' => $cursor];
+            return ['events' => [], 'cursor' => $cursor, 'start_time' => $startTime, 'has_more' => false];
         }
 
         $events = [];
         $pages = 0;
 
         do {
-            $query = [];
+            $query = ['startTime' => $startTime];
 
-            if ($cursor !== null && $cursor !== '') {
+            if ($cursor !== null) {
                 $query['after'] = $cursor;
-            } else {
-                $query['startTime'] = Carbon::instance($startTime ?? now()->subDay())->toIso8601String();
             }
 
             $response = $this->client($token)->get('/safety-events/stream', $query);
 
             if (! $response->successful()) {
-                break;
+                throw $this->safetyStreamFailure($response, isset($query['after']));
             }
 
             foreach ((array) $response->json('data', []) as $record) {
@@ -504,9 +523,32 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
 
             $hasNext = (bool) $response->json('pagination.hasNextPage', false);
             $pages++;
-        } while ($hasNext && $cursor && $pages < self::MAX_PAGES);
+        } while ($hasNext && $cursor !== null && $pages < self::MAX_PAGES);
 
-        return ['events' => $events, 'cursor' => $cursor];
+        return [
+            'events' => $events,
+            'cursor' => $cursor,
+            'start_time' => $startTime,
+            'has_more' => $hasNext && $cursor !== null,
+        ];
+    }
+
+    /**
+     * Classify a failed `/safety-events/stream` response. A 400 about the
+     * cursor or about the parameters differing from the paginated request
+     * means the persisted cursor is unusable, not that the feed is down.
+     */
+    private function safetyStreamFailure(Response $response, bool $sentCursor): ProviderRequestFailedException
+    {
+        $message = strtolower((string) $response->json('message', ''));
+
+        $cursorRejected = $sentCursor
+            && $response->status() === 400
+            && (str_contains($message, 'cursor') || str_contains($message, 'parameters differ'));
+
+        return $cursorRejected
+            ? ProviderCursorRejectedException::fromResponse('GET /safety-events/stream', $response)
+            : ProviderRequestFailedException::fromResponse('GET /safety-events/stream', $response);
     }
 
     /**
@@ -818,7 +860,9 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
             $response = $this->client($token)->get($path, $query);
 
             if (! $response->successful()) {
-                break;
+                // A silent partial listing would mark the sync completed with
+                // missing (or zero) records; fail it so the error is recorded.
+                throw ProviderRequestFailedException::fromResponse("GET {$path}", $response);
             }
 
             foreach ((array) $response->json('data', []) as $record) {

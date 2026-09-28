@@ -40,7 +40,6 @@ class SlackNotificationDriverTest extends TestCase
     private function channel(Team $team, array $config): NotificationChannel
     {
         return NotificationChannel::factory()->create([
-            'team_id' => $team->id,
             'channel_type' => ChannelType::Slack,
             'provider' => 'slack',
             'config_json' => $config,

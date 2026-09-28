@@ -4,6 +4,7 @@ namespace Tests\Feature\Teams;
 
 use App\Enums\TeamRole;
 use App\Models\Team;
+use App\Models\TeamInvitation;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -112,6 +113,27 @@ class TeamTest extends TestCase
                 ->where('members.0.id', $user->id)
                 ->where('members.0.role', TeamRole::Owner->value)
                 ->has('invitations', 0),
+        );
+    }
+
+    public function test_the_team_edit_page_lists_only_pending_invitations(): void
+    {
+        $user = User::factory()->create();
+        $team = Team::factory()->create();
+        $team->members()->attach($user, ['role' => TeamRole::Owner->value]);
+
+        $noExpiry = TeamInvitation::factory()->create(['team_id' => $team->id, 'invited_by' => $user->id]);
+        $future = TeamInvitation::factory()->expiresIn(3)->create(['team_id' => $team->id, 'invited_by' => $user->id]);
+        TeamInvitation::factory()->expired()->create(['team_id' => $team->id, 'invited_by' => $user->id]);
+        TeamInvitation::factory()->accepted()->create(['team_id' => $team->id, 'invited_by' => $user->id]);
+
+        $response = $this->actingAs($user)->get(route('teams.edit', $team));
+
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->has('invitations', 2)
+                ->where('invitations', fn ($invitations) => collect($invitations)->pluck('id')->sort()->values()->all()
+                    === collect([$noExpiry->id, $future->id])->sort()->values()->all()),
         );
     }
 

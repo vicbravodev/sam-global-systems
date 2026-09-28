@@ -18,7 +18,6 @@ class AdminBadgesShareTest extends TestCase
         $admin = User::factory()->create(['global_role' => 'super_admin']);
 
         Subscription::factory()->count(2)->pastDue()->create();
-        Subscription::factory()->trialing()->create();
         Subscription::factory()->create(); // active → not counted
 
         $this->actingAs($admin)
@@ -26,8 +25,7 @@ class AdminBadgesShareTest extends TestCase
             ->assertOk()
             ->assertInertia(
                 fn (Assert $page) => $page
-                    ->where('adminBadges.tenantsPastDue', 2)
-                    ->where('adminBadges.tenantsTrialing', 1),
+                    ->where('adminBadges.tenantsPastDue', 2),
             );
     }
 

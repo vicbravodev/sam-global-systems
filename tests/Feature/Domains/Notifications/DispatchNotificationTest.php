@@ -53,7 +53,6 @@ class DispatchNotificationTest extends TestCase
         $this->actingAs($user);
 
         NotificationChannel::factory()->email()->create([
-            'team_id' => $team->id,
             'is_active' => true,
         ]);
 
@@ -99,7 +98,6 @@ class DispatchNotificationTest extends TestCase
         $this->actingAs($user);
 
         $channel = NotificationChannel::factory()->email()->create([
-            'team_id' => $team->id,
             'is_active' => true,
         ]);
 
@@ -150,7 +148,6 @@ class DispatchNotificationTest extends TestCase
         $this->actingAs($user);
 
         NotificationChannel::factory()->email()->create([
-            'team_id' => $team->id,
             'is_active' => true,
         ]);
 
@@ -193,7 +190,6 @@ class DispatchNotificationTest extends TestCase
         $this->actingAs($user);
 
         NotificationChannel::factory()->email()->create([
-            'team_id' => $team->id,
             'is_active' => true,
         ]);
 
@@ -286,8 +282,8 @@ class DispatchNotificationTest extends TestCase
         $team = $user->currentTeam;
         $this->actingAs($user);
 
-        NotificationChannel::factory()->email()->create(['team_id' => $team->id, 'is_active' => true]);
-        NotificationChannel::factory()->sms()->create(['team_id' => $team->id, 'is_active' => true, 'channel_type' => ChannelType::Sms]);
+        NotificationChannel::factory()->email()->create(['is_active' => true]);
+        NotificationChannel::factory()->sms()->create(['is_active' => true, 'channel_type' => ChannelType::Sms]);
 
         $notification = Notification::factory()->critical()->create([
             'team_id' => $team->id,
@@ -314,7 +310,7 @@ class DispatchNotificationTest extends TestCase
         $team = $user->currentTeam;
         $this->actingAs($user);
 
-        NotificationChannel::factory()->web()->create(['team_id' => $team->id, 'is_active' => true]);
+        NotificationChannel::factory()->web()->create(['is_active' => true]);
 
         $notification = Notification::factory()->create([
             'team_id' => $team->id,
@@ -350,7 +346,7 @@ class DispatchNotificationTest extends TestCase
         $team = $user->currentTeam;
         $this->actingAs($user);
 
-        NotificationChannel::factory()->email()->create(['team_id' => $team->id, 'is_active' => true]);
+        NotificationChannel::factory()->email()->create(['is_active' => true]);
 
         NotificationPreference::factory()->muted()->create([
             'team_id' => $team->id,

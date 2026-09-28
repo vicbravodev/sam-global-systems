@@ -21,7 +21,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { formatDate } from '@/lib/format';
+import { formatCurrency, formatDate } from '@/lib/format';
 import { store as impersonateStore } from '@/routes/admin/impersonate';
 import { index as adminTenantsIndex } from '@/routes/admin/tenants';
 
@@ -46,7 +46,6 @@ interface Subscription {
     plan: string | null;
     billingCycle: string | null;
     startsAt: string | null;
-    trialEndsAt: string | null;
     renewsAt: string | null;
 }
 
@@ -70,6 +69,8 @@ interface UsageRow {
     consumed: number;
     included: number;
     overage: number;
+    /** Cost-plus meters (Twilio): USD amounts instead of a micro count. */
+    money: { providerCost: number; charged: number } | null;
 }
 
 interface PlanOption {
@@ -80,6 +81,30 @@ interface PlanOption {
 interface AssetUsage {
     limit: number | null;
     current: number;
+    pending: number;
+    excluded: number;
+}
+
+interface BillingTerms {
+    unit_price: number;
+    currency: string;
+    included_assets: number | null;
+    min_billable_assets: number;
+    ai_fair_use_per_asset: number;
+    ai_overage_unit_price: number;
+    messaging_markup_percent: number | null;
+    fx_usd_rate: number;
+    volume_tiers: { from: number; to: number | null; unit_price: number }[];
+    explicit: boolean;
+}
+
+interface BillingDefaults {
+    currency: string;
+    unit_price: number;
+    min_billable_assets: number;
+    ai_fair_use_per_asset: number;
+    ai_overage_unit_price: number;
+    fx_usd_rate: number;
 }
 
 interface InvoiceRow {
@@ -102,18 +127,19 @@ interface AdminTenantShowProps {
     invoices: InvoiceRow[];
     plans: PlanOption[];
     assetUsage: AssetUsage;
+    billingTerms: BillingTerms;
+    billingDefaults: BillingDefaults;
 }
 
 const STATUS_LABEL: Record<string, string> = {
     active: 'Activa',
-    trialing: 'Trial',
     past_due: 'Morosa',
     suspended: 'Suspendida',
     canceled: 'Cancelada',
     expired: 'Expirada',
 };
 
-const OPERATIONAL = ['active', 'trialing', 'past_due'];
+const OPERATIONAL = ['active', 'past_due'];
 
 function Panel({
     title,
@@ -141,9 +167,10 @@ export default function AdminTenantShow({
     invoices,
     plans,
     assetUsage,
+    billingTerms,
+    billingDefaults,
 }: AdminTenantShowProps) {
     const [planCode, setPlanCode] = useState('');
-    const [trialDays, setTrialDays] = useState('14');
     const [confirm, setConfirm] = useState<{
         title: string;
         description: string;
@@ -279,7 +306,64 @@ export default function AdminTenantShow({
     const assetLimitLabel =
         assetUsage.limit === null ? 'sin tope' : `${assetUsage.limit}`;
     const overCap =
-        assetUsage.limit !== null && assetUsage.current >= assetUsage.limit;
+        assetUsage.limit !== null && assetUsage.current > assetUsage.limit;
+
+    // Términos comerciales: campo vacío = default de plataforma.
+    const [terms, setTerms] = useState({
+        unit_price: billingTerms.explicit
+            ? String(billingTerms.unit_price)
+            : '',
+        currency: billingTerms.explicit ? billingTerms.currency : '',
+        included_assets:
+            billingTerms.included_assets !== null
+                ? String(billingTerms.included_assets)
+                : '',
+        min_billable_assets: billingTerms.explicit
+            ? String(billingTerms.min_billable_assets)
+            : '',
+        ai_fair_use_per_asset: billingTerms.explicit
+            ? String(billingTerms.ai_fair_use_per_asset)
+            : '',
+        ai_overage_unit_price: billingTerms.explicit
+            ? String(billingTerms.ai_overage_unit_price)
+            : '',
+        messaging_markup_percent:
+            billingTerms.messaging_markup_percent !== null
+                ? String(billingTerms.messaging_markup_percent)
+                : '',
+        fx_usd_rate: billingTerms.explicit
+            ? String(billingTerms.fx_usd_rate)
+            : '',
+    });
+
+    const setTerm = (key: keyof typeof terms) => (value: string) =>
+        setTerms((prev) => ({ ...prev, [key]: value }));
+
+    const saveTerms = () => {
+        const num = (v: string) => (v.trim() === '' ? null : Number(v));
+
+        router.put(
+            `/admin/tenants/${tenant.slug}/billing-terms`,
+            {
+                unit_price: num(terms.unit_price),
+                currency: terms.currency.trim() === '' ? null : terms.currency,
+                included_assets: num(terms.included_assets),
+                min_billable_assets: num(terms.min_billable_assets),
+                ai_fair_use_per_asset: num(terms.ai_fair_use_per_asset),
+                ai_overage_unit_price: num(terms.ai_overage_unit_price),
+                messaging_markup_percent: num(terms.messaging_markup_percent),
+                fx_usd_rate: num(terms.fx_usd_rate),
+            },
+            ok('Términos de facturación actualizados.'),
+        );
+    };
+
+    const generateInvoice = () =>
+        router.post(
+            `/admin/tenants/${tenant.slug}/invoices/generate`,
+            {},
+            ok('Factura del mes anterior en generación.'),
+        );
 
     return (
         <div className="flex h-full flex-col overflow-hidden">
@@ -326,8 +410,6 @@ export default function AdminTenantShow({
                                 <dd>{subscription.billingCycle ?? '—'}</dd>
                                 <dt className="sam-meta">Inicio</dt>
                                 <dd>{formatDate(subscription.startsAt)}</dd>
-                                <dt className="sam-meta">Fin de trial</dt>
-                                <dd>{formatDate(subscription.trialEndsAt)}</dd>
                                 <dt className="sam-meta">Renueva</dt>
                                 <dd>{formatDate(subscription.renewsAt)}</dd>
                             </dl>
@@ -426,45 +508,12 @@ export default function AdminTenantShow({
                                             Reactivar
                                         </Button>
                                     ) : null}
-
-                                    {subscription ? (
-                                        <div className="flex items-center gap-1.5">
-                                            <Input
-                                                type="number"
-                                                min={1}
-                                                max={365}
-                                                value={trialDays}
-                                                onChange={(e) =>
-                                                    setTrialDays(e.target.value)
-                                                }
-                                                className="h-8 w-16"
-                                                aria-label="Días de trial"
-                                            />
-                                            <Button
-                                                size="sm"
-                                                variant="ghost"
-                                                onClick={() =>
-                                                    post(
-                                                        'extend-trial',
-                                                        'Trial extendido.',
-                                                        {
-                                                            days: Number(
-                                                                trialDays,
-                                                            ),
-                                                        },
-                                                    )
-                                                }
-                                            >
-                                                Extender trial
-                                            </Button>
-                                        </div>
-                                    ) : null}
                                 </div>
                             </div>
                         )}
                     </Panel>
 
-                    <Panel title="Activos monitoreados">
+                    <Panel title="Unidades vigiladas">
                         <div className="flex items-baseline gap-2">
                             <span className="text-2xl font-semibold tabular-nums">
                                 {assetUsage.current}
@@ -476,15 +525,127 @@ export default function AdminTenantShow({
                         <p
                             className={
                                 overCap
-                                    ? 'mt-1 text-xs text-health-down'
+                                    ? 'mt-1 text-xs text-severity-medium'
                                     : 'mt-1 text-xs text-fg-3'
                             }
                         >
-                            {overCap
-                                ? 'Tenant en el tope: no se sincronizarán activos nuevos.'
-                                : 'Tope efectivo del plan (o ajuste manual del tenant).'}
+                            {overCap && assetUsage.limit !== null
+                                ? `${assetUsage.current - assetUsage.limit} por encima del tope contratado: se cobran como extra por día.`
+                                : 'Tope de los términos del tenant, o del override/plan si no hay términos.'}
+                        </p>
+                        <dl className="mt-3 grid grid-cols-2 gap-y-1 text-sm">
+                            <dt className="sam-meta">
+                                Sin vigilar (pendientes)
+                            </dt>
+                            <dd className="tabular-nums">
+                                {assetUsage.pending}
+                            </dd>
+                            <dt className="sam-meta">Excluidas</dt>
+                            <dd className="tabular-nums">
+                                {assetUsage.excluded}
+                            </dd>
+                        </dl>
+                        <p className="mt-2 text-xs text-fg-3">
+                            El cliente decide qué unidades enciende desde su
+                            pantalla de Flota; SAM sólo cobra las vigiladas, por
+                            día.
                         </p>
                     </Panel>
+
+                    {tenant.isPersonal ? null : (
+                        <Panel title="Términos de facturación (por tracto-día)">
+                            <p className="mb-3 text-xs text-fg-3">
+                                Vacío = default de plataforma (
+                                {billingDefaults.unit_price}{' '}
+                                {billingDefaults.currency.toUpperCase()} por
+                                tracto al mes, mínimo{' '}
+                                {billingDefaults.min_billable_assets}, IA{' '}
+                                {billingDefaults.ai_fair_use_per_asset}{' '}
+                                evaluaciones por tracto, extra a{' '}
+                                {billingDefaults.ai_overage_unit_price}, USD→
+                                {billingDefaults.currency.toUpperCase()}{' '}
+                                {billingDefaults.fx_usd_rate}).
+                                {billingTerms.explicit
+                                    ? ' Este tenant tiene términos propios.'
+                                    : ' Este tenant usa los defaults.'}
+                            </p>
+                            <div className="grid grid-cols-2 gap-3">
+                                {(
+                                    [
+                                        [
+                                            'unit_price',
+                                            'Precio por tracto / mes',
+                                        ],
+                                        ['currency', 'Moneda (ISO)'],
+                                        [
+                                            'included_assets',
+                                            'Tope contratado (tractos)',
+                                        ],
+                                        [
+                                            'min_billable_assets',
+                                            'Mínimo facturable (tractos)',
+                                        ],
+                                        [
+                                            'ai_fair_use_per_asset',
+                                            'IA incluida por tracto',
+                                        ],
+                                        [
+                                            'ai_overage_unit_price',
+                                            'IA extra (por evaluación)',
+                                        ],
+                                        [
+                                            'messaging_markup_percent',
+                                            'Margen Twilio (%)',
+                                        ],
+                                        ['fx_usd_rate', 'Tipo de cambio USD'],
+                                    ] as [keyof typeof terms, string][]
+                                ).map(([key, label]) => (
+                                    <div key={key} className="grid gap-1.5">
+                                        <Label
+                                            htmlFor={`terms-${key}`}
+                                            className="sam-meta"
+                                        >
+                                            {label}
+                                        </Label>
+                                        <Input
+                                            id={`terms-${key}`}
+                                            type={
+                                                key === 'currency'
+                                                    ? 'text'
+                                                    : 'number'
+                                            }
+                                            min={0}
+                                            step={
+                                                key === 'unit_price' ||
+                                                key ===
+                                                    'ai_overage_unit_price' ||
+                                                key === 'fx_usd_rate' ||
+                                                key ===
+                                                    'messaging_markup_percent'
+                                                    ? '0.01'
+                                                    : '1'
+                                            }
+                                            maxLength={
+                                                key === 'currency'
+                                                    ? 3
+                                                    : undefined
+                                            }
+                                            value={terms[key]}
+                                            onChange={(e) =>
+                                                setTerm(key)(e.target.value)
+                                            }
+                                            placeholder="default"
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="mt-3 flex justify-end">
+                                <Button size="sm" onClick={saveTerms}>
+                                    Guardar términos
+                                </Button>
+                            </div>
+                        </Panel>
+                    )}
 
                     {tenant.isPersonal ? null : (
                         <Panel title="Identidad y marca">
@@ -760,6 +921,27 @@ export default function AdminTenantShow({
                     </Panel>
 
                     <Panel title="Facturas (transferencia)">
+                        {tenant.isPersonal ? null : (
+                            <div className="mb-3 flex items-center justify-between gap-2 border-b border-border pb-3">
+                                <p className="text-xs text-fg-3">
+                                    El día 1 se cierra el mes anterior de forma
+                                    automática. Aquí puedes generarlo a demanda.
+                                </p>
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() =>
+                                        setConfirm({
+                                            title: 'Generar factura del mes anterior',
+                                            description: `Se recalculan los contadores y se emite la factura de ${tenant.name}. Si ya existe, no se duplica.`,
+                                            run: generateInvoice,
+                                        })
+                                    }
+                                >
+                                    Generar factura
+                                </Button>
+                            </div>
+                        )}
                         {invoices.length === 0 ? (
                             <p className="text-sm text-fg-3">Sin facturas.</p>
                         ) : (
@@ -867,15 +1049,35 @@ export default function AdminTenantShow({
                                             <td className="py-1">
                                                 {row.meter}
                                             </td>
-                                            <td className="py-1 tabular-nums">
-                                                {row.consumed}
-                                            </td>
-                                            <td className="py-1 tabular-nums">
-                                                {row.included}
-                                            </td>
-                                            <td className="py-1 tabular-nums">
-                                                {row.overage}
-                                            </td>
+                                            {row.money ? (
+                                                <td
+                                                    className="py-1 tabular-nums"
+                                                    colSpan={3}
+                                                >
+                                                    Costo Twilio{' '}
+                                                    {formatCurrency(
+                                                        row.money.providerCost,
+                                                        'usd',
+                                                    )}{' '}
+                                                    · cobrado{' '}
+                                                    {formatCurrency(
+                                                        row.money.charged,
+                                                        'usd',
+                                                    )}
+                                                </td>
+                                            ) : (
+                                                <>
+                                                    <td className="py-1 tabular-nums">
+                                                        {row.consumed}
+                                                    </td>
+                                                    <td className="py-1 tabular-nums">
+                                                        {row.included}
+                                                    </td>
+                                                    <td className="py-1 tabular-nums">
+                                                        {row.overage}
+                                                    </td>
+                                                </>
+                                            )}
                                         </tr>
                                     ))}
                                 </tbody>

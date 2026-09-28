@@ -42,7 +42,7 @@ class PhoneVerificationTest extends TestCase
         $this->fakeSmsSuccess();
         $user = User::factory()->create(['phone' => '+5215555550123']);
         $team = $user->currentTeam;
-        NotificationChannel::factory()->sms()->create(['team_id' => $team->id, 'is_active' => true, 'channel_type' => ChannelType::Sms]);
+        NotificationChannel::factory()->sms()->create(['is_active' => true, 'channel_type' => ChannelType::Sms]);
         $this->actingAs($user);
 
         $this->post(route('phone-verification.send'))->assertSessionHasNoErrors();
@@ -57,7 +57,7 @@ class PhoneVerificationTest extends TestCase
 
         $user = User::factory()->create(['phone' => '+5215555550123']);
         $team = $user->currentTeam;
-        NotificationChannel::factory()->sms()->create(['team_id' => $team->id, 'is_active' => true, 'channel_type' => ChannelType::Sms]);
+        NotificationChannel::factory()->sms()->create(['is_active' => true, 'channel_type' => ChannelType::Sms]);
         $this->actingAs($user);
 
         $this->post(route('phone-verification.send'))->assertSessionHasNoErrors();

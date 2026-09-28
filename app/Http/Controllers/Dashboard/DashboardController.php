@@ -62,7 +62,10 @@ class DashboardController extends Controller
         $previousWeekEnd = $weekAgo->copy()->subSecond();
 
         $openCounts = $this->incidentMetrics->openCounts($team->id);
-        $perDay = $this->incidentMetrics->openedPerDay($team->id, $weekAgo, $now);
+        // Backlog open at the end of each day (today: right now), so the
+        // sparkline and the delta measure the same thing as the headline
+        // "open incidents" / "critical now" values — not new arrivals.
+        $perDay = $this->incidentMetrics->openBacklogPerDay($team->id, $weekAgo, $now);
 
         $slaCurrent = $this->incidentMetrics->slaCompliance($team->id, $weekAgo, $now);
         $slaPrevious = $this->incidentMetrics->slaCompliance($team->id, $previousWeekStart, $previousWeekEnd);

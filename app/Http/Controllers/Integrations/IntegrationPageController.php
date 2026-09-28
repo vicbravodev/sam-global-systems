@@ -52,7 +52,8 @@ class IntegrationPageController extends Controller
             'status' => $integration->status->value,
             'health' => $integration->status->healthKey(),
             'authType' => $integration->auth_type->value,
-            'config' => $integration->config_json ?? null,
+            // Allowlist only: config_json may hold provider secrets.
+            'config' => $integration->publicConfig(),
             'lastSyncAt' => $integration->last_sync_at?->toIso8601String(),
             'lastErrorAt' => $integration->last_error_at?->toIso8601String(),
             'lastErrorMessage' => $integration->last_error_message,

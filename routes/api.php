@@ -47,6 +47,7 @@ use App\Http\Controllers\TenantConfig\TenantNotificationPolicyController;
 use App\Http\Controllers\TenantConfig\TenantRuleOverrideController;
 use App\Http\Controllers\TenantConfig\TenantScheduleProfileController;
 use App\Http\Controllers\Webhooks\TwilioInboundController;
+use App\Http\Controllers\Webhooks\TwilioStatusCallbackController;
 use App\Http\Controllers\Webhooks\TwilioVoiceController;
 use App\Http\Middleware\EnsureTeamMembership;
 use Illuminate\Support\Facades\Route;
@@ -200,6 +201,12 @@ Route::prefix('{current_team}')
 Route::post('webhooks/twilio', [TwilioInboundController::class, 'handle'])
     ->middleware('throttle:webhooks')
     ->name('webhooks.twilio');
+
+// Twilio delivery feedback for notification messages/calls (SMS, WhatsApp,
+// voice): message/call status callbacks. Before the generic webhook route.
+Route::post('webhooks/twilio/status', TwilioStatusCallbackController::class)
+    ->middleware('throttle:webhooks')
+    ->name('webhooks.twilio.status');
 
 // Twilio Voice verification callbacks (Roadmap V2-A3): DTMF gather + call
 // status. Also before the generic webhook route.

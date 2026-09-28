@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils';
 import type { AssetRow } from '@/types/assets';
 import { AssetSignal } from './asset-signal';
 import { AssetStatusBadge } from './asset-status-badge';
+import { MonitoringSwitch } from './monitoring-switch';
 import { PlateChip, vehicleTitle } from './vehicle-line';
 
 const MOVING_SPEED_KPH = 5;
@@ -208,19 +209,43 @@ interface AssetsTableProps {
     rows: AssetRow[];
     onSelect: (id: number) => void;
     empty?: React.ReactNode;
+    /** Needed by the monitoring switch to PUT the new state. */
+    teamSlug?: string | null;
 }
 
-export function AssetsTable({ rows, onSelect, empty }: AssetsTableProps) {
+export function AssetsTable({
+    rows,
+    onSelect,
+    empty,
+    teamSlug = null,
+}: AssetsTableProps) {
     // The hardware column only earns its space once at least one unit on the
-    // page reports a device; otherwise it is a column of dashes.
+    // page reports a device; otherwise it is a column of dashes. The
+    // monitoring switch goes first: it is the one thing the client edits.
     const columns = useMemo(
-        () =>
-            COLUMNS.filter(
+        () => [
+            {
+                key: 'monitoring',
+                header: 'Vigilancia',
+                width: 'w-36',
+                sortValue: (asset: AssetRow) => asset.monitoringState,
+                cell: (asset: AssetRow) => (
+                    <MonitoringSwitch
+                        assetId={asset.id}
+                        assetName={asset.name}
+                        state={asset.monitoringState}
+                        teamSlug={teamSlug}
+                        withLabel
+                    />
+                ),
+            } satisfies DataTableColumn<AssetRow>,
+            ...COLUMNS.filter(
                 (column) =>
                     column.key !== 'devices' ||
                     rows.some((asset) => asset.devices.length > 0),
             ),
-        [rows],
+        ],
+        [rows, teamSlug],
     );
 
     return (

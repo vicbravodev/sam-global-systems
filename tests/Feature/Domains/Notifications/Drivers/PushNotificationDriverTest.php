@@ -36,7 +36,6 @@ class PushNotificationDriverTest extends TestCase
     private function channel(Team $team, array $overrides = []): NotificationChannel
     {
         return NotificationChannel::factory()->create([
-            'team_id' => $team->id,
             'channel_type' => ChannelType::Push,
             'provider' => 'firebase',
             'config_json' => array_merge([
@@ -180,7 +179,6 @@ class PushNotificationDriverTest extends TestCase
 
         $team = Team::factory()->create();
         $channel = NotificationChannel::factory()->create([
-            'team_id' => $team->id,
             'channel_type' => ChannelType::Push,
             'provider' => 'firebase',
             'config_json' => [],

@@ -87,7 +87,6 @@ class TwilioPlatformChannelWebhookTest extends TestCase
     public function test_platform_channels_have_no_credentials_in_config_json(): void
     {
         $this->assertSame([], NotificationChannel::query()
-            ->whereNull('team_id')
             ->where('provider', 'twilio')
             ->get()
             ->filter(fn (NotificationChannel $channel) => ! empty($channel->config_json))
@@ -133,7 +132,7 @@ class TwilioPlatformChannelWebhookTest extends TestCase
 
     public function test_voice_callbacks_for_a_platform_voice_channel_are_accepted(): void
     {
-        $channel = NotificationChannel::query()->whereNull('team_id')->where('code', 'sam_voice')->firstOrFail();
+        $channel = NotificationChannel::query()->where('code', 'sam_voice')->firstOrFail();
         $incident = Incident::factory()->open()->create(['team_id' => $this->team->id]);
 
         $verification = IncidentCallVerification::factory()->calling()->create([

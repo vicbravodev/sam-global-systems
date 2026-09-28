@@ -12,9 +12,10 @@ use Illuminate\Database\Seeder;
 class PlanSeeder extends Seeder
 {
     /**
-     * Default commercial plans. Each plan expresses its allowances through
-     * BillingRate rows keyed by usage-meter code; `included_quantity` is the
-     * cap the tenant gets (e.g. how many assets it may monitor/sync).
+     * Plantillas de topes. Desde 2026-09-28 SAM cobra por tracto-día con los
+     * términos de cada tenant (config/billing.php + tenant_billing_terms), así
+     * que ningún plan lleva precio base: sólo expresa topes por medidor
+     * (`included_quantity`), p.ej. cuántas unidades incluye la vigilancia.
      *
      * Run AFTER every *MeterSeeder so the meter codes resolve.
      */
@@ -39,7 +40,7 @@ class PlanSeeder extends Seeder
                 'code' => 'pro',
                 'name' => 'Pro',
                 'description' => 'Para operaciones en crecimiento con automatización.',
-                'base_price' => 99,
+                'base_price' => 0,
                 'rates' => [
                     'monitored_assets' => 200,
                     'active_cameras' => 100,
@@ -53,7 +54,7 @@ class PlanSeeder extends Seeder
                 'code' => 'enterprise',
                 'name' => 'Enterprise',
                 'description' => 'Para flotas grandes con necesidades a medida.',
-                'base_price' => 499,
+                'base_price' => 0,
                 'rates' => [
                     'monitored_assets' => 2_000,
                     'active_cameras' => 1_000,
@@ -66,6 +67,7 @@ class PlanSeeder extends Seeder
         ];
 
         $meters = UsageMeter::query()->pluck('id', 'code');
+        $messagingCostMeterId = $meters['messaging_cost_micros'] ?? null;
 
         foreach ($plans as $definition) {
             $plan = Plan::query()->updateOrCreate(
@@ -93,6 +95,20 @@ class PlanSeeder extends Seeder
                         'included_quantity' => $included,
                         'overage_unit_price' => 0,
                         'billing_model' => BillingModel::IncludedOnly,
+                    ],
+                );
+            }
+
+            // Twilio messaging (SMS/WhatsApp/voice/OTP) is billed at real
+            // provider cost plus margin, on every plan.
+            if ($messagingCostMeterId !== null) {
+                BillingRate::query()->updateOrCreate(
+                    ['plan_id' => $plan->id, 'usage_meter_id' => $messagingCostMeterId],
+                    [
+                        'included_quantity' => 0,
+                        'overage_unit_price' => 0,
+                        'billing_model' => BillingModel::CostPlus,
+                        'markup_percent' => (float) config('services.twilio.markup_percent', 30),
                     ],
                 );
             }

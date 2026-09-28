@@ -13,6 +13,7 @@ use App\Domains\Incidents\Jobs\PlaceVerificationCallJob;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentCallVerification;
 use App\Domains\Incidents\Support\IncidentSuppression;
+use App\Domains\Notifications\Actions\RecordMessagingCharge;
 use App\Domains\Notifications\Actions\SendNotification;
 use App\Domains\Notifications\Channels\TwilioVoiceCaller;
 use App\Domains\Tenancy\Actions\RecordUsageEvent;
@@ -113,6 +114,7 @@ class HumanControlSuppressionTest extends TestCase
             app(TenantConfigResolver::class),
             app(HandleVerificationCallAttemptFailure::class),
             app(RecordUsageEvent::class),
+            app(RecordMessagingCharge::class),
         );
 
         $verification->refresh();

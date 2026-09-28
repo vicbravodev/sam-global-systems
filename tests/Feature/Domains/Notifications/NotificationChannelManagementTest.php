@@ -2,13 +2,19 @@
 
 namespace Tests\Feature\Domains\Notifications;
 
+use App\Domains\Access\Enums\RoleScope;
+use App\Domains\Access\Models\Permission;
+use App\Domains\Access\Models\Role;
 use App\Domains\Notifications\Models\NotificationChannel;
+use App\Domains\Notifications\Policies\NotificationChannelPolicy;
+use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Models\User;
 use Database\Seeders\AccessSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Schema;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -51,8 +57,8 @@ class NotificationChannelManagementTest extends TestCase
 
     public function test_config_page_lists_channels_without_credential_data(): void
     {
+        // A legacy row that still carries credential keys must not leak them.
         NotificationChannel::factory()->sms()->create([
-            'team_id' => null,
             'name' => 'SMS SAM (Twilio)',
             'config_json' => [
                 'twilio_account_sid' => 'AC1234567890',
@@ -82,16 +88,17 @@ class NotificationChannelManagementTest extends TestCase
 
     public function test_config_json_is_hidden_when_a_channel_is_serialized(): void
     {
-        $channel = NotificationChannel::factory()->voice()->create(['team_id' => null]);
-        $sid = $channel->config_json['twilio_account_sid'];
+        $channel = NotificationChannel::factory()->voice()->create([
+            'config_json' => ['from' => '+15005550006', 'content_sid' => 'HX_SECRET_TEMPLATE'],
+        ]);
 
         $this->assertArrayNotHasKey('config_json', $channel->toArray());
-        $this->assertStringNotContainsString($sid, (string) json_encode($channel));
+        $this->assertStringNotContainsString('HX_SECRET_TEMPLATE', (string) json_encode($channel));
     }
 
     public function test_tenant_can_toggle_a_global_channel_for_itself(): void
     {
-        $global = NotificationChannel::factory()->voice()->create(['team_id' => null]);
+        $global = NotificationChannel::factory()->voice()->create();
 
         $toggle = fn (bool $enabled) => $this->actingAs($this->user)->postJson(
             route('tenant-config.channels.toggle', [
@@ -117,23 +124,43 @@ class NotificationChannelManagementTest extends TestCase
         $this->assertTrue($global->fresh()->is_active);
     }
 
-    public function test_toggle_rejects_non_global_channels(): void
+    public function test_tenant_policy_has_no_channel_management_ability(): void
     {
-        $own = NotificationChannel::factory()->sms()->create(['team_id' => $this->team->id]);
+        // Channels are platform-only: tenants can switch them off for their
+        // team, never create/edit/delete them.
+        $this->assertFalse(method_exists(NotificationChannelPolicy::class, 'manage'));
+        $this->assertFalse(Schema::hasColumn('notification_channels', 'team_id'));
+    }
 
-        $this->actingAs($this->user)->postJson(
+    public function test_toggle_requires_manage_permission(): void
+    {
+        $global = NotificationChannel::factory()->sms()->create();
+
+        // A member whose role can only view notifications.
+        $viewer = User::factory()->create();
+        $viewerTeam = $viewer->currentTeam;
+        $role = Role::factory()->create(['code' => 'notif_viewer_only', 'scope' => RoleScope::Tenant]);
+        $role->permissions()->sync([Permission::query()->where('code', 'notifications.view')->value('id')]);
+        $viewerTeam->members()->updateExistingPivot($viewer->id, [
+            'role' => TeamRole::Member->value,
+            'role_id' => $role->id,
+        ]);
+
+        $this->actingAs($viewer)->postJson(
             route('tenant-config.channels.toggle', [
-                'current_team' => $this->team->slug,
-                'channel' => $own->id,
+                'current_team' => $viewerTeam->slug,
+                'channel' => $global->id,
             ]),
             ['enabled' => false],
         )->assertForbidden();
+
+        $this->assertDatabaseMissing('tenant_channel_toggles', ['notification_channel_id' => $global->id]);
     }
 
     public function test_disabled_global_channel_is_excluded_from_team_usable_channels(): void
     {
-        $global = NotificationChannel::factory()->voice()->create(['team_id' => null]);
-        $own = NotificationChannel::factory()->sms()->create(['team_id' => $this->team->id]);
+        $global = NotificationChannel::factory()->voice()->create();
+        $sms = NotificationChannel::factory()->sms()->create();
         $otherTeam = User::factory()->create()->currentTeam;
 
         DB::table('tenant_channel_toggles')->insert([
@@ -147,9 +174,9 @@ class NotificationChannelManagementTest extends TestCase
         $mine = NotificationChannel::query()->usableByTeam($this->team->id)->pluck('id')->all();
         $theirs = NotificationChannel::query()->usableByTeam($otherTeam->id)->pluck('id')->all();
 
-        // My team lost the global but keeps its own channel…
-        $this->assertEqualsCanonicalizing([$own->id], $mine);
+        // My team lost the switched-off channel but keeps the rest…
+        $this->assertEqualsCanonicalizing([$sms->id], $mine);
         // …while the other tenant still sees SAM's channel (no leak).
-        $this->assertContains($global->id, $theirs);
+        $this->assertEqualsCanonicalizing([$global->id, $sms->id], $theirs);
     }
 }

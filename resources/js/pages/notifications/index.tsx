@@ -6,6 +6,7 @@ import {
     RefreshCw,
     Send,
     Siren,
+    TriangleAlert,
 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import {
@@ -140,6 +141,13 @@ function CenterPulse({
 
 // ---- FilterBar ----
 
+const EMPTY_FILTERS: NotificationFilters = {
+    status: null,
+    priority: null,
+    unread: false,
+    failures: false,
+};
+
 interface FilterBarProps {
     filters: NotificationFilters;
     options: NotificationFilterOptions;
@@ -148,7 +156,10 @@ interface FilterBarProps {
 
 function FilterBar({ filters, options, onApply }: FilterBarProps) {
     const hasActive =
-        filters.status !== null || filters.priority !== null || filters.unread;
+        filters.status !== null ||
+        filters.priority !== null ||
+        filters.unread ||
+        filters.failures;
 
     return (
         <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-background px-5 py-2">
@@ -165,6 +176,23 @@ function FilterBar({ filters, options, onApply }: FilterBarProps) {
             >
                 {filters.unread ? <BellOff size={11} /> : <Bell size={11} />}
                 Solo no leídas
+            </button>
+
+            <button
+                type="button"
+                aria-pressed={filters.failures}
+                onClick={() =>
+                    onApply({ ...filters, failures: !filters.failures })
+                }
+                className={cn(
+                    'flex items-center gap-1 rounded-full border px-2.5 py-1 text-2xs font-medium transition-colors',
+                    filters.failures
+                        ? 'border-severity-critical/40 bg-severity-critical/10 text-severity-critical'
+                        : 'border-border bg-surface-1 text-fg-2 hover:border-border-strong hover:text-fg-1',
+                )}
+            >
+                <TriangleAlert size={11} />
+                Con fallas de entrega
             </button>
 
             <FilterDropdown
@@ -184,11 +212,7 @@ function FilterBar({ filters, options, onApply }: FilterBarProps) {
             />
 
             {hasActive && (
-                <ClearFiltersButton
-                    onClick={() =>
-                        onApply({ status: null, priority: null, unread: false })
-                    }
-                />
+                <ClearFiltersButton onClick={() => onApply(EMPTY_FILTERS)} />
             )}
         </div>
     );
@@ -212,12 +236,6 @@ function CenterEmptyState({ filtered }: { filtered: boolean }) {
 }
 
 // ---- Main page ----
-
-const EMPTY_FILTERS: NotificationFilters = {
-    status: null,
-    priority: null,
-    unread: false,
-};
 
 const EMPTY_OPTIONS: NotificationFilterOptions = {
     statuses: [],
@@ -249,7 +267,12 @@ export default function NotificationsIndex() {
     useEffect(() => {
         setFilters(serverFilters);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [serverFilters.status, serverFilters.priority, serverFilters.unread]);
+    }, [
+        serverFilters.status,
+        serverFilters.priority,
+        serverFilters.unread,
+        serverFilters.failures,
+    ]);
 
     const refresh = () => {
         setRefreshing(true);
@@ -267,6 +290,7 @@ export default function NotificationsIndex() {
                 status: next.status ?? undefined,
                 priority: next.priority ?? undefined,
                 unread: next.unread ? 1 : undefined,
+                failures: next.failures ? 1 : undefined,
                 // Changing filters always restarts at the first page.
                 page: undefined,
             },
@@ -296,14 +320,15 @@ export default function NotificationsIndex() {
         [teamSlug],
     );
 
-    const openSource = useCallback((url: string) => {
+    const openUrl = useCallback((url: string) => {
         router.visit(url);
     }, []);
 
     const hasActiveFilters =
         serverFilters.status !== null ||
         serverFilters.priority !== null ||
-        serverFilters.unread;
+        serverFilters.unread ||
+        serverFilters.failures;
 
     return (
         <>
@@ -333,7 +358,8 @@ export default function NotificationsIndex() {
                 <NotificationsTable
                     rows={notifications}
                     onMarkRead={markRead}
-                    onOpenSource={openSource}
+                    onOpenSource={openUrl}
+                    onOpenDetail={openUrl}
                     empty={<CenterEmptyState filtered={hasActiveFilters} />}
                 />
 

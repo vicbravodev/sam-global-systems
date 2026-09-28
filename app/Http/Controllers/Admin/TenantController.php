@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Actions\Teams\CreateTeam;
-use App\Domains\Assets\Enums\AssetStatus;
+use App\Domains\Assets\Enums\AssetMonitoringState;
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Audit\Actions\RecordAuditEntry;
 use App\Domains\Audit\Enums\AuditActorType;
@@ -11,6 +11,7 @@ use App\Domains\Audit\Enums\AuditCategory;
 use App\Domains\Tenancy\Actions\CreateTenant;
 use App\Domains\Tenancy\Actions\DeleteTenant;
 use App\Domains\Tenancy\Actions\ResolveAssetLimit;
+use App\Domains\Tenancy\Actions\ResolveBillingTerms;
 use App\Domains\Tenancy\Actions\UpdateTenant;
 use App\Domains\Tenancy\Models\InvoiceSnapshot;
 use App\Domains\Tenancy\Models\Plan;
@@ -18,6 +19,7 @@ use App\Domains\Tenancy\Models\Subscription;
 use App\Domains\Tenancy\Models\TenantBranding;
 use App\Domains\Tenancy\Models\TenantFeature;
 use App\Domains\Tenancy\Models\TenantUsageCounter;
+use App\Domains\Tenancy\Support\CostPlusPricing;
 use App\Enums\TeamRole;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
@@ -105,11 +107,11 @@ class TenantController extends Controller
             ->with('status', 'Tenant creado correctamente.');
     }
 
-    public function show(Team $team, ResolveAssetLimit $resolveAssetLimit): Response
+    public function show(Team $team, ResolveAssetLimit $resolveAssetLimit, ResolveBillingTerms $resolveBillingTerms): Response
     {
         // El operador está viendo UN tenant: entrar en él hace que todo lo
         // que se lea aquí sea suyo, sin depender de filtros a mano. Ver §2.1.
-        return TenantContext::for($team->id, function () use ($team, $resolveAssetLimit) {
+        return TenantContext::for($team->id, function () use ($team, $resolveAssetLimit, $resolveBillingTerms) {
             $subscription = Subscription::query()
                 ->with('plan')
                 ->where('team_id', $team->id)
@@ -148,6 +150,17 @@ class TenantController extends Controller
                     'consumed' => (int) $counter->consumed_value,
                     'included' => (int) $counter->included_value,
                     'overage' => (int) $counter->overage_value,
+                    // Cost-plus meters (Twilio): provider cost and what the
+                    // tenant is charged, in USD — not a raw micro count.
+                    'money' => $counter->usageMeter?->unit === CostPlusPricing::MICRO_UNIT
+                        ? [
+                            'providerCost' => CostPlusPricing::providerCost((float) $counter->consumed_value),
+                            'charged' => CostPlusPricing::charged(
+                                (float) $counter->consumed_value,
+                                CostPlusPricing::markupFor($team->id, (int) $counter->usage_meter_id),
+                            ),
+                        ]
+                        : null,
                 ])->values()->all();
 
             $branding = TenantBranding::query()
@@ -173,7 +186,6 @@ class TenantController extends Controller
                     'plan' => $subscription->plan?->name,
                     'billingCycle' => $subscription->billing_cycle?->value,
                     'startsAt' => $subscription->starts_at?->toIso8601String(),
-                    'trialEndsAt' => $subscription->trial_ends_at?->toIso8601String(),
                     'renewsAt' => $subscription->renews_at?->toIso8601String(),
                 ] : null,
                 'members' => $members,
@@ -195,12 +207,15 @@ class TenantController extends Controller
                         'paidAt' => $invoice->paid_at?->toDateString(),
                     ])->values()->all(),
                 'plans' => $this->planOptions(),
-                'assetUsage' => [
-                    'limit' => $resolveAssetLimit->execute((int) $team->id),
-                    'current' => Asset::query()
-                        ->where('team_id', $team->id)
-                        ->where('status', '!=', AssetStatus::Inactive)
-                        ->count(),
+                'assetUsage' => $this->assetUsage($team, $resolveAssetLimit),
+                'billingTerms' => $resolveBillingTerms->execute((int) $team->id)->toArray(),
+                'billingDefaults' => [
+                    'currency' => config('billing.currency'),
+                    'unit_price' => (float) config('billing.unit_price'),
+                    'min_billable_assets' => (int) config('billing.min_billable_assets'),
+                    'ai_fair_use_per_asset' => (int) config('billing.ai_fair_use_per_asset'),
+                    'ai_overage_unit_price' => (float) config('billing.ai_overage_unit_price'),
+                    'fx_usd_rate' => (float) config('billing.fx_usd_rate'),
                 ],
             ]);
         });
@@ -273,6 +288,28 @@ class TenantController extends Controller
     }
 
     /**
+     * Unidades vigiladas contra el tope contratado, más las que el sync dejó
+     * pendientes. Tope suave: `current > limit` es excedente cobrado, no bloqueo.
+     *
+     * @return array{limit: int|null, current: int, pending: int, excluded: int}
+     */
+    private function assetUsage(Team $team, ResolveAssetLimit $resolveAssetLimit): array
+    {
+        $byState = Asset::query()
+            ->where('team_id', $team->id)
+            ->selectRaw('monitoring_state, COUNT(*) as aggregate')
+            ->groupBy('monitoring_state')
+            ->pluck('aggregate', 'monitoring_state');
+
+        return [
+            'limit' => $resolveAssetLimit->execute((int) $team->id),
+            'current' => (int) ($byState[AssetMonitoringState::Monitored->value] ?? 0),
+            'pending' => (int) ($byState[AssetMonitoringState::Pending->value] ?? 0),
+            'excluded' => (int) ($byState[AssetMonitoringState::Excluded->value] ?? 0),
+        ];
+    }
+
+    /**
      * Latest subscription (any status) per team, keyed by team id.
      *
      * @param  array<int, int>  $teamIds
@@ -305,7 +342,6 @@ class TenantController extends Controller
         return [
             'total' => $tenantTeams->count(),
             'active' => $statusCount('active'),
-            'trialing' => $statusCount('trialing'),
             'pastDue' => $statusCount('past_due'),
         ];
     }

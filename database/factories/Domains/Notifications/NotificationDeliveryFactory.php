@@ -25,13 +25,7 @@ class NotificationDeliveryFactory extends Factory
                     'notification_id' => $attributes['notification_id'],
                 ])->id;
             },
-            'channel_id' => function (array $attributes) {
-                $teamId = Notification::withoutGlobalScopes()->find($attributes['notification_id'])->team_id;
-
-                return NotificationChannel::factory()->create([
-                    'team_id' => $teamId,
-                ])->id;
-            },
+            'channel_id' => fn () => NotificationChannel::factory()->create()->id,
             'team_id' => fn (array $attributes) => Notification::withoutGlobalScopes()->find($attributes['notification_id'])->team_id,
             'provider_message_id' => null,
             'status' => DeliveryStatus::Pending,

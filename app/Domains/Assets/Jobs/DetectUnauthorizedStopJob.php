@@ -103,6 +103,7 @@ class DetectUnauthorizedStopJob implements ShouldQueue
 
         $candidates = Asset::query()
             ->where('team_id', $teamId)
+            ->monitored()
             ->whereNotIn('status', [AssetStatus::Inactive, AssetStatus::Maintenance])
             ->whereNotNull('stopped_since')
             ->whereNotNull('last_latitude')

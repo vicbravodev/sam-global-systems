@@ -5,6 +5,7 @@ namespace Tests\Feature\Domains\Incidents;
 use App\Domains\AI\Enums\EvaluationPriority;
 use App\Domains\AI\Enums\EventClassification;
 use App\Domains\AI\Models\AIEventEvaluation;
+use App\Domains\Context\Models\EventContextSnapshot;
 use App\Domains\Incidents\Actions\ClaimIncident;
 use App\Domains\Incidents\Enums\AssigneeType;
 use App\Domains\Incidents\Enums\CommentVisibility;
@@ -350,13 +351,17 @@ class IncidentInboxTest extends TestCase
 
         $event = NormalizedEvent::factory()->create([
             'team_id' => $team->id,
-            'context_json' => [
-                'location' => 'RN7 km 184 · Mendoza',
-                'weather' => 'Lluvia leve · 14 °C',
-                'traffic' => 'Moderado',
-                'driver_risk' => 58,
-                'geofence_status' => 'Fuera',
-                'driving_hours' => '4h 12m / 9h max',
+            'payload_normalized_json' => ['location' => 'RN7 km 184 · Mendoza'],
+        ]);
+
+        // The operational context comes from the snapshot the Context
+        // pipeline persists, not from `normalized_events.context_json`.
+        EventContextSnapshot::factory()->create([
+            'team_id' => $team->id,
+            'normalized_event_id' => $event->id,
+            'driver_snapshot_json' => ['risk_profile' => ['risk_score' => '58.00']],
+            'geofence_snapshot_json' => [
+                ['geofence_id' => 1, 'name' => 'Patio Norte', 'match_type' => 'near_boundary'],
             ],
         ]);
 
@@ -409,11 +414,11 @@ class IncidentInboxTest extends TestCase
             'model' => 'claude-sonnet-4-6 · v2',
             'location' => 'RN7 km 184 · Mendoza',
             'operationalContext' => [
-                'weather' => 'Lluvia leve · 14 °C',
-                'traffic' => 'Moderado',
+                'weather' => '—',
+                'traffic' => '—',
                 'driverRisk' => 58,
-                'geofenceStatus' => 'Fuera',
-                'drivingHours' => '4h 12m / 9h max',
+                'geofenceStatus' => 'Cerca de Patio Norte',
+                'drivingHours' => '—',
             ],
         ]);
 

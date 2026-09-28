@@ -56,7 +56,7 @@ class ProviderAdapterManager implements MediaRetrievalAdapter, ProviderAdapter
         return $this->forIntegration($integration)->fetchLiveLocation($integration, $externalAssetId);
     }
 
-    public function fetchSafetyEvents(TenantIntegration $integration, ?string $cursor = null, ?\DateTimeInterface $startTime = null): array
+    public function fetchSafetyEvents(TenantIntegration $integration, ?string $cursor = null, \DateTimeInterface|string|null $startTime = null): array
     {
         return $this->forIntegration($integration)->fetchSafetyEvents($integration, $cursor, $startTime);
     }

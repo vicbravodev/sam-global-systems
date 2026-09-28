@@ -49,7 +49,6 @@ class PhoneOtpHardeningTest extends TestCase
     {
         $user = User::factory()->create(['phone' => $phone]);
         NotificationChannel::factory()->sms()->create([
-            'team_id' => $user->currentTeam->id,
             'is_active' => true,
             'channel_type' => ChannelType::Sms,
         ]);

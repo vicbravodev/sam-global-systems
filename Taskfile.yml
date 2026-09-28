@@ -5,6 +5,7 @@
 #   task update   → poner el local al corriente después de mergear PRs
 #   task fresh    → resetear la DB al tenant único ServiExpress JC
 #   task replay   → reinyectar los fixtures reales de Samsara al pipeline
+#   task showcase → poblar TODAS las pantallas con 90 días simulados (aditivo)
 #   task check    → todos los gates de calidad antes de cerrar trabajo
 #
 # Convención: lo que toca la DB de dev (Postgres en Docker) corre vía Sail;
@@ -34,6 +35,7 @@ tasks:
       - npm run build
       - '{{.SAIL}} artisan optimize:clear'
       - echo "Listo → http://localhost · login admin@serviexpress.test / password"
+      - echo "Pantallas vacías? → task showcase (90 días simulados sobre tus datos, aditivo y re-ejecutable)"
 
   update:
     desc: 'Post-merge: pull main + deps + migraciones + build + Horizon fresco'
@@ -87,6 +89,17 @@ tasks:
       - '{{.SAIL}} artisan migrate:fresh --seed'
       - '{{.SAIL}} artisan optimize:clear'
       - docker compose restart horizon
+      - echo "DB limpia. Para ver todas las pantallas con datos → task showcase"
+
+  showcase:
+    desc: 'Poblar todas las pantallas con datos simulados coherentes (aditivo, re-ejecutable, sin efectos externos). Args: task showcase -- --days=30 --with-extra-tenants --replay=5'
+    cmds:
+      - '{{.SAIL}} artisan sam:showcase {{.CLI_ARGS}}'
+
+  fixtures:
+    desc: 'Regenerar database/fixtures/samsara-*.json con los eventos reales más recientes (añade -- --from-api para leer safety events de Samsara)'
+    cmds:
+      - '{{.SAIL}} artisan samsara:export-fixtures {{.CLI_ARGS}}'
 
   migrate:
     desc: 'Correr migraciones pendientes (sin borrar datos)'
@@ -94,7 +107,7 @@ tasks:
       - '{{.SAIL}} artisan migrate'
 
   replay:
-    desc: 'Reinyectar fixtures reales de panic Samsara al pipeline (requiere integración conectada en la UI y Horizon arriba)'
+    desc: 'Reinyectar fixtures reales de Samsara al pipeline (requiere integración conectada y Horizon arriba). Args: -- --file=samsara-safety-events.json --types=MaxSpeed --limit=5'
     cmds:
       - '{{.SAIL}} artisan samsara:replay {{.CLI_ARGS}}'
 

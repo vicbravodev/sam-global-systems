@@ -39,6 +39,42 @@ class TenantIntegration extends Model
     ];
 
     /**
+     * Top-level `config_json` keys that are safe to show in the browser and
+     * editable from the integrations page. Everything else (provider tokens,
+     * secrets a tenant pasted into the config) stays server-side.
+     *
+     * @var array<int, string>
+     */
+    public const array PUBLIC_CONFIG_KEYS = ['sync'];
+
+    /**
+     * The browser-safe slice of `config_json`, or null when there is none.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function publicConfig(): ?array
+    {
+        $public = array_intersect_key($this->config_json ?? [], array_flip(self::PUBLIC_CONFIG_KEYS));
+
+        return $public === [] ? null : $public;
+    }
+
+    /**
+     * Applies a config edited from the page: it only ever saw the public keys,
+     * so those are replaced by the submitted values while every hidden key
+     * already stored is preserved instead of silently wiped.
+     *
+     * @param  array<string, mixed>  $submitted
+     * @return array<string, mixed>
+     */
+    public function mergeSubmittedConfig(array $submitted): array
+    {
+        $hidden = array_diff_key($this->config_json ?? [], array_flip(self::PUBLIC_CONFIG_KEYS));
+
+        return array_merge($hidden, $submitted);
+    }
+
+    /**
      * @return BelongsTo<IntegrationProvider, $this>
      */
     public function provider(): BelongsTo

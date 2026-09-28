@@ -3,13 +3,11 @@
 namespace Tests\Feature\Domains\Tenancy;
 
 use App\Contracts\Notifications\ChannelDriverRegistry;
-use App\Contracts\TenantConfig\TenantConfigResolver;
 use App\Domains\Access\Actions\SendPhoneOtp;
 use App\Domains\Automation\Actions\ExecuteAction;
 use App\Domains\Automation\Enums\ActionExecutionStatus;
 use App\Domains\Automation\Enums\ActionType;
 use App\Domains\Automation\Models\ActionExecution;
-use App\Domains\Incidents\Actions\HandleVerificationCallAttemptFailure;
 use App\Domains\Incidents\Enums\CallVerificationStatus;
 use App\Domains\Incidents\Jobs\PlaceVerificationCallJob;
 use App\Domains\Incidents\Models\Incident;
@@ -23,7 +21,6 @@ use App\Domains\Notifications\Enums\NotificationStatus;
 use App\Domains\Notifications\Models\Notification;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Models\NotificationDelivery;
-use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Domains\Tenancy\Models\Subscription;
 use App\Domains\Tenancy\Support\TenantCanSend;
 use App\Models\Team;
@@ -40,7 +37,7 @@ use Tests\TestCase;
 
 /**
  * P1-13: tenants suspendidos/cancelados/expirados no generan envíos con
- * coste; trialing y past_due sí. Lo bloqueado queda cancelado con motivo.
+ * coste; active y past_due sí. Lo bloqueado queda cancelado con motivo.
  */
 class TenantCanSendGateTest extends TestCase
 {
@@ -49,7 +46,6 @@ class TenantCanSendGateTest extends TestCase
     public function test_policy_per_subscription_status(): void
     {
         $this->assertTrue(TenantCanSend::allows($this->teamWith(null)->id), 'sin suscripción envía');
-        $this->assertTrue(TenantCanSend::allows($this->teamWith('trialing')->id));
         $this->assertTrue(TenantCanSend::allows($this->teamWith('active')->id));
         $this->assertTrue(TenantCanSend::allows($this->teamWith('pastDue')->id));
 
@@ -76,7 +72,7 @@ class TenantCanSendGateTest extends TestCase
     {
         $this->seed(NotificationMeterSeeder::class);
         Mail::fake();
-        NotificationChannel::factory()->email()->create(['team_id' => null, 'is_active' => true]);
+        NotificationChannel::factory()->email()->create(['is_active' => true]);
 
         $team = $this->teamWith('suspended');
         $notification = $this->notificationFor($team);
@@ -93,7 +89,7 @@ class TenantCanSendGateTest extends TestCase
     {
         $this->seed(NotificationMeterSeeder::class);
         Mail::fake();
-        NotificationChannel::factory()->email()->create(['team_id' => null, 'is_active' => true]);
+        NotificationChannel::factory()->email()->create(['is_active' => true]);
 
         $team = $this->teamWith('pastDue');
         $notification = $this->notificationFor($team);
@@ -130,7 +126,7 @@ class TenantCanSendGateTest extends TestCase
         $this->seed(IncidentStatusSeeder::class);
 
         $team = $this->teamWith('expired');
-        NotificationChannel::factory()->voice()->create(['team_id' => null, 'is_active' => true]);
+        NotificationChannel::factory()->voice()->create(['is_active' => true]);
 
         $incident = Incident::factory()->open()->create(['team_id' => $team->id]);
         $verification = IncidentCallVerification::factory()->create([
@@ -140,12 +136,7 @@ class TenantCanSendGateTest extends TestCase
 
         $this->mock(TwilioVoiceCaller::class, fn ($mock) => $mock->shouldReceive('createCall')->never());
 
-        (new PlaceVerificationCallJob($verification->id))->handle(
-            app(TwilioVoiceCaller::class),
-            app(TenantConfigResolver::class),
-            app(HandleVerificationCallAttemptFailure::class),
-            app(RecordUsageEvent::class),
-        );
+        app()->call([new PlaceVerificationCallJob($verification->id), 'handle']);
 
         $fresh = $verification->fresh();
         $this->assertSame(CallVerificationStatus::Failed, $fresh->status);
@@ -167,7 +158,7 @@ class TenantCanSendGateTest extends TestCase
         $registry->shouldReceive('driverFor')->with(ChannelType::Sms)->andReturn($driver);
         $this->app->instance(ChannelDriverRegistry::class, $registry);
 
-        NotificationChannel::factory()->sms()->create(['team_id' => null, 'is_active' => true, 'channel_type' => ChannelType::Sms]);
+        NotificationChannel::factory()->sms()->create(['is_active' => true, 'channel_type' => ChannelType::Sms]);
 
         $otp = app(SendPhoneOtp::class);
 

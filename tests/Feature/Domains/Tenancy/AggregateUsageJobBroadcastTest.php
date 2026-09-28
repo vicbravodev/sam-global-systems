@@ -53,10 +53,12 @@ class AggregateUsageJobBroadcastTest extends TestCase
 
         (new AggregateUsageJob)->handle();
 
+        // Scoped to this test's meter: the catalog also holds the messaging
+        // meters every install gets from migrations.
         $this->assertEquals(
             2,
-            TenantUsageCounter::withoutGlobalScopes()->count(),
-            'Job should aggregate counters for every team with an active/trialing/past_due subscription',
+            TenantUsageCounter::withoutGlobalScopes()->where('usage_meter_id', $meter->id)->count(),
+            'Job should aggregate counters for every team with an active/past_due subscription',
         );
 
         $this->assertDatabaseMissing('tenant_usage_counters', [
@@ -125,7 +127,7 @@ class AggregateUsageJobBroadcastTest extends TestCase
         Subscription::factory()->create([
             'team_id' => $team->id,
             'plan_id' => $plan->id,
-            'status' => SubscriptionStatus::Trialing,
+            'status' => SubscriptionStatus::PastDue,
         ]);
 
         UsageEvent::withoutGlobalScopes()->insert([

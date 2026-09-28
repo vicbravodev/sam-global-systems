@@ -52,7 +52,6 @@ class SendNotificationJobTest extends TestCase
         ]);
 
         NotificationChannel::factory()->email()->create([
-            'team_id' => $user->currentTeam->id,
             'is_active' => true,
         ]);
 

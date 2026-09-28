@@ -13,7 +13,9 @@ use App\Domains\Drivers\Jobs\RecalculateDriverRiskProfilesJob;
 use App\Domains\Ingestion\Jobs\PollSamsaraSafetyEventsJob;
 use App\Domains\Ingestion\Jobs\PruneDeduplicationKeysJob;
 use App\Domains\Integrations\Jobs\SyncDueIntegrationsJob;
+use App\Domains\Notifications\Jobs\ReconcileMessagingChargesJob;
 use App\Domains\Tenancy\Jobs\AggregateUsageJob;
+use App\Domains\Tenancy\Jobs\GenerateMonthlyInvoicesJob;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -25,6 +27,15 @@ Artisan::command('inspire', function () {
 Schedule::command('horizon:snapshot')->everyFiveMinutes()->onOneServer();
 
 Schedule::job(new AggregateUsageJob)->dailyAt('02:00')->onOneServer();
+
+// Monthly invoicing: on the 1st, close the previous month's usage counters
+// from usage_events and generate each operational tenant's draft invoice.
+Schedule::job(new GenerateMonthlyInvoicesJob)->monthlyOn(1, '05:00')->onOneServer();
+
+// Twilio feedback safety net + real provider cost (cost-plus billing): polls
+// non-finalized messages/calls whose status callback never landed and meters
+// their price into messaging_cost_micros once Twilio reports it.
+Schedule::job(new ReconcileMessagingChargesJob)->everyFiveMinutes()->onOneServer();
 Schedule::job(new CalculateDailyKPIsJob)->dailyAt('03:00')->onOneServer();
 
 // Deduplication keys expire after 24h but nothing removed the rows: the table
@@ -32,7 +43,7 @@ Schedule::job(new CalculateDailyKPIsJob)->dailyAt('03:00')->onOneServer();
 Schedule::job(new PruneDeduplicationKeysJob)->dailyAt('03:15')->onOneServer();
 
 // ExpireOldReports (spec 15) is a per-tenant Action, not a console command:
-// this job fans it out across every team with an active/trialing/past-due
+// this job fans it out across every team with an active/past-due
 // subscription, same pattern as CalculateDailyKPIsJob/BuildAnalyticsSnapshotJob.
 // Without this, report retention policy was written but never enforced —
 // expired report files never got deleted from storage.

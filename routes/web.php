@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\GlobalChannelController;
 use App\Http\Controllers\Admin\ImpersonationController;
 use App\Http\Controllers\Admin\OperatorController;
 use App\Http\Controllers\Admin\PlanController;
+use App\Http\Controllers\Admin\TenantBillingTermsController;
 use App\Http\Controllers\Admin\TenantController;
 use App\Http\Controllers\Admin\TenantFeatureController;
 use App\Http\Controllers\Admin\TenantInvoiceController;
@@ -16,6 +17,7 @@ use App\Http\Controllers\AI\AIEvaluationController;
 use App\Http\Controllers\Analytics\AnalyticsPageController;
 use App\Http\Controllers\Analytics\ReportController;
 use App\Http\Controllers\Analytics\ReportExecutionController;
+use App\Http\Controllers\Assets\AssetMonitoringController;
 use App\Http\Controllers\Assets\AssetPageController;
 use App\Http\Controllers\Audit\AuditPageController;
 use App\Http\Controllers\Automation\ActionExecutionController;
@@ -99,8 +101,11 @@ Route::prefix('admin')
         Route::post('tenants/{team}/subscription/suspend', [TenantSubscriptionController::class, 'suspend'])->name('tenants.subscription.suspend');
         Route::post('tenants/{team}/subscription/reactivate', [TenantSubscriptionController::class, 'reactivate'])->name('tenants.subscription.reactivate');
         Route::post('tenants/{team}/subscription/cancel', [TenantSubscriptionController::class, 'cancel'])->name('tenants.subscription.cancel');
-        Route::post('tenants/{team}/subscription/extend-trial', [TenantSubscriptionController::class, 'extendTrial'])->name('tenants.subscription.extend-trial');
 
+        // Términos comerciales por tenant (cobro por tracto-día, sin planes).
+        Route::put('tenants/{team}/billing-terms', [TenantBillingTermsController::class, 'update'])->name('tenants.billing-terms.update');
+
+        Route::post('tenants/{team}/invoices/generate', [TenantInvoiceController::class, 'generate'])->name('tenants.invoices.generate');
         Route::post('tenants/{team}/invoices/{invoice}/mark-paid', [TenantInvoiceController::class, 'markPaid'])->name('tenants.invoices.mark-paid');
         Route::post('tenants/{team}/invoices/{invoice}/void', [TenantInvoiceController::class, 'void'])->name('tenants.invoices.void');
 
@@ -163,12 +168,14 @@ Route::prefix('{current_team}')
         Route::post('incidents/{incident}/escalate', [IncidentController::class, 'escalate'])->name('incidents.escalate');
         Route::post('ai/evaluations/{evaluation}/reevaluate', [AIEvaluationController::class, 'reevaluate'])->name('ai.evaluations.reevaluate');
 
-        // Fleet pages. Assets are read-only (spec 04 §9): managed solely
-        // by integration sync, so membership is the whole access check.
+        // Fleet pages. Asset inventory is managed by integration sync (spec
+        // 04 §9); the only thing the tenant edits is WHICH units SAM watches.
         Route::get('assets', [AssetPageController::class, 'index'])->name('assets.index');
-        // Literal segment BEFORE the {asset} binding so "map" never hits it.
+        // Literal segments BEFORE the {asset} binding so they never hit it.
         Route::get('assets/map', [AssetPageController::class, 'map'])->name('assets.map');
+        Route::put('assets/monitoring', [AssetMonitoringController::class, 'bulk'])->name('assets.monitoring.bulk');
         Route::get('assets/{asset}', [AssetPageController::class, 'show'])->name('assets.show');
+        Route::put('assets/{asset}/monitoring', [AssetMonitoringController::class, 'update'])->name('assets.monitoring.update');
 
         // SAM Copilot: conversational assistant over the tenant's fleet data.
         // CopilotConversationPolicy gates every route (`copilot.use`, which
@@ -193,6 +200,7 @@ Route::prefix('{current_team}')
         // Notification center: tenant-wide outbound notifications with
         // per-user read markers (NotificationPolicy gates access).
         Route::get('notifications', [NotificationPageController::class, 'index'])->name('notifications.index');
+        Route::get('notifications/{notification}', [NotificationPageController::class, 'show'])->name('notifications.show');
         Route::post('notifications/{notification}/read', [NotificationPageController::class, 'read'])->name('notifications.read');
 
         Route::get('integrations', [IntegrationPageController::class, 'index'])->name('integrations.index');

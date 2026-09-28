@@ -2,27 +2,50 @@
 
 namespace App\Http\Controllers\Tenancy;
 
+use App\Domains\Assets\Models\Asset;
+use App\Domains\Tenancy\Actions\EstimatePeriodCharges;
+use App\Domains\Tenancy\Actions\ResolveBillingTerms;
 use App\Domains\Tenancy\Models\InvoiceSnapshot;
 use App\Domains\Tenancy\Models\Subscription;
 use App\Domains\Tenancy\Models\TenantFeature;
 use App\Domains\Tenancy\Models\TenantUsageCounter;
+use App\Domains\Tenancy\Support\CostPlusPricing;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
 use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * Tenant-facing billing page (Roadmap B1b+F7): current plan, features,
- * metered usage for the running period and invoice snapshots. Read-only —
+ * Tenant-facing billing page: units being watched against the contracted
+ * cap, what the running month costs so far and at close (asset-days, AI
+ * fair use, messaging), metered usage and invoice snapshots. Read-only —
  * payment is by bank transfer and the super-admin manages activation.
  */
 class BillingPageController extends Controller
 {
-    public function show(Team $current_team): Response
-    {
+    public function show(
+        Team $current_team,
+        ResolveBillingTerms $resolveTerms,
+        EstimatePeriodCharges $estimate,
+    ): Response {
         $this->authorize('viewAny', Subscription::class);
 
         return Inertia::render('billing/index', [
+            'terms' => fn (): array => $resolveTerms->execute((int) $current_team->id)->toArray(),
+            'estimate' => fn (): array => $estimate->execute((int) $current_team->id),
+            'fleet' => function () use ($current_team): array {
+                $byState = Asset::query()
+                    ->where('team_id', $current_team->id)
+                    ->selectRaw('monitoring_state, COUNT(*) as aggregate')
+                    ->groupBy('monitoring_state')
+                    ->pluck('aggregate', 'monitoring_state');
+
+                return [
+                    'monitored' => (int) ($byState['monitored'] ?? 0),
+                    'pending' => (int) ($byState['pending'] ?? 0),
+                    'excluded' => (int) ($byState['excluded'] ?? 0),
+                ];
+            },
             // Contact point for billing questions (F1.2): payment is by bank
             // transfer, so the page must offer a human path, not a checkout.
             'supportEmail' => fn (): ?string => config('mail.from.address'),
@@ -47,7 +70,6 @@ class BillingPageController extends Controller
                     'billingCycle' => $subscription->billing_cycle?->value ?? (string) $subscription->billing_cycle,
                     'status' => $subscription->status?->value ?? (string) $subscription->status,
                     'renewsAt' => $subscription->renews_at?->toIso8601String(),
-                    'trialEndsAt' => $subscription->trial_ends_at?->toIso8601String(),
                 ];
             },
             'features' => fn () => TenantFeature::query()
@@ -71,6 +93,15 @@ class BillingPageController extends Controller
                     'meterCode' => $counter->usageMeter?->code,
                     'meterName' => $counter->usageMeter?->name,
                     'unit' => $counter->usageMeter?->unit,
+                    // Cost-plus meters (Twilio messaging) accumulate provider
+                    // cost in micro-USD: the tenant sees what it will be
+                    // charged, never a raw micro count nor our cost.
+                    'amount' => $counter->usageMeter?->unit === CostPlusPricing::MICRO_UNIT
+                        ? CostPlusPricing::charged(
+                            (float) $counter->consumed_value,
+                            CostPlusPricing::markupFor($current_team->id, (int) $counter->usage_meter_id),
+                        )
+                        : null,
                     'consumed' => (float) $counter->consumed_value,
                     'included' => (float) $counter->included_value,
                     'overage' => (float) $counter->overage_value,

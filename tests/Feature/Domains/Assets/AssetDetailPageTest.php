@@ -77,6 +77,7 @@ class AssetDetailPageTest extends TestCase
                         ->where('name', 'Tractocamión Norte')
                         ->where('code', 'TR-042')
                         ->where('status', 'alert')
+                        ->where('monitoringState', 'monitored')
                         ->where('type.code', 'vehicle')
                         ->has('devices', 1)
                         ->where('devices.0.deviceType', 'dashcam')

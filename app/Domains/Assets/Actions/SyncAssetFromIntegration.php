@@ -2,23 +2,19 @@
 
 namespace App\Domains\Assets\Actions;
 
-use App\Domains\Assets\Enums\AssetStatus;
+use App\Domains\Assets\Enums\AssetMonitoringState;
 use App\Domains\Assets\Events\AssetDiscovered;
 use App\Domains\Assets\Exceptions\AssetExternalReferenceConflictException;
-use App\Domains\Assets\Exceptions\AssetLimitReachedException;
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Assets\Models\AssetExternalReference;
 use App\Domains\Assets\Models\AssetType;
 use App\Domains\Integrations\Models\TenantIntegration;
-use App\Domains\Tenancy\Actions\ResolveAssetLimit;
-use App\Domains\Tenancy\Events\UsageLimitExceeded;
 use App\Support\TenantContext;
 
 class SyncAssetFromIntegration
 {
     public function __construct(
         private ResolveAssetFromExternalId $resolveAsset,
-        private ResolveAssetLimit $resolveAssetLimit,
         private SyncAssetDevices $syncDevices,
     ) {}
 
@@ -116,8 +112,6 @@ class SyncAssetFromIntegration
      */
     private function createNewAsset(int $teamId, int $integrationId, int $providerId, array $assetData): Asset
     {
-        $this->assertWithinAssetLimit($teamId);
-
         $assetType = $this->resolveAssetType($assetData['asset_type_code'] ?? 'vehicle');
 
         $asset = Asset::query()->create([
@@ -129,6 +123,10 @@ class SyncAssetFromIntegration
             'name' => $assetData['name'] ?? 'Unknown Asset',
             'code' => $assetData['code'] ?? null,
             'metadata_json' => $assetData['metadata'] ?? null,
+            // El sync descubre TODA la flota del proveedor sin tope: la unidad
+            // entra al inventario como `pending` y el cliente decide si la
+            // enciende (SetAssetMonitoring). Nada se vigila ni se cobra solo.
+            'monitoring_state' => AssetMonitoringState::Pending,
             'first_seen_at' => now(),
             'last_seen_at' => now(),
         ]);
@@ -156,30 +154,5 @@ class SyncAssetFromIntegration
     private function resolveAssetType(string $code): AssetType
     {
         return AssetType::where('code', $code)->firstOrFail();
-    }
-
-    /**
-     * Enforce the tenant's monitored-asset cap before creating a new asset.
-     * Updating already-known assets is always allowed; only net-new assets
-     * beyond the cap are rejected.
-     */
-    private function assertWithinAssetLimit(int $teamId): void
-    {
-        $limit = $this->resolveAssetLimit->execute($teamId);
-
-        if ($limit === null) {
-            return;
-        }
-
-        $current = Asset::query()
-            ->where('team_id', $teamId)
-            ->where('status', '!=', AssetStatus::Inactive)
-            ->count();
-
-        if ($current >= $limit) {
-            UsageLimitExceeded::dispatch($teamId, ResolveAssetLimit::METER_CODE, $current + 1, $limit);
-
-            throw new AssetLimitReachedException($teamId, $limit, $current);
-        }
     }
 }

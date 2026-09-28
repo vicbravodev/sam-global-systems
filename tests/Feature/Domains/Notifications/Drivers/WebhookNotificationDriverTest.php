@@ -36,7 +36,6 @@ class WebhookNotificationDriverTest extends TestCase
 
         $team = Team::factory()->create();
         $channel = NotificationChannel::factory()->create([
-            'team_id' => $team->id,
             'channel_type' => ChannelType::Webhook,
             'provider' => 'webhook',
             'config_json' => [
@@ -82,7 +81,6 @@ class WebhookNotificationDriverTest extends TestCase
 
         $team = Team::factory()->create();
         $channel = NotificationChannel::factory()->create([
-            'team_id' => $team->id,
             'channel_type' => ChannelType::Webhook,
             'provider' => 'webhook',
             'config_json' => [
@@ -106,7 +104,6 @@ class WebhookNotificationDriverTest extends TestCase
 
         $team = Team::factory()->create();
         $channel = NotificationChannel::factory()->create([
-            'team_id' => $team->id,
             'channel_type' => ChannelType::Webhook,
             'provider' => 'webhook',
             'config_json' => [
@@ -127,7 +124,6 @@ class WebhookNotificationDriverTest extends TestCase
 
         $team = Team::factory()->create();
         $channel = NotificationChannel::factory()->create([
-            'team_id' => $team->id,
             'channel_type' => ChannelType::Webhook,
             'provider' => 'webhook',
             'config_json' => [
@@ -148,7 +144,6 @@ class WebhookNotificationDriverTest extends TestCase
 
         $team = Team::factory()->create();
         $channel = NotificationChannel::factory()->create([
-            'team_id' => $team->id,
             'channel_type' => ChannelType::Webhook,
             'provider' => 'webhook',
             'config_json' => [
@@ -171,7 +166,6 @@ class WebhookNotificationDriverTest extends TestCase
 
         $team = Team::factory()->create();
         $channel = NotificationChannel::factory()->create([
-            'team_id' => $team->id,
             'channel_type' => ChannelType::Webhook,
             'provider' => 'webhook',
             'config_json' => [
