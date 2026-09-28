@@ -118,9 +118,7 @@ export function AdminSidebar({
                     label: 'Tenants',
                     icon: Building2,
                     href: adminTenantsIndex().url,
-                    badge:
-                        (badges?.tenantsPastDue ?? 0) +
-                        (badges?.tenantsTrialing ?? 0),
+                    badge: badges?.tenantsPastDue ?? 0,
                     pulseWhenInactive: (badges?.tenantsPastDue ?? 0) > 0,
                 },
                 {

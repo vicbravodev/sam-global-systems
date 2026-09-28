@@ -8,6 +8,7 @@ use App\Domains\Assets\Models\Asset;
 use App\Domains\Drivers\Models\Driver;
 use App\Domains\Incidents\Enums\IncidentCreatorType;
 use App\Domains\Incidents\Enums\IncidentSourceType;
+use App\Domains\Incidents\Support\IncidentNumberSequence;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use Database\Factories\Domains\Incidents\IncidentFactory;
 use Illuminate\Database\Eloquent\Builder;
@@ -25,6 +26,7 @@ class Incident extends Model
 
     protected $fillable = [
         'team_id',
+        'number',
         'incident_type_id',
         'incident_status_id',
         'incident_priority_id',
@@ -173,6 +175,33 @@ class Incident extends Model
         return $this->hasOne(IncidentResolution::class);
     }
 
+    /**
+     * Per-tenant sequential number, assigned on create (see
+     * IncidentNumberSequence). Never derived from the global id so the
+     * displayed reference does not leak other tenants' volume.
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (Incident $incident): void {
+            if ($incident->number === null && $incident->team_id !== null) {
+                $incident->number = IncidentNumberSequence::next((int) $incident->team_id);
+            }
+        });
+    }
+
+    /**
+     * The one display format for an incident reference: `INC-00036`.
+     */
+    public function reference(): string
+    {
+        return self::formatReference($this->number);
+    }
+
+    public static function formatReference(?int $number): string
+    {
+        return $number === null ? 'INC-—' : sprintf('INC-%05d', $number);
+    }
+
     public function isTerminal(): bool
     {
         $status = $this->relationLoaded('status') ? $this->status : $this->status()->first();
@@ -195,6 +224,7 @@ class Incident extends Model
     protected function casts(): array
     {
         return [
+            'number' => 'integer',
             'source_type' => IncidentSourceType::class,
             'created_by_type' => IncidentCreatorType::class,
             'metadata_json' => 'array',

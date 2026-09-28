@@ -8,9 +8,11 @@ use App\Domains\Tenancy\Models\FileObject;
 use App\Domains\Tenancy\Models\InvoiceSnapshot;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
+use App\Support\ObjectStorageFailure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Throwable;
 
 /**
  * Tenant uploads the bank-transfer receipt for an invoice (Roadmap B2). The
@@ -47,7 +49,25 @@ class InvoiceReceiptController extends Controller
         $file = $request->file('receipt');
         $key = "billing/{$current_team->id}/receipts/{$invoice->id}-".$file->hashName();
 
-        Storage::disk('rustfs')->put($key, (string) $file->get());
+        try {
+            Storage::disk('rustfs')->put($key, (string) $file->get());
+        } catch (Throwable $e) {
+            if (! ObjectStorageFailure::matches($e)) {
+                throw $e;
+            }
+
+            ObjectStorageFailure::report('invoice_receipt_upload', $e, [
+                'team_id' => $current_team->id,
+                'invoice_id' => $invoice->id,
+            ]);
+
+            // 503 with a readable message on the `receipt` field instead of a
+            // raw 500: nothing was persisted, the tenant can simply retry.
+            return response()->json([
+                'message' => 'No se pudo subir el comprobante. '.ObjectStorageFailure::USER_MESSAGE,
+                'errors' => ['receipt' => ['No se pudo subir el comprobante. '.ObjectStorageFailure::USER_MESSAGE]],
+            ], 503);
+        }
 
         $fileObject = FileObject::query()->create([
             'team_id' => $current_team->id,

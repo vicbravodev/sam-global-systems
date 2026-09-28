@@ -6,17 +6,24 @@ use App\Contracts\ObjectStorage;
 use App\Domains\Access\Actions\AuthorizeAction;
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\AI\Models\AIMediaAssessment;
+use App\Domains\Context\Enums\IncidentRelationType;
 use App\Domains\Context\Models\EventMediaContext;
 use App\Domains\Context\Models\EventMediaRequest;
 use App\Domains\Context\Models\EventRelatedIncidentLink;
+use App\Domains\Context\Support\MediaRetrievalWindow;
 use App\Domains\Incidents\Enums\AssigneeType;
 use App\Domains\Incidents\Enums\TimelineActorType;
 use App\Domains\Incidents\Models\Incident;
+use App\Domains\Incidents\Models\IncidentCallVerification;
 use App\Domains\Incidents\Models\IncidentPriority;
 use App\Domains\Incidents\Models\IncidentStatus;
 use App\Domains\Incidents\Models\IncidentType;
 use App\Domains\Incidents\Support\IncidentInboxPresenter;
 use App\Domains\Incidents\Support\IncidentStatusPresenter;
+use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Domains\Notifications\Enums\DeliveryStatus;
+use App\Domains\Notifications\Enums\NotificationSourceType;
+use App\Domains\Notifications\Models\Notification;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
 use App\Models\User;
@@ -25,6 +32,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -36,6 +44,12 @@ class IncidentInboxController extends Controller
      * Maximum number of incidents loaded into the inbox in a single page.
      */
     private const INBOX_LIMIT = 200;
+
+    /**
+     * How far back "Historial relacionado" looks for incidents of the same
+     * asset or driver.
+     */
+    private const RELATED_WINDOW_DAYS = 30;
 
     public function __construct(
         private readonly IncidentInboxPresenter $presenter,
@@ -140,9 +154,16 @@ class IncidentInboxController extends Controller
             // LOWER(...) LIKE keeps the search case-insensitive on both
             // PostgreSQL (production) and SQLite (tests) without ILIKE.
             $term = '%'.mb_strtolower(str_replace(['%', '_'], ['\%', '\_'], $filters['q'])).'%';
+            // "INC-00036", "inc-36" or "36" also find the incident by its
+            // per-tenant number (the reference operators read and dictate).
+            $number = preg_match('/^(?:inc-?)?0*(\d{1,9})$/i', trim($filters['q']), $matches) === 1
+                ? (int) $matches[1]
+                : null;
+
             $query->where(fn (Builder $q) => $q
                 ->whereRaw('LOWER(title) LIKE ?', [$term])
-                ->orWhereRaw('LOWER(summary) LIKE ?', [$term]));
+                ->orWhereRaw('LOWER(summary) LIKE ?', [$term])
+                ->when($number !== null, fn (Builder $inner) => $inner->orWhere('number', $number)));
         }
 
         if ($filters['severity'] !== null) {
@@ -321,6 +342,8 @@ class IncidentInboxController extends Controller
             'mediaAssessments' => fn () => $this->mediaAssessments($incident),
             'mediaRequests' => fn () => $this->mediaRequests($incident),
             'priorIncidents' => fn () => $this->priorIncidents($incident),
+            'mediaRetrieval' => fn () => $this->mediaRetrieval($incident),
+            'communications' => fn () => $this->communications($request, $incident),
             'members' => fn () => $this->members($current_team),
             'reclassifyOptions' => fn () => $this->reclassifyOptions(),
             'can' => $this->abilities($request->user(), $current_team),
@@ -510,35 +533,176 @@ class IncidentInboxController extends Controller
     }
 
     /**
-     * Prior similar / related incidents linked to the source event (B6-P8).
+     * Related incidents, computed when the page is viewed (UI audit P2):
+     * the links the Context pipeline stored for the source event (B6-P8)
+     * were written BEFORE this incident existed and never change, so later
+     * incidents on the same unit/driver never showed up. The live part is
+     * other incidents of the same asset or driver in the last 30 days.
      *
      * @return list<array<string, mixed>>
      */
     private function priorIncidents(Incident $incident): array
     {
-        if ($incident->related_event_id === null) {
-            return [];
+        $related = collect();
+
+        if ($incident->related_event_id !== null) {
+            EventRelatedIncidentLink::query()
+                ->where('team_id', $incident->team_id)
+                ->where('normalized_event_id', $incident->related_event_id)
+                ->where('incident_id', '!=', $incident->id)
+                ->with(['incident.status', 'incident.priority'])
+                ->orderByDesc('confidence_score')
+                ->limit(10)
+                ->get()
+                ->filter(fn (EventRelatedIncidentLink $link) => $link->incident !== null
+                    && (int) $link->incident->team_id === (int) $incident->team_id)
+                ->each(fn (EventRelatedIncidentLink $link) => $related->put($link->incident_id, $this->priorIncidentRow(
+                    $link->incident,
+                    $link->relation_type?->value,
+                    $link->confidence_score !== null ? (float) $link->confidence_score : null,
+                )));
         }
 
-        return EventRelatedIncidentLink::query()
-            ->where('normalized_event_id', $incident->related_event_id)
-            ->where('incident_id', '!=', $incident->id)
-            ->with(['incident.status', 'incident.priority'])
-            ->orderByDesc('confidence_score')
+        if ($incident->asset_id !== null || $incident->driver_id !== null) {
+            Incident::query()
+                ->where('team_id', $incident->team_id)
+                ->whereKeyNot($incident->id)
+                ->where(fn (Builder $query) => $query
+                    ->when($incident->asset_id !== null, fn (Builder $q) => $q->orWhere('asset_id', $incident->asset_id))
+                    ->when($incident->driver_id !== null, fn (Builder $q) => $q->orWhere('driver_id', $incident->driver_id)))
+                ->where('opened_at', '>=', now()->subDays(self::RELATED_WINDOW_DAYS))
+                ->with(['status', 'priority'])
+                ->orderByDesc('opened_at')
+                ->limit(10)
+                ->get()
+                ->reject(fn (Incident $other) => $related->has($other->id))
+                ->each(fn (Incident $other) => $related->put($other->id, $this->priorIncidentRow(
+                    $other,
+                    $incident->asset_id !== null && $other->asset_id === $incident->asset_id
+                        ? IncidentRelationType::SameAssetOpenIncident->value
+                        : IncidentRelationType::SameDriverRecentIncident->value,
+                    null,
+                )));
+        }
+
+        return $related->take(10)->values()->all();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function priorIncidentRow(Incident $other, ?string $relationType, ?float $confidence): array
+    {
+        return [
+            'incidentId' => (int) $other->id,
+            'reference' => $other->reference(),
+            'title' => (string) $other->title,
+            'status' => $other->status?->code,
+            'statusLabel' => IncidentStatusPresenter::label($other->status?->code),
+            'severity' => $other->priority?->code,
+            'openedAt' => $other->opened_at?->toIso8601String(),
+            'relationType' => $relationType,
+            'confidenceScore' => $confidence,
+        ];
+    }
+
+    /**
+     * Whether asking the provider for footage can still work. Past the
+     * device retention window (the same `media.retrieval_max_age_hours` the
+     * retrieval job enforces) SD footage is overwritten, so the page must not
+     * offer a request that is guaranteed to fail.
+     *
+     * @return array{available: bool, reason: string|null, maxAgeHours: int}
+     */
+    private function mediaRetrieval(Incident $incident): array
+    {
+        $maxAgeHours = MediaRetrievalWindow::maxAgeHours((int) $incident->team_id);
+
+        if ($incident->related_event_id === null) {
+            return ['available' => false, 'reason' => 'El incidente no tiene un evento de origen.', 'maxAgeHours' => $maxAgeHours];
+        }
+
+        $occurredAt = NormalizedEvent::query()
+            ->where('team_id', $incident->team_id)
+            ->whereKey($incident->related_event_id)
+            ->value('occurred_at');
+
+        $expiredReason = MediaRetrievalWindow::expiredReason(
+            (int) $incident->team_id,
+            $occurredAt !== null ? Carbon::parse($occurredAt) : null,
+        );
+
+        return [
+            'available' => $expiredReason === null,
+            'reason' => $expiredReason,
+            'maxAgeHours' => $maxAgeHours,
+        ];
+    }
+
+    /**
+     * Verification calls placed for this incident and the notifications it
+     * triggered, so the operator can jump to the delivery detail (UI audit
+     * P2). Notification links only for users allowed to open them.
+     *
+     * @return array{verificationCalls: list<array<string, mixed>>, notifications: list<array<string, mixed>>}
+     */
+    private function communications(Request $request, Incident $incident): array
+    {
+        $calls = IncidentCallVerification::query()
+            ->where('team_id', $incident->team_id)
+            ->where('incident_id', $incident->id)
+            ->orderByDesc('id')
             ->limit(10)
             ->get()
-            ->filter(fn (EventRelatedIncidentLink $link) => $link->incident !== null)
-            ->map(fn (EventRelatedIncidentLink $link): array => [
-                'incidentId' => (int) $link->incident_id,
-                'title' => (string) $link->incident->title,
-                'status' => $link->incident->status?->code,
-                'severity' => $link->incident->priority?->code,
-                'openedAt' => $link->incident->opened_at?->toIso8601String(),
-                'relationType' => $link->relation_type?->value,
-                'confidenceScore' => $link->confidence_score !== null ? (float) $link->confidence_score : null,
+            ->map(fn (IncidentCallVerification $call): array => [
+                'id' => (int) $call->id,
+                'attempt' => (int) $call->attempt,
+                'status' => $call->status?->value,
+                'outcome' => $call->outcome?->value,
+                'phone' => $this->maskPhone($call->phone),
+                'placedAt' => $call->placed_at?->toIso8601String(),
+                'respondedAt' => $call->responded_at?->toIso8601String(),
             ])
             ->values()
             ->all();
+
+        $notifications = [];
+
+        if ($request->user()?->can('viewAny', Notification::class)) {
+            $notifications = Notification::query()
+                ->where('team_id', $incident->team_id)
+                ->where('source_type', NotificationSourceType::Incident)
+                ->where('source_reference_id', $incident->id)
+                ->withCount([
+                    'deliveries',
+                    'deliveries as delivered_count' => fn ($query) => $query->whereIn('status', [DeliveryStatus::Delivered, DeliveryStatus::Sent]),
+                    'deliveries as failed_count' => fn ($query) => $query->whereIn('status', [DeliveryStatus::Failed, DeliveryStatus::Bounced]),
+                ])
+                ->orderByDesc('id')
+                ->limit(10)
+                ->get()
+                ->map(fn (Notification $notification): array => [
+                    'id' => (int) $notification->id,
+                    'subject' => (string) ($notification->subject ?? $notification->notification_type),
+                    'createdAt' => $notification->created_at?->toIso8601String(),
+                    'deliveries' => (int) $notification->deliveries_count,
+                    'delivered' => (int) $notification->delivered_count,
+                    'failed' => (int) $notification->failed_count,
+                ])
+                ->values()
+                ->all();
+        }
+
+        return ['verificationCalls' => $calls, 'notifications' => $notifications];
+    }
+
+    private function maskPhone(?string $phone): ?string
+    {
+        if ($phone === null || strlen($phone) < 4) {
+            return $phone;
+        }
+
+        return str_repeat('•', max(0, strlen($phone) - 4)).substr($phone, -4);
     }
 
     /**

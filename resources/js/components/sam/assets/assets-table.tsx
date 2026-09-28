@@ -11,11 +11,12 @@ import {
 } from '@/components/ui/tooltip';
 import { formatNumber } from '@/lib/format';
 import { assetTypeLabel } from '@/lib/labels';
-import { isFresh } from '@/lib/time';
+import { relativeLabel } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import type { AssetRow } from '@/types/assets';
 import { AssetSignal } from './asset-signal';
 import { AssetStatusBadge } from './asset-status-badge';
+import { MonitoringSwitch } from './monitoring-switch';
 import { PlateChip, vehicleTitle } from './vehicle-line';
 
 const MOVING_SPEED_KPH = 5;
@@ -63,43 +64,59 @@ function DevicesCell({ devices }: { devices: AssetRow['devices'] }) {
     );
 }
 
-function LocationCell({ location }: { location: AssetRow['lastLocation'] }) {
-    if (location === null) {
+function LocationCell({
+    location,
+    speed,
+}: {
+    location: AssetRow['lastLocation'];
+    speed: AssetRow['currentSpeed'];
+}) {
+    if (location === null && speed === null) {
         return <CellEmpty />;
     }
 
-    const fresh = isFresh(location.recordedAt);
     const moving =
-        fresh && location.speed !== null && location.speed > MOVING_SPEED_KPH;
+        speed !== null && !speed.stale && speed.kph > MOVING_SPEED_KPH;
 
     return (
         <span className="flex min-w-0 flex-col">
-            <span className="truncate text-xs text-fg-2">
-                {location.formattedLocation ??
-                    `${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)}`}
-            </span>
-            {location.speed !== null && (
+            {location !== null && (
+                <span className="truncate text-xs text-fg-2">
+                    {location.formattedLocation ??
+                        `${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)}`}
+                </span>
+            )}
+            {speed !== null && (
                 <span
                     className={cn(
                         'inline-flex items-center gap-1 font-mono text-3xs tabular-nums',
                         moving ? 'text-severity-low' : 'text-fg-3',
                     )}
+                    title={
+                        speed.stale
+                            ? 'Lectura antigua: la unidad no ha reportado velocidad recientemente'
+                            : undefined
+                    }
                 >
                     {moving && (
                         <Navigation
                             size={9}
                             className="shrink-0"
                             style={{
-                                transform: `rotate(${(location.heading ?? 0) - 45}deg)`,
+                                transform: `rotate(${(location?.heading ?? 0) - 45}deg)`,
                             }}
                             aria-hidden="true"
                         />
                     )}
-                    {formatNumber(location.speed, {
+                    {formatNumber(speed.kph, {
                         maximumFractionDigits: 0,
                     })}{' '}
                     km/h
-                    {moving ? ' · en ruta' : fresh ? ' · detenido' : ''}
+                    {speed.stale
+                        ? ` · ${relativeLabel(speed.recordedAt)}`
+                        : moving
+                          ? ' · en ruta'
+                          : ' · detenido'}
                 </span>
             )}
         </span>
@@ -190,8 +207,13 @@ const COLUMNS: DataTableColumn<AssetRow>[] = [
         key: 'location',
         header: 'Última posición',
         width: 'w-64',
-        sortValue: (asset) => asset.lastLocation?.speed ?? null,
-        cell: (asset) => <LocationCell location={asset.lastLocation} />,
+        sortValue: (asset) => asset.currentSpeed?.kph ?? null,
+        cell: (asset) => (
+            <LocationCell
+                location={asset.lastLocation}
+                speed={asset.currentSpeed}
+            />
+        ),
     },
     {
         key: 'devices',
@@ -218,19 +240,43 @@ interface AssetsTableProps {
     rows: AssetRow[];
     onSelect: (id: number) => void;
     empty?: React.ReactNode;
+    /** Needed by the monitoring switch to PUT the new state. */
+    teamSlug?: string | null;
 }
 
-export function AssetsTable({ rows, onSelect, empty }: AssetsTableProps) {
+export function AssetsTable({
+    rows,
+    onSelect,
+    empty,
+    teamSlug = null,
+}: AssetsTableProps) {
     // The hardware column only earns its space once at least one unit on the
-    // page reports a device; otherwise it is a column of dashes.
+    // page reports a device; otherwise it is a column of dashes. The
+    // monitoring switch goes first: it is the one thing the client edits.
     const columns = useMemo(
-        () =>
-            COLUMNS.filter(
+        () => [
+            {
+                key: 'monitoring',
+                header: 'Vigilancia',
+                width: 'w-36',
+                sortValue: (asset: AssetRow) => asset.monitoringState,
+                cell: (asset: AssetRow) => (
+                    <MonitoringSwitch
+                        assetId={asset.id}
+                        assetName={asset.name}
+                        state={asset.monitoringState}
+                        teamSlug={teamSlug}
+                        withLabel
+                    />
+                ),
+            } satisfies DataTableColumn<AssetRow>,
+            ...COLUMNS.filter(
                 (column) =>
                     column.key !== 'devices' ||
                     rows.some((asset) => asset.devices.length > 0),
             ),
-        [rows],
+        ],
+        [rows, teamSlug],
     );
 
     return (

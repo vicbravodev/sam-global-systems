@@ -26,6 +26,7 @@ import type {
     IncidentMediaAssessment,
     IncidentMediaItem,
     IncidentMediaRequestSummary,
+    IncidentMediaRetrieval,
 } from '@/types/sam';
 import { useIncidentActions } from './incident-actions-context';
 import { mediaResultLabel } from './media-verdict';
@@ -130,6 +131,8 @@ interface MediaStripProps {
     media: IncidentMediaItem[];
     assessments: IncidentMediaAssessment[];
     requests: IncidentMediaRequestSummary[];
+    /** Ventana de retención del dispositivo: sin ella no se ofrece pedir video. */
+    retrieval?: IncidentMediaRetrieval | null;
     onMutated: () => void;
 }
 
@@ -143,6 +146,7 @@ export function MediaStrip({
     media,
     assessments,
     requests,
+    retrieval = null,
     onMutated,
 }: MediaStripProps) {
     const page = usePage();
@@ -237,6 +241,13 @@ export function MediaStrip({
                         <Loader2 size={11} className="animate-spin" />
                         Solicitud en curso
                     </Badge>
+                ) : retrieval !== null && !retrieval.available ? (
+                    <span
+                        className="text-2xs text-fg-3"
+                        title={retrieval.reason ?? undefined}
+                    >
+                        Video del dispositivo expirado
+                    </span>
                 ) : can.requestMedia ? (
                     <Button
                         size="sm"

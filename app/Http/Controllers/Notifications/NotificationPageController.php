@@ -9,12 +9,17 @@ use App\Domains\Notifications\Enums\MessagingChargeSource;
 use App\Domains\Notifications\Enums\NotificationPriority;
 use App\Domains\Notifications\Enums\NotificationSourceType;
 use App\Domains\Notifications\Enums\NotificationStatus;
+use App\Domains\Notifications\Enums\RecipientType;
 use App\Domains\Notifications\Models\MessagingCharge;
 use App\Domains\Notifications\Models\Notification;
 use App\Domains\Notifications\Models\NotificationDelivery;
+use App\Domains\Notifications\Models\NotificationRecipient;
 use App\Domains\Notifications\Support\DeliveryFeedbackPresenter;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -44,26 +49,12 @@ class NotificationPageController extends Controller
                 'reads' => fn ($query) => $query->where('user_id', $user->id),
                 'deliveries.channel',
             ])
-            ->withCount([
-                'recipients',
-                'deliveries',
-                'deliveries as attempted_deliveries_count' => fn ($query) => $query
-                    ->whereNotIn('status', [DeliveryStatus::Skipped, DeliveryStatus::Cancelled]),
-                'deliveries as delivered_deliveries_count' => fn ($query) => $query
-                    ->where('status', DeliveryStatus::Delivered),
-                'deliveries as failed_deliveries_count' => fn ($query) => $query
-                    ->whereIn('status', [DeliveryStatus::Failed, DeliveryStatus::Bounced]),
-            ])
-            ->when($failuresOnly, fn ($query) => $query->whereHas(
-                'deliveries',
-                fn ($deliveryQuery) => $deliveryQuery->whereIn('status', [DeliveryStatus::Failed, DeliveryStatus::Bounced]),
-            ))
+            ->withCount($this->deliveryCounts())
+            ->withExists(['recipients as addressed_to_me' => fn ($query) => $this->addressedTo($query, $user->id)])
+            ->when($failuresOnly, fn ($query) => $this->undelivered($query))
             ->when($status, fn ($query) => $query->where('status', $status))
             ->when($priority, fn ($query) => $query->where('priority', $priority))
-            ->when($unreadOnly, fn ($query) => $query->whereDoesntHave(
-                'reads',
-                fn ($readQuery) => $readQuery->where('user_id', $user->id),
-            ))
+            ->when($unreadOnly, fn ($query) => $this->unreadBy($query, $user->id))
             ->orderByDesc('id')
             ->paginate(self::PER_PAGE)
             ->withQueryString();
@@ -102,7 +93,8 @@ class NotificationPageController extends Controller
     {
         $this->authorize('view', $notification);
 
-        $notification->loadCount(['recipients', 'deliveries']);
+        $notification->loadCount($this->deliveryCounts());
+        $notification->loadExists(['recipients as addressed_to_me' => fn ($query) => $this->addressedTo($query, $request->user()->id)]);
         $notification->load([
             'reads' => fn ($query) => $query->where('user_id', $request->user()->id),
             'deliveries.channel',
@@ -122,17 +114,12 @@ class NotificationPageController extends Controller
             ->get(['source_id', 'provider_sid', 'events_json'])
             ->groupBy('source_id');
 
-        $failedChannelsByRecipient = [];
+        $fallbackSources = $this->fallbackSources($deliveries);
 
-        $rows = $deliveries->map(function (NotificationDelivery $delivery) use ($charges, &$failedChannelsByRecipient): array {
+        $rows = $deliveries->map(function (NotificationDelivery $delivery) use ($charges, $fallbackSources): array {
             $channelType = $delivery->channel?->channel_type;
             $recipientKey = (int) $delivery->recipient_id;
-            $isFallback = ($failedChannelsByRecipient[$recipientKey] ?? []) !== []
-                && ! in_array($channelType?->value, $failedChannelsByRecipient[$recipientKey], true);
-
-            if (in_array($delivery->status, [DeliveryStatus::Failed, DeliveryStatus::Bounced], true) && $channelType !== null) {
-                $failedChannelsByRecipient[$recipientKey][] = $channelType->value;
-            }
+            $fallbackFrom = $fallbackSources[$delivery->id] ?? null;
 
             $events = ($charges->get($delivery->id) ?? collect())
                 ->flatMap(fn (MessagingCharge $charge) => collect($charge->events_json ?? [])
@@ -157,15 +144,14 @@ class NotificationPageController extends Controller
                     'type' => $channelType?->value,
                     'label' => $channelType?->label(),
                 ],
-                'address' => DeliveryFeedbackPresenter::maskAddress(
-                    $delivery->payload_json['address'] ?? ($channelType !== null ? $delivery->recipient?->addressForChannel($channelType) : null),
-                ),
+                'address' => $this->deliveryTarget($delivery, $channelType),
                 'status' => $delivery->status->value,
                 'statusLabel' => DeliveryFeedbackPresenter::label($delivery, $channelType),
                 'tone' => DeliveryFeedbackPresenter::tone($delivery),
                 'reason' => DeliveryFeedbackPresenter::reason($delivery),
                 'attempts' => (int) $delivery->attempt_number,
-                'isFallback' => $isFallback,
+                'isFallback' => $fallbackFrom !== null,
+                'fallbackFromChannel' => $fallbackFrom?->channel?->channel_type?->label(),
                 'callDurationSeconds' => $delivery->call_duration_seconds,
                 'acceptedAt' => $delivery->accepted_at?->toIso8601String(),
                 'sentAt' => $delivery->sent_at?->toIso8601String(),
@@ -184,10 +170,12 @@ class NotificationPageController extends Controller
     }
 
     /**
-     * Tenant pulse for the header strip: what this user has not read yet,
-     * what went out in the last 24 h, what did not (failed or cancelled) and
-     * how many critical notices were raised. Ignores the active filters on
-     * purpose; tenant scope comes from the BelongsToTenant global scope.
+     * Tenant pulse for the header strip: what was addressed to this user and
+     * they have not read yet, what went out in the last 24 h, what did not
+     * reach someone (a failed/bounced delivery, or the notification failed or
+     * was cancelled) and how many critical notices were raised. Ignores the
+     * active filters on purpose; tenant scope comes from the BelongsToTenant
+     * global scope.
      *
      * @return array{unread: int, sent24h: int, undelivered24h: int, critical24h: int}
      */
@@ -196,22 +184,183 @@ class NotificationPageController extends Controller
         $since = now()->subDay();
 
         return [
-            'unread' => Notification::query()
-                ->whereDoesntHave('reads', fn ($q) => $q->where('user_id', $userId))
-                ->count(),
+            'unread' => $this->unreadBy(Notification::query(), $userId)->count(),
             'sent24h' => Notification::query()
                 ->where('created_at', '>=', $since)
                 ->whereIn('status', [NotificationStatus::Sent, NotificationStatus::PartiallySent])
                 ->count(),
-            'undelivered24h' => Notification::query()
-                ->where('created_at', '>=', $since)
-                ->whereIn('status', [NotificationStatus::Failed, NotificationStatus::Cancelled])
-                ->count(),
+            'undelivered24h' => $this->undelivered(Notification::query()->where('created_at', '>=', $since))->count(),
             'critical24h' => Notification::query()
                 ->where('created_at', '>=', $since)
                 ->where('priority', NotificationPriority::Critical)
                 ->count(),
         ];
+    }
+
+    /**
+     * @return array<int|string, mixed>
+     */
+    private function deliveryCounts(): array
+    {
+        return [
+            'recipients',
+            'deliveries',
+            'deliveries as attempted_deliveries_count' => fn ($query) => $query
+                ->whereNotIn('status', [DeliveryStatus::Skipped, DeliveryStatus::Cancelled]),
+            'deliveries as delivered_deliveries_count' => fn ($query) => $query
+                ->where('status', DeliveryStatus::Delivered),
+            'deliveries as failed_deliveries_count' => fn ($query) => $query
+                ->whereIn('status', [DeliveryStatus::Failed, DeliveryStatus::Bounced]),
+        ];
+    }
+
+    /**
+     * Recipients that are this user (the dispatcher stores the user id as the
+     * reference of a `user` recipient).
+     *
+     * @param  Builder<NotificationRecipient>|HasMany<NotificationRecipient, Notification>  $query
+     * @return Builder<NotificationRecipient>|HasMany<NotificationRecipient, Notification>
+     */
+    private function addressedTo(Builder|HasMany $query, int $userId): Builder|HasMany
+    {
+        return $query
+            ->where('recipient_type', RecipientType::User)
+            ->where('recipient_reference_id', (string) $userId);
+    }
+
+    /**
+     * Notifications addressed to the user that they have not read. "Sin
+     * leer" is personal: a notice sent to another operator is not pending
+     * for me just because I never opened it.
+     *
+     * @param  Builder<Notification>  $query
+     * @return Builder<Notification>
+     */
+    private function unreadBy(Builder $query, int $userId): Builder
+    {
+        return $query
+            ->whereHas('recipients', fn ($recipientQuery) => $this->addressedTo($recipientQuery, $userId))
+            ->whereDoesntHave('reads', fn ($readQuery) => $readQuery->where('user_id', $userId));
+    }
+
+    /**
+     * Notifications that did not reach someone: at least one failed/bounced
+     * delivery (even if another channel got through), or the notification
+     * itself failed or was cancelled. Same predicate for the pulse counter
+     * and the "Con fallas de entrega" filter it toggles.
+     *
+     * @param  Builder<Notification>  $query
+     * @return Builder<Notification>
+     */
+    private function undelivered(Builder $query): Builder
+    {
+        return $query->where(fn (Builder $inner) => $inner
+            ->whereIn('status', [NotificationStatus::Failed, NotificationStatus::Cancelled])
+            ->orWhereHas(
+                'deliveries',
+                fn ($deliveryQuery) => $deliveryQuery->whereIn('status', [DeliveryStatus::Failed, DeliveryStatus::Bounced]),
+            ));
+    }
+
+    /**
+     * Which delivery each fallback row was opened for. Deliveries created by
+     * FallbackNotificationChannelJob carry `fallback_from_delivery_id`; for
+     * rows written before that link existed, a delivery counts as a fallback
+     * only when it was created AFTER the dispatch round of its recipient and
+     * no earlier than the failure of an earlier delivery of that recipient on
+     * another channel. List order alone proves nothing.
+     *
+     * @param  Collection<int, NotificationDelivery>  $deliveries
+     * @return array<int, NotificationDelivery> delivery id => delivery it fell back from
+     */
+    private function fallbackSources(Collection $deliveries): array
+    {
+        $byId = $deliveries->keyBy('id');
+        $sources = [];
+
+        foreach ($deliveries->groupBy('recipient_id') as $recipientDeliveries) {
+            $dispatchedAt = $recipientDeliveries->min(fn (NotificationDelivery $d) => $d->created_at?->getTimestamp());
+
+            foreach ($recipientDeliveries as $delivery) {
+                if ($delivery->fallback_from_delivery_id !== null) {
+                    $source = $byId->get($delivery->fallback_from_delivery_id);
+
+                    if ($source !== null) {
+                        $sources[$delivery->id] = $source;
+                    }
+
+                    continue;
+                }
+
+                $createdAt = $delivery->created_at?->getTimestamp();
+
+                if ($createdAt === null || $dispatchedAt === null || $createdAt <= $dispatchedAt) {
+                    continue;
+                }
+
+                $source = $recipientDeliveries
+                    ->filter(fn (NotificationDelivery $earlier) => $earlier->id < $delivery->id
+                        && $earlier->failed_at !== null
+                        && $earlier->failed_at->getTimestamp() <= $createdAt
+                        && $earlier->channel?->channel_type !== $delivery->channel?->channel_type)
+                    ->sortByDesc(fn (NotificationDelivery $earlier) => $earlier->failed_at?->getTimestamp())
+                    ->first();
+
+                if ($source !== null) {
+                    $sources[$delivery->id] = $source;
+                }
+            }
+        }
+
+        return $sources;
+    }
+
+    /**
+     * Where the delivery went. The web inbox has no external address (the
+     * recipient's generic address is an email, which would suggest it was
+     * mailed), so it is named for what it is.
+     */
+    private function deliveryTarget(NotificationDelivery $delivery, ?ChannelType $channelType): ?string
+    {
+        if ($channelType === ChannelType::Web) {
+            return 'Bandeja web de SAM';
+        }
+
+        if ($channelType === ChannelType::Push) {
+            return 'App móvil de SAM';
+        }
+
+        return DeliveryFeedbackPresenter::maskAddress(
+            $delivery->payload_json['address'] ?? ($channelType !== null ? $delivery->recipient?->addressForChannel($channelType) : null),
+        );
+    }
+
+    /**
+     * Honest row status from what the deliveries actually did: a notification
+     * whose deliveries all failed is not "Enviada" just because it left the
+     * dispatcher, and 1 of 3 is partial.
+     *
+     * @return array{label: string, tone: string}
+     */
+    private function statusDisplay(Notification $notification): array
+    {
+        $attempted = (int) ($notification->attempted_deliveries_count ?? 0);
+        $delivered = (int) ($notification->delivered_deliveries_count ?? 0);
+        $failed = (int) ($notification->failed_deliveries_count ?? 0);
+
+        return match ($notification->status) {
+            NotificationStatus::Pending => ['label' => 'Pendiente', 'tone' => 'neutral'],
+            NotificationStatus::Queued => ['label' => 'En cola', 'tone' => 'info'],
+            NotificationStatus::Cancelled => ['label' => 'Cancelada', 'tone' => 'muted'],
+            NotificationStatus::Failed => ['label' => 'Fallida', 'tone' => 'critical'],
+            NotificationStatus::Sent, NotificationStatus::PartiallySent => match (true) {
+                $attempted === 0 => ['label' => 'Enviada', 'tone' => 'ok'],
+                $delivered === $attempted => ['label' => 'Entregada', 'tone' => 'ok'],
+                $delivered === 0 && $failed === $attempted => ['label' => 'Sin entregar', 'tone' => 'critical'],
+                $delivered === 0 => ['label' => 'Sin confirmar entrega', 'tone' => 'warning'],
+                default => ['label' => "Parcial {$delivered}/{$attempted}", 'tone' => 'warning'],
+            },
+        };
     }
 
     /**
@@ -286,6 +435,8 @@ class NotificationPageController extends Controller
      */
     private function presentNotification(Notification $notification, Team $team): array
     {
+        $display = $this->statusDisplay($notification);
+
         return [
             'id' => (int) $notification->id,
             'type' => (string) $notification->notification_type,
@@ -298,6 +449,9 @@ class NotificationPageController extends Controller
             'sentAt' => $notification->sent_at?->toIso8601String(),
             'createdAt' => $notification->created_at?->toIso8601String(),
             'isRead' => $notification->reads->isNotEmpty(),
+            'addressedToMe' => (bool) ($notification->addressed_to_me ?? false),
+            'statusLabel' => $display['label'],
+            'statusTone' => $display['tone'],
             'statusReason' => $this->statusReason($notification),
             'recipientsCount' => (int) $notification->recipients_count,
             'channels' => $this->channels($notification),

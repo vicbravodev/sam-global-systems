@@ -15,6 +15,8 @@ Guía operativa para Claude Code. El documento autoritativo de reglas Laravel si
 
 Plataforma multi-tenant de flotas: ingesta webhooks/eventos de proveedores externos (Samsara, etc.), los normaliza, los enriquece con contexto operacional, los evalúa con IA, y genera incidentes + automatizaciones. Billing metered **local** con eventos de uso por tenant: el cobro es por transferencia bancaria (decisión 2026-06-09, **Stripe cancelado** — no arrancar trabajo Stripe; el admin activa/desactiva tenants según pago/factura subida).
 
+**Modelo de cobro (decisión 2026-09-28): por tracto-día, sin planes ni trial.** Cada activo tiene `monitoring_state` (`monitored` / `pending` / `excluded`): el sync descubre toda la flota como `pending`, el cliente enciende lo que quiere (`SetAssetMonitoring`) y sólo lo `monitored` se sondea, normaliza, evalúa y cobra. El tope contratado es **suave**: encender de más se permite, se audita (`UsageLimitExceeded`) y se cobra como extra. La muestra nocturna (`assets:record-usage-meters`) alimenta `monitored_asset_days` (suma) y la factura es Σ tracto-días × (precio mensual ÷ días del mes) según `tenant_billing_terms` con defaults en `config/billing.php` (`ResolveBillingTerms`, `AssetDayPricing`, `GenerateInvoiceSnapshotJob`). Los `plans` son sólo plantillas de topes (base_price 0).
+
 **Stack:** Laravel 13 · PHP 8.5 · Inertia v3 · React 19 · Tailwind v4 · PostgreSQL 18 · Valkey (no Redis) · RustFS (S3-compatible) · Soketi (Pusher-compatible) · Horizon · Mailpit (dev). (Cashier retirado 2026-06-10 — billing local por transferencia.)
 
 **Tenant = Team.** `app/Models/Team.php` ES el tenant. No existe un modelo `Tenant` separado — no lo inventes.

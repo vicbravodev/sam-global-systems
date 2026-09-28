@@ -7,6 +7,7 @@ use App\Domains\Access\Models\Role;
 use App\Domains\AI\Enums\EventClassification;
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\Assets\Models\Asset;
+use App\Domains\Context\Models\EventContextSnapshot;
 use App\Domains\Decisions\Enums\DecisionOutcomeCode;
 use App\Domains\Decisions\Models\Decision;
 use App\Domains\Incidents\Models\Incident;
@@ -19,6 +20,7 @@ use App\Models\User;
 use Database\Seeders\AccessSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
+use Tests\Concerns\AssertsTenantIsolation;
 use Tests\TestCase;
 
 /**
@@ -27,7 +29,7 @@ use Tests\TestCase;
  */
 class EventsPageTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsTenantIsolation, RefreshDatabase;
 
     private User $user;
 
@@ -153,6 +155,7 @@ class EventsPageTest extends TestCase
             'team_id' => $this->team->id,
             'normalized_event_id' => $event->id,
             'classification' => EventClassification::Unclear,
+            'model_used' => 'gpt-5-mini',
         ]);
 
         Decision::factory()->create([
@@ -175,6 +178,99 @@ class EventsPageTest extends TestCase
                 ->where('decision.code', 'REQUIRE_HUMAN_REVIEW')
                 ->where('decision.outcomeLabel', 'Revisión humana'),
         );
+    }
+
+    /**
+     * UI audit P0-3: the stand-in agent's fixed "85%" is not a verdict.
+     */
+    public function test_show_hides_scores_of_placeholder_null_agent_evaluation(): void
+    {
+        $event = NormalizedEvent::factory()->create(['team_id' => $this->team->id]);
+
+        AIEventEvaluation::factory()->create([
+            'team_id' => $this->team->id,
+            'normalized_event_id' => $event->id,
+            'model_used' => 'null-agent:1.0',
+            'confidence_score' => 0.85,
+            'risk_score' => 0.8,
+            'classification' => EventClassification::RealEvent,
+        ]);
+
+        $this->actingAs($this->user)
+            ->get(route('events.show', ['current_team' => $this->team->slug, 'normalizedEvent' => $event->id]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('events/show')
+                ->where('evaluation.isPlaceholder', true)
+                ->where('evaluation.placeholderLabel', 'Sin evaluación IA')
+                ->where('evaluation.confidenceScore', null)
+                ->where('evaluation.riskScore', null)
+                ->where('evaluation.classification', null)
+                ->where('evaluation.isRealEvent', null));
+    }
+
+    public function test_show_keeps_scores_of_a_real_model_evaluation(): void
+    {
+        $event = NormalizedEvent::factory()->create(['team_id' => $this->team->id]);
+
+        AIEventEvaluation::factory()->create([
+            'team_id' => $this->team->id,
+            'normalized_event_id' => $event->id,
+            'model_used' => 'gpt-5-mini',
+            'confidence_score' => 0.91,
+        ]);
+
+        $this->actingAs($this->user)
+            ->get(route('events.show', ['current_team' => $this->team->slug, 'normalizedEvent' => $event->id]))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('evaluation.isPlaceholder', false)
+                ->where('evaluation.confidenceScore', 0.91));
+    }
+
+    /**
+     * PR #130 follow-up: `normalized_events.context_json` is never written;
+     * the context shown must come from `event_context_snapshots`.
+     */
+    public function test_show_reads_context_from_the_event_context_snapshot(): void
+    {
+        $event = NormalizedEvent::factory()->create([
+            'team_id' => $this->team->id,
+            'context_json' => null,
+        ]);
+
+        EventContextSnapshot::factory()->create([
+            'team_id' => $this->team->id,
+            'normalized_event_id' => $event->id,
+            'context_version' => 2,
+            'location_snapshot_json' => ['formatted' => 'Av. Reforma 222'],
+            'signals_json' => ['night_driving' => true],
+        ]);
+
+        $this->actingAs($this->user)
+            ->get(route('events.show', ['current_team' => $this->team->slug, 'normalizedEvent' => $event->id]))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('event.context.version', 2)
+                ->where('event.context.location.formatted', 'Av. Reforma 222')
+                ->where('event.context.signals', ['night_driving' => true]));
+    }
+
+    public function test_show_never_reads_a_context_snapshot_of_another_tenant(): void
+    {
+        $event = NormalizedEvent::factory()->create(['team_id' => $this->team->id]);
+        $otherTeam = User::factory()->create()->currentTeam;
+
+        // Corrupt row: another tenant's snapshot pointing at our event id.
+        EventContextSnapshot::factory()->create([
+            'team_id' => $otherTeam->id,
+            'normalized_event_id' => $event->id,
+            'location_snapshot_json' => ['formatted' => 'Bodega del tenant A'],
+        ]);
+
+        $response = $this->assertNoTenantLeak($this->team, fn () => $this->actingAs($this->user)
+            ->get(route('events.show', ['current_team' => $this->team->slug, 'normalizedEvent' => $event->id])));
+
+        $response->assertInertia(fn (Assert $page) => $page->where('event.context', null));
+        $this->assertStringNotContainsString('Bodega del tenant A', (string) $response->getContent());
     }
 
     public function test_show_is_not_found_for_other_tenant_event(): void

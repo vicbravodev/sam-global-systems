@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers\Drivers;
 
+use App\Domains\Context\Actions\LoadRecentAssetHistory;
 use App\Domains\Drivers\Enums\AssignmentType;
 use App\Domains\Drivers\Enums\ContactType;
 use App\Domains\Drivers\Enums\DriverStatus;
 use App\Domains\Drivers\Enums\RiskLevel;
+use App\Domains\Drivers\Jobs\RecalculateDriverRiskProfilesJob;
 use App\Domains\Drivers\Models\Driver;
 use App\Domains\Drivers\Models\DriverAssignment;
 use App\Domains\Drivers\Models\DriverContact;
@@ -19,6 +21,7 @@ use App\Models\Team;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -139,7 +142,8 @@ class DriverPageController extends Controller
         $this->authorize('view', $driver);
 
         $driver->load([
-            'currentAssignment.asset',
+            'currentAssignment.asset.latestLocation',
+            'currentAssignment.asset.latestTelemetry',
             'riskProfile',
             'contacts' => fn (HasMany $q) => $q
                 ->orderByDesc('is_primary')
@@ -318,6 +322,7 @@ class DriverPageController extends Controller
     {
         $asset = $driver->currentAssignment?->asset;
         $risk = $driver->riskProfile;
+        $live = $risk !== null ? $this->liveRiskCounts($driver) : null;
 
         return [
             'id' => (int) $driver->id,
@@ -330,6 +335,10 @@ class DriverPageController extends Controller
             'status' => $driver->status->value,
             'firstSeenAt' => $driver->first_seen_at?->toIso8601String(),
             'lastSeenAt' => $driver->last_seen_at?->toIso8601String(),
+            // Latest REAL activity (driver event or current unit's signal)
+            // — what the header shows as "visto". `last_seen_at` is the
+            // roster-sync timestamp and lags hours behind the road.
+            'lastSignalAt' => $this->lastSignalAt($driver),
             'currentAsset' => $asset ? [
                 'id' => (int) $asset->id,
                 'name' => (string) $asset->name,
@@ -345,10 +354,13 @@ class DriverPageController extends Controller
                 'windowDays' => isset($risk->metadata_json['window_days'])
                     ? (int) $risk->metadata_json['window_days']
                     : null,
-                'incidentsCount' => (int) $risk->incidents_count,
-                'harshEventsCount' => (int) $risk->harsh_events_count,
-                'fatigueFlagsCount' => (int) $risk->fatigue_flags_count,
-                'severeEventsCount' => (int) ($risk->metadata_json['severe_events_count'] ?? 0),
+                // Counters are live over the same window the nightly job uses,
+                // so a collision shows up right away; the score/level stay
+                // the nightly calculation (see `lastCalculatedAt`).
+                'incidentsCount' => $live['incidents'],
+                'harshEventsCount' => $live['harsh'],
+                'fatigueFlagsCount' => $live['fatigue'],
+                'severeEventsCount' => $live['severe'],
                 'lastCalculatedAt' => $risk->last_calculated_at?->toIso8601String(),
             ] : null,
             'providerFields' => $this->providerFields($driver),
@@ -381,6 +393,67 @@ class DriverPageController extends Controller
                 ->values()
                 ->all(),
         ];
+    }
+
+    /**
+     * Live counters for the risk card, computed exactly like
+     * RecalculateDriverRiskProfilesJob (same window and code lists) but at
+     * view time: one grouped event query plus one incident count.
+     *
+     * @return array{incidents: int, harsh: int, fatigue: int, severe: int}
+     */
+    private function liveRiskCounts(Driver $driver): array
+    {
+        $since = now()->subDays(RecalculateDriverRiskProfilesJob::WINDOW_DAYS);
+
+        $counts = NormalizedEvent::query()
+            ->where('normalized_events.team_id', $driver->team_id)
+            ->where('normalized_events.driver_id', $driver->id)
+            ->where('normalized_events.occurred_at', '>=', $since)
+            ->join('event_types', 'event_types.id', '=', 'normalized_events.event_type_id')
+            ->selectRaw('event_types.code as code, count(*) as total')
+            ->groupBy('event_types.code')
+            ->pluck('total', 'code');
+
+        $sum = fn (array $codes): int => (int) collect($codes)->sum(fn (string $code) => (int) ($counts[$code] ?? 0));
+
+        return [
+            'incidents' => Incident::query()
+                ->where('team_id', $driver->team_id)
+                ->where('driver_id', $driver->id)
+                ->where('opened_at', '>=', $since)
+                ->count(),
+            'harsh' => $sum(LoadRecentAssetHistory::HARSH_DRIVING_CODES),
+            'fatigue' => $sum(RecalculateDriverRiskProfilesJob::FATIGUE_CODES),
+            'severe' => $sum(RecalculateDriverRiskProfilesJob::SEVERE_CODES),
+        ];
+    }
+
+    /**
+     * Newest real signal attributable to the driver: their latest normalized
+     * event, or the latest position/telemetry of the unit they drive now.
+     */
+    private function lastSignalAt(Driver $driver): ?string
+    {
+        $asset = $driver->currentAssignment?->asset;
+
+        $candidates = array_filter([
+            NormalizedEvent::query()
+                ->where('team_id', $driver->team_id)
+                ->where('driver_id', $driver->id)
+                ->max('occurred_at'),
+            $asset?->latestLocation?->recorded_at,
+            $asset?->latestTelemetry?->recorded_at,
+        ]);
+
+        if ($candidates === []) {
+            return null;
+        }
+
+        return collect($candidates)
+            ->map(fn ($value) => Carbon::parse($value))
+            ->max()
+            ->toIso8601String();
     }
 
     /**
@@ -515,17 +588,12 @@ class DriverPageController extends Controller
             ->get()
             ->map(fn (Incident $incident) => [
                 'id' => (int) $incident->id,
+                'reference' => $incident->reference(),
                 'title' => (string) $incident->title,
                 'status' => $incident->status ? [
                     'code' => (string) $incident->status->code,
-                    'uiStatus' => IncidentStatusPresenter::uiStatus(
-                        $incident->status->code,
-                        $incident->currentAssignment !== null,
-                    ),
-                    'name' => IncidentStatusPresenter::label(
-                        $incident->status->code,
-                        $incident->currentAssignment !== null,
-                    ),
+                    'uiStatus' => IncidentStatusPresenter::forIncident($incident),
+                    'name' => IncidentStatusPresenter::labelForIncident($incident),
                 ] : null,
                 'priority' => $incident->priority ? [
                     'code' => (string) $incident->priority->code,

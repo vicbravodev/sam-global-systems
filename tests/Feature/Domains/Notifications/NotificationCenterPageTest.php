@@ -24,11 +24,12 @@ use App\Models\User;
 use Database\Seeders\AccessSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
+use Tests\Concerns\AssertsTenantIsolation;
 use Tests\TestCase;
 
 class NotificationCenterPageTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsTenantIsolation, RefreshDatabase;
 
     protected function setUp(): void
     {
@@ -176,10 +177,12 @@ class NotificationCenterPageTest extends TestCase
             'team_id' => $team->id,
             'subject' => 'Ya leída',
         ]);
-        Notification::factory()->create([
+        $unread = Notification::factory()->create([
             'team_id' => $team->id,
             'subject' => 'Sin leer',
         ]);
+        $this->addressTo($read, $user);
+        $this->addressTo($unread, $user);
 
         NotificationRead::factory()->create([
             'team_id' => $team->id,
@@ -474,12 +477,14 @@ class NotificationCenterPageTest extends TestCase
             'notification_id' => $read->id,
             'user_id' => $user->id,
         ]);
-        Notification::factory()->sent()->critical()->create(['team_id' => $team->id]);
-        Notification::factory()->create(['team_id' => $team->id, 'status' => NotificationStatus::Failed]);
-        Notification::factory()->create(['team_id' => $team->id, 'status' => NotificationStatus::Cancelled]);
+        $this->addressTo($read, $user);
+        $this->addressTo(Notification::factory()->sent()->critical()->create(['team_id' => $team->id]), $user);
+        $this->addressTo(Notification::factory()->create(['team_id' => $team->id, 'status' => NotificationStatus::Failed]), $user);
+        $this->addressTo(Notification::factory()->create(['team_id' => $team->id, 'status' => NotificationStatus::Cancelled]), $user);
         // Older than a day: unread but outside the 24 h counters.
         $old = Notification::factory()->sent()->critical()->create(['team_id' => $team->id]);
         $old->forceFill(['created_at' => now()->subDays(2)])->save();
+        $this->addressTo($old, $user);
         Notification::factory()->sent()->critical()->count(3)->create(['team_id' => $other->id]);
 
         $response = $this->actingAs($user)->get(
@@ -494,6 +499,95 @@ class NotificationCenterPageTest extends TestCase
                 ->where('summary.undelivered24h', 2)
                 ->where('summary.critical24h', 1),
         );
+    }
+
+    /**
+     * UI audit P1-6: "sin leer" counted every tenant notification the user
+     * had not opened, including the ones sent to other operators.
+     */
+    public function test_unread_counts_only_notifications_addressed_to_the_user(): void
+    {
+        [$user, $team] = $this->createUserWithRole('notif_unread_mine', ['notifications.view']);
+        $colleague = User::factory()->create();
+
+        $mine = Notification::factory()->sent()->create(['team_id' => $team->id, 'subject' => 'Para mí']);
+        $this->addressTo($mine, $user);
+        $theirs = Notification::factory()->sent()->create(['team_id' => $team->id, 'subject' => 'Para otro']);
+        $this->addressTo($theirs, $colleague);
+
+        $response = $this->actingAs($user)->get(
+            route('notifications.index', ['current_team' => $team->slug]),
+        );
+
+        $response->assertInertia(fn (Assert $page) => $page
+            ->where('summary.unread', 1)
+            ->has('notifications', 2));
+
+        $rows = collect($response->viewData('page')['props']['notifications'])->keyBy('subject');
+        $this->assertTrue($rows['Para mí']['addressedToMe']);
+        $this->assertFalse($rows['Para otro']['addressedToMe']);
+
+        $this->actingAs($user)
+            ->get(route('notifications.index', ['current_team' => $team->slug, 'unread' => 1]))
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('notifications', 1)
+                ->where('notifications.0.subject', 'Para mí'));
+    }
+
+    /**
+     * UI audit P1-6: "No entregadas 24 h" showed 0 while deliveries had
+     * failed, because it only looked at the notification status.
+     */
+    public function test_undelivered_counter_includes_notifications_with_failed_deliveries(): void
+    {
+        [$user, $team] = $this->createUserWithRole('notif_undelivered', ['notifications.view']);
+        $other = Team::factory()->create();
+        $sms = NotificationChannel::factory()->sms()->create();
+
+        $withFailure = Notification::factory()->sent()->create(['team_id' => $team->id]);
+        $recipient = NotificationRecipient::factory()->create(['notification_id' => $withFailure->id, 'team_id' => $team->id]);
+        NotificationDelivery::factory()->failed()->create([
+            'notification_id' => $withFailure->id,
+            'recipient_id' => $recipient->id,
+            'channel_id' => $sms->id,
+            'team_id' => $team->id,
+        ]);
+        Notification::factory()->sent()->create(['team_id' => $team->id]);
+
+        // Another tenant's failures never count here.
+        $foreign = Notification::factory()->sent()->create(['team_id' => $other->id]);
+        $foreignRecipient = NotificationRecipient::factory()->create(['notification_id' => $foreign->id, 'team_id' => $other->id]);
+        NotificationDelivery::factory()->failed()->create([
+            'notification_id' => $foreign->id,
+            'recipient_id' => $foreignRecipient->id,
+            'channel_id' => $sms->id,
+            'team_id' => $other->id,
+        ]);
+
+        $response = $this->assertNoTenantLeak($team, fn () => $this->actingAs($user)->get(
+            route('notifications.index', ['current_team' => $team->slug]),
+        ));
+
+        $response->assertInertia(fn (Assert $page) => $page
+            ->where('summary.undelivered24h', 1)
+            ->has('notifications', 2));
+
+        $this->actingAs($user)
+            ->get(route('notifications.index', ['current_team' => $team->slug, 'failures' => 1]))
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('notifications', 1)
+                ->where('notifications.0.id', $withFailure->id));
+    }
+
+    private function addressTo(Notification $notification, User $user): NotificationRecipient
+    {
+        return NotificationRecipient::factory()->create([
+            'notification_id' => $notification->id,
+            'team_id' => $notification->team_id,
+            'recipient_type' => RecipientType::User,
+            'recipient_reference_id' => (string) $user->id,
+            'name' => $user->name,
+        ]);
     }
 
     /**

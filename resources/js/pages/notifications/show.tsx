@@ -44,15 +44,6 @@ const TONE_STYLES: Record<DeliveryTone, string> = {
     pending: 'bg-severity-medium/15 text-severity-medium',
 };
 
-const NOTIFICATION_STATUS_LABELS: Record<string, string> = {
-    pending: 'Pendiente',
-    queued: 'En cola',
-    partially_sent: 'Parcialmente enviada',
-    sent: 'Enviada',
-    failed: 'Fallida',
-    cancelled: 'Cancelada',
-};
-
 function DeliveryStatus({ delivery }: { delivery: NotificationDeliveryRow }) {
     return (
         <div className="flex flex-col items-start gap-1">
@@ -157,7 +148,13 @@ function DeliveryItem({ delivery }: { delivery: NotificationDeliveryRow }) {
             </div>
 
             <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-                {delivery.isFallback && <MetaChip>Canal alterno</MetaChip>}
+                {delivery.isFallback && (
+                    <MetaChip>
+                        {delivery.fallbackFromChannel
+                            ? `Canal alterno tras ${delivery.fallbackFromChannel}`
+                            : 'Canal alterno'}
+                    </MetaChip>
+                )}
                 {delivery.attempts > 1 && (
                     <MetaChip>{delivery.attempts} intentos</MetaChip>
                 )}
@@ -203,12 +200,7 @@ export default function NotificationShow() {
                 <PageHeader
                     title={notification.subject ?? notification.type}
                     description={notification.bodyPreview ?? undefined}
-                    meta={
-                        <MetaChip>
-                            {NOTIFICATION_STATUS_LABELS[notification.status] ??
-                                notification.status}
-                        </MetaChip>
-                    }
+                    meta={<MetaChip>{notification.statusLabel}</MetaChip>}
                     actions={
                         <div className="flex items-center gap-2">
                             {notification.sourceUrl && (

@@ -100,6 +100,7 @@ class DetectOfflineAssetsJob implements ShouldQueue
         // pero inspecciona cada activo dentro del contexto del suyo. Ver §2.1.
         TenantContext::withoutTenant(fn () => Asset::query()
             ->whereNotNull('team_id')
+            ->monitored()
             ->whereNotIn('status', [AssetStatus::Inactive, AssetStatus::Maintenance])
             ->where('device_connectivity_polled_at', '>=', now()->subMinutes(self::CONNECTIVITY_FRESHNESS_MINUTES))
             ->where('device_last_connected_at', '>=', now()->subHours(self::MAX_EPISODE_AGE_HOURS))

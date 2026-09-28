@@ -1,6 +1,8 @@
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import {
     Camera,
+    Eye,
+    EyeOff,
     Map as MapIcon,
     Navigation,
     Radio,
@@ -11,6 +13,7 @@ import {
     Wrench,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { AssetsTable } from '@/components/sam/assets/assets-table';
 import {
     ClearFiltersButton,
@@ -32,6 +35,7 @@ import type {
     AssetsIndexProps,
     AssetsPagination,
     AssetsSummary,
+    MonitoringSummary,
 } from '@/types/assets';
 
 // Broadcast events that refresh the fleet list. Location polls can arrive in
@@ -39,6 +43,7 @@ import type {
 const RELOAD_EVENTS = new Set([
     'asset.location_updated',
     'asset.status_changed',
+    'asset.monitoring_changed',
 ]);
 
 const RELOAD_DEBOUNCE_MS = 2000;
@@ -113,19 +118,83 @@ function PageHead({
     );
 }
 
+// ---- Pending banner ----
+
+function PendingBanner({
+    monitoring,
+    teamSlug,
+    onShowPending,
+    onMonitorAll,
+    busy,
+}: {
+    monitoring: MonitoringSummary;
+    teamSlug: string | null;
+    onShowPending: () => void;
+    onMonitorAll: () => void;
+    busy: boolean;
+}) {
+    if (monitoring.pending === 0) {
+        return null;
+    }
+
+    const capText =
+        monitoring.cap === null
+            ? `Vigilas ${monitoring.monitored} unidades, sin tope contratado.`
+            : `Vigilas ${monitoring.monitored} de ${monitoring.cap} contratadas.` +
+              (monitoring.monitored + monitoring.pending > monitoring.cap
+                  ? ' Encender más allá del tope se cobra como extra por cada día encendida.'
+                  : ' Aún tienes cupo dentro de lo contratado.');
+
+    return (
+        <div className="flex shrink-0 flex-col gap-2 border-b border-severity-medium/40 bg-severity-medium/10 px-5 py-2.5 text-xs text-fg-2 sm:flex-row sm:items-center sm:justify-between">
+            <p>
+                <span className="font-medium text-fg-1">
+                    {monitoring.pending}{' '}
+                    {monitoring.pending === 1
+                        ? 'unidad nueva sin vigilar'
+                        : 'unidades nuevas sin vigilar'}
+                    .
+                </span>{' '}
+                SAM no las vigila ni las cobra hasta que las enciendas.{' '}
+                {capText}
+            </p>
+            <div className="flex shrink-0 items-center gap-2">
+                <Button variant="outline" size="sm" onClick={onShowPending}>
+                    <EyeOff size={13} />
+                    Ver pendientes
+                </Button>
+                {teamSlug && (
+                    <Button size="sm" onClick={onMonitorAll} disabled={busy}>
+                        <Eye size={13} />
+                        Vigilar todas ({monitoring.pending})
+                    </Button>
+                )}
+            </div>
+        </div>
+    );
+}
+
 // ---- Pulse strip ----
 
 function FleetPulse({
     summary,
+    monitoring,
     status,
+    monitoringFilter,
     onStatus,
+    onMonitoring,
 }: {
     summary: AssetsSummary;
+    monitoring: MonitoringSummary | null;
     status: string | null;
+    monitoringFilter: string | null;
     onStatus: (value: string | null) => void;
+    onMonitoring: (value: string | null) => void;
 }) {
     const toggle = (value: string) => () =>
         onStatus(status === value ? null : value);
+    const toggleMonitoring = (value: string) => () =>
+        onMonitoring(monitoringFilter === value ? null : value);
 
     return (
         <PulseStrip>
@@ -137,6 +206,34 @@ function FleetPulse({
                 onClick={() => onStatus(null)}
                 active={status === null}
             />
+            {monitoring && (
+                <PulseStat
+                    label="Vigiladas"
+                    value={monitoring.monitored}
+                    icon={Eye}
+                    tone={monitoring.overCap ? 'warn' : 'ok'}
+                    hint={
+                        monitoring.cap === null
+                            ? 'sin tope contratado'
+                            : monitoring.overCap
+                              ? `${monitoring.monitored - monitoring.cap} por encima del tope de ${monitoring.cap} (se cobra extra)`
+                              : `de ${monitoring.cap} contratadas`
+                    }
+                    onClick={toggleMonitoring('monitored')}
+                    active={monitoringFilter === 'monitored'}
+                />
+            )}
+            {monitoring && (
+                <PulseStat
+                    label="Sin vigilar"
+                    value={monitoring.pending}
+                    icon={EyeOff}
+                    tone={monitoring.pending > 0 ? 'warn' : 'neutral'}
+                    hint="nuevas, tú decides si se vigilan"
+                    onClick={toggleMonitoring('pending')}
+                    active={monitoringFilter === 'pending'}
+                />
+            )}
             <PulseStat
                 label="Reportando"
                 value={summary.reporting}
@@ -199,7 +296,10 @@ interface FilterBarProps {
 
 function FilterBar({ filters, options, summary, onApply }: FilterBarProps) {
     const hasActive =
-        filters.q !== null || filters.status !== null || filters.type !== null;
+        filters.q !== null ||
+        filters.status !== null ||
+        filters.type !== null ||
+        filters.monitoring !== null;
 
     return (
         <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-background px-5 py-2">
@@ -251,10 +351,22 @@ function FilterBar({ filters, options, summary, onApply }: FilterBarProps) {
                 />
             )}
 
+            <FilterDropdown
+                label="Vigilancia"
+                value={filters.monitoring}
+                options={options.monitoring}
+                onChange={(monitoring) => onApply({ ...filters, monitoring })}
+            />
+
             {hasActive && (
                 <ClearFiltersButton
                     onClick={() =>
-                        onApply({ q: null, status: null, type: null })
+                        onApply({
+                            q: null,
+                            status: null,
+                            type: null,
+                            monitoring: null,
+                        })
                     }
                 />
             )}
@@ -281,9 +393,18 @@ function FleetEmptyState({ filtered }: { filtered: boolean }) {
 
 // ---- Main page ----
 
-const EMPTY_FILTERS: AssetFilters = { q: null, status: null, type: null };
+const EMPTY_FILTERS: AssetFilters = {
+    q: null,
+    status: null,
+    type: null,
+    monitoring: null,
+};
 
-const EMPTY_OPTIONS: AssetFilterOptions = { statuses: [], types: [] };
+const EMPTY_OPTIONS: AssetFilterOptions = {
+    statuses: [],
+    types: [],
+    monitoring: [],
+};
 
 const EMPTY_PAGINATION: AssetsPagination = {
     page: 1,
@@ -301,8 +422,10 @@ export default function AssetsIndex() {
     const serverFilters = pageProps.filters ?? EMPTY_FILTERS;
     const filterOptions = pageProps.filterOptions ?? EMPTY_OPTIONS;
     const summary = pageProps.summary ?? null;
+    const monitoring = pageProps.monitoring ?? null;
 
     const [refreshing, setRefreshing] = useState(false);
+    const [monitoringAll, setMonitoringAll] = useState(false);
     const [filters, setFilters] = useState<AssetFilters>(serverFilters);
 
     // Re-sync local filter state if the server echoes a different set
@@ -310,12 +433,17 @@ export default function AssetsIndex() {
     useEffect(() => {
         setFilters(serverFilters);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [serverFilters.q, serverFilters.status, serverFilters.type]);
+    }, [
+        serverFilters.q,
+        serverFilters.status,
+        serverFilters.type,
+        serverFilters.monitoring,
+    ]);
 
     const refresh = () => {
         setRefreshing(true);
         router.reload({
-            only: ['assets', 'pagination', 'summary'],
+            only: ['assets', 'pagination', 'summary', 'monitoring'],
             onFinish: () => setRefreshing(false),
         });
     };
@@ -328,11 +456,61 @@ export default function AssetsIndex() {
                 q: next.q ?? undefined,
                 status: next.status ?? undefined,
                 type: next.type ?? undefined,
+                monitoring: next.monitoring ?? undefined,
                 // Changing filters always restarts at the first page.
                 page: undefined,
             },
         });
     }, []);
+
+    // "Vigilar todas": enciende cada unidad pendiente. El servidor avisa si
+    // con eso se rebasa el tope (se cobra como extra, no se bloquea).
+    const monitorAllPending = useCallback(() => {
+        if (teamSlug === null) {
+            return;
+        }
+
+        setMonitoringAll(true);
+        router.reload({
+            only: ['assets'],
+            data: { monitoring: 'pending', page: undefined },
+            onSuccess: (page) => {
+                const pending = (
+                    (page.props as unknown as AssetsIndexProps).assets ?? []
+                ).map((asset) => asset.id);
+
+                if (pending.length === 0) {
+                    setMonitoringAll(false);
+
+                    return;
+                }
+
+                router.put(
+                    `/${teamSlug}/assets/monitoring`,
+                    { state: 'monitored', asset_ids: pending },
+                    {
+                        preserveScroll: true,
+                        onSuccess: (result) => {
+                            const flash = (
+                                result.props as {
+                                    flash?: { status?: string | null };
+                                }
+                            ).flash;
+                            toast.success(
+                                flash?.status ?? 'Unidades encendidas.',
+                            );
+                        },
+                        onError: () =>
+                            toast.error(
+                                'No se pudieron encender las unidades.',
+                            ),
+                        onFinish: () => setMonitoringAll(false),
+                    },
+                );
+            },
+            onError: () => setMonitoringAll(false),
+        });
+    }, [teamSlug]);
 
     const goToPage = useCallback((target: number) => {
         router.reload({
@@ -359,7 +537,9 @@ export default function AssetsIndex() {
 
             timer.current = window.setTimeout(() => {
                 timer.current = null;
-                router.reload({ only: ['assets', 'pagination', 'summary'] });
+                router.reload({
+                    only: ['assets', 'pagination', 'summary', 'monitoring'],
+                });
             }, RELOAD_DEBOUNCE_MS);
         };
 
@@ -377,7 +557,8 @@ export default function AssetsIndex() {
     const hasActiveFilters =
         serverFilters.q !== null ||
         serverFilters.status !== null ||
-        serverFilters.type !== null;
+        serverFilters.type !== null ||
+        serverFilters.monitoring !== null;
 
     const handleSelect = useCallback(
         (id: number) => {
@@ -400,12 +581,29 @@ export default function AssetsIndex() {
                     refreshing={refreshing}
                 />
 
+                {monitoring && (
+                    <PendingBanner
+                        monitoring={monitoring}
+                        teamSlug={teamSlug}
+                        busy={monitoringAll}
+                        onShowPending={() =>
+                            applyFilters({ ...filters, monitoring: 'pending' })
+                        }
+                        onMonitorAll={monitorAllPending}
+                    />
+                )}
+
                 {summary && (
                     <FleetPulse
                         summary={summary}
+                        monitoring={monitoring}
                         status={filters.status}
+                        monitoringFilter={filters.monitoring}
                         onStatus={(status) =>
                             applyFilters({ ...filters, status })
+                        }
+                        onMonitoring={(value) =>
+                            applyFilters({ ...filters, monitoring: value })
                         }
                     />
                 )}
@@ -420,6 +618,7 @@ export default function AssetsIndex() {
                 <AssetsTable
                     rows={assets}
                     onSelect={handleSelect}
+                    teamSlug={teamSlug}
                     empty={<FleetEmptyState filtered={hasActiveFilters} />}
                 />
 

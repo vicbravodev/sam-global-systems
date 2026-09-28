@@ -141,6 +141,7 @@ class CheckIncidentAcknowledgementJob implements ShouldQueue
     {
         $payload = [
             'incident_id' => $incident->id,
+            'incident_reference' => $incident->reference(),
             'incident_type' => $incident->type?->code,
             'severity' => $incident->priority?->code,
             'incident_title' => $incident->title,

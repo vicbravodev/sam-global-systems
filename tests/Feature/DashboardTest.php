@@ -2,11 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\Decisions\Enums\DecisionOutcomeCode;
 use App\Domains\Decisions\Models\Decision;
 use App\Domains\Decisions\Models\DecisionOverride;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentPriority;
+use App\Domains\Ingestion\Models\EventSource;
+use App\Domains\Ingestion\Models\RawEvent;
 use App\Domains\Integrations\Models\IntegrationProvider;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Domains\Normalization\Models\EventType;
@@ -106,7 +109,7 @@ class DashboardTest extends TestCase
             )
             ->has('stream', 1, fn (AssertableInertia $event) => $event
                 ->has('id')
-                ->has('ts')
+                ->where('occurredAt', fn ($iso) => is_string($iso) && str_contains($iso, 'T'))
                 ->has('provider')
                 ->has('type')
                 ->has('decision')
@@ -256,6 +259,10 @@ class DashboardTest extends TestCase
         $decisions = Decision::factory()->count(4)->create([
             'team_id' => $team->id,
             'decided_at' => now()->subDay(),
+            'ai_evaluation_id' => fn () => AIEventEvaluation::factory()->create([
+                'team_id' => $team->id,
+                'model_used' => 'openai:gpt-5-mini',
+            ])->id,
         ]);
 
         DecisionOverride::factory()->create([
@@ -408,27 +415,20 @@ class DashboardTest extends TestCase
         );
     }
 
-    public function test_integrations_count_only_events_of_last_24_hours_per_provider(): void
+    public function test_integrations_count_only_events_of_last_24_hours_per_integration(): void
     {
         $user = User::factory()->create();
         $team = $user->currentTeam;
 
         $provider = IntegrationProvider::factory()->create();
-        TenantIntegration::factory()->active()->create([
+        $integration = TenantIntegration::factory()->active()->create([
             'team_id' => $team->id,
             'provider_id' => $provider->id,
         ]);
 
-        NormalizedEvent::factory()->count(2)->create([
-            'team_id' => $team->id,
-            'provider_id' => $provider->id,
-            'occurred_at' => now()->subHours(2),
-        ]);
-        NormalizedEvent::factory()->create([
-            'team_id' => $team->id,
-            'provider_id' => $provider->id,
-            'occurred_at' => now()->subDays(2),
-        ]);
+        $this->eventFor($integration, now()->subHours(2));
+        $this->eventFor($integration, now()->subHours(3));
+        $this->eventFor($integration, now()->subDays(2));
 
         $response = $this
             ->actingAs($user)
@@ -473,6 +473,28 @@ class DashboardTest extends TestCase
             ->where('usage.0.overage', 20)
             ->where('usage.0.percentUsed', 120)
         );
+    }
+
+    private function eventFor(TenantIntegration $integration, \DateTimeInterface $occurredAt): NormalizedEvent
+    {
+        $source = EventSource::factory()->create([
+            'team_id' => $integration->team_id,
+            'provider_id' => $integration->provider_id,
+            'tenant_integration_id' => $integration->id,
+        ]);
+
+        $raw = RawEvent::factory()->create([
+            'team_id' => $integration->team_id,
+            'provider_id' => $integration->provider_id,
+            'event_source_id' => $source->id,
+        ]);
+
+        return NormalizedEvent::factory()->create([
+            'team_id' => $integration->team_id,
+            'provider_id' => $integration->provider_id,
+            'raw_event_id' => $raw->id,
+            'occurred_at' => $occurredAt,
+        ]);
     }
 
     public function test_dashboard_is_tenant_isolated(): void

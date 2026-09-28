@@ -25,7 +25,6 @@ class Subscription extends Model
         'starts_at',
         'renews_at',
         'ends_at',
-        'trial_ends_at',
         'cancel_at_period_end',
         'external_provider',
         'external_subscription_id',
@@ -53,7 +52,6 @@ class Subscription extends Model
             'starts_at' => 'datetime',
             'renews_at' => 'datetime',
             'ends_at' => 'datetime',
-            'trial_ends_at' => 'datetime',
             'cancel_at_period_end' => 'boolean',
         ];
     }

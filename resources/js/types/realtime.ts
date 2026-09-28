@@ -19,6 +19,13 @@ export type AssetStatusChangedPayload = {
     new_status: string;
 };
 
+export type AssetMonitoringChangedPayload = {
+    asset_id: number;
+    name: string;
+    previous_state: string;
+    new_state: string;
+};
+
 export type UsageUpdatedPayload = {
     meter_code: string;
     consumed: number;
@@ -75,6 +82,7 @@ export type IncidentUpdatedPayload = {
 export type TeamBroadcastEventMap = {
     'asset.location_updated': AssetLocationUpdatedPayload;
     'asset.status_changed': AssetStatusChangedPayload;
+    'asset.monitoring_changed': AssetMonitoringChangedPayload;
     'usage.updated': UsageUpdatedPayload;
     'ai.evaluation_completed': AIEvaluationCompletedPayload;
     'decisions.decision_made': DecisionMadePayload;

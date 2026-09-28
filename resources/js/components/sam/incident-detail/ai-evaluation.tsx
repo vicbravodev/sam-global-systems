@@ -305,6 +305,33 @@ export function AiEvaluationCard({
         : null;
     const steps = incident.aiReasoningSteps ?? [];
 
+    // Sin evaluación real (agente sustituto `null-agent`): no hay veredicto,
+    // confianza ni riesgo que mostrar — mostrarlos sería inventar datos.
+    if (incident.aiPlaceholder || incident.aiConfidence === null) {
+        return (
+            <section
+                className={cn(
+                    'rounded-lg border border-border bg-surface-1',
+                    compact ? 'p-3' : 'p-4',
+                )}
+            >
+                <span className="mb-1.5 inline-flex items-center gap-1.5 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
+                    <Sparkles size={11} strokeWidth={1.75} />
+                    Sin evaluación IA
+                </span>
+                <p
+                    className={cn(
+                        'm-0 leading-normal text-fg-2',
+                        compact ? 'text-xs' : 'text-sm',
+                    )}
+                >
+                    Este evento no fue evaluado por un modelo de IA. Decide con
+                    la evidencia y el contexto disponibles.
+                </p>
+            </section>
+        );
+    }
+
     return (
         <section
             className={cn(

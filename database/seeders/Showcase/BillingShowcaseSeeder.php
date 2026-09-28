@@ -13,7 +13,6 @@ use App\Domains\Tenancy\Models\TenantFeature;
 use App\Domains\Tenancy\Models\TenantUsageCounter;
 use App\Domains\Tenancy\Models\UsageMeter;
 use Carbon\CarbonImmutable;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -51,7 +50,7 @@ class BillingShowcaseSeeder extends ShowcaseStep
 
         (new AggregateUsageJob($this->ctx->team->id))->handle();
 
-        $this->pastCounters($meters, $subscription);
+        $this->pastCounters($subscription);
         $this->invoices($subscription);
     }
 
@@ -65,9 +64,7 @@ class BillingShowcaseSeeder extends ShowcaseStep
 
         $plan = Plan::query()->where('code', $this->ctx->subscriptionPlan)->first() ?? Plan::query()->orderBy('base_price')->firstOrFail();
         $status = $this->ctx->subscriptionStatus;
-        $starts = $status === 'trialing'
-            ? $this->ctx->now->subDays(5)->startOfDay()
-            : $this->ctx->now->subMonths(self::HISTORY_MONTHS)->startOfMonth()->addDays(3);
+        $starts = $this->ctx->now->subMonths(self::HISTORY_MONTHS)->startOfMonth()->addDays(3);
 
         $subscription = Subscription::query()->create([
             'team_id' => $this->ctx->team->id,
@@ -76,7 +73,6 @@ class BillingShowcaseSeeder extends ShowcaseStep
             'billing_cycle' => 'monthly',
             'starts_at' => $starts,
             'renews_at' => $this->ctx->now->addMonthNoOverflow()->startOfMonth(),
-            'trial_ends_at' => $status === 'trialing' ? $this->ctx->now->addDays(9) : null,
             'cancel_at_period_end' => false,
             'external_provider' => 'bank_transfer',
             // Marca las facturas de esta suscripción como del showcase (se pueden regenerar).
@@ -307,54 +303,28 @@ class BillingShowcaseSeeder extends ShowcaseStep
     }
 
     /**
-     * `AggregateUsageJob` sólo recalcula el mes en curso: los meses cerrados
-     * se escriben aquí con su misma fórmula (suma del periodo vs. incluido).
-     *
-     * @param  Collection<string, UsageMeter>  $meters
+     * Contadores de los meses cerrados con el MISMO job que usa producción
+     * (`AggregateUsageJob` con `forMonth`): así los medidores `max`
+     * (activos, cámaras) toman el pico del mes y no la suma de las muestras
+     * diarias. El job hace upsert, así que re-sembrar es idempotente.
      */
-    private function pastCounters($meters, Subscription $subscription): void
+    private function pastCounters(Subscription $subscription): void
     {
-        $rates = BillingRate::query()->where('plan_id', $subscription->plan_id)->pluck('included_quantity', 'usage_meter_id');
         $month = CarbonImmutable::parse($subscription->starts_at)->startOfMonth();
         $current = $this->ctx->now->startOfMonth();
 
         for (; $month->lessThan($current); $month = $month->addMonth()) {
-            foreach ($meters as $meter) {
-                $exists = TenantUsageCounter::query()
-                    ->where('team_id', $this->ctx->team->id)
-                    ->where('usage_meter_id', $meter->id)
-                    ->whereDate('period_start', $month->toDateString())
-                    ->exists();
+            $before = TenantUsageCounter::query()
+                ->where('team_id', $this->ctx->team->id)
+                ->whereDate('period_start', $month->toDateString())
+                ->count();
 
-                if ($exists) {
-                    continue;
-                }
+            (new AggregateUsageJob($this->ctx->team->id, $month->toDateString()))->handle();
 
-                // Misma fórmula que AggregateUsageJob (suma), incluso en medidores `max`.
-                $consumed = (int) DB::table('usage_events')
-                    ->where('team_id', $this->ctx->team->id)
-                    ->where('usage_meter_id', $meter->id)
-                    ->whereBetween('occurred_at', [$month, $month->endOfMonth()])
-                    ->sum('quantity');
-
-                if ($consumed === 0) {
-                    continue;
-                }
-
-                $included = (int) ($rates[$meter->id] ?? 0);
-
-                TenantUsageCounter::query()->create([
-                    'team_id' => $this->ctx->team->id,
-                    'usage_meter_id' => $meter->id,
-                    'period_start' => $month->toDateString(),
-                    'period_end' => $month->endOfMonth()->toDateString(),
-                    'consumed_value' => $consumed,
-                    'included_value' => $included,
-                    'overage_value' => max(0, $consumed - $included),
-                    'last_calculated_at' => $month->endOfMonth(),
-                ]);
-                $this->ctx->count('tenant_usage_counters');
-            }
+            $this->ctx->count('tenant_usage_counters', TenantUsageCounter::query()
+                ->where('team_id', $this->ctx->team->id)
+                ->whereDate('period_start', $month->toDateString())
+                ->count() - $before);
         }
     }
 

@@ -1,5 +1,7 @@
 <?php
 
+use App\Domains\Assets\Jobs\DispatchTelematicsFeedsJob;
+use App\Domains\Assets\Jobs\FollowVehicleStatsFeedJob;
 use Illuminate\Support\Str;
 
 return [
@@ -98,6 +100,9 @@ return [
 
     'waits' => [
         'redis:default' => 60,
+        // A telematics job waiting longer than two ticks means the map is
+        // falling behind: add workers to supervisor-telematics.
+        'redis:telematics' => 10,
     ],
 
     /*
@@ -132,7 +137,10 @@ return [
     */
 
     'silenced' => [
-        // App\Jobs\ExampleJob::class,
+        // The telematics heartbeat runs every 5 s per tenant and feed; listing
+        // each successful cycle would bury every other job. Failures still show.
+        DispatchTelematicsFeedsJob::class,
+        FollowVehicleStatsFeedJob::class,
     ],
 
     'silenced_tags' => [
@@ -223,6 +231,21 @@ return [
             'timeout' => 120,
             'nice' => 0,
         ],
+        // Live fleet state. Its own pool so a backlog elsewhere never delays
+        // the map, and one slow tenant holds one process, not the queue.
+        'supervisor-telematics' => [
+            'connection' => 'redis',
+            'queue' => ['telematics'],
+            'balance' => 'auto',
+            'autoScalingStrategy' => 'size',
+            'maxProcesses' => 2,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 128,
+            'tries' => 1,
+            'timeout' => 210,
+            'nice' => 0,
+        ],
         'supervisor-low' => [
             'connection' => 'redis',
             'queue' => ['default', 'audit', 'analytics'],
@@ -255,6 +278,12 @@ return [
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 3,
             ],
+            // ~1 process per 3–5 tenants at a 5 s interval; raise with the fleet.
+            'supervisor-telematics' => [
+                'maxProcesses' => 6,
+                'balanceMaxShift' => 2,
+                'balanceCooldown' => 1,
+            ],
         ],
 
         'local' => [
@@ -266,6 +295,9 @@ return [
             ],
             'supervisor-low' => [
                 'maxProcesses' => 1,
+            ],
+            'supervisor-telematics' => [
+                'maxProcesses' => 2,
             ],
         ],
     ],

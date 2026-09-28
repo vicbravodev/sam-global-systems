@@ -15,6 +15,7 @@ use App\Domains\Incidents\Actions\RequestIncidentReview;
 use App\Domains\Incidents\Enums\AssigneeType;
 use App\Domains\Incidents\Enums\IncidentCreatorType;
 use App\Domains\Incidents\Models\Incident;
+use App\Domains\Incidents\Support\IncidentStatusPresenter;
 use App\Domains\Notifications\Actions\SendNotification;
 use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Enums\NotificationPriority;
@@ -252,6 +253,7 @@ class ExecuteAction
             : null;
 
         $variables = (array) ($execution->payload_json ?? []);
+        $variables['incident'] ??= $this->incidentVariables($execution);
 
         $subject = $template?->subject_template !== null && $template?->subject_template !== ''
             ? $this->renderTemplate($template->subject_template, $variables)
@@ -452,6 +454,44 @@ class ExecuteAction
         return [
             'incident_id' => $fresh->id,
             'status' => $fresh->status?->code,
+        ];
+    }
+
+    /**
+     * `{{incident.*}}` variables for tenant templates. `code` is the
+     * per-tenant reference (INC-00036) — the one format shown everywhere;
+     * the global id is never exposed in outbound messages.
+     *
+     * @return array<string, string|null>|null
+     */
+    private function incidentVariables(ActionExecution $execution): ?array
+    {
+        $incidentId = (int) ($execution->incident_id
+            ?? ($execution->source_type?->value === 'incident' ? $execution->source_reference_id : 0));
+
+        if ($incidentId <= 0) {
+            return null;
+        }
+
+        $incident = Incident::query()
+            ->whereKey($incidentId)
+            ->where('team_id', $execution->team_id)
+            ->with(['priority', 'status', 'team'])
+            ->first();
+
+        if ($incident === null) {
+            return null;
+        }
+
+        $slug = $incident->team?->slug;
+
+        return [
+            'code' => $incident->reference(),
+            'title' => $incident->title,
+            'summary' => $incident->summary,
+            'priority' => $incident->priority?->name ?? $incident->priority?->code,
+            'status' => IncidentStatusPresenter::label($incident->status?->code),
+            'url' => $slug !== null ? url("/{$slug}/incidents/{$incident->id}") : null,
         ];
     }
 

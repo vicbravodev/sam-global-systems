@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Incidents;
 use App\Domains\Context\Actions\RequestDeferredEventMedia;
 use App\Domains\Context\Enums\MediaRequestType;
 use App\Domains\Context\Models\EventMediaContext;
+use App\Domains\Context\Support\MediaRetrievalWindow;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Http\Controllers\Controller;
@@ -37,7 +38,14 @@ class IncidentMediaRequestController extends Controller
         $type = MediaRequestType::tryFrom((string) ($payload['request_type'] ?? MediaRequestType::FetchVideoClip->value))
             ?? MediaRequestType::FetchVideoClip;
 
-        $event = NormalizedEvent::query()->findOrFail($incident->related_event_id);
+        $event = NormalizedEvent::query()
+            ->where('team_id', $incident->team_id)
+            ->findOrFail($incident->related_event_id);
+
+        // Footage past the device retention window is gone: refuse up front
+        // instead of queueing a request that is guaranteed to fail.
+        $expired = MediaRetrievalWindow::expiredReason((int) $incident->team_id, $event->occurred_at);
+        abort_if($expired !== null, 422, $expired ?? '');
 
         $mediaRequest = $action->execute($event, $type);
 

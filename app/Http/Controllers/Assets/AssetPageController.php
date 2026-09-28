@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Assets;
 
+use App\Domains\Assets\Enums\AssetMonitoringState;
 use App\Domains\Assets\Enums\AssetStatus;
 use App\Domains\Assets\Enums\DeviceStatus;
 use App\Domains\Assets\Enums\TelemetryType;
@@ -13,6 +14,7 @@ use App\Domains\Assets\Models\AssetType;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Support\IncidentStatusPresenter;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Domains\Tenancy\Actions\ResolveAssetLimit;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
 use Illuminate\Database\Eloquent\Builder;
@@ -110,11 +112,12 @@ class AssetPageController extends Controller
      */
     private const MOVING_SPEED_KPH = 5;
 
-    public function index(Request $request, Team $current_team): Response
+    public function index(Request $request, Team $current_team, ResolveAssetLimit $resolveAssetLimit): Response
     {
-        // Assets are read-only and managed exclusively by integration sync
-        // (spec 04 §9): EnsureTeamMembership on the route group is the whole
-        // access check, there is no AssetPolicy.
+        // Asset inventory is managed by integration sync (spec 04 §9):
+        // EnsureTeamMembership on the route group is the whole access check
+        // for reading. Switching monitoring on/off lives in
+        // AssetMonitoringController behind `assets.manage`.
         $filters = $this->filters($request);
 
         $query = Asset::query()
@@ -123,6 +126,7 @@ class AssetPageController extends Controller
                 'assetType',
                 'latestLocation',
                 'latestTelemetry',
+                'latestSpeedTelemetry',
                 'currentDriverAssignment.driver',
                 // Only devices currently attached (mirrors AssetDevice::isAttached()).
                 'devices' => fn (HasMany $q) => $q
@@ -155,7 +159,35 @@ class AssetPageController extends Controller
             'filters' => $filters,
             'filterOptions' => fn () => $this->filterOptions(),
             'summary' => fn () => $this->summary($current_team),
+            'monitoring' => fn () => $this->monitoring($current_team, $resolveAssetLimit),
         ]);
+    }
+
+    /**
+     * Cupo de vigilancia del tenant: cuántas unidades vigila, cuántas quedaron
+     * pendientes tras el sync y el tope contratado. Tope suave: `overCap`
+     * sólo avisa que el excedente se cobra como extra por día.
+     *
+     * @return array{monitored: int, pending: int, excluded: int, cap: int|null, overCap: bool}
+     */
+    private function monitoring(Team $team, ResolveAssetLimit $resolveAssetLimit): array
+    {
+        $byState = Asset::query()
+            ->where('team_id', $team->id)
+            ->selectRaw('monitoring_state, COUNT(*) as aggregate')
+            ->groupBy('monitoring_state')
+            ->pluck('aggregate', 'monitoring_state');
+
+        $monitored = (int) ($byState[AssetMonitoringState::Monitored->value] ?? 0);
+        $cap = $resolveAssetLimit->execute((int) $team->id);
+
+        return [
+            'monitored' => $monitored,
+            'pending' => (int) ($byState[AssetMonitoringState::Pending->value] ?? 0),
+            'excluded' => (int) ($byState[AssetMonitoringState::Excluded->value] ?? 0),
+            'cap' => $cap,
+            'overCap' => $cap !== null && $monitored > $cap,
+        ];
     }
 
     public function map(Team $current_team): Response
@@ -189,6 +221,7 @@ class AssetPageController extends Controller
             'assetType',
             'latestLocation',
             'latestTelemetry',
+            'latestSpeedTelemetry',
             'provider',
             'sourceIntegration',
             'currentDriverAssignment.driver',
@@ -254,13 +287,73 @@ class AssetPageController extends Controller
                     ->whereNull('detached_at')
                     ->where('status', '!=', DeviceStatus::Detached))
                 ->count(),
-            // Units whose latest position is fresh AND shows speed: the live
-            // "on the road right now" figure.
-            'moving' => $assets()
-                ->whereHas('latestLocation', fn (Builder $s) => $s
-                    ->where('recorded_at', '>=', $freshSince)
-                    ->where('speed', '>', self::MOVING_SPEED_KPH))
-                ->count(),
+            // Units whose CURRENT speed (newest of position and speed
+            // telemetry, same reading the rows show) is fresh and above the
+            // motion threshold: the live "on the road right now" figure.
+            'moving' => $this->movingCount($assets, $freshSince),
+        ];
+    }
+
+    /**
+     * Counts units whose current speed reading is fresh and above the motion
+     * threshold. Only units with a fresh position or speed reading are
+     * loaded, so the candidate set stays bounded by the live fleet.
+     *
+     * @param  \Closure(): Builder<Asset>  $assets
+     */
+    private function movingCount(\Closure $assets, \DateTimeInterface $freshSince): int
+    {
+        return $assets()
+            ->where(fn (Builder $q) => $q
+                ->whereHas('latestLocation', fn (Builder $s) => $s->where('recorded_at', '>=', $freshSince))
+                ->orWhereHas('latestSpeedTelemetry', fn (Builder $s) => $s->where('recorded_at', '>=', $freshSince)))
+            ->with(['latestLocation', 'latestSpeedTelemetry'])
+            ->get()
+            ->filter(function (Asset $asset): bool {
+                $speed = $this->currentSpeed($asset);
+
+                return $speed !== null && ! $speed['stale'] && $speed['kph'] > self::MOVING_SPEED_KPH;
+            })
+            ->count();
+    }
+
+    /**
+     * The one "current speed" every surface shows (fleet row, detail header,
+     * detail telemetry card): the NEWEST reading among the latest position
+     * snapshot and the latest speed telemetry. `stale` flags readings older
+     * than the reporting window, so a 27-minute-old 83 km/h is never
+     * presented as live motion.
+     *
+     * @return array{kph: float, recordedAt: string, source: string, stale: bool}|null
+     */
+    private function currentSpeed(Asset $asset): ?array
+    {
+        $candidates = [];
+        $location = $asset->latestLocation;
+
+        if ($location !== null && $location->speed !== null) {
+            $candidates[] = ['kph' => (float) $location->speed, 'at' => $location->recorded_at, 'source' => 'location'];
+        }
+
+        $telemetry = $asset->latestSpeedTelemetry;
+        $value = $telemetry?->data_json['value'] ?? null;
+
+        if ($telemetry !== null && is_numeric($value)) {
+            $candidates[] = ['kph' => (float) $value, 'at' => $telemetry->recorded_at, 'source' => 'telemetry'];
+        }
+
+        if ($candidates === []) {
+            return null;
+        }
+
+        usort($candidates, fn (array $a, array $b) => $b['at'] <=> $a['at']);
+        $newest = $candidates[0];
+
+        return [
+            'kph' => $newest['kph'],
+            'recordedAt' => $newest['at']->toIso8601String(),
+            'source' => $newest['source'],
+            'stale' => $newest['at']->lt(now()->subMinutes(self::REPORTING_WINDOW_MINUTES)),
         ];
     }
 
@@ -323,7 +416,7 @@ class AssetPageController extends Controller
      * Resolve the active fleet filters from the request query string. An
      * unknown status value is dropped so the prop mirrors what was applied.
      *
-     * @return array{q: string|null, status: string|null, type: string|null}
+     * @return array{q: string|null, status: string|null, type: string|null, monitoring: string|null}
      */
     private function filters(Request $request): array
     {
@@ -331,19 +424,28 @@ class AssetPageController extends Controller
             ? AssetStatus::tryFrom($request->string('status')->toString())?->value
             : null;
 
+        $monitoring = $request->filled('monitoring')
+            ? AssetMonitoringState::tryFrom($request->string('monitoring')->toString())?->value
+            : null;
+
         return [
             'q' => $request->filled('q') ? $request->string('q')->trim()->toString() : null,
             'status' => $status,
             'type' => $request->filled('type') ? $request->string('type')->toString() : null,
+            'monitoring' => $monitoring,
         ];
     }
 
     /**
      * @param  Builder<Asset>  $query
-     * @param  array{q: string|null, status: string|null, type: string|null}  $filters
+     * @param  array{q: string|null, status: string|null, type: string|null, monitoring: string|null}  $filters
      */
     private function applyFilters(Builder $query, array $filters): void
     {
+        if (($filters['monitoring'] ?? null) !== null) {
+            $query->where('monitoring_state', $filters['monitoring']);
+        }
+
         if ($filters['q'] !== null && $filters['q'] !== '') {
             // LOWER(...) LIKE keeps the search case-insensitive on both
             // PostgreSQL (production) and SQLite (tests) without ILIKE.
@@ -367,11 +469,18 @@ class AssetPageController extends Controller
      * Reference lists used to populate the fleet filter dropdowns. AssetType
      * is a global seeded catalog (no team scope), so listing it all is fine.
      *
-     * @return array{statuses: list<array{value: string, label: string}>, types: list<array{value: string, label: string}>}
+     * @return array{statuses: list<array{value: string, label: string}>, types: list<array{value: string, label: string}>, monitoring: list<array{value: string, label: string}>}
      */
     private function filterOptions(): array
     {
         return [
+            'monitoring' => array_map(
+                fn (AssetMonitoringState $state) => [
+                    'value' => $state->value,
+                    'label' => $state->label(),
+                ],
+                AssetMonitoringState::cases(),
+            ),
             'statuses' => array_map(
                 fn (AssetStatus $status) => [
                     'value' => $status->value,
@@ -406,6 +515,7 @@ class AssetPageController extends Controller
             'name' => (string) $asset->name,
             'code' => $asset->code,
             'status' => $asset->status->value,
+            'monitoringState' => $asset->monitoring_state->value,
             'vehicle' => $this->vehicle($asset),
             // Currently assigned primary driver (reciprocal of the driver
             // roster's "activo asignado" column). Null when nobody is assigned.
@@ -437,6 +547,7 @@ class AssetPageController extends Controller
                 'heading' => $location->heading !== null ? (int) $location->heading : null,
                 'recordedAt' => $location->recorded_at->toIso8601String(),
             ] : null,
+            'currentSpeed' => $this->currentSpeed($asset),
             'lastSeenAt' => $asset->last_seen_at?->toIso8601String(),
             // Most recent REAL signal (location or telemetry) — what the UI
             // shows as "seen". Never derived from the inventory-sync
@@ -513,6 +624,20 @@ class AssetPageController extends Controller
     {
         return collect(TelemetryType::cases())
             ->map(function (TelemetryType $type) use ($asset): ?array {
+                // Speed shows the same "current speed" as the header tile
+                // (newest of position and telemetry), never a second number.
+                if ($type === TelemetryType::Speed) {
+                    $speed = $this->currentSpeed($asset);
+
+                    return $speed === null ? null : [
+                        'type' => $type->value,
+                        'label' => self::TELEMETRY_LABELS[$type->value],
+                        'data' => ['value' => $speed['kph'], 'unit' => 'km/h'],
+                        'recordedAt' => $speed['recordedAt'],
+                        'stale' => $speed['stale'],
+                    ];
+                }
+
                 $snapshot = AssetTelemetrySnapshot::query()
                     ->where('asset_id', $asset->id)
                     ->where('telemetry_type', $type)
@@ -598,18 +723,13 @@ class AssetPageController extends Controller
             ->get()
             ->map(fn (Incident $incident) => [
                 'id' => (int) $incident->id,
+                'reference' => $incident->reference(),
                 'title' => (string) $incident->title,
                 'status' => $incident->status ? [
                     'code' => (string) $incident->status->code,
-                    'uiStatus' => IncidentStatusPresenter::uiStatus(
-                        $incident->status->code,
-                        $incident->currentAssignment !== null,
-                    ),
+                    'uiStatus' => IncidentStatusPresenter::forIncident($incident),
                     // Same rendered string as inbox/detail/palette (C1-b).
-                    'name' => IncidentStatusPresenter::label(
-                        $incident->status->code,
-                        $incident->currentAssignment !== null,
-                    ),
+                    'name' => IncidentStatusPresenter::labelForIncident($incident),
                 ] : null,
                 'priority' => $incident->priority ? [
                     'code' => (string) $incident->priority->code,

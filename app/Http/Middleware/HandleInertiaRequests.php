@@ -148,21 +148,20 @@ class HandleInertiaRequests extends Middleware
     }
 
     /**
-     * @return array{tenantsPastDue: int, tenantsTrialing: int}
+     * @return array{tenantsPastDue: int}
      */
     private function adminBadges(): array
     {
         // Badges de la consola de operador: cuentan tenants, así que cruzan
         // todos a propósito. Ver §2.1.
         $counts = TenantContext::withoutTenant(fn () => Subscription::query()
-            ->whereIn('status', [SubscriptionStatus::PastDue, SubscriptionStatus::Trialing])
+            ->where('status', SubscriptionStatus::PastDue)
             ->selectRaw('status, count(*) as aggregate')
             ->groupBy('status')
             ->pluck('aggregate', 'status'));
 
         return [
             'tenantsPastDue' => (int) ($counts[SubscriptionStatus::PastDue->value] ?? 0),
-            'tenantsTrialing' => (int) ($counts[SubscriptionStatus::Trialing->value] ?? 0),
         ];
     }
 }

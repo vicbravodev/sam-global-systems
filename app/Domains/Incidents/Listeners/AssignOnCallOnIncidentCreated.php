@@ -81,6 +81,7 @@ class AssignOnCallOnIncidentCreated
             eventKey: 'incident_oncall_assigned:'.$incident->id,
             payload: [
                 'incident_id' => $incident->id,
+                'incident_reference' => $incident->reference(),
                 'incident_type' => $incident->type?->code,
                 'severity' => $incident->priority?->code,
                 'incident_title' => $incident->title,

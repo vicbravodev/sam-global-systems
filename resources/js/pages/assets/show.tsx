@@ -21,6 +21,7 @@ import type { LucideIcon } from 'lucide-react';
 import { useEffect, useMemo, useRef } from 'react';
 import { AssetSignal } from '@/components/sam/assets/asset-signal';
 import { AssetStatusBadge } from '@/components/sam/assets/asset-status-badge';
+import { MonitoringSwitch } from '@/components/sam/assets/monitoring-switch';
 import { PlateChip, vehicleTitle } from '@/components/sam/assets/vehicle-line';
 import { EntityAvatar } from '@/components/sam/entity-avatar';
 import { LinkedIncidentsCard } from '@/components/sam/linked-incidents-card';
@@ -162,6 +163,14 @@ function AssetHero({
                         {asset.vehicle?.plate && (
                             <PlateChip plate={asset.vehicle.plate} />
                         )}
+                        <MonitoringSwitch
+                            assetId={asset.id}
+                            assetName={asset.name}
+                            state={asset.monitoringState}
+                            teamSlug={teamSlug}
+                            withLabel
+                            className="ml-1"
+                        />
                     </div>
                     <p className="sam-meta mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
                         {asset.code && (
@@ -291,7 +300,6 @@ function NowStrip({
     asset: AssetShowProps['asset'];
     telemetry: TelemetryEntry[];
 }) {
-    const location = asset.lastLocation;
     const byType = useMemo(
         () => new Map(telemetry.map((entry) => [entry.type, entry])),
         [telemetry],
@@ -299,20 +307,29 @@ function NowStrip({
 
     const tiles: React.ReactNode[] = [];
 
-    if (location?.speed !== null && location?.speed !== undefined) {
-        const fresh = isFresh(location.recordedAt);
-        const moving = fresh && location.speed > MOVING_SPEED_KPH;
+    // Same reading as the telemetry card and the fleet row: the newest of
+    // position and speed telemetry, with the server's staleness verdict.
+    const speed = asset.currentSpeed;
+
+    if (speed !== null) {
+        const moving = !speed.stale && speed.kph > MOVING_SPEED_KPH;
 
         tiles.push(
             <NowTile
                 key="speed"
                 icon={moving ? Navigation : Gauge}
-                label={moving ? 'En ruta' : fresh ? 'Detenida' : 'Velocidad'}
-                value={formatNumber(location.speed, {
+                label={
+                    moving
+                        ? 'En ruta'
+                        : speed.stale
+                          ? 'Última velocidad'
+                          : 'Detenida'
+                }
+                value={formatNumber(speed.kph, {
                     maximumFractionDigits: 0,
                 })}
                 unit="km/h"
-                recordedAt={location.recordedAt}
+                recordedAt={speed.recordedAt}
                 tone={moving ? 'ok' : 'neutral'}
             />,
         );
@@ -624,7 +641,19 @@ function TelemetryCard({ telemetry }: { telemetry: TelemetryEntry[] }) {
                                     <span className="w-32 shrink-0 text-xs text-fg-2">
                                         {entry.label}
                                     </span>
-                                    <span className="flex-1 font-mono text-sm text-fg-1 tabular-nums">
+                                    <span
+                                        className={cn(
+                                            'flex-1 font-mono text-sm tabular-nums',
+                                            entry.stale
+                                                ? 'text-fg-3'
+                                                : 'text-fg-1',
+                                        )}
+                                        title={
+                                            entry.stale
+                                                ? 'Lectura antigua: sin velocidad reciente'
+                                                : undefined
+                                        }
+                                    >
                                         {value}
                                         {unit && (
                                             <span className="ml-1 text-2xs text-fg-3">
@@ -783,7 +812,10 @@ export default function AssetShow() {
                 pendingKeys.current.add('asset');
                 pendingKeys.current.add('locationHistory');
                 pendingKeys.current.add('telemetry');
-            } else if (detail?.event === 'asset.status_changed') {
+            } else if (
+                detail?.event === 'asset.status_changed' ||
+                detail?.event === 'asset.monitoring_changed'
+            ) {
                 pendingKeys.current.add('asset');
             } else {
                 return;

@@ -262,10 +262,11 @@ export function billingCycleLabel(code: string | null | undefined): string {
 
 export const INVOICE_STATUS_LABELS: Record<string, string> = {
     draft: 'Borrador',
-    finalized: 'Finalizada',
+    // Para el cliente una factura emitida es una factura por pagar.
+    finalized: 'Por pagar',
     invoiced: 'Por pagar',
     paid: 'Pagada',
-    disputed: 'En disputa',
+    disputed: 'En revisión',
     void: 'Anulada',
 };
 

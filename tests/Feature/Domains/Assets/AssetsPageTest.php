@@ -75,6 +75,7 @@ class AssetsPageTest extends TestCase
                         ->where('name', 'Tractocamión Norte')
                         ->where('code', 'TR-042')
                         ->where('status', 'alert')
+                        ->where('monitoringState', 'monitored')
                         ->where('type.code', 'vehicle')
                         ->where('type.name', 'Vehicle')
                         ->where('type.category', 'vehicle')
@@ -92,6 +93,7 @@ class AssetsPageTest extends TestCase
                         )
                         ->where('lastSeenAt', $asset->last_seen_at->toIso8601String())
                         ->where('lastSignalAt', $latest->recorded_at->toIso8601String())
+                        ->has('currentSpeed')
                         ->where('vehicle', null)
                         ->where('driver', null),
                 )

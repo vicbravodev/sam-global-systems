@@ -5,6 +5,8 @@ import { cn } from '@/lib/utils';
 
 interface PaletteIncident {
     id: number;
+    /** Referencia visible por tenant (`INC-00036`). */
+    reference: string;
     title: string;
     severity: string | null;
     status: string | null;
@@ -309,7 +311,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
                                             ] ?? 'text-fg-3',
                                         )}
                                     >
-                                        INC-{incident.id}
+                                        {incident.reference}
                                     </span>
                                     <span className="flex-1 truncate text-fg-1">
                                         {incident.title}

@@ -3,10 +3,10 @@
 namespace Tests\Feature\Domains\Integrations;
 
 use App\Contracts\RawEventIngestion;
-use App\Domains\Assets\Jobs\PollAllAssetLocationsJob;
-use App\Domains\Assets\Jobs\PollAllAssetTelemetryJob;
-use App\Domains\Assets\Jobs\PollAssetLocationsJob;
-use App\Domains\Assets\Jobs\PollAssetTelemetryJob;
+use App\Domains\Assets\Jobs\DispatchTelematicsFeedsJob;
+use App\Domains\Assets\Jobs\FollowVehicleStatsFeedJob;
+use App\Domains\Assets\Jobs\PollAllDeviceConnectivityJob;
+use App\Domains\Assets\Jobs\PollAssetConnectivityJob;
 use App\Domains\Ingestion\Jobs\PollSafetyEventsJob;
 use App\Domains\Ingestion\Jobs\PollSamsaraSafetyEventsJob;
 use App\Domains\Integrations\Actions\ValidateWebhookSignature;
@@ -44,6 +44,8 @@ class DeletedTenantIngestionTest extends TestCase
             'team_id' => $team->id,
             'provider_id' => $provider->id,
             'status' => TenantIntegrationStatus::Active,
+            // The telematics feed only follows integrations with a catalog.
+            'last_sync_at' => now()->subHour(),
         ]);
     }
 
@@ -107,13 +109,15 @@ class DeletedTenantIngestionTest extends TestCase
 
         (new SyncDueIntegrationsJob)->handle();
         (new PollSamsaraSafetyEventsJob)->handle();
-        (new PollAllAssetLocationsJob)->handle();
-        (new PollAllAssetTelemetryJob)->handle();
+        (new DispatchTelematicsFeedsJob)->handle();
+        (new PollAllDeviceConnectivityJob)->handle();
 
         Bus::assertDispatchedTimes(SyncIntegrationJob::class, 1);
         Bus::assertDispatched(SyncIntegrationJob::class, fn (SyncIntegrationJob $job) => $job->integration->is($live));
         Bus::assertDispatchedTimes(PollSafetyEventsJob::class, 1);
-        Bus::assertDispatchedTimes(PollAssetLocationsJob::class, 1);
-        Bus::assertDispatchedTimes(PollAssetTelemetryJob::class, 1);
+        // One cycle per feed (motion + diagnostics), for the live tenant only.
+        Bus::assertDispatchedTimes(FollowVehicleStatsFeedJob::class, 2);
+        Bus::assertDispatched(FollowVehicleStatsFeedJob::class, fn (FollowVehicleStatsFeedJob $job) => $job->integration->is($live));
+        Bus::assertDispatchedTimes(PollAssetConnectivityJob::class, 1);
     }
 }

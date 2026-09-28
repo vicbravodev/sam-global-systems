@@ -281,12 +281,16 @@ function PipelineStepper({
         {
             key: 'ai',
             label: 'Evaluación IA',
-            state: evaluation
-                ? 'done'
-                : failed || unmapped
-                  ? 'skipped'
-                  : 'pending',
-            note: evaluation?.classificationLabel ?? null,
+            state: evaluation?.isPlaceholder
+                ? 'skipped'
+                : evaluation
+                  ? 'done'
+                  : failed || unmapped
+                    ? 'skipped'
+                    : 'pending',
+            note: evaluation?.isPlaceholder
+                ? (evaluation.placeholderLabel ?? 'Sin evaluación IA')
+                : (evaluation?.classificationLabel ?? null),
         },
         {
             key: 'decision',
@@ -528,6 +532,16 @@ function EvaluationCard({
                         cuanto el contexto (posición, historial, media) está
                         listo.
                     </p>
+                ) : evaluation.isPlaceholder ? (
+                    <div className="flex flex-col gap-1">
+                        <p className="text-sm font-medium text-fg-1">
+                            {evaluation.placeholderLabel ?? 'Sin evaluación IA'}
+                        </p>
+                        <p className="text-sm text-fg-3">
+                            Ningún modelo de IA analizó este evento, así que no
+                            hay veredicto, confianza ni riesgo que mostrar.
+                        </p>
+                    </div>
                 ) : (
                     <div className="flex flex-col gap-3">
                         <div className="flex flex-wrap items-center gap-2">
@@ -697,6 +711,9 @@ function IncidentCard({
                         <SeverityBadge level={toSeverity(incident.severity)} />
                         <span className="flex min-w-0 flex-1 flex-col">
                             <span className="truncate text-sm font-medium text-fg-1">
+                                <span className="font-mono text-fg-3">
+                                    {incident.reference}
+                                </span>{' '}
                                 {incident.title}
                             </span>
                             {incident.openedAt && (

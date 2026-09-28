@@ -49,6 +49,7 @@ class NotifyOnIncidentCreated
 
         $payload = [
             'incident_id' => $incident->id,
+            'incident_reference' => $incident->reference(),
             'incident_type' => $incident->type?->code,
             'severity' => $severity,
             'incident_title' => $incident->title,

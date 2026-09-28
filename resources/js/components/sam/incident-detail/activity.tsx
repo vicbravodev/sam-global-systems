@@ -76,14 +76,24 @@ function useTimestamps(timeline: IncidentTimelineEntry[]) {
         const multiDay = days.size > 1;
 
         return (entry: IncidentTimelineEntry): string => {
-            if (!multiDay || !entry.tsIso) {
-                return entry.ts;
+            if (!entry.tsIso) {
+                return '';
             }
 
             const date = new Date(entry.tsIso);
 
             if (Number.isNaN(date.getTime())) {
-                return entry.ts;
+                return '';
+            }
+
+            const time = date.toLocaleTimeString('es', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+            });
+
+            if (!multiDay) {
+                return time;
             }
 
             const day = date.toLocaleDateString('es', {
@@ -91,7 +101,7 @@ function useTimestamps(timeline: IncidentTimelineEntry[]) {
                 month: 'short',
             });
 
-            return `${day} · ${entry.ts.slice(0, 5)}`;
+            return `${day} · ${time.slice(0, 5)}`;
         };
     }, [timeline]);
 }

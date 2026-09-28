@@ -17,7 +17,7 @@ class RecordAssetUsageMeters extends Command
 {
     protected $signature = 'assets:record-usage-meters';
 
-    protected $description = 'Record daily usage meters for monitored assets and active cameras per team';
+    protected $description = 'Record daily usage meters (monitored assets, asset-days, active cameras) per team';
 
     /**
      * Device types that are a camera. Dashcams are synced from the provider as
@@ -27,6 +27,8 @@ class RecordAssetUsageMeters extends Command
      * @var array<int, string>
      */
     public const array CAMERA_DEVICE_TYPES = ['camera', 'dashcam'];
+
+    public const string ASSET_DAYS_METER = 'monitored_asset_days';
 
     public function handle(RecordUsageEvent $recordUsage): int
     {
@@ -46,9 +48,16 @@ class RecordAssetUsageMeters extends Command
         return self::SUCCESS;
     }
 
+    /**
+     * Una muestra diaria de activos vigilados alimenta dos medidores: el gauge
+     * `monitored_assets` (máximo del mes, informa el tope) y el contador
+     * `monitored_asset_days` (suma del mes, base del cobro por tracto-día).
+     * Sólo cuenta lo que SAM realmente vigila: `pending`/`excluded` no cobran.
+     */
     private function recordMonitoredAssets(Team $team, RecordUsageEvent $recordUsage, string $date): void
     {
         $count = Asset::query()
+            ->monitored()
             ->where('status', '!=', AssetStatus::Inactive)
             ->count();
 
@@ -58,6 +67,13 @@ class RecordAssetUsageMeters extends Command
                 meterCode: 'monitored_assets',
                 quantity: $count,
                 eventKey: "monitored_assets:{$team->id}:{$date}",
+            );
+
+            $recordUsage->execute(
+                teamId: $team->id,
+                meterCode: self::ASSET_DAYS_METER,
+                quantity: $count,
+                eventKey: "monitored_asset_days:{$team->id}:{$date}",
             );
         }
     }
@@ -70,12 +86,14 @@ class RecordAssetUsageMeters extends Command
             ->whereNull('detached_at')
             ->whereHas('asset', fn (Builder $asset) => $asset
                 ->where('team_id', $team->id)
+                ->monitored()
                 ->where('status', '!=', AssetStatus::Inactive))
             ->count();
 
         // Stand-alone cameras registered as assets of their own (fixed cameras),
         // unless they already carry an attached camera device counted above.
         $cameraAssets = Asset::query()
+            ->monitored()
             ->where('status', '!=', AssetStatus::Inactive)
             ->whereHas('assetType', fn ($query) => $query->where('category', AssetCategory::Camera))
             ->whereDoesntHave('devices', fn (Builder $device) => $device

@@ -2,9 +2,14 @@
 
 namespace App\Domains\Integrations\Contracts;
 
-use App\Domains\Assets\Enums\TelemetryType;
+use App\Domains\Assets\Enums\TelematicsFeed;
+use App\Domains\Integrations\Data\VehicleStatsPage;
+use App\Domains\Integrations\Exceptions\ProviderCursorRejected;
 use App\Domains\Integrations\Exceptions\ProviderCursorRejectedException;
+use App\Domains\Integrations\Exceptions\ProviderRateLimited;
 use App\Domains\Integrations\Exceptions\ProviderRequestFailedException;
+use App\Domains\Integrations\Exceptions\ProviderUnauthorized;
+use App\Domains\Integrations\Exceptions\ProviderUnavailable;
 use App\Domains\Integrations\Models\TenantIntegration;
 
 interface ProviderAdapter
@@ -24,35 +29,47 @@ interface ProviderAdapter
     public function sync(TenantIntegration $integration, string $type): array;
 
     /**
-     * Fetch the latest known location for each asset tracked by the provider.
+     * Read one page of the provider's vehicle stats feed.
      *
-     * Returned independently from {@see sync()} because positions refresh far
-     * more frequently than the asset/driver catalog and are polled on their own
-     * cadence to keep the fleet map current.
+     * The feed is cursor-based and returns every update since the cursor —
+     * several points per vehicle when it moved. Without a cursor it returns
+     * the last known value of every vehicle and a cursor to follow from there.
+     * Keep calling while `hasNextPage` is true; once it is false the provider
+     * has nothing newer yet (Samsara asks for at least 5 s before the next
+     * call).
      *
-     * @return array<int, array{external_id: string, latitude: float, longitude: float, speed?: float|null, heading?: int|null, formatted_location?: string|null, recorded_at?: string|null}>
+     * Values arrive already mapped to the domain's units (km/h, km, V, °C).
+     * Providers without a stats feed return an empty page.
+     *
+     * @throws ProviderRateLimited
+     * @throws ProviderUnauthorized
+     * @throws ProviderCursorRejected when `$cursor` is expired or invalid
+     * @throws ProviderUnavailable
      */
-    public function fetchAssetLocations(TenantIntegration $integration): array;
+    public function fetchVehicleStatsFeed(TenantIntegration $integration, TelematicsFeed $feed, ?string $cursor = null): VehicleStatsPage;
 
     /**
-     * Fetch the latest onboard-diagnostic readings for each asset.
+     * Read one page of the vehicle stats recorded between two instants — the
+     * backfill for a gap the feed can no longer replay (lost or expired
+     * cursor). `$cursor` pages within the window. Same units and failures as
+     * {@see fetchVehicleStatsFeed()}.
      *
-     * Separate from {@see fetchAssetLocations()} because these stats change on
-     * their own (much slower) schedules — fuel by the percent, odometer by the
-     * kilometre — and are polled on a slower cadence than positions.
-     *
-     * Implementations return one entry per (asset, reading) pair with values
-     * already normalized to the unit the domain stores: km, volts, °C. Stats a
-     * vehicle does not report are omitted rather than returned as null.
-     *
-     * @return array<int, array{external_id: string, type: TelemetryType, value: float|string, unit: string|null, recorded_at: string|null}>
+     * @throws ProviderRateLimited
+     * @throws ProviderUnauthorized
+     * @throws ProviderUnavailable
      */
-    public function fetchAssetTelemetry(TenantIntegration $integration): array;
+    public function fetchVehicleStatsHistory(
+        TenantIntegration $integration,
+        TelematicsFeed $feed,
+        \DateTimeInterface $start,
+        \DateTimeInterface $end,
+        ?string $cursor = null,
+    ): VehicleStatsPage;
 
     /**
      * Fetch the real connectivity of each asset's telematics device.
      *
-     * Distinct from {@see fetchAssetLocations()}: a GPS fix only moves when the
+     * Distinct from the stats feed: a GPS fix only moves when the
      * vehicle does (a parked unit reports roughly once an hour), so the age of
      * the last position says nothing about whether the device is online. This
      * is the provider's own "last connected" heartbeat, which the offline

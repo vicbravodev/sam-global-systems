@@ -103,6 +103,9 @@ export interface EventDetail extends EventRow {
 export interface EventEvaluation {
     id: number;
     version: number;
+    /** Stand-in agent (`null-agent:*`): not a real verdict, no scores. */
+    isPlaceholder: boolean;
+    placeholderLabel: string | null;
     classification: string | null;
     classificationLabel: string | null;
     confidenceScore: number | null;
@@ -129,6 +132,7 @@ export interface EventDecision {
 
 export interface EventIncident {
     id: number;
+    reference: string;
     title: string;
     status: string | null;
     uiStatus: string;

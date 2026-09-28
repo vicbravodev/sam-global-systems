@@ -6,6 +6,7 @@ use App\Domains\Access\Enums\RoleScope;
 use App\Domains\Access\Models\Permission;
 use App\Domains\Access\Models\Role;
 use App\Domains\Assets\Models\Asset;
+use App\Domains\Assets\Models\AssetLocationSnapshot;
 use App\Domains\Drivers\Enums\DriverStatus;
 use App\Domains\Drivers\Models\Driver;
 use App\Domains\Drivers\Models\DriverAssignment;
@@ -14,6 +15,7 @@ use App\Domains\Drivers\Models\DriverDocument;
 use App\Domains\Drivers\Models\DriverRiskProfile;
 use App\Domains\Drivers\Models\DriverStatusLog;
 use App\Domains\Incidents\Models\Incident;
+use App\Domains\Normalization\Models\EventType;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Enums\TeamRole;
 use App\Models\Team;
@@ -21,11 +23,12 @@ use App\Models\User;
 use Database\Seeders\AccessSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
+use Tests\Concerns\AssertsTenantIsolation;
 use Tests\TestCase;
 
 class DriverShowPageTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsTenantIsolation, RefreshDatabase;
 
     protected function setUp(): void
     {
@@ -121,6 +124,13 @@ class DriverShowPageTest extends TestCase
             'driver_id' => $driver->id,
             'risk_score' => 72.5,
             'incidents_count' => 3,
+        ]);
+        // The card's counters are live over the 30-day window (not the
+        // nightly snapshot), so the three incidents must actually exist.
+        Incident::factory()->count(3)->create([
+            'team_id' => $team->id,
+            'driver_id' => $driver->id,
+            'opened_at' => now()->subDays(2),
         ]);
 
         DriverContact::factory()->primary()->create([
@@ -311,7 +321,9 @@ class DriverShowPageTest extends TestCase
                 ->component('drivers/show')
                 ->where('driver.riskProfile.trend', 'improving')
                 ->where('driver.riskProfile.previousScore', 70.5)
-                ->where('driver.riskProfile.severeEventsCount', 2)
+                // Live count: the stored snapshot's 2 is ignored; the
+                // factory events carry no severe event-type code.
+                ->where('driver.riskProfile.severeEventsCount', 0)
                 ->has('driver.providerFields', 4)
                 ->where('driver.providerFields.0.key', 'license_number')
                 ->where('driver.providerFields.0.value', 'LIC-998877')
@@ -326,6 +338,93 @@ class DriverShowPageTest extends TestCase
                 ->has('activity', 14)
                 ->where('activity.13.count', 1)
                 ->where('activity.11.count', 1),
+        );
+    }
+
+    /**
+     * UI audit: "Eventos severos 0" right after a critical collision because
+     * the card read the nightly risk snapshot. Counters are now live.
+     */
+    public function test_risk_counters_are_live_and_count_a_collision_right_away(): void
+    {
+        [$user, $team] = $this->createUserWithRole('live_risk', ['drivers.view']);
+        $other = Team::factory()->create();
+
+        $driver = Driver::factory()->create(['team_id' => $team->id]);
+        DriverRiskProfile::factory()->create([
+            'driver_id' => $driver->id,
+            'risk_score' => 10,
+            'last_calculated_at' => now()->subHours(10),
+            'metadata_json' => ['window_days' => 30, 'severe_events_count' => 0],
+        ]);
+
+        $collision = EventType::factory()->create(['code' => 'collision']);
+
+        NormalizedEvent::factory()->create([
+            'team_id' => $team->id,
+            'driver_id' => $driver->id,
+            'event_type_id' => $collision->id,
+            'occurred_at' => now()->subMinutes(2),
+        ]);
+        // Another tenant's collision carrying the same driver id never counts.
+        NormalizedEvent::factory()->count(2)->create([
+            'team_id' => $other->id,
+            'driver_id' => $driver->id,
+            'event_type_id' => $collision->id,
+            'occurred_at' => now()->subMinutes(5),
+        ]);
+
+        $response = $this->assertNoTenantLeak(
+            $team,
+            fn () => $this->actingAs($user)->get(
+                route('drivers.show', ['current_team' => $team->slug, 'driver' => $driver->id]),
+            ),
+        );
+
+        $response->assertOk();
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->component('drivers/show')
+                ->where('driver.riskProfile.severeEventsCount', 1)
+                ->where('driver.riskProfile.riskScore', 10)
+                ->has('driver.riskProfile.lastCalculatedAt'),
+        );
+    }
+
+    public function test_last_signal_comes_from_real_activity_not_the_roster_sync(): void
+    {
+        [$user, $team] = $this->createUserWithRole('live_seen', ['drivers.view']);
+
+        $driver = Driver::factory()->create([
+            'team_id' => $team->id,
+            'last_seen_at' => now()->subHours(10),
+        ]);
+        $asset = Asset::factory()->create(['team_id' => $team->id]);
+        DriverAssignment::factory()->create([
+            'team_id' => $team->id,
+            'driver_id' => $driver->id,
+            'asset_id' => $asset->id,
+            'started_at' => now()->subDay(),
+            'ended_at' => null,
+        ]);
+        NormalizedEvent::factory()->create([
+            'team_id' => $team->id,
+            'driver_id' => $driver->id,
+            'occurred_at' => now()->subHours(2),
+        ]);
+        $location = AssetLocationSnapshot::factory()->create([
+            'asset_id' => $asset->id,
+            'recorded_at' => now()->subMinutes(56),
+        ]);
+
+        $response = $this->actingAs($user)->get(
+            route('drivers.show', ['current_team' => $team->slug, 'driver' => $driver->id]),
+        );
+
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->where('driver.lastSignalAt', $location->recorded_at->toIso8601String())
+                ->where('driver.lastSeenAt', $driver->last_seen_at->toIso8601String()),
         );
     }
 

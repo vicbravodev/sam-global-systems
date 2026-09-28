@@ -109,6 +109,8 @@ class TwilioInboundWebhookTest extends TestCase
         $this->assertStringContainsString('confirmado', $response->getContent());
 
         $incident = $token->incident()->first();
+        // The reply names the per-tenant reference, never the global id.
+        $this->assertStringContainsString($incident->reference(), $response->getContent());
         $this->assertNotNull($incident->acknowledged_at);
         $this->assertSame($this->operator->id, $incident->acknowledged_by);
 

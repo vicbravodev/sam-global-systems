@@ -9,6 +9,9 @@ export type AssetStatusValue =
     | 'critical'
     | 'maintenance';
 
+/** Si SAM vigila (y cobra) la unidad. Sólo `monitored` entra al pipeline. */
+export type AssetMonitoringState = 'monitored' | 'pending' | 'excluded';
+
 export interface AssetTypeSummary {
     code: string;
     name: string;
@@ -49,17 +52,31 @@ export interface AssetDriverSummary {
     employeeCode: string | null;
 }
 
+/**
+ * The one current speed every surface shows: newest of position and speed
+ * telemetry. `stale` = older than the reporting window (server-computed,
+ * same rule as the header "En ruta" count).
+ */
+export interface AssetCurrentSpeed {
+    kph: number;
+    recordedAt: string;
+    source: 'location' | 'telemetry';
+    stale: boolean;
+}
+
 export interface AssetRow {
     id: number;
     name: string;
     code: string | null;
     status: AssetStatusValue;
+    monitoringState: AssetMonitoringState;
     type: AssetTypeSummary | null;
     vehicle: AssetVehicleFacts | null;
     /** Currently assigned primary driver, null when none. */
     driver: AssetDriverSummary | null;
     devices: AssetDeviceSummary[];
     lastLocation: AssetLocationSummary | null;
+    currentSpeed: AssetCurrentSpeed | null;
     /** Inventory-sync timestamp (bumps in bulk; NOT a real signal). */
     lastSeenAt: string | null;
     /** Latest REAL signal: newest location or telemetry snapshot. */
@@ -70,11 +87,22 @@ export interface AssetFilters {
     q: string | null;
     status: string | null;
     type: string | null;
+    monitoring: string | null;
 }
 
 export interface AssetFilterOptions {
     statuses: { value: string; label: string }[];
     types: { value: string; label: string }[];
+    monitoring: { value: string; label: string }[];
+}
+
+/** Cupo de vigilancia del tenant. Tope suave: `overCap` sólo avisa. */
+export interface MonitoringSummary {
+    monitored: number;
+    pending: number;
+    excluded: number;
+    cap: number | null;
+    overCap: boolean;
 }
 
 export interface AssetsPagination {
@@ -102,6 +130,7 @@ export interface AssetsIndexProps {
     filters: AssetFilters;
     filterOptions: AssetFilterOptions;
     summary?: AssetsSummary;
+    monitoring?: MonitoringSummary;
 }
 
 export interface AssetDetail extends AssetRow {
@@ -116,6 +145,8 @@ export interface TelemetryEntry {
     label: string;
     data: Record<string, unknown> | null;
     recordedAt: string;
+    /** Only on `speed`: the reading is older than the reporting window. */
+    stale?: boolean;
 }
 
 export interface LocationHistoryEntry {

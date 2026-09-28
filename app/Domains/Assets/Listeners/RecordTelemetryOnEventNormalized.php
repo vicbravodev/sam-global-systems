@@ -4,7 +4,7 @@ namespace App\Domains\Assets\Listeners;
 
 use App\Domains\Assets\Actions\RecordAssetTelemetry;
 use App\Domains\Assets\Enums\TelemetryType;
-use App\Domains\Assets\Jobs\PollAssetTelemetryJob;
+use App\Domains\Assets\Jobs\FollowVehicleStatsFeedJob;
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Normalization\Events\EventNormalized;
 use App\Support\TenantContext;
@@ -17,7 +17,7 @@ use Illuminate\Support\Carbon;
  * Provider events are a thin telemetry source — a Samsara safety event exposes
  * no instantaneous speed, fuel, odometer or engine state; the only real
  * measurement on the payload is the speeding pair, and only on speeding events.
- * The fleet-wide readings come from the stats poll ({@see PollAssetTelemetryJob}),
+ * The fleet-wide readings come from the telematics feed ({@see FollowVehicleStatsFeedJob}),
  * so this listener complements it rather than replacing it: it records the speed
  * measured at the moment of the event, attributed to the event that reported it.
  */

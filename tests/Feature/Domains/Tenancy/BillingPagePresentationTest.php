@@ -106,6 +106,34 @@ class BillingPagePresentationTest extends TestCase
             ->where('usage.1.overageCharged', false));
     }
 
+    public function test_asset_day_meters_count_as_billed_without_a_plan_rate(): void
+    {
+        // Tracto-día model: asset-days, the unit cap and AI fair use are
+        // invoiced through the tenant terms, not through BillingRate rows.
+        foreach (['monitored_asset_days', 'monitored_assets', 'ai_calls'] as $code) {
+            TenantUsageCounter::factory()->create([
+                'team_id' => $this->team->id,
+                'usage_meter_id' => UsageMeter::query()->where('code', $code)->value('id')
+                    ?? UsageMeter::factory()->create(['code' => $code])->id,
+                'period_start' => now()->startOfMonth(),
+                'period_end' => now()->endOfMonth(),
+                'consumed_value' => 10,
+                'included_value' => 0,
+                'overage_value' => 10,
+            ]);
+        }
+
+        $this->page()->assertInertia(fn (Assert $page) => $page
+            ->has('usage', 3)
+            ->where('usage', function ($usage): bool {
+                $rows = collect($usage)->keyBy('meterCode');
+
+                return $rows->every(fn (array $row): bool => $row['billed'] === true)
+                    && $rows['monitored_asset_days']['overageCharged'] === false
+                    && $rows['monitored_assets']['overageCharged'] === false;
+            }));
+    }
+
     public function test_features_list_excludes_meter_allowances(): void
     {
         // Per-meter allowances are stored as features keyed by meter code.

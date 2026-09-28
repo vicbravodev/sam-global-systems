@@ -79,7 +79,7 @@ class AdminTenantPanelTest extends TestCase
         );
         $this->assertDatabaseHas('team_subscriptions', [
             'team_id' => $team->id,
-            'status' => SubscriptionStatus::Trialing->value,
+            'status' => SubscriptionStatus::Active->value,
         ]);
     }
 
