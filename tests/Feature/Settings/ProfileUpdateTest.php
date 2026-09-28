@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Settings;
 
+use App\Domains\Decisions\Models\Decision;
+use App\Domains\Decisions\Models\DecisionOverride;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -85,6 +87,24 @@ class ProfileUpdateTest extends TestCase
 
         $this->assertGuest();
         $this->assertNull($user->fresh());
+    }
+
+    public function test_user_who_overrode_a_decision_can_delete_their_account(): void
+    {
+        $user = User::factory()->create();
+        $override = DecisionOverride::factory()->create([
+            'decision_id' => Decision::factory()->create(['team_id' => $user->current_team_id])->id,
+            'overridden_by_user_id' => $user->id,
+        ]);
+
+        $this->actingAs($user)
+            ->delete(route('profile.destroy'), ['password' => 'password'])
+            ->assertSessionHasNoErrors()
+            ->assertRedirect(route('home'));
+
+        $this->assertNull($user->fresh());
+        // The override stays as audit history, without its author.
+        $this->assertNull($override->fresh()->overridden_by_user_id);
     }
 
     public function test_correct_password_must_be_provided_to_delete_account()
