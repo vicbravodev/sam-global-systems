@@ -192,6 +192,10 @@ export interface AssetMarker {
     speed: number | null;
     heading: number | null;
     recordedAt: string;
+    /** From the live feed; derived from speed when absent. */
+    moving?: boolean | null;
+    /** Currently assigned driver's name, if any. */
+    driver?: string | null;
 }
 
 export interface AssetsMapProps {
