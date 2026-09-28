@@ -64,10 +64,15 @@ Schedule::job(new PollSamsaraSafetyEventsJob)->everyTwoMinutes()->onOneServer();
 // Live fleet state: positions and diagnostics follow the provider's stats
 // feed with a cursor per tenant. This tick only decides which feeds are due
 // and queues one job per tenant on `telematics`; the cadence itself
-// (TELEMATICS_FEED_INTERVAL, 5 s floor) is enforced per feed. Sub-minute
-// tasks keep schedule:run alive for the whole minute; `schedule:interrupt`
-// stops it cleanly on deploy.
-Schedule::job(new DispatchTelematicsFeedsJob)->everyFiveSeconds()->onOneServer();
+// (TELEMATICS_FEED_INTERVAL, 5 s floor) is enforced per feed. It runs inline
+// in the scheduler (a few ms): queueing it too would put it in line behind
+// the very cycles it dispatches and stretch a 5 s cadence to 7–10 s.
+// Sub-minute tasks keep schedule:run alive for the whole minute;
+// `schedule:interrupt` stops it cleanly on deploy.
+Schedule::call(fn () => app()->call([new DispatchTelematicsFeedsJob, 'handle']))
+    ->name('telematics:dispatch-feeds')
+    ->everyFiveSeconds()
+    ->onOneServer();
 
 // Gateway heartbeat for the offline watchdog, on the watchdog's own cadence.
 Schedule::job(new PollAllDeviceConnectivityJob)->everyFiveMinutes()->onOneServer();

@@ -18,8 +18,8 @@ use Illuminate\Queue\SerializesModels;
  * integration with a stats feed, queue one {@see FollowVehicleStatsFeedJob}
  * per feed that is due and not paused.
  *
- * It only decides and dispatches — a few milliseconds — so the tick itself
- * can run on the scheduler. The work, and every failure, happens per tenant
+ * It only decides and dispatches — a few milliseconds — so the tick runs
+ * inline in the scheduler process (routes/console.php), not on a queue. The work, and every failure, happens per tenant
  * in its own job on the `telematics` queue, where one slow or broken tenant
  * holds at most one worker.
  *

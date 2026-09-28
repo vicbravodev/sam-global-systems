@@ -12,7 +12,7 @@ import {
     Truck,
     Wrench,
 } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { AssetsTable } from '@/components/sam/assets/assets-table';
 import {
@@ -32,14 +32,19 @@ import { cn } from '@/lib/utils';
 import type {
     AssetFilterOptions,
     AssetFilters,
+    AssetRow,
     AssetsIndexProps,
     AssetsPagination,
     AssetsSummary,
     MonitoringSummary,
 } from '@/types/assets';
+import type {
+    FleetPosition,
+    FleetPositionsUpdatedPayload,
+} from '@/types/realtime';
 
-// Broadcast events that refresh the fleet list. Location polls can arrive in
-// bursts (one event per asset), so reloads are debounced below.
+// Broadcast events that refresh the fleet list, debounced below. Positions do
+// not: they arrive every few seconds and are applied to the rows in memory.
 const RELOAD_EVENTS = new Set([
     'asset.location_updated',
     'asset.status_changed',
@@ -47,6 +52,56 @@ const RELOAD_EVENTS = new Set([
 ]);
 
 const RELOAD_DEBOUNCE_MS = 2000;
+
+// The pulse strip (moving / reporting counts) follows live positions, but a
+// server roundtrip every feed cycle would be waste: at most this often.
+const SUMMARY_REFRESH_MS = 30_000;
+
+/**
+ * A row with the newest live position laid over it, when that position is
+ * newer than what the server rendered.
+ */
+function withLivePosition(
+    asset: AssetRow,
+    live: FleetPosition | undefined,
+): AssetRow {
+    if (
+        live === undefined ||
+        (asset.lastLocation !== null &&
+            Date.parse(live.recorded_at) <=
+                Date.parse(asset.lastLocation.recordedAt))
+    ) {
+        return asset;
+    }
+
+    const signal =
+        asset.lastSignalAt === null ||
+        Date.parse(live.recorded_at) > Date.parse(asset.lastSignalAt)
+            ? live.recorded_at
+            : asset.lastSignalAt;
+
+    return {
+        ...asset,
+        lastLocation: {
+            latitude: live.latitude,
+            longitude: live.longitude,
+            formattedLocation: asset.lastLocation?.formattedLocation ?? null,
+            speed: live.speed_kph,
+            heading: live.heading,
+            recordedAt: live.recorded_at,
+        },
+        currentSpeed:
+            live.speed_kph === null
+                ? asset.currentSpeed
+                : {
+                      kph: live.speed_kph,
+                      recordedAt: live.recorded_at,
+                      source: 'location',
+                      stale: false,
+                  },
+        lastSignalAt: signal,
+    };
+}
 
 const STATUS_DOT: Record<string, string> = {
     active: 'bg-severity-low',
@@ -417,7 +472,17 @@ export default function AssetsIndex() {
     const page = usePage();
     const pageProps = page.props as unknown as AssetsIndexProps;
     const teamSlug = page.props.currentTeam?.slug ?? null;
-    const assets = pageProps.assets ?? [];
+    const serverAssets = pageProps.assets;
+    const [livePositions, setLivePositions] = useState<
+        Map<number, FleetPosition>
+    >(() => new Map());
+    const assets = useMemo(
+        () =>
+            (serverAssets ?? []).map((asset) =>
+                withLivePosition(asset, livePositions.get(asset.id)),
+            ),
+        [serverAssets, livePositions],
+    );
     const pagination = pageProps.pagination ?? EMPTY_PAGINATION;
     const serverFilters = pageProps.filters ?? EMPTY_FILTERS;
     const filterOptions = pageProps.filterOptions ?? EMPTY_OPTIONS;
@@ -522,10 +587,33 @@ export default function AssetsIndex() {
     // Live updates: location polls and status transitions refresh the list
     // and the pulse strip. Bursts are coalesced into a single partial reload.
     const timer = useRef<number | null>(null);
+    const lastSummaryRefresh = useRef(0);
 
     useEffect(() => {
         const handler = (event: Event) => {
             const detail = (event as CustomEvent<TeamBroadcastDetail>).detail;
+
+            if (detail?.event === 'fleet.positions_updated') {
+                const { positions } =
+                    detail.payload as unknown as FleetPositionsUpdatedPayload;
+
+                setLivePositions((prev) => {
+                    const next = new Map(prev);
+                    positions.forEach((p) => next.set(p.asset_id, p));
+
+                    return next;
+                });
+
+                if (
+                    Date.now() - lastSummaryRefresh.current >
+                    SUMMARY_REFRESH_MS
+                ) {
+                    lastSummaryRefresh.current = Date.now();
+                    router.reload({ only: ['summary', 'monitoring'] });
+                }
+
+                return;
+            }
 
             if (!RELOAD_EVENTS.has(detail?.event ?? '')) {
                 return;

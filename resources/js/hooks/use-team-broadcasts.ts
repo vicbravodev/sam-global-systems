@@ -8,6 +8,8 @@ import type {
 
 const TEAM_EVENTS: TeamBroadcastEvent[] = [
     'asset.location_updated',
+    'fleet.positions_updated',
+    'fleet.telemetry_updated',
     'asset.status_changed',
     'asset.monitoring_changed',
     'usage.updated',

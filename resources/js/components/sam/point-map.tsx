@@ -21,6 +21,46 @@ const TONE_COLORS = {
 
 export type PointTone = keyof typeof TONE_COLORS;
 
+// The dark basemap is the light one run through DARK_CANVAS_FILTER, which
+// also recolors anything painted INTO the canvas (the trail line). These two
+// operations cancel it out: invert and a 180° hue turn are each their own
+// inverse, so pre-applying them lands the line on its intended color.
+const DARK_PAINT_COMPENSATION = 'invert(1) hue-rotate(180deg)';
+
+/**
+ * A concrete `rgb()` for a CSS color token, for MapLibre paint properties:
+ * the canvas renderer does not understand `var(--x)` (the trail was silently
+ * never drawn) nor every CSS Color 4 space the tokens use (oklch). Painting a
+ * pixel and reading it back resolves both, and applies the dark-mode
+ * compensation in the same step.
+ */
+function canvasColor(token: string, dark: boolean): string {
+    const probe = document.createElement('span');
+    probe.style.color = token;
+    document.body.appendChild(probe);
+    const resolved = getComputedStyle(probe).color;
+    probe.remove();
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 1;
+    canvas.height = 1;
+    const ctx = canvas.getContext('2d');
+
+    if (ctx === null) {
+        return resolved;
+    }
+
+    if (dark) {
+        ctx.filter = DARK_PAINT_COMPENSATION;
+    }
+
+    ctx.fillStyle = resolved;
+    ctx.fillRect(0, 0, 1, 1);
+    const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+
+    return `rgb(${r}, ${g}, ${b})`;
+}
+
 interface Props {
     latitude: number;
     longitude: number;
@@ -175,13 +215,25 @@ export function PointMap({
                 type: 'line',
                 source: sourceId,
                 paint: {
-                    'line-color': TONE_COLORS.primary,
-                    'line-width': 2,
-                    'line-opacity': 0.55,
+                    'line-color': canvasColor(
+                        TONE_COLORS.primary,
+                        resolvedAppearance === 'dark',
+                    ),
+                    'line-width': 3,
+                    'line-opacity': 0.8,
                 },
             });
         }
-    }, [latitude, longitude, heading, label, tone, trail, loaded]);
+    }, [
+        latitude,
+        longitude,
+        heading,
+        label,
+        tone,
+        trail,
+        loaded,
+        resolvedAppearance,
+    ]);
 
     useEffect(() => {
         const map = mapRef.current;
@@ -192,6 +244,15 @@ export function PointMap({
 
         map.getCanvasContainer().style.filter =
             resolvedAppearance === 'dark' ? DARK_CANVAS_FILTER : '';
+
+        // The trail's compensated color depends on the theme.
+        if (map.getLayer('point-trail-line')) {
+            map.setPaintProperty(
+                'point-trail-line',
+                'line-color',
+                canvasColor(TONE_COLORS.primary, resolvedAppearance === 'dark'),
+            );
+        }
     }, [resolvedAppearance, loaded]);
 
     if (unavailable) {

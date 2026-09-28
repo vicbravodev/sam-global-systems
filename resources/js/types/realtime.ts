@@ -12,6 +12,39 @@ export type AssetLocationUpdatedPayload = {
     recorded_at: string;
 };
 
+/** Current position of one asset, as carried by `fleet.positions_updated`. */
+export type FleetPosition = {
+    asset_id: number;
+    latitude: number;
+    longitude: number;
+    speed_kph: number | null;
+    heading: number | null;
+    recorded_at: string;
+    moving: boolean | null;
+};
+
+/**
+ * Every position that moved forward in one telematics feed cycle (~5 s), one
+ * message per tenant instead of one per vehicle.
+ */
+export type FleetPositionsUpdatedPayload = {
+    positions: FleetPosition[];
+};
+
+export type FleetTelemetryReading = {
+    value: number | string;
+    unit: string | null;
+    recorded_at: string;
+};
+
+/** Diagnostics that changed in one feed cycle, keyed by telemetry type. */
+export type FleetTelemetryUpdatedPayload = {
+    assets: {
+        asset_id: number;
+        readings: Record<string, FleetTelemetryReading>;
+    }[];
+};
+
 export type AssetStatusChangedPayload = {
     asset_id: number;
     name: string;
@@ -81,6 +114,8 @@ export type IncidentUpdatedPayload = {
 
 export type TeamBroadcastEventMap = {
     'asset.location_updated': AssetLocationUpdatedPayload;
+    'fleet.positions_updated': FleetPositionsUpdatedPayload;
+    'fleet.telemetry_updated': FleetTelemetryUpdatedPayload;
     'asset.status_changed': AssetStatusChangedPayload;
     'asset.monitoring_changed': AssetMonitoringChangedPayload;
     'usage.updated': UsageUpdatedPayload;
