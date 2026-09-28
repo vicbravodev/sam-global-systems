@@ -3,6 +3,7 @@
 namespace App\Domains\Tenancy\Support;
 
 use App\Domains\Tenancy\Data\BillingTermsData;
+use Carbon\CarbonImmutable;
 
 /**
  * Cobro por tracto-día (decisión 2026-09-28): cada noche se cuenta cuántas
@@ -16,6 +17,65 @@ final class AssetDayPricing
     public const string METER_CODE = 'monitored_asset_days';
 
     public const string AI_METER_CODE = 'ai_calls';
+
+    public const string UNMONITORED_EMERGENCY_METER_CODE = 'unmonitored_emergency_asset_days';
+
+    /**
+     * Fecha local (zona de facturación) de un instante: el "día" que se cobra
+     * es el día del cliente, no el día UTC.
+     */
+    public static function localDate(\DateTimeInterface $at): string
+    {
+        return CarbonImmutable::instance($at)
+            ->setTimezone(self::timezone())
+            ->toDateString();
+    }
+
+    /**
+     * Mediodía local de una fecha facturable, como instante: un uso fechado
+     * ahí cae en el mismo día y mes tanto en hora local como en UTC, así que
+     * los agregados por `DATE(occurred_at)` y por mes no se corren de día.
+     */
+    public static function localNoon(string $localDate): CarbonImmutable
+    {
+        return CarbonImmutable::parse($localDate.' 12:00:00', self::timezone());
+    }
+
+    public static function timezone(): string
+    {
+        return (string) config('billing.timezone', 'America/Mexico_City');
+    }
+
+    public static function unmonitoredEmergencySurchargePercent(): float
+    {
+        return max(0.0, (float) config('billing.unmonitored_emergency_surcharge_percent', 10));
+    }
+
+    /**
+     * Emergencias atendidas en unidades no vigiladas: cada unidad-día se cobra
+     * a la tarifa diaria del tracto más el recargo (decisión 2026-09-28).
+     *
+     * @return array<string, mixed>
+     */
+    public static function unmonitoredEmergencyLine(int $assetDays, float $dailyRate): array
+    {
+        $surcharge = self::unmonitoredEmergencySurchargePercent();
+        $unitPrice = round($dailyRate * (1 + $surcharge / 100), 6);
+
+        return [
+            'meter_code' => self::UNMONITORED_EMERGENCY_METER_CODE,
+            'meter_name' => 'Emergencias en unidades no vigiladas (por día)',
+            'billing_model' => 'asset_day_surcharge',
+            'consumed' => $assetDays,
+            'included' => 0,
+            'overage' => $assetDays,
+            'daily_rate' => round($dailyRate, 6),
+            'surcharge_percent' => $surcharge,
+            'overage_unit_price' => $unitPrice,
+            'overage_cost' => round($assetDays * $unitPrice, 2),
+            'amount' => round($assetDays * $unitPrice, 2),
+        ];
+    }
 
     /**
      * @return array<string, mixed>

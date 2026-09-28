@@ -11,6 +11,7 @@ use App\Domains\Ingestion\Models\RawEvent;
 use App\Domains\Normalization\Enums\NormalizedEventStatus;
 use App\Domains\Normalization\Events\EventNormalized;
 use App\Domains\Normalization\Events\EventUnmapped;
+use App\Domains\Normalization\Events\UnmonitoredAssetEmergencyReceived;
 use App\Domains\Normalization\Models\EventCategory;
 use App\Domains\Normalization\Models\EventMappingRule;
 use App\Domains\Normalization\Models\EventSeverity;
@@ -20,6 +21,11 @@ use Illuminate\Support\Arr;
 
 class NormalizeRawEvent
 {
+    public const string EMERGENCY_CATEGORY = 'emergency';
+
+    /** @var array<int, string> */
+    public const array EMERGENCY_EVENT_TYPES = ['panic_button', 'collision', 'rollover_protection'];
+
     public function __construct(
         private MapExternalEventType $mapExternalEventType,
         private ResolveEventSeverity $resolveEventSeverity,
@@ -29,7 +35,8 @@ class NormalizeRawEvent
      * Null when the event belongs to an asset the tenant is not monitoring:
      * the raw event is marked `discarded` and never reaches enrichment, AI,
      * decisions or incidents. Only monitored assets are billed, so only
-     * monitored assets may cost anything downstream.
+     * monitored assets may cost anything downstream — except emergencies,
+     * which always flow and are charged as an extra asset-day.
      */
     public function execute(RawEvent $rawEvent): ?NormalizedEvent
     {
@@ -176,7 +183,13 @@ class NormalizeRawEvent
 
         $assetId = $this->resolveAssetId($rawEvent->provider_id, $rawEvent->team_id, $payload);
 
-        if ($this->assetIsSwitchedOff($assetId)) {
+        // Una emergencia (pánico, colisión, vuelco) SIEMPRE se atiende, esté o
+        // no vigilada la unidad (decisión 2026-09-28): la prioridad es la
+        // persona. Ese día la unidad se cobra como extra (tracto-día + recargo)
+        // y se avisa al admin. Todo lo demás de una unidad apagada se descarta.
+        $unmonitored = $this->assetIsSwitchedOff($assetId);
+
+        if ($unmonitored && ! $this->isEmergency($eventType, $category)) {
             $this->discard($rawEvent);
 
             return null;
@@ -196,7 +209,10 @@ class NormalizeRawEvent
                 'event_severity_id' => $severity->id,
                 'occurred_at' => $rawEvent->occurred_at ?? $rawEvent->received_at,
                 'processed_at' => now(),
-                'payload_normalized_json' => $this->buildNormalizedPayload($rawEvent, $eventType, $severity, $payload),
+                'payload_normalized_json' => [
+                    ...$this->buildNormalizedPayload($rawEvent, $eventType, $severity, $payload),
+                    ...($unmonitored ? ['unmonitored_asset' => true] : []),
+                ],
                 'status' => NormalizedEventStatus::Normalized,
             ],
         );
@@ -205,7 +221,26 @@ class NormalizeRawEvent
 
         EventNormalized::dispatch($normalizedEvent);
 
+        if ($unmonitored) {
+            UnmonitoredAssetEmergencyReceived::dispatch($normalizedEvent);
+        }
+
         return $normalizedEvent;
+    }
+
+    /**
+     * Tipos que nunca se descartan por `monitoring_state`: la categoría
+     * `emergency` del catálogo (pánico, colisión, vuelco).
+     */
+    public static function isEmergencyCode(?string $categoryCode, ?string $eventTypeCode): bool
+    {
+        return $categoryCode === self::EMERGENCY_CATEGORY
+            || in_array($eventTypeCode, self::EMERGENCY_EVENT_TYPES, true);
+    }
+
+    private function isEmergency(?EventType $eventType, ?EventCategory $category): bool
+    {
+        return self::isEmergencyCode($category?->code, $eventType?->code);
     }
 
     /**

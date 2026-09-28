@@ -23,6 +23,29 @@ final class IncidentSupervisors
      */
     public static function recipients(int $teamId): array
     {
+        $recipients = [];
+
+        foreach (self::users($teamId) as $user) {
+            $recipients[] = [
+                'recipient_type' => 'user',
+                'address' => (string) $user->email,
+                'email' => (string) $user->email,
+                'phone' => $user->verifiedPhone(),
+                'name' => $user->name,
+                'recipient_reference_id' => (string) $user->id,
+            ];
+        }
+
+        return $recipients;
+    }
+
+    /**
+     * Miembros con correo que gestionan incidentes (supervisores y admins).
+     *
+     * @return array<int, User>
+     */
+    public static function users(int $teamId): array
+    {
         $team = Team::query()->find($teamId);
 
         if ($team === null) {
@@ -36,7 +59,7 @@ final class IncidentSupervisors
             ->where('team_id', $teamId)
             ->get());
 
-        $recipients = [];
+        $users = [];
 
         foreach ($memberships as $membership) {
             $user = $membership->user;
@@ -49,17 +72,10 @@ final class IncidentSupervisors
                 continue;
             }
 
-            $recipients[] = [
-                'recipient_type' => 'user',
-                'address' => (string) $user->email,
-                'email' => (string) $user->email,
-                'phone' => $user->verifiedPhone(),
-                'name' => $user->name,
-                'recipient_reference_id' => (string) $user->id,
-            ];
+            $users[] = $user;
         }
 
-        return $recipients;
+        return $users;
     }
 
     private static function canManageIncidents(AuthorizeAction $authorize, Membership $membership, User $user, Team $team): bool

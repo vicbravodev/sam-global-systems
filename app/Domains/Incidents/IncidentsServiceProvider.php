@@ -11,6 +11,7 @@ use App\Domains\Incidents\Listeners\ApplyExternalResolutionOnEventNormalized;
 use App\Domains\Incidents\Listeners\ApplyReevaluationOnDecisionMade;
 use App\Domains\Incidents\Listeners\AssignOnCallOnIncidentCreated;
 use App\Domains\Incidents\Listeners\CreateIncidentOnDecisionMade;
+use App\Domains\Incidents\Listeners\OpenEmergencyIncidentOnEventNormalized;
 use App\Domains\Incidents\Listeners\StartCallVerificationOnIncidentCreated;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Policies\IncidentPolicy;
@@ -35,6 +36,8 @@ class IncidentsServiceProvider extends ServiceProvider
         // Reevaluaciones (v2+): actualizan el incidente del evento, no duplican.
         Event::listen(DecisionMade::class, ApplyReevaluationOnDecisionMade::class);
         Event::listen(EventNormalized::class, ApplyExternalResolutionOnEventNormalized::class);
+        // Carril rápido: una emergencia abre su incidente crítico antes de la IA.
+        Event::listen(EventNormalized::class, OpenEmergencyIncidentOnEventNormalized::class);
         Event::listen(IncidentCreated::class, AssignOnCallOnIncidentCreated::class);
         Event::listen(IncidentCreated::class, StartCallVerificationOnIncidentCreated::class);
         Event::listen(MediaAssessmentCompleted::class, AnnotateIncidentOnMediaAssessmentCompleted::class);

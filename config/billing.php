@@ -27,6 +27,15 @@ return [
     // fijos con flotas muy pequeñas.
     'min_billable_assets' => (int) env('BILLING_MIN_BILLABLE_ASSETS', 0),
 
+    // Zona horaria del "día" facturable: la muestra diaria y los tracto-días
+    // por uso se fechan en hora local del cliente, no en UTC.
+    'timezone' => env('BILLING_TIMEZONE', 'America/Mexico_City'),
+
+    // Emergencia (pánico, colisión, vuelco) de una unidad NO vigilada: se
+    // atiende siempre y ese día la unidad se cobra como tracto-día más este
+    // recargo (decisión 2026-09-28).
+    'unmonitored_emergency_surcharge_percent' => (float) env('BILLING_UNMONITORED_EMERGENCY_SURCHARGE', 10),
+
     // Uso justo de IA: evaluaciones incluidas por tracto vigilado y mes
     // (agrupadas por tenant). El excedente se cobra por evaluación.
     'ai_fair_use_per_asset' => (int) env('BILLING_AI_FAIR_USE_PER_ASSET', 60),

@@ -31,6 +31,15 @@ class AssetMeterSeeder extends Seeder
                 'reset_period' => ResetPeriod::Monthly,
             ],
             [
+                'code' => 'unmonitored_emergency_asset_days',
+                'name' => 'Emergencias en unidades no vigiladas',
+                'description' => 'Días en que una unidad no vigilada envió una emergencia que SAM atendió: tracto-día + recargo.',
+                'unit' => 'asset_day',
+                'aggregation_type' => AggregationType::Sum,
+                'is_billable' => true,
+                'reset_period' => ResetPeriod::Monthly,
+            ],
+            [
                 'code' => 'active_cameras',
                 'name' => 'Cámaras activas',
                 'description' => 'Daily peak of active cameras: active camera devices attached to non-inactive assets plus stand-alone camera assets without an attached camera device.',

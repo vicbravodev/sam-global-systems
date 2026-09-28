@@ -3,6 +3,7 @@
 namespace App\Domains\Incidents\Jobs;
 
 use App\Contracts\TenantConfig\TenantConfigResolver;
+use App\Domains\Incidents\Actions\EscalateUnverifiableIncident;
 use App\Domains\Incidents\Actions\HandleVerificationCallAttemptFailure;
 use App\Domains\Incidents\Actions\StartIncidentCallVerification;
 use App\Domains\Incidents\Enums\CallVerificationStatus;
@@ -65,6 +66,7 @@ class PlaceVerificationCallJob implements ShouldQueue
         HandleVerificationCallAttemptFailure $handleFailure,
         RecordUsageEvent $recordUsage,
         RecordMessagingCharge $recordCharge,
+        EscalateUnverifiableIncident $escalateUnverifiable,
     ): void {
         $verification = IncidentCallVerification::withoutGlobalScopes()->find($this->verificationId);
 
@@ -101,17 +103,17 @@ class PlaceVerificationCallJob implements ShouldQueue
             return;
         }
 
-        // Tenant suspendido/cancelado/expirado: no se llama (coste Twilio).
-        // El intento se cierra con el motivo, sin encadenar reintentos.
+        // Tenant suspendido/cancelado/expirado: la llamada de verificación de
+        // una emergencia se hace IGUAL (decisión 2026-09-28: la persona va
+        // primero que el cobro). Queda anotado para cobranza/soporte.
         $blocked = TenantCanSend::blockedReason((int) $verification->team_id);
 
         if ($blocked !== null) {
-            $verification->forceFill([
-                'status' => CallVerificationStatus::Failed,
-                'metadata_json' => ['failure_reason' => $blocked],
-            ])->save();
-
-            return;
+            Log::notice('Verification call placed for a blocked tenant (emergency override)', [
+                'verification_id' => $verification->id,
+                'team_id' => $verification->team_id,
+                'blocked_reason' => $blocked,
+            ]);
         }
 
         $channel = $this->resolveVoiceChannel((int) $verification->team_id);
@@ -130,6 +132,13 @@ class PlaceVerificationCallJob implements ShouldQueue
                 'verification_id' => $verification->id,
                 'team_id' => $verification->team_id,
             ]);
+
+            // Nunca en silencio: el pánico queda escalado y explicado.
+            $escalateUnverifiable->execute(
+                $incident,
+                'voice_channel_unavailable',
+                'El canal de voz de SAM no está disponible para este equipo (apagado o sin credenciales).',
+            );
 
             return;
         }

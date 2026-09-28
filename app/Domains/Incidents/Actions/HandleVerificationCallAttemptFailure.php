@@ -2,7 +2,6 @@
 
 namespace App\Domains\Incidents\Actions;
 
-use App\Contracts\TenantConfig\TenantConfigResolver;
 use App\Domains\Incidents\Enums\CallVerificationOutcome;
 use App\Domains\Incidents\Enums\CallVerificationStatus;
 use App\Domains\Incidents\Enums\IncidentCreatorType;
@@ -21,10 +20,10 @@ use App\Domains\Incidents\Support\IncidentSuppression;
 class HandleVerificationCallAttemptFailure
 {
     public function __construct(
-        private readonly TenantConfigResolver $tenantConfig,
         private readonly StartIncidentCallVerification $startVerification,
         private readonly EscalateIncident $escalateIncident,
         private readonly AppendTimelineEntry $appendTimelineEntry,
+        private readonly NotifyEscalationLevel $notifyEscalationLevel,
     ) {}
 
     public function execute(IncidentCallVerification $verification, string $reason): void
@@ -55,11 +54,7 @@ class HandleVerificationCallAttemptFailure
             return;
         }
 
-        $maxAttempts = max(1, (int) $this->tenantConfig->resolve(
-            (int) $verification->team_id,
-            StartIncidentCallVerification::SETTING_ATTEMPTS,
-            StartIncidentCallVerification::DEFAULT_ATTEMPTS,
-        ));
+        $maxAttempts = $this->startVerification->attemptBudget($verification);
 
         if ($verification->attempt < $maxAttempts) {
             $this->startVerification->execute($incident, $verification->attempt + 1);
@@ -74,7 +69,7 @@ class HandleVerificationCallAttemptFailure
             entryType: TimelineEntryType::VerificationCall,
             actorType: TimelineActorType::System,
             title: "Llamada de verificación sin respuesta tras {$verification->attempt} intentos",
-            description: "Ningún operador respondió la llamada de verificación al {$verification->phone}. Se ejecuta el protocolo de escalación.",
+            description: 'Nadie respondió la llamada de verificación ('.implode(', ', (array) ($verification->metadata_json['candidates'] ?? [$verification->phone])).'). Se ejecuta el protocolo de escalación.',
             payload: [
                 'verification_id' => $verification->id,
                 'attempts' => $verification->attempt,
@@ -82,10 +77,19 @@ class HandleVerificationCallAttemptFailure
             ],
         );
 
-        $this->escalateIncident->execute(
+        $incident = $this->escalateIncident->execute(
             incident: $incident,
-            reason: "Llamada de verificación sin respuesta tras {$verification->attempt} intentos al {$verification->phone}.",
+            reason: "Llamada de verificación sin respuesta tras {$verification->attempt} intentos.",
             escalatedByType: IncidentCreatorType::System,
+        );
+
+        $this->notifyEscalationLevel->execute(
+            incident: $incident,
+            level: 0,
+            eventKey: "incident_verification_no_answer:{$incident->id}",
+            notificationType: 'incident.verification_no_answer',
+            subject: 'Emergencia sin respuesta del operador: '.$incident->title,
+            body: "Nadie contestó la llamada de verificación tras {$verification->attempt} intentos. Atiéndela ahora.",
         );
     }
 }

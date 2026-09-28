@@ -2,6 +2,7 @@
 
 namespace App\Domains\Tenancy;
 
+use App\Domains\Normalization\Events\UnmonitoredAssetEmergencyReceived;
 use App\Domains\Tenancy\Actions\ChangeTenantPlan;
 use App\Domains\Tenancy\Actions\DeleteTenant;
 use App\Domains\Tenancy\Actions\RecordUsageEvent;
@@ -14,6 +15,7 @@ use App\Domains\Tenancy\Actions\UpdateSubscriptionStatus;
 use App\Domains\Tenancy\Actions\UpdateTenant;
 use App\Domains\Tenancy\Events\UsageLimitExceeded;
 use App\Domains\Tenancy\Listeners\AuditUsageLimitExceeded;
+use App\Domains\Tenancy\Listeners\ChargeUnmonitoredEmergency;
 use App\Domains\Tenancy\Models\Subscription;
 use App\Domains\Tenancy\Models\TenantBranding;
 use App\Domains\Tenancy\Models\TenantFeature;
@@ -47,5 +49,6 @@ class TenancyServiceProvider extends ServiceProvider
         Gate::policy(TenantFeature::class, TenantFeaturePolicy::class);
 
         Event::listen(UsageLimitExceeded::class, AuditUsageLimitExceeded::class);
+        Event::listen(UnmonitoredAssetEmergencyReceived::class, ChargeUnmonitoredEmergency::class);
     }
 }

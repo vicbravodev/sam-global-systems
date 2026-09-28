@@ -8,7 +8,9 @@ use App\Domains\Audit\Enums\AuditCategory;
 use App\Domains\Incidents\Actions\AcknowledgeIncident;
 use App\Domains\Incidents\Actions\AppendTimelineEntry;
 use App\Domains\Incidents\Actions\CloseIncident;
+use App\Domains\Incidents\Actions\EscalateIncident;
 use App\Domains\Incidents\Actions\HandleVerificationCallAttemptFailure;
+use App\Domains\Incidents\Actions\NotifyEscalationLevel;
 use App\Domains\Incidents\Enums\CallVerificationOutcome;
 use App\Domains\Incidents\Enums\CallVerificationStatus;
 use App\Domains\Incidents\Enums\IncidentCreatorType;
@@ -18,6 +20,7 @@ use App\Domains\Incidents\Enums\TimelineEntryType;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentCallVerification;
 use App\Domains\Incidents\Support\VerificationCallTwiml;
+use App\Domains\Notifications\Enums\NotificationPriority;
 use App\Domains\Notifications\Support\PlatformTwilioConfig;
 use App\Http\Controllers\Controller;
 use App\Support\TenantContext;
@@ -28,8 +31,9 @@ use Twilio\Security\RequestValidator;
 /**
  * Twilio Voice webhooks for the operator verification call (Roadmap V2-A3).
  *
- * `gather` receives the DTMF digit — 1 acknowledges the incident as a real
- * emergency, 2 closes it as a false alarm. `status` receives Twilio's call
+ * `gather` receives the DTMF digit — 1 confirms a real emergency (ACK +
+ * escalation + immediate notice to the first escalation level), 2 closes it
+ * as a false alarm with no further protocol (decisión 2026-09-28). `status` receives Twilio's call
  * status callback so unanswered/busy/failed calls advance the retry chain.
  * Both validate `X-Twilio-Signature` with SAM's platform Twilio auth token.
  */
@@ -41,6 +45,8 @@ class TwilioVoiceController extends Controller
         private readonly HandleVerificationCallAttemptFailure $handleFailure,
         private readonly AppendTimelineEntry $appendTimelineEntry,
         private readonly RecordAuditEntry $recordAuditEntry,
+        private readonly EscalateIncident $escalateIncident,
+        private readonly NotifyEscalationLevel $notifyEscalationLevel,
     ) {}
 
     public function gather(Request $request, int $verification): Response
@@ -113,8 +119,27 @@ class TwilioVoiceController extends Controller
 
         $this->audit($row, $incident, 'confirmed_real');
 
+        // DTMF 1 = emergencia real: además del ACK (ya hay alguien enterado),
+        // se escala y se avisa en ese momento al primer nivel. Antes sólo se
+        // reconocía y el watchdog se apagaba sin avisar a nadie.
+        $incident = $this->escalateIncident->execute(
+            incident: $incident->fresh(['status', 'priority', 'type']),
+            reason: "Emergencia confirmada por verificación telefónica (DTMF 1) desde {$row->phone}.",
+            escalatedByType: IncidentCreatorType::System,
+        );
+
+        $this->notifyEscalationLevel->execute(
+            incident: $incident,
+            level: 0,
+            eventKey: "incident_emergency_confirmed:{$incident->id}",
+            notificationType: 'incident.emergency_confirmed',
+            subject: 'EMERGENCIA CONFIRMADA: '.$incident->title,
+            body: "El operador confirmó por teléfono ({$row->phone}) que la emergencia es real. Actúa ahora.",
+            priority: NotificationPriority::Critical,
+        );
+
         return $this->twiml(VerificationCallTwiml::say(
-            'Emergencia confirmada. SAM activó el protocolo y notificó a los contactos del incidente. Gracias.',
+            'Emergencia confirmada. SAM escaló el incidente y está avisando a los contactos de emergencia. Gracias.',
         ));
     }
 
