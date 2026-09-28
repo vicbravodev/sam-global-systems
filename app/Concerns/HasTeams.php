@@ -186,7 +186,13 @@ trait HasTeams
      */
     public function toUserTeam(Team $team): UserTeam
     {
-        $role = $this->teamRole($team);
+        // Loaded through teams() the pivot already carries the role; querying
+        // it again made the team switcher (shared on every page) N+1.
+        $pivotRole = $team->pivot?->getAttribute('role');
+
+        $role = $pivotRole !== null && $team->pivot->getAttribute('user_id') == $this->getKey()
+            ? ($pivotRole instanceof TeamRole ? $pivotRole : TeamRole::tryFrom((string) $pivotRole))
+            : $this->teamRole($team);
 
         return new UserTeam(
             id: $team->id,

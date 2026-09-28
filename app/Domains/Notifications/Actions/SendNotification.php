@@ -9,6 +9,7 @@ use App\Domains\Notifications\Enums\NotificationTriggeredByType;
 use App\Domains\Notifications\Jobs\SendNotificationJob;
 use App\Domains\Notifications\Models\Notification;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Facades\DB;
 
 class SendNotification
 {
@@ -43,7 +44,9 @@ class SendNotification
         }
 
         try {
-            $notification = Notification::query()->create([
+            // Savepoint: on PostgreSQL a failed INSERT aborts the enclosing
+            // transaction, so without it the catch below could not query.
+            $notification = DB::transaction(fn () => Notification::query()->create([
                 'team_id' => $teamId,
                 'source_type' => $sourceType,
                 'source_reference_id' => $sourceReferenceId,
@@ -57,7 +60,7 @@ class SendNotification
                 'triggered_by_id' => $triggeredById,
                 'event_key' => $eventKey,
                 'payload_json' => $payload,
-            ]);
+            ]));
         } catch (UniqueConstraintViolationException) {
             // Lost a race against a concurrent caller with the same event_key:
             // the unique (team_id, event_key) index kept the first row, which

@@ -8,6 +8,7 @@ use App\Domains\Ingestion\Events\RawEventReceived;
 use App\Domains\Ingestion\Models\EventReceipt;
 use App\Domains\Ingestion\Models\EventSource;
 use App\Domains\Ingestion\Models\RawEvent;
+use Illuminate\Support\Facades\Cache;
 
 class StoreRawEvent
 {
@@ -70,19 +71,40 @@ class StoreRawEvent
         return $rawEvent;
     }
 
+    /**
+     * `event_sources` has no unique key on these columns, and dedup keys are
+     * scoped by `event_source_id`: two concurrent first events of a tenant
+     * creating two sources would silently split (and so disable) dedup. The
+     * hot path is a plain lookup; only a miss takes a per-tenant lock.
+     */
     private function resolveEventSource(string $sourceType, ?int $teamId, ?int $providerId): EventSource
     {
-        return EventSource::withoutGlobalScopes()->firstOrCreate(
-            [
-                'team_id' => $teamId,
-                'provider_id' => $providerId,
-                'source_type' => $sourceType,
-            ],
-            [
-                'source_name' => $sourceType,
-                'status' => EventSourceStatus::Active,
-            ],
-        );
+        $attributes = [
+            'team_id' => $teamId,
+            'provider_id' => $providerId,
+            'source_type' => $sourceType,
+        ];
+
+        $find = fn (): ?EventSource => EventSource::withoutGlobalScopes()
+            ->where('team_id', $teamId)
+            ->where('provider_id', $providerId)
+            ->where('source_type', $sourceType)
+            ->orderBy('id')
+            ->first();
+
+        $existing = $find();
+
+        if ($existing !== null) {
+            return $existing;
+        }
+
+        $lockKey = sprintf('ingestion:event-source:%s:%s:%s', $teamId ?? 'platform', $providerId ?? 'none', $sourceType);
+
+        return Cache::lock($lockKey, 10)->block(5, fn (): EventSource => $find() ?? EventSource::withoutGlobalScopes()->create([
+            ...$attributes,
+            'source_name' => $sourceType,
+            'status' => EventSourceStatus::Active,
+        ]));
     }
 
     /**

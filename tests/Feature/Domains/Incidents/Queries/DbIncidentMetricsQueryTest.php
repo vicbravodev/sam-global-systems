@@ -281,4 +281,51 @@ class DbIncidentMetricsQueryTest extends TestCase
 
         $this->assertSame(0, $totals['total']);
     }
+
+    public function test_open_backlog_per_day_counts_what_was_open_at_each_day_end(): void
+    {
+        $this->travelTo(now()->setTime(12, 0));
+
+        $team = Team::factory()->create();
+        $other = Team::factory()->create();
+        $critical = IncidentPriority::factory()->critical()->create();
+        $from = now()->subDays(2)->startOfDay();
+
+        // Opened before the window, still open: counts every day.
+        Incident::factory()->open()->create([
+            'team_id' => $team->id,
+            'opened_at' => now()->subDays(5),
+            'incident_priority_id' => $critical->id,
+        ]);
+        // Open during day -2, resolved during day -1: counts only on day -2.
+        Incident::factory()->resolved()->create([
+            'team_id' => $team->id,
+            'opened_at' => now()->subDays(2)->setTime(8, 0),
+            'resolved_at' => now()->subDay()->setTime(9, 0),
+        ]);
+        // Opened today: counts only today.
+        Incident::factory()->open()->create([
+            'team_id' => $team->id,
+            'opened_at' => now()->subHour(),
+        ]);
+        // Resolved before the window: never counts.
+        Incident::factory()->resolved()->create([
+            'team_id' => $team->id,
+            'opened_at' => now()->subDays(6),
+            'resolved_at' => now()->subDays(4),
+        ]);
+        // Another tenant's backlog must not leak in.
+        Incident::factory()->open()->create([
+            'team_id' => $other->id,
+            'opened_at' => now()->subDays(5),
+        ]);
+
+        $buckets = app(DbIncidentMetricsQuery::class)->openBacklogPerDay($team->id, $from, now());
+
+        $this->assertSame([
+            ['date' => now()->subDays(2)->toDateString(), 'total' => 2, 'critical' => 1],
+            ['date' => now()->subDay()->toDateString(), 'total' => 1, 'critical' => 1],
+            ['date' => now()->toDateString(), 'total' => 2, 'critical' => 1],
+        ], $buckets);
+    }
 }

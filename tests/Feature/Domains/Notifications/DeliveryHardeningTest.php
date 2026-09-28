@@ -30,7 +30,9 @@ use App\Domains\Tenancy\Models\UsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
 use App\Models\Team;
 use App\Models\User;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Mockery;
 use Tests\TestCase;
@@ -171,15 +173,24 @@ class DeliveryHardeningTest extends TestCase
     {
         $winner = null;
 
-        // Simulate losing the race: the check-then-insert saw nothing, but a
-        // concurrent worker inserts the same (team, event_key) right before us.
-        Notification::creating(function (Notification $notification) use (&$winner) {
-            if ($winner === null && $notification->event_key === 'incident_created:1') {
-                $winner = Notification::withoutEvents(fn () => Notification::factory()->create([
-                    'team_id' => $notification->team_id,
-                    'event_key' => 'incident_created:1',
-                ]));
+        $racing = false;
+
+        // Simulate losing the race: the existence check saw nothing, and a
+        // concurrent worker commits the same (team, event_key) right after
+        // it, before our INSERT (which runs in its own savepoint).
+        DB::listen(function (QueryExecuted $query) use (&$winner, &$racing) {
+            if ($racing || $winner !== null
+                || ! str_starts_with(strtolower($query->sql), 'select')
+                || ! str_contains($query->sql, 'notifications')
+                || ! in_array('incident_created:1', $query->bindings, true)) {
+                return;
             }
+
+            $racing = true;
+            $winner = Notification::withoutEvents(fn () => Notification::factory()->create([
+                'team_id' => $this->team->id,
+                'event_key' => 'incident_created:1',
+            ]));
         });
 
         $result = app(SendNotification::class)->execute(
