@@ -30,9 +30,15 @@ class TwilioStatusCallbackController extends Controller
             abort(403, 'Twilio is not configured.');
         }
 
+        // Twilio firma la URL exacta a la que se le pidió reportar. Si está
+        // fijada por config (proxy/túnel), esa es la URL firmada, no la que
+        // ve Laravel detrás del proxy.
+        $configured = config('services.twilio.status_callback_url');
+        $signedUrl = is_string($configured) && $configured !== '' ? $configured : $request->fullUrl();
+
         $isValid = (new RequestValidator($authToken))->validate(
             (string) $request->header('X-Twilio-Signature', ''),
-            $request->fullUrl(),
+            $signedUrl,
             $request->post(),
         );
 

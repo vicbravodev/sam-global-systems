@@ -229,6 +229,23 @@ class TwilioStatusCallbackTest extends TestCase
         $this->assertSame(DeliveryStatus::Queued, $victimDelivery->fresh()->status);
     }
 
+    public function test_signature_is_validated_against_the_configured_public_url(): void
+    {
+        $this->queuedDelivery(ChannelType::Sms, 'SM_PROXY');
+        config()->set('services.twilio.status_callback_url', 'https://hooks.example.com/api/webhooks/twilio/status');
+
+        $params = ['MessageSid' => 'SM_PROXY', 'MessageStatus' => 'delivered'];
+        $validator = new RequestValidator(self::AUTH_TOKEN);
+
+        $this->post(self::PATH, $params, [
+            'X-Twilio-Signature' => $validator->computeSignature('https://hooks.example.com/api/webhooks/twilio/status', $params),
+        ])->assertOk();
+
+        $this->post(self::PATH, $params, [
+            'X-Twilio-Signature' => $validator->computeSignature(url(self::PATH), $params),
+        ])->assertForbidden();
+    }
+
     /**
      * @param  array<string, string>  $params
      */
