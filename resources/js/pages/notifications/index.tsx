@@ -5,6 +5,7 @@ import {
     ChevronRight,
     Filter,
     RefreshCw,
+    TriangleAlert,
     X,
 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
@@ -69,6 +70,13 @@ function PageHead({
 
 // ---- FilterBar ----
 
+const EMPTY_FILTERS: NotificationFilters = {
+    status: null,
+    priority: null,
+    unread: false,
+    failures: false,
+};
+
 interface FilterDropdownProps {
     label: string;
     value: string | null;
@@ -132,7 +140,10 @@ interface FilterBarProps {
 
 function FilterBar({ filters, options, onApply }: FilterBarProps) {
     const hasActive =
-        filters.status !== null || filters.priority !== null || filters.unread;
+        filters.status !== null ||
+        filters.priority !== null ||
+        filters.unread ||
+        filters.failures;
 
     return (
         <div className="flex shrink-0 items-center gap-2 border-b border-border bg-background px-5 py-2">
@@ -164,12 +175,26 @@ function FilterBar({ filters, options, onApply }: FilterBarProps) {
                 Solo no leídas
             </button>
 
+            <button
+                type="button"
+                onClick={() =>
+                    onApply({ ...filters, failures: !filters.failures })
+                }
+                className={cn(
+                    'flex items-center gap-1 rounded-sm border px-2.5 py-1.5 text-2xs transition-colors',
+                    filters.failures
+                        ? 'border-severity-critical/40 bg-severity-critical/10 text-severity-critical'
+                        : 'border-border bg-surface-1 text-fg-2 hover:border-border-strong',
+                )}
+            >
+                <TriangleAlert size={11} />
+                Con fallas de entrega
+            </button>
+
             {hasActive && (
                 <button
                     type="button"
-                    onClick={() =>
-                        onApply({ status: null, priority: null, unread: false })
-                    }
+                    onClick={() => onApply(EMPTY_FILTERS)}
                     className="flex items-center gap-1 rounded-sm border border-dashed border-border px-2.5 py-1.5 text-2xs text-fg-3 transition-colors hover:border-border-strong"
                 >
                     <X size={11} />
@@ -244,12 +269,6 @@ function CenterEmptyState({ filtered }: { filtered: boolean }) {
 
 // ---- Main page ----
 
-const EMPTY_FILTERS: NotificationFilters = {
-    status: null,
-    priority: null,
-    unread: false,
-};
-
 const EMPTY_OPTIONS: NotificationFilterOptions = {
     statuses: [],
     priorities: [],
@@ -279,7 +298,12 @@ export default function NotificationsIndex() {
     useEffect(() => {
         setFilters(serverFilters);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [serverFilters.status, serverFilters.priority, serverFilters.unread]);
+    }, [
+        serverFilters.status,
+        serverFilters.priority,
+        serverFilters.unread,
+        serverFilters.failures,
+    ]);
 
     const refresh = () => {
         setRefreshing(true);
@@ -297,6 +321,7 @@ export default function NotificationsIndex() {
                 status: next.status ?? undefined,
                 priority: next.priority ?? undefined,
                 unread: next.unread ? 1 : undefined,
+                failures: next.failures ? 1 : undefined,
                 // Changing filters always restarts at the first page.
                 page: undefined,
             },
@@ -326,14 +351,15 @@ export default function NotificationsIndex() {
         [teamSlug],
     );
 
-    const openSource = useCallback((url: string) => {
+    const openUrl = useCallback((url: string) => {
         router.visit(url);
     }, []);
 
     const hasActiveFilters =
         serverFilters.status !== null ||
         serverFilters.priority !== null ||
-        serverFilters.unread;
+        serverFilters.unread ||
+        serverFilters.failures;
 
     return (
         <>
@@ -354,7 +380,8 @@ export default function NotificationsIndex() {
                 <NotificationsTable
                     rows={notifications}
                     onMarkRead={markRead}
-                    onOpenSource={openSource}
+                    onOpenSource={openUrl}
+                    onOpenDetail={openUrl}
                     empty={<CenterEmptyState filtered={hasActiveFilters} />}
                 />
 

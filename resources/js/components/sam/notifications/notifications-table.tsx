@@ -1,10 +1,11 @@
-import { Check, ExternalLink } from 'lucide-react';
+import { Check, ExternalLink, ListChecks } from 'lucide-react';
 import * as React from 'react';
 import { CellEmpty, DataTable } from '@/components/sam/data-table';
 import type { DataTableColumn } from '@/components/sam/data-table';
 import { RelativeTime } from '@/components/sam/relative-time';
 import { cn } from '@/lib/utils';
 import type {
+    NotificationDeliverySummary,
     NotificationPriorityValue,
     NotificationRow,
     NotificationStatusValue,
@@ -88,10 +89,42 @@ function StatusCell({
     );
 }
 
+function DeliveryCell({
+    summary,
+    onOpen,
+}: {
+    summary: NotificationDeliverySummary | null;
+    onOpen: () => void;
+}) {
+    if (summary === null || summary.attempted === 0) {
+        return <CellEmpty />;
+    }
+
+    return (
+        <button
+            type="button"
+            className="flex cursor-pointer flex-col items-start gap-0.5 text-left"
+            onClick={onOpen}
+            title="Ver detalle de entregas"
+        >
+            <span className="flex items-center gap-1 text-2xs text-fg-2 hover:text-fg-1">
+                <ListChecks size={11} />
+                {summary.delivered}/{summary.attempted} entregadas
+            </span>
+            {summary.failed > 0 && (
+                <span className="inline-flex items-center rounded-full bg-severity-critical/15 px-1.5 py-0.5 text-3xs font-semibold text-severity-critical">
+                    {summary.failed} {summary.failed === 1 ? 'falla' : 'fallas'}
+                </span>
+            )}
+        </button>
+    );
+}
+
 interface NotificationsTableProps {
     rows: NotificationRow[];
     onMarkRead: (id: number) => void;
     onOpenSource: (url: string) => void;
+    onOpenDetail: (url: string) => void;
     empty?: React.ReactNode;
 }
 
@@ -99,6 +132,7 @@ export function NotificationsTable({
     rows,
     onMarkRead,
     onOpenSource,
+    onOpenDetail,
     empty,
 }: NotificationsTableProps) {
     const columns = React.useMemo<DataTableColumn<NotificationRow>[]>(
@@ -164,6 +198,19 @@ export function NotificationsTable({
                 ),
             },
             {
+                key: 'deliveries',
+                header: 'Entregas',
+                width: 'w-32',
+                sortValue: (notification) =>
+                    notification.deliverySummary?.failed ?? 0,
+                cell: (notification) => (
+                    <DeliveryCell
+                        summary={notification.deliverySummary}
+                        onOpen={() => onOpenDetail(notification.detailUrl)}
+                    />
+                ),
+            },
+            {
                 key: 'source',
                 header: 'Fuente',
                 width: 'w-28',
@@ -223,7 +270,7 @@ export function NotificationsTable({
                     ) : null,
             },
         ],
-        [onMarkRead, onOpenSource],
+        [onMarkRead, onOpenSource, onOpenDetail],
     );
 
     return (
