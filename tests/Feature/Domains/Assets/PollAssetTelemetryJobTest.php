@@ -3,7 +3,7 @@
 namespace Tests\Feature\Domains\Assets;
 
 use App\Domains\Assets\Actions\RecordAssetTelemetry;
-use App\Domains\Assets\Actions\ResolveAssetFromExternalId;
+use App\Domains\Assets\Actions\ResolveAssetsFromExternalIds;
 use App\Domains\Assets\Enums\TelemetryType;
 use App\Domains\Assets\Jobs\PollAllAssetTelemetryJob;
 use App\Domains\Assets\Jobs\PollAssetTelemetryJob;
@@ -97,7 +97,7 @@ class PollAssetTelemetryJobTest extends TestCase
 
         (new PollAssetTelemetryJob($integration))->handle(
             app(ProviderAdapter::class),
-            app(ResolveAssetFromExternalId::class),
+            app(ResolveAssetsFromExternalIds::class),
             app(RecordAssetTelemetry::class),
         );
 
@@ -119,7 +119,7 @@ class PollAssetTelemetryJobTest extends TestCase
 
         (new PollAssetTelemetryJob($integration))->handle(
             app(ProviderAdapter::class),
-            app(ResolveAssetFromExternalId::class),
+            app(ResolveAssetsFromExternalIds::class),
             app(RecordAssetTelemetry::class),
         );
 
@@ -135,7 +135,7 @@ class PollAssetTelemetryJobTest extends TestCase
         foreach (range(1, 2) as $ignored) {
             (new PollAssetTelemetryJob($integration))->handle(
                 app(ProviderAdapter::class),
-                app(ResolveAssetFromExternalId::class),
+                app(ResolveAssetsFromExternalIds::class),
                 app(RecordAssetTelemetry::class),
             );
         }
@@ -148,7 +148,8 @@ class PollAssetTelemetryJobTest extends TestCase
         Bus::fake();
 
         $due = $this->makeSamsaraIntegration(['last_telemetry_poll_at' => now()->subHour()]);
-        $this->makeSamsaraIntegration(['last_telemetry_poll_at' => now()->subMinute()]);
+        // Polled seconds ago: inside even the one-minute default interval.
+        $this->makeSamsaraIntegration(['last_telemetry_poll_at' => now()->subSeconds(10)]);
 
         (new PollAllAssetTelemetryJob)->handle();
 
@@ -180,7 +181,7 @@ class PollAssetTelemetryJobTest extends TestCase
 
         (new PollAssetTelemetryJob($integration))->handle(
             app(ProviderAdapter::class),
-            app(ResolveAssetFromExternalId::class),
+            app(ResolveAssetsFromExternalIds::class),
             app(RecordAssetTelemetry::class),
         );
 
@@ -218,7 +219,7 @@ class PollAssetTelemetryJobTest extends TestCase
 
         (new PollAssetTelemetryJob($first))->handle(
             app(ProviderAdapter::class),
-            app(ResolveAssetFromExternalId::class),
+            app(ResolveAssetsFromExternalIds::class),
             app(RecordAssetTelemetry::class),
         );
 

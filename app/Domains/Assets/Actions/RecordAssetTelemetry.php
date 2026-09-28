@@ -39,16 +39,8 @@ class RecordAssetTelemetry
             ->orderByDesc('id')
             ->first();
 
-        if ($latest !== null) {
-            // Batches can come back out of order; an older reading must never
-            // land on top of the current state.
-            if ($recordedAt->lessThanOrEqualTo($latest->recorded_at)) {
-                return null;
-            }
-
-            if ($this->isUnchanged($latest, $value)) {
-                return null;
-            }
+        if (! $this->supersedes($latest, $value, $recordedAt)) {
+            return null;
         }
 
         return AssetTelemetrySnapshot::create([
@@ -60,6 +52,26 @@ class RecordAssetTelemetry
             // traced back to what reported it; the stats poll leaves it null.
             'source_event_id' => $sourceEventId,
         ]);
+    }
+
+    /**
+     * Whether a reading says something new over `$latest`, the newest stored
+     * snapshot of the same asset and type. Public so a batch caller can drop
+     * the readings that would be discarded before paying a query for each.
+     */
+    public function supersedes(?AssetTelemetrySnapshot $latest, float|string $value, CarbonInterface $recordedAt): bool
+    {
+        if ($latest === null) {
+            return true;
+        }
+
+        // Batches can come back out of order; an older reading must never
+        // land on top of the current state.
+        if ($recordedAt->lessThanOrEqualTo($latest->recorded_at)) {
+            return false;
+        }
+
+        return ! $this->isUnchanged($latest, $value);
     }
 
     private function isUnchanged(AssetTelemetrySnapshot $latest, float|string $value): bool

@@ -54,13 +54,14 @@ Schedule::job(new RecalculateDriverRiskProfilesJob)->dailyAt('04:30')->onOneServ
 // per-tenant work and self-gate by interval (configurable per integration via
 // config_json.sync), so these ticks are the floor cadence, not the exact rate.
 Schedule::job(new SyncDueIntegrationsJob)->everyFifteenMinutes()->onOneServer();
-Schedule::job(new PollAllAssetLocationsJob)->everyFiveMinutes()->onOneServer();
+Schedule::job(new PollAllAssetLocationsJob)->everyMinute()->onOneServer();
 Schedule::job(new PollSamsaraSafetyEventsJob)->everyTwoMinutes()->onOneServer();
 
-// Onboard diagnostics (fuel, odometer, battery, engine state, temperature).
-// Slower floor than positions on purpose: these stats change by the percent or
-// the kilometre, so a faster tick spends requests without yielding readings.
-Schedule::job(new PollAllAssetTelemetryJob)->everyFifteenMinutes()->onOneServer();
+// Positions and onboard diagnostics (fuel, odometer, battery, engine state,
+// temperature) both tick every minute, the scheduler's floor, so the fleet
+// view is as live as the platform allows. Unchanged readings never reach the
+// database, so the cost of the faster tick is provider requests, not rows.
+Schedule::job(new PollAllAssetTelemetryJob)->everyMinute()->onOneServer();
 Schedule::job(new PurgeOldAssetTelemetryJob)->dailyAt('03:45')->onOneServer();
 
 // Offline-asset watchdog (Roadmap V2-C1): silence beyond the tenant/asset
