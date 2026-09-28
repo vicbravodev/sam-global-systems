@@ -49,6 +49,11 @@ export interface NotificationRow {
     sentAt: string | null;
     createdAt: string | null;
     isRead: boolean;
+    /** La notificación iba dirigida al usuario actual ("sin leer" es personal). */
+    addressedToMe: boolean;
+    /** Estado honesto según lo que hicieron las entregas (p.ej. "Parcial 1/3"). */
+    statusLabel: string;
+    statusTone: NotificationStatusTone;
     /** Explicación humana de por qué no salió (solo estados cancelados). */
     statusReason: string | null;
     recipientsCount: number;
@@ -57,6 +62,14 @@ export interface NotificationRow {
     deliverySummary: NotificationDeliverySummary | null;
     detailUrl: string;
 }
+
+export type NotificationStatusTone =
+    | 'ok'
+    | 'warning'
+    | 'critical'
+    | 'info'
+    | 'muted'
+    | 'neutral';
 
 export interface NotificationDeliverySummary {
     /** Entregas intentadas (excluye omitidas/canceladas). */
@@ -86,6 +99,8 @@ export interface NotificationDeliveryRow {
     reason: string | null;
     attempts: number;
     isFallback: boolean;
+    /** Canal cuya falla abrió esta entrega alterna (null si no es fallback). */
+    fallbackFromChannel: string | null;
     callDurationSeconds: number | null;
     acceptedAt: string | null;
     sentAt: string | null;

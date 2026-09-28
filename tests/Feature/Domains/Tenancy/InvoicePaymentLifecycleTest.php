@@ -8,9 +8,13 @@ use App\Domains\Tenancy\Models\InvoiceSnapshot;
 use App\Models\Team;
 use App\Models\User;
 use Database\Seeders\AccessSeeder;
+use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use League\Flysystem\UnableToWriteFile;
+use Mockery;
 use Tests\TestCase;
 
 /**
@@ -96,6 +100,41 @@ class InvoicePaymentLifecycleTest extends TestCase
             ]),
             ['receipt' => UploadedFile::fake()->create('t.pdf', 10, 'application/pdf')],
         )->assertNotFound();
+    }
+
+    /**
+     * UI audit P0-4: storage down → readable 503 on the `receipt` field,
+     * reported to ops, and nothing half-persisted (no FileObject, no link).
+     */
+    public function test_receipt_upload_returns_readable_error_when_storage_fails(): void
+    {
+        $failing = Mockery::mock(Filesystem::class);
+        $failing->shouldReceive('put')->andThrow(UnableToWriteFile::atLocation('billing/x.pdf', 'connection refused'));
+        Storage::set('rustfs', $failing);
+        Log::spy();
+
+        $invoice = InvoiceSnapshot::factory()->create([
+            'team_id' => $this->team->id,
+            'status' => InvoiceStatus::Invoiced,
+        ]);
+
+        $this->actingAs($this->user)->postJson(
+            route('billing.invoices.receipt', [
+                'current_team' => $this->team->slug,
+                'invoice' => $invoice->id,
+            ]),
+            ['receipt' => UploadedFile::fake()->create('transferencia.pdf', 120, 'application/pdf')],
+        )
+            ->assertStatus(503)
+            ->assertJsonPath('errors.receipt.0', fn (string $message) => str_contains($message, 'No se pudo subir el comprobante'));
+
+        $this->assertNull($invoice->refresh()->payment_receipt_file_object_id);
+        $this->assertDatabaseMissing('file_objects', ['team_id' => $this->team->id, 'category' => 'payment_receipt']);
+
+        Log::shouldHaveReceived('error')->withArgs(
+            fn (string $message, array $context) => str_contains($message, 'invoice_receipt_upload')
+                && $context['invoice_id'] === $invoice->id,
+        )->once();
     }
 
     public function test_super_admin_marks_invoice_paid_with_audit(): void

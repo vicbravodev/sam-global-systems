@@ -1,9 +1,7 @@
 import type Pusher from 'pusher-js';
-import { useEffect, useState } from 'react';
+import { useSyncExternalStore } from 'react';
 import { createEcho } from '@/echo';
 import type { RealtimeConnectionState } from '@/types/realtime';
-
-type StateChangePayload = { current: string; previous?: string };
 
 function normalizeState(raw: string): RealtimeConnectionState {
     switch (raw) {
@@ -21,41 +19,45 @@ function normalizeState(raw: string): RealtimeConnectionState {
     }
 }
 
-function readInitialState(): RealtimeConnectionState {
+function currentPusher(): Pusher | null {
     const echo = createEcho();
 
     if (!echo) {
-        return 'disconnected';
+        return null;
     }
 
-    const pusher = (echo.connector as { pusher: Pusher }).pusher;
+    return (echo.connector as { pusher: Pusher }).pusher;
+}
 
-    return normalizeState(pusher.connection.state);
+function getSnapshot(): RealtimeConnectionState {
+    const pusher = currentPusher();
+
+    return pusher ? normalizeState(pusher.connection.state) : 'disconnected';
+}
+
+/**
+ * What SSR renders and what the client renders during hydration: there is no
+ * socket on the server, so both sides agree on a neutral "connecting" and the
+ * real state takes over right after hydration (no mismatch warning).
+ */
+function getServerSnapshot(): RealtimeConnectionState {
+    return 'connecting';
+}
+
+function subscribe(onChange: () => void): () => void {
+    const pusher = currentPusher();
+
+    if (!pusher) {
+        return () => {};
+    }
+
+    pusher.connection.bind('state_change', onChange);
+
+    return () => {
+        pusher.connection.unbind('state_change', onChange);
+    };
 }
 
 export function useRealtimeConnection(): RealtimeConnectionState {
-    const [state, setState] =
-        useState<RealtimeConnectionState>(readInitialState);
-
-    useEffect(() => {
-        const echo = createEcho();
-
-        if (!echo) {
-            return;
-        }
-
-        const pusher = (echo.connector as { pusher: Pusher }).pusher;
-
-        const handler = (payload: StateChangePayload) => {
-            setState(normalizeState(payload.current));
-        };
-
-        pusher.connection.bind('state_change', handler);
-
-        return () => {
-            pusher.connection.unbind('state_change', handler);
-        };
-    }, []);
-
-    return state;
+    return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }

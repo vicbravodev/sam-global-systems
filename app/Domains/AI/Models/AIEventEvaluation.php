@@ -7,6 +7,7 @@ use App\Domains\AI\Enums\EvaluationMode;
 use App\Domains\AI\Enums\EvaluationPriority;
 use App\Domains\AI\Enums\EventClassification;
 use App\Domains\AI\Enums\OperatorVerdict;
+use App\Domains\AI\Support\PlaceholderEvaluation;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use Database\Factories\Domains\AI\AIEventEvaluationFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -51,6 +52,15 @@ class AIEventEvaluation extends Model
     public function normalizedEvent(): BelongsTo
     {
         return $this->belongsTo(NormalizedEvent::class, 'normalized_event_id');
+    }
+
+    /**
+     * True when the verdict came from the deterministic stand-in agent
+     * (`null-agent:*`) and therefore is not a real AI evaluation.
+     */
+    public function isPlaceholder(): bool
+    {
+        return PlaceholderEvaluation::isPlaceholderModel($this->model_used);
     }
 
     /**

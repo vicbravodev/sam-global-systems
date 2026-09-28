@@ -105,7 +105,9 @@ class NotificationDeliveryDetailPageTest extends TestCase
             ->where('deliveries.0.events.1.label', 'No entregado')
             ->where('deliveries.1.channel.type', 'voice')
             ->where('deliveries.1.statusLabel', 'Llamada contestada · 0:42')
-            ->where('deliveries.1.isFallback', true)
+            // Sent in the same dispatch round as the SMS: listed after a
+            // failure, but not a fallback of it (UI audit P1-7).
+            ->where('deliveries.1.isFallback', false)
             ->where('deliveries.2.statusLabel', 'Omitido')
             ->where('deliveries.2.reason', 'El destinatario no tiene dato de contacto para este canal.')
             ->missing('deliveries.0.priceMicros'));
@@ -114,6 +116,100 @@ class NotificationDeliveryDetailPageTest extends TestCase
         $deliveries = json_encode($response->viewData('page')['props']['deliveries']);
         $this->assertStringNotContainsString('7900', $deliveries);
         $this->assertStringNotContainsString('price', $deliveries);
+    }
+
+    public function test_fallback_label_follows_the_recorded_fallback_link(): void
+    {
+        [$notification, $recipient] = $this->notificationWithRecipient();
+
+        $sms = $this->delivery($notification, $recipient, ChannelType::Sms, [
+            'status' => DeliveryStatus::Failed,
+            'failed_at' => now(),
+        ]);
+        $this->delivery($notification, $recipient, ChannelType::Email, [
+            'status' => DeliveryStatus::Delivered,
+            'fallback_from_delivery_id' => $sms->id,
+        ]);
+
+        $this->actingAs($this->user)
+            ->get(route('notifications.show', ['current_team' => $this->team->slug, 'notification' => $notification->id]))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('deliveries.0.isFallback', false)
+                ->where('deliveries.1.isFallback', true)
+                ->where('deliveries.1.fallbackFromChannel', 'SMS'));
+    }
+
+    public function test_legacy_fallback_is_detected_by_timing_not_by_list_order(): void
+    {
+        [$notification, $recipient] = $this->notificationWithRecipient();
+        $dispatchedAt = now()->subMinutes(10);
+
+        // Dispatch round: SMS fails, WhatsApp and web go out in the same second.
+        $this->delivery($notification, $recipient, ChannelType::Sms, [
+            'status' => DeliveryStatus::Failed,
+            'created_at' => $dispatchedAt,
+            'failed_at' => $dispatchedAt->copy()->addMinute(),
+        ]);
+        $this->delivery($notification, $recipient, ChannelType::Web, [
+            'status' => DeliveryStatus::Delivered,
+            'created_at' => $dispatchedAt,
+        ]);
+        // Written two minutes later, after the SMS failure: the real fallback.
+        $this->delivery($notification, $recipient, ChannelType::Email, [
+            'status' => DeliveryStatus::Delivered,
+            'created_at' => $dispatchedAt->copy()->addMinutes(2),
+        ]);
+
+        $this->actingAs($this->user)
+            ->get(route('notifications.show', ['current_team' => $this->team->slug, 'notification' => $notification->id]))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('deliveries.1.channel.type', 'web')
+                ->where('deliveries.1.isFallback', false)
+                ->where('deliveries.2.channel.type', 'email')
+                ->where('deliveries.2.isFallback', true)
+                ->where('deliveries.2.fallbackFromChannel', 'SMS'));
+    }
+
+    public function test_web_channel_target_is_the_inbox_not_an_email(): void
+    {
+        [$notification, $recipient] = $this->notificationWithRecipient();
+        $recipient->update(['address' => 'ana@example.com', 'email' => 'ana@example.com']);
+
+        $this->delivery($notification, $recipient, ChannelType::Web, ['status' => DeliveryStatus::Delivered]);
+
+        $response = $this->actingAs($this->user)
+            ->get(route('notifications.show', ['current_team' => $this->team->slug, 'notification' => $notification->id]));
+
+        $response->assertInertia(fn (Assert $page) => $page
+            ->where('deliveries.0.channel.type', 'web')
+            ->where('deliveries.0.address', 'Bandeja web de SAM'));
+    }
+
+    public function test_row_status_is_honest_about_what_the_deliveries_did(): void
+    {
+        $allFailed = Notification::factory()->sent()->create(['team_id' => $this->team->id, 'subject' => 'all-failed']);
+        $allFailedRecipient = NotificationRecipient::factory()->create(['notification_id' => $allFailed->id, 'team_id' => $this->team->id]);
+        $this->delivery($allFailed, $allFailedRecipient, ChannelType::Sms, ['status' => DeliveryStatus::Failed]);
+        $this->delivery($allFailed, $allFailedRecipient, ChannelType::Email, ['status' => DeliveryStatus::Bounced]);
+
+        $partial = Notification::factory()->sent()->create(['team_id' => $this->team->id, 'subject' => 'partial']);
+        $partialRecipient = NotificationRecipient::factory()->create(['notification_id' => $partial->id, 'team_id' => $this->team->id]);
+        $this->delivery($partial, $partialRecipient, ChannelType::Sms, ['status' => DeliveryStatus::Failed]);
+        $this->delivery($partial, $partialRecipient, ChannelType::Email, ['status' => DeliveryStatus::Delivered]);
+
+        $inTransit = Notification::factory()->sent()->create(['team_id' => $this->team->id, 'subject' => 'in-transit']);
+        $inTransitRecipient = NotificationRecipient::factory()->create(['notification_id' => $inTransit->id, 'team_id' => $this->team->id]);
+        $this->delivery($inTransit, $inTransitRecipient, ChannelType::Sms, ['status' => DeliveryStatus::Sent]);
+
+        $response = $this->actingAs($this->user)
+            ->get(route('notifications.index', ['current_team' => $this->team->slug]));
+
+        $rows = collect($response->viewData('page')['props']['notifications'])->keyBy('subject');
+
+        $this->assertSame('Sin entregar', $rows['all-failed']['statusLabel']);
+        $this->assertSame('critical', $rows['all-failed']['statusTone']);
+        $this->assertSame('Parcial 1/2', $rows['partial']['statusLabel']);
+        $this->assertSame('Sin confirmar entrega', $rows['in-transit']['statusLabel']);
     }
 
     public function test_list_summarizes_deliveries_and_filters_failures(): void
@@ -173,6 +269,22 @@ class NotificationDeliveryDetailPageTest extends TestCase
         $response->assertOk();
         $this->assertStringNotContainsString('SM_FOREIGN', $response->getContent());
         $response->assertInertia(fn (Assert $page) => $page->has('deliveries', 1));
+    }
+
+    /**
+     * @return array{0: Notification, 1: NotificationRecipient}
+     */
+    private function notificationWithRecipient(): array
+    {
+        $notification = Notification::factory()->sent()->create(['team_id' => $this->team->id]);
+        $recipient = NotificationRecipient::factory()->create([
+            'notification_id' => $notification->id,
+            'team_id' => $this->team->id,
+            'name' => 'Ana Operadora',
+            'phone' => '+5215512345678',
+        ]);
+
+        return [$notification, $recipient];
     }
 
     /**

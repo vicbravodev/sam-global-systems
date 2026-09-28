@@ -104,7 +104,10 @@ function DriverHero({
         driver.riskProfile?.riskLevel,
         driver.riskProfile?.riskScore ?? null,
     );
-    const fresh = isFresh(driver.lastSeenAt);
+    // "visto" = latest real activity (event or unit signal), not the
+    // roster-sync timestamp, which lags hours behind the road.
+    const seenAt = driver.lastSignalAt;
+    const fresh = isFresh(seenAt);
 
     return (
         <header className="flex flex-wrap items-start justify-between gap-4">
@@ -154,10 +157,10 @@ function DriverHero({
                         ) : (
                             <span className="italic">Sin unidad asignada</span>
                         )}
-                        {driver.lastSeenAt && (
+                        {seenAt && (
                             <span
                                 className="inline-flex items-center gap-1.5"
-                                title={formatDateTime(driver.lastSeenAt)}
+                                title={formatDateTime(seenAt)}
                             >
                                 <span
                                     className={cn(
@@ -169,9 +172,7 @@ function DriverHero({
                                     aria-hidden="true"
                                 />
                                 visto{' '}
-                                <RelativeTime
-                                    minutes={minutesSince(driver.lastSeenAt)}
-                                />
+                                <RelativeTime minutes={minutesSince(seenAt)} />
                             </span>
                         )}
                     </p>

@@ -33,7 +33,7 @@ class AssetMeterSeeder extends Seeder
             [
                 'code' => 'active_cameras',
                 'name' => 'Active Cameras',
-                'description' => 'Number of non-inactive camera assets monitored for the tenant.',
+                'description' => 'Daily peak of active cameras: active camera devices attached to non-inactive assets plus stand-alone camera assets without an attached camera device.',
                 'unit' => 'camera',
                 'aggregation_type' => AggregationType::Max,
                 'is_billable' => true,

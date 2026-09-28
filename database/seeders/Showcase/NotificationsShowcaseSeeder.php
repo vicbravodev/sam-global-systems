@@ -68,6 +68,7 @@ class NotificationsShowcaseSeeder extends ShowcaseStep
             ->all();
 
         $this->seedChannelToggles();
+        $this->dropChannelsSwitchedOff();
         $this->seedPreferences();
         $this->seedPushTokens();
 
@@ -97,6 +98,28 @@ class NotificationsShowcaseSeeder extends ShowcaseStep
         }
 
         $this->bulkInsert('tenant_channel_toggles', $rows);
+    }
+
+    /**
+     * The dispatcher only selects channels the tenant can use
+     * (`NotificationChannel::usableByTeam`): a channel switched off in
+     * `tenant_channel_toggles` never gets a delivery row, not even a skipped
+     * one, and is never a fallback target. Mirror that so the showcase never
+     * shows WhatsApp deliveries on a tenant that has WhatsApp off.
+     */
+    private function dropChannelsSwitchedOff(): void
+    {
+        $disabled = DB::table('tenant_channel_toggles')
+            ->where('team_id', $this->ctx->team->id)
+            ->where('enabled', false)
+            ->pluck('notification_channel_id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        $this->channels = array_filter(
+            $this->channels,
+            fn (int $channelId) => ! in_array($channelId, $disabled, true),
+        );
     }
 
     private function seedPreferences(): void
@@ -361,26 +384,28 @@ class NotificationsShowcaseSeeder extends ShowcaseStep
     {
         $statuses = [];
         $fallbacks = [];
+        // A switched-off channel is never selected by the dispatcher.
+        $channels = array_values(array_filter($channels, fn (string $channel) => isset($this->channels[$channel])));
 
         foreach ($channels as $channel) {
-            [$status, $fallback] = $this->delivery($incidentId, $notificationId, $recipientId, $channel, $at, $random, $email, $phone);
+            [$status, $fallback, $deliveryId] = $this->delivery($incidentId, $notificationId, $recipientId, $channel, $at, $random, $email, $phone);
             $statuses[] = $status;
 
-            if ($fallback !== null) {
-                $fallbacks[] = $fallback;
+            if ($fallback !== null && ! isset($fallbacks[$fallback])) {
+                $fallbacks[$fallback] = $deliveryId;
             }
         }
 
-        foreach (array_unique($fallbacks) as $fallback) {
+        foreach ($fallbacks as $fallback => $failedDeliveryId) {
             // Una entrega por (destinatario, canal): si ya se usó, el fallback prueba email.
             $target = in_array($fallback, $channels, true) ? 'email' : $fallback;
 
-            if (in_array($target, $channels, true) || ($target === 'email' && $email === null)) {
+            if (in_array($target, $channels, true) || ! isset($this->channels[$target]) || ($target === 'email' && $email === null)) {
                 continue;
             }
 
             $channels[] = $target;
-            [$status] = $this->delivery($incidentId, $notificationId, $recipientId, $target, $at->addMinutes(2), $random, $email, $phone, isFallback: true);
+            [$status] = $this->delivery($incidentId, $notificationId, $recipientId, $target, $at->addMinutes(2), $random, $email, $phone, fallbackFromDeliveryId: $failedDeliveryId);
             $statuses[] = $status;
         }
 
@@ -388,14 +413,15 @@ class NotificationsShowcaseSeeder extends ShowcaseStep
     }
 
     /**
-     * @return array{0: string, 1: ?string} [estado final, canal de fallback si falló permanente]
+     * @return array{0: string, 1: ?string, 2: ?int} [estado final, canal de fallback si falló permanente, id de la entrega]
      */
-    private function delivery(int $incidentId, int $notificationId, int $recipientId, string $channel, CarbonImmutable $at, ShowcaseRandom $random, ?string $email, ?string $phone, bool $isFallback = false): array
+    private function delivery(int $incidentId, int $notificationId, int $recipientId, string $channel, CarbonImmutable $at, ShowcaseRandom $random, ?string $email, ?string $phone, ?int $fallbackFromDeliveryId = null): array
     {
         $channelId = $this->channels[$channel] ?? null;
+        $isFallback = $fallbackFromDeliveryId !== null;
 
         if ($channelId === null) {
-            return ['skipped', null];
+            return ['skipped', null, null];
         }
 
         $twilio = in_array($channel, ['sms', 'whatsapp', 'voice'], true);
@@ -403,6 +429,7 @@ class NotificationsShowcaseSeeder extends ShowcaseStep
             'notification_id' => $notificationId,
             'recipient_id' => $recipientId,
             'channel_id' => $channelId,
+            'fallback_from_delivery_id' => $fallbackFromDeliveryId,
             'team_id' => $this->ctx->team->id,
             'payload_json' => json_encode(['channel' => $channel, 'address' => $channel === 'email' ? $email : ($channel === 'web' ? null : $phone), 'fallback' => $isFallback, 'showcase' => true]),
             'created_at' => $at,
@@ -410,21 +437,16 @@ class NotificationsShowcaseSeeder extends ShowcaseStep
         ];
 
         if (! $twilio) {
-            return [$this->simpleDelivery($base, $channel, $at, $random, $notificationId, $recipientId, $email), null];
+            [$status, $deliveryId] = $this->simpleDelivery($base, $channel, $at, $random, $notificationId, $recipientId, $email);
+
+            return [$status, null, $deliveryId];
         }
 
         if ($phone === null) {
-            DB::table('notification_deliveries')->insert($base + ['status' => 'skipped', 'attempt_number' => 1, 'error_message' => 'El destinatario no tiene teléfono verificado.']);
+            $deliveryId = DB::table('notification_deliveries')->insertGetId($base + ['status' => 'skipped', 'attempt_number' => 1, 'error_message' => 'El destinatario no tiene teléfono verificado.']);
             $this->ctx->count('notification_deliveries');
 
-            return ['skipped', null];
-        }
-
-        if ($channel === 'whatsapp' && ! $isFallback && $random->chance(0.35)) {
-            DB::table('notification_deliveries')->insert($base + ['status' => 'skipped', 'attempt_number' => 1, 'error_message' => 'Canal WhatsApp desactivado para el tenant (plantilla pendiente de aprobación).']);
-            $this->ctx->count('notification_deliveries');
-
-            return ['skipped', null];
+            return ['skipped', null, $deliveryId];
         }
 
         $plan = $this->twilioPlan($channel, $at, $random);
@@ -477,15 +499,16 @@ class NotificationsShowcaseSeeder extends ShowcaseStep
             ? ($channel === 'whatsapp' ? 'sms' : ($channel === 'voice' ? 'sms' : 'email'))
             : null;
 
-        return [$status, $isFallback ? null : $fallback];
+        return [$status, $isFallback ? null : $fallback, $deliveryId];
     }
 
     /**
      * Web y email: el driver es síncrono (éxito = entregado).
      *
      * @param  array<string, mixed>  $base
+     * @return array{0: string, 1: int} [estado, id de la entrega]
      */
-    private function simpleDelivery(array $base, string $channel, CarbonImmutable $at, ShowcaseRandom $random, int $notificationId, int $recipientId, ?string $email): string
+    private function simpleDelivery(array $base, string $channel, CarbonImmutable $at, ShowcaseRandom $random, int $notificationId, int $recipientId, ?string $email): array
     {
         $inFlight = $at->diffInMinutes($this->ctx->now) < 2;
         [$status, $error] = match (true) {
@@ -496,7 +519,7 @@ class NotificationsShowcaseSeeder extends ShowcaseStep
         };
         $sent = $at->addSeconds($random->int(1, 6));
 
-        DB::table('notification_deliveries')->insert($base + [
+        $deliveryId = DB::table('notification_deliveries')->insertGetId($base + [
             'provider_message_id' => $channel === 'email' && in_array($status, ['delivered', 'bounced'], true) ? '<showcase-'.$notificationId.'-'.$recipientId.'@mail.sam.test>' : null,
             'status' => $status,
             'attempt_number' => 1,
@@ -508,7 +531,7 @@ class NotificationsShowcaseSeeder extends ShowcaseStep
         ]);
         $this->ctx->count('notification_deliveries');
 
-        return $status;
+        return [$status, $deliveryId];
     }
 
     /**

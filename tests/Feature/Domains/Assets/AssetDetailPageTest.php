@@ -90,6 +90,7 @@ class AssetDetailPageTest extends TestCase
                         ->where('lastSeenAt', $asset->last_seen_at->toIso8601String())
                         ->where('driver', null)
                         ->where('vehicle', null)
+                        ->has('currentSpeed')
                         ->has('lastSignalAt'),
                 )
                 ->has('telemetry')
@@ -135,6 +136,7 @@ class AssetDetailPageTest extends TestCase
                         ->where('type', 'speed')
                         ->where('label', 'Velocidad')
                         ->where('data.value', 92.5)
+                        ->where('stale', false)
                         ->has('recordedAt'),
                 )
                 ->where('telemetry.1.type', 'fuel'),
@@ -269,6 +271,7 @@ class AssetDetailPageTest extends TestCase
                         // The id is what powers the deep-link to
                         // /{team}/incidents/{id} from the detail (C-06).
                         ->where('id', $linked->id)
+                        ->where('reference', $linked->reference())
                         ->where('title', 'Frenado brusco detectado')
                         ->where('status.code', 'open')
                         ->where('priority.code', 'medium')

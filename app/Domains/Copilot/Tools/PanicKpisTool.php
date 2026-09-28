@@ -95,13 +95,14 @@ final class PanicKpisTool implements CopilotTool
 
             return [
                 'id' => (int) $event->id,
+                'reference' => $incident?->reference(),
                 'title' => 'Botón de pánico',
                 'severity' => 'critical',
                 'assetCode' => $event->asset?->code ?? $event->asset?->name,
                 'driverName' => $event->driver?->full_name,
                 'occurredAt' => $event->occurred_at->toIso8601String(),
                 'statusLabel' => $incident
-                    ? IncidentStatusPresenter::label($incident->status?->code, $incident->currentAssignment !== null)
+                    ? IncidentStatusPresenter::labelForIncident($incident)
                     : 'Sin incidente',
                 'href' => $incident
                     ? CopilotPresenter::incidentHref($context->teamSlug, (int) $incident->id)

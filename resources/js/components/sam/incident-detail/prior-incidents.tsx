@@ -70,6 +70,9 @@ export function PriorIncidents({
                                     {RELATION_LABEL[prior.relationType ?? ''] ??
                                         'Relacionado'}
                                 </Badge>
+                                <span className="ml-auto font-mono text-3xs text-fg-3">
+                                    {prior.reference} · {prior.statusLabel}
+                                </span>
                             </div>
                             {teamSlug ? (
                                 <Link

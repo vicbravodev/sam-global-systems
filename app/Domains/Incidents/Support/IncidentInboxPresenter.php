@@ -5,6 +5,7 @@ namespace App\Domains\Incidents\Support;
 use App\Domains\AI\Enums\EvaluationPriority;
 use App\Domains\AI\Enums\EventClassification;
 use App\Domains\AI\Models\AIEventEvaluation;
+use App\Domains\AI\Support\PlaceholderEvaluation;
 use App\Domains\Context\Enums\GeofenceMatchType;
 use App\Domains\Context\Models\EventContextSnapshot;
 use App\Domains\Incidents\Enums\AssigneeType;
@@ -67,8 +68,9 @@ class IncidentInboxPresenter
         $status = $this->status($incident);
 
         return [
-            'id' => $this->reference($incident),
+            'id' => $incident->reference(),
             'incidentId' => (int) $incident->id,
+            'number' => $incident->number,
             'title' => (string) ($incident->title ?? 'Incidente'),
             'severity' => $this->severity($incident),
             'status' => $status,
@@ -84,6 +86,7 @@ class IncidentInboxPresenter
             'ageMin' => $this->ageMin($incident, $now),
             'eventType' => $this->eventType($incident),
             'location' => $this->location($event),
+            'aiPlaceholder' => $this->isPlaceholder($evaluation),
             'aiConfidence' => $this->aiConfidence($evaluation),
             'aiDecision' => $this->aiDecision($evaluation),
             'aiReason' => $this->aiReason($evaluation),
@@ -112,10 +115,12 @@ class IncidentInboxPresenter
             'openedAt' => $incident->opened_at?->toIso8601String(),
             'slaDueAt' => $incident->sla_due_at?->toIso8601String(),
             'eventOccurredAt' => $incident->relatedEvent?->occurred_at?->toIso8601String(),
-            'aiRiskScore' => $evaluation?->risk_score !== null ? round((float) $evaluation->risk_score, 2) : null,
+            'aiRiskScore' => $evaluation?->risk_score !== null && ! $this->isPlaceholder($evaluation)
+                ? round((float) $evaluation->risk_score, 2)
+                : null,
             'aiMode' => $evaluation?->evaluation_mode?->value,
             'aiEvaluatedAt' => $evaluation?->evaluated_at?->toIso8601String(),
-            'aiReasoningSteps' => $this->reasoningSteps($evaluation),
+            'aiReasoningSteps' => $this->isPlaceholder($evaluation) ? [] : $this->reasoningSteps($evaluation),
             'aiOperatorVerdict' => $evaluation?->operator_verdict?->value,
             'aiOperatorVerdictLabel' => $evaluation?->operator_verdict?->label(),
             'aiOperatorVerdictAt' => $evaluation?->operator_verdict_at?->toIso8601String(),
@@ -141,13 +146,6 @@ class IncidentInboxPresenter
         ];
     }
 
-    private function reference(Incident $incident): string
-    {
-        $year = $incident->opened_at?->year ?? Carbon::now()->year;
-
-        return sprintf('INC-%d-%05d', $year, (int) $incident->id);
-    }
-
     private function severity(Incident $incident): string
     {
         return match ($incident->priority?->code) {
@@ -163,10 +161,7 @@ class IncidentInboxPresenter
     {
         // Canonical mapping lives in IncidentStatusPresenter so every surface
         // (inbox, detail, palette, asset detail) renders the same string.
-        return IncidentStatusPresenter::uiStatus(
-            $incident->status?->code,
-            $this->activeAssignment($incident) !== null,
-        );
+        return IncidentStatusPresenter::forIncident($incident);
     }
 
     private function provider(?NormalizedEvent $event): string
@@ -229,12 +224,20 @@ class IncidentInboxPresenter
         ];
     }
 
+    /**
+     * The person who owns the incident: the user it is assigned to, else the
+     * operator who took it ("Tomar"). Queue/role assignments have no person,
+     * so they render as unassigned (UI audit P0-2).
+     *
+     * @param  Collection<int, User>  $users
+     * @return array{id: int, name: string, initials: string}|null
+     */
     private function assignee(Incident $incident, Collection $users): ?array
     {
         $assignment = $this->activeAssignment($incident);
 
         if ($assignment === null || $assignment->assigned_to_type !== AssigneeType::User) {
-            return null;
+            return $this->claimedBy($incident, $users);
         }
 
         $user = $users->get((int) $assignment->assigned_to_id);
@@ -337,14 +340,27 @@ class IncidentInboxPresenter
         return '—';
     }
 
-    private function aiConfidence(?AIEventEvaluation $evaluation): float
+    /**
+     * Evaluations from the deterministic stand-in agent (`null-agent:*`)
+     * carry a fixed 0.85 that is not a verdict (UI audit P0-3).
+     */
+    private function isPlaceholder(?AIEventEvaluation $evaluation): bool
     {
-        return round((float) ($evaluation?->confidence_score ?? 0), 2);
+        return $evaluation !== null && $evaluation->isPlaceholder();
+    }
+
+    private function aiConfidence(?AIEventEvaluation $evaluation): ?float
+    {
+        if ($evaluation === null || $evaluation->isPlaceholder() || $evaluation->confidence_score === null) {
+            return null;
+        }
+
+        return round((float) $evaluation->confidence_score, 2);
     }
 
     private function aiDecision(?AIEventEvaluation $evaluation): string
     {
-        if ($evaluation === null) {
+        if ($evaluation === null || $evaluation->isPlaceholder()) {
             return 'info';
         }
 
@@ -366,12 +382,16 @@ class IncidentInboxPresenter
 
     private function aiReason(?AIEventEvaluation $evaluation): string
     {
-        return (string) ($evaluation?->explanation_text ?? 'Sin evaluación de IA disponible.');
+        if ($evaluation === null || $evaluation->isPlaceholder()) {
+            return PlaceholderEvaluation::LABEL.'.';
+        }
+
+        return (string) ($evaluation->explanation_text ?? PlaceholderEvaluation::LABEL.'.');
     }
 
     private function model(?AIEventEvaluation $evaluation): string
     {
-        if ($evaluation === null) {
+        if ($evaluation === null || $evaluation->isPlaceholder()) {
             return '—';
         }
 
@@ -391,7 +411,7 @@ class IncidentInboxPresenter
 
     /**
      * @param  Collection<int, User>  $users
-     * @return array{type: string, entryType: string|null, actor: string, text: string, ts: string, tsIso: string|null, sub: string|null, meta: array{result: string|null, confidence: float|null}|null}
+     * @return array{type: string, entryType: string|null, actor: string, text: string, tsIso: string|null, sub: string|null, meta: array{result: string|null, confidence: float|null}|null}
      */
     private function timelineEntry(IncidentTimeline $entry, Collection $users): array
     {
@@ -427,7 +447,6 @@ class IncidentInboxPresenter
             'entryType' => $entry->entry_type?->value,
             'actor' => (string) $actor,
             'text' => $this->timelineText($entry, $payload),
-            'ts' => $entry->occurred_at?->format('H:i:s') ?? '',
             'tsIso' => $entry->occurred_at?->toIso8601String(),
             'sub' => $entry->description !== null
                 ? (self::LEGACY_DESCRIPTION_ES[$entry->description] ?? (string) $entry->description)
@@ -543,7 +562,7 @@ class IncidentInboxPresenter
     }
 
     /**
-     * @return array{ts: string, eventId: int, eventType: string, asset: string, relationType: string|null, severity: string|null}|null
+     * @return array{tsIso: string|null, eventId: int, eventType: string, asset: string, relationType: string|null, severity: string|null}|null
      */
     private function relatedLink(IncidentEventLink $link): ?array
     {
@@ -554,7 +573,7 @@ class IncidentInboxPresenter
         }
 
         return [
-            'ts' => $event->occurred_at?->format('H:i:s') ?? '',
+            'tsIso' => $event->occurred_at?->toIso8601String(),
             'eventId' => (int) $event->id,
             'eventType' => (string) ($event->eventType?->code ?? '—'),
             'asset' => (string) ($event->asset?->code ?? $event->asset?->name ?? '—'),

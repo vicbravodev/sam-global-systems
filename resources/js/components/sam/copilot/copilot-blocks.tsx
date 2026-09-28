@@ -819,7 +819,7 @@ function IncidentList({ block }: { block: IncidentsBlock }) {
                                     {item.title}
                                 </span>
                                 <span className="block truncate font-mono text-3xs text-fg-3">
-                                    #{item.id}
+                                    {item.reference ?? `#${item.id}`}
                                     {item.assetCode && ` · ${item.assetCode}`}
                                     {item.driverName && ` · ${item.driverName}`}
                                 </span>

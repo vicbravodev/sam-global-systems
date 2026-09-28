@@ -141,6 +141,7 @@ class IncidentDetailPageTest extends TestCase
         $evaluation = AIEventEvaluation::factory()->create([
             'team_id' => $this->team->id,
             'normalized_event_id' => $event->id,
+            'model_used' => 'openai:gpt-5-mini',
             'signals_json' => [
                 'reasoning_steps' => ['Paso uno.', 'Paso dos.'],
                 'key_factors' => [],

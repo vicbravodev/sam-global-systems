@@ -27,7 +27,9 @@ class IntegrationController extends Controller
             ->orderByDesc('id')
             ->get();
 
-        return response()->json(['data' => $integrations]);
+        return response()->json([
+            'data' => $integrations->map(fn (TenantIntegration $integration) => $this->present($integration))->all(),
+        ]);
     }
 
     public function store(StoreIntegrationRequest $request, Team $current_team): JsonResponse
@@ -70,7 +72,7 @@ class IntegrationController extends Controller
         );
 
         return response()->json([
-            'data' => $integration->load('provider'),
+            'data' => $this->present($integration->load('provider')),
         ], 201);
     }
 
@@ -93,7 +95,7 @@ class IntegrationController extends Controller
 
         $integration->update($data);
 
-        return response()->json(['data' => $integration->fresh()->load('provider')]);
+        return response()->json(['data' => $this->present($integration->fresh()->load('provider'))]);
     }
 
     public function destroy(Team $current_team, TenantIntegration $integration): JsonResponse
@@ -129,5 +131,19 @@ class IntegrationController extends Controller
         $result = $testConnection->execute($integration);
 
         return response()->json(['data' => $result]);
+    }
+
+    /**
+     * API shape of an integration: `config_json` is reduced to the
+     * `PUBLIC_CONFIG_KEYS` allowlist so provider tokens or secrets a tenant
+     * stored in the config never travel back in a JSON response.
+     *
+     * @return array<string, mixed>
+     */
+    private function present(TenantIntegration $integration): array
+    {
+        return array_merge($integration->toArray(), [
+            'config_json' => $integration->publicConfig(),
+        ]);
     }
 }

@@ -143,8 +143,10 @@ class IncidentInboxTest extends TestCase
                     fn (Assert $row) => $row
                         ->where('incidentId', fn ($id) => is_int($id))
                         ->where('id', fn ($id) => str_starts_with((string) $id, 'INC-'))
+                        ->where('number', fn ($number) => is_int($number))
                         ->hasAll([
                             'title',
+                            'aiPlaceholder',
                             'severity',
                             'status',
                             'statusLabel',

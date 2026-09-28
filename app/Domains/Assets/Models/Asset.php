@@ -5,6 +5,7 @@ namespace App\Domains\Assets\Models;
 use App\Concerns\BelongsToTenant;
 use App\Domains\Assets\Enums\AssetMonitoringState;
 use App\Domains\Assets\Enums\AssetStatus;
+use App\Domains\Assets\Enums\TelemetryType;
 use App\Domains\Drivers\Enums\AssignmentType;
 use App\Domains\Drivers\Models\DriverAssignment;
 use App\Domains\Integrations\Models\IntegrationProvider;
@@ -106,6 +107,20 @@ class Asset extends Model
     public function latestTelemetry(): HasOne
     {
         return $this->hasOne(AssetTelemetrySnapshot::class)->latestOfMany('recorded_at');
+    }
+
+    /**
+     * Newest speed reading recorded as telemetry (stats poller or a
+     * speeding event's measured peak).
+     *
+     * @return HasOne<AssetTelemetrySnapshot, $this>
+     */
+    public function latestSpeedTelemetry(): HasOne
+    {
+        return $this->hasOne(AssetTelemetrySnapshot::class)->ofMany(
+            ['recorded_at' => 'max', 'id' => 'max'],
+            fn (Builder $query) => $query->where('telemetry_type', TelemetryType::Speed),
+        );
     }
 
     /**

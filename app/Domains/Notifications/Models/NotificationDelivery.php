@@ -20,6 +20,7 @@ class NotificationDelivery extends Model
         'notification_id',
         'recipient_id',
         'channel_id',
+        'fallback_from_delivery_id',
         'team_id',
         'provider_message_id',
         'status',
@@ -73,6 +74,7 @@ class NotificationDelivery extends Model
         return [
             'status' => DeliveryStatus::class,
             'attempt_number' => 'integer',
+            'fallback_from_delivery_id' => 'integer',
             'payload_json' => 'array',
             'response_json' => 'array',
             'sent_at' => 'datetime',

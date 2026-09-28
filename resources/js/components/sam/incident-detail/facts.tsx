@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { SeverityBadge } from '@/components/sam';
 import { formatDateTime } from '@/lib/format';
+import { formatClock } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import type { IncidentDetail } from '@/types/sam';
 
@@ -327,7 +328,7 @@ export function LinkedEvents({ incident }: { incident: IncidentDetail }) {
                             className="shrink-0 text-fg-3"
                         />
                         <span className="font-mono text-3xs text-fg-3">
-                            {link.ts}
+                            {formatClock(link.tsIso)}
                         </span>
                         <span className="font-mono text-2xs text-fg-1">
                             #{link.eventId} {link.eventType}

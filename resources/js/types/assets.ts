@@ -52,6 +52,18 @@ export interface AssetDriverSummary {
     employeeCode: string | null;
 }
 
+/**
+ * The one current speed every surface shows: newest of position and speed
+ * telemetry. `stale` = older than the reporting window (server-computed,
+ * same rule as the header "En ruta" count).
+ */
+export interface AssetCurrentSpeed {
+    kph: number;
+    recordedAt: string;
+    source: 'location' | 'telemetry';
+    stale: boolean;
+}
+
 export interface AssetRow {
     id: number;
     name: string;
@@ -64,6 +76,7 @@ export interface AssetRow {
     driver: AssetDriverSummary | null;
     devices: AssetDeviceSummary[];
     lastLocation: AssetLocationSummary | null;
+    currentSpeed: AssetCurrentSpeed | null;
     /** Inventory-sync timestamp (bumps in bulk; NOT a real signal). */
     lastSeenAt: string | null;
     /** Latest REAL signal: newest location or telemetry snapshot. */
@@ -132,6 +145,8 @@ export interface TelemetryEntry {
     label: string;
     data: Record<string, unknown> | null;
     recordedAt: string;
+    /** Only on `speed`: the reading is older than the reporting window. */
+    stale?: boolean;
 }
 
 export interface LocationHistoryEntry {

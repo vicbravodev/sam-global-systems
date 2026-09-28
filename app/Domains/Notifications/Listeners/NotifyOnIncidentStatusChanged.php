@@ -86,7 +86,7 @@ class NotifyOnIncidentStatusChanged
                 eventKey: "incident_status:{$incident->id}:{$newStatus}",
                 payload: $payload,
                 subject: 'Estado del incidente actualizado',
-                bodyPreview: "El incidente #{$incident->id} pasó a ".IncidentStatusPresenter::label($newStatus).'.',
+                bodyPreview: "El incidente {$incident->reference()} pasó a ".IncidentStatusPresenter::label($newStatus).'.',
             );
         });
     }

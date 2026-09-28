@@ -2,7 +2,9 @@
 
 namespace App\Domains\Incidents\Support;
 
+use App\Domains\Incidents\Enums\AssigneeType;
 use App\Domains\Incidents\Enums\IncidentStatusCode;
+use App\Domains\Incidents\Models\Incident;
 
 /**
  * Single source of truth for how an incident status is shown to operators.
@@ -53,6 +55,34 @@ class IncidentStatusPresenter
         }
 
         return $base;
+    }
+
+    /**
+     * UI status for a loaded incident. "Asignado" means a PERSON owns it: an
+     * active assignment to a user, or an operator who took it ("Tomar"). A
+     * queue/role assignment is routing, not ownership (UI audit P0-2).
+     */
+    public static function forIncident(Incident $incident): string
+    {
+        return self::uiStatus($incident->status?->code, self::hasPersonOwner($incident));
+    }
+
+    public static function labelForIncident(Incident $incident): string
+    {
+        return self::UI_LABELS[self::forIncident($incident)];
+    }
+
+    public static function hasPersonOwner(Incident $incident): bool
+    {
+        if ($incident->claimed_by_user_id !== null) {
+            return true;
+        }
+
+        $assignment = $incident->relationLoaded('currentAssignment')
+            ? $incident->currentAssignment
+            : $incident->currentAssignment()->first();
+
+        return $assignment !== null && $assignment->assigned_to_type === AssigneeType::User;
     }
 
     /**

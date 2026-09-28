@@ -101,7 +101,7 @@ class CrossDomainListenersTest extends TestCase
         $this->assertNotNull($notification);
         $this->assertSame('Estado del incidente actualizado', $notification->subject);
         $this->assertSame(
-            "El incidente #{$incident->id} pasó a ".IncidentStatusPresenter::label('resolved').'.',
+            "El incidente {$incident->fresh()->reference()} pasó a ".IncidentStatusPresenter::label('resolved').'.',
             $notification->body_preview,
         );
         $recipients = collect($notification->payload_json['recipients'])->pluck('recipient_reference_id')->all();
@@ -144,7 +144,7 @@ class CrossDomainListenersTest extends TestCase
         $this->assertNotNull($notification);
         $this->assertSame('Estado del incidente actualizado', $notification->subject);
         $this->assertSame(
-            "El incidente #{$incident->id} pasó a ".IncidentStatusPresenter::label('closed').'.',
+            "El incidente {$incident->fresh()->reference()} pasó a ".IncidentStatusPresenter::label('closed').'.',
             $notification->body_preview,
         );
     }

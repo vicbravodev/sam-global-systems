@@ -12,6 +12,8 @@ import { minutesSince } from '@/lib/time';
 
 export interface LinkedIncidentEntry {
     id: number;
+    /** Per-tenant display reference (INC-00036). */
+    reference?: string;
     title: string;
     status: { code: string; name: string; uiStatus?: string } | null;
     priority: { code: string; name: string } | null;
@@ -92,8 +94,17 @@ export function LinkedIncidentsCard({
                                         <span className="truncate text-sm text-fg-1">
                                             {incident.title}
                                         </span>
-                                        {incident.type && (
+                                        {(incident.reference ||
+                                            incident.type) && (
                                             <span className="truncate text-2xs text-fg-3">
+                                                {incident.reference && (
+                                                    <span className="font-mono">
+                                                        {incident.reference}
+                                                    </span>
+                                                )}
+                                                {incident.reference &&
+                                                    incident.type &&
+                                                    ' · '}
                                                 {incident.type}
                                             </span>
                                         )}

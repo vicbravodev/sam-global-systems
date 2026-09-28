@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react';
 import { Activity } from '@/components/sam/incident-detail/activity';
 import { AiEvaluationCard } from '@/components/sam/incident-detail/ai-evaluation';
 import { CommentsSection } from '@/components/sam/incident-detail/comments';
+import { Communications } from '@/components/sam/incident-detail/communications';
 import { DetailHeader } from '@/components/sam/incident-detail/detail-header';
 import {
     EventFacts,
@@ -26,13 +27,22 @@ const DETAIL_PROPS = [
     'media',
     'mediaAssessments',
     'mediaRequests',
+    'mediaRetrieval',
+    'communications',
     'priorIncidents',
 ];
 
 export default function IncidentShow() {
     const page = usePage();
-    const { incident, media, mediaAssessments, mediaRequests, priorIncidents } =
-        page.props as unknown as IncidentShowProps;
+    const {
+        incident,
+        media,
+        mediaAssessments,
+        mediaRequests,
+        mediaRetrieval,
+        communications,
+        priorIncidents,
+    } = page.props as unknown as IncidentShowProps;
     const teamSlug =
         (
             page.props as unknown as {
@@ -117,6 +127,7 @@ export default function IncidentShow() {
                                 media={media}
                                 assessments={mediaAssessments}
                                 requests={mediaRequests}
+                                retrieval={mediaRetrieval}
                                 onMutated={reloadDetail}
                             />
                             <Activity incident={incident} />
@@ -129,6 +140,10 @@ export default function IncidentShow() {
                             <EventFacts incident={incident} />
                             <OperationalContext incident={incident} />
                             <EvidenceList incident={incident} />
+                            <Communications
+                                communications={communications}
+                                teamSlug={teamSlug}
+                            />
                             <PriorIncidents
                                 priorIncidents={priorIncidents}
                                 teamSlug={teamSlug}

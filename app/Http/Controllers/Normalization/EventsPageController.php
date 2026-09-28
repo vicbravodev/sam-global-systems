@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Normalization;
 
 use App\Contracts\ObjectStorage;
 use App\Domains\AI\Models\AIEventEvaluation;
+use App\Domains\AI\Support\PlaceholderEvaluation;
+use App\Domains\Context\Models\EventContextSnapshot;
 use App\Domains\Context\Models\EventMediaContext;
 use App\Domains\Decisions\Enums\DecisionOutcomeCode;
 use App\Domains\Decisions\Models\Decision;
@@ -251,11 +253,45 @@ class EventsPageController extends Controller
         return $this->toRow($event) + [
             'processedAt' => $event->processed_at?->toIso8601String(),
             'payload' => $event->payload_normalized_json,
-            'context' => $event->context_json,
+            'context' => $this->context($event),
             'rawPayload' => $event->rawEvent?->payload_json,
             'rawEventId' => $event->raw_event_id !== null ? (int) $event->raw_event_id : null,
             'facts' => $this->facts($event),
         ];
+    }
+
+    /**
+     * Operational context the enricher captured for this event. It lives in
+     * `event_context_snapshots` (one row per event); `normalized_events.
+     * context_json` is never written by the pipeline, so reading it always
+     * showed an empty block.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function context(NormalizedEvent $event): ?array
+    {
+        $snapshot = EventContextSnapshot::query()
+            ->where('team_id', $event->team_id)
+            ->where('normalized_event_id', $event->id)
+            ->first();
+
+        if ($snapshot === null) {
+            return null;
+        }
+
+        $context = array_filter([
+            'location' => $snapshot->location_snapshot_json,
+            'asset' => $snapshot->asset_snapshot_json,
+            'driver' => $snapshot->driver_snapshot_json,
+            'telemetry' => $snapshot->telemetry_snapshot_json,
+            'geofences' => $snapshot->geofence_snapshot_json,
+            'incidents' => $snapshot->incidents_snapshot_json,
+            'recentHistory' => $snapshot->recent_history_snapshot_json,
+            'media' => $snapshot->media_snapshot_json,
+            'signals' => $snapshot->signals_json,
+        ], fn ($value) => $value !== null && $value !== []);
+
+        return $context === [] ? null : ['version' => (int) $snapshot->context_version] + $context;
     }
 
     /**
@@ -327,9 +363,36 @@ class EventsPageController extends Controller
             return null;
         }
 
+        // The deterministic stand-in agent (`null-agent:*`) always answers
+        // "real event, 85%": that is not a verdict, so no scores reach the UI
+        // and the card reads "Sin evaluación IA" (UI audit P0-3).
+        $isPlaceholder = $evaluation->isPlaceholder();
+
+        if ($isPlaceholder) {
+            return [
+                'id' => (int) $evaluation->id,
+                'version' => (int) $evaluation->evaluation_version,
+                'isPlaceholder' => true,
+                'placeholderLabel' => PlaceholderEvaluation::LABEL,
+                'classification' => null,
+                'classificationLabel' => null,
+                'confidenceScore' => null,
+                'riskScore' => null,
+                'priorityLevel' => null,
+                'mode' => $evaluation->evaluation_mode?->value,
+                'isRealEvent' => null,
+                'requiresAction' => false,
+                'recommendedAction' => null,
+                'explanation' => null,
+                'evaluatedAt' => $evaluation->evaluated_at?->toIso8601String(),
+            ];
+        }
+
         return [
             'id' => (int) $evaluation->id,
             'version' => (int) $evaluation->evaluation_version,
+            'isPlaceholder' => false,
+            'placeholderLabel' => null,
             'classification' => $evaluation->classification?->value,
             'classificationLabel' => $evaluation->classification?->label(),
             'confidenceScore' => $evaluation->confidence_score !== null ? (float) $evaluation->confidence_score : null,
@@ -389,16 +452,11 @@ class EventsPageController extends Controller
 
         return [
             'id' => (int) $incident->id,
+            'reference' => $incident->reference(),
             'title' => (string) $incident->title,
             'status' => $incident->status?->code,
-            'uiStatus' => IncidentStatusPresenter::uiStatus(
-                $incident->status?->code,
-                $incident->currentAssignment !== null,
-            ),
-            'statusLabel' => IncidentStatusPresenter::label(
-                $incident->status?->code,
-                $incident->currentAssignment !== null,
-            ),
+            'uiStatus' => IncidentStatusPresenter::forIncident($incident),
+            'statusLabel' => IncidentStatusPresenter::labelForIncident($incident),
             'severity' => $incident->priority?->code,
             'openedAt' => $incident->opened_at?->toIso8601String(),
         ];

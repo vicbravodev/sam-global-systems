@@ -13,8 +13,11 @@ export interface MockAssignee {
 }
 
 export interface MockIncident {
+    /** Referencia visible por tenant (`INC-00036`). */
     id: string;
     incidentId: number;
+    /** Número secuencial del incidente dentro del tenant. */
+    number: number | null;
     title: string;
     severity: Severity;
     status: IncidentStatus;
@@ -32,7 +35,10 @@ export interface MockIncident {
     ageMin: number;
     eventType: string;
     location: string;
-    aiConfidence: number;
+    /** Evaluación del agente sustituto (`null-agent`): no es un veredicto. */
+    aiPlaceholder: boolean;
+    /** Null sin evaluación real de IA. */
+    aiConfidence: number | null;
     aiDecision: AiDecision;
     aiReason: string;
     realtime?: boolean;
@@ -173,7 +179,6 @@ export interface IncidentTimelineEntry {
     entryType: string | null;
     actor: string;
     text: string;
-    ts: string;
     tsIso: string | null;
     sub?: string | null;
     /** Solo entradas `media_assessed`: veredicto crudo + confianza. */
@@ -183,7 +188,7 @@ export interface IncidentTimelineEntry {
 // ---- Related incident link ----
 
 export interface RelatedIncidentLink {
-    ts: string;
+    tsIso: string | null;
     eventId: number;
     eventType: string;
     asset: string;
@@ -350,12 +355,46 @@ export interface IncidentMediaRequestSummary {
 
 export interface PriorIncidentSummary {
     incidentId: number;
+    /** Referencia visible (`INC-00036`). */
+    reference: string;
     title: string;
     status: string | null;
+    statusLabel: string;
     severity: string | null;
     openedAt: string | null;
     relationType: string | null;
     confidenceScore: number | null;
+}
+
+/** Si todavía se puede pedir video al dispositivo (ventana de retención). */
+export interface IncidentMediaRetrieval {
+    available: boolean;
+    reason: string | null;
+    maxAgeHours: number;
+}
+
+export interface IncidentVerificationCall {
+    id: number;
+    attempt: number;
+    status: string | null;
+    outcome: string | null;
+    phone: string | null;
+    placedAt: string | null;
+    respondedAt: string | null;
+}
+
+export interface IncidentNotificationSummary {
+    id: number;
+    subject: string;
+    createdAt: string | null;
+    deliveries: number;
+    delivered: number;
+    failed: number;
+}
+
+export interface IncidentCommunications {
+    verificationCalls: IncidentVerificationCall[];
+    notifications: IncidentNotificationSummary[];
 }
 
 export interface IncidentShowProps {
@@ -363,6 +402,8 @@ export interface IncidentShowProps {
     media: IncidentMediaItem[];
     mediaAssessments: IncidentMediaAssessment[];
     mediaRequests: IncidentMediaRequestSummary[];
+    mediaRetrieval: IncidentMediaRetrieval;
+    communications: IncidentCommunications;
     priorIncidents: PriorIncidentSummary[];
     members: InboxMember[];
     reclassifyOptions: ReclassifyOptions;

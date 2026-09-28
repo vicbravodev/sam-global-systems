@@ -126,6 +126,7 @@ class AssetPageController extends Controller
                 'assetType',
                 'latestLocation',
                 'latestTelemetry',
+                'latestSpeedTelemetry',
                 'currentDriverAssignment.driver',
                 // Only devices currently attached (mirrors AssetDevice::isAttached()).
                 'devices' => fn (HasMany $q) => $q
@@ -220,6 +221,7 @@ class AssetPageController extends Controller
             'assetType',
             'latestLocation',
             'latestTelemetry',
+            'latestSpeedTelemetry',
             'provider',
             'sourceIntegration',
             'currentDriverAssignment.driver',
@@ -285,13 +287,73 @@ class AssetPageController extends Controller
                     ->whereNull('detached_at')
                     ->where('status', '!=', DeviceStatus::Detached))
                 ->count(),
-            // Units whose latest position is fresh AND shows speed: the live
-            // "on the road right now" figure.
-            'moving' => $assets()
-                ->whereHas('latestLocation', fn (Builder $s) => $s
-                    ->where('recorded_at', '>=', $freshSince)
-                    ->where('speed', '>', self::MOVING_SPEED_KPH))
-                ->count(),
+            // Units whose CURRENT speed (newest of position and speed
+            // telemetry, same reading the rows show) is fresh and above the
+            // motion threshold: the live "on the road right now" figure.
+            'moving' => $this->movingCount($assets, $freshSince),
+        ];
+    }
+
+    /**
+     * Counts units whose current speed reading is fresh and above the motion
+     * threshold. Only units with a fresh position or speed reading are
+     * loaded, so the candidate set stays bounded by the live fleet.
+     *
+     * @param  \Closure(): Builder<Asset>  $assets
+     */
+    private function movingCount(\Closure $assets, \DateTimeInterface $freshSince): int
+    {
+        return $assets()
+            ->where(fn (Builder $q) => $q
+                ->whereHas('latestLocation', fn (Builder $s) => $s->where('recorded_at', '>=', $freshSince))
+                ->orWhereHas('latestSpeedTelemetry', fn (Builder $s) => $s->where('recorded_at', '>=', $freshSince)))
+            ->with(['latestLocation', 'latestSpeedTelemetry'])
+            ->get()
+            ->filter(function (Asset $asset): bool {
+                $speed = $this->currentSpeed($asset);
+
+                return $speed !== null && ! $speed['stale'] && $speed['kph'] > self::MOVING_SPEED_KPH;
+            })
+            ->count();
+    }
+
+    /**
+     * The one "current speed" every surface shows (fleet row, detail header,
+     * detail telemetry card): the NEWEST reading among the latest position
+     * snapshot and the latest speed telemetry. `stale` flags readings older
+     * than the reporting window, so a 27-minute-old 83 km/h is never
+     * presented as live motion.
+     *
+     * @return array{kph: float, recordedAt: string, source: string, stale: bool}|null
+     */
+    private function currentSpeed(Asset $asset): ?array
+    {
+        $candidates = [];
+        $location = $asset->latestLocation;
+
+        if ($location !== null && $location->speed !== null) {
+            $candidates[] = ['kph' => (float) $location->speed, 'at' => $location->recorded_at, 'source' => 'location'];
+        }
+
+        $telemetry = $asset->latestSpeedTelemetry;
+        $value = $telemetry?->data_json['value'] ?? null;
+
+        if ($telemetry !== null && is_numeric($value)) {
+            $candidates[] = ['kph' => (float) $value, 'at' => $telemetry->recorded_at, 'source' => 'telemetry'];
+        }
+
+        if ($candidates === []) {
+            return null;
+        }
+
+        usort($candidates, fn (array $a, array $b) => $b['at'] <=> $a['at']);
+        $newest = $candidates[0];
+
+        return [
+            'kph' => $newest['kph'],
+            'recordedAt' => $newest['at']->toIso8601String(),
+            'source' => $newest['source'],
+            'stale' => $newest['at']->lt(now()->subMinutes(self::REPORTING_WINDOW_MINUTES)),
         ];
     }
 
@@ -485,6 +547,7 @@ class AssetPageController extends Controller
                 'heading' => $location->heading !== null ? (int) $location->heading : null,
                 'recordedAt' => $location->recorded_at->toIso8601String(),
             ] : null,
+            'currentSpeed' => $this->currentSpeed($asset),
             'lastSeenAt' => $asset->last_seen_at?->toIso8601String(),
             // Most recent REAL signal (location or telemetry) — what the UI
             // shows as "seen". Never derived from the inventory-sync
@@ -561,6 +624,20 @@ class AssetPageController extends Controller
     {
         return collect(TelemetryType::cases())
             ->map(function (TelemetryType $type) use ($asset): ?array {
+                // Speed shows the same "current speed" as the header tile
+                // (newest of position and telemetry), never a second number.
+                if ($type === TelemetryType::Speed) {
+                    $speed = $this->currentSpeed($asset);
+
+                    return $speed === null ? null : [
+                        'type' => $type->value,
+                        'label' => self::TELEMETRY_LABELS[$type->value],
+                        'data' => ['value' => $speed['kph'], 'unit' => 'km/h'],
+                        'recordedAt' => $speed['recordedAt'],
+                        'stale' => $speed['stale'],
+                    ];
+                }
+
                 $snapshot = AssetTelemetrySnapshot::query()
                     ->where('asset_id', $asset->id)
                     ->where('telemetry_type', $type)
@@ -646,18 +723,13 @@ class AssetPageController extends Controller
             ->get()
             ->map(fn (Incident $incident) => [
                 'id' => (int) $incident->id,
+                'reference' => $incident->reference(),
                 'title' => (string) $incident->title,
                 'status' => $incident->status ? [
                     'code' => (string) $incident->status->code,
-                    'uiStatus' => IncidentStatusPresenter::uiStatus(
-                        $incident->status->code,
-                        $incident->currentAssignment !== null,
-                    ),
+                    'uiStatus' => IncidentStatusPresenter::forIncident($incident),
                     // Same rendered string as inbox/detail/palette (C1-b).
-                    'name' => IncidentStatusPresenter::label(
-                        $incident->status->code,
-                        $incident->currentAssignment !== null,
-                    ),
+                    'name' => IncidentStatusPresenter::labelForIncident($incident),
                 ] : null,
                 'priority' => $incident->priority ? [
                     'code' => (string) $incident->priority->code,
