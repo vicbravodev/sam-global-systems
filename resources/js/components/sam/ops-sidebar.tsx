@@ -12,6 +12,7 @@ import {
     Plug,
     Radar,
     Settings,
+    Sparkles,
     Shield,
     Truck,
     Users,
@@ -127,6 +128,7 @@ export function OpsSidebar({ navBadges, mobile = false }: OpsSidebarProps) {
     const teamName = currentTeam?.name ?? 'SAM';
     const teamSlug = currentTeam?.slug ?? '';
     const isSuperAdmin = page.props.auth?.user?.global_role === 'super_admin';
+    const copilotEnabled = Boolean(page.props.copilot?.enabled);
 
     const logoInitials = teamName
         .split(' ')
@@ -184,6 +186,17 @@ export function OpsSidebar({ navBadges, mobile = false }: OpsSidebarProps) {
             {
                 title: 'Inteligencia',
                 items: [
+                    // Solo si el rol tiene `copilot.use` y el tenant tiene el
+                    // módulo activo (feature `copilot`).
+                    ...(copilotEnabled
+                        ? [
+                              {
+                                  label: 'SAM Copilot',
+                                  icon: Sparkles,
+                                  href: `/${teamSlug}/copilot`,
+                              },
+                          ]
+                        : []),
                     {
                         label: 'Reglas',
                         icon: Workflow,
@@ -251,7 +264,7 @@ export function OpsSidebar({ navBadges, mobile = false }: OpsSidebarProps) {
         }
 
         return groups;
-    }, [dashboardHref, teamSlug, isSuperAdmin]);
+    }, [dashboardHref, teamSlug, isSuperAdmin, copilotEnabled]);
 
     // Un único ítem activo: entre todos los hrefs de nav, el candidato cuyo
     // segmento de ruta coincide (path === href o path.startsWith(href + '/'))
