@@ -1,0 +1,48 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(php artisan test *)",
+      "Bash(php artisan wayfinder:generate *)",
+      "Bash(vendor/bin/pint *)",
+      "Bash(composer ci:check)",
+      "Bash(npm run types:check)",
+      "Bash(npm run lint:check)",
+      "Bash(npm run format:check)",
+      "Bash(npm run build)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git show *)"
+    ],
+    "ask": [
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git reset --hard*)",
+      "Bash(git clean *)",
+      "Bash(git branch -D *)",
+      "Bash(git checkout -- *)",
+      "Bash(git checkout .)",
+      "Bash(git rebase *)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Edit(./.env)",
+      "Read(./.env.production)",
+      "Read(./.env.*.local)",
+      "Read(./auth.json)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=$(jq -r '.tool_input.file_path // empty'); case \"$f\" in *.php) cd \"$CLAUDE_PROJECT_DIR\" && [ -x vendor/bin/pint ] && vendor/bin/pint -q \"$f\" >/dev/null 2>&1 ;; esac; exit 0"
+          }
+        ]
+      }
+    ]
+  }
+}
