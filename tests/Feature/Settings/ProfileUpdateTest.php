@@ -5,6 +5,7 @@ namespace Tests\Feature\Settings;
 use App\Domains\Decisions\Models\Decision;
 use App\Domains\Decisions\Models\DecisionOverride;
 use App\Models\User;
+use Database\Seeders\AccessSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -28,6 +29,34 @@ class ProfileUpdateTest extends TestCase
                 ->has('mustVerifyEmail')
                 ->has('status'),
         );
+    }
+
+    /**
+     * Canal de arranque (decisión 2026-09-28): el perfil expone si el
+     * teléfono está verificado y el aviso global lo pide mientras falte.
+     */
+    public function test_profile_page_tells_whether_the_phone_is_verified(): void
+    {
+        $this->seed(AccessSeeder::class);
+
+        $unverified = User::factory()->create(['phone' => '+5215512345678', 'phone_verified_at' => null]);
+
+        $this->actingAs($unverified)
+            ->get(route('profile.edit'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('settings/profile')
+                ->where('phoneVerified', false)
+                ->where('tenantSetup.ready', false)
+                ->where('tenantSetup.phone', false));
+
+        $verified = User::factory()->withVerifiedPhone()->create();
+
+        $this->actingAs($verified)
+            ->get(route('profile.edit'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('settings/profile')
+                ->where('phoneVerified', true)
+                ->where('tenantSetup.ready', true));
     }
 
     public function test_profile_information_can_be_updated()

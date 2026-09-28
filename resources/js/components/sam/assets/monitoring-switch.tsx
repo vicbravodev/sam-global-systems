@@ -58,7 +58,11 @@ export function MonitoringSwitch({
                                 : `${assetName} quedó excluida.`),
                     );
                 },
-                onError: () => toast.error('No se pudo cambiar la vigilancia.'),
+                onError: (errors) =>
+                    toast.error(
+                        errors.monitoring ??
+                            'No se pudo cambiar la vigilancia.',
+                    ),
                 onFinish: () => setBusy(false),
             },
         );

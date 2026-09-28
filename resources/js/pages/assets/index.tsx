@@ -576,9 +576,10 @@ export default function AssetsIndex() {
                                 flash?.status ?? 'Unidades encendidas.',
                             );
                         },
-                        onError: () =>
+                        onError: (errors) =>
                             toast.error(
-                                'No se pudieron encender las unidades.',
+                                errors.monitoring ??
+                                    'No se pudieron encender las unidades.',
                             ),
                         onFinish: () => setMonitoringAll(false),
                     },

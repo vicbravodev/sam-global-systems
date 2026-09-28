@@ -6,11 +6,13 @@ use App\Domains\Access\Actions\AuthorizeAction;
 use App\Domains\Assets\Actions\SetAssetMonitoring;
 use App\Domains\Assets\Enums\AssetMonitoringState;
 use App\Domains\Assets\Models\Asset;
+use App\Domains\Tenancy\Support\TenantContactReadiness;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 /**
  * El cliente decide qué unidades vigila SAM (decisión 2026-09-28): enciende
@@ -35,6 +37,10 @@ class AssetMonitoringController extends Controller
             'reason' => ['nullable', 'string', 'max:255'],
         ]);
 
+        if (AssetMonitoringState::from($data['state']) === AssetMonitoringState::Monitored) {
+            $this->ensureContactReady($current_team);
+        }
+
         $result = $this->setMonitoring->execute(
             $asset,
             AssetMonitoringState::from($data['state']),
@@ -57,6 +63,10 @@ class AssetMonitoringController extends Controller
 
         $state = AssetMonitoringState::from($data['state']);
 
+        if ($state === AssetMonitoringState::Monitored) {
+            $this->ensureContactReady($current_team);
+        }
+
         // Sólo activos del tenant de la ruta: un id ajeno simplemente no existe.
         $assets = Asset::query()
             ->where('team_id', $current_team->id)
@@ -74,6 +84,21 @@ class AssetMonitoringController extends Controller
         }
 
         return back()->with('status', $message);
+    }
+
+    /**
+     * Sin un admin con teléfono y correo verificados no se enciende nada:
+     * SAM no tendría a quién avisar de una emergencia (decisión 2026-09-28).
+     */
+    private function ensureContactReady(Team $team): void
+    {
+        $readiness = TenantContactReadiness::for((int) $team->id);
+
+        if (! $readiness['ready']) {
+            throw ValidationException::withMessages([
+                'monitoring' => TenantContactReadiness::message($readiness),
+            ]);
+        }
     }
 
     private function authorizeManage(Request $request, Team $team): void

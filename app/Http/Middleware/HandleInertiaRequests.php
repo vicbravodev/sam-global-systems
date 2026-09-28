@@ -15,6 +15,7 @@ use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\Notifications\Models\Notification;
 use App\Domains\Tenancy\Enums\SubscriptionStatus;
 use App\Domains\Tenancy\Models\Subscription;
+use App\Domains\Tenancy\Support\TenantContactReadiness;
 use App\Domains\TenantConfig\Models\TenantSetting;
 use App\Models\User;
 use App\Support\NavBadgeCache;
@@ -104,6 +105,18 @@ class HandleInertiaRequests extends Middleware
             'nav' => fn () => $user && $team()
                 ? $this->navPermissions($user)
                 : null,
+            // Canal de arranque del cliente (decisión 2026-09-28): si ningún
+            // admin/supervisor tiene teléfono Y correo verificados, SAM no
+            // tiene a quién avisar de una emergencia. Sólo se calcula para
+            // quien puede arreglarlo (gestiona incidentes).
+            'tenantSetup' => fn () => $user && ($current = $team())
+                && app(AuthorizeAction::class)->execute($user, 'incidents.manage', $current)
+                    ? Cache::remember(
+                        'tenant_setup:'.$current->id,
+                        60,
+                        fn () => TenantContactReadiness::for((int) $current->id),
+                    )
+                    : null,
             // Tenant-scoped counters for the workspace sidebar badges.
             'navBadges' => fn () => ($current = $team())
                 ? $this->navBadges($current->id)

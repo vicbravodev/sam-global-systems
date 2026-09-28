@@ -15,6 +15,11 @@ declare module '@inertiajs/core' {
             navBadges: NavBadges | null;
             nav: NavPermissions | null;
             copilot: { enabled: boolean; canViewUsage: boolean } | null;
+            tenantSetup: {
+                ready: boolean;
+                phone: boolean;
+                email: boolean;
+            } | null;
             [key: string]: unknown;
         };
     }

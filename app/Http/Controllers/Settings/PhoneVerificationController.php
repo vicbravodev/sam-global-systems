@@ -7,6 +7,7 @@ use App\Domains\Access\Actions\VerifyPhoneOtp;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class PhoneVerificationController extends Controller
 {
@@ -34,6 +35,9 @@ class PhoneVerificationController extends Controller
         if (! $result->ok) {
             return back()->withErrors(['code' => $this->messageFor($result->reason)]);
         }
+
+        // El aviso "SAM no tiene a quién avisar" se apaga en ese momento.
+        Cache::forget('tenant_setup:'.$user->current_team_id);
 
         return back()->with('status', 'phone-verified');
     }
