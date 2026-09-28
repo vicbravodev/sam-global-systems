@@ -29,12 +29,17 @@ export function AssetSignal({
     withPrefix = false,
     className,
 }: Props) {
-    const deviceNote = hasDevice ? '' : ' · sin dispositivo vinculado';
+    const deviceNote = hasDevice ? null : (
+        <span className="block text-3xs text-fg-disabled">
+            sin dispositivo vinculado
+        </span>
+    );
 
     if (lastSignalAt === null) {
         return (
             <span className={cn('text-2xs text-fg-3', className)}>
-                Sin señal{deviceNote}
+                Sin señal
+                {deviceNote}
             </span>
         );
     }

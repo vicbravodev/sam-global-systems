@@ -1,50 +1,86 @@
+import { Phone, Truck } from 'lucide-react';
 import type * as React from 'react';
 import { useMemo } from 'react';
 import { CellEmpty, DataTable } from '@/components/sam/data-table';
 import type { DataTableColumn } from '@/components/sam/data-table';
+import { EntityAvatar } from '@/components/sam/entity-avatar';
 import { RelativeTime } from '@/components/sam/relative-time';
+import { RiskBar } from '@/components/sam/risk-gauge';
+import { formatDateTime } from '@/lib/format';
+import { isFresh, minutesSince } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import type { DriverColumnPresence, DriverRow } from '@/types/drivers';
 import { DriverStatusBadge } from './driver-status-badge';
 
-function minutesSince(iso: string): number {
-    return Math.max(0, Math.floor((Date.now() - Date.parse(iso)) / 60000));
-}
-
 function AssetCell({ asset }: { asset: DriverRow['currentAsset'] }) {
     if (asset === null) {
-        return <CellEmpty />;
+        return <CellEmpty variant="person" className="not-italic" />;
     }
 
     return (
-        <div className="flex flex-col">
-            <span className="truncate text-xs text-fg-2">{asset.name}</span>
-            {asset.code && (
-                <span className="font-mono text-3xs text-fg-3">
-                    {asset.code}
-                </span>
-            )}
-        </div>
+        <span className="flex items-center gap-2">
+            <Truck
+                size={13}
+                strokeWidth={1.75}
+                className="shrink-0 text-fg-3"
+                aria-hidden="true"
+            />
+            <span className="flex min-w-0 flex-col">
+                <span className="truncate text-xs text-fg-1">{asset.name}</span>
+                {asset.code && (
+                    <span className="font-mono text-3xs text-fg-3">
+                        {asset.code}
+                    </span>
+                )}
+            </span>
+        </span>
     );
 }
 
-function RiskCell({ score }: { score: number | null }) {
-    if (score === null) {
+function ActivityCell({ driver }: { driver: DriverRow }) {
+    if (driver.riskScore === null) {
         return <CellEmpty />;
     }
+
+    const parts = [
+        driver.incidentsCount > 0 ? `${driver.incidentsCount} inc.` : null,
+        driver.harshEventsCount > 0
+            ? `${driver.harshEventsCount} bruscos`
+            : null,
+    ].filter(Boolean);
 
     return (
         <span
             className={cn(
-                'font-mono text-xs font-semibold tabular-nums',
-                score >= 70
-                    ? 'text-severity-critical'
-                    : score >= 40
-                      ? 'text-severity-medium'
-                      : 'text-severity-low',
+                'font-mono text-2xs tabular-nums',
+                driver.incidentsCount > 0 ? 'text-fg-1' : 'text-fg-3',
             )}
         >
-            {score.toFixed(0)}
+            {parts.length > 0 ? parts.join(' · ') : 'sin actividad'}
+        </span>
+    );
+}
+
+function SeenCell({ iso }: { iso: string | null }) {
+    if (iso === null) {
+        return <CellEmpty />;
+    }
+
+    const fresh = isFresh(iso);
+
+    return (
+        <span
+            className="inline-flex items-center gap-1.5"
+            title={formatDateTime(iso)}
+        >
+            <span
+                className={cn(
+                    'size-1.5 rounded-full',
+                    fresh ? 'bg-severity-low' : 'bg-fg-disabled',
+                )}
+                aria-hidden="true"
+            />
+            <RelativeTime minutes={minutesSince(iso)} />
         </span>
     );
 }
@@ -55,16 +91,19 @@ const COLUMNS: DataTableColumn<DriverRow>[] = [
         header: 'Conductor',
         sortValue: (driver) => driver.fullName,
         cell: (driver) => (
-            <div className="flex flex-col">
-                <span className="truncate text-sm font-medium text-fg-1">
-                    {driver.fullName}
-                </span>
-                {driver.employeeCode && (
-                    <span className="font-mono text-3xs text-fg-3">
-                        {driver.employeeCode}
+            <span className="flex items-center gap-2.5">
+                <EntityAvatar name={driver.fullName} size={28} />
+                <span className="flex min-w-0 flex-col">
+                    <span className="truncate text-sm font-medium text-fg-1">
+                        {driver.fullName}
                     </span>
-                )}
-            </div>
+                    {driver.employeeCode && (
+                        <span className="font-mono text-3xs text-fg-3">
+                            {driver.employeeCode}
+                        </span>
+                    )}
+                </span>
+            </span>
         ),
     },
     {
@@ -76,16 +115,33 @@ const COLUMNS: DataTableColumn<DriverRow>[] = [
     },
     {
         key: 'asset',
-        header: 'Activo asignado',
+        header: 'Unidad asignada',
         width: 'w-48',
+        sortValue: (driver) => driver.currentAsset?.name ?? null,
         cell: (driver) => <AssetCell asset={driver.currentAsset} />,
     },
     {
         key: 'risk',
         header: 'Riesgo',
-        width: 'w-24',
+        width: 'w-36',
         sortValue: (driver) => driver.riskScore,
-        cell: (driver) => <RiskCell score={driver.riskScore} />,
+        cell: (driver) => (
+            <RiskBar
+                score={driver.riskScore}
+                level={driver.riskLevel}
+                trend={driver.riskTrend}
+            />
+        ),
+    },
+    {
+        key: 'activity',
+        header: '30 días',
+        width: 'w-32',
+        sortValue: (driver) =>
+            driver.riskScore === null
+                ? null
+                : driver.incidentsCount * 100 + driver.harshEventsCount,
+        cell: (driver) => <ActivityCell driver={driver} />,
     },
     {
         key: 'phone',
@@ -93,9 +149,14 @@ const COLUMNS: DataTableColumn<DriverRow>[] = [
         width: 'w-40',
         cell: (driver) =>
             driver.phone ? (
-                <span className="font-mono text-2xs text-fg-2 tabular-nums">
+                <a
+                    href={`tel:${driver.phone.replace(/[^+\d]/g, '')}`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="inline-flex items-center gap-1.5 font-mono text-2xs text-fg-2 tabular-nums hover:text-primary"
+                >
+                    <Phone size={11} aria-hidden="true" />
                     {driver.phone}
-                </span>
+                </a>
             ) : (
                 <CellEmpty />
             ),
@@ -103,15 +164,10 @@ const COLUMNS: DataTableColumn<DriverRow>[] = [
     {
         key: 'lastSeen',
         header: 'Visto',
-        width: 'w-28',
+        width: 'w-32',
         sortValue: (driver) =>
             driver.lastSeenAt ? Date.parse(driver.lastSeenAt) : null,
-        cell: (driver) =>
-            driver.lastSeenAt ? (
-                <RelativeTime minutes={minutesSince(driver.lastSeenAt)} />
-            ) : (
-                <CellEmpty />
-            ),
+        cell: (driver) => <SeenCell iso={driver.lastSeenAt} />,
     },
 ];
 
@@ -145,7 +201,7 @@ export function DriversTable({
                     );
                 }
 
-                if (column.key === 'risk') {
+                if (column.key === 'risk' || column.key === 'activity') {
                     return (
                         presence?.risk ?? rows.some((d) => d.riskScore !== null)
                     );

@@ -5,11 +5,15 @@ namespace App\Http\Controllers\Drivers;
 use App\Domains\Drivers\Enums\AssignmentType;
 use App\Domains\Drivers\Enums\ContactType;
 use App\Domains\Drivers\Enums\DriverStatus;
+use App\Domains\Drivers\Enums\RiskLevel;
 use App\Domains\Drivers\Models\Driver;
 use App\Domains\Drivers\Models\DriverAssignment;
 use App\Domains\Drivers\Models\DriverContact;
 use App\Domains\Drivers\Models\DriverDocument;
 use App\Domains\Drivers\Models\DriverStatusLog;
+use App\Domains\Incidents\Models\Incident;
+use App\Domains\Incidents\Support\IncidentStatusPresenter;
+use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
 use Illuminate\Database\Eloquent\Builder;
@@ -39,6 +43,25 @@ class DriverPageController extends Controller
     ];
 
     /**
+     * Spanish labels for the provider-synced profile fields the detail page
+     * surfaces (Samsara driver record: license, username, timezone...).
+     * Unknown metadata keys are not shown — this is a curated allow-list.
+     *
+     * @var array<string, string>
+     */
+    private const PROVIDER_FIELD_LABELS = [
+        'license_number' => 'Licencia',
+        'license_state' => 'Estado de licencia',
+        'username' => 'Usuario en proveedor',
+        'activation_status' => 'Estado en proveedor',
+        'static_vehicle' => 'Vehículo fijo (proveedor)',
+        'timezone' => 'Zona horaria',
+        'locale' => 'Idioma',
+        'tags' => 'Etiquetas',
+        'notes' => 'Notas',
+    ];
+
+    /**
      * Historical assignments shown in the detail panel.
      */
     private const ASSIGNMENTS_LIMIT = 20;
@@ -47,6 +70,21 @@ class DriverPageController extends Controller
      * Status log entries shown in the detail panel.
      */
     private const STATUS_LOG_LIMIT = 20;
+
+    /**
+     * Recent normalized events shown in the detail activity feed.
+     */
+    private const RECENT_EVENTS_LIMIT = 15;
+
+    /**
+     * Linked incidents shown in the detail panel.
+     */
+    private const INCIDENTS_LIMIT = 10;
+
+    /**
+     * Days covered by the per-day activity sparkline on the detail page.
+     */
+    private const ACTIVITY_DAYS = 14;
 
     public function index(Request $request, Team $current_team): Response
     {
@@ -87,6 +125,7 @@ class DriverPageController extends Controller
             'filters' => $filters,
             'filterOptions' => fn () => $this->filterOptions(),
             'columns' => fn () => $this->columnPresence($current_team),
+            'summary' => fn () => $this->summary($current_team),
         ]);
     }
 
@@ -114,6 +153,9 @@ class DriverPageController extends Controller
             'driver' => $this->toDetail($driver),
             'assignments' => fn () => $this->assignments($driver),
             'statusLog' => fn () => $this->statusLog($driver),
+            'recentEvents' => fn () => $this->recentEvents($driver),
+            'incidents' => fn () => $this->incidents($driver),
+            'activity' => fn () => $this->activity($driver),
         ]);
     }
 
@@ -182,6 +224,40 @@ class DriverPageController extends Controller
     }
 
     /**
+     * Tenant-wide roster pulse for the header strip: how many drivers are in
+     * each status, how many carry an elevated risk profile, how many have no
+     * vehicle assigned right now and how many were seen in the last 24 h.
+     * Ignores the active filters on purpose (it describes the whole roster).
+     *
+     * @return array{total: int, statuses: array<string, int>, highRisk: int, unassigned: int, seenToday: int}
+     */
+    private function summary(Team $team): array
+    {
+        $drivers = fn (): Builder => Driver::query()->where('team_id', $team->id);
+
+        $byStatus = $drivers()
+            ->selectRaw('status, COUNT(*) as aggregate')
+            ->groupBy('status')
+            ->pluck('aggregate', 'status');
+
+        $statuses = [];
+
+        foreach (DriverStatus::cases() as $status) {
+            $statuses[$status->value] = (int) ($byStatus[$status->value] ?? 0);
+        }
+
+        return [
+            'total' => (int) $byStatus->sum(),
+            'statuses' => $statuses,
+            'highRisk' => $drivers()
+                ->whereHas('riskProfile', fn (Builder $q) => $q->whereIn('risk_level', [RiskLevel::High, RiskLevel::Critical]))
+                ->count(),
+            'unassigned' => $drivers()->whereDoesntHave('currentAssignment')->count(),
+            'seenToday' => $drivers()->where('last_seen_at', '>=', now()->subDay())->count(),
+        ];
+    }
+
+    /**
      * @return array{statuses: list<array{value: string, label: string}>}
      */
     private function filterOptions(): array
@@ -207,6 +283,7 @@ class DriverPageController extends Controller
     {
         $asset = $driver->currentAssignment?->asset;
         $phone = $driver->contacts->first();
+        $risk = $driver->riskProfile;
 
         return [
             'id' => (int) $driver->id,
@@ -218,17 +295,22 @@ class DriverPageController extends Controller
                 'name' => (string) $asset->name,
                 'code' => $asset->code,
             ] : null,
-            'riskScore' => $driver->riskProfile?->risk_score !== null
-                ? (float) $driver->riskProfile->risk_score
+            'riskScore' => $risk?->risk_score !== null
+                ? (float) $risk->risk_score
                 : null,
-            'phone' => $phone?->value,
+            'riskLevel' => $risk?->risk_level?->value,
+            'riskTrend' => $risk?->metadata_json['trend'] ?? null,
+            'incidentsCount' => $risk ? (int) $risk->incidents_count : 0,
+            'harshEventsCount' => $risk ? (int) $risk->harsh_events_count : 0,
+            'phone' => $phone?->value ?? $driver->phone,
             'lastSeenAt' => $driver->last_seen_at?->toIso8601String(),
         ];
     }
 
     /**
      * Full profile shape the detail page consumes: identity, current
-     * assignment, risk profile, contacts and documents.
+     * assignment, risk profile, contacts, documents and the provider-synced
+     * profile fields (license, username...).
      *
      * @return array<string, mixed>
      */
@@ -244,6 +326,7 @@ class DriverPageController extends Controller
             'lastName' => $driver->last_name,
             'employeeCode' => $driver->employee_code,
             'externalPrimaryId' => $driver->external_primary_id,
+            'phone' => $driver->phone,
             'status' => $driver->status->value,
             'firstSeenAt' => $driver->first_seen_at?->toIso8601String(),
             'lastSeenAt' => $driver->last_seen_at?->toIso8601String(),
@@ -255,11 +338,20 @@ class DriverPageController extends Controller
             'riskProfile' => $risk ? [
                 'riskScore' => $risk->risk_score !== null ? (float) $risk->risk_score : null,
                 'riskLevel' => $risk->risk_level?->value,
+                'trend' => $risk->metadata_json['trend'] ?? null,
+                'previousScore' => isset($risk->metadata_json['previous_score'])
+                    ? (float) $risk->metadata_json['previous_score']
+                    : null,
+                'windowDays' => isset($risk->metadata_json['window_days'])
+                    ? (int) $risk->metadata_json['window_days']
+                    : null,
                 'incidentsCount' => (int) $risk->incidents_count,
                 'harshEventsCount' => (int) $risk->harsh_events_count,
                 'fatigueFlagsCount' => (int) $risk->fatigue_flags_count,
+                'severeEventsCount' => (int) ($risk->metadata_json['severe_events_count'] ?? 0),
                 'lastCalculatedAt' => $risk->last_calculated_at?->toIso8601String(),
             ] : null,
+            'providerFields' => $this->providerFields($driver),
             'contacts' => $driver->contacts
                 ->map(fn (DriverContact $contact) => [
                     'id' => (int) $contact->id,
@@ -282,10 +374,45 @@ class DriverPageController extends Controller
                     'expiresAt' => $document->expires_at?->toDateString(),
                     'fileUrl' => $document->file_url,
                     'isExpired' => $document->isExpired(),
+                    'daysToExpiry' => $document->expires_at !== null
+                        ? (int) now()->startOfDay()->diffInDays($document->expires_at->startOfDay(), false)
+                        : null,
                 ])
                 ->values()
                 ->all(),
         ];
+    }
+
+    /**
+     * Curated, labelled view of the provider-synced profile (the Samsara
+     * driver record keeps license, username, timezone...). Only the allow-listed
+     * keys are shown; list values are joined for display.
+     *
+     * @return list<array{key: string, label: string, value: string}>
+     */
+    private function providerFields(Driver $driver): array
+    {
+        $metadata = $driver->metadata_json ?? [];
+        $fields = [];
+
+        foreach (self::PROVIDER_FIELD_LABELS as $key => $label) {
+            $value = $metadata[$key] ?? null;
+
+            if (is_array($value)) {
+                $value = implode(', ', array_filter(array_map(
+                    fn ($item) => is_scalar($item) ? (string) $item : null,
+                    $value,
+                )));
+            }
+
+            if ($value === null || $value === '' || ! is_scalar($value)) {
+                continue;
+            }
+
+            $fields[] = ['key' => $key, 'label' => $label, 'value' => (string) $value];
+        }
+
+        return $fields;
     }
 
     /**
@@ -295,8 +422,9 @@ class DriverPageController extends Controller
      */
     private function assignments(Driver $driver): array
     {
-        return $driver->assignments()
+        return DriverAssignment::query()
             ->with('asset')
+            ->where('driver_id', $driver->id)
             ->orderByDesc('started_at')
             ->orderByDesc('id')
             ->limit(self::ASSIGNMENTS_LIMIT)
@@ -338,5 +466,103 @@ class DriverPageController extends Controller
                 'effectiveTo' => $log->effective_to?->toIso8601String(),
             ])
             ->all();
+    }
+
+    /**
+     * Latest normalized events attributed to this driver (safety events,
+     * panic, fatigue...) so the profile reads as a live record, not a form.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function recentEvents(Driver $driver): array
+    {
+        return NormalizedEvent::query()
+            ->where('team_id', $driver->team_id)
+            ->where('driver_id', $driver->id)
+            ->with(['eventType', 'eventCategory', 'eventSeverity', 'asset'])
+            ->orderByDesc('occurred_at')
+            ->orderByDesc('id')
+            ->limit(self::RECENT_EVENTS_LIMIT)
+            ->get()
+            ->map(fn (NormalizedEvent $event) => [
+                'id' => (int) $event->id,
+                'occurredAt' => $event->occurred_at?->toIso8601String(),
+                'eventType' => $event->eventType?->name ?? $event->eventType?->code,
+                'category' => $event->eventCategory?->name,
+                'severity' => $event->eventSeverity?->code,
+                'asset' => $event->asset ? [
+                    'id' => (int) $event->asset->id,
+                    'name' => (string) $event->asset->name,
+                ] : null,
+            ])
+            ->all();
+    }
+
+    /**
+     * Incidents linked to this driver, newest first. Same rendered status
+     * string as the inbox (C1-b).
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function incidents(Driver $driver): array
+    {
+        return Incident::query()
+            ->where('team_id', $driver->team_id)
+            ->where('driver_id', $driver->id)
+            ->with(['status', 'priority', 'type', 'currentAssignment'])
+            ->orderByDesc('opened_at')
+            ->limit(self::INCIDENTS_LIMIT)
+            ->get()
+            ->map(fn (Incident $incident) => [
+                'id' => (int) $incident->id,
+                'title' => (string) $incident->title,
+                'status' => $incident->status ? [
+                    'code' => (string) $incident->status->code,
+                    'uiStatus' => IncidentStatusPresenter::uiStatus(
+                        $incident->status->code,
+                        $incident->currentAssignment !== null,
+                    ),
+                    'name' => IncidentStatusPresenter::label(
+                        $incident->status->code,
+                        $incident->currentAssignment !== null,
+                    ),
+                ] : null,
+                'priority' => $incident->priority ? [
+                    'code' => (string) $incident->priority->code,
+                    'name' => (string) $incident->priority->name,
+                ] : null,
+                'type' => $incident->type?->name,
+                'openedAt' => $incident->opened_at?->toIso8601String(),
+            ])
+            ->all();
+    }
+
+    /**
+     * Events per day over the last ACTIVITY_DAYS days (oldest first, zero
+     * filled) for the sparkline on the risk card. Bucketed in PHP: a single
+     * driver's two-week window is small and this stays portable across
+     * PostgreSQL and SQLite.
+     *
+     * @return list<array{date: string, count: int}>
+     */
+    private function activity(Driver $driver): array
+    {
+        $start = now()->subDays(self::ACTIVITY_DAYS - 1)->startOfDay();
+
+        $counts = NormalizedEvent::query()
+            ->where('team_id', $driver->team_id)
+            ->where('driver_id', $driver->id)
+            ->where('occurred_at', '>=', $start)
+            ->pluck('occurred_at')
+            ->countBy(fn ($occurredAt) => $occurredAt->toDateString());
+
+        $series = [];
+
+        for ($day = 0; $day < self::ACTIVITY_DAYS; $day++) {
+            $date = $start->copy()->addDays($day)->toDateString();
+            $series[] = ['date' => $date, 'count' => (int) ($counts[$date] ?? 0)];
+        }
+
+        return $series;
     }
 }

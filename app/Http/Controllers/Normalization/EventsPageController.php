@@ -8,6 +8,7 @@ use App\Domains\Context\Models\EventMediaContext;
 use App\Domains\Decisions\Enums\DecisionOutcomeCode;
 use App\Domains\Decisions\Models\Decision;
 use App\Domains\Incidents\Models\Incident;
+use App\Domains\Incidents\Support\IncidentStatusPresenter;
 use App\Domains\Normalization\Enums\NormalizedEventStatus;
 use App\Domains\Normalization\Models\EventCategory;
 use App\Domains\Normalization\Models\EventSeverity;
@@ -29,6 +30,12 @@ class EventsPageController extends Controller
 {
     private const PER_PAGE = 50;
 
+    /**
+     * `event_severities.level` from which an event counts as severe (high=3,
+     * critical=4 in the seeded catalog).
+     */
+    private const SEVERE_LEVEL = 3;
+
     public function index(Request $request, Team $current_team): Response
     {
         $this->authorize('viewAny', NormalizedEvent::class);
@@ -47,9 +54,33 @@ class EventsPageController extends Controller
             ->paginate(self::PER_PAGE)
             ->withQueryString();
 
+        $events = collect($paginator->items());
+        $ids = $events->pluck('id')->all();
+
+        // Pipeline outcome per row, resolved in two batched lookups instead of
+        // one query per event: which events already got an AI verdict and
+        // which ones opened an incident.
+        $evaluated = $ids === [] ? [] : AIEventEvaluation::query()
+            ->where('team_id', $current_team->id)
+            ->whereIn('normalized_event_id', $ids)
+            ->distinct()
+            ->pluck('normalized_event_id')
+            ->flip()
+            ->all();
+        $withIncident = $ids === [] ? [] : Incident::query()
+            ->where('team_id', $current_team->id)
+            ->whereIn('related_event_id', $ids)
+            ->distinct()
+            ->pluck('related_event_id')
+            ->flip()
+            ->all();
+
         return Inertia::render('events/index', [
-            'events' => collect($paginator->items())
-                ->map(fn (NormalizedEvent $event) => $this->toRow($event))
+            'events' => $events
+                ->map(fn (NormalizedEvent $event) => $this->toRow($event) + [
+                    'hasEvaluation' => isset($evaluated[$event->id]),
+                    'hasIncident' => isset($withIncident[$event->id]),
+                ])
                 ->all(),
             'pagination' => [
                 'page' => $paginator->currentPage(),
@@ -63,7 +94,37 @@ class EventsPageController extends Controller
                 ->where('team_id', $current_team->id)
                 ->where('status', NormalizedEventStatus::Unmapped)
                 ->count(),
+            'summary' => fn () => $this->summary($current_team),
         ]);
+    }
+
+    /**
+     * Tenant-wide pulse of the last 24 h for the header strip: events
+     * received, how many were high/critical, how many opened an incident,
+     * plus the backlog that needs attention (unmapped, failed). Ignores the
+     * active filters on purpose.
+     *
+     * @return array{last24h: int, severe24h: int, incidents24h: int, unmapped: int, failed: int}
+     */
+    private function summary(Team $team): array
+    {
+        $since = now()->subDay();
+        $events = fn (): Builder => NormalizedEvent::query()->where('team_id', $team->id);
+
+        return [
+            'last24h' => $events()->where('occurred_at', '>=', $since)->count(),
+            'severe24h' => $events()
+                ->where('occurred_at', '>=', $since)
+                ->whereHas('eventSeverity', fn (Builder $q) => $q->where('level', '>=', self::SEVERE_LEVEL))
+                ->count(),
+            'incidents24h' => Incident::query()
+                ->where('team_id', $team->id)
+                ->whereNotNull('related_event_id')
+                ->where('opened_at', '>=', $since)
+                ->count(),
+            'unmapped' => $events()->where('status', NormalizedEventStatus::Unmapped)->count(),
+            'failed' => $events()->where('status', NormalizedEventStatus::Failed)->count(),
+        ];
     }
 
     public function show(Team $current_team, NormalizedEvent $normalizedEvent): Response
@@ -149,19 +210,36 @@ class EventsPageController extends Controller
      */
     private function toRow(NormalizedEvent $event): array
     {
+        $payload = is_array($event->payload_normalized_json) ? $event->payload_normalized_json : [];
+        $description = $payload['description'] ?? null;
+
         return [
             'id' => (int) $event->id,
             'occurredAt' => $event->occurred_at?->toIso8601String(),
             'status' => $event->status?->value,
+            'statusLabel' => $event->status !== null
+                ? (self::STATUS_LABELS[$event->status->value] ?? $event->status->value)
+                : null,
             'eventType' => $event->eventType?->name,
             'eventTypeCode' => $event->eventType?->code,
             'category' => $event->eventCategory?->name,
+            'categoryCode' => $event->eventCategory?->code,
             'severity' => $event->eventSeverity?->code,
             'severityLabel' => $event->eventSeverity?->label,
             'severityColor' => $event->eventSeverity?->color,
             'asset' => $event->asset?->name,
+            'assetId' => $event->asset_id !== null ? (int) $event->asset_id : null,
             'driver' => $event->driver?->full_name,
+            'driverId' => $event->driver_id !== null ? (int) $event->driver_id : null,
             'provider' => $event->provider?->name,
+            // Provider-side description when it says more than the type name
+            // (e.g. the Samsara behavior label). Null when it merely repeats it.
+            'description' => is_string($description)
+                && $description !== ''
+                && $description !== $event->eventType?->name
+                && $description !== $event->eventType?->code
+                ? $description
+                : null,
         ];
     }
 
@@ -176,6 +254,62 @@ class EventsPageController extends Controller
             'context' => $event->context_json,
             'rawPayload' => $event->rawEvent?->payload_json,
             'rawEventId' => $event->raw_event_id !== null ? (int) $event->raw_event_id : null,
+            'facts' => $this->facts($event),
+        ];
+    }
+
+    /**
+     * Operator-readable facts lifted out of the normalized payload (the shape
+     * NormalizeRawEvent::buildNormalizedPayload writes): where it happened,
+     * what the provider labelled it, whether it is already resolved at the
+     * source and the link back to the provider's own incident page.
+     *
+     * @return array{location: array{latitude: float, longitude: float, formatted: string|null}|null, labels: list<string>, externalEventType: string|null, externalUrl: string|null, isResolved: bool|null, externalResolvedAt: string|null, eventState: string|null}
+     */
+    private function facts(NormalizedEvent $event): array
+    {
+        $payload = is_array($event->payload_normalized_json) ? $event->payload_normalized_json : [];
+
+        $location = null;
+        $rawLocation = $payload['location'] ?? null;
+
+        if (is_array($rawLocation) && isset($rawLocation['latitude'], $rawLocation['longitude'])
+            && is_numeric($rawLocation['latitude']) && is_numeric($rawLocation['longitude'])) {
+            $formatted = $rawLocation['formattedLocation']
+                ?? $rawLocation['formatted_location']
+                ?? $rawLocation['address']
+                ?? null;
+
+            $location = [
+                'latitude' => (float) $rawLocation['latitude'],
+                'longitude' => (float) $rawLocation['longitude'],
+                'formatted' => is_string($formatted) ? $formatted : null,
+            ];
+        }
+
+        $labels = [];
+
+        foreach (is_array($payload['raw_behavior_labels'] ?? null) ? $payload['raw_behavior_labels'] : [] as $label) {
+            $name = is_array($label) ? ($label['name'] ?? $label['label'] ?? null) : $label;
+
+            if (is_string($name) && $name !== '') {
+                $labels[] = $name;
+            }
+        }
+
+        $externalUrl = $payload['incident_url'] ?? null;
+        $externalType = $payload['external_event_type'] ?? null;
+        $eventState = $payload['event_state'] ?? null;
+        $resolvedAt = $payload['external_resolved_at'] ?? null;
+
+        return [
+            'location' => $location,
+            'labels' => array_values(array_unique($labels)),
+            'externalEventType' => is_string($externalType) ? $externalType : null,
+            'externalUrl' => is_string($externalUrl) && str_starts_with($externalUrl, 'https://') ? $externalUrl : null,
+            'isResolved' => is_bool($payload['is_resolved'] ?? null) ? $payload['is_resolved'] : null,
+            'externalResolvedAt' => is_string($resolvedAt) ? $resolvedAt : null,
+            'eventState' => is_string($eventState) ? $eventState : null,
         ];
     }
 
@@ -202,6 +336,11 @@ class EventsPageController extends Controller
             'riskScore' => $evaluation->risk_score !== null ? (float) $evaluation->risk_score : null,
             'priorityLevel' => $evaluation->priority_level?->value,
             'mode' => $evaluation->evaluation_mode?->value,
+            'isRealEvent' => $evaluation->is_real_event !== null ? (bool) $evaluation->is_real_event : null,
+            'requiresAction' => (bool) $evaluation->requires_action,
+            'recommendedAction' => $evaluation->recommended_action,
+            'explanation' => $evaluation->explanation_text,
+            'evaluatedAt' => $evaluation->evaluated_at?->toIso8601String(),
         ];
     }
 
@@ -227,6 +366,8 @@ class EventsPageController extends Controller
                 : null,
             'reason' => $decision->decision_reason,
             'requiresHumanReview' => (bool) $decision->requires_human_review,
+            'isAutomated' => (bool) $decision->is_automated,
+            'priorityLevel' => $decision->priority_level,
             'decidedAt' => $decision->decided_at?->toIso8601String(),
         ];
     }
@@ -239,7 +380,7 @@ class EventsPageController extends Controller
         $incident = Incident::query()
             ->where('related_event_id', $event->id)
             ->orderByDesc('id')
-            ->with(['status', 'priority'])
+            ->with(['status', 'priority', 'currentAssignment'])
             ->first();
 
         if ($incident === null) {
@@ -250,7 +391,16 @@ class EventsPageController extends Controller
             'id' => (int) $incident->id,
             'title' => (string) $incident->title,
             'status' => $incident->status?->code,
+            'uiStatus' => IncidentStatusPresenter::uiStatus(
+                $incident->status?->code,
+                $incident->currentAssignment !== null,
+            ),
+            'statusLabel' => IncidentStatusPresenter::label(
+                $incident->status?->code,
+                $incident->currentAssignment !== null,
+            ),
             'severity' => $incident->priority?->code,
+            'openedAt' => $incident->opened_at?->toIso8601String(),
         ];
     }
 
@@ -279,9 +429,11 @@ class EventsPageController extends Controller
                 return [
                     'id' => (int) $media->id,
                     'mediaType' => $media->media_type?->value,
+                    'mediaRole' => $media->media_role?->value,
                     'url' => $url,
                     'thumbnailUrl' => $media->thumbnail_url,
                     'capturedAt' => $media->captured_at?->toIso8601String(),
+                    'durationSeconds' => $media->duration_seconds !== null ? (int) $media->duration_seconds : null,
                 ];
             })
             ->all();
@@ -306,7 +458,11 @@ class EventsPageController extends Controller
             'severities' => EventSeverity::query()
                 ->orderBy('level')
                 ->get(['id', 'code', 'label'])
-                ->map(fn (EventSeverity $severity) => ['value' => (string) $severity->id, 'label' => (string) ($severity->label ?? $severity->code)])
+                ->map(fn (EventSeverity $severity) => [
+                    'value' => (string) $severity->id,
+                    'label' => (string) ($severity->label ?? $severity->code),
+                    'code' => (string) $severity->code,
+                ])
                 ->all(),
             'statuses' => array_map(
                 fn (NormalizedEventStatus $status) => ['value' => $status->value, 'label' => self::STATUS_LABELS[$status->value] ?? $status->value],
