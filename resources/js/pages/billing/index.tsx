@@ -42,6 +42,8 @@ interface UsageRow {
     billed: boolean;
     /** El excedente tiene precio: sólo entonces se marca en rojo. */
     overageCharged: boolean;
+    /** Conteo por canal cuyo costo va en la línea de mensajería (Twilio). */
+    billedVia: 'messaging' | null;
     meterName: string | null;
     unit: string | null;
     /** Cost-plus meters (Twilio messaging): amount to be charged, in USD. */
@@ -566,9 +568,12 @@ export default function BillingIndex() {
                             </MetricCell>
                             <MetricCell label="Tope contratado">
                                 <span className="text-base font-semibold text-fg-1">
-                                    {terms.included_assets === null
+                                    {/* Mismo tope que "Tractos vigilados": el de
+                                        los términos o, sin términos, el del plan. */}
+                                    {(estimate.cap ?? terms.included_assets) ===
+                                    null
                                         ? 'Sin tope'
-                                        : `${terms.included_assets} tractos`}
+                                        : `${formatNumber(estimate.cap ?? terms.included_assets ?? 0)} tractos`}
                                 </span>
                             </MetricCell>
                             <MetricCell label="Próxima renovación">
@@ -668,7 +673,10 @@ export default function BillingIndex() {
                                                         className="py-2 pr-4 text-2xs text-fg-3"
                                                         colSpan={3}
                                                     >
-                                                        No incluido · sin costo
+                                                        {row.billedVia ===
+                                                        'messaging'
+                                                            ? 'Se cobra en Mensajería y llamadas (costo real)'
+                                                            : 'No incluido · sin costo'}
                                                     </td>
                                                 </>
                                             ) : (

@@ -134,6 +134,23 @@ class BillingPagePresentationTest extends TestCase
             }));
     }
 
+    public function test_per_channel_twilio_counts_point_to_the_messaging_line(): void
+    {
+        TenantUsageCounter::factory()->create([
+            'team_id' => $this->team->id,
+            'usage_meter_id' => UsageMeter::query()->where('code', 'sms_messages')->value('id')
+                ?? UsageMeter::factory()->create(['code' => 'sms_messages'])->id,
+            'period_start' => now()->startOfMonth(),
+            'period_end' => now()->endOfMonth(),
+            'consumed_value' => 5,
+        ]);
+
+        $this->page()->assertInertia(fn (Assert $page) => $page
+            ->where('usage.0.meterCode', 'sms_messages')
+            ->where('usage.0.billed', false)
+            ->where('usage.0.billedVia', 'messaging'));
+    }
+
     public function test_features_list_excludes_meter_allowances(): void
     {
         // Per-meter allowances are stored as features keyed by meter code.

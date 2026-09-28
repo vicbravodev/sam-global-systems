@@ -27,6 +27,18 @@ use Inertia\Response;
  */
 class BillingPageController extends Controller
 {
+    /**
+     * Twilio usage counted per channel; charged through the messaging
+     * cost-plus meter (FinalizeMessagingCharge), never on their own.
+     */
+    private const array MESSAGING_COUNT_METERS = [
+        'sms_messages',
+        'whatsapp_messages',
+        'voice_notification_calls',
+        'voice_calls',
+        'otp_sms_sent',
+    ];
+
     public function show(
         Team $current_team,
         ResolveBillingTerms $resolveTerms,
@@ -134,6 +146,11 @@ class BillingPageController extends Controller
                     // Invoiced by the plan at all, and whether overage costs.
                     'billed' => $isBilled($counter),
                     'overageCharged' => $overageCharged($counter),
+                    // Per-channel Twilio counts carry no price of their own:
+                    // their real cost lands on the messaging (cost-plus) line.
+                    'billedVia' => in_array($counter->usageMeter?->code, self::MESSAGING_COUNT_METERS, true)
+                        ? 'messaging'
+                        : null,
                     'meterName' => $counter->usageMeter?->name,
                     'unit' => $counter->usageMeter?->unit,
                     // Cost-plus meters (Twilio messaging) accumulate provider
