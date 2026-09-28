@@ -38,11 +38,11 @@ export function useEchoChannel<T>(
 
         subscription.listen(event, handler);
 
+        // Only detach this listener: channels are shared (the team channel
+        // also feeds useTeamBroadcastsSubscription), so leaving it here would
+        // silently cut every other subscriber off.
         return () => {
             subscription.stopListening(event, handler);
-            echo.leaveChannel(
-                `${kind === 'public' ? '' : kind === 'presence' ? 'presence-' : 'private-'}${channel}`,
-            );
         };
     }, [channel, event, kind]);
 

@@ -3,6 +3,15 @@ import Pusher from 'pusher-js';
 
 type PusherEcho = Echo<'pusher'>;
 
+declare global {
+    interface Window {
+        Pusher: typeof Pusher;
+    }
+}
+
+// Created on first use by the realtime hooks mounted in the Ops/Admin
+// layouts, never at module load: public and auth pages open no socket.
+
 let instance: PusherEcho | null = null;
 
 function getPusherEnv() {
