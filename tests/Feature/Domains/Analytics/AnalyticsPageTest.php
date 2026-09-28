@@ -3,11 +3,13 @@
 namespace Tests\Feature\Domains\Analytics;
 
 use App\Domains\Analytics\Enums\ReportExecutionStatus;
+use App\Domains\Analytics\Enums\ReportRequestedByType;
 use App\Domains\Analytics\Jobs\GenerateReportJob;
 use App\Domains\Analytics\Models\KpiRecord;
 use App\Domains\Analytics\Models\MetricDefinition;
 use App\Domains\Analytics\Models\ReportDefinition;
 use App\Domains\Analytics\Models\ReportExecution;
+use App\Domains\Assets\Models\Asset;
 use App\Models\Team;
 use App\Models\User;
 use Database\Seeders\AccessSeeder;
@@ -153,6 +155,101 @@ class AnalyticsPageTest extends TestCase
         ));
 
         $response->assertInertia(fn (Assert $page) => $page->has('metrics', 0));
+    }
+
+    public function test_metrics_carry_the_previous_period_for_comparison(): void
+    {
+        // 7-day window = today and the 6 days before; previous = days 7..13.
+        foreach ([1 => 4.0, 3 => 6.0] as $daysAgo => $value) {
+            $this->dailyKpi('incidents_total', $daysAgo, $value, 'count');
+        }
+
+        foreach ([8 => 5.0, 13 => 15.0, 14 => 999.0] as $daysAgo => $value) {
+            $this->dailyKpi('incidents_total', $daysAgo, $value, 'count');
+        }
+
+        // Only the previous window has this one: no current value, no row.
+        $this->dailyKpi('copilot_queries', 9, 3.0, 'count');
+
+        $response = $this->actingAs($this->user)->get(
+            route('analytics.show', ['current_team' => $this->team->slug, 'period' => 7]),
+        );
+
+        $response->assertInertia(fn (Assert $page) => $page
+            ->has('metrics', 1)
+            ->where('metrics.0.code', 'incidents_total')
+            ->where('metrics.0.value', 10)
+            // Day 14 falls outside both windows.
+            ->where('metrics.0.previous', 20)
+            ->has('metrics.0.series', 2)
+            ->where('range.from', now()->subDays(6)->toDateString())
+            ->where('range.previousFrom', now()->subDays(13)->toDateString())
+            ->where('range.previousTo', now()->subDays(7)->toDateString()));
+    }
+
+    public function test_rates_are_weighted_by_their_daily_volume_and_skip_empty_days(): void
+    {
+        // Day 1: 3 incidents resolved in 10 min on average; day 2: 1 in 50 min;
+        // day 3: nothing resolved, so its 0 min is no measurement at all.
+        foreach ([1 => [3.0, 10.0], 2 => [1.0, 50.0], 3 => [0.0, 0.0]] as $daysAgo => [$resolved, $minutes]) {
+            $this->dailyKpi('incidents_resolved', $daysAgo, $resolved, 'count');
+            $this->dailyKpi('incidents_mttr_minutes', $daysAgo, $minutes, 'minutes');
+        }
+
+        $response = $this->actingAs($this->user)->get(
+            route('analytics.show', ['current_team' => $this->team->slug, 'period' => 7]),
+        );
+
+        $response->assertInertia(fn (Assert $page) => $page
+            ->where('metrics.0.code', 'incidents_mttr_minutes')
+            // (3×10 + 1×50) / 4 = 20, not the plain daily mean (20 / 3 days).
+            ->where('metrics.0.value', 20)
+            ->has('metrics.0.series', 2)
+            ->where('metrics.0.previous', null));
+    }
+
+    public function test_fleet_counts_only_this_teams_monitored_assets(): void
+    {
+        Asset::factory()->count(2)->create(['team_id' => $this->team->id]);
+        Asset::factory()->pendingMonitoring()->create(['team_id' => $this->team->id]);
+
+        $otherTeam = User::factory()->create()->currentTeam;
+        Asset::factory()->count(4)->create(['team_id' => $otherTeam->id]);
+
+        $response = $this->assertNoTenantLeak($this->team, fn () => $this->actingAs($this->user)->get(
+            route('analytics.show', ['current_team' => $this->team->slug]),
+        ));
+
+        $response->assertInertia(fn (Assert $page) => $page
+            ->where('fleet.monitored', 2)
+            ->where('fleet.total', 3));
+    }
+
+    public function test_executions_say_which_report_they_belong_to_and_who_asked(): void
+    {
+        $report = ReportDefinition::factory()->create([
+            'team_id' => $this->team->id,
+            'is_active' => true,
+            'schedule_config_json' => ['frequency' => 'weekly'],
+        ]);
+
+        ReportExecution::factory()->create([
+            'team_id' => $this->team->id,
+            'report_definition_id' => $report->id,
+            'requested_by_type' => ReportRequestedByType::Scheduler,
+            'status' => ReportExecutionStatus::Failed,
+        ]);
+
+        $response = $this->actingAs($this->user)->get(
+            route('analytics.show', ['current_team' => $this->team->slug]),
+        );
+
+        $response->assertInertia(fn (Assert $page) => $page
+            ->where('reports.0.frequency', 'weekly')
+            ->where('executions.0.reportId', $report->id)
+            ->where('executions.0.automatic', true)
+            ->where('executions.0.status', 'failed')
+            ->where('executions.0.downloadable', false));
     }
 
     private function dailyKpi(string $code, int $daysAgo, float $value, string $unit): void

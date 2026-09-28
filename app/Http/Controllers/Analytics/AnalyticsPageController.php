@@ -4,14 +4,15 @@ namespace App\Http\Controllers\Analytics;
 
 use App\Domains\Analytics\Enums\PeriodType;
 use App\Domains\Analytics\Enums\ReportOutputFormat;
-use App\Domains\Analytics\Enums\SnapshotType;
-use App\Domains\Analytics\Models\AnalyticsSnapshot;
+use App\Domains\Analytics\Enums\ReportRequestedByType;
 use App\Domains\Analytics\Models\KpiRecord;
 use App\Domains\Analytics\Models\MetricDefinition;
 use App\Domains\Analytics\Models\ReportDefinition;
 use App\Domains\Analytics\Models\ReportExecution;
+use App\Domains\Assets\Models\Asset;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -39,6 +40,23 @@ class AnalyticsPageController extends Controller
     /** Display order of metric groups (by code prefix). */
     private const GROUPS = ['incidents', 'ai', 'decisions', 'usage'];
 
+    /**
+     * Daily rates/averages and the daily count they are measured over. A plain
+     * mean of daily values weighs a quiet day (one incident) like a busy one
+     * and counts days without activity as 0 min / 0 %, so the period value is
+     * the mean weighted by that count, and days where the count is 0 carry no
+     * value at all (they are dropped from the series).
+     */
+    private const WEIGHTS = [
+        'incidents_mttr_minutes' => 'incidents_resolved',
+        'decisions_human_review_rate' => 'decisions_total',
+        'ai_accuracy_rate' => 'decisions_total',
+        'ai_human_override_rate' => 'decisions_total',
+        'ai_false_positive_rate' => 'ai_total_evaluations',
+        'ai_real_event_rate' => 'ai_total_evaluations',
+        'ai_average_confidence' => 'ai_total_evaluations',
+    ];
+
     public function show(Request $request, Team $current_team): Response
     {
         $this->authorize('viewAny', KpiRecord::class);
@@ -47,29 +65,28 @@ class AnalyticsPageController extends Controller
             ? (int) $request->query('period')
             : self::DEFAULT_PERIOD;
 
+        $from = now()->subDays($period - 1)->startOfDay();
+        $previousFrom = $from->copy()->subDays($period);
+
         return Inertia::render('analytics/index', [
             'period' => $period,
             'periods' => self::PERIODS,
-            'overview' => function () use ($current_team): ?array {
-                $snapshot = AnalyticsSnapshot::query()
-                    ->where('team_id', $current_team->id)
-                    ->where('snapshot_type', SnapshotType::TenantOverview->value)
-                    ->orderByDesc('period_start')
-                    ->first();
-
-                if ($snapshot === null) {
-                    return null;
-                }
-
-                return [
-                    'periodStart' => $snapshot->period_start?->toIso8601String(),
-                    'periodEnd' => $snapshot->period_end?->toIso8601String(),
-                    'data' => $snapshot->snapshot_json,
-                ];
-            },
+            'range' => [
+                'from' => $from->toDateString(),
+                'to' => now()->toDateString(),
+                'previousFrom' => $previousFrom->toDateString(),
+                'previousTo' => $from->copy()->subDay()->toDateString(),
+            ],
+            // Live fleet level for the key-figures strip: what is watched (and
+            // billed) right now, not the nightly KPI that counts every asset.
+            'fleet' => fn (): array => [
+                'monitored' => Asset::query()->where('team_id', $current_team->id)->monitored()->count(),
+                'total' => Asset::query()->where('team_id', $current_team->id)->count(),
+            ],
             // Daily tenant-wide KPIs of the selected window, one row per metric
-            // with its period value and daily series (for the trend chart).
-            'metrics' => fn (): array => $this->metrics($current_team->id, $period),
+            // with its period value, the value over the previous window of the
+            // same length (for the change) and its daily series (trend chart).
+            'metrics' => fn (): array => $this->metrics($current_team->id, $from, $previousFrom),
             'reports' => fn () => ReportDefinition::query()
                 ->where(fn (Builder $q) => $q
                     ->whereNull('team_id')
@@ -83,6 +100,7 @@ class AnalyticsPageController extends Controller
                     'name' => $report->name,
                     'description' => $report->description,
                     'reportType' => $report->report_type?->value ?? (string) $report->report_type,
+                    'frequency' => $report->schedule_config_json['frequency'] ?? null,
                 ])
                 ->all(),
             'executions' => fn () => ReportExecution::query()
@@ -93,11 +111,16 @@ class AnalyticsPageController extends Controller
                 ->get()
                 ->map(fn (ReportExecution $execution): array => [
                     'id' => (int) $execution->id,
+                    'reportId' => $execution->report_definition_id !== null
+                        ? (int) $execution->report_definition_id
+                        : null,
                     'reportName' => $execution->definition?->name,
                     'status' => $execution->status?->value,
                     'format' => $execution->output_format?->value ?? (string) $execution->output_format,
                     'error' => $execution->error_message,
+                    'requestedAt' => ($execution->started_at ?? $execution->created_at)?->toIso8601String(),
                     'finishedAt' => $execution->finished_at?->toIso8601String(),
+                    'automatic' => $execution->requested_by_type === ReportRequestedByType::Scheduler,
                     'downloadable' => $execution->status?->value === 'completed'
                         && $execution->file_path !== null,
                 ])
@@ -110,33 +133,47 @@ class AnalyticsPageController extends Controller
     /**
      * @return list<array<string, mixed>>
      */
-    private function metrics(int $teamId, int $days): array
+    private function metrics(int $teamId, CarbonInterface $from, CarbonInterface $previousFrom): array
     {
-        $from = now()->subDays($days - 1)->startOfDay();
-
         $records = KpiRecord::query()
             ->where('team_id', $teamId)
             ->where('period_type', PeriodType::Daily->value)
             ->whereNull('dimension_type')
-            ->where('period_start', '>=', $from)
+            ->where('period_start', '>=', $previousFrom)
             ->orderBy('period_start')
             ->get(['kpi_code', 'value', 'unit', 'period_start']);
+
+        // Recalculations can leave several rows per day: keep the last.
+        /** @var Collection<string, Collection<string, KpiRecord>> $byCode */
+        $byCode = $records
+            ->groupBy('kpi_code')
+            ->map(fn (Collection $rows): Collection => $rows
+                ->keyBy(fn (KpiRecord $row) => $row->period_start?->toDateString()));
+
+        $fromDate = $from->toDateString();
 
         // Platform catalog (no team_id): human names for the seeded metrics.
         $names = MetricDefinition::query()->pluck('name', 'code');
 
-        return $records
-            ->groupBy('kpi_code')
-            ->map(function (Collection $rows, string $code) use ($names): array {
-                // Recalculations can leave several rows per day: keep the last.
-                $daily = $rows->keyBy(fn (KpiRecord $row) => $row->period_start?->toDateString());
-                $unit = $rows->last()->unit;
-                $values = $daily->pluck('value')->map(fn ($value) => (float) $value);
+        return $byCode
+            ->map(function (Collection $daily, string $code) use ($names, $byCode, $fromDate): ?array {
+                $current = $daily->filter(fn (KpiRecord $row, string $date): bool => $date >= $fromDate);
+                $previous = $daily->filter(fn (KpiRecord $row, string $date): bool => $date < $fromDate);
+
+                if ($current->isEmpty()) {
+                    return null;
+                }
+
+                $unit = $current->last()->unit;
+                $weights = isset(self::WEIGHTS[$code]) ? $byCode->get(self::WEIGHTS[$code]) : null;
                 $aggregation = match (true) {
                     in_array($code, self::LEVEL_METRICS, true) => 'latest',
                     $unit === 'count' => 'sum',
                     default => 'avg',
                 };
+
+                $current = $this->withoutEmptyDays($current, $weights);
+                $previous = $this->withoutEmptyDays($previous, $weights);
 
                 return [
                     'code' => $code,
@@ -144,12 +181,9 @@ class AnalyticsPageController extends Controller
                     'group' => $this->groupFor($code),
                     'unit' => $unit,
                     'aggregation' => $aggregation,
-                    'value' => match ($aggregation) {
-                        'latest' => $values->last(),
-                        'sum' => $values->sum(),
-                        default => round((float) $values->avg(), 4),
-                    },
-                    'series' => $daily
+                    'value' => $this->aggregate($current, $aggregation, $weights),
+                    'previous' => $this->aggregate($previous, $aggregation, $weights),
+                    'series' => $current
                         ->map(fn (KpiRecord $row, string $date): array => [
                             'date' => $date,
                             'value' => (float) $row->value,
@@ -158,9 +192,60 @@ class AnalyticsPageController extends Controller
                         ->all(),
                 ];
             })
+            ->filter()
             ->sortBy(fn (array $metric): string => array_search($metric['group'], self::GROUPS, true).'|'.$metric['code'])
             ->values()
             ->all();
+    }
+
+    /**
+     * Days whose weighting count is 0 (no incident resolved, no decision, no
+     * evaluation) have no rate or average to report: drop them.
+     *
+     * @param  Collection<string, KpiRecord>  $daily
+     * @param  Collection<string, KpiRecord>|null  $weights
+     * @return Collection<string, KpiRecord>
+     */
+    private function withoutEmptyDays(Collection $daily, ?Collection $weights): Collection
+    {
+        if ($weights === null) {
+            return $daily;
+        }
+
+        return $daily->filter(fn (KpiRecord $row, string $date): bool => $this->weightOn($weights, $date) > 0);
+    }
+
+    /**
+     * @param  Collection<string, KpiRecord>  $daily
+     * @param  Collection<string, KpiRecord>|null  $weights
+     */
+    private function aggregate(Collection $daily, string $aggregation, ?Collection $weights): ?float
+    {
+        if ($daily->isEmpty()) {
+            return null;
+        }
+
+        $values = $daily->map(fn (KpiRecord $row): float => (float) $row->value);
+
+        return match ($aggregation) {
+            'latest' => $values->last(),
+            'sum' => $values->sum(),
+            default => $weights === null
+                ? round((float) $values->avg(), 4)
+                : round(
+                    $daily->sum(fn (KpiRecord $row, string $date): float => (float) $row->value * $this->weightOn($weights, $date))
+                        / $daily->keys()->sum(fn (string $date): float => $this->weightOn($weights, $date)),
+                    4,
+                ),
+        };
+    }
+
+    /**
+     * @param  Collection<string, KpiRecord>  $weights
+     */
+    private function weightOn(Collection $weights, string $date): float
+    {
+        return (float) ($weights->get($date)?->value ?? 0);
     }
 
     private function groupFor(string $code): string
