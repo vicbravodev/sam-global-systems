@@ -55,7 +55,7 @@ class UpdateTenantSettingsRequest extends FormRequest
                         && ! in_array($setting['value'] ?? null, ['low', 'medium', 'high', 'critical'], true)) {
                         $validator->errors()->add(
                             "settings.{$index}.value",
-                            'La severidad mínima debe ser low, medium, high o critical.',
+                            'Elige un nivel de gravedad válido: baja, media, alta o crítica.',
                         );
 
                         continue;
@@ -70,7 +70,7 @@ class UpdateTenantSettingsRequest extends FormRequest
                     if (filter_var($value, FILTER_VALIDATE_INT) === false || (int) $value < 1) {
                         $validator->errors()->add(
                             "settings.{$index}.value",
-                            'El umbral de obsolescencia GPS debe ser un número entero mayor o igual a 1.',
+                            'La antigüedad máxima de la ubicación debe ser de al menos 1 segundo.',
                         );
                     }
                 }

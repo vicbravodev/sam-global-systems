@@ -5,15 +5,16 @@ import {
     MoreHorizontal,
     Pencil,
     Plus,
-    ShieldCheck,
     Trash2,
-    Users,
 } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import {
+    SettingsPage,
+    SettingsSection,
+} from '@/components/sam/settings/settings-page';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
     Dialog,
@@ -63,6 +64,64 @@ function fallbackRoleLabel(legacyRole: string | null): string {
         : 'Sin rol';
 }
 
+/** Nombre legible de cada módulo de permisos (clave = Permission.module). */
+const MODULE_LABELS: Record<string, string> = {
+    ai: 'Inteligencia artificial',
+    assets: 'Flota',
+    audit: 'Auditoría',
+    automation: 'Automatizaciones',
+    config: 'Configuración',
+    context: 'Contexto operativo',
+    copilot: 'SAM Copilot',
+    decisions: 'Reglas y decisiones',
+    drivers: 'Conductores',
+    geofences: 'Zonas',
+    incidents: 'Incidentes',
+    integrations: 'Integraciones',
+    notifications: 'Avisos',
+    reports: 'Reportes y analítica',
+    tenancy: 'Empresa y facturación',
+    users: 'Personas y roles',
+};
+
+function moduleLabel(module: string): string {
+    return MODULE_LABELS[module] ?? module;
+}
+
+/**
+ * Los roles predefinidos vienen del catálogo de plataforma con la palabra
+ * "tenant"; para quien opera, su cuenta es "la empresa".
+ */
+function dejargon(text: string): string {
+    return text
+        .replace(/\bdel tenant\b/gi, 'de la empresa')
+        .replace(/\bel tenant\b/gi, 'la empresa')
+        .replace(/\btenant\b/gi, 'empresa');
+}
+
+function humanizeRole(role: RoleRow): RoleRow {
+    return role.isSystem
+        ? {
+              ...role,
+              name: dejargon(role.name),
+              description: role.description
+                  ? dejargon(role.description)
+                  : role.description,
+          }
+        : role;
+}
+
+/** Deriva un identificador interno (snake_case) a partir del nombre. */
+function slugifyCode(name: string): string {
+    return name
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 50);
+}
+
 // ---- Permission checkbox tree ----
 
 interface PermissionPickerProps {
@@ -82,11 +141,12 @@ function PermissionPicker({
         <div className="grid max-h-72 gap-3 overflow-y-auto rounded-md border border-border bg-surface-2 p-3">
             {Object.entries(groups).map(([module, options]) => (
                 <div key={module}>
-                    <div className="sam-caps mb-1.5">{module}</div>
+                    <div className="sam-caps mb-1.5">{moduleLabel(module)}</div>
                     <div className="grid gap-1.5">
                         {options.map((option) => (
                             <label
                                 key={option.code}
+                                title={option.code}
                                 className="flex items-start gap-2 text-sm"
                             >
                                 <Checkbox
@@ -97,13 +157,8 @@ function PermissionPicker({
                                     disabled={disabled}
                                     className="mt-0.5"
                                 />
-                                <span className="min-w-0">
-                                    <span className="block leading-tight">
-                                        {option.name}
-                                    </span>
-                                    <span className="block font-mono text-3xs text-fg-3">
-                                        {option.code}
-                                    </span>
+                                <span className="min-w-0 leading-tight">
+                                    {option.name}
                                 </span>
                             </label>
                         ))}
@@ -131,6 +186,8 @@ function CreateRoleDialog({
 }: CreateRoleDialogProps) {
     const [name, setName] = useState('');
     const [code, setCode] = useState('');
+    // El identificador se deriva del nombre hasta que alguien lo edita a mano.
+    const [codeTouched, setCodeTouched] = useState(false);
     const [description, setDescription] = useState('');
     const [permissions, setPermissions] = useState<string[]>([]);
     const [submitting, setSubmitting] = useState(false);
@@ -138,6 +195,7 @@ function CreateRoleDialog({
     const reset = useCallback(() => {
         setName('');
         setCode('');
+        setCodeTouched(false);
         setDescription('');
         setPermissions([]);
     }, []);
@@ -166,7 +224,7 @@ function CreateRoleDialog({
         }
 
         if (name.trim() === '' || code.trim() === '') {
-            toast.error('Nombre y código son obligatorios.');
+            toast.error('Escribe un nombre para el rol.');
 
             return;
         }
@@ -225,20 +283,33 @@ function CreateRoleDialog({
                         <Input
                             id="role-name"
                             value={name}
-                            onChange={(e) => setName(e.target.value)}
+                            onChange={(e) => {
+                                setName(e.target.value);
+
+                                if (!codeTouched) {
+                                    setCode(slugifyCode(e.target.value));
+                                }
+                            }}
                             placeholder="Turno noche"
                         />
                     </div>
 
                     <div className="grid gap-1.5">
-                        <Label htmlFor="role-code">Código</Label>
+                        <Label htmlFor="role-code">Identificador interno</Label>
                         <Input
                             id="role-code"
                             value={code}
-                            onChange={(e) => setCode(e.target.value)}
-                            placeholder="night_shift"
-                            className="font-mono"
+                            onChange={(e) => {
+                                setCodeTouched(true);
+                                setCode(e.target.value);
+                            }}
+                            placeholder="turno_noche"
+                            className="font-mono text-xs"
                         />
+                        <p className="text-2xs text-fg-3">
+                            Se genera a partir del nombre; sólo lo usan las
+                            integraciones. No se puede cambiar después.
+                        </p>
                     </div>
 
                     <div className="grid gap-1.5">
@@ -544,31 +615,41 @@ function DeleteRoleDialog({
 
 interface RoleCardProps {
     role: RoleRow;
+    memberCount: number;
     canManage: boolean;
     onEdit: () => void;
     onDelete: () => void;
 }
 
-function RoleCard({ role, canManage, onEdit, onDelete }: RoleCardProps) {
+function RoleCard({
+    role,
+    memberCount,
+    canManage,
+    onEdit,
+    onDelete,
+}: RoleCardProps) {
     return (
-        <div className="flex flex-col gap-2 rounded-md border border-border bg-surface-1 p-4">
+        <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface-1 p-4">
             <div className="flex items-start gap-2">
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0 flex-1" title={role.code}>
                     <div className="flex items-center gap-1.5">
                         {role.isSystem ? (
-                            <Lock size={12} className="shrink-0 text-fg-3" />
+                            <Lock
+                                size={12}
+                                className="shrink-0 text-fg-3"
+                                aria-label="Rol predefinido"
+                            />
                         ) : null}
-                        <span className="truncate text-sm font-semibold">
+                        <span className="truncate text-sm font-semibold text-fg-1">
                             {role.name}
                         </span>
                     </div>
-                    <div className="font-mono text-3xs text-fg-3">
-                        {role.code}
-                    </div>
+                    <span className="text-2xs text-fg-3">
+                        {role.isSystem
+                            ? 'Predefinido por SAM'
+                            : 'Creado por tu equipo'}
+                    </span>
                 </div>
-                <Badge variant={role.isSystem ? 'secondary' : 'outline'}>
-                    {role.isSystem ? 'Sistema' : 'Personalizado'}
-                </Badge>
                 {canManage && role.editable ? (
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -601,9 +682,19 @@ function RoleCard({ role, canManage, onEdit, onDelete }: RoleCardProps) {
                 <p className="text-xs text-fg-2">{role.description}</p>
             ) : null}
 
-            <div className="sam-meta">
-                {role.permissions.length}{' '}
-                {role.permissions.length === 1 ? 'permiso' : 'permisos'}
+            <div className="mt-auto flex flex-wrap gap-x-3 gap-y-1 pt-1 text-2xs text-fg-3">
+                <span>
+                    <span className="font-medium text-fg-2 tabular-nums">
+                        {role.permissions.length}
+                    </span>{' '}
+                    {role.permissions.length === 1 ? 'permiso' : 'permisos'}
+                </span>
+                <span>
+                    <span className="font-medium text-fg-2 tabular-nums">
+                        {memberCount}
+                    </span>{' '}
+                    {memberCount === 1 ? 'persona' : 'personas'}
+                </span>
             </div>
         </div>
     );
@@ -667,48 +758,41 @@ function MembersCard({
     );
 
     return (
-        <Card className="gap-0 overflow-hidden py-0">
-            <CardHeader className="flex flex-row items-center justify-between border-b border-border px-4 py-3">
-                <CardTitle className="sam-h3 m-0 flex items-center gap-2">
-                    <Users size={15} /> Miembros del equipo
-                </CardTitle>
-                <span className="sam-meta">
+        <SettingsSection
+            title="Personas"
+            description="El rol de acceso decide qué puede ver y hacer cada persona. Para invitar o quitar personas, ve a «Mis equipos»."
+            actions={
+                <span className="text-xs text-fg-3">
                     {members.length}{' '}
-                    {members.length === 1 ? 'miembro' : 'miembros'}
+                    {members.length === 1 ? 'persona' : 'personas'}
                 </span>
-            </CardHeader>
-            <CardContent className="p-0">
-                <p className="border-b border-border px-4 py-2.5 text-xs text-fg-3">
-                    El <strong className="text-fg-2">rol de acceso</strong>{' '}
-                    define qué puede ver y hacer cada persona en la operación.
-                    Propietario y Administrador del equipo sólo indican quién
-                    administra miembros e invitaciones (en{' '}
-                    <em>Ajustes › Equipos</em>).
-                </p>
+            }
+        >
+            <div className="overflow-hidden rounded-lg border border-border bg-surface-1">
                 <ul className="divide-y divide-border">
                     {members.map((member) => (
                         <li
                             key={member.id}
-                            className="flex flex-wrap items-center gap-3 px-4 py-2.5"
+                            className="flex flex-wrap items-center gap-3 px-5 py-3"
                         >
-                            <div className="min-w-0 flex-1">
-                                <div className="truncate text-sm font-medium">
+                            <div className="min-w-0 flex-1 basis-52">
+                                <div className="truncate text-sm font-medium text-fg-1">
                                     {member.userName}
                                 </div>
                                 <div className="sam-meta truncate">
                                     {member.userEmail}
+                                    {member.legacyRole &&
+                                    member.legacyRole !== 'member' ? (
+                                        <span title="Administra las personas e invitaciones del equipo">
+                                            {' · '}
+                                            {teamRoleLabel(
+                                                member.legacyRole,
+                                            )}{' '}
+                                            del equipo
+                                        </span>
+                                    ) : null}
                                 </div>
                             </div>
-                            {member.legacyRole &&
-                            member.legacyRole !== 'member' ? (
-                                <span
-                                    className="text-2xs text-fg-3"
-                                    title="Rol en el equipo: administra miembros e invitaciones"
-                                >
-                                    {teamRoleLabel(member.legacyRole)} del
-                                    equipo
-                                </span>
-                            ) : null}
                             {canManage && !member.locked ? (
                                 <div className="flex items-center gap-2">
                                     {updatingId === member.id ? (
@@ -726,7 +810,7 @@ function MembersCard({
                                     >
                                         <SelectTrigger
                                             size="sm"
-                                            className="w-44"
+                                            className="w-full sm:w-56"
                                             aria-label={`Rol de ${member.userName}`}
                                         >
                                             <SelectValue
@@ -749,15 +833,18 @@ function MembersCard({
                                 </div>
                             ) : (
                                 <Badge variant="secondary">
-                                    {member.roleName ??
+                                    {roles.find(
+                                        (role) => role.code === member.roleCode,
+                                    )?.name ??
+                                        member.roleName ??
                                         fallbackRoleLabel(member.legacyRole)}
                                 </Badge>
                             )}
                         </li>
                     ))}
                 </ul>
-            </CardContent>
-        </Card>
+            </div>
+        </SettingsSection>
     );
 }
 
@@ -766,9 +853,12 @@ function MembersCard({
 export default function RolesIndex() {
     const page = usePage();
     const pageProps = page.props as unknown as RolesIndexProps;
-    const roles = useMemo(() => pageProps.roles ?? [], [pageProps.roles]);
+    const roles = useMemo(
+        () => (pageProps.roles ?? []).map(humanizeRole),
+        [pageProps.roles],
+    );
     const groups = pageProps.permissions ?? {};
-    const members = pageProps.members ?? [];
+    const members = useMemo(() => pageProps.members ?? [], [pageProps.members]);
     const teamSlug = page.props.currentTeam?.slug ?? null;
     const permissions = page.props.auth?.permissions ?? [];
     const canManage = permissions.includes('users.manage');
@@ -778,51 +868,70 @@ export default function RolesIndex() {
     const [deleting, setDeleting] = useState<RoleRow | null>(null);
 
     const customCount = roles.filter((role) => !role.isSystem).length;
+    const membersByRole = useMemo(() => {
+        const counts = new Map<string, number>();
+
+        for (const member of members) {
+            if (member.roleCode) {
+                counts.set(
+                    member.roleCode,
+                    (counts.get(member.roleCode) ?? 0) + 1,
+                );
+            }
+        }
+
+        return counts;
+    }, [members]);
 
     return (
-        <div className="flex h-full flex-col overflow-hidden">
+        <>
             <Head title="Equipo y roles" />
-
-            <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-surface-1 px-5 py-3">
-                <div className="flex items-center gap-3">
-                    <h1 className="sam-h2 m-0">Equipo y roles</h1>
-                    <span className="sam-meta">
-                        {roles.length} roles · {customCount} personalizados
+            <SettingsPage
+                title="Equipo y roles"
+                description="Quién forma parte de tu equipo y qué puede hacer cada persona en SAM."
+                width="wide"
+                meta={
+                    <span className="text-xs text-fg-3">
+                        <span className="font-medium text-fg-1">
+                            {roles.length}
+                        </span>{' '}
+                        roles · {customCount}{' '}
+                        {customCount === 1 ? 'propio' : 'propios'}
                     </span>
-                </div>
-                {canManage ? (
-                    <Button size="sm" onClick={() => setCreateOpen(true)}>
-                        <Plus size={14} /> Crear rol
-                    </Button>
-                ) : null}
-            </header>
-
-            <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-5">
-                <section>
-                    <div className="mb-2 flex items-center gap-2">
-                        <ShieldCheck size={15} className="text-fg-3" />
-                        <h2 className="sam-h3 m-0">Roles</h2>
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                        {roles.map((role) => (
-                            <RoleCard
-                                key={role.id}
-                                role={role}
-                                canManage={canManage}
-                                onEdit={() => setEditing(role)}
-                                onDelete={() => setDeleting(role)}
-                            />
-                        ))}
-                    </div>
-                </section>
-
+                }
+                actions={
+                    canManage ? (
+                        <Button size="sm" onClick={() => setCreateOpen(true)}>
+                            <Plus size={14} /> Crear rol
+                        </Button>
+                    ) : null
+                }
+            >
                 <MembersCard
                     members={members}
                     roles={roles}
                     canManage={canManage}
                     teamSlug={teamSlug}
                 />
-            </div>
+
+                <SettingsSection
+                    title="Roles"
+                    description="Cada rol agrupa permisos. Los predefinidos no se pueden borrar; crea uno propio si ninguno encaja."
+                >
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                        {roles.map((role) => (
+                            <RoleCard
+                                key={role.id}
+                                role={role}
+                                memberCount={membersByRole.get(role.code) ?? 0}
+                                canManage={canManage}
+                                onEdit={() => setEditing(role)}
+                                onDelete={() => setDeleting(role)}
+                            />
+                        ))}
+                    </div>
+                </SettingsSection>
+            </SettingsPage>
 
             <CreateRoleDialog
                 open={createOpen}
@@ -841,7 +950,7 @@ export default function RolesIndex() {
                 onOpenChange={() => setDeleting(null)}
                 teamSlug={teamSlug}
             />
-        </div>
+        </>
     );
 }
 
