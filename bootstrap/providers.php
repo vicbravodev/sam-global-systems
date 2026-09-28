@@ -7,6 +7,7 @@ use App\Domains\Assets\AssetsServiceProvider;
 use App\Domains\Audit\AuditServiceProvider;
 use App\Domains\Automation\AutomationServiceProvider;
 use App\Domains\Context\ContextServiceProvider;
+use App\Domains\Copilot\CopilotServiceProvider;
 use App\Domains\Decisions\DecisionsServiceProvider;
 use App\Domains\Drivers\DriversServiceProvider;
 use App\Domains\Incidents\IncidentsServiceProvider;
@@ -28,6 +29,7 @@ return [
     AuditServiceProvider::class,
     AutomationServiceProvider::class,
     ContextServiceProvider::class,
+    CopilotServiceProvider::class,
     DecisionsServiceProvider::class,
     DriversServiceProvider::class,
     IncidentsServiceProvider::class,
