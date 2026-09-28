@@ -24,6 +24,8 @@ use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Models\NotificationDelivery;
 use App\Domains\Notifications\Models\NotificationRecipient;
 use App\Domains\Notifications\Models\TenantChannelToggle;
+use App\Domains\Tenancy\Enums\SubscriptionStatus;
+use App\Domains\Tenancy\Models\Subscription;
 use App\Domains\Tenancy\Models\UsageEvent;
 use App\Models\Team;
 use App\Models\User;
@@ -311,6 +313,29 @@ class RetryAndFallbackTest extends TestCase
         $this->fireFailureEvent($delivery);
 
         Queue::assertPushed(RetryNotificationDeliveryJob::class);
+    }
+
+    public function test_suspended_tenant_gets_no_retry_nor_fallback(): void
+    {
+        $this->bindCapturingDriver(DeliveryResult::success('ok'));
+
+        $delivery = $this->failedDelivery($this->channel(ChannelType::Email), attemptNumber: 1);
+        $this->channel(ChannelType::Web);
+        Subscription::factory()->create([
+            'team_id' => $this->team->id,
+            'status' => SubscriptionStatus::Suspended,
+        ]);
+
+        $this->runRetry($delivery);
+        $this->runFallback($delivery);
+
+        $this->assertSame([], $this->sent);
+        $this->assertSame(1, NotificationDelivery::query()->where('notification_id', $delivery->notification_id)->count());
+
+        Queue::fake();
+        $this->fireFailureEvent($delivery);
+        Queue::assertNotPushed(RetryNotificationDeliveryJob::class);
+        Queue::assertNotPushed(FallbackNotificationChannelJob::class);
     }
 
     public function test_expired_notifications_are_not_escalated(): void

@@ -6,12 +6,15 @@ use App\Domains\Incidents\Models\Incident;
 use App\Domains\Notifications\Enums\DeliveryStatus;
 use App\Domains\Notifications\Enums\NotificationSourceType;
 use App\Domains\Notifications\Models\NotificationDelivery;
+use App\Domains\Tenancy\Support\TenantCanSend;
 
 /**
  * ¿Sigue teniendo sentido reintentar o caer a otro canal para una entrega
  * fallida? Cada reintento/fallback es un envío cobrable; estos son los casos
  * en que ya no aporta nada:
  *
+ *   - el tenant ya no puede enviar ({@see TenantCanSend}: suscripción
+ *     suspendida/cancelada/expirada o team borrado);
  *   - la notificación es vieja (TTL): un aviso de emergencia de hace media
  *     hora ya no es accionable por SMS;
  *   - el incidente origen ya lo atendió alguien (reconocido, tomado,
@@ -37,6 +40,10 @@ final class DeliveryEscalationGuard
 
         if ($notification === null) {
             return 'notification_missing';
+        }
+
+        if (($blocked = TenantCanSend::blockedReason((int) $delivery->team_id)) !== null) {
+            return $blocked;
         }
 
         if ($notification->created_at !== null
