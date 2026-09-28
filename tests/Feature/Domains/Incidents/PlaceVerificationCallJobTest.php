@@ -2,8 +2,6 @@
 
 namespace Tests\Feature\Domains\Incidents;
 
-use App\Contracts\TenantConfig\TenantConfigResolver;
-use App\Domains\Incidents\Actions\HandleVerificationCallAttemptFailure;
 use App\Domains\Incidents\Enums\CallVerificationOutcome;
 use App\Domains\Incidents\Enums\CallVerificationStatus;
 use App\Domains\Incidents\Enums\IncidentStatusCode;
@@ -12,13 +10,11 @@ use App\Domains\Incidents\Jobs\PlaceVerificationCallJob;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentCallVerification;
 use App\Domains\Incidents\Models\IncidentTimeline;
-use App\Domains\Notifications\Actions\RecordMessagingCharge;
 use App\Domains\Notifications\Channels\TwilioVoiceCaller;
 use App\Domains\Notifications\Enums\MessagingChargeSource;
 use App\Domains\Notifications\Models\MessagingCharge;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Models\TenantChannelToggle;
-use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Domains\Tenancy\Models\UsageEvent;
 use App\Models\User;
 use Database\Seeders\IncidentsMeterSeeder;
@@ -60,13 +56,7 @@ class PlaceVerificationCallJobTest extends TestCase
 
     private function runJob(IncidentCallVerification $verification): void
     {
-        (new PlaceVerificationCallJob($verification->id))->handle(
-            app(TwilioVoiceCaller::class),
-            app(TenantConfigResolver::class),
-            app(HandleVerificationCallAttemptFailure::class),
-            app(RecordUsageEvent::class),
-            app(RecordMessagingCharge::class),
-        );
+        app()->call([new PlaceVerificationCallJob($verification->id), 'handle']);
     }
 
     public function test_places_the_call_with_gather_twiml_and_chains_the_safety_net(): void

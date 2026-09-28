@@ -4,6 +4,7 @@ namespace App\Domains\Assets\Actions;
 
 use App\Domains\Assets\Enums\AssetStatus;
 use App\Domains\Assets\Models\Asset;
+use App\Domains\Assets\Support\MovementCriterion;
 use App\Domains\Ingestion\Actions\QueueRawEventForProcessing;
 use App\Domains\Ingestion\Actions\StoreRawEvent;
 use App\Domains\Ingestion\Enums\EventSourceType;
@@ -29,7 +30,9 @@ class RaiseAfterHoursMovement
 {
     public const string EVENT_TYPE_CODE = 'after_hours_movement';
 
-    /** Speed (km/h) below which a fresh position does not count as moving. */
+    /**
+     * @deprecated El umbral vive en MovementCriterion (config telematics.moving_speed_kph).
+     */
     public const float MIN_SPEED_KPH = 5.0;
 
     /** Positions older than this are not evidence of current movement. */
@@ -59,9 +62,10 @@ class RaiseAfterHoursMovement
             return false;
         }
 
+        // Criterio único de movimiento: velocidad Y estado (un pico de GPS de
+        // un tracto estacionado en el patio no es "movimiento fuera de horario").
         if (
-            $speedKph === null
-            || $speedKph < self::MIN_SPEED_KPH
+            ! MovementCriterion::isMoving($asset, $speedKph)
             || $recordedAt->lt(now()->subMinutes(self::FRESHNESS_MINUTES))
         ) {
             return false;

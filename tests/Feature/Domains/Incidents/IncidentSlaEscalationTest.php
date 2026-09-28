@@ -3,9 +3,7 @@
 namespace Tests\Feature\Domains\Incidents;
 
 use App\Domains\Incidents\Actions\AcknowledgeIncident;
-use App\Domains\Incidents\Actions\AppendTimelineEntry;
 use App\Domains\Incidents\Actions\CreateIncidentFromEvent;
-use App\Domains\Incidents\Actions\EscalateIncident;
 use App\Domains\Incidents\Enums\IncidentStatusCode;
 use App\Domains\Incidents\Enums\TimelineEntryType;
 use App\Domains\Incidents\Jobs\CheckIncidentAcknowledgementJob;
@@ -13,7 +11,6 @@ use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentPriority;
 use App\Domains\Incidents\Models\IncidentStatus;
 use App\Domains\Normalization\Models\NormalizedEvent;
-use App\Domains\Notifications\Actions\SendNotification;
 use App\Domains\Notifications\Models\Notification;
 use App\Domains\TenantConfig\Models\TenantEscalationConfig;
 use App\Enums\TeamRole;
@@ -72,11 +69,7 @@ class IncidentSlaEscalationTest extends TestCase
 
     private function runWatchdog(Incident $incident, int $level = 0, int $attempt = 1): void
     {
-        (new CheckIncidentAcknowledgementJob($incident->id, $level, $attempt))->handle(
-            app(EscalateIncident::class),
-            app(AppendTimelineEntry::class),
-            app(SendNotification::class),
-        );
+        app()->call([new CheckIncidentAcknowledgementJob($incident->id, $level, $attempt), 'handle']);
     }
 
     public function test_acknowledged_incident_never_escalates(): void

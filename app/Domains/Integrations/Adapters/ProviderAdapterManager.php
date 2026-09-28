@@ -105,12 +105,12 @@ class ProviderAdapterManager implements MediaRetrievalAdapter, ProviderAdapter
         return $adapter->listUploadedMedia($integration, $externalAssetId, $startTime, $endTime, $triggerReasons);
     }
 
-    public function validateWebhookSignature(string $payload, string $signature, string $secret, ?string $timestamp = null): bool
+    public function validateWebhookSignature(string $payload, string $signature, string $secret, ?string $timestamp = null, ?\DateTimeInterface $receivedAt = null): bool
     {
         // No integration context is available at signature-validation time.
         // Both Samsara and the null fallback use HMAC-SHA256, so delegating to
         // the Samsara adapter (which also accepts the raw-hex form) is safe.
-        return $this->samsara->validateWebhookSignature($payload, $signature, $secret, $timestamp);
+        return $this->samsara->validateWebhookSignature($payload, $signature, $secret, $timestamp, $receivedAt);
     }
 
     private function forIntegration(TenantIntegration $integration): ProviderAdapter

@@ -305,4 +305,43 @@ class StoreRawEventTest extends TestCase
             'A bad timestamp should not prevent the rest of the payload from being extracted',
         );
     }
+
+    /**
+     * El stream de safety events trae la hora real en `startMs` (ISO 8601 o
+     * epoch ms) y `createdAtTime`; sin mapearlos, el evento quedaba fechado a
+     * la hora de recepción y la correlación ±30 min del pánico mentía.
+     */
+    public function test_safety_stream_events_keep_their_real_occurrence_time(): void
+    {
+        Event::fake([RawEventReceived::class]);
+        [, $team, $provider] = $this->createTeamSetup();
+
+        $iso = app(StoreRawEvent::class)->execute(
+            payload: ['id' => 'se-1', 'startMs' => '2026-09-27T06:43:31.483Z', 'createdAtTime' => '2026-09-27T06:45:59.494Z'],
+            sourceType: 'polling',
+            teamId: $team->id,
+            providerId: $provider->id,
+            externalEventId: 'se-1',
+        );
+
+        $epoch = app(StoreRawEvent::class)->execute(
+            payload: ['id' => 'se-2', 'startMs' => 1790491411483],
+            sourceType: 'polling',
+            teamId: $team->id,
+            providerId: $provider->id,
+            externalEventId: 'se-2',
+        );
+
+        $created = app(StoreRawEvent::class)->execute(
+            payload: ['id' => 'se-3', 'createdAtTime' => '2026-09-27T06:45:59.494Z'],
+            sourceType: 'polling',
+            teamId: $team->id,
+            providerId: $provider->id,
+            externalEventId: 'se-3',
+        );
+
+        $this->assertSame('2026-09-27 06:43:31', $iso->occurred_at->utc()->format('Y-m-d H:i:s'));
+        $this->assertSame(1790491411, $epoch->occurred_at->getTimestamp());
+        $this->assertSame('2026-09-27 06:45:59', $created->occurred_at->utc()->format('Y-m-d H:i:s'));
+    }
 }

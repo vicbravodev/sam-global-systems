@@ -2,10 +2,6 @@
 
 namespace Tests\Feature\Domains\Incidents;
 
-use App\Contracts\TenantConfig\TenantConfigResolver;
-use App\Domains\Incidents\Actions\AppendTimelineEntry;
-use App\Domains\Incidents\Actions\EscalateIncident;
-use App\Domains\Incidents\Actions\HandleVerificationCallAttemptFailure;
 use App\Domains\Incidents\Actions\StartIncidentCallVerification;
 use App\Domains\Incidents\Enums\CallVerificationStatus;
 use App\Domains\Incidents\Jobs\CheckIncidentAcknowledgementJob;
@@ -13,10 +9,6 @@ use App\Domains\Incidents\Jobs\PlaceVerificationCallJob;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentCallVerification;
 use App\Domains\Incidents\Support\IncidentSuppression;
-use App\Domains\Notifications\Actions\RecordMessagingCharge;
-use App\Domains\Notifications\Actions\SendNotification;
-use App\Domains\Notifications\Channels\TwilioVoiceCaller;
-use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Models\Team;
 use App\Models\User;
 use Database\Seeders\IncidentsSeeder;
@@ -78,11 +70,7 @@ class HumanControlSuppressionTest extends TestCase
             'claimed_at' => now(),
         ]);
 
-        (new CheckIncidentAcknowledgementJob($incident->id, 1, 1))->handle(
-            app(EscalateIncident::class),
-            app(AppendTimelineEntry::class),
-            app(SendNotification::class),
-        );
+        app()->call([new CheckIncidentAcknowledgementJob($incident->id, 1, 1), 'handle']);
 
         $this->assertDatabaseMissing('incident_timelines', [
             'incident_id' => $incident->id,
@@ -109,13 +97,7 @@ class HumanControlSuppressionTest extends TestCase
             'status' => CallVerificationStatus::Pending,
         ]);
 
-        (new PlaceVerificationCallJob($verification->id))->handle(
-            app(TwilioVoiceCaller::class),
-            app(TenantConfigResolver::class),
-            app(HandleVerificationCallAttemptFailure::class),
-            app(RecordUsageEvent::class),
-            app(RecordMessagingCharge::class),
-        );
+        app()->call([new PlaceVerificationCallJob($verification->id), 'handle']);
 
         $verification->refresh();
 

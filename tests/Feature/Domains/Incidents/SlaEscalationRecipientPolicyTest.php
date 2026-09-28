@@ -2,14 +2,11 @@
 
 namespace Tests\Feature\Domains\Incidents;
 
-use App\Domains\Incidents\Actions\AppendTimelineEntry;
-use App\Domains\Incidents\Actions\EscalateIncident;
 use App\Domains\Incidents\Enums\IncidentStatusCode;
 use App\Domains\Incidents\Jobs\CheckIncidentAcknowledgementJob;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentPriority;
 use App\Domains\Incidents\Models\IncidentStatus;
-use App\Domains\Notifications\Actions\SendNotification;
 use App\Domains\Notifications\Enums\NotificationPriority;
 use App\Domains\Notifications\Models\Notification;
 use App\Domains\TenantConfig\Models\TenantEscalationConfig;
@@ -75,6 +72,11 @@ class SlaEscalationRecipientPolicyTest extends TestCase
         $this->assertSame(NotificationPriority::Normal, $notification->priority);
     }
 
+    /**
+     * Decisión 2026-09-28: sin contactos en el paso, un incidente alto o
+     * crítico llega a admins/supervisores por los canales del paso (voz a su
+     * teléfono verificado) — pero NUNCA al equipo entero.
+     */
     public function test_step_without_contacts_never_calls_every_member(): void
     {
         Queue::fake();
@@ -91,7 +93,7 @@ class SlaEscalationRecipientPolicyTest extends TestCase
 
         $notification = $this->slaNotification($incident);
 
-        $this->assertSame(['web', 'email'], $notification->payload_json['force_channels']);
+        $this->assertSame(['voice', 'web'], $notification->payload_json['force_channels']);
         $this->assertNotContains(
             (string) $this->member->id,
             collect($notification->payload_json['recipients'])->pluck('recipient_reference_id')->all(),
@@ -154,11 +156,7 @@ class SlaEscalationRecipientPolicyTest extends TestCase
 
     private function runWatchdog(Incident $incident): void
     {
-        (new CheckIncidentAcknowledgementJob($incident->id))->handle(
-            app(EscalateIncident::class),
-            app(AppendTimelineEntry::class),
-            app(SendNotification::class),
-        );
+        app()->call([new CheckIncidentAcknowledgementJob($incident->id), 'handle']);
     }
 
     private function slaNotification(Incident $incident): Notification

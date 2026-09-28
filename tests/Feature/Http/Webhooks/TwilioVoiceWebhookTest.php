@@ -10,6 +10,8 @@ use App\Domains\Incidents\Jobs\PlaceVerificationCallJob;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentCallVerification;
 use App\Domains\Incidents\Models\IncidentTimeline;
+use App\Domains\Notifications\Enums\NotificationPriority;
+use App\Domains\Notifications\Models\Notification;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Models\Team;
 use App\Models\User;
@@ -241,5 +243,39 @@ class TwilioVoiceWebhookTest extends TestCase
         $response->assertOk();
         $this->assertStringContainsString('ya está cerrado', $response->getContent());
         $this->assertSame(CallVerificationStatus::Answered, $verification->fresh()->status);
+    }
+
+    /**
+     * Decisión 2026-09-28: el 1 ("es real") no sólo reconoce — escala el
+     * incidente y avisa en ese momento al primer nivel con prioridad crítica.
+     */
+    public function test_digit_1_escalates_and_notifies_the_first_level_right_away(): void
+    {
+        $verification = $this->makeVerification();
+
+        $this->gather($verification, '1')->assertOk();
+
+        $incident = Incident::withoutGlobalScopes()->with('status')->find($verification->incident_id);
+        $this->assertSame(IncidentStatusCode::Escalated->value, $incident->status->code);
+
+        $notice = Notification::withoutGlobalScopes()
+            ->where('team_id', $this->team->id)
+            ->where('notification_type', 'incident.emergency_confirmed')
+            ->sole();
+
+        $this->assertSame(NotificationPriority::Critical, $notice->priority);
+        $this->assertSame((string) $incident->id, $notice->source_reference_id);
+    }
+
+    public function test_digit_2_closes_without_any_further_protocol(): void
+    {
+        $verification = $this->makeVerification();
+
+        $this->gather($verification, '2')->assertOk();
+
+        $this->assertSame(0, Notification::withoutGlobalScopes()
+            ->where('team_id', $this->team->id)
+            ->where('notification_type', 'incident.emergency_confirmed')
+            ->count());
     }
 }

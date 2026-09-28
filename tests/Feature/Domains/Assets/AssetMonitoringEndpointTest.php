@@ -27,7 +27,7 @@ class AssetMonitoringEndpointTest extends TestCase
 
     private function memberOf(Team $team, TeamRole $role = TeamRole::Owner): User
     {
-        $user = User::factory()->create();
+        $user = User::factory()->withVerifiedPhone()->create();
         $team->members()->attach($user, ['role' => $role->value]);
         $user->switchTeam($team);
 
@@ -155,5 +155,48 @@ class AssetMonitoringEndpointTest extends TestCase
                 ->where('filters.monitoring', 'pending')
                 ->where('monitoring.pending', 1)
                 ->where('monitoring.monitored', 1));
+    }
+
+    public function test_switching_on_requires_an_admin_with_verified_phone_and_email(): void
+    {
+        $team = Team::factory()->create();
+        $user = User::factory()->create(['phone' => null]);
+        $team->members()->attach($user, ['role' => TeamRole::Owner->value]);
+        $user->switchTeam($team);
+        $asset = Asset::factory()->pendingMonitoring()->create(['team_id' => $team->id]);
+
+        $this->actingAs($user)
+            ->put(route('assets.monitoring.update', ['current_team' => $team->slug, 'asset' => $asset->id]), [
+                'state' => 'monitored',
+            ])
+            ->assertSessionHasErrors('monitoring');
+
+        $this->assertSame(AssetMonitoringState::Pending, $asset->fresh()->monitoring_state);
+
+        $this->actingAs($user)
+            ->put(route('assets.monitoring.bulk', ['current_team' => $team->slug]), [
+                'state' => 'monitored',
+                'asset_ids' => [$asset->id],
+            ])
+            ->assertSessionHasErrors('monitoring');
+
+        $this->assertSame(AssetMonitoringState::Pending, $asset->fresh()->monitoring_state);
+    }
+
+    public function test_switching_off_never_requires_the_start_channel(): void
+    {
+        $team = Team::factory()->create();
+        $user = User::factory()->create(['phone' => null]);
+        $team->members()->attach($user, ['role' => TeamRole::Owner->value]);
+        $user->switchTeam($team);
+        $asset = Asset::factory()->create(['team_id' => $team->id]);
+
+        $this->actingAs($user)
+            ->put(route('assets.monitoring.update', ['current_team' => $team->slug, 'asset' => $asset->id]), [
+                'state' => 'excluded',
+            ])
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame(AssetMonitoringState::Excluded, $asset->fresh()->monitoring_state);
     }
 }

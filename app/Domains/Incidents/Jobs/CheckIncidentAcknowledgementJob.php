@@ -4,19 +4,13 @@ namespace App\Domains\Incidents\Jobs;
 
 use App\Domains\Incidents\Actions\AppendTimelineEntry;
 use App\Domains\Incidents\Actions\EscalateIncident;
+use App\Domains\Incidents\Actions\NotifyEscalationLevel;
 use App\Domains\Incidents\Enums\IncidentCreatorType;
 use App\Domains\Incidents\Enums\IncidentStatusCode;
 use App\Domains\Incidents\Enums\TimelineActorType;
 use App\Domains\Incidents\Enums\TimelineEntryType;
 use App\Domains\Incidents\Models\Incident;
-use App\Domains\Incidents\Support\IncidentSupervisors;
 use App\Domains\Incidents\Support\IncidentSuppression;
-use App\Domains\Notifications\Actions\SendNotification;
-use App\Domains\Notifications\Enums\ChannelType;
-use App\Domains\Notifications\Enums\NotificationPriority;
-use App\Domains\Notifications\Enums\NotificationSourceType;
-use App\Domains\Notifications\Enums\NotificationTriggeredByType;
-use App\Domains\TenantConfig\Models\TenantEscalationConfig;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -60,7 +54,7 @@ class CheckIncidentAcknowledgementJob implements ShouldQueue
     public function handle(
         EscalateIncident $escalateIncident,
         AppendTimelineEntry $appendTimelineEntry,
-        SendNotification $sendNotification,
+        NotifyEscalationLevel $notifyLevel,
     ): void {
         $incident = Incident::withoutGlobalScopes()->with(['status', 'priority', 'type'])->find($this->incidentId);
 
@@ -88,7 +82,7 @@ class CheckIncidentAcknowledgementJob implements ShouldQueue
             return;
         }
 
-        $steps = $this->escalationSteps((int) $incident->team_id);
+        $steps = $notifyLevel->steps((int) $incident->team_id);
 
         // Retries of the same level only re-notify: the breach was already
         // recorded and the incident already transitioned on the first attempt.
@@ -114,95 +108,23 @@ class CheckIncidentAcknowledgementJob implements ShouldQueue
             }
         }
 
-        $this->notifyLevel($sendNotification, $incident, $steps[$this->level] ?? null);
+        $this->notifyLevel($notifyLevel, $incident);
 
         $this->scheduleNext($steps);
     }
 
-    /**
-     * @return array<int, array<string, mixed>>
-     */
-    private function escalationSteps(int $teamId): array
+    private function notifyLevel(NotifyEscalationLevel $notifyLevel, Incident $incident): void
     {
-        $config = TenantEscalationConfig::query()
-            ->where('team_id', $teamId)
-            ->where('is_active', true)
-            ->first();
-
-        $steps = $config?->steps_json;
-
-        return is_array($steps) ? array_values($steps) : [];
-    }
-
-    /**
-     * @param  array<string, mixed>|null  $step
-     */
-    private function notifyLevel(SendNotification $sendNotification, Incident $incident, ?array $step): void
-    {
-        $payload = [
-            'incident_id' => $incident->id,
-            'incident_reference' => $incident->reference(),
-            'incident_type' => $incident->type?->code,
-            'severity' => $incident->priority?->code,
-            'incident_title' => $incident->title,
-            'escalation_level' => $this->level,
-        ];
-
-        // Explicit contacts on the step are addressed directly, on the
-        // channels the step pins (Roadmap V2-A4 — `force_channels` overrides
-        // the tenant policy; the gate stays the active NotificationChannel).
-        $contacts = array_values(array_filter(
-            (array) ($step['contacts'] ?? []),
-            fn ($contact) => is_string($contact) && $contact !== '',
-        ));
-
-        if ($contacts !== []) {
-            $payload['recipients'] = array_map(fn (string $address) => [
-                'recipient_type' => 'external_contact',
-                'address' => $address,
-            ], $contacts);
-
-            $channels = array_values(array_filter(
-                (array) ($step['channels'] ?? []),
-                fn ($channel) => is_string($channel) && ChannelType::tryFrom($channel) !== null,
-            ));
-
-            if ($channels !== []) {
-                $payload['force_channels'] = $channels;
-            }
-        } else {
-            // Sin escalación configurada (o paso sin contactos) NUNCA se hace
-            // un blast fuera de banda al equipo entero: sólo supervisores y
-            // admins, por la app y correo. Antes cada incidente medio sin ACK
-            // mandaba SMS a todos, y un paso `channels: ["voice"]` sin
-            // contactos llamaba a cada miembro en cada intento.
-            $supervisors = IncidentSupervisors::recipients((int) $incident->team_id);
-
-            if ($supervisors === []) {
-                return;
-            }
-
-            $payload['recipients'] = $supervisors;
-            $payload['force_channels'] = [ChannelType::Web->value, ChannelType::Email->value];
-        }
-
         $eventKey = "incident_sla_breached:{$incident->id}:{$this->level}"
             .($this->attempt > 1 ? ":a{$this->attempt}" : '');
 
-        $sendNotification->execute(
-            teamId: (int) $incident->team_id,
-            notificationType: 'incident.sla_breached',
-            sourceType: NotificationSourceType::Incident,
-            sourceReferenceId: (string) $incident->id,
-            // La prioridad sale del incidente: un medio sin ACK no es una
-            // alerta crítica (la crítica abre SMS/voz por política).
-            priority: NotificationPriority::fromIncidentPriority($incident->priority?->code),
-            triggeredByType: NotificationTriggeredByType::System,
-            triggeredById: null,
+        $notifyLevel->execute(
+            incident: $incident,
+            level: $this->level,
             eventKey: $eventKey,
-            payload: $payload,
+            notificationType: 'incident.sla_breached',
             subject: 'SLA vencido sin atención: '.$incident->title,
-            bodyPreview: "El incidente superó su SLA sin acknowledgement (nivel {$this->level}, intento {$this->attempt}).",
+            body: "El incidente superó su SLA sin acknowledgement (nivel {$this->level}, intento {$this->attempt}).",
         );
     }
 

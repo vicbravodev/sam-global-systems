@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { APP_LOCALE, formatDate, formatNumber, toDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { money } from './panel';
-import type { PeriodEstimate } from './types';
+import type { DailyClose, PeriodEstimate } from './types';
 
 function monthName(iso: string): string {
     const label = toDate(iso).toLocaleDateString(APP_LOCALE, {
@@ -98,6 +98,26 @@ function buildLines(e: PeriodEstimate): Line[] {
         projected: e.aiProjected,
         tone: e.aiOverage > 0 ? 'warn' : undefined,
     });
+
+    if (e.unmonitoredEmergencyDays > 0) {
+        lines.push({
+            key: 'unmonitored-emergencies',
+            concept: 'Emergencias en unidades no vigiladas',
+            detail: (
+                <>
+                    {formatNumber(e.unmonitoredEmergencyDays)}{' '}
+                    {e.unmonitoredEmergencyDays === 1
+                        ? 'unidad-día atendida'
+                        : 'unidad-días atendidas'}{' '}
+                    sin estar vigiladas: tracto-día +
+                    {formatNumber(e.unmonitoredEmergencySurchargePercent)}%
+                </>
+            ),
+            toDate: e.unmonitoredEmergencyToDate,
+            projected: e.unmonitoredEmergencyToDate,
+            tone: 'warn',
+        });
+    }
 
     lines.push({
         key: 'messaging',
@@ -301,11 +321,79 @@ export function MonthSummary({ estimate }: { estimate: PeriodEstimate }) {
                     </li>
                 </ul>
                 <p className="border-t border-border px-4 py-2 text-2xs text-fg-3 sm:px-5">
-                    Un tracto-día es una unidad vigilada durante un día. Las
-                    cifras al cierre son una estimación: la factura final usa
-                    los conteos reales de cada noche.
+                    Un tracto-día es una unidad vigilada durante un día (basta
+                    con que esté encendida en algún momento del día). Las cifras
+                    al cierre son una estimación: la factura final usa los
+                    cierres diarios reales.
                 </p>
             </div>
+            {e.dailyCloses.length > 0 && (
+                <DailyCloses closes={e.dailyCloses} currency={c} />
+            )}
         </section>
+    );
+}
+
+/**
+ * Cierre por día del mes en curso: qué se registró cada día y cuánto suma,
+ * para que el cliente vea su uso en claro antes de la factura.
+ */
+function DailyCloses({
+    closes,
+    currency,
+}: {
+    closes: DailyClose[];
+    currency: string;
+}) {
+    return (
+        <details className="border-t border-border">
+            <summary className="cursor-pointer px-4 py-2.5 text-xs font-medium text-fg-2 sm:px-5">
+                Cierres diarios del mes ({closes.length})
+            </summary>
+            <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                    <thead className="text-fg-3">
+                        <tr>
+                            <th className="px-4 py-2 text-left font-medium sm:px-5">
+                                Día
+                            </th>
+                            <th className="px-4 py-2 text-right font-medium">
+                                Tracto-días
+                            </th>
+                            <th className="px-4 py-2 text-right font-medium">
+                                Emergencias no vigiladas
+                            </th>
+                            <th className="px-4 py-2 text-right font-medium sm:px-5">
+                                Importe
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {closes.map((close) => (
+                            <tr
+                                key={close.date}
+                                className="border-t border-border"
+                            >
+                                <td className="px-4 py-1.5 text-fg-1 sm:px-5">
+                                    {shortDay(close.date)}
+                                </td>
+                                <td className="px-4 py-1.5 text-right tabular-nums">
+                                    {formatNumber(close.assetDays)}
+                                </td>
+                                <td className="px-4 py-1.5 text-right tabular-nums">
+                                    {formatNumber(close.emergencyDays)}
+                                </td>
+                                <td className="px-4 py-1.5 text-right sm:px-5">
+                                    <Amount
+                                        value={close.amount}
+                                        currency={currency}
+                                    />
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </details>
     );
 }

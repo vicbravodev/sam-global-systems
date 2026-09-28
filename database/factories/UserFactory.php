@@ -67,6 +67,18 @@ class UserFactory extends Factory
     }
 
     /**
+     * Teléfono verificado por OTP: el canal de arranque que SAM exige para
+     * encender la vigilancia (decisión 2026-09-28).
+     */
+    public function withVerifiedPhone(string $phone = '+5215512345678'): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'phone' => $phone,
+            'phone_verified_at' => now(),
+        ]);
+    }
+
+    /**
      * Indicate that the model has two-factor authentication configured.
      */
     public function withTwoFactor(): static

@@ -89,6 +89,13 @@ export interface BillingTerms {
     explicit: boolean;
 }
 
+export interface DailyClose {
+    date: string;
+    assetDays: number;
+    emergencyDays: number;
+    amount: number;
+}
+
 export interface PeriodEstimate {
     periodStart: string;
     periodEnd: string;
@@ -119,6 +126,12 @@ export interface PeriodEstimate {
     aiToDate: number;
     aiProjected: number;
     messagingToDate: number;
+    /** Unidad-días de emergencias atendidas en unidades no vigiladas. */
+    unmonitoredEmergencyDays: number;
+    unmonitoredEmergencySurchargePercent: number;
+    unmonitoredEmergencyToDate: number;
+    /** Cierre por día del mes en curso (más reciente primero). */
+    dailyCloses: DailyClose[];
     totalToDate: number;
     totalProjected: number;
     minBillableAssets: number;

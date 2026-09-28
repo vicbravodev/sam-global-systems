@@ -1,11 +1,13 @@
 import { router, usePage } from '@inertiajs/react';
 import { useEffect, useState } from 'react';
+import { CriticalIncidentAlert } from '@/components/critical-incident-alert';
 import { ImpersonationBanner } from '@/components/impersonation-banner';
 import { RealtimeBootstrap } from '@/components/realtime-bootstrap';
 import { CommandPalette } from '@/components/sam/command-palette';
 import { CopilotLauncher } from '@/components/sam/copilot/copilot-launcher';
 import { OpsSidebar } from '@/components/sam/ops-sidebar';
 import { OpsTopbar } from '@/components/sam/ops-topbar';
+import { TenantSetupBanner } from '@/components/tenant-setup-banner';
 import {
     Sheet,
     SheetContent,
@@ -49,7 +51,9 @@ export default function OpsLayout({
         <>
             <RealtimeBootstrap />
             <div className="flex h-dvh flex-col overflow-hidden">
+                <CriticalIncidentAlert />
                 <ImpersonationBanner />
+                <TenantSetupBanner />
                 <div className="grid min-h-0 flex-1 grid-cols-[auto_1fr] overflow-hidden">
                     <OpsSidebar navBadges={navBadges} />
                     <div className="flex min-w-0 flex-col overflow-hidden">

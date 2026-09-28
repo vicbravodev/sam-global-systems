@@ -10,8 +10,8 @@ use App\Domains\Incidents\Events\IncidentCreated;
 /**
  * Roadmap V2-A3: every panic incident triggers the operator voice
  * verification — REGARDLESS of the AI verdict; even a probable false alarm
- * gets verified by phone. Opt-in per tenant via `voice.verification_enabled`
- * (default off — calls cost money; the SAM default pack turns it on).
+ * gets verified by phone. ON by default (decisión 2026-09-28: a panic is
+ * always verified); a tenant may opt out with `voice.verification_enabled`.
  */
 class StartCallVerificationOnIncidentCreated
 {
@@ -38,7 +38,7 @@ class StartCallVerificationOnIncidentCreated
             $this->tenantConfig->resolve(
                 (int) $incident->team_id,
                 StartIncidentCallVerification::SETTING_ENABLED,
-                false,
+                true,
             ),
             FILTER_VALIDATE_BOOL,
         );

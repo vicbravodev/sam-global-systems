@@ -98,4 +98,15 @@ return [
     */
     'incident_trail_minutes' => 30,
 
+    /*
+    |--------------------------------------------------------------------------
+    | Integration health (decisión 2026-09-28)
+    |--------------------------------------------------------------------------
+    |
+    | Minutes without provider data (feed, webhooks, events) — with monitored
+    | units — before the tenant admin is warned that the integration went
+    | silent. CheckIntegrationHealthJob.
+    |
+    */
+    'integration_silence_minutes' => (int) env('TELEMATICS_INTEGRATION_SILENCE_MINUTES', 30),
 ];

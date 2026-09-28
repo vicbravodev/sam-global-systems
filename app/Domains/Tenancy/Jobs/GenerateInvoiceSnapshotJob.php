@@ -46,6 +46,7 @@ class GenerateInvoiceSnapshotJob implements ShouldQueue
     private const array DEDICATED_METERS = [
         AssetDayPricing::METER_CODE,
         AssetDayPricing::AI_METER_CODE,
+        AssetDayPricing::UNMONITORED_EMERGENCY_METER_CODE,
         ResolveAssetLimit::METER_CODE,
     ];
 
@@ -110,6 +111,16 @@ class GenerateInvoiceSnapshotJob implements ShouldQueue
             );
             $breakdown[] = $assetLine;
             $subtotal = (float) $assetLine['amount'];
+
+            // 1b. Emergencias atendidas en unidades no vigiladas: tracto-día +
+            // recargo. Sólo aparece si hubo alguna.
+            $unmonitoredDays = $this->consumed($team, AssetDayPricing::UNMONITORED_EMERGENCY_METER_CODE, $periodStart);
+
+            if ($unmonitoredDays > 0) {
+                $emergencyLine = AssetDayPricing::unmonitoredEmergencyLine($unmonitoredDays, (float) $assetLine['daily_rate']);
+                $breakdown[] = $emergencyLine;
+                $subtotal += (float) $emergencyLine['amount'];
+            }
 
             // 2. Uso justo de IA sobre el promedio de tractos vigilados.
             $aiLine = AssetDayPricing::aiLine(

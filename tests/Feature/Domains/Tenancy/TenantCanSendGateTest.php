@@ -120,10 +120,18 @@ class TenantCanSendGateTest extends TestCase
         $this->assertSame(0, Notification::withoutGlobalScopes()->where('team_id', $team->id)->count());
     }
 
-    public function test_expired_tenant_never_places_a_verification_call(): void
+    /**
+     * Decisión 2026-09-28: la llamada de verificación de una emergencia se
+     * hace aunque el tenant esté vencido o suspendido — la persona va antes
+     * que el cobro. Todo lo demás (SMS, WhatsApp, automatizaciones) sigue
+     * bloqueado por esta misma puerta.
+     */
+    public function test_expired_tenant_still_places_the_emergency_verification_call(): void
     {
         Queue::fake();
         $this->seed(IncidentStatusSeeder::class);
+        config()->set('services.twilio.account_sid', 'AC_PLATFORM');
+        config()->set('services.twilio.auth_token', 'tok_platform');
 
         $team = $this->teamWith('expired');
         NotificationChannel::factory()->voice()->create(['is_active' => true]);
@@ -134,13 +142,15 @@ class TenantCanSendGateTest extends TestCase
             'incident_id' => $incident->id,
         ]);
 
-        $this->mock(TwilioVoiceCaller::class, fn ($mock) => $mock->shouldReceive('createCall')->never());
+        $this->mock(TwilioVoiceCaller::class, fn ($mock) => $mock->shouldReceive('createCall')
+            ->once()
+            ->andReturn((object) ['sid' => 'CA-expired', 'status' => 'queued']));
 
         app()->call([new PlaceVerificationCallJob($verification->id), 'handle']);
 
         $fresh = $verification->fresh();
-        $this->assertSame(CallVerificationStatus::Failed, $fresh->status);
-        $this->assertSame('subscription_expired', $fresh->metadata_json['failure_reason']);
+        $this->assertSame(CallVerificationStatus::Calling, $fresh->status);
+        $this->assertSame('CA-expired', $fresh->call_sid);
     }
 
     public function test_phone_otp_is_blocked_for_inactive_tenant_non_member_and_already_verified_numbers(): void

@@ -1,5 +1,6 @@
 import { Form, Head, Link, usePage } from '@inertiajs/react';
 import { useState } from 'react';
+import PhoneVerificationController from '@/actions/App/Http/Controllers/Settings/PhoneVerificationController';
 import ProfileController from '@/actions/App/Http/Controllers/Settings/ProfileController';
 import DeleteUser from '@/components/delete-user';
 import InputError from '@/components/input-error';
@@ -18,11 +19,14 @@ import { send } from '@/routes/verification';
 export default function Profile({
     mustVerifyEmail,
     status,
+    phoneVerified,
 }: {
     mustVerifyEmail: boolean;
     status?: string;
+    phoneVerified: boolean;
 }) {
     const { auth } = usePage().props;
+    const savedPhone = (auth.user.phone ?? '').trim();
     const [email, setEmail] = useState(auth.user.email);
     // Cambiar el correo (identidad de login) exige la contraseña actual.
     const emailChanged =
@@ -34,8 +38,24 @@ export default function Profile({
             <Head title="Perfil" />
             <SettingsPage
                 title="Perfil"
-                description="Tu nombre y el correo con el que entras a SAM."
+                description="Tu nombre, el correo con el que entras a SAM y el teléfono donde te avisamos."
             >
+                {(!phoneVerified || unverified) && (
+                    <div
+                        role="status"
+                        className="max-w-3xl rounded-lg border border-severity-medium/40 bg-severity-medium/10 px-4 py-3 text-sm text-fg-2"
+                    >
+                        <p className="font-medium text-fg-1">
+                            Verifica tu teléfono y tu correo
+                        </p>
+                        <p className="mt-1">
+                            SAM te llama, te manda SMS o WhatsApp y te escribe
+                            por correo cuando hay una emergencia de tu flota.
+                            Sin teléfono verificado no podemos localizarte.
+                        </p>
+                    </div>
+                )}
+
                 <SettingsSection
                     title="Datos personales"
                     description="Tu nombre aparece en los incidentes que atiendes y en el historial."
@@ -99,6 +119,23 @@ export default function Profile({
                                     ) : null}
                                 </Field>
 
+                                <Field
+                                    label="Teléfono celular"
+                                    help="Formato internacional con lada de país (+52 para México). Ahí te llaman y te escriben en una emergencia."
+                                    htmlFor="phone"
+                                >
+                                    <Input
+                                        id="phone"
+                                        type="tel"
+                                        defaultValue={savedPhone}
+                                        name="phone"
+                                        autoComplete="tel"
+                                        inputMode="tel"
+                                        placeholder="+5215555550123"
+                                    />
+                                    <InputError message={errors.phone} />
+                                </Field>
+
                                 {emailChanged ? (
                                     <Field
                                         label="Contraseña actual"
@@ -138,11 +175,117 @@ export default function Profile({
                     </Form>
                 </SettingsSection>
 
+                {savedPhone !== '' && (
+                    <PhoneVerification
+                        phone={savedPhone}
+                        verified={phoneVerified}
+                        status={status}
+                    />
+                )}
+
                 <div className="max-w-3xl">
                     <DeleteUser />
                 </div>
             </SettingsPage>
         </>
+    );
+}
+
+function PhoneVerification({
+    phone,
+    verified,
+    status,
+}: {
+    phone: string;
+    verified: boolean;
+    status?: string;
+}) {
+    if (verified) {
+        return (
+            <SettingsSection
+                title="Teléfono verificado"
+                description={`${phone} recibe las llamadas, SMS y WhatsApp de emergencia.`}
+            >
+                {null}
+            </SettingsSection>
+        );
+    }
+
+    const codeSent = status === 'phone-otp-sent';
+
+    return (
+        <SettingsSection
+            title="Verifica tu teléfono"
+            description={`Te enviamos un código por SMS a ${phone}.`}
+        >
+            <FormCard>
+                <Form
+                    {...PhoneVerificationController.send.form()}
+                    options={{ preserveScroll: true }}
+                >
+                    {({ processing, errors }) => (
+                        <div className="grid gap-2">
+                            <div>
+                                <Button
+                                    type="submit"
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={processing}
+                                    data-test="send-phone-code-button"
+                                >
+                                    {codeSent
+                                        ? 'Reenviar código'
+                                        : 'Enviar código'}
+                                </Button>
+                            </div>
+                            <InputError message={errors.phone} />
+                            {codeSent && (
+                                <p className="text-xs font-medium text-health-ok">
+                                    Código enviado. Revisa tus SMS.
+                                </p>
+                            )}
+                        </div>
+                    )}
+                </Form>
+
+                {codeSent && (
+                    <Form
+                        {...PhoneVerificationController.verify.form()}
+                        options={{ preserveScroll: true }}
+                    >
+                        {({ processing, errors }) => (
+                            <>
+                                <Field
+                                    label="Código de 6 dígitos"
+                                    htmlFor="code"
+                                >
+                                    <Input
+                                        id="code"
+                                        name="code"
+                                        inputMode="numeric"
+                                        autoComplete="one-time-code"
+                                        maxLength={6}
+                                        required
+                                        className="w-40"
+                                        placeholder="123456"
+                                    />
+                                    <InputError message={errors.code} />
+                                </Field>
+                                <FormActions>
+                                    <Button
+                                        size="sm"
+                                        disabled={processing}
+                                        data-test="verify-phone-button"
+                                    >
+                                        Verificar
+                                    </Button>
+                                </FormActions>
+                            </>
+                        )}
+                    </Form>
+                )}
+            </FormCard>
+        </SettingsSection>
     );
 }
 

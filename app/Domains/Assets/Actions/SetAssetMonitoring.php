@@ -28,6 +28,7 @@ class SetAssetMonitoring
     public function __construct(
         private ResolveAssetLimit $resolveAssetLimit,
         private RecordAuditEntry $audit,
+        private RecordMonitoredAssetDay $recordAssetDay,
     ) {}
 
     /**
@@ -38,8 +39,9 @@ class SetAssetMonitoring
         return TenantContext::for((int) $asset->team_id, function () use ($asset, $state, $actor, $reason) {
             $cap = $this->resolveAssetLimit->execute((int) $asset->team_id);
             $monitored = $this->monitoredCount((int) $asset->team_id);
+            $billable = RecordMonitoredAssetDay::tenantBillable((int) $asset->team_id);
 
-            return $this->apply($asset, $state, $actor, $reason, $cap, $monitored);
+            return $this->apply($asset, $state, $actor, $reason, $cap, $monitored, $billable);
         });
     }
 
@@ -58,6 +60,7 @@ class SetAssetMonitoring
         return TenantContext::for($teamId, function () use ($teamId, $assets, $state, $actor, $reason) {
             $cap = $this->resolveAssetLimit->execute($teamId);
             $monitored = $this->monitoredCount($teamId);
+            $billable = RecordMonitoredAssetDay::tenantBillable($teamId);
             $changed = 0;
             $last = null;
 
@@ -68,7 +71,7 @@ class SetAssetMonitoring
                     continue;
                 }
 
-                $last = $this->apply($asset, $state, $actor, $reason, $cap, $monitored);
+                $last = $this->apply($asset, $state, $actor, $reason, $cap, $monitored, $billable);
                 $changed += $last['changed'] ? 1 : 0;
             }
 
@@ -86,7 +89,7 @@ class SetAssetMonitoring
      * @param  int  $monitored  the tenant's monitored count before this change; updated in place
      * @return array{asset: Asset, changed: bool, over_cap: bool, monitored: int, cap: int|null}
      */
-    private function apply(Asset $asset, AssetMonitoringState $state, ?User $actor, ?string $reason, ?int $cap, int &$monitored): array
+    private function apply(Asset $asset, AssetMonitoringState $state, ?User $actor, ?string $reason, ?int $cap, int &$monitored, bool $billable): array
     {
         $previous = $asset->monitoring_state;
 
@@ -111,6 +114,10 @@ class SetAssetMonitoring
 
         if ($state === AssetMonitoringState::Monitored) {
             $monitored++;
+
+            // Encender ES usar: el tracto-día de hoy queda registrado en este
+            // momento, no hasta la muestra nocturna (decisión 2026-09-28).
+            $this->recordAssetDay->execute($asset, tenantBillable: $billable);
         }
 
         $overCap = $state === AssetMonitoringState::Monitored

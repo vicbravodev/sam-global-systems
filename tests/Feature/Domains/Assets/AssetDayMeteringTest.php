@@ -36,13 +36,17 @@ class AssetDayMeteringTest extends TestCase
         $quantity = fn (string $code) => (int) UsageEvent::withoutGlobalScopes()
             ->where('team_id', $team->id)
             ->where('usage_meter_id', UsageMeter::where('code', $code)->value('id'))
-            ->value('quantity');
+            ->sum('quantity');
 
         $this->assertSame(3, $quantity('monitored_assets'));
         $this->assertSame(3, $quantity('monitored_asset_days'));
         $this->assertSame('sum', UsageMeter::where('code', 'monitored_asset_days')->sole()->aggregation_type->value);
     }
 
+    /**
+     * Cobro por uso (decisión 2026-09-28): una fila por unidad y día local;
+     * correr el cierre dos veces no duplica nada.
+     */
     public function test_running_twice_the_same_day_records_a_single_asset_day_sample(): void
     {
         $this->seed(AssetMeterSeeder::class);
@@ -53,7 +57,7 @@ class AssetDayMeteringTest extends TestCase
         $this->artisan('assets:record-usage-meters')->assertSuccessful();
         $this->artisan('assets:record-usage-meters')->assertSuccessful();
 
-        $this->assertSame(1, UsageEvent::withoutGlobalScopes()
+        $this->assertSame(2, UsageEvent::withoutGlobalScopes()
             ->where('team_id', $team->id)
             ->where('usage_meter_id', UsageMeter::where('code', 'monitored_asset_days')->value('id'))
             ->count());
