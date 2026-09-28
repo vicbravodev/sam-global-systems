@@ -7,7 +7,6 @@ use App\Domains\Assets\Models\Asset;
 use App\Domains\Ingestion\Actions\QueueRawEventForProcessing;
 use App\Domains\Ingestion\Actions\StoreRawEvent;
 use App\Domains\Ingestion\Enums\EventSourceType;
-use App\Domains\Ingestion\Models\RawEvent;
 use App\Domains\TenantConfig\Data\ResolvedSchedule;
 use Carbon\CarbonInterface;
 
@@ -22,7 +21,9 @@ use Carbon\CarbonInterface;
  *
  * Requires a persisted, active `TenantScheduleProfile`: tenants without one
  * are treated as always-operating and never alerted. Anti-spam: one event
- * per asset per local day (`after_hours:{asset}:{local date}`).
+ * per asset per `telematics.after_hours_cooldown_hours` (12 h), tracked on
+ * `assets.after_hours_alerted_at`, so a night of driving is one alert even
+ * when it crosses local midnight.
  */
 class RaiseAfterHoursMovement
 {
@@ -66,17 +67,15 @@ class RaiseAfterHoursMovement
             return false;
         }
 
-        $localDate = now()->setTimezone($schedule->timezone)->toDateString();
-        $deduplicationKey = sprintf('after_hours:%d:%s', $asset->id, $localDate);
+        // One alert per unit per closed stretch: a night of driving crosses
+        // local midnight, and a per-day key alerted it twice.
+        $cooldownHours = (int) config('telematics.after_hours_cooldown_hours', 12);
 
-        $alreadyRaised = RawEvent::query()
-            ->where('team_id', $asset->team_id)
-            ->where('deduplication_key', $deduplicationKey)
-            ->exists();
-
-        if ($alreadyRaised) {
+        if ($asset->after_hours_alerted_at !== null && $asset->after_hours_alerted_at->gt(now()->subHours($cooldownHours))) {
             return false;
         }
+
+        $deduplicationKey = sprintf('after_hours:%d:%d', $asset->id, now()->getTimestamp());
 
         $rawEvent = $this->storeRawEvent->execute(
             payload: [
@@ -104,6 +103,8 @@ class RaiseAfterHoursMovement
         );
 
         $this->queueForProcessing->execute($rawEvent);
+
+        $asset->forceFill(['after_hours_alerted_at' => now()])->save();
 
         return true;
     }

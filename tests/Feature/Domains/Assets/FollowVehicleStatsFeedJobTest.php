@@ -272,6 +272,55 @@ class FollowVehicleStatsFeedJobTest extends TestCase
         $this->assertSame(4, AssetLocationSnapshot::query()->count()); // still kept as history
     }
 
+    /**
+     * Seen live on asset 107: parked for over an hour on the same spot (±2 m)
+     * while the GPS read 0.5–2.95 km/h. Each phantom speed used to reopen the
+     * stop and re-alert it every ten minutes.
+     */
+    public function test_gps_jitter_of_a_parked_unit_never_reopens_its_stop(): void
+    {
+        $integration = $this->integration();
+        $asset = $this->linkAsset($integration, '107');
+
+        $at = fn (float $mph, int $secondsAgo, float $lat, float $lng) => [
+            'latitude' => $lat, 'longitude' => $lng, 'speedMilesPerHour' => $mph,
+            'time' => now()->subSeconds($secondsAgo)->toIso8601ZuluString(),
+        ];
+
+        Http::fake([self::FEED_URL => Http::sequence()
+            // Drives in, stops.
+            ->push($this->page([['id' => '107', 'gps' => [
+                $at(40, 900, 20.6900, -105.2385),
+                $at(0, 800, 20.69759, -105.23855),
+            ]]], 'c1'))
+            // Parked: phantom 1.8 mph (~2.9 km/h) and even a 4 mph (~6.4 km/h)
+            // spike, all within a few metres.
+            ->push($this->page([['id' => '107', 'gps' => [
+                $at(1.8, 600, 20.69760, -105.23855),
+                $at(4.0, 400, 20.69761, -105.23859),
+                $at(0.4, 200, 20.69757, -105.23852),
+            ]]], 'c2'))
+            // Really leaves: fast and 300 m away.
+            ->push($this->page([['id' => '107', 'gps' => [
+                $at(30, 10, 20.7003, -105.2385),
+            ]]], 'c3'))]);
+
+        $this->cycle($integration);
+        $stoppedSince = $asset->fresh()->stopped_since;
+        $movedAt = $asset->fresh()->last_moving_at;
+        $this->assertNotNull($stoppedSince);
+
+        $this->cycle($integration);
+        $asset->refresh();
+        $this->assertTrue($asset->stopped_since->equalTo($stoppedSince));
+        $this->assertTrue($asset->last_moving_at->equalTo($movedAt));
+
+        $this->cycle($integration);
+        $asset->refresh();
+        $this->assertNull($asset->stopped_since);
+        $this->assertTrue($asset->last_moving_at->equalTo(now()->subSeconds(10)));
+    }
+
     public function test_a_rate_limit_pauses_this_feed_for_retry_after_without_moving_the_cursor(): void
     {
         $integration = $this->integration();
