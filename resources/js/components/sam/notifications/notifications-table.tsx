@@ -34,7 +34,7 @@ import type {
     NotificationDeliverySummary,
     NotificationPriorityValue,
     NotificationRow,
-    NotificationStatusValue,
+    NotificationStatusTone,
 } from '@/types/notifications';
 
 const PRIORITY_STYLES: Record<NotificationPriorityValue, string> = {
@@ -59,22 +59,22 @@ const PRIORITY_RANK: Record<NotificationPriorityValue, number> = {
     critical: 3,
 };
 
-const STATUS_LABELS: Record<NotificationStatusValue, string> = {
-    pending: 'Pendiente',
-    queued: 'En cola',
-    partially_sent: 'Parcial',
-    sent: 'Enviada',
-    failed: 'Fallida',
-    cancelled: 'Cancelada',
+const TONE_DOT: Record<NotificationStatusTone, string> = {
+    ok: 'bg-severity-low',
+    warning: 'bg-severity-medium',
+    critical: 'bg-severity-critical',
+    info: 'bg-severity-info motion-safe:animate-pulse',
+    muted: 'bg-fg-disabled',
+    neutral: 'bg-fg-3',
 };
 
-const STATUS_DOT: Record<NotificationStatusValue, string> = {
-    pending: 'bg-fg-3',
-    queued: 'bg-severity-info motion-safe:animate-pulse',
-    partially_sent: 'bg-severity-medium',
-    sent: 'bg-severity-low',
-    failed: 'bg-severity-critical',
-    cancelled: 'bg-fg-disabled',
+const TONE_TEXT: Record<NotificationStatusTone, string> = {
+    ok: 'text-fg-2',
+    warning: 'text-severity-medium',
+    critical: 'font-medium text-severity-critical',
+    info: 'text-fg-2',
+    muted: 'text-fg-3',
+    neutral: 'text-fg-2',
 };
 
 const CHANNEL_ICONS: Record<string, LucideIcon> = {
@@ -201,10 +201,12 @@ function ChannelChips({
 }
 
 function StatusCell({
-    status,
+    label,
+    tone,
     reason,
 }: {
-    status: NotificationStatusValue;
+    label: string;
+    tone: NotificationStatusTone;
     reason: string | null;
 }) {
     return (
@@ -212,18 +214,14 @@ function StatusCell({
             <span
                 className={cn(
                     'inline-flex items-center gap-1.5 text-2xs',
-                    status === 'failed'
-                        ? 'font-medium text-severity-critical'
-                        : status === 'cancelled'
-                          ? 'text-fg-3'
-                          : 'text-fg-2',
+                    TONE_TEXT[tone],
                 )}
             >
                 <span
-                    className={cn('size-1.5 rounded-full', STATUS_DOT[status])}
+                    className={cn('size-1.5 rounded-full', TONE_DOT[tone])}
                     aria-hidden="true"
                 />
-                {STATUS_LABELS[status]}
+                {label}
             </span>
             {reason && (
                 <span
@@ -288,6 +286,10 @@ export function NotificationsTable({
             {
                 key: 'notification',
                 header: 'Notificación',
+                // Takes the leftover width and truncates inside it instead of
+                // pushing the action column out of the viewport (auto table
+                // layout lets a long subject grow the column otherwise).
+                width: 'w-full max-w-0',
                 sortValue: (notification) =>
                     notification.subject ?? notification.type,
                 cell: (notification) => {
@@ -304,18 +306,21 @@ export function NotificationsTable({
                                     strokeWidth={1.75}
                                     aria-hidden="true"
                                 />
-                                {!notification.isRead && (
-                                    <span
-                                        className="absolute -top-1 -right-1 size-2 rounded-full bg-primary ring-2 ring-surface-1"
-                                        aria-label="No leída"
-                                    />
-                                )}
+                                {notification.addressedToMe &&
+                                    !notification.isRead && (
+                                        <span
+                                            className="absolute -top-1 -right-1 size-2 rounded-full bg-primary ring-2 ring-surface-1"
+                                            aria-label="No leída"
+                                        />
+                                    )}
                             </span>
                             <span className="flex min-w-0 flex-col">
                                 <span
                                     className={cn(
                                         'truncate text-sm text-fg-1',
-                                        !notification.isRead && 'font-semibold',
+                                        notification.addressedToMe &&
+                                            !notification.isRead &&
+                                            'font-semibold',
                                     )}
                                 >
                                     {notification.subject ?? notification.type}
@@ -390,10 +395,11 @@ export function NotificationsTable({
                 key: 'status',
                 header: 'Estado',
                 width: 'w-48',
-                sortValue: (notification) => STATUS_LABELS[notification.status],
+                sortValue: (notification) => notification.statusLabel,
                 cell: (notification) => (
                     <StatusCell
-                        status={notification.status}
+                        label={notification.statusLabel}
+                        tone={notification.statusTone}
                         reason={notification.statusReason ?? null}
                     />
                 ),
@@ -433,7 +439,7 @@ export function NotificationsTable({
             {
                 key: 'action',
                 header: '',
-                width: 'w-44',
+                width: 'w-52 whitespace-nowrap',
                 align: 'right',
                 cell: (notification) => (
                     <span className="flex items-center justify-end gap-1.5">
@@ -451,14 +457,14 @@ export function NotificationsTable({
                                 Incidente
                             </button>
                         )}
-                        {!notification.isRead && (
+                        {notification.addressedToMe && !notification.isRead && (
                             <button
                                 type="button"
                                 className="flex cursor-pointer items-center gap-1 rounded-sm border border-border px-2 py-1 text-2xs text-fg-2 transition-colors hover:border-border-strong hover:text-fg-1"
                                 onClick={() => onMarkRead(notification.id)}
                             >
                                 <Check size={11} />
-                                Leída
+                                Marcar leída
                             </button>
                         )}
                     </span>

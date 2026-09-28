@@ -16,6 +16,7 @@ use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\Notifications\Channels\TwilioClientFactory;
 use App\Models\Team;
 use App\Models\User;
+use Carbon\CarbonImmutable;
 use Database\Seeders\DatabaseSeeder;
 use Database\Seeders\Showcase\ShowcaseReplayer;
 use Database\Seeders\Showcase\ShowcaseSeeder;
@@ -156,6 +157,76 @@ class ShowcaseSeederTest extends TestCase
         $this->assertGreaterThan(0, $charged);
         $this->assertSame($charged, $metered);
         $this->assertSame(0, DB::table('messaging_charges')->where('price_micros', 0)->whereNotNull('metered_at')->count());
+    }
+
+    /**
+     * UI audit: WhatsApp deliveries showed up although the tenant has the
+     * WhatsApp channel switched off. The dispatcher never selects a disabled
+     * channel (nor falls back to it), so the showcase must not either.
+     */
+    public function test_no_delivery_is_seeded_on_a_channel_the_tenant_switched_off(): void
+    {
+        $this->showcase(days: 10);
+
+        $team = Team::where('slug', self::TEAM)->firstOrFail();
+        $disabled = DB::table('tenant_channel_toggles')
+            ->where('team_id', $team->id)
+            ->where('enabled', false)
+            ->pluck('notification_channel_id');
+
+        $this->assertNotEmpty($disabled, 'El showcase debe apagar al menos un canal (WhatsApp).');
+        $this->assertSame(0, DB::table('notification_deliveries')
+            ->where('team_id', $team->id)
+            ->whereIn('channel_id', $disabled)
+            ->count());
+
+        // Fallback rows point at a failed delivery of the same recipient.
+        $fallbacks = DB::table('notification_deliveries as fallback')
+            ->join('notification_deliveries as source', 'source.id', '=', 'fallback.fallback_from_delivery_id')
+            ->where('fallback.team_id', $team->id)
+            ->select('fallback.recipient_id as recipient', 'source.recipient_id as source_recipient', 'source.status as source_status')
+            ->get();
+
+        foreach ($fallbacks as $row) {
+            $this->assertSame($row->source_recipient, $row->recipient);
+            $this->assertSame('failed', $row->source_status);
+        }
+    }
+
+    /**
+     * PR #130 follow-up: past-month counters used to SUM every meter, so a
+     * `max` gauge (monitored assets, cameras) showed ~30× the fleet. They
+     * must come out of AggregateUsageJob exactly like production.
+     */
+    public function test_closed_month_counters_match_the_meter_aggregation_type(): void
+    {
+        $this->showcase();
+
+        $team = Team::where('slug', self::TEAM)->firstOrFail();
+        $counters = DB::table('tenant_usage_counters')
+            ->join('usage_meters', 'usage_meters.id', '=', 'tenant_usage_counters.usage_meter_id')
+            ->where('tenant_usage_counters.team_id', $team->id)
+            ->where('tenant_usage_counters.period_start', '<', now()->startOfMonth()->toDateString())
+            ->select('tenant_usage_counters.*', 'usage_meters.aggregation_type', 'usage_meters.code')
+            ->get();
+
+        $this->assertTrue($counters->contains(fn ($c) => $c->aggregation_type === 'max' && $c->consumed_value > 0));
+
+        foreach ($counters as $counter) {
+            $events = DB::table('usage_events')
+                ->where('team_id', $team->id)
+                ->where('usage_meter_id', $counter->usage_meter_id)
+                ->whereBetween('occurred_at', [
+                    CarbonImmutable::parse($counter->period_start)->startOfDay(),
+                    CarbonImmutable::parse($counter->period_end)->endOfDay(),
+                ]);
+
+            $expected = $counter->aggregation_type === 'max'
+                ? (int) $events->max('quantity')
+                : (int) $events->sum('quantity');
+
+            $this->assertSame($expected, (int) $counter->consumed_value, "Contador {$counter->code} {$counter->period_start}");
+        }
     }
 
     public function test_admin_console_is_populated_with_extra_tenants(): void

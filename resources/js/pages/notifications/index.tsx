@@ -111,14 +111,11 @@ function CenterPulse({
                 value={summary.undelivered24h}
                 icon={CircleSlash}
                 tone={summary.undelivered24h > 0 ? 'critical' : 'neutral'}
-                hint="fallidas o canceladas"
+                hint="con entregas fallidas, fallidas o canceladas"
                 onClick={() =>
-                    onApply({
-                        ...filters,
-                        status: filters.status === 'failed' ? null : 'failed',
-                    })
+                    onApply({ ...filters, failures: !filters.failures })
                 }
-                active={filters.status === 'failed'}
+                active={filters.failures}
             />
             <PulseStat
                 label="Críticas 24 h"
@@ -175,7 +172,7 @@ function FilterBar({ filters, options, onApply }: FilterBarProps) {
                 )}
             >
                 {filters.unread ? <BellOff size={11} /> : <Bell size={11} />}
-                Solo no leídas
+                Mis no leídas
             </button>
 
             <button
@@ -192,7 +189,7 @@ function FilterBar({ filters, options, onApply }: FilterBarProps) {
                 )}
             >
                 <TriangleAlert size={11} />
-                Con fallas de entrega
+                No entregadas
             </button>
 
             <FilterDropdown

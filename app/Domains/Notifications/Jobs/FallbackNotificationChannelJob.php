@@ -165,6 +165,7 @@ class FallbackNotificationChannelJob implements ShouldQueue
                 'notification_id' => $primary->notification_id,
                 'recipient_id' => $primary->recipient_id,
                 'channel_id' => $channel->id,
+                'fallback_from_delivery_id' => $primary->id,
                 'team_id' => $primary->team_id,
                 'status' => $skipReason === null ? DeliveryStatus::Pending : DeliveryStatus::Skipped,
                 'attempt_number' => $skipReason === null ? 1 : 0,

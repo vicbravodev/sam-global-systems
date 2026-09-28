@@ -7,6 +7,7 @@ use App\Domains\Notifications\Actions\RenderNotificationContent;
 use App\Domains\Notifications\Data\RenderedNotification;
 use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Enums\DeliveryStatus;
+use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Models\NotificationDelivery;
 use App\Domains\Notifications\Support\ChannelAddress;
 use App\Domains\Notifications\Support\DeliveryEscalationGuard;
@@ -99,6 +100,26 @@ class RetryNotificationDeliveryJob implements ShouldQueue
         }
 
         if ($delivery->permanent_failure || DeliveryEscalationGuard::blockReason($delivery) !== null) {
+            return;
+        }
+
+        // The tenant may have switched the channel off (or the platform
+        // disabled it) between the failure and this delayed retry: the toggle
+        // is checked at send time, not at dispatch time. The recipient still
+        // gets the next usable channel of the fallback policy.
+        $stillUsable = NotificationChannel::query()
+            ->usableByTeam((int) $delivery->team_id)
+            ->whereKey($delivery->channel_id)
+            ->exists();
+
+        if (! $stillUsable) {
+            $delivery->update([
+                'status' => DeliveryStatus::Cancelled,
+                'error_message' => "{$delivery->channel->channel_type->value} channel disabled for the tenant before the retry",
+            ]);
+
+            FallbackNotificationChannelJob::dispatch($delivery->id);
+
             return;
         }
 
