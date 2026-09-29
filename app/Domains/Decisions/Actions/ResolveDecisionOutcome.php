@@ -26,13 +26,19 @@ class ResolveDecisionOutcome
      */
     public const CRITICAL_SEVERITY_FLOOR_CODES = ['critical'];
 
+    /** Riesgo desde el que un evento real sin regla escala (mapeo de la IA). */
+    private const float ESCALATE_RISK_THRESHOLD = 0.85;
+
+    /** Riesgo desde el que un evento real sin regla abre incidente (mapeo de la IA). */
+    private const float INCIDENT_RISK_THRESHOLD = 0.6;
+
     public function __construct(
         private readonly TenantDecisionRulesResolver $rulesResolver,
     ) {}
 
     /**
      * @param  Collection<int, DecisionRule>  $matchedRules
-     * @return array{outcome: DecisionOutcome, sourceType: DecisionSourceType, sourceRule: ?DecisionRule, reason: string, requiresHumanReview: bool}
+     * @return array{outcome: DecisionOutcome, sourceType: DecisionSourceType, sourceRule: ?DecisionRule, reason: string, requiresHumanReview: bool, explain: array<string, mixed>}
      */
     public function execute(AIEventEvaluation $eval, Collection $matchedRules): array
     {
@@ -68,14 +74,16 @@ class ResolveDecisionOutcome
      * revisión humana que sale de la IA (unclear, confianza baja, fallo del
      * agente) o del guard de contradicción de media sí sube a INCIDENT.
      *
-     * @param  array{outcome: DecisionOutcome, sourceType: DecisionSourceType, sourceRule: ?DecisionRule, reason: string, requiresHumanReview: bool}  $resolved
-     * @return array{outcome: DecisionOutcome, sourceType: DecisionSourceType, sourceRule: ?DecisionRule, reason: string, requiresHumanReview: bool}
+     * @param  array{outcome: DecisionOutcome, sourceType: DecisionSourceType, sourceRule: ?DecisionRule, reason: string, requiresHumanReview: bool, explain: array<string, mixed>}  $resolved
+     * @return array{outcome: DecisionOutcome, sourceType: DecisionSourceType, sourceRule: ?DecisionRule, reason: string, requiresHumanReview: bool, explain: array<string, mixed>}
      */
     private function applyCriticalSeverityFloor(AIEventEvaluation $eval, array $resolved): array
     {
         $code = DecisionOutcomeCode::tryFrom((string) $resolved['outcome']->code);
 
         if ($code !== null && $code->createsIncident()) {
+            $resolved['explain']['floor_check'] = 'outcome_creates_incident';
+
             return $resolved;
         }
 
@@ -83,7 +91,15 @@ class ResolveDecisionOutcome
             && $resolved['sourceRule'] !== null
             && in_array($resolved['sourceType'], [DecisionSourceType::Rule, DecisionSourceType::TenantPolicy], true);
 
-        if ($ruleChoseReview || ! $this->isCriticalSeverity($eval)) {
+        if ($ruleChoseReview) {
+            $resolved['explain']['floor_check'] = 'rule_chose_review';
+
+            return $resolved;
+        }
+
+        if (! $this->isCriticalSeverity($eval)) {
+            $resolved['explain']['floor_check'] = 'not_critical';
+
             return $resolved;
         }
 
@@ -102,12 +118,17 @@ class ResolveDecisionOutcome
                 .$resolved['outcome']->code.' a '.DecisionOutcomeCode::Incident->value
                 .'. Motivo original: '.$resolved['reason'],
             'requiresHumanReview' => $resolved['requiresHumanReview'],
+            'explain' => [
+                ...$resolved['explain'],
+                'floor_check' => 'floored',
+                'floor_from_code' => $resolved['outcome']->code,
+            ],
         ];
     }
 
     /**
      * @param  Collection<int, DecisionRule>  $matchedRules
-     * @return array{outcome: DecisionOutcome, sourceType: DecisionSourceType, sourceRule: ?DecisionRule, reason: string, requiresHumanReview: bool}
+     * @return array{outcome: DecisionOutcome, sourceType: DecisionSourceType, sourceRule: ?DecisionRule, reason: string, requiresHumanReview: bool, explain: array<string, mixed>}
      */
     private function resolve(AIEventEvaluation $eval, Collection $matchedRules): array
     {
@@ -120,6 +141,13 @@ class ResolveDecisionOutcome
         $confidence = (float) ($eval->confidence_score ?? 0.0);
         $requiresHumanReview = $confidence < $policy->humanReviewConfidenceThreshold;
 
+        $explain = [
+            'confidence' => $confidence,
+            'human_review_threshold' => $policy->humanReviewConfidenceThreshold,
+            'review_by_confidence' => $requiresHumanReview,
+            'risk' => (float) ($eval->risk_score ?? 0.0),
+        ];
+
         $hardSafetyRule = $matchedRules->first(fn (DecisionRule $rule) => $rule->stop_processing && $rule->outcome_override !== null);
 
         if ($hardSafetyRule !== null && $hardSafetyRule->outcomeOverride) {
@@ -129,6 +157,7 @@ class ResolveDecisionOutcome
                 'sourceRule' => $hardSafetyRule,
                 'reason' => 'Regla de seguridad obligatoria aplicada: '.$this->ruleLabel($hardSafetyRule).'.',
                 'requiresHumanReview' => $requiresHumanReview,
+                'explain' => [...$explain, 'source' => 'hard_safety'],
             ];
         }
 
@@ -141,6 +170,7 @@ class ResolveDecisionOutcome
                 'sourceRule' => $tenantRule,
                 'reason' => 'Regla de la empresa aplicada: '.$this->ruleLabel($tenantRule).'.',
                 'requiresHumanReview' => $requiresHumanReview,
+                'explain' => [...$explain, 'source' => 'tenant_rule'],
             ];
         }
 
@@ -153,6 +183,7 @@ class ResolveDecisionOutcome
                 'sourceRule' => $globalRule,
                 'reason' => 'Regla aplicada: '.$this->ruleLabel($globalRule).'.',
                 'requiresHumanReview' => $requiresHumanReview,
+                'explain' => [...$explain, 'source' => 'global_rule'],
             ];
         }
 
@@ -166,6 +197,15 @@ class ResolveDecisionOutcome
                 'sourceRule' => null,
                 'reason' => 'Decisión según la clasificación de la IA: '.mb_strtolower($eval->classification->label()).'.',
                 'requiresHumanReview' => $requiresHumanReview,
+                'explain' => [
+                    ...$explain,
+                    'source' => 'ai_mapping',
+                    'ai_outcome_code' => $aiOutcomeCode->value,
+                    'ai_mapping_thresholds' => [
+                        'escalate' => self::ESCALATE_RISK_THRESHOLD,
+                        'incident' => self::INCIDENT_RISK_THRESHOLD,
+                    ],
+                ],
             ];
         }
 
@@ -180,6 +220,12 @@ class ResolveDecisionOutcome
             'sourceRule' => null,
             'reason' => 'Ninguna regla aplicó; el evento solo se registra.',
             'requiresHumanReview' => $requiresHumanReview,
+            'explain' => [
+                ...$explain,
+                'source' => 'log_only_fallback',
+                'ai_outcome_code' => $aiOutcomeCode->value,
+                'ai_outcome_missing' => true,
+            ],
         ];
     }
 
@@ -199,18 +245,25 @@ class ResolveDecisionOutcome
      * actionable decision usually means an open incident, and an IGNORE /
      * LOG_ONLY re-decision would orphan it. The incident is never auto-closed.
      *
-     * @param  array{outcome: DecisionOutcome, sourceType: DecisionSourceType, sourceRule: ?DecisionRule, reason: string, requiresHumanReview: bool}  $resolved
-     * @return array{outcome: DecisionOutcome, sourceType: DecisionSourceType, sourceRule: ?DecisionRule, reason: string, requiresHumanReview: bool}
+     * @param  array{outcome: DecisionOutcome, sourceType: DecisionSourceType, sourceRule: ?DecisionRule, reason: string, requiresHumanReview: bool, explain: array<string, mixed>}  $resolved
+     * @return array{outcome: DecisionOutcome, sourceType: DecisionSourceType, sourceRule: ?DecisionRule, reason: string, requiresHumanReview: bool, explain: array<string, mixed>}
      */
     private function guardMediaContradiction(AIEventEvaluation $eval, array $resolved): array
     {
         $code = DecisionOutcomeCode::tryFrom((string) $resolved['outcome']->code);
 
         if ($code === null || ! $code->isTerminal()) {
+            $resolved['explain']['guard_check'] = 'outcome_not_terminal';
+
             return $resolved;
         }
 
-        if ($this->latestMediaAssessmentResult($eval) !== MediaAssessmentResult::ContradictsEvent) {
+        $latest = $this->latestMediaAssessmentResult($eval);
+
+        if ($latest !== MediaAssessmentResult::ContradictsEvent) {
+            $resolved['explain']['guard_check'] = 'media_not_contradicting';
+            $resolved['explain']['latest_media_result'] = $latest?->value;
+
             return $resolved;
         }
 
@@ -225,6 +278,9 @@ class ResolveDecisionOutcome
             ->exists();
 
         if (! $hadActionableDecision) {
+            $resolved['explain']['guard_check'] = 'no_prior_actionable_decision';
+            $resolved['explain']['latest_media_result'] = $latest->value;
+
             return $resolved;
         }
 
@@ -240,6 +296,12 @@ class ResolveDecisionOutcome
             'reason' => 'Las imágenes contradicen el evento, pero una decisión previa ya actuó sobre él: '
                 .'se bloquea la baja a '.$resolved['outcome']->code.' hasta que un operador lo revise.',
             'requiresHumanReview' => true,
+            'explain' => [
+                ...$resolved['explain'],
+                'guard_check' => 'forced_review',
+                'guard_from_code' => $resolved['outcome']->code,
+                'latest_media_result' => MediaAssessmentResult::ContradictsEvent->value,
+            ],
         ];
     }
 
@@ -271,9 +333,9 @@ class ResolveDecisionOutcome
         $risk = (float) ($eval->risk_score ?? 0.0);
 
         return match ($eval->classification) {
-            EventClassification::RealEvent => $risk >= 0.85
+            EventClassification::RealEvent => $risk >= self::ESCALATE_RISK_THRESHOLD
                 ? DecisionOutcomeCode::Escalate
-                : ($risk >= 0.6 ? DecisionOutcomeCode::Incident : DecisionOutcomeCode::Alert),
+                : ($risk >= self::INCIDENT_RISK_THRESHOLD ? DecisionOutcomeCode::Incident : DecisionOutcomeCode::Alert),
             EventClassification::Unclear => DecisionOutcomeCode::RequireHumanReview,
             EventClassification::PendingEvidence => DecisionOutcomeCode::RequireHumanReview,
             EventClassification::FalsePositive, EventClassification::Duplicate => DecisionOutcomeCode::Ignore,

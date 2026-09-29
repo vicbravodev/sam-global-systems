@@ -255,8 +255,43 @@ Las líneas del listener síncrono `RequestPanicMediaOnContextBuilt` (`context.m
 | `decisions.ruleset.missing` | degraded | `no_active_ruleset` | `ai_evaluation_id`, `default_ruleset_code`; result `falls_back_to` (`ai_mapping`) |
 | `decisions.rule.invalid` | degraded | `unknown_operator`, `malformed_condition` | `rule_id`, `rule_code`, `ruleset_id`, `rule_team_id`; calc `problems[]` (`path`, `problem`, `operator`, `field`), `problems_count`; result `invalid_nodes_evaluate_as` (false) |
 | `decisions.rules.evaluated` | ok | — | `ai_evaluation_id`; calc `ruleset_id`, `ruleset_scope`, `candidate_count`, `evaluated_count`, `matched_rule_ids`, `matched`, `stopped_at`, `facts` (solo los que deciden las reglas por defecto); result `matched_count` |
+| `decisions.outcome.forced_human_review` | ok | — | `ai_evaluation_id`; calc `from_code` (desenlace terminal que se bloqueó), `latest_media_result` (`contradicts_event`), `prior_actionable_decision` (true); result `decision_id`, `decision_code` (`REQUIRE_HUMAN_REVIEW`) |
+| `decisions.outcome.floored` | ok | — | `ai_evaluation_id`; calc `from_code`, `to_code` (`INCIDENT`), `floor_severity_codes`; result `decision_id` |
+| `decisions.outcome.resolved` | ok | — | `ai_evaluation_id`, `ruleset_id`, `classification`; calc `source`, `confidence`, `human_review_threshold`, `review_by_confidence` (= `confidence < human_review_threshold`), `risk`, `ai_outcome_code` + `ai_mapping_thresholds` (`escalate`, `incident`) o `ai_outcome_missing`, `guard_check`, `latest_media_result`, `floor_check`, `review_by_resolver`, `review_by_outcome`; result `decision_id`, `decision_code`, `source_type`, `rule_id`, `rule_code`, `requires_human_review` (= `review_by_resolver` ∨ `review_by_outcome`), `trace_steps_count` |
+| `decisions.priority.resolved` | ok | — | `decision_id`; calc `ai_priority_level`, `requires_human_review` (→ `high`), `mapped`, `critical_bump` (Low/Normal → High por severidad crítica); result `priority_level` |
+| `decisions.escalation_policy.resolved` | ok / degraded / skipped (debug) | `no_active_team_policy` (ESCALATE sin política activa: no escala a nadie), `rule_policy_unavailable` (la regla apunta a una política inactiva o de otro team), `not_required` | `decision_id`; calc `policy_source` (`source_rule`/`team_default_for_escalate`), `rule_policy_id`; result `escalation_policy_id` |
 
 `decisions.rule.invalid` = hallazgo §8, antes silencioso; la regla sigue evaluando `false` en ese nodo. Nunca se registran valores de condición ni nombres de reglas.
+
+Toda la narrativa del desenlace (`decisions.outcome.*`, `decisions.priority.resolved`, `decisions.escalation_policy.resolved`) se emite después del commit de `DB::transaction()`: si la decisión revierte, no sale ninguna. Nunca se registran `decision_reason` ni nombres de reglas, desenlaces o políticas; los códigos pasan por `LoggableCode::guard`.
+
+`source` de `decisions.outcome.resolved` (qué ganó en `ResolveDecisionOutcome::resolve`):
+
+| `source` | Cuándo | `source_type` |
+|---|---|---|
+| `hard_safety` | primera regla que casó con `stop_processing` y `outcome_override` (global o del tenant) | `rule` |
+| `tenant_rule` | primera regla del tenant con `outcome_override` | `tenant_policy` |
+| `global_rule` | primera regla global con `outcome_override` | `rule` |
+| `ai_mapping` | sin regla: clasificación de la IA → `ai_outcome_code` (RealEvent: riesgo ≥ `escalate` → ESCALATE, ≥ `incident` → INCIDENT, si no ALERT; accionable con `review_by_confidence` → REQUIRE_HUMAN_REVIEW) | `ai` |
+| `log_only_fallback` | el desenlace mapeado no existe en `decision_outcomes` (`ai_outcome_missing`) → LOG_ONLY | `fallback` |
+
+`source` es la fuente de `resolve()`; si después actuó el guard o el piso, `source_type` pasa a `fallback` y `guard_check`/`floor_check` lo explican.
+
+| `guard_check` (contradicción de media) | Significado |
+|---|---|
+| `outcome_not_terminal` | el desenlace no es IGNORE/LOG_ONLY: el guard no aplica |
+| `media_not_contradicting` | la última evaluación de media del evento no contradice (`latest_media_result`, null si no hay) |
+| `no_prior_actionable_decision` | la media contradice pero ninguna decisión previa actuó: la baja se mantiene |
+| `forced_review` | la media contradice y una decisión previa actuó: REQUIRE_HUMAN_REVIEW (línea `decisions.outcome.forced_human_review`) |
+
+| `floor_check` (piso crítico) | Significado |
+|---|---|
+| `outcome_creates_incident` | INCIDENT/ESCALATE: nada que subir |
+| `rule_chose_review` | REQUIRE_HUMAN_REVIEW elegido por una regla configurada: se respeta |
+| `not_critical` | la severidad del evento no está en `floor_severity_codes` |
+| `floored` | evento crítico subido a INCIDENT (línea `decisions.outcome.floored`) |
+
+Sin `decision_trace_id`: `GenerateDecisionTrace` crea una fila por paso; las trazas cuelgan de `decision_id` y `trace_steps_count` dice cuántas son.
 
 ### Automatización (`automation`)
 

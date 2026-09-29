@@ -6,6 +6,7 @@ use App\Domains\AI\Enums\EvaluationPriority;
 use App\Domains\AI\Enums\EventClassification;
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\Decisions\Actions\EvaluateDecisionRules;
+use App\Domains\Decisions\Actions\GenerateDecisionTrace;
 use App\Domains\Decisions\Enums\DecisionOutcomeCode;
 use App\Domains\Decisions\Enums\DecisionSourceType;
 use App\Domains\Decisions\Enums\RuleScope;
@@ -23,6 +24,7 @@ use Database\Seeders\DecisionOutcomeSeeder;
 use Database\Seeders\IncidentsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use RuntimeException;
 use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
@@ -60,6 +62,7 @@ class EvaluateDecisionRulesTest extends TestCase
             'team_id' => null,
             'ruleset_id' => $ruleset->id,
             'code' => 'safety-high-risk',
+            'name' => 'Nombre libre xyz',
             'scope' => RuleScope::Global,
             'priority' => 100,
             'conditions_json' => [
@@ -86,6 +89,25 @@ class EvaluateDecisionRulesTest extends TestCase
         $this->assertSame(1, $context['result']['matched_count']);
         $this->assertSame('real_event', $context['calc']['facts']['classification']);
         $this->assertArrayNotHasKey('team_id', $context['calc']['facts']);
+
+        $resolved = $this->assertSystemLogged('decisions.outcome.resolved');
+        $this->assertSame('hard_safety', $resolved['calc']['source']);
+        $this->assertSame('outcome_creates_incident', $resolved['calc']['floor_check']);
+        $this->assertSame('outcome_not_terminal', $resolved['calc']['guard_check']);
+        $this->assertSame('safety-high-risk', $resolved['result']['rule_code']);
+        $this->assertSame('rule', $resolved['result']['source_type']);
+        $this->assertSame($decision->id, $resolved['result']['decision_id']);
+        $this->assertSame('INCIDENT', $resolved['result']['decision_code']);
+        $this->assertSame($eval->id, $resolved['input']['ai_evaluation_id']);
+        $this->assertSame($ruleset->id, $resolved['input']['ruleset_id']);
+        $this->assertSame('real_event', $resolved['input']['classification']);
+        $this->assertArrayNotHasKey('floor_from_code', $resolved['calc']);
+        $this->assertArrayNotHasKey('guard_from_code', $resolved['calc']);
+
+        $encoded = json_encode($this->systemLogEntries());
+        $this->assertStringNotContainsString('Nombre libre xyz', $encoded);
+        $this->assertStringNotContainsString('Regla de seguridad obligatoria', $encoded);
+        $this->assertStringNotContainsString((string) $decision->decision_reason, $encoded);
         $this->assertNoSensitiveDataLogged();
     }
 
@@ -109,6 +131,31 @@ class EvaluateDecisionRulesTest extends TestCase
 
         $this->assertTrue($decision->requires_human_review);
         $this->assertSame(DecisionOutcomeCode::RequireHumanReview->value, $decision->decision_code);
+
+        $resolved = $this->assertSystemLogged('decisions.outcome.resolved');
+        $calc = $resolved['calc'];
+        $this->assertSame('ai_mapping', $calc['source']);
+        $this->assertSame('REQUIRE_HUMAN_REVIEW', $calc['ai_outcome_code']);
+        $this->assertSame(['escalate' => 0.85, 'incident' => 0.6], $calc['ai_mapping_thresholds']);
+        $this->assertTrue($calc['review_by_confidence']);
+        // Recomputable: confianza < umbral → revisión; y el persistido lo explican sus fuentes.
+        $this->assertSame($calc['confidence'] < $calc['human_review_threshold'], $calc['review_by_confidence']);
+        $this->assertSame(0.3, $calc['confidence']);
+        $this->assertSame(0.7, $calc['risk']);
+        $this->assertSame(
+            $decision->requires_human_review,
+            $calc['review_by_resolver'] || $calc['review_by_outcome'],
+        );
+        $this->assertSame($decision->requires_human_review, $resolved['result']['requires_human_review']);
+
+        $priority = $this->assertSystemLogged('decisions.priority.resolved');
+        $this->assertSame('high', $priority['calc']['mapped']);
+        $this->assertSame('normal', $priority['calc']['ai_priority_level']);
+        $this->assertTrue($priority['calc']['requires_human_review']);
+        $this->assertFalse($priority['calc']['critical_bump']);
+        $this->assertSame($decision->priority_level->value, $priority['result']['priority_level']);
+        $this->assertSame($decision->id, $priority['input']['decision_id']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_tenant_rule_overrides_global_rule(): void
@@ -152,6 +199,13 @@ class EvaluateDecisionRulesTest extends TestCase
 
         $this->assertSame(DecisionOutcomeCode::LogOnly->value, $decision->decision_code);
         $this->assertSame($tenantSet->id, $decision->ruleset_id);
+
+        $resolved = $this->assertSystemLogged('decisions.outcome.resolved');
+        $this->assertSame('tenant_rule', $resolved['calc']['source']);
+        $this->assertSame('tenant_policy', $resolved['result']['source_type']);
+        $this->assertSame('tenant-mute', $resolved['result']['rule_code']);
+        $this->assertSame('not_critical', $resolved['calc']['floor_check']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_decision_trace_records_steps(): void
@@ -176,6 +230,13 @@ class EvaluateDecisionRulesTest extends TestCase
 
         $this->assertGreaterThanOrEqual(2, $traces->count());
         $this->assertSame(DecisionSourceType::Ai, $traces->first()->source_type);
+
+        $resolved = $this->assertSystemLogged('decisions.outcome.resolved');
+        $this->assertSame(
+            DecisionTrace::where('decision_id', $decision->id)->count(),
+            $resolved['result']['trace_steps_count'],
+        );
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_fallback_outcome_when_no_rules_match(): void
@@ -197,6 +258,49 @@ class EvaluateDecisionRulesTest extends TestCase
         $decision = app(EvaluateDecisionRules::class)->execute($eval);
 
         $this->assertSame(DecisionOutcomeCode::LogOnly->value, $decision->decision_code);
+
+        $resolved = $this->assertSystemLogged('decisions.outcome.resolved');
+        $this->assertSame('ai_mapping', $resolved['calc']['source']);
+        $this->assertSame('LOG_ONLY', $resolved['calc']['ai_outcome_code']);
+        $this->assertFalse($resolved['calc']['review_by_confidence']);
+        $this->assertSame('media_not_contradicting', $resolved['calc']['guard_check']);
+        $this->assertNull($resolved['calc']['latest_media_result']);
+
+        $escalation = $this->assertSystemLogged('decisions.escalation_policy.resolved');
+        $this->assertSame('skipped', $escalation['outcome']);
+        $this->assertSame('not_required', $escalation['reason']);
+        $this->assertSame('debug', $this->systemLogEntries('decisions.escalation_policy.resolved')[0]['level']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_missing_ai_outcome_falls_back_to_log_only(): void
+    {
+        $user = User::factory()->create();
+        $teamId = $user->currentTeam->id;
+        $event = NormalizedEvent::factory()->create(['team_id' => $teamId]);
+        $eval = AIEventEvaluation::factory()->create([
+            'normalized_event_id' => $event->id,
+            'team_id' => $teamId,
+            'classification' => EventClassification::RealEvent,
+            'risk_score' => 0.5,
+            'confidence_score' => 0.95,
+            'priority_level' => EvaluationPriority::Normal,
+        ]);
+
+        RuleSet::factory()->global()->create(['code' => 'default']);
+        DecisionOutcome::where('code', DecisionOutcomeCode::Alert->value)->delete();
+
+        $decision = app(EvaluateDecisionRules::class)->execute($eval);
+
+        $this->assertSame(DecisionOutcomeCode::LogOnly->value, $decision->decision_code);
+
+        $resolved = $this->assertSystemLogged('decisions.outcome.resolved');
+        $this->assertSame('log_only_fallback', $resolved['calc']['source']);
+        $this->assertTrue($resolved['calc']['ai_outcome_missing']);
+        $this->assertSame('ALERT', $resolved['calc']['ai_outcome_code']);
+        $this->assertSame('fallback', $resolved['result']['source_type']);
+        $this->assertNull($resolved['result']['rule_id']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_escalation_triggered_dispatches_event(): void
@@ -239,6 +343,101 @@ class EvaluateDecisionRulesTest extends TestCase
         $this->assertSame(DecisionOutcomeCode::Escalate->value, $decision->decision_code);
         $this->assertSame($policy->id, $decision->escalation_policy_id);
         Event::assertDispatched(EscalationTriggered::class);
+
+        $escalation = $this->assertSystemLogged('decisions.escalation_policy.resolved');
+        $this->assertSame('ok', $escalation['outcome']);
+        $this->assertSame('source_rule', $escalation['calc']['policy_source']);
+        $this->assertSame($policy->id, $escalation['calc']['rule_policy_id']);
+        $this->assertSame($policy->id, $escalation['result']['escalation_policy_id']);
+        $this->assertSame($decision->id, $escalation['input']['decision_id']);
+        $this->assertStringNotContainsString((string) $policy->name, json_encode($this->systemLogEntries()));
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_escalate_without_any_active_team_policy_is_logged_degraded(): void
+    {
+        Event::fake([EscalationTriggered::class]);
+
+        [$eval, $ruleset] = $this->evaluationWithGlobalRuleSet();
+        DecisionRule::factory()->create([
+            'ruleset_id' => $ruleset->id,
+            'team_id' => null,
+            'code' => 'global-escalate',
+            'priority' => 100,
+            'conditions_json' => ['all' => [['field' => 'classification', 'operator' => 'eq', 'value' => 'real_event']]],
+            'outcome_override' => DecisionOutcome::firstWhere('code', DecisionOutcomeCode::Escalate->value)->id,
+            'escalation_policy_id' => null,
+            'stop_processing' => true,
+        ]);
+
+        $decision = app(EvaluateDecisionRules::class)->execute($eval);
+
+        $this->assertSame(DecisionOutcomeCode::Escalate->value, $decision->decision_code);
+        $this->assertNull($decision->escalation_policy_id);
+        Event::assertNotDispatched(EscalationTriggered::class);
+
+        $escalation = $this->assertSystemLogged('decisions.escalation_policy.resolved');
+        $this->assertSame('degraded', $escalation['outcome']);
+        $this->assertSame('no_active_team_policy', $escalation['reason']);
+        $this->assertSame($decision->id, $escalation['input']['decision_id']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_rule_policy_unavailable_is_logged_degraded(): void
+    {
+        Event::fake([EscalationTriggered::class]);
+
+        [$eval, $ruleset] = $this->evaluationWithGlobalRuleSet();
+        $inactive = EscalationPolicy::factory()->create(['team_id' => $eval->team_id, 'is_active' => false]);
+        DecisionRule::factory()->create([
+            'ruleset_id' => $ruleset->id,
+            'team_id' => null,
+            'code' => 'global-alert',
+            'priority' => 100,
+            'conditions_json' => ['all' => [['field' => 'classification', 'operator' => 'eq', 'value' => 'real_event']]],
+            'outcome_override' => DecisionOutcome::firstWhere('code', DecisionOutcomeCode::Alert->value)->id,
+            'escalation_policy_id' => $inactive->id,
+            'stop_processing' => true,
+        ]);
+
+        $decision = app(EvaluateDecisionRules::class)->execute($eval);
+
+        $this->assertSame(DecisionOutcomeCode::Alert->value, $decision->decision_code);
+        $this->assertNull($decision->escalation_policy_id);
+
+        $escalation = $this->assertSystemLogged('decisions.escalation_policy.resolved');
+        $this->assertSame('degraded', $escalation['outcome']);
+        $this->assertSame('rule_policy_unavailable', $escalation['reason']);
+        $this->assertSame($inactive->id, $escalation['calc']['rule_policy_id']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_rolled_back_decision_logs_no_outcome_narrative(): void
+    {
+        [$eval] = $this->evaluationWithGlobalRuleSet();
+
+        $this->app->instance(GenerateDecisionTrace::class, new class extends GenerateDecisionTrace
+        {
+            public function execute(Decision $decision, array $steps): void
+            {
+                throw new RuntimeException('boom');
+            }
+        });
+
+        try {
+            app(EvaluateDecisionRules::class)->execute($eval);
+            $this->fail('execute() debía lanzar');
+        } catch (RuntimeException $e) {
+            $this->assertSame('boom', $e->getMessage());
+        }
+
+        $this->assertSame(0, Decision::withoutGlobalScopes()->count());
+        $this->assertSystemLogged('decisions.rules.evaluated');
+        $this->assertSystemNotLogged('decisions.outcome.resolved');
+        $this->assertSystemNotLogged('decisions.outcome.floored');
+        $this->assertSystemNotLogged('decisions.outcome.forced_human_review');
+        $this->assertSystemNotLogged('decisions.priority.resolved');
+        $this->assertSystemNotLogged('decisions.escalation_policy.resolved');
     }
 
     public function test_idempotent_when_called_twice_for_same_evaluation(): void

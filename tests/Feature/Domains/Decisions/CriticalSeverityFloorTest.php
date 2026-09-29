@@ -22,6 +22,7 @@ use App\Models\User;
 use Database\Seeders\DecisionOutcomeSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 /**
@@ -31,6 +32,7 @@ use Tests\TestCase;
  */
 class CriticalSeverityFloorTest extends TestCase
 {
+    use AssertsSystemLog;
     use RefreshDatabase;
 
     private int $teamId;
@@ -68,6 +70,36 @@ class CriticalSeverityFloorTest extends TestCase
             $decision->priority_level,
             [DecisionPriority::High, DecisionPriority::Urgent, DecisionPriority::Critical],
         );
+
+        $floored = $this->assertSystemLogged('decisions.outcome.floored');
+        $this->assertSame('IGNORE', $floored['calc']['from_code']);
+        $this->assertSame('INCIDENT', $floored['calc']['to_code']);
+        $this->assertSame(['critical'], $floored['calc']['floor_severity_codes']);
+        $this->assertSame($decision->id, $floored['result']['decision_id']);
+
+        $resolved = $this->assertSystemLogged('decisions.outcome.resolved');
+        $this->assertSame('floored', $resolved['calc']['floor_check']);
+        $this->assertSame('ai_mapping', $resolved['calc']['source']);
+        $this->assertSame('IGNORE', $resolved['calc']['ai_outcome_code']);
+        $this->assertSame('INCIDENT', $resolved['result']['decision_code']);
+        $this->assertSame('fallback', $resolved['result']['source_type']);
+        $this->assertArrayNotHasKey('floor_from_code', $resolved['calc']);
+        $this->assertStringNotContainsString('Piso de seguridad', json_encode($this->systemLogEntries()));
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_critical_low_priority_evaluation_is_bumped_to_high(): void
+    {
+        $decision = $this->decide($this->panicEvaluation(EventClassification::FalsePositive, confidence: 0.97));
+
+        $priority = $this->assertSystemLogged('decisions.priority.resolved');
+        $this->assertSame('low', $priority['calc']['ai_priority_level']);
+        $this->assertFalse($priority['calc']['requires_human_review']);
+        $this->assertSame('low', $priority['calc']['mapped']);
+        $this->assertTrue($priority['calc']['critical_bump']);
+        $this->assertSame('high', $priority['result']['priority_level']);
+        $this->assertSame(DecisionPriority::High, $decision->priority_level);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_critical_panic_from_agent_fallback_unclear_becomes_incident(): void
@@ -141,6 +173,15 @@ class CriticalSeverityFloorTest extends TestCase
 
         $this->assertSame(DecisionOutcomeCode::RequireHumanReview->value, $decision->decision_code);
         $this->assertTrue($decision->requires_human_review);
+
+        $resolved = $this->assertSystemLogged('decisions.outcome.resolved');
+        $this->assertSame('rule_chose_review', $resolved['calc']['floor_check']);
+        // stop_processing + outcome: gana como regla obligatoria aunque sea del tenant.
+        $this->assertSame('hard_safety', $resolved['calc']['source']);
+        $this->assertSame('rule', $resolved['result']['source_type']);
+        $this->assertTrue($resolved['calc']['review_by_outcome']);
+        $this->assertSystemNotLogged('decisions.outcome.floored');
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_critical_escalation_is_not_lowered(): void
@@ -167,6 +208,11 @@ class CriticalSeverityFloorTest extends TestCase
         ]));
 
         $this->assertSame(DecisionOutcomeCode::Ignore->value, $decision->decision_code);
+
+        $resolved = $this->assertSystemLogged('decisions.outcome.resolved');
+        $this->assertSame('not_critical', $resolved['calc']['floor_check']);
+        $this->assertSystemNotLogged('decisions.outcome.floored');
+        $this->assertNoSensitiveDataLogged();
     }
 
     private function panicEvaluation(EventClassification $classification, float $confidence, float $risk = 0.2): AIEventEvaluation
