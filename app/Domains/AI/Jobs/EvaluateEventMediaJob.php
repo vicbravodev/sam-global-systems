@@ -7,6 +7,7 @@ use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\Context\Models\EventMediaContext;
 use App\Support\JobFailureReporter;
 use App\Support\PipelineTrace;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -45,6 +46,8 @@ class EvaluateEventMediaJob implements ShouldQueue
         $evaluation = AIEventEvaluation::withoutGlobalScopes()->find($this->evaluationId);
 
         if ($evaluation === null) {
+            SystemLog::skipped('ai.media.job_skipped', reason: 'evaluation_missing', input: ['evaluation_id' => $this->evaluationId]);
+
             return;
         }
 
@@ -56,6 +59,8 @@ class EvaluateEventMediaJob implements ShouldQueue
         $mediaIds = array_values(array_unique($this->mediaContextIds));
 
         if ($mediaIds === []) {
+            SystemLog::skipped('ai.media.job_skipped', reason: 'no_media_ids', input: ['evaluation_id' => $evaluation->id]);
+
             return;
         }
 
@@ -68,6 +73,8 @@ class EvaluateEventMediaJob implements ShouldQueue
                 ->get();
 
             if ($mediaContexts->isEmpty()) {
+                SystemLog::skipped('ai.media.job_skipped', reason: 'media_not_found', input: ['evaluation_id' => $evaluation->id], calc: ['requested_count' => count($mediaIds)]);
+
                 return;
             }
 

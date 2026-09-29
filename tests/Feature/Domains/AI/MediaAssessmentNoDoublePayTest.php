@@ -15,6 +15,7 @@ use App\Models\User;
 use Database\Seeders\AIMeterSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 /**
@@ -23,6 +24,7 @@ use Tests\TestCase;
  */
 class MediaAssessmentNoDoublePayTest extends TestCase
 {
+    use AssertsSystemLog;
     use RefreshDatabase;
 
     private NullMediaAssessmentAgent $agent;
@@ -73,6 +75,22 @@ class MediaAssessmentNoDoublePayTest extends TestCase
         $this->assertCount(1, $this->agent->receivedInputs, 'the model must not be called again');
         $this->assertSame(1, AIMediaAssessment::where('event_media_context_id', $this->media->id)->count());
         $this->assertCount(1, $result);
+
+        $prior = AIMediaAssessment::query()->sole();
+        $ctx = $this->assertSystemLogged('ai.media.reused', fn (array $c): bool => $c['input']['evaluation_id'] === $this->v2->id);
+        $this->assertSame('prior_conclusive_assessment', $ctx['reason']);
+        $this->assertSame($this->media->id, $ctx['input']['event_media_context_id']);
+        $this->assertSame('before_lock', $ctx['calc']['checked']);
+        $this->assertSame($prior->id, $ctx['result']['assessment_id']);
+        $this->assertSame($this->v1->id, $ctx['result']['prior_evaluation_id']);
+        $this->assertSame('confirms_event', $ctx['result']['assessment_result']);
+
+        $batch = $this->assertSystemLogged('ai.media.batch_completed', fn (array $c): bool => $c['input']['evaluation_id'] === $this->v2->id);
+        $this->assertSame(1, $batch['result']['reused_count']);
+        $this->assertSame(0, $batch['result']['created_count']);
+
+        $this->assertNoSensitiveDataLogged();
+        $this->assertStringNotContainsString($prior->summary_text, json_encode($this->systemLogEntries()));
     }
 
     public function test_unavailable_previous_assessment_is_retried(): void

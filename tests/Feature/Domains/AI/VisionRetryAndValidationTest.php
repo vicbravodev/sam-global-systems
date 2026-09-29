@@ -27,10 +27,12 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Event;
 use Laravel\Ai\Exceptions\RateLimitedException;
 use RuntimeException;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class VisionRetryAndValidationTest extends TestCase
 {
+    use AssertsSystemLog;
     use RefreshDatabase;
 
     private NullMediaAssessmentAgent $agent;
@@ -57,6 +59,12 @@ class VisionRetryAndValidationTest extends TestCase
         $this->assertSame(0, AIMediaAssessment::query()->count());
         $this->assertSame(EvaluationMode::AiText, $evaluation->fresh()->evaluation_mode);
         Event::assertNotDispatched(MediaAssessmentCompleted::class);
+
+        $this->assertSame('file_missing', $this->assertSystemLogged('ai.media.assessment_skipped')['reason']);
+        $batch = $this->assertSystemLogged('ai.media.batch_completed');
+        $this->assertSame(0, $batch['result']['created_count']);
+        $this->assertSame('ai_text', $batch['result']['mode_after']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_rejected_image_is_recorded_as_low_quality_without_usage(): void
@@ -72,6 +80,12 @@ class VisionRetryAndValidationTest extends TestCase
         $this->assertSame('media-validator', $assessment->model_used);
         $this->assertSame('invalid_image', $assessment->extracted_signals_json['rejected_reason']);
         Event::assertNotDispatched(UsageRecorded::class);
+
+        $this->assertSame('rejected_before_model', $this->assertSystemLogged('ai.media.assessment_rejected')['reason']);
+        $this->assertSystemNotLogged('ai.media.assessed');
+        $this->assertSame(1, $this->assertSystemLogged('ai.media.batch_completed')['result']['created_count']);
+        $this->assertNoSensitiveDataLogged();
+        $this->assertStringNotContainsString($assessment->summary_text, json_encode($this->systemLogEntries()));
     }
 
     public function test_retryable_error_is_rethrown_before_the_final_attempt(): void
@@ -90,6 +104,12 @@ class VisionRetryAndValidationTest extends TestCase
         }
 
         $this->assertSame(0, AIMediaAssessment::query()->count());
+
+        $this->assertSame('transient_failure', $this->assertSystemLogged('ai.media.assessment_retry')['reason']);
+        $batch = $this->assertSystemLogged('ai.media.batch_completed');
+        $this->assertTrue($batch['result']['retry_pending']);
+        $this->assertSame(0, $batch['result']['created_count']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_retryable_error_on_final_attempt_is_recorded_as_unavailable(): void
@@ -100,6 +120,9 @@ class VisionRetryAndValidationTest extends TestCase
         app(EvaluateEventMultimodally::class)->execute($evaluation, $media, finalAttempt: true);
 
         $this->assertSame(MediaAssessmentResult::Unavailable, AIMediaAssessment::query()->sole()->result);
+
+        $this->assertSame('agent_error', $this->assertSystemLogged('ai.media.assessment_unavailable')['reason']);
+        $this->assertFalse($this->assertSystemLogged('ai.media.batch_completed')['result']['retry_pending']);
     }
 
     public function test_non_retryable_error_is_recorded_as_unavailable_even_with_retries_left(): void
@@ -133,6 +156,10 @@ class VisionRetryAndValidationTest extends TestCase
 
         $this->assertSame(2, AIMediaAssessment::query()->count());
         $this->assertCount(2, $this->agent->receivedInputs);
+
+        $this->assertSame('image_cap_reached', $this->assertSystemLogged('ai.media.assessment_skipped')['reason']);
+        $assessed = $this->systemLogEntries('ai.media.assessed');
+        $this->assertSame([2, 1], array_map(fn (array $e): int => $e['context']['calc']['remaining_slots_before'], $assessed));
 
         // Otra versión de evaluación del mismo evento tampoco pasa del tope.
         $second = AIEventEvaluation::factory()->create([

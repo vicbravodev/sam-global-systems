@@ -188,6 +188,9 @@ class TenantAIQuotaTest extends TestCase
 
         $ctx = $this->assertSystemLogged('ai.quota.checked', fn (array $c): bool => $c['input']['purpose'] === 'vision');
         $this->assertTrue($ctx['result']['blocked']);
+        $this->assertSame('quota_exceeded', $this->assertSystemLogged('ai.media.assessment_skipped')['reason']);
+        $this->assertSame(0, $this->assertSystemLogged('ai.media.batch_completed')['result']['created_count']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_vision_for_critical_events_bypasses_quota(): void

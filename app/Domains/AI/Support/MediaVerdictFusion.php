@@ -59,10 +59,33 @@ class MediaVerdictFusion
      */
     public function fuse(array $mediaAssessments, EventClassification $classification, bool $isCriticalEvent = false): ?array
     {
+        return $this->explain($mediaAssessments, $classification, $isCriticalEvent)['fusion'];
+    }
+
+    /**
+     * Igual que `fuse()` pero con la rama tomada y los contadores, para la
+     * narrativa: `no_media`, `no_verdict`, `confirms`, `critical_no_reduce`
+     * o `contradicts`. Puro (solo arrays).
+     *
+     * @param  list<array<string, mixed>>  $mediaAssessments
+     * @return array{branch: string, fusion: array{step: string, sentence: string, confidenceDelta: float, riskDelta: float, keyFactors: array<string, int>}|null, assessed: int, confirms: int, contradicts: int, visible_threats: int, dismissive: bool}
+     */
+    public function explain(array $mediaAssessments, EventClassification $classification, bool $isCriticalEvent = false): array
+    {
         $assessed = count($mediaAssessments);
 
+        $explain = fn (string $branch, ?array $fusion, int $confirms = 0, int $contradicts = 0, int $visibleThreats = 0, bool $dismissive = false): array => [
+            'branch' => $branch,
+            'fusion' => $fusion,
+            'assessed' => $assessed,
+            'confirms' => $confirms,
+            'contradicts' => $contradicts,
+            'visible_threats' => $visibleThreats,
+            'dismissive' => $dismissive,
+        ];
+
         if ($assessed === 0) {
-            return null;
+            return $explain('no_media', null);
         }
 
         $confirms = 0;
@@ -85,7 +108,7 @@ class MediaVerdictFusion
         }
 
         if ($contradicts === 0 && $confirms === 0) {
-            return null;
+            return $explain('no_verdict', null, $confirms, $contradicts, $visibleThreats);
         }
 
         $keyFactors = [
@@ -119,13 +142,13 @@ class MediaVerdictFusion
                 $sentence .= ' Contradice la clasificación de la IA como '.mb_strtolower($classification->label()).'.';
             }
 
-            return [
+            return $explain('confirms', [
                 'step' => $sentence,
                 'sentence' => $sentence,
                 'confidenceDelta' => $dismissive ? -self::CONFIDENCE_DELTA_CONFIRMS : self::CONFIDENCE_DELTA_CONFIRMS,
                 'riskDelta' => self::RISK_DELTA_CONFIRMS,
                 'keyFactors' => $keyFactors,
-            ];
+            ], $confirms, $contradicts, $visibleThreats, $dismissive);
         }
 
         if ($isCriticalEvent) {
@@ -137,13 +160,13 @@ class MediaVerdictFusion
                 $medias,
             );
 
-            return [
+            return $explain('critical_no_reduce', [
                 'step' => $sentence,
                 'sentence' => $sentence,
                 'confidenceDelta' => 0.0,
                 'riskDelta' => 0.0,
                 'keyFactors' => $keyFactors,
-            ];
+            ], $confirms, $contradicts, $visibleThreats, $dismissive);
         }
 
         $sentence = sprintf(
@@ -154,12 +177,12 @@ class MediaVerdictFusion
             $contradicts === 1 ? 'contradice' : 'contradicen',
         );
 
-        return [
+        return $explain('contradicts', [
             'step' => $sentence,
             'sentence' => $sentence,
             'confidenceDelta' => $dismissive ? self::CONFIDENCE_DELTA_CONTRADICTS : -self::CONFIDENCE_DELTA_CONTRADICTS,
             'riskDelta' => self::RISK_DELTA_CONTRADICTS,
             'keyFactors' => $keyFactors,
-        ];
+        ], $confirms, $contradicts, $visibleThreats, $dismissive);
     }
 }

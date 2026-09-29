@@ -23,6 +23,7 @@ use App\Models\User;
 use Database\Seeders\AIMeterSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 /**
@@ -32,6 +33,7 @@ use Tests\TestCase;
  */
 class MediaVerdictFusionTest extends TestCase
 {
+    use AssertsSystemLog;
     use RefreshDatabase;
 
     protected function setUp(): void
@@ -158,6 +160,37 @@ class MediaVerdictFusionTest extends TestCase
         $factors = $reevaluation->signals_json['key_factors'] ?? [];
         $this->assertSame(2, $factors['media_contradicts_count'] ?? null);
         $this->assertSame(3, $factors['media_assessed_count'] ?? null);
+
+        $ctx = $this->assertSystemLogged('ai.media_fusion.applied', fn (array $c): bool => $c['input']['evaluation_id'] === $reevaluation->id);
+        $this->assertSame('real_event', $ctx['input']['classification']);
+        $this->assertFalse($ctx['input']['is_critical_event']);
+        $calc = $ctx['calc'];
+        $this->assertSame('contradicts', $calc['branch']);
+        $this->assertSame(2, $calc['media_contradicts_count']);
+        $this->assertSame(3, $calc['media_assessed_count']);
+        $this->assertSame(0, $calc['media_confirms_count']);
+        $this->assertSame(0, $calc['media_visible_threat_count']);
+        $this->assertFalse($calc['dismissive']);
+        $this->assertSame([0.05, 0.99], $calc['confidence_bounds']);
+        $this->assertSame([0.0, 1.0], $calc['risk_bounds']);
+
+        $confidence = round(max($calc['confidence_bounds'][0], min($calc['confidence_bounds'][1], $calc['confidence_before'] + $calc['confidence_delta'])), 2);
+        $this->assertSame($confidence, $calc['confidence_after']);
+        $this->assertSame($confidence, (float) $reevaluation->confidence_score);
+
+        $risk = round(max($calc['risk_bounds'][0], min($calc['risk_bounds'][1], $calc['risk_before'] + $calc['risk_delta'])), 2);
+        $this->assertSame($risk, $calc['risk_after']);
+        $this->assertSame($risk, (float) $reevaluation->risk_score);
+
+        // La línea de fusión va antes de la prioridad de la misma evaluación.
+        $codes = array_column(array_filter(
+            $this->systemLogEntries(),
+            fn (array $e): bool => ($e['context']['input']['evaluation_id'] ?? null) === $reevaluation->id,
+        ), 'code');
+        $this->assertLessThan(array_search('ai.priority.resolved', $codes, true), array_search('ai.media_fusion.applied', $codes, true));
+
+        $this->assertNoSensitiveDataLogged();
+        $this->assertStringNotContainsString('Análisis visual', json_encode($this->systemLogEntries()));
     }
 
     public function test_confirming_media_boosts_confidence(): void
@@ -180,6 +213,44 @@ class MediaVerdictFusionTest extends TestCase
         $this->assertEqualsWithDelta(0.95, (float) $reevaluation->confidence_score, 0.001);
         $this->assertSame(EvaluationMode::Hybrid, $reevaluation->evaluation_mode);
         $this->assertStringContainsString('confirman', $reevaluation->explanation_text);
+
+        $applied = $this->assertSystemLogged('ai.media_fusion.applied', fn (array $c): bool => $c['input']['evaluation_id'] === $reevaluation->id);
+        $this->assertSame('confirms', $applied['calc']['branch']);
+        $this->assertSame(2, $applied['calc']['media_confirms_count']);
+    }
+
+    public function test_evaluation_completed_lets_a_reader_recompute_the_fused_risk_and_confidence(): void
+    {
+        [$event, $baseline] = $this->evaluatedEvent();
+
+        AIMediaAssessment::factory()->create([
+            'evaluation_id' => $baseline->id,
+            'event_media_context_id' => $this->makeMedia($event)->id,
+        ]);
+
+        $reevaluation = app(ReevaluateEventWithNewEvidence::class)->execute(
+            $event,
+            ReevaluationTrigger::MediaArrived,
+        );
+
+        $completed = $this->assertSystemLogged('ai.evaluation.completed', fn (array $c): bool => $c['result']['evaluation_id'] === $reevaluation->id);
+        $calc = $completed['calc'];
+
+        $this->assertTrue($calc['fusion_applied']);
+        $this->assertNotSame(0.0, $calc['fusion_risk_delta']);
+        $this->assertNotSame(0.0, $calc['fusion_confidence_delta']);
+        $this->assertSame([0.0, 1.0], $calc['risk_clamp']);
+        $this->assertSame([0.05, 0.99], $calc['confidence_clamp']);
+
+        $risk = round(max($calc['risk_clamp'][0], min($calc['risk_clamp'][1], $calc['risk_after_agent'] + $calc['fusion_risk_delta'])), 2);
+        $this->assertSame($risk, $calc['risk_score']);
+        $this->assertSame($risk, (float) $reevaluation->risk_score);
+
+        $confidence = round(max($calc['confidence_clamp'][0], min($calc['confidence_clamp'][1], $calc['base_confidence'] + $calc['fusion_confidence_delta'])), 2);
+        $this->assertSame($confidence, $calc['confidence']);
+        $this->assertSame($confidence, (float) $reevaluation->confidence_score);
+
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_reevaluation_without_media_assessments_is_unchanged(): void
@@ -194,6 +265,20 @@ class MediaVerdictFusionTest extends TestCase
         $this->assertEqualsWithDelta(0.85, (float) $reevaluation->confidence_score, 0.001);
         $this->assertSame(EvaluationMode::AiText, $reevaluation->evaluation_mode);
         $this->assertStringNotContainsString('Análisis visual', $reevaluation->explanation_text);
+
+        $ctx = $this->assertSystemLogged('ai.media_fusion.skipped', fn (array $c): bool => $c['input']['evaluation_id'] === $reevaluation->id);
+        $this->assertSame('no_media', $ctx['reason']);
+        $this->assertSame(0, $ctx['calc']['media_assessed_count']);
+        $entry = collect($this->systemLogEntries('ai.media_fusion.skipped'))
+            ->first(fn (array $e): bool => $e['context']['input']['evaluation_id'] === $reevaluation->id);
+        $this->assertSame('debug', $entry['level']);
+        $this->assertSystemNotLogged('ai.media_fusion.applied');
+
+        $completed = $this->assertSystemLogged('ai.evaluation.completed', fn (array $c): bool => $c['result']['evaluation_id'] === $reevaluation->id);
+        $this->assertFalse($completed['calc']['fusion_applied']);
+        $this->assertSame(0.0, $completed['calc']['fusion_risk_delta']);
+        $this->assertSame($completed['calc']['risk_after_agent'], $completed['calc']['risk_score']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_inconclusive_only_assessments_leave_the_evaluation_unchanged(): void
@@ -215,6 +300,13 @@ class MediaVerdictFusionTest extends TestCase
 
         $this->assertEqualsWithDelta(0.85, (float) $reevaluation->confidence_score, 0.001);
         $this->assertSame(EvaluationMode::AiText, $reevaluation->evaluation_mode);
+
+        $ctx = $this->assertSystemLogged('ai.media_fusion.skipped', fn (array $c): bool => $c['input']['evaluation_id'] === $reevaluation->id);
+        $this->assertSame('no_verdict', $ctx['reason']);
+        $this->assertSame(2, $ctx['calc']['media_assessed_count']);
+        $entry = collect($this->systemLogEntries('ai.media_fusion.skipped'))
+            ->first(fn (array $e): bool => $e['context']['input']['evaluation_id'] === $reevaluation->id);
+        $this->assertSame('info', $entry['level']);
     }
 
     public function test_media_verdicts_from_other_tenants_do_not_leak_into_the_evaluation(): void
@@ -371,5 +463,50 @@ class MediaVerdictFusionTest extends TestCase
 
         $this->assertEqualsWithDelta((float) $baseline->risk_score, (float) $reevaluation->risk_score, 0.001);
         $this->assertStringContainsString('sin confirmación visual', $reevaluation->explanation_text);
+
+        $ctx = $this->assertSystemLogged('ai.media_fusion.applied', fn (array $c): bool => $c['input']['evaluation_id'] === $reevaluation->id);
+        $this->assertSame('critical_no_reduce', $ctx['calc']['branch']);
+        $this->assertSame(0.0, $ctx['calc']['risk_delta']);
+        $this->assertSame(0.0, $ctx['calc']['confidence_delta']);
+        $this->assertTrue($ctx['input']['is_critical_event']);
+        $this->assertSame($ctx['calc']['risk_before'], $ctx['calc']['risk_after']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_explain_reports_the_branch_for_each_case(): void
+    {
+        $fusion = app(MediaVerdictFusion::class);
+
+        $empty = $fusion->explain([], EventClassification::RealEvent);
+        $this->assertSame('no_media', $empty['branch']);
+        $this->assertNull($empty['fusion']);
+        $this->assertSame(0, $empty['assessed']);
+        $this->assertFalse($empty['dismissive']);
+
+        $inconclusive = $fusion->explain(self::verdicts('inconclusive', 'inconclusive'), EventClassification::FalsePositive);
+        $this->assertSame('no_verdict', $inconclusive['branch']);
+        $this->assertNull($inconclusive['fusion']);
+        $this->assertSame(2, $inconclusive['assessed']);
+        $this->assertFalse($inconclusive['dismissive']);
+
+        $confirms = $fusion->explain(self::verdicts('confirms_event', 'contradicts_event'), EventClassification::Noise);
+        $this->assertSame('confirms', $confirms['branch']);
+        $this->assertSame(1, $confirms['confirms']);
+        $this->assertSame(1, $confirms['contradicts']);
+        $this->assertTrue($confirms['dismissive']);
+        $this->assertSame($fusion->fuse(self::verdicts('confirms_event', 'contradicts_event'), EventClassification::Noise), $confirms['fusion']);
+
+        $critical = $fusion->explain(self::verdicts('contradicts_event'), EventClassification::RealEvent, isCriticalEvent: true);
+        $this->assertSame('critical_no_reduce', $critical['branch']);
+        $this->assertSame(0.0, $critical['fusion']['riskDelta']);
+
+        $contradicts = $fusion->explain(
+            [['result' => 'contradicts_event', 'extracted_signals' => []], ['result' => 'contradicts_event', 'extracted_signals' => []]],
+            EventClassification::RealEvent,
+        );
+        $this->assertSame('contradicts', $contradicts['branch']);
+        $this->assertSame(2, $contradicts['contradicts']);
+        $this->assertSame(0, $contradicts['visible_threats']);
+        $this->assertFalse($contradicts['dismissive']);
     }
 }

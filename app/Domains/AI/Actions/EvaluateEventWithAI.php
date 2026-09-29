@@ -34,6 +34,13 @@ class EvaluateEventWithAI
      */
     private const array PRIORITY_THRESHOLDS = ['urgent' => 0.85, 'high' => 0.6, 'normal' => 0.3];
 
+    /**
+     * Límites (inclusivos) del clamp que aplica la fusión del veredicto visual.
+     */
+    private const array CONFIDENCE_BOUNDS = [0.05, 0.99];
+
+    private const array RISK_BOUNDS = [0.0, 1.0];
+
     public function __construct(
         private readonly ResolveTenantAIProfile $resolveTenantProfile,
         private readonly BuildAIInputContext $buildInputContext,
@@ -66,7 +73,7 @@ class EvaluateEventWithAI
         // Se calcula por ruta porque la dirección del ajuste depende de la
         // clasificación final (falso positivo vs evento real).
         $isCriticalEvent = MediaVerdictFusion::isCriticalEvent($event);
-        $fuseMedia = fn (EventClassification $classification): ?array => $this->mediaVerdictFusion->fuse(
+        $explainMedia = fn (EventClassification $classification): array => $this->mediaVerdictFusion->explain(
             $input->mediaAssessments,
             $classification,
             $isCriticalEvent,
@@ -105,7 +112,8 @@ class EvaluateEventWithAI
                 agentRiskDelta: null,
                 riskAfterAgent: $riskScore,
                 baseConfidence: 0.95,
-                fusion: null,
+                explain: null,
+                isCriticalEvent: $isCriticalEvent,
                 result: null,
                 operatorFeedbackPresent: $operatorFeedbackPresent,
                 heuristicRule: explode(':', $rulesDecision['reason'], 2)[0],
@@ -115,9 +123,10 @@ class EvaluateEventWithAI
         }
 
         if ($this->quotaExceeded($event, $profile)) {
-            // fuse() es puro (solo arrays): calcularlo fuera de la transacción
+            // explain() es puro (solo arrays): calcularlo fuera de la transacción
             // da el mismo resultado y deja el delta disponible para la narrativa.
-            $fusion = $fuseMedia(EventClassification::Unclear);
+            $explain = $explainMedia(EventClassification::Unclear);
+            $fusion = $explain['fusion'];
 
             $evaluation = DB::transaction(function () use ($event, $version, $riskScore, $input, $fusion) {
                 $fused = $this->applyFusion(
@@ -155,7 +164,8 @@ class EvaluateEventWithAI
                 agentRiskDelta: null,
                 riskAfterAgent: $riskScore,
                 baseConfidence: 0.5,
-                fusion: $fusion,
+                explain: $explain,
+                isCriticalEvent: $isCriticalEvent,
                 result: null,
                 operatorFeedbackPresent: $operatorFeedbackPresent,
                 heuristicRule: null,
@@ -171,7 +181,8 @@ class EvaluateEventWithAI
             // después del commit (ai.evaluation.rules_only).
             SystemLog::degraded('ai.evaluation.agent_failed', reason: 'agent_error', input: ['normalized_event_id' => $event->id], error: $exception);
 
-            $fusion = $fuseMedia(EventClassification::Unclear);
+            $explain = $explainMedia(EventClassification::Unclear);
+            $fusion = $explain['fusion'];
 
             $evaluation = DB::transaction(function () use ($event, $version, $riskScore, $input, $exception, $fusion) {
                 $fused = $this->applyFusion(
@@ -212,7 +223,8 @@ class EvaluateEventWithAI
                 agentRiskDelta: null,
                 riskAfterAgent: $riskScore,
                 baseConfidence: 0.4,
-                fusion: $fusion,
+                explain: $explain,
+                isCriticalEvent: $isCriticalEvent,
                 result: null,
                 operatorFeedbackPresent: $operatorFeedbackPresent,
                 heuristicRule: null,
@@ -223,7 +235,8 @@ class EvaluateEventWithAI
 
         $finalRiskScore = round(max(0.0, min(1.0, $riskScore + $result->riskScoreDelta)), 2);
 
-        $fusion = $fuseMedia($result->classification);
+        $explain = $explainMedia($result->classification);
+        $fusion = $explain['fusion'];
 
         $evaluation = DB::transaction(function () use ($event, $version, $result, $finalRiskScore, $input, $fusion) {
             $fused = $this->applyFusion(
@@ -269,7 +282,8 @@ class EvaluateEventWithAI
             agentRiskDelta: $result->riskScoreDelta,
             riskAfterAgent: $finalRiskScore,
             baseConfidence: $result->confidenceScore,
-            fusion: $fusion,
+            explain: $explain,
+            isCriticalEvent: $isCriticalEvent,
             result: $result,
             operatorFeedbackPresent: $operatorFeedbackPresent,
             heuristicRule: null,
@@ -284,7 +298,7 @@ class EvaluateEventWithAI
      * rollback pudo deshacer. Nunca registra explicación, key_factors (salvo
      * la clase de error ya persistida), feedback del operador ni prompt.
      *
-     * @param  array{step: string, sentence: string, confidenceDelta: float, riskDelta: float, keyFactors: array<string, int>}|null  $fusion
+     * @param  array{branch: string, fusion: array{step: string, sentence: string, confidenceDelta: float, riskDelta: float, keyFactors: array<string, int>}|null, assessed: int, confirms: int, contradicts: int, visible_threats: int, dismissive: bool}|null  $explain  Null en la ruta heurística (no hay fusión).
      */
     private function narrate(
         AIEventEvaluation $evaluation,
@@ -293,7 +307,8 @@ class EvaluateEventWithAI
         ?float $agentRiskDelta,
         float $riskAfterAgent,
         float $baseConfidence,
-        ?array $fusion,
+        ?array $explain,
+        bool $isCriticalEvent,
         ?AIEvaluationResult $result,
         bool $operatorFeedbackPresent,
         ?string $heuristicRule,
@@ -314,6 +329,45 @@ class EvaluateEventWithAI
                 SystemLog::skipped('ai.evaluation.rules_only', reason: 'heuristic_short_circuit', input: $rulesOnlyInput, result: $rulesOnlyResult);
             } else {
                 SystemLog::degraded('ai.evaluation.rules_only', reason: $route, input: $rulesOnlyInput, result: $rulesOnlyResult);
+            }
+        }
+
+        $fusion = $explain['fusion'] ?? null;
+
+        if ($explain !== null) {
+            if ($fusion === null) {
+                SystemLog::skipped(
+                    'ai.media_fusion.skipped',
+                    reason: $explain['branch'],
+                    input: ['evaluation_id' => $evaluation->id],
+                    calc: ['media_assessed_count' => $explain['assessed']],
+                    debug: $explain['branch'] === 'no_media',
+                );
+            } else {
+                SystemLog::ok(
+                    'ai.media_fusion.applied',
+                    input: [
+                        'evaluation_id' => $evaluation->id,
+                        'classification' => $evaluation->classification->value,
+                        'is_critical_event' => $isCriticalEvent,
+                    ],
+                    calc: [
+                        'branch' => $explain['branch'],
+                        'media_assessed_count' => $explain['assessed'],
+                        'media_confirms_count' => $explain['confirms'],
+                        'media_contradicts_count' => $explain['contradicts'],
+                        'media_visible_threat_count' => $explain['visible_threats'],
+                        'dismissive' => $explain['dismissive'],
+                        'confidence_before' => $baseConfidence,
+                        'confidence_delta' => $fusion['confidenceDelta'],
+                        'confidence_bounds' => self::CONFIDENCE_BOUNDS,
+                        'confidence_after' => $evaluation->confidence_score,
+                        'risk_before' => $riskAfterAgent,
+                        'risk_delta' => $fusion['riskDelta'],
+                        'risk_bounds' => self::RISK_BOUNDS,
+                        'risk_after' => $evaluation->risk_score,
+                    ],
+                );
             }
         }
 
@@ -355,10 +409,13 @@ class EvaluateEventWithAI
                 'base_risk' => $baseRisk,
                 'agent_risk_delta' => $agentRiskDelta,
                 'risk_after_agent' => $riskAfterAgent,
+                'fusion_applied' => $fusion !== null,
                 'fusion_risk_delta' => $fusion['riskDelta'] ?? 0.0,
+                'risk_clamp' => self::RISK_BOUNDS,
                 'risk_score' => $evaluation->risk_score,
                 'base_confidence' => $baseConfidence,
                 'fusion_confidence_delta' => $fusion['confidenceDelta'] ?? 0.0,
+                'confidence_clamp' => self::CONFIDENCE_BOUNDS,
                 'confidence' => $evaluation->confidence_score,
             ],
             result: [
@@ -441,8 +498,8 @@ class EvaluateEventWithAI
         }
 
         return [
-            'confidence' => round(max(0.05, min(0.99, $confidence + $fusion['confidenceDelta'])), 2),
-            'riskScore' => round(max(0.0, min(1.0, $riskScore + $fusion['riskDelta'])), 2),
+            'confidence' => round(max(self::CONFIDENCE_BOUNDS[0], min(self::CONFIDENCE_BOUNDS[1], $confidence + $fusion['confidenceDelta'])), 2),
+            'riskScore' => round(max(self::RISK_BOUNDS[0], min(self::RISK_BOUNDS[1], $riskScore + $fusion['riskDelta'])), 2),
             'explanation' => rtrim($explanation) === ''
                 ? $fusion['sentence']
                 : rtrim($explanation).' '.$fusion['sentence'],
