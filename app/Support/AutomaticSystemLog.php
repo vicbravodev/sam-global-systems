@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use Closure;
 use Illuminate\Auth\Events\Failed;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Auth\Events\Login;
@@ -17,6 +18,8 @@ use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Queue\MaxAttemptsExceededException;
 use Illuminate\Queue\TimeoutExceededException;
 use Illuminate\Support\Facades\Event;
+use InvalidArgumentException;
+use Throwable;
 
 /**
  * Red de fondo del log narrativo: lo que se registra sin que cada módulo lo
@@ -46,11 +49,11 @@ final class AutomaticSystemLog
 
     public static function register(): void
     {
-        Event::listen(JobProcessing::class, static function (JobProcessing $event): void {
+        self::listen(JobProcessing::class, static function (JobProcessing $event): void {
             self::$startedAt[spl_object_id($event->job)] = hrtime(true);
         });
 
-        Event::listen(JobProcessed::class, static function (JobProcessed $event): void {
+        self::listen(JobProcessed::class, static function (JobProcessed $event): void {
             $input = self::jobInput($event->job);
             $duration = self::jobDuration($event->job);
 
@@ -63,13 +66,13 @@ final class AutomaticSystemLog
             SystemLog::ok('queue.job.finished', input: $input, durationMs: $duration, debug: self::isHotQueue($event->job));
         });
 
-        Event::listen(JobExceptionOccurred::class, static function (JobExceptionOccurred $event): void {
+        self::listen(JobExceptionOccurred::class, static function (JobExceptionOccurred $event): void {
             SystemLog::degraded('queue.job.attempt_failed', reason: 'exception', input: self::jobInput($event->job) + [
                 'max_tries' => $event->job->maxTries(),
             ], error: $event->exception);
         });
 
-        Event::listen(JobFailed::class, static function (JobFailed $event): void {
+        self::listen(JobFailed::class, static function (JobFailed $event): void {
             $reason = match (true) {
                 $event->exception instanceof MaxAttemptsExceededException => 'max_attempts_exceeded',
                 $event->exception instanceof TimeoutExceededException => 'timeout',
@@ -80,7 +83,7 @@ final class AutomaticSystemLog
             unset(self::$startedAt[spl_object_id($event->job)]);
         });
 
-        Event::listen(ResponseReceived::class, static function (ResponseReceived $event): void {
+        self::listen(ResponseReceived::class, static function (ResponseReceived $event): void {
             $input = self::httpInput($event->request->url(), $event->request->method()) + ['status' => $event->response->status()];
             $seconds = $event->response->handlerStats()['total_time'] ?? null;
             $duration = is_numeric($seconds) ? (int) round(((float) $seconds) * 1000) : null;
@@ -94,24 +97,42 @@ final class AutomaticSystemLog
             SystemLog::degraded('http.client.request.completed', reason: 'http_error', input: $input, durationMs: $duration);
         });
 
-        Event::listen(ConnectionFailed::class, static function (ConnectionFailed $event): void {
+        self::listen(ConnectionFailed::class, static function (ConnectionFailed $event): void {
             SystemLog::failed('http.client.request.failed', reason: 'connection_failed', input: self::httpInput($event->request->url(), $event->request->method()), error: $event->exception);
         });
 
-        Event::listen(Login::class, static fn (Login $event) => SystemLog::ok('auth.login.succeeded', input: ['user_id' => $event->user->getAuthIdentifier(), 'guard' => $event->guard, 'remember' => $event->remember]));
-        Event::listen(Logout::class, static fn (Logout $event) => SystemLog::ok('auth.logout.succeeded', input: ['user_id' => $event->user?->getAuthIdentifier(), 'guard' => $event->guard]));
-        Event::listen(PasswordReset::class, static fn (PasswordReset $event) => SystemLog::ok('auth.password.reset', input: ['user_id' => $event->user->getAuthIdentifier()]));
+        self::listen(Login::class, static fn (Login $event) => SystemLog::ok('auth.login.succeeded', input: ['user_id' => $event->user->getAuthIdentifier(), 'guard' => $event->guard, 'remember' => $event->remember]));
+        self::listen(Logout::class, static fn (Logout $event) => SystemLog::ok('auth.logout.succeeded', input: ['user_id' => $event->user?->getAuthIdentifier(), 'guard' => $event->guard]));
+        self::listen(PasswordReset::class, static fn (PasswordReset $event) => SystemLog::ok('auth.password.reset', input: ['user_id' => $event->user->getAuthIdentifier()]));
 
-        Event::listen(Failed::class, static fn (Failed $event) => SystemLog::skipped('auth.login.failed', reason: 'invalid_credentials', input: [
+        self::listen(Failed::class, static fn (Failed $event) => SystemLog::skipped('auth.login.failed', reason: 'invalid_credentials', input: [
             'user_id' => $event->user?->getAuthIdentifier(),
             'guard' => $event->guard,
             'login_fingerprint' => self::fingerprint($event->credentials['email'] ?? null),
         ]));
 
-        Event::listen(Lockout::class, static fn (Lockout $event) => SystemLog::degraded('auth.login.locked_out', reason: 'too_many_attempts', input: [
+        self::listen(Lockout::class, static fn (Lockout $event) => SystemLog::degraded('auth.login.locked_out', reason: 'too_many_attempts', input: [
             'route_name' => $event->request->route()?->getName(),
             'login_fingerprint' => self::fingerprint($event->request->input('email')),
         ]));
+    }
+
+    /**
+     * Ningún listener automático puede tumbar el job o la petición que observa.
+     * Único error que se relanza: la violación de esquema de SystemLog en tests.
+     */
+    private static function listen(string $event, Closure $handler): void
+    {
+        Event::listen($event, static function (object $payload) use ($handler): void {
+            try {
+                $handler($payload);
+            } catch (Throwable $e) {
+                if ($e instanceof InvalidArgumentException && app()->runningUnitTests()) {
+                    throw $e;
+                }
+                // Se traga sin registrar: el log es justo lo que falló.
+            }
+        });
     }
 
     /**

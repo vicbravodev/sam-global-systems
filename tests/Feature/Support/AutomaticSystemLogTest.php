@@ -3,6 +3,7 @@
 namespace Tests\Feature\Support;
 
 use App\Models\User;
+use App\Support\SystemLog;
 use Illuminate\Auth\Events\Failed;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Auth\Events\Login;
@@ -72,6 +73,19 @@ class AutomaticSystemLogTest extends TestCase
         }
 
         $this->assertSystemLogged('http.client.request.failed', fn (array $c) => $c['reason'] === 'connection_failed' && $c['input']['provider'] === 'openai');
+    }
+
+    public function test_a_broken_log_sink_never_breaks_http_or_jobs(): void
+    {
+        SystemLog::listen(fn () => throw new RuntimeException('sink down'));
+        Http::fake(['api.samsara.com/*' => Http::response(['data' => []], 200)]);
+
+        $response = Http::get('https://api.samsara.com/fleet/vehicles');
+
+        $this->assertSame(200, $response->status());
+
+        AutomaticSystemLogOkJob::dispatch();
+        $this->addToAssertionCount(1);
     }
 
     public function test_auth_events_never_log_the_email(): void
