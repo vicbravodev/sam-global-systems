@@ -181,6 +181,7 @@ class ExtractVideoFramesJobTest extends TestCase
 
         $this->assertCount(0, $this->framesOf($clip));
         $this->assertSystemLogged('media.frames.ffmpeg_unavailable', fn (array $c) => $c['reason'] === 'ffmpeg_missing' && $c['input']['media_context_id'] === $clip->id);
+        $this->assertCount(1, $this->systemLogEntries('media.frames.ffmpeg_unavailable'));
         Event::assertNotDispatched(EventMediaAvailable::class);
     }
 

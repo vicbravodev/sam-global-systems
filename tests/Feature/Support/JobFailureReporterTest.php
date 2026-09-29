@@ -17,6 +17,7 @@ class JobFailureReporterTest extends TestCase
         JobFailureReporter::report('App\Jobs\Fake', new RuntimeException('boom'), ['team_id' => 7]);
 
         $ctx = $this->assertSystemLogged('app.fake.failed');
+        $this->assertCount(1, $this->systemLogEntries('app.fake.failed'));
 
         $this->assertSame('error', $this->systemLogEntries('app.fake.failed')[0]['level']);
         $this->assertSame('exception', $ctx['reason']);
