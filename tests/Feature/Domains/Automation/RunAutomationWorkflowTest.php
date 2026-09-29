@@ -20,11 +20,12 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Event;
 use Tests\Concerns\AssertsSystemLog;
+use Tests\Concerns\AssertsTenantIsolation;
 use Tests\TestCase;
 
 class RunAutomationWorkflowTest extends TestCase
 {
-    use AssertsSystemLog, RefreshDatabase;
+    use AssertsSystemLog, AssertsTenantIsolation, RefreshDatabase;
 
     protected function setUp(): void
     {
@@ -161,6 +162,49 @@ class RunAutomationWorkflowTest extends TestCase
         $json = (string) json_encode($this->systemLogEntries());
         $this->assertDoesNotMatchRegularExpression('/"[a-z_]*workflow_execution_id":'.$foreign->id.'\\b/', $json);
         $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_global_workflow_with_the_same_reference_runs_once_per_team_without_leaking(): void
+    {
+        Bus::fake();
+
+        $teamId = User::factory()->create()->currentTeam->id;
+        $otherTeamId = User::factory()->create()->currentTeam->id;
+
+        $workflow = AutomationWorkflow::factory()->systemWide()->create();
+
+        $service = app(RunAutomationWorkflow::class);
+
+        $foreign = $service->execute(
+            workflow: $workflow,
+            teamId: $otherTeamId,
+            sourceType: ActionExecutionSourceType::Manual,
+            sourceReferenceId: 'ref-compartida',
+        );
+
+        // Misma clave (workflow, source_type, source_reference_id) en otro
+        // tenant: el índice de idempotencia incluye team_id, así que no choca
+        // y no toca ni una fila del otro tenant.
+        $execution = $this->assertNoTenantLeak($teamId, fn () => $service->execute(
+            workflow: $workflow,
+            teamId: $teamId,
+            sourceType: ActionExecutionSourceType::Manual,
+            sourceReferenceId: 'ref-compartida',
+        ));
+
+        $this->assertNotNull($foreign);
+        $this->assertNotNull($execution);
+        $this->assertSame($teamId, (int) $execution->team_id);
+        $this->assertNotSame($foreign->id, $execution->id);
+
+        // Dentro del mismo tenant sigue siendo idempotente.
+        $this->assertNull($service->execute(
+            workflow: $workflow,
+            teamId: $teamId,
+            sourceType: ActionExecutionSourceType::Manual,
+            sourceReferenceId: 'ref-compartida',
+        ));
+        $this->assertSame(2, WorkflowExecution::withoutGlobalScopes()->count());
     }
 
     public function test_idempotent_when_called_twice_for_same_source(): void
