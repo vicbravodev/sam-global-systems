@@ -33,10 +33,12 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class FetchDeferredEventMediaJobTest extends TestCase
 {
+    use AssertsSystemLog;
     use RefreshDatabase;
 
     private int $teamId;
@@ -129,6 +131,34 @@ class FetchDeferredEventMediaJobTest extends TestCase
         return ['api.samsara.com/cameras/media?*' => Http::response(['data' => ['media' => []]])];
     }
 
+    /**
+     * El cierre de la fase 2: el log dice un código estable, nunca la frase
+     * inglesa que viaja en EventMediaFailed.
+     *
+     * @return array<string, mixed>
+     */
+    private function assertClosedSkipped(string $reasonCode, MediaRequestStatus $status): array
+    {
+        $context = $this->assertSystemLogged('media.deferred.closed', fn (array $c) => ($c['reason'] ?? null) === $reasonCode);
+
+        $this->assertDoesNotMatchRegularExpression('/\s/', $context['reason']);
+        $this->assertSame($status->value, $context['result']['status']);
+        $this->assertNull($context['result']['completed_via']);
+        $this->assertArrayHasKey('event_media_request_id', $context['input']);
+        $this->assertArrayHasKey('normalized_event_id', $context['input']);
+
+        return $context;
+    }
+
+    private function assertClosedViaUploads(string $reasonCode): void
+    {
+        $context = $this->assertSystemLogged('media.deferred.closed', fn (array $c) => ($c['result']['close_reason'] ?? null) === $reasonCode);
+
+        $this->assertSame('completed', $context['result']['status']);
+        $this->assertSame('uploaded_media', $context['result']['completed_via']);
+        $this->assertArrayNotHasKey('reason', $context);
+    }
+
     public function test_full_cycle_pending_to_completed_downloads_and_materializes_media(): void
     {
         $this->makeSamsaraIntegration();
@@ -183,6 +213,21 @@ class FetchDeferredEventMediaJobTest extends TestCase
         Storage::disk('rustfs')->assertExists($media->storage_path);
 
         Event::assertDispatched(EventMediaAvailable::class);
+
+        $this->assertSystemLogged('media.deferred.retrieval_placed', fn (array $c) => $c['calc']['media_type'] === 'video'
+            && $c['calc']['next_poll_seconds'] === FetchDeferredEventMediaJob::POLL_DELAY_SECONDS
+            && $c['input']['event_media_request_id'] === $request->id
+            && $c['input']['normalized_event_id'] === $request->normalized_event_id);
+        $this->assertSystemLogged('media.deferred.polling', fn (array $c) => $c['result']['requeue_reason'] === 'pending_at_provider'
+            && $c['calc']['pending'] === 1
+            && $c['calc']['next_poll_seconds'] === FetchDeferredEventMediaJob::POLL_DELAY_SECONDS);
+        $this->assertSystemLogged('media.deferred.completed', fn (array $c) => $c['result']['available'] === 1 && $c['result']['downloaded'] === 1);
+        $this->assertSystemLogged('media.deferred.sweep_completed', fn (array $c) => $c['calc']['items_found'] === 0
+            && $c['calc']['available'] === 0
+            && $c['calc']['window_seconds'] === FetchDeferredEventMediaJob::DEFAULT_STILL_WINDOW_MINUTES * 60
+            && $c['result']['downloaded'] === 0);
+        $this->assertSystemNotLogged('media.deferred.closed_without_media');
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_clip_window_honors_the_tenant_setting(): void
@@ -339,6 +384,11 @@ class FetchDeferredEventMediaJobTest extends TestCase
 
         $this->assertSame(2, EventMediaContext::withoutGlobalScopes()->where('normalized_event_id', $event->id)->count());
         Event::assertDispatched(EventMediaAvailable::class);
+
+        $this->assertSystemLogged('media.deferred.stills_placed', fn (array $c) => $c['calc']['stills_requested'] === 2
+            && $c['calc']['stills_rejected'] === 0
+            && $c['calc']['next_poll_seconds'] === FetchDeferredEventMediaJob::POLL_DELAY_SECONDS);
+        $this->assertSystemLogged('media.deferred.completed', fn (array $c) => $c['result']['downloaded'] === 2);
     }
 
     public function test_still_request_fails_when_provider_rejects_every_still(): void
@@ -357,6 +407,7 @@ class FetchDeferredEventMediaJobTest extends TestCase
 
         $this->assertSame(MediaRequestStatus::Failed, $request->fresh()->status);
         Event::assertDispatched(EventMediaFailed::class);
+        $this->assertClosedSkipped('provider_rejected_all_stills', MediaRequestStatus::Failed);
     }
 
     public function test_still_request_fails_when_every_still_fails_at_the_provider(): void
@@ -383,6 +434,7 @@ class FetchDeferredEventMediaJobTest extends TestCase
 
         $this->assertSame(MediaRequestStatus::Failed, $request->fresh()->status);
         Event::assertDispatched(EventMediaFailed::class);
+        $this->assertClosedSkipped('all_stills_failed', MediaRequestStatus::Failed);
     }
 
     public function test_expired_request_is_closed_without_calling_the_provider(): void
@@ -402,6 +454,7 @@ class FetchDeferredEventMediaJobTest extends TestCase
         $this->assertNotNull($fresh->completed_at);
         Http::assertNothingSent();
         Event::assertDispatched(EventMediaFailed::class, fn (EventMediaFailed $e) => $e->request->id === $request->id);
+        $this->assertClosedSkipped('retrieval_window_expired', MediaRequestStatus::Expired);
     }
 
     public function test_fails_when_no_integration_can_serve_the_asset(): void
@@ -415,6 +468,7 @@ class FetchDeferredEventMediaJobTest extends TestCase
         $this->assertSame(MediaRequestStatus::Failed, $request->fresh()->status);
         Http::assertNothingSent();
         Event::assertDispatched(EventMediaFailed::class);
+        $this->assertClosedSkipped('no_active_integration', MediaRequestStatus::Failed);
     }
 
     public function test_fails_when_provider_rejects_the_retrieval(): void
@@ -432,6 +486,8 @@ class FetchDeferredEventMediaJobTest extends TestCase
 
         $this->assertSame(MediaRequestStatus::Failed, $request->fresh()->status);
         Event::assertDispatched(EventMediaFailed::class);
+        $this->assertClosedSkipped('provider_rejected_retrieval', MediaRequestStatus::Failed);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_fails_when_every_clip_fails_at_the_provider(): void
@@ -454,6 +510,7 @@ class FetchDeferredEventMediaJobTest extends TestCase
 
         $this->assertSame(MediaRequestStatus::Failed, $request->fresh()->status);
         Event::assertDispatched(EventMediaFailed::class);
+        $this->assertClosedSkipped('all_clips_failed', MediaRequestStatus::Failed);
     }
 
     public function test_failed_download_keeps_polling_instead_of_completing(): void
@@ -488,6 +545,11 @@ class FetchDeferredEventMediaJobTest extends TestCase
             fn (FetchDeferredEventMediaJob $job) => $job->eventMediaRequestId === $request->id,
         );
         $this->assertSame(0, RawEventAttachment::query()->count());
+        $this->assertSystemLogged('media.deferred.polling', fn (array $c) => $c['result']['requeue_reason'] === 'download_failed'
+            && $c['calc']['failed_downloads'] === 1
+            && $c['calc']['available'] === 1);
+        $this->assertSystemLogged('media.deferred.download_failed');
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_media_url_on_a_non_allowlisted_host_is_never_fetched(): void
@@ -529,6 +591,10 @@ class FetchDeferredEventMediaJobTest extends TestCase
 
         $this->assertSame(MediaRequestStatus::Completed, $request->fresh()->status);
         Http::assertNothingSent();
+
+        $this->assertSystemLogged('media.deferred.skipped', fn (array $c) => $c['reason'] === 'not_in_flight'
+            && $c['input']['event_media_request_id'] === $request->id
+            && $c['input']['status'] === 'completed');
     }
 
     public function test_handle_no_ops_when_request_missing(): void
@@ -544,6 +610,9 @@ class FetchDeferredEventMediaJobTest extends TestCase
         );
 
         Http::assertNothingSent();
+
+        $this->assertSystemLogged('media.deferred.skipped', fn (array $c) => $c['reason'] === 'request_missing'
+            && $c['input']['event_media_request_id'] === 99999);
     }
 
     public function test_uploaded_panic_media_is_swept_and_attached_alongside_the_retrieval(): void
@@ -605,6 +674,11 @@ class FetchDeferredEventMediaJobTest extends TestCase
         // Both the auto-uploaded clip and the retrieval clip materialize.
         $this->assertSame(2, EventMediaContext::withoutGlobalScopes()->where('normalized_event_id', $event->id)->count());
         Event::assertDispatched(EventMediaAvailable::class);
+
+        $this->assertSystemLogged('media.deferred.sweep_completed', fn (array $c) => $c['calc']['items_found'] === 1
+            && $c['calc']['available'] === 1
+            && $c['result']['downloaded'] === 1);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_generic_octet_stream_mime_is_normalized_from_the_filename(): void
@@ -695,6 +769,7 @@ class FetchDeferredEventMediaJobTest extends TestCase
 
         Event::assertDispatched(EventMediaAvailable::class);
         Event::assertNotDispatched(EventMediaFailed::class);
+        $this->assertClosedViaUploads('provider_rejected_retrieval');
     }
 
     public function test_stale_event_skips_retrievals_and_fails_after_a_single_sweep(): void
@@ -718,6 +793,10 @@ class FetchDeferredEventMediaJobTest extends TestCase
 
         // The SD footage is gone past the retention window: no retrieval call.
         Http::assertNotSent(fn ($req) => str_contains($req->url(), 'cameras/media/retrieval'));
+
+        $context = $this->assertClosedSkipped('older_than_footage_retention', MediaRequestStatus::Failed);
+        $this->assertSame(FetchDeferredEventMediaJob::DEFAULT_RETRIEVAL_MAX_AGE_HOURS, $context['calc']['max_age_hours']);
+        $this->assertGreaterThan($context['calc']['max_age_hours'], $context['calc']['event_age_hours']);
     }
 
     public function test_stale_event_completes_when_the_sweep_finds_uploaded_media(): void
@@ -753,6 +832,7 @@ class FetchDeferredEventMediaJobTest extends TestCase
 
         $this->assertSame(1, EventMediaContext::withoutGlobalScopes()->where('normalized_event_id', $event->id)->count());
         Http::assertNotSent(fn ($req) => str_contains($req->url(), 'cameras/media/retrieval'));
+        $this->assertClosedViaUploads('older_than_footage_retention');
     }
 
     public function test_retrieval_max_age_honors_the_tenant_setting(): void
@@ -797,6 +877,9 @@ class FetchDeferredEventMediaJobTest extends TestCase
             fn (FetchDeferredEventMediaJob $job) => $job->eventMediaRequestId === $request->id,
         );
         Http::assertNotSent(fn ($req) => str_contains($req->url(), 'cameras/media/retrieval'));
+        $this->assertSystemLogged('media.deferred.sweep_polling', fn (array $c) => $c['calc']['next_poll_seconds'] === FetchDeferredEventMediaJob::SWEEP_POLL_DELAY_SECONDS
+            && $c['input']['event_media_request_id'] === $request->id);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_camera_less_asset_completes_once_uploaded_media_lands(): void
@@ -835,6 +918,7 @@ class FetchDeferredEventMediaJobTest extends TestCase
         $this->assertSame(1, EventMediaContext::withoutGlobalScopes()->where('normalized_event_id', $event->id)->count());
         Event::assertDispatched(EventMediaAvailable::class);
         Http::assertNotSent(fn ($req) => str_contains($req->url(), 'cameras/media/retrieval'));
+        $this->assertClosedViaUploads('no_camera_fulfilled_by_sweep');
     }
 
     public function test_sweep_only_request_never_places_a_retrieval_and_polls_uploads(): void
@@ -895,6 +979,7 @@ class FetchDeferredEventMediaJobTest extends TestCase
         $this->assertSame(1, EventMediaContext::withoutGlobalScopes()->where('normalized_event_id', $event->id)->count());
         Event::assertDispatched(EventMediaAvailable::class);
         Http::assertNotSent(fn ($req) => str_contains($req->url(), 'cameras/media/retrieval'));
+        $this->assertClosedViaUploads('fulfilled_by_sweep');
     }
 
     public function test_failed_marks_request_failed_and_dispatches_event(): void

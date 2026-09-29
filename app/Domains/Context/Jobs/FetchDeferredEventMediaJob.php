@@ -120,6 +120,12 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         $request = EventMediaRequest::withoutGlobalScopes()->find($this->eventMediaRequestId);
 
         if ($request === null || ! $request->status->isInFlight()) {
+            SystemLog::skipped(
+                'media.deferred.skipped',
+                reason: $request === null ? 'request_missing' : 'not_in_flight',
+                input: ['event_media_request_id' => $this->eventMediaRequestId, 'status' => $request?->status->value],
+            );
+
             return;
         }
 
@@ -147,13 +153,13 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         $event = NormalizedEvent::query()->find($request->normalized_event_id);
 
         if ($event === null) {
-            $this->markFailed($request, MediaRequestStatus::Failed, 'Normalized event no longer exists.');
+            $this->markFailed($request, MediaRequestStatus::Failed, 'Normalized event no longer exists.', 'normalized_event_missing');
 
             return;
         }
 
         if ($request->expires_at !== null && $request->expires_at->isPast()) {
-            $this->closeWithoutNewMedia($request, $event, MediaRequestStatus::Expired, 'Media retrieval window expired before the provider delivered the media.');
+            $this->closeWithoutNewMedia($request, $event, MediaRequestStatus::Expired, 'Media retrieval window expired before the provider delivered the media.', 'retrieval_window_expired');
             $refreshSnapshot->execute($event->id);
 
             return;
@@ -162,7 +168,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         $resolved = $this->resolveIntegration($event);
 
         if ($resolved === null) {
-            $this->closeWithoutNewMedia($request, $event, MediaRequestStatus::Failed, 'No active integration with an external asset reference can serve this media request.');
+            $this->closeWithoutNewMedia($request, $event, MediaRequestStatus::Failed, 'No active integration with an external asset reference can serve this media request.', 'no_active_integration');
             $refreshSnapshot->execute($event->id);
 
             return;
@@ -181,6 +187,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
                 $event,
                 $refreshSnapshot,
                 'Request fulfilled by the quota-free uploaded-media sweep.',
+                'fulfilled_by_sweep',
             );
 
             return;
@@ -201,7 +208,10 @@ class FetchDeferredEventMediaJob implements ShouldQueue
                 $this->closeWithoutNewMedia($request, $event, MediaRequestStatus::Failed, sprintf(
                     'Event is older than the device footage retention window (%dh); only already-uploaded media was swept.',
                     $maxAgeHours,
-                ));
+                ), 'older_than_footage_retention', [
+                    'event_age_hours' => (int) $occurredAt->diffInHours(now(), true),
+                    'max_age_hours' => $maxAgeHours,
+                ]);
                 $refreshSnapshot->execute($event->id);
 
                 return;
@@ -213,6 +223,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
                     $event,
                     $refreshSnapshot,
                     'Asset reports no paired camera; request fulfilled by the uploaded-media sweep.',
+                    'no_camera_fulfilled_by_sweep',
                 );
 
                 return;
@@ -270,7 +281,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         );
 
         if ($retrievalId === null) {
-            $this->closeWithoutNewMedia($request, $event, MediaRequestStatus::Failed, 'Provider rejected the media retrieval request.');
+            $this->closeWithoutNewMedia($request, $event, MediaRequestStatus::Failed, 'Provider rejected the media retrieval request.', 'provider_rejected_retrieval');
             $refreshSnapshot->execute($event->id);
 
             return;
@@ -286,6 +297,16 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         ])->save();
 
         $refreshSnapshot->execute($event->id);
+
+        SystemLog::ok(
+            'media.deferred.retrieval_placed',
+            input: $this->logInput($request),
+            calc: [
+                'media_type' => 'video',
+                'inputs' => $this->inputsFor($request->request_type),
+                'next_poll_seconds' => self::POLL_DELAY_SECONDS,
+            ],
+        );
 
         self::dispatch($request->id)->delay(now()->addSeconds(self::POLL_DELAY_SECONDS));
     }
@@ -343,7 +364,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         }
 
         if ($retrievals === []) {
-            $this->closeWithoutNewMedia($request, $event, MediaRequestStatus::Failed, 'Provider rejected every still-image retrieval request.');
+            $this->closeWithoutNewMedia($request, $event, MediaRequestStatus::Failed, 'Provider rejected every still-image retrieval request.', 'provider_rejected_all_stills');
             $refreshSnapshot->execute($event->id);
 
             return;
@@ -359,6 +380,16 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         ])->save();
 
         $refreshSnapshot->execute($event->id);
+
+        SystemLog::ok(
+            'media.deferred.stills_placed',
+            input: $this->logInput($request),
+            calc: [
+                'stills_requested' => count($retrievals),
+                'stills_rejected' => $count - count($retrievals),
+                'next_poll_seconds' => self::POLL_DELAY_SECONDS,
+            ],
+        );
 
         self::dispatch($request->id)->delay(now()->addSeconds(self::POLL_DELAY_SECONDS));
     }
@@ -405,13 +436,26 @@ class FetchDeferredEventMediaJob implements ShouldQueue
             $request->forceFill(['status' => MediaRequestStatus::Processing])->save();
             $refreshSnapshot->execute($event->id);
 
+            SystemLog::ok(
+                'media.deferred.polling',
+                input: $this->logInput($request),
+                calc: [
+                    'pending' => count($pending),
+                    'available' => count($available),
+                    'failed_downloads' => $failedDownloads,
+                    'items' => count($items),
+                    'next_poll_seconds' => self::POLL_DELAY_SECONDS,
+                ],
+                result: ['requeue_reason' => $pending !== [] ? 'pending_at_provider' : ($items === [] ? 'provider_unreachable' : 'download_failed')],
+            );
+
             self::dispatch($request->id)->delay(now()->addSeconds(self::POLL_DELAY_SECONDS));
 
             return;
         }
 
         if ($available === []) {
-            $this->closeWithoutNewMedia($request, $event, MediaRequestStatus::Failed, 'Provider reported every requested clip as failed.');
+            $this->closeWithoutNewMedia($request, $event, MediaRequestStatus::Failed, 'Provider reported every requested clip as failed.', 'all_clips_failed');
             $refreshSnapshot->execute($event->id);
 
             return;
@@ -423,6 +467,12 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         ])->save();
 
         $refreshSnapshot->execute($event->id);
+
+        SystemLog::ok(
+            'media.deferred.completed',
+            input: $this->logInput($request),
+            result: ['available' => count($available), 'downloaded' => $downloaded],
+        );
     }
 
     /**
@@ -445,9 +495,14 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         $anyPending = false;
         $anyTransient = false;
         $downloaded = 0;
+        $itemsSeen = 0;
+        $pendingCount = 0;
+        $availableCount = 0;
+        $failedDownloads = 0;
 
         foreach ($retrievals as $retrieval) {
             $items = $mediaAdapter->checkMedia($integration, (string) $retrieval['retrieval_id'])['items'];
+            $itemsSeen += count($items);
 
             if ($items === []) {
                 $anyTransient = true;
@@ -458,6 +513,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
             foreach ($items as $item) {
                 if ($item['status'] === 'pending') {
                     $anyPending = true;
+                    $pendingCount++;
 
                     continue;
                 }
@@ -465,6 +521,8 @@ class FetchDeferredEventMediaJob implements ShouldQueue
                 if ($item['status'] !== 'available' || ! is_string($item['url'] ?? null) || $item['url'] === '') {
                     continue;
                 }
+
+                $availableCount++;
 
                 $filename = sprintf(
                     'deferred-still-%d-%s',
@@ -480,6 +538,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
                     $downloaded++;
                 } elseif ($outcome === MediaDownloadOutcome::Failed) {
                     $anyTransient = true;
+                    $failedDownloads++;
                 }
             }
         }
@@ -499,6 +558,19 @@ class FetchDeferredEventMediaJob implements ShouldQueue
 
             $refreshSnapshot->execute($event->id);
 
+            SystemLog::ok(
+                'media.deferred.polling',
+                input: $this->logInput($request),
+                calc: [
+                    'pending' => $pendingCount,
+                    'available' => $availableCount,
+                    'failed_downloads' => $failedDownloads,
+                    'items' => $itemsSeen,
+                    'next_poll_seconds' => self::POLL_DELAY_SECONDS,
+                ],
+                result: ['requeue_reason' => $anyPending ? 'pending_at_provider' : ($failedDownloads > 0 ? 'download_failed' : 'provider_unreachable')],
+            );
+
             self::dispatch($request->id)->delay(now()->addSeconds(self::POLL_DELAY_SECONDS));
 
             return;
@@ -506,7 +578,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
 
         if ((int) $metadata['stills_downloaded'] === 0) {
             $request->forceFill(['response_metadata_json' => $metadata])->save();
-            $this->closeWithoutNewMedia($request, $event, MediaRequestStatus::Failed, 'Provider reported every requested still as failed.');
+            $this->closeWithoutNewMedia($request, $event, MediaRequestStatus::Failed, 'Provider reported every requested still as failed.', 'all_stills_failed');
             $refreshSnapshot->execute($event->id);
 
             return;
@@ -519,6 +591,12 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         ])->save();
 
         $refreshSnapshot->execute($event->id);
+
+        SystemLog::ok(
+            'media.deferred.completed',
+            input: $this->logInput($request),
+            result: ['available' => $availableCount, 'downloaded' => (int) $metadata['stills_downloaded']],
+        );
     }
 
     /**
@@ -555,11 +633,14 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         )['items'];
 
         $downloaded = 0;
+        $availableCount = 0;
 
         foreach ($items as $item) {
             if ($item['status'] !== 'available' || ! is_string($item['url'] ?? null) || $item['url'] === '') {
                 continue;
             }
+
+            $availableCount++;
 
             $isVideo = str_starts_with((string) ($item['media_type'] ?? ''), 'video');
 
@@ -577,6 +658,17 @@ class FetchDeferredEventMediaJob implements ShouldQueue
                 $downloaded++;
             }
         }
+
+        SystemLog::ok(
+            'media.deferred.sweep_completed',
+            input: $this->logInput($request),
+            calc: [
+                'window_seconds' => $windowSeconds,
+                'items_found' => count($items),
+                'available' => $availableCount,
+            ],
+            result: ['downloaded' => $downloaded],
+        );
 
         if ($downloaded === 0) {
             return;
@@ -608,10 +700,11 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         EventMediaRequest $request,
         NormalizedEvent $event,
         RefreshContextMediaSnapshot $refreshSnapshot,
-        string $fulfilledReason = 'Asset reports no paired camera; request fulfilled by the uploaded-media sweep.',
+        string $fulfilledReason,
+        string $reasonCode,
     ): void {
         if ($this->hasUploadedEvidence($event)) {
-            $this->closeWithoutNewMedia($request, $event, MediaRequestStatus::Failed, $fulfilledReason);
+            $this->closeWithoutNewMedia($request, $event, MediaRequestStatus::Failed, $fulfilledReason, $reasonCode);
             $refreshSnapshot->execute($event->id);
 
             return;
@@ -619,6 +712,12 @@ class FetchDeferredEventMediaJob implements ShouldQueue
 
         $request->forceFill(['status' => MediaRequestStatus::Processing])->save();
         $refreshSnapshot->execute($event->id);
+
+        SystemLog::ok(
+            'media.deferred.sweep_polling',
+            input: $this->logInput($request),
+            calc: ['next_poll_seconds' => self::SWEEP_POLL_DELAY_SECONDS],
+        );
 
         self::dispatch($request->id)->delay(now()->addSeconds(self::SWEEP_POLL_DELAY_SECONDS));
     }
@@ -648,14 +747,19 @@ class FetchDeferredEventMediaJob implements ShouldQueue
             ->exists();
     }
 
+    /**
+     * @param  array<string, mixed>  $calc
+     */
     private function closeWithoutNewMedia(
         EventMediaRequest $request,
         NormalizedEvent $event,
         MediaRequestStatus $status,
         string $reason,
+        string $reasonCode,
+        array $calc = [],
     ): void {
         if (! $this->hasUploadedEvidence($event)) {
-            $this->markFailed($request, $status, $reason);
+            $this->markFailed($request, $status, $reason, $reasonCode, $calc);
 
             return;
         }
@@ -669,6 +773,24 @@ class FetchDeferredEventMediaJob implements ShouldQueue
             'completed_at' => now(),
             'response_metadata_json' => $metadata,
         ])->save();
+
+        SystemLog::ok(
+            'media.deferred.closed',
+            input: $this->logInput($request),
+            calc: $calc,
+            result: ['status' => 'completed', 'completed_via' => 'uploaded_media', 'close_reason' => $reasonCode],
+        );
+    }
+
+    /**
+     * @return array{event_media_request_id: int, normalized_event_id: int}
+     */
+    private function logInput(EventMediaRequest $request): array
+    {
+        return [
+            'event_media_request_id' => $request->id,
+            'normalized_event_id' => $request->normalized_event_id,
+        ];
     }
 
     /**
@@ -878,7 +1000,10 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         return null;
     }
 
-    private function markFailed(EventMediaRequest $request, MediaRequestStatus $status, string $reason): void
+    /**
+     * @param  array<string, mixed>  $calc
+     */
+    private function markFailed(EventMediaRequest $request, MediaRequestStatus $status, string $reason, string $reasonCode, array $calc = []): void
     {
         $request->forceFill([
             'status' => $status,
@@ -887,7 +1012,13 @@ class FetchDeferredEventMediaJob implements ShouldQueue
 
         EventMediaFailed::dispatch($request, $reason);
 
-        SystemLog::skipped('media.deferred.closed_without_media', reason: 'closed_without_media', input: ['event_media_request_id' => $request->id, 'status' => $status->value, 'detail' => $reason]);
+        SystemLog::skipped(
+            'media.deferred.closed',
+            reason: $reasonCode,
+            input: $this->logInput($request),
+            calc: $calc,
+            result: ['status' => $status->value, 'completed_via' => null],
+        );
     }
 
     /**
