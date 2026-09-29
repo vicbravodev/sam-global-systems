@@ -80,7 +80,9 @@ class CreateIncidentOnDecisionMade
         $prioritySource = match ($outcome) {
             DecisionOutcomeCode::RequireHumanReview => 'review_default_medium',
             DecisionOutcomeCode::Alert => 'alert_default_low',
-            default => 'decision_priority',
+            // Sin priority_level el contexto no lleva priority_code y la
+            // apertura usa su propio default: no es "la de la decisión".
+            default => isset($context['priority_code']) ? 'decision_priority' : 'decision_priority_missing',
         };
         $requestReview = isset($context['request_review']);
 

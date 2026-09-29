@@ -55,6 +55,28 @@ class CreateIncidentOnDecisionMadeTest extends TestCase
         $this->assertNoSensitiveDataLogged();
     }
 
+    public function test_incident_outcome_without_priority_level_logs_the_missing_priority(): void
+    {
+        Bus::fake();
+
+        $user = User::factory()->create();
+        $event = NormalizedEvent::factory()->create(['team_id' => $user->currentTeam->id]);
+
+        $decision = $this->makeDecision($user->currentTeam->id, $event->id, DecisionOutcomeCode::Incident);
+        // La columna es NOT NULL: la decisión sin prioridad sólo existe en
+        // memoria (p. ej. un DecisionMade construido antes de persistirla).
+        $decision->priority_level = null;
+
+        app(CreateIncidentOnDecisionMade::class)->handle(new DecisionMade($decision));
+
+        Bus::assertDispatched(CreateIncidentJob::class, fn (CreateIncidentJob $job) => ! array_key_exists('priority_code', $job->context));
+
+        $c = $this->assertSystemLogged('incidents.creation.requested');
+        $this->assertSame('decision_priority_missing', $c['calc']['priority_source']);
+        $this->assertNull($c['calc']['priority_code']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
     public function test_non_actionable_outcome_is_ignored(): void
     {
         Bus::fake();
