@@ -61,12 +61,19 @@ class RuleConditionEvaluator
     }
 
     /**
-     * Reports the nodes that `matches()` silently evaluates to false because
-     * they are malformed or use an unknown operator. Pure: walks the tree
-     * with the same semantics as `matches()` and never logs condition values.
+     * Reports the invalid nodes of a condition tree and what `matches()` does
+     * when it reaches each one (`evaluates_as`):
+     * - `malformed_condition` / `unknown_operator` → `false` (silently no match);
+     * - `unknown_operator` with a non-scalar operator or field → `'error_exception'`
+     *   (the string cast warns, and Laravel's handler turns it into an ErrorException);
+     * - `non_array_node` (a non-array child of `all`/`any`) → `'type_error'`:
+     *   `matches()` throws a TypeError when it reaches it (it may short-circuit
+     *   before). That crash is known and deliberately left as is here.
+     * Pure: walks the tree with the same semantics as `matches()` and never
+     * logs condition values.
      *
      * @param  array<string, mixed>  $conditions
-     * @return list<array{path: string, problem: string, operator: ?string, field: ?string}>
+     * @return list<array{path: string, problem: string, operator: ?string, field: ?string, evaluates_as: false|string}>
      */
     public function problems(array $conditions, string $path = '$'): array
     {
@@ -83,7 +90,7 @@ class RuleConditionEvaluator
                     $childPath = "{$path}.{$block}.{$segment}";
 
                     if (! is_array($child)) {
-                        $problems[] = ['path' => $childPath, 'problem' => 'malformed_condition', 'operator' => null, 'field' => null];
+                        $problems[] = ['path' => $childPath, 'problem' => 'non_array_node', 'operator' => null, 'field' => null, 'evaluates_as' => 'type_error'];
 
                         continue;
                     }
@@ -108,10 +115,11 @@ class RuleConditionEvaluator
                 'problem' => 'unknown_operator',
                 'operator' => is_scalar($operator) ? LoggableCode::guard((string) $operator) : null,
                 'field' => is_scalar($field) ? LoggableCode::guard((string) $field) : null,
+                'evaluates_as' => is_scalar($operator) && is_scalar($field) ? false : 'error_exception',
             ]];
         }
 
-        return [['path' => $path, 'problem' => 'malformed_condition', 'operator' => null, 'field' => null]];
+        return [['path' => $path, 'problem' => 'malformed_condition', 'operator' => null, 'field' => null, 'evaluates_as' => false]];
     }
 
     /**
