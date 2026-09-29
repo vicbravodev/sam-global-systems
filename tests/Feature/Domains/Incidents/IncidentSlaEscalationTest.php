@@ -19,12 +19,14 @@ use App\Models\User;
 use Database\Seeders\AccessSeeder;
 use Database\Seeders\IncidentsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Queue;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class IncidentSlaEscalationTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsSystemLog, RefreshDatabase;
 
     private User $user;
 
@@ -292,6 +294,19 @@ class IncidentSlaEscalationTest extends TestCase
             CheckIncidentAcknowledgementJob::class,
             fn (CheckIncidentAcknowledgementJob $job) => $job->incidentId === $incident->id && $job->level === 0,
         );
+
+        $c = $this->assertSystemLogged('incidents.sla.calculated', fn (array $c) => $c['input']['incident_id'] === $incident->id
+            && $c['calc']['sla_source'] === 'priority_catalog'
+            && $c['calc']['sla_seconds'] === 300
+            && $c['result']['watchdog_requested'] === true);
+        $this->assertSame($incident->sla_due_at->toIso8601String(), $c['result']['sla_due_at']);
+        Queue::assertPushed(
+            CheckIncidentAcknowledgementJob::class,
+            fn (CheckIncidentAcknowledgementJob $job) => $job->incidentId === $incident->id
+                && $job->delay instanceof \DateTimeInterface
+                && Carbon::instance($job->delay)->toIso8601String() === $c['result']['sla_due_at'],
+        );
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_acknowledge_endpoint_marks_incident_and_is_idempotent(): void

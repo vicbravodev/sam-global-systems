@@ -21,10 +21,13 @@ use App\Domains\Incidents\Models\IncidentPriority;
 use App\Domains\Incidents\Models\IncidentStatus;
 use App\Domains\Incidents\Models\IncidentType;
 use App\Domains\Incidents\Support\IncidentCreatedBroadcast;
+use App\Domains\Normalization\Models\EventType;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Domains\TenantConfig\Actions\ResolveIncidentSla;
+use App\Support\LoggableCode;
 use App\Support\PipelineTrace;
+use App\Support\SystemLog;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
@@ -86,22 +89,61 @@ class CreateIncidentFromEvent
     {
         return DB::transaction(function () use ($event, $context, $incidentType) {
             $teamId = (int) $event->team_id;
-            $priority = $this->resolvePriority($context['priority_code'] ?? null, $incidentType);
+            $resolved = $this->resolvePriority($context['priority_code'] ?? null, $incidentType);
+            $priority = $resolved['priority'];
+
+            SystemLog::ok('incidents.priority.resolved',
+                input: ['normalized_event_id' => $event->id, 'incident_type_id' => $incidentType->id],
+                calc: [
+                    'source' => $resolved['source'],
+                    'requested_code' => LoggableCode::guard($context['priority_code'] ?? null),
+                    'requested_found' => $resolved['requested_found'],
+                    'type_default_priority_id' => $incidentType->default_priority_id,
+                ],
+                result: ['priority_code' => $priority->code, 'priority_level' => (int) $priority->level],
+            );
 
             // Solo se deduplica contra un incidente abierto DEL MISMO TIPO: un
             // pánico no puede quedar absorbido como evento de soporte de, por
             // ejemplo, un movimiento fuera de horario del mismo activo (sin
             // IncidentCreated, sin notificaciones, sin subir prioridad).
-            $existing = $this->findOpenDuplicate($event, $incidentType);
+            $dedupWindowMinutes = (int) config('incidents.duplicate_window_minutes', 30);
+            $dedupWindowStart = $this->windowStart($event, $dedupWindowMinutes);
+            $existing = $this->findOpenDuplicate($event, $incidentType, $dedupWindowStart);
 
             if ($existing !== null) {
-                $this->linkEventToIncident->execute(
+                $link = $this->linkEventToIncident->execute(
                     $existing,
                     $event,
                     EventRelationType::SupportingEvent,
                 );
 
-                $this->raisePriorityIfHigher($existing, $priority, $event);
+                $raise = $this->raisePriorityIfHigher($existing, $priority, $event);
+
+                // Derivado tras el match, sin repetir la query: qué rama del
+                // orWhere (activo/conductor) y de activeSince lo sostiene.
+                $matchedOn = $event->asset_id !== null && $existing->asset_id === $event->asset_id ? 'asset' : 'driver';
+                $matchBasis = $existing->opened_at !== null && $existing->opened_at->gte($dedupWindowStart)
+                    ? 'opened_in_window'
+                    : 'linked_event_in_window';
+
+                $dedupLine = [
+                    'input' => ['normalized_event_id' => $event->id, 'incident_type_id' => $incidentType->id],
+                    'calc' => [
+                        'window_minutes' => $dedupWindowMinutes,
+                        'window_start' => $dedupWindowStart->toIso8601String(),
+                        'matched_on' => $matchedOn,
+                        'match_basis' => $matchBasis,
+                    ],
+                    'result' => [
+                        'existing_incident_id' => $existing->id,
+                        'link_created' => $link->wasRecentlyCreated,
+                        'priority_raised' => $raise['raised'],
+                        'previous_priority_code' => $raise['previous_priority_code'],
+                        'new_priority_code' => $raise['raised'] ? $raise['candidate_priority_code'] : null,
+                    ],
+                ];
+                DB::afterCommit(fn () => SystemLog::ok('incidents.dedup.linked', ...$dedupLine));
 
                 return $existing;
             }
@@ -109,12 +151,23 @@ class CreateIncidentFromEvent
             // Ráfaga de device_offline en el tenant (caída de red, gateway
             // compartido, corte del proveedor): un solo incidente agregado en
             // vez de un incidente —y una notificación— por activo.
-            $burst = $this->offlineBurst($event, $incidentType);
+            ['outcome' => $burst, 'calc' => $burstCalc] = $this->offlineBurst($event, $incidentType);
 
             if ($burst instanceof Incident) {
-                $this->linkEventToIncident->execute($burst, $event, EventRelationType::SupportingEvent);
+                $link = $this->linkEventToIncident->execute($burst, $event, EventRelationType::SupportingEvent);
+
+                $burstLine = [
+                    'input' => ['normalized_event_id' => $event->id],
+                    'calc' => [...$burstCalc, 'branch' => 'linked_to_aggregate'],
+                    'result' => ['aggregate_incident_id' => $burst->id, 'link_created' => $link->wasRecentlyCreated],
+                ];
+                DB::afterCommit(fn () => SystemLog::ok('incidents.offline_burst.aggregated', ...$burstLine));
 
                 return $burst;
+            }
+
+            if ($burstCalc !== null) {
+                $burstCalc['branch'] = $burst === true ? 'opened_aggregate' : 'below_threshold';
             }
 
             $aggregateBurst = $burst === true;
@@ -132,12 +185,14 @@ class CreateIncidentFromEvent
                 : ($context['summary'] ?? $this->buildSummary($event));
 
             $openedAt = Carbon::instance($event->occurred_at ?? now());
-            $slaSeconds = $this->resolveIncidentSla->execute($teamId, $priority->id);
+            $sla = $this->resolveIncidentSla->resolve($teamId, $priority->id);
+            $slaSeconds = $sla['sla_seconds'];
             // El SLA corre desde que SAM se entera, no desde que ocurrió: un
             // evento atrasado o de backfill no puede nacer ya vencido y
             // escalar (SMS/llamadas) en el mismo segundo en que se crea.
+            $now = now();
             $slaDueAt = $slaSeconds !== null
-                ? $openedAt->copy()->max(now())->addSeconds($slaSeconds)
+                ? $openedAt->copy()->max($now)->addSeconds($slaSeconds)
                 : null;
 
             $incident = Incident::query()->create([
@@ -159,12 +214,47 @@ class CreateIncidentFromEvent
                 'metadata_json' => $context['metadata'] ?? null,
             ]);
 
+            if ($aggregateBurst) {
+                $burstLine = [
+                    'input' => ['normalized_event_id' => $event->id],
+                    'calc' => $burstCalc,
+                    'result' => ['aggregate_incident_id' => $incident->id, 'link_created' => true],
+                ];
+                DB::afterCommit(fn () => SystemLog::ok('incidents.offline_burst.aggregated', ...$burstLine));
+            }
+
+            $slaInput = ['incident_id' => $incident->id, 'incident_priority_id' => $priority->id, 'team_id' => $teamId];
+
             // SLA watchdog: one delayed job instead of a per-minute cron. It
             // no-ops if the incident was acknowledged or closed by then.
             if ($slaDueAt !== null) {
                 CheckIncidentAcknowledgementJob::dispatch($incident->id)
                     ->delay($slaDueAt)
                     ->afterCommit();
+
+                // sla_due_at = max(opened_at, now_at) + sla_seconds.
+                $slaLine = [
+                    'input' => $slaInput,
+                    'calc' => [
+                        'sla_seconds' => $slaSeconds,
+                        'sla_source' => $sla['sla_source'],
+                        'opened_at' => $openedAt->toIso8601String(),
+                        'now_at' => $now->toIso8601String(),
+                        'base_at' => $openedAt->copy()->max($now)->toIso8601String(),
+                        'base_source' => $now->gt($openedAt) ? 'now' : 'opened_at',
+                        'late_by_seconds' => max(0, (int) $openedAt->diffInSeconds($now, false)),
+                        'backfill_adjusted' => $now->gt($openedAt),
+                    ],
+                    'result' => ['sla_due_at' => $slaDueAt->toIso8601String(), 'watchdog_requested' => true],
+                ];
+                DB::afterCommit(fn () => SystemLog::ok('incidents.sla.calculated', ...$slaLine));
+            } else {
+                DB::afterCommit(fn () => SystemLog::skipped('incidents.sla.calculated',
+                    reason: 'no_sla_for_priority',
+                    input: $slaInput,
+                    calc: ['sla_source' => 'none'],
+                    result: ['watchdog_requested' => false],
+                ));
             }
 
             $this->appendTimelineEntry->execute(
@@ -211,6 +301,34 @@ class CreateIncidentFromEvent
 
             PipelineTrace::add(['incident_id' => $fresh->id]);
 
+            // Registrado antes de IncidentCreated: en el commit sale antes que
+            // las líneas de los listeners (también por afterCommit).
+            $createdLine = [
+                'input' => [
+                    'normalized_event_id' => $event->id,
+                    'decision_id' => $context['decision_id'] ?? null,
+                    'source_type' => $sourceType->value,
+                ],
+                'calc' => [
+                    'fast_path' => ($context['metadata']['emergency_fast_path'] ?? false) === true,
+                    'dedup_checked' => $event->asset_id !== null || $event->driver_id !== null,
+                    'dedup_window_minutes' => $dedupWindowMinutes,
+                    'offline_burst' => $burstCalc,
+                    'aggregate_burst' => $aggregateBurst,
+                    'resolved_on_arrival' => ($event->payload_normalized_json['is_resolved'] ?? null) === true,
+                ],
+                'result' => [
+                    'incident_id' => $fresh->id,
+                    'incident_type_code' => $fresh->type?->code,
+                    'priority_code' => $fresh->priority?->code,
+                    'status_code' => $fresh->status?->code,
+                    'asset_id' => $fresh->asset_id,
+                    'driver_id' => $fresh->driver_id,
+                    'usage_event_key' => 'incident_workflows:'.$fresh->id,
+                ],
+            ];
+            DB::afterCommit(fn () => SystemLog::ok('incidents.incident.created', ...$createdLine));
+
             IncidentCreated::dispatch($fresh);
             broadcast(IncidentCreatedBroadcast::fromModel($fresh));
 
@@ -222,12 +340,23 @@ class CreateIncidentFromEvent
      * Un evento de soporte más grave que el incidente al que se une sube la
      * prioridad del incidente (nunca la baja) y lo deja en la línea de tiempo.
      */
-    private function raisePriorityIfHigher(Incident $incident, IncidentPriority $candidate, NormalizedEvent $event): void
+    /**
+     * @return array{raised: bool, previous_priority_code: ?string, previous_level: ?int, candidate_priority_code: string, candidate_level: int}
+     */
+    private function raisePriorityIfHigher(Incident $incident, IncidentPriority $candidate, NormalizedEvent $event): array
     {
         $current = IncidentPriority::query()->find($incident->incident_priority_id);
 
+        $outcome = [
+            'raised' => false,
+            'previous_priority_code' => $current?->code,
+            'previous_level' => $current !== null ? (int) $current->level : null,
+            'candidate_priority_code' => $candidate->code,
+            'candidate_level' => (int) $candidate->level,
+        ];
+
         if ($current !== null && (int) $candidate->level <= (int) $current->level) {
-            return;
+            return $outcome;
         }
 
         $incident->update(['incident_priority_id' => $candidate->id]);
@@ -249,6 +378,8 @@ class CreateIncidentFromEvent
                 'normalized_event_id' => $event->id,
             ],
         );
+
+        return ['raised' => true] + $outcome;
     }
 
     /**
@@ -258,13 +389,11 @@ class CreateIncidentFromEvent
      * hora de un activo parado) extiende la ventana y queda en un solo
      * incidente; un evento tras un silencio largo abre uno nuevo.
      */
-    private function findOpenDuplicate(NormalizedEvent $event, IncidentType $incidentType): ?Incident
+    private function findOpenDuplicate(NormalizedEvent $event, IncidentType $incidentType, Carbon $threshold): ?Incident
     {
         if ($event->asset_id === null && $event->driver_id === null) {
             return null;
         }
-
-        $threshold = $this->windowStart($event, (int) config('incidents.duplicate_window_minutes', 30));
 
         return Incident::query()
             ->where('team_id', $event->team_id)
@@ -292,14 +421,19 @@ class CreateIncidentFromEvent
      *
      * El incidente agregado se reconoce por no tener activo ni conductor y
      * nacer de un evento device_offline (esos eventos siempre traen activo).
+     *
+     * `calc` lleva los términos del cálculo (null si no es device_offline).
+     *
+     * @return array{outcome: Incident|bool|null, calc: ?array<string, mixed>}
      */
-    private function offlineBurst(NormalizedEvent $event, IncidentType $incidentType): Incident|bool|null
+    private function offlineBurst(NormalizedEvent $event, IncidentType $incidentType): array
     {
         if (! $this->isDeviceOffline($event)) {
-            return null;
+            return ['outcome' => null, 'calc' => null];
         }
 
-        $threshold = $this->windowStart($event, (int) config('incidents.offline_burst_window_minutes', self::OFFLINE_BURST_WINDOW_MINUTES));
+        $windowMinutes = (int) config('incidents.offline_burst_window_minutes', self::OFFLINE_BURST_WINDOW_MINUTES);
+        $threshold = $this->windowStart($event, $windowMinutes);
 
         $base = fn () => Incident::query()
             ->where('team_id', $event->team_id)
@@ -314,8 +448,20 @@ class CreateIncidentFromEvent
             ->orderByDesc('opened_at')
             ->first();
 
+        $configuredThreshold = (int) config('incidents.offline_burst_threshold', self::OFFLINE_BURST_THRESHOLD);
+        $burstThreshold = max(2, $configuredThreshold);
+
+        $calc = [
+            'window_minutes' => $windowMinutes,
+            'window_start' => $threshold->toIso8601String(),
+            'aggregate_found' => $aggregate !== null,
+            'recent_singles_count' => null,
+            'configured_threshold' => $configuredThreshold,
+            'effective_threshold' => $burstThreshold,
+        ];
+
         if ($aggregate !== null) {
-            return $aggregate;
+            return ['outcome' => $aggregate, 'calc' => $calc];
         }
 
         $recentSingles = $base()
@@ -323,9 +469,9 @@ class CreateIncidentFromEvent
             ->where('opened_at', '>=', $threshold)
             ->count();
 
-        $burstThreshold = max(2, (int) config('incidents.offline_burst_threshold', self::OFFLINE_BURST_THRESHOLD));
+        $calc['recent_singles_count'] = $recentSingles;
 
-        return $recentSingles + 1 >= $burstThreshold ? true : null;
+        return ['outcome' => $recentSingles + 1 >= $burstThreshold ? true : null, 'calc' => $calc];
     }
 
     /**
@@ -409,36 +555,76 @@ class CreateIncidentFromEvent
             IncidentTypeCode::Other->value,
         ])));
 
+        $tried = [];
+
         foreach ($candidates as $candidate) {
+            $tried[] = $candidate;
             $type = IncidentType::query()->where('code', $candidate)->where('is_active', true)->first();
 
             if ($type !== null) {
+                $this->logIncidentType($code, $event, $eventType, $candidates, $tried, $type, usedLastResort: false);
+
                 return $type;
             }
         }
 
         // Catalog predates the generic buckets (seeder not yet run): keep the
         // legacy any-active-type resort over failing incident creation.
-        return IncidentType::query()->where('is_active', true)->orderBy('id')->firstOrFail();
+        $type = IncidentType::query()->where('is_active', true)->orderBy('id')->firstOrFail();
+
+        $this->logIncidentType($code, $event, $eventType, $candidates, $tried, $type, usedLastResort: true);
+
+        return $type;
     }
 
-    private function resolvePriority(?string $code, IncidentType $type): IncidentPriority
+    /**
+     * @param  list<string>  $candidates
+     * @param  list<string>  $tried
+     */
+    private function logIncidentType(?string $code, NormalizedEvent $event, ?EventType $eventType, array $candidates, array $tried, IncidentType $type, bool $usedLastResort): void
+    {
+        $eventTypeCode = $eventType?->code;
+
+        SystemLog::ok('incidents.type.resolved',
+            input: ['normalized_event_id' => $event->id],
+            calc: [
+                'requested_code' => LoggableCode::guard($code),
+                'event_type_code' => $eventTypeCode,
+                'alias_code' => (self::EVENT_TYPE_INCIDENT_ALIASES[$eventTypeCode] ?? null)?->value,
+                'category_code' => $eventType?->category?->code,
+                'category_bucket_code' => (self::CATEGORY_INCIDENT_FALLBACKS[$eventType?->category?->code] ?? null)?->value,
+                'candidates' => array_map(LoggableCode::guard(...), $candidates),
+                'tried' => array_map(LoggableCode::guard(...), $tried),
+                'used_last_resort' => $usedLastResort,
+            ],
+            result: ['incident_type_id' => $type->id, 'incident_type_code' => $type->code],
+        );
+    }
+
+    /**
+     * @return array{priority: IncidentPriority, source: 'context_code'|'type_default'|'lowest_level_fallback', requested_found: bool}
+     */
+    private function resolvePriority(?string $code, IncidentType $type): array
     {
         if ($code !== null) {
             $priority = IncidentPriority::query()->where('code', $code)->first();
             if ($priority !== null) {
-                return $priority;
+                return ['priority' => $priority, 'source' => 'context_code', 'requested_found' => true];
             }
         }
 
         if ($type->default_priority_id !== null) {
             $priority = IncidentPriority::query()->find($type->default_priority_id);
             if ($priority !== null) {
-                return $priority;
+                return ['priority' => $priority, 'source' => 'type_default', 'requested_found' => false];
             }
         }
 
-        return IncidentPriority::query()->orderBy('level')->firstOrFail();
+        return [
+            'priority' => IncidentPriority::query()->orderBy('level')->firstOrFail(),
+            'source' => 'lowest_level_fallback',
+            'requested_found' => false,
+        ];
     }
 
     /**
