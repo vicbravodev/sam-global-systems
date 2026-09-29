@@ -21,7 +21,22 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->registerTelescope();
+    }
+
+    /**
+     * Telescope es dependencia de desarrollo y está fuera del auto-discovery
+     * (composer.json `dont-discover`): sólo se carga en local y si el paquete
+     * está instalado. Producción (`--no-dev`) y CI/tests nunca lo cargan.
+     */
+    private function registerTelescope(): void
+    {
+        if (! $this->app->environment('local') || ! class_exists(\Laravel\Telescope\TelescopeServiceProvider::class)) {
+            return;
+        }
+
+        $this->app->register(\Laravel\Telescope\TelescopeServiceProvider::class);
+        $this->app->register(TelescopeServiceProvider::class);
     }
 
     /**
