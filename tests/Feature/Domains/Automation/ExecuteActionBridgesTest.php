@@ -245,7 +245,8 @@ class ExecuteActionBridgesTest extends TestCase
     {
         Event::fake([ActionFailed::class]);
 
-        $foreign = Incident::factory()->create();
+        // Id distintivo: no puede coincidir con otro número del JSON.
+        $foreign = Incident::factory()->create(['id' => 987654]);
 
         $execution = $this->makeExecution(ActionType::Escalate, [
             'incident_id' => $foreign->id,
@@ -256,7 +257,48 @@ class ExecuteActionBridgesTest extends TestCase
         $this->assertSame(ActionExecutionStatus::Failed, $result->status);
         $this->assertSame("Incident {$foreign->id} not found for this team.", $result->error_message);
         $this->assertSystemLogged('automation.action.failed', fn (array $c) => $c['reason'] === 'incident_not_in_team'
+            && $c['input']['incident_id'] === null
+            && $c['input']['incident_team_matches'] === false
             && $c['result'] === ['error_class' => 'ActionFailure']);
+        $this->assertStringNotContainsString((string) $foreign->id, json_encode(array_column($this->systemLogEntries(), 'context')));
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_own_incident_id_is_logged_once_verified(): void
+    {
+        $this->seed(IncidentsSeeder::class);
+
+        $incident = Incident::factory()->open()->create(['team_id' => $this->team->id]);
+
+        $execution = $this->makeExecution(ActionType::Escalate, ['incident_id' => $incident->id]);
+
+        app(ExecuteAction::class)->execute($execution);
+
+        $this->assertSystemLogged('automation.action.completed', fn (array $c) => $c['input']['incident_id'] === $incident->id
+            && $c['input']['incident_team_matches'] === true);
+    }
+
+    public function test_non_member_user_target_is_counted_never_logged_by_id(): void
+    {
+        Event::fake([ActionFailed::class]);
+
+        // Id distintivo de un usuario de otro tenant.
+        $stranger = User::factory()->create(['id' => 876543]);
+
+        $execution = $this->makeExecution(ActionType::SendEmail, [
+            'target_type' => 'user',
+            'target_reference' => (string) $stranger->id,
+        ]);
+
+        $result = app(ExecuteAction::class)->execute($execution);
+
+        $this->assertSame(ActionExecutionStatus::Failed, $result->status);
+        $this->assertSystemLogged('automation.recipients.non_member_skipped', fn (array $c) => $c['reason'] === 'not_team_member'
+            && $c['input'] === ['team_id' => $this->team->id]
+            && $c['calc'] === ['non_member_skipped_count' => 1]);
+        $this->assertSystemLogged('automation.action.failed', fn (array $c) => $c['reason'] === 'no_recipients');
+        $this->assertStringNotContainsString((string) $stranger->id, json_encode(array_column($this->systemLogEntries(), 'context')));
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_assignee_outside_the_team_fails_as_invalid_assignee(): void

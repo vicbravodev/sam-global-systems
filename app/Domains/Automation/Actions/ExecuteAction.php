@@ -63,11 +63,12 @@ class ExecuteAction
     public function execute(ActionExecution $execution): ActionExecution
     {
         $blocked = TenantCanSend::blockedReason($execution->team_id);
+        $logInput = $this->logInput($execution);
 
         if ($blocked !== null) {
             $cancelled = $this->cancel($execution, "Tenant cannot send: {$blocked}.");
 
-            SystemLog::skipped('automation.action.stopped', reason: 'tenant_blocked', input: $this->logInput($execution), calc: ['blocked_reason' => $blocked]);
+            SystemLog::skipped('automation.action.stopped', reason: 'tenant_blocked', input: $logInput, calc: ['blocked_reason' => $blocked]);
 
             return $cancelled;
         }
@@ -101,7 +102,7 @@ class ExecuteAction
 
             SystemLog::ok(
                 'automation.action.completed',
-                input: $this->logInput($execution),
+                input: $logInput,
                 calc: ['attempt' => $execution->attempts],
                 result: $this->loggableResponse($execution, $response),
                 durationMs: $durationMs,
@@ -131,7 +132,7 @@ class ExecuteAction
             SystemLog::degraded(
                 'automation.action.failed',
                 reason: $reason,
-                input: $this->logInput($execution),
+                input: $logInput,
                 calc: ['attempt' => $execution->attempts],
                 result: ['error_class' => class_basename($exception), ...$failureContext],
                 durationMs: $durationMs,
@@ -142,16 +143,27 @@ class ExecuteAction
     }
 
     /**
+     * `incident_id` sólo si el incidente es del team de la ejecución: un id
+     * sin verificar puede ser de otro tenant (rama `incident_not_in_team`).
+     *
      * @return array<string, mixed>
      */
     private function logInput(ActionExecution $execution): array
     {
+        $incidentTeamMatches = $execution->incident_id === null
+            ? null
+            : Incident::query()
+                ->whereKey($execution->incident_id)
+                ->where('team_id', $execution->team_id)
+                ->exists();
+
         return [
             'action_execution_id' => $execution->id,
             'action_type' => $execution->action_type->value,
             'execution_mode' => $execution->execution_mode?->value,
             'source_type' => $execution->source_type?->value,
-            'incident_id' => $execution->incident_id,
+            'incident_id' => $incidentTeamMatches === true ? $execution->incident_id : null,
+            'incident_team_matches' => $incidentTeamMatches,
         ];
     }
 
@@ -187,7 +199,7 @@ class ExecuteAction
         return match (true) {
             $exception instanceof ActionFailure => [$exception->kind, $exception->context],
             // El host va detrás de ':' y no se registra.
-            $exception instanceof UnsafeOutboundUrlException => ['unsafe_url', ['unsafe_url_code' => LoggableCode::guard(strtok($exception->reason, ':') ?: null)]],
+            $exception instanceof UnsafeOutboundUrlException => ['unsafe_url', ['unsafe_url_code' => LoggableCode::guard(explode(':', $exception->reason, 2)[0])]],
             // Guard de AssignIncident: su mensaje lleva un id de usuario que puede ser ajeno.
             $exception instanceof InvalidArgumentException => ['invalid_assignee', []],
             default => ['unexpected_exception', []],
@@ -430,7 +442,7 @@ class ExecuteAction
         $skipped = array_values(array_diff($userIds, $users->modelKeys()));
 
         if ($skipped !== []) {
-            SystemLog::skipped('automation.recipients.non_member_skipped', reason: 'not_team_member', input: ['team_id' => $teamId, 'skipped_user_ids' => $skipped]);
+            SystemLog::skipped('automation.recipients.non_member_skipped', reason: 'not_team_member', input: ['team_id' => $teamId], calc: ['non_member_skipped_count' => count($skipped)]);
         }
 
         return $users
