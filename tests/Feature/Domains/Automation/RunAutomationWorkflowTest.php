@@ -19,11 +19,12 @@ use Database\Seeders\AutomationMeterSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Event;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class RunAutomationWorkflowTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsSystemLog, RefreshDatabase;
 
     protected function setUp(): void
     {
@@ -34,6 +35,7 @@ class RunAutomationWorkflowTest extends TestCase
     public function test_creates_workflow_execution_and_dispatches_jobs_per_step(): void
     {
         Bus::fake();
+        $this->freezeTime();
 
         $user = User::factory()->create();
         $teamId = $user->currentTeam->id;
@@ -71,6 +73,53 @@ class RunAutomationWorkflowTest extends TestCase
         $this->assertSame(2, ActionExecution::withoutGlobalScopes()->count());
 
         Bus::assertDispatched(ExecuteActionJob::class, fn (ExecuteActionJob $job) => $job !== null);
+
+        $context = $this->assertSystemLogged('automation.workflow.started', fn (array $c) => $c['input']['automation_workflow_id'] === $workflow->id
+            && $c['input']['workflow_scope'] === 'tenant'
+            && $c['input']['source_type'] === ActionExecutionSourceType::Manual->value
+            && $c['input']['source_reference_id'] === 'manual-1'
+            && $c['calc']['steps_count'] === 2
+            && $c['calc']['queued_count'] === 2
+            && $c['calc']['awaiting_confirmation_count'] === 0
+            && $c['calc']['reused_count'] === 0
+            && $c['calc']['incident_expected'] === false
+            && $c['result']['workflow_execution_id'] === $execution->id
+            && $c['result']['status'] === WorkflowExecutionStatus::Running->value
+            && $c['result']['usage_event_key'] === "workflow_exec_{$execution->id}");
+
+        // Cada demora registrada es la del ExecuteActionJob empujado (0 = sin delay).
+        $pushedDelays = [];
+        Bus::assertDispatched(ExecuteActionJob::class, function (ExecuteActionJob $job) use (&$pushedDelays) {
+            $pushedDelays[] = $job->delay === null ? 0 : (int) now()->diffInSeconds($job->delay);
+
+            return true;
+        });
+        $this->assertSame([0, 60], $context['calc']['cumulative_delays_seconds']);
+        $this->assertSame($context['calc']['cumulative_delays_seconds'], $pushedDelays);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_workflow_without_steps_is_started_and_completed(): void
+    {
+        Bus::fake();
+
+        $teamId = User::factory()->create()->currentTeam->id;
+
+        $workflow = AutomationWorkflow::factory()->withSteps([])->create(['team_id' => $teamId]);
+
+        $execution = app(RunAutomationWorkflow::class)->execute(
+            workflow: $workflow,
+            teamId: $teamId,
+            sourceType: ActionExecutionSourceType::Manual,
+            sourceReferenceId: 'empty-1',
+        );
+
+        $this->assertSame(WorkflowExecutionStatus::Completed, $execution->status);
+        $this->assertSystemLogged('automation.workflow.started', fn (array $c) => $c['calc']['steps_count'] === 0
+            && $c['calc']['queued_count'] === 0
+            && $c['calc']['cumulative_delays_seconds'] === []
+            && $c['result']['status'] === 'completed');
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_idempotent_when_called_twice_for_same_source(): void
@@ -101,6 +150,12 @@ class RunAutomationWorkflowTest extends TestCase
         $this->assertNotNull($first);
         $this->assertNull($second);
         $this->assertSame(1, WorkflowExecution::withoutGlobalScopes()->count());
+
+        $this->assertCount(1, $this->systemLogEntries('automation.workflow.started'));
+        $this->assertSystemLogged('automation.workflow.skipped', fn (array $c) => $c['reason'] === 'already_ran'
+            && $c['input']['automation_workflow_id'] === $workflow->id
+            && $c['input']['source_reference_id'] === 'incident-42'
+            && $c['result']['existing_workflow_execution_id'] === $first->id);
     }
 
     public function test_steps_with_requires_confirmation_pause_in_pending(): void
@@ -135,6 +190,10 @@ class RunAutomationWorkflowTest extends TestCase
         $this->assertNotNull($execution);
         $this->assertSame(ActionExecutionStatus::Pending, $execution->status);
         Bus::assertNotDispatched(ExecuteActionJob::class);
+
+        $this->assertSystemLogged('automation.workflow.started', fn (array $c) => $c['calc']['steps_count'] === 1
+            && $c['calc']['awaiting_confirmation_count'] === 1
+            && $c['calc']['queued_count'] === 0);
     }
 
     public function test_emits_usage_event_for_workflow_execution(): void
@@ -178,6 +237,9 @@ class RunAutomationWorkflowTest extends TestCase
             sourceReferenceId: (string) $incident->id,
         );
 
+        $this->assertSystemLogged('automation.workflow.started', fn (array $c) => $c['calc']['incident_expected'] === true
+            && $c['calc']['incident_linked'] === true);
+
         $this->assertSame(
             [$incident->id, $incident->id],
             ActionExecution::withoutGlobalScopes()->where('team_id', $teamId)->orderBy('id')->pluck('incident_id')->all(),
@@ -203,5 +265,8 @@ class RunAutomationWorkflowTest extends TestCase
         $this->assertNull(
             ActionExecution::withoutGlobalScopes()->where('team_id', $teamId)->value('incident_id'),
         );
+
+        $this->assertSystemLogged('automation.workflow.started', fn (array $c) => $c['calc']['incident_expected'] === true
+            && $c['calc']['incident_linked'] === false);
     }
 }

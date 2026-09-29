@@ -299,6 +299,34 @@ Sin `decision_trace_id`: `GenerateDecisionTrace` crea una fila por paso; las tra
 |---|---|---|---|
 | `automation.recipients.non_member_skipped` | skipped | `not_team_member` | `team_id`, `skipped_user_ids` |
 | `automation.webhook.connection_failed` | degraded | `connection_failed` | `action_execution_id`, `error` |
+| `automation.trigger.evaluated` | ok (debug si `matched_count = 0`) | | `trigger_type`, `source_type`, `source_reference_id` (`LoggableCode`); calc `candidates_count` (workflows activos del trigger, del team o de plataforma); result `matched_workflow_ids`, `matched_count`. Va por `DB::afterCommit`: los listeners corren dentro de la transacción de la decisión, la creación o el escalamiento |
+| `automation.workflow.matched` | ok | | `automation_workflow_id`, `workflow_scope` (`tenant`/`global`), `trigger_type`, `source_type`; calc `conditions_count`; result `job_requested`. Va por `DB::afterCommit` |
+| `automation.workflow.not_matched` | skipped (debug) | `condition_mismatch` | `automation_workflow_id`, `workflow_scope`, `trigger_type`, `source_type`; calc `failed_key`, `expected`, `actual` (primera condición que falla; los tres por `LoggableCode`: texto libre del tenant → null), `conditions_count`. Va por `DB::afterCommit` |
+| `automation.workflow.skipped` | skipped | `workflow_unavailable`, `already_ran` | `source_type`; `workflow_unavailable` (job): sin `automation_workflow_id` (si no es del team ni de plataforma es de otro tenant); `already_ran`: `automation_workflow_id`, `source_reference_id` (`LoggableCode`), result `existing_workflow_execution_id` |
+| `automation.workflow.started` | ok | | `automation_workflow_id`, `workflow_scope`, `source_type`, `source_reference_id` (`LoggableCode`); calc `steps_count`, `queued_count`, `awaiting_confirmation_count` (`requires_confirmation`, sin job), `reused_count` (la `ActionExecution` ya existía; el job se despacha igual), `cumulative_delays_seconds` (demora acumulada por paso = `delay` de su `ExecuteActionJob`), `template_resolved_count`, `incident_expected` (source `incident`/`escalation`), `incident_linked` (el incidente existe y es del team; `expected && ! linked` → los pasos de incidente fallarán con `no_linked_incident`); result `workflow_execution_id`, `status`, `usage_event_key` (`workflow_exec_{id}`). Tras la transacción propia |
+| `automation.action.skipped` | skipped | `execution_missing`, `already_completed`, `already_cancelled` | `action_execution_id`, `action_type`, `execution_mode`, `source_type` |
+| `automation.action.stopped` | skipped | `tenant_blocked`, `incident_terminal`, `human_control` | `action_execution_id`, `action_type`, `execution_mode`, `source_type`; calc `blocked_reason` (`tenant_blocked`) o `incident_id` + `delayed: true` (revalidación del paso con retraso). La ejecución queda `cancelled` con su motivo |
+| `automation.action.completed` | ok | | `action_execution_id`, `action_type`, `execution_mode`, `source_type`, `incident_id`; calc `attempt`; result sólo `notification_id`, `notification_status`, `recipients_count`, `assignment_id`, `status_code` (incidente), `http_status` (webhook), `stub` (`deferred_v2`) — nunca `body`, `channel` ni destinatarios; `duration_ms` de la acción |
+| `automation.action.failed` | degraded | ver tabla de `kind` | mismo `input`; calc `attempt`; result `error_class` + contexto del `kind`; `duration_ms`. Nunca `error`: el mensaje interpola `target_reference` (teléfono/email/URL) e ids ajenos y ya queda en `error_message` |
+| `automation.action.retry_scheduled` | ok / skipped | `retries_exhausted` | `action_execution_id`; calc `attempts`, `max_retries`, `backoff_schedule_seconds`, `backoff_index` (= attempts), `index_in_schedule`; result `delay_seconds` = (backoff_schedule_seconds[attempts] ?? last(backoff_schedule_seconds)) ?: 0 = `delay` del `ExecuteActionJob`, `job_requested` |
+
+| reason de `automation.action.failed` | Origen | Contexto |
+|---|---|---|
+| `webhook_url_missing` | webhook sin URL | |
+| `webhook_connection_failed` | cURL no conectó (además `automation.webhook.connection_failed`) | |
+| `webhook_redirect` | respuesta 3xx (no se siguen) | `http_status` |
+| `webhook_http_error` | respuesta 4xx/5xx | `http_status` |
+| `unsafe_url` | `OutboundUrlGuard` rechazó la URL | `unsafe_url_code` (`reserved_host`, `blocked_ip`, `numeric_host`, `unresolvable_host`, `scheme_not_allowed`, `malformed_url`, `credentials_in_url`); nunca el host |
+| `unsupported_notification_action` | tipo de acción sin canal de notificación en el puente Send* | |
+| `no_recipients` | ningún destinatario resuelto | |
+| `notification_not_delivered` | la notificación quedó `failed` en todos los canales | `notification_id` |
+| `assignee_missing` | asignar sin id de usuario | |
+| `invalid_assignee` | `AssignIncident` rechazó al usuario (no miembro) | |
+| `no_linked_incident` | acción de incidente sin incidente vinculado | |
+| `incident_not_in_team` | el incidente no existe o no es del team (sin su id) | |
+| `unexpected_exception` | cualquier otra excepción | |
+
+Un workflow sin pasos no es un "skip": crea la ejecución, mide `incident_workflows` y termina; `automation.workflow.started` lo dice con `steps_count = 0` y `status: completed`. `RetryActionExecutionJob` no está en `routes/console.php`: hoy sólo reintenta el endpoint manual (`ActionExecutionController::retry` → `RetryFailedAction`).
 
 ### Incidentes (`incidents`)
 

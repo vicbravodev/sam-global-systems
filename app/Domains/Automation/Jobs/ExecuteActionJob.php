@@ -12,6 +12,7 @@ use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Support\IncidentSuppression;
 use App\Support\JobFailureReporter;
 use App\Support\PipelineTrace;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -41,6 +42,8 @@ class ExecuteActionJob implements ShouldQueue
         $execution = ActionExecution::withoutGlobalScopes()->find($this->actionExecutionId);
 
         if ($execution === null) {
+            SystemLog::skipped('automation.action.skipped', reason: 'execution_missing', input: ['action_execution_id' => $this->actionExecutionId]);
+
             return;
         }
 
@@ -54,16 +57,20 @@ class ExecuteActionJob implements ShouldQueue
             ActionExecutionStatus::Completed,
             ActionExecutionStatus::Cancelled,
         ], true)) {
+            SystemLog::skipped('automation.action.skipped', reason: 'already_'.$execution->status->value, input: $this->logInput($execution));
+
             return;
         }
 
         // Entra en el tenant de la ejecución: la acción resuelve plantillas,
         // canales y destinatarios del tenant. Ver §2.1.
         TenantContext::for($execution->team_id, function () use ($execution, $executeAction) {
-            $stopReason = $this->incidentStopReason($execution);
+            $stop = $this->incidentStopReason($execution);
 
-            if ($stopReason !== null) {
-                $executeAction->cancel($execution, $stopReason);
+            if ($stop !== null) {
+                $executeAction->cancel($execution, $stop['message']);
+
+                SystemLog::skipped('automation.action.stopped', reason: $stop['code'], input: $this->logInput($execution), calc: ['incident_id' => $stop['incident_id'], 'delayed' => true]);
 
                 return;
             }
@@ -80,8 +87,10 @@ class ExecuteActionJob implements ShouldQueue
      *
      * Las ejecuciones confirmadas por un humano (`requires_confirmation`) y
      * las manuales no se revalidan: las pidió una persona.
+     *
+     * @return array{code: 'incident_terminal'|'human_control', incident_id: int, message: string}|null
      */
-    private function incidentStopReason(ActionExecution $execution): ?string
+    private function incidentStopReason(ActionExecution $execution): ?array
     {
         if ($execution->execution_mode === ExecutionMode::RequiresConfirmation
             || $execution->source_type === ActionExecutionSourceType::Manual) {
@@ -105,14 +114,27 @@ class ExecuteActionJob implements ShouldQueue
         }
 
         if ($incident->isTerminal()) {
-            return "Incident {$incident->id} is already closed; delayed step cancelled.";
+            return ['code' => 'incident_terminal', 'incident_id' => $incident->id, 'message' => "Incident {$incident->id} is already closed; delayed step cancelled."];
         }
 
         if (IncidentSuppression::isUnderHumanControl($incident)) {
-            return "Incident {$incident->id} is under human control; delayed step cancelled.";
+            return ['code' => 'human_control', 'incident_id' => $incident->id, 'message' => "Incident {$incident->id} is under human control; delayed step cancelled."];
         }
 
         return null;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function logInput(ActionExecution $execution): array
+    {
+        return [
+            'action_execution_id' => $execution->id,
+            'action_type' => $execution->action_type->value,
+            'execution_mode' => $execution->execution_mode?->value,
+            'source_type' => $execution->source_type?->value,
+        ];
     }
 
     private function linkedIncidentId(ActionExecution $execution): ?int

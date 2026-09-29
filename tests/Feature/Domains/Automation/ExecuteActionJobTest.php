@@ -12,11 +12,12 @@ use App\Models\User;
 use Database\Seeders\NotificationMeterSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class ExecuteActionJobTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsSystemLog, RefreshDatabase;
 
     public function test_handle_completes_pending_execution(): void
     {
@@ -59,6 +60,10 @@ class ExecuteActionJobTest extends TestCase
         $execution->refresh();
 
         $this->assertSame(1, $execution->attempts);
+
+        $this->assertSystemLogged('automation.action.skipped', fn (array $c) => $c['reason'] === 'already_completed'
+            && $c['input']['action_execution_id'] === $execution->id);
+        $this->assertSystemNotLogged('automation.action.completed');
     }
 
     public function test_handle_skips_cancelled_execution(): void
@@ -77,6 +82,9 @@ class ExecuteActionJobTest extends TestCase
 
         $this->assertSame(ActionExecutionStatus::Cancelled, $execution->status);
         $this->assertSame(0, $execution->logs()->count());
+
+        $this->assertSystemLogged('automation.action.skipped', fn (array $c) => $c['reason'] === 'already_cancelled'
+            && $c['input']['action_execution_id'] === $execution->id);
     }
 
     public function test_handle_no_ops_when_execution_missing(): void
@@ -84,5 +92,9 @@ class ExecuteActionJobTest extends TestCase
         (new ExecuteActionJob(999_999))->handle(app(ExecuteAction::class));
 
         $this->assertSame(0, ActionExecution::withoutGlobalScopes()->count());
+
+        $this->assertSystemLogged('automation.action.skipped', fn (array $c) => $c['reason'] === 'execution_missing'
+            && $c['input'] === ['action_execution_id' => 999_999]);
+        $this->assertNoSensitiveDataLogged();
     }
 }

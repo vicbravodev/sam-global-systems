@@ -9,6 +9,7 @@ use App\Domains\Automation\Events\ActionExecuted;
 use App\Domains\Automation\Events\ActionFailed;
 use App\Domains\Automation\Models\ActionExecution;
 use App\Domains\Automation\Models\ActionExecutionLog;
+use App\Domains\Automation\Support\ActionFailure;
 use App\Domains\Incidents\Actions\AssignIncident;
 use App\Domains\Incidents\Actions\EscalateIncident;
 use App\Domains\Incidents\Actions\RequestIncidentReview;
@@ -28,11 +29,14 @@ use App\Domains\Tenancy\Support\TenantCanSend;
 use App\Models\Membership;
 use App\Models\User;
 use App\Support\Http\OutboundUrlGuard;
+use App\Support\Http\UnsafeOutboundUrlException;
+use App\Support\LoggableCode;
 use App\Support\SystemLog;
 use App\Support\TeamMembers;
 use App\Support\Templates\TemplateInterpolator;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
+use InvalidArgumentException;
 use Throwable;
 
 class ExecuteAction
@@ -61,15 +65,22 @@ class ExecuteAction
         $blocked = TenantCanSend::blockedReason($execution->team_id);
 
         if ($blocked !== null) {
-            return $this->cancel($execution, "Tenant cannot send: {$blocked}.");
+            $cancelled = $this->cancel($execution, "Tenant cannot send: {$blocked}.");
+
+            SystemLog::skipped('automation.action.stopped', reason: 'tenant_blocked', input: $this->logInput($execution), calc: ['blocked_reason' => $blocked]);
+
+            return $cancelled;
         }
 
         $execution->status = ActionExecutionStatus::Running;
         $execution->attempts = $execution->attempts + 1;
         $execution->save();
 
+        $started = hrtime(true);
+
         try {
             $response = $this->dispatchByType($execution);
+            $durationMs = SystemLog::elapsedMs($started);
 
             $execution->status = ActionExecutionStatus::Completed;
             $execution->response_json = $response;
@@ -88,8 +99,18 @@ class ExecuteAction
 
             ActionExecuted::dispatch($execution);
 
+            SystemLog::ok(
+                'automation.action.completed',
+                input: $this->logInput($execution),
+                calc: ['attempt' => $execution->attempts],
+                result: $this->loggableResponse($execution, $response),
+                durationMs: $durationMs,
+            );
+
             return $execution;
         } catch (Throwable $exception) {
+            $durationMs = SystemLog::elapsedMs($started);
+
             $execution->status = ActionExecutionStatus::Failed;
             $execution->error_message = $exception->getMessage();
             $execution->save();
@@ -103,8 +124,74 @@ class ExecuteAction
 
             ActionFailed::dispatch($execution, $exception->getMessage());
 
+            // Nunca `error: $exception`: el mensaje interpola target_reference
+            // (teléfono, email o URL) e ids ajenos; ya queda en error_message.
+            [$reason, $failureContext] = $this->failureReason($exception);
+
+            SystemLog::degraded(
+                'automation.action.failed',
+                reason: $reason,
+                input: $this->logInput($execution),
+                calc: ['attempt' => $execution->attempts],
+                result: ['error_class' => class_basename($exception), ...$failureContext],
+                durationMs: $durationMs,
+            );
+
             return $execution;
         }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function logInput(ActionExecution $execution): array
+    {
+        return [
+            'action_execution_id' => $execution->id,
+            'action_type' => $execution->action_type->value,
+            'execution_mode' => $execution->execution_mode?->value,
+            'source_type' => $execution->source_type?->value,
+            'incident_id' => $execution->incident_id,
+        ];
+    }
+
+    /**
+     * Sólo ids, estados y conteos de la respuesta: nunca `body` (lo controla
+     * un tercero), `channel` ni el resto.
+     *
+     * @param  array<string, mixed>  $response
+     * @return array<string, mixed>
+     */
+    private function loggableResponse(ActionExecution $execution, array $response): array
+    {
+        $isWebhook = $execution->action_type === ActionType::CallWebhook;
+
+        return array_filter([
+            'notification_id' => $response['notification_id'] ?? null,
+            'notification_status' => $response['notification_status'] ?? null,
+            'recipients_count' => $response['recipients'] ?? null,
+            'assignment_id' => $response['assignment_id'] ?? null,
+            'status_code' => $isWebhook ? null : ($response['status'] ?? null),
+            'http_status' => $isWebhook ? ($response['status'] ?? null) : null,
+            'stub' => isset($response['stub']) ? (bool) $response['stub'] : null,
+        ], static fn (mixed $value): bool => $value !== null);
+    }
+
+    /**
+     * Código estable del fallo y su contexto seguro (nunca el mensaje).
+     *
+     * @return array{0: string, 1: array<string, int|string|bool|null>}
+     */
+    private function failureReason(Throwable $exception): array
+    {
+        return match (true) {
+            $exception instanceof ActionFailure => [$exception->kind, $exception->context],
+            // El host va detrás de ':' y no se registra.
+            $exception instanceof UnsafeOutboundUrlException => ['unsafe_url', ['unsafe_url_code' => LoggableCode::guard(strtok($exception->reason, ':') ?: null)]],
+            // Guard de AssignIncident: su mensaje lleva un id de usuario que puede ser ajeno.
+            $exception instanceof InvalidArgumentException => ['invalid_assignee', []],
+            default => ['unexpected_exception', []],
+        };
     }
 
     /**
@@ -166,7 +253,7 @@ class ExecuteAction
         $url = (string) ($config['url'] ?? $execution->target_reference ?? '');
 
         if ($url === '') {
-            throw new \RuntimeException('Webhook action requires a target URL.');
+            throw new ActionFailure('webhook_url_missing', 'Webhook action requires a target URL.');
         }
 
         // URL controlada por el tenant: SSRF. El guard rechaza la red interna
@@ -187,15 +274,15 @@ class ExecuteAction
             // pero al tenant le llega uno genérico.
             SystemLog::degraded('automation.webhook.connection_failed', reason: 'connection_failed', input: ['action_execution_id' => $execution->id], error: $exception);
 
-            throw new \RuntimeException('No se pudo conectar con el webhook.');
+            throw new ActionFailure('webhook_connection_failed', 'No se pudo conectar con el webhook.');
         }
 
         if ($response->redirect()) {
-            throw new \RuntimeException("Webhook returned a redirect ({$response->status()}); redirects are not followed.");
+            throw new ActionFailure('webhook_redirect', "Webhook returned a redirect ({$response->status()}); redirects are not followed.", ['http_status' => $response->status()]);
         }
 
         if ($response->failed()) {
-            throw new \RuntimeException("Webhook returned status {$response->status()}");
+            throw new ActionFailure('webhook_http_error', "Webhook returned status {$response->status()}", ['http_status' => $response->status()]);
         }
 
         return [
@@ -233,13 +320,14 @@ class ExecuteAction
             ActionType::SendSms => ChannelType::Sms,
             ActionType::SendWhatsapp => ChannelType::Whatsapp,
             ActionType::SendPush => ChannelType::Push,
-            default => throw new \RuntimeException('Unsupported notification action type.'),
+            default => throw new ActionFailure('unsupported_notification_action', 'Unsupported notification action type.'),
         };
 
         $recipients = $this->resolveNotificationRecipients($execution, $channelType);
 
         if ($recipients === []) {
-            throw new \RuntimeException(
+            throw new ActionFailure(
+                'no_recipients',
                 "Could not resolve recipients for {$execution->action_type->value} "
                 ."(target_type={$execution->target_type}, target_reference={$execution->target_reference})."
             );
@@ -282,7 +370,7 @@ class ExecuteAction
         // The dispatch job runs inline on the sync queue; if delivery already
         // failed outright, surface it as an action failure for retry/alerting.
         if ($notification->refresh()->status === NotificationStatus::Failed) {
-            throw new \RuntimeException("Notification {$notification->id} failed to deliver on every channel.");
+            throw new ActionFailure('notification_not_delivered', "Notification {$notification->id} failed to deliver on every channel.", ['notification_id' => $notification->id]);
         }
 
         return [
@@ -390,7 +478,7 @@ class ExecuteAction
         $assigneeId = (int) ($execution->target_reference ?? $payload['assignee_id'] ?? 0);
 
         if ($assigneeId <= 0) {
-            throw new \RuntimeException('Assign incident action requires an assignee id in target_reference.');
+            throw new ActionFailure('assignee_missing', 'Assign incident action requires an assignee id in target_reference.');
         }
 
         $assigneeType = AssigneeType::tryFrom((string) ($payload['assignee_type'] ?? '')) ?? AssigneeType::User;
@@ -495,7 +583,7 @@ class ExecuteAction
             ?? ($execution->source_type?->value === 'incident' ? $execution->source_reference_id : 0));
 
         if ($incidentId <= 0) {
-            throw new \RuntimeException("{$execution->action_type->value} action requires a linked incident.");
+            throw new ActionFailure('no_linked_incident', "{$execution->action_type->value} action requires a linked incident.");
         }
 
         $incident = Incident::query()
@@ -504,7 +592,7 @@ class ExecuteAction
             ->first();
 
         if ($incident === null) {
-            throw new \RuntimeException("Incident {$incidentId} not found for this team.");
+            throw new ActionFailure('incident_not_in_team', "Incident {$incidentId} not found for this team.");
         }
 
         return $incident;

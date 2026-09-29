@@ -25,6 +25,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Mail;
 use Mockery;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 /**
@@ -33,7 +34,7 @@ use Tests\TestCase;
  */
 class ExecuteActionBridgesTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsSystemLog, RefreshDatabase;
 
     private Team $team;
 
@@ -123,8 +124,40 @@ class ExecuteActionBridgesTest extends TestCase
 
         $this->assertSame(ActionExecutionStatus::Failed, $result->status);
         $this->assertStringContainsString('Could not resolve recipients', (string) $result->error_message);
+        $this->assertStringContainsString('nonexistent_role', (string) $result->error_message);
 
         Event::assertDispatched(ActionFailed::class);
+
+        $this->assertSystemLogged('automation.action.failed', fn (array $c) => $c['reason'] === 'no_recipients'
+            && $c['result'] === ['error_class' => 'ActionFailure']);
+        $this->assertStringNotContainsString('nonexistent_role', json_encode($this->systemLogEntries()));
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_send_action_to_a_phone_never_logs_the_target(): void
+    {
+        $messenger = Mockery::mock(TwilioMessenger::class);
+        $messenger->shouldReceive('createMessage')->once()->andReturn((object) ['sid' => 'SM123', 'status' => 'queued']);
+        $this->app->instance(TwilioMessenger::class, $messenger);
+
+        config()->set('services.twilio.account_sid', 'AC123');
+        config()->set('services.twilio.auth_token', 'tok-456');
+
+        NotificationChannel::factory()->sms()->create(['config_json' => ['from' => '+14155238886']]);
+
+        $execution = $this->makeExecution(ActionType::SendSms, [
+            'target_type' => 'phone',
+            'target_reference' => '+5215512345678',
+            'payload_json' => ['body' => 'Unidad 42 en alerta.'],
+        ]);
+
+        app(ExecuteAction::class)->execute($execution);
+
+        $this->assertSystemLogged('automation.action.completed', fn (array $c) => $c['input']['action_type'] === ActionType::SendSms->value);
+        $encoded = json_encode($this->systemLogEntries());
+        $this->assertStringNotContainsString('5215512345678', $encoded);
+        $this->assertStringNotContainsString('Unidad 42 en alerta', $encoded);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_assign_incident_action_creates_assignment(): void
@@ -202,6 +235,47 @@ class ExecuteActionBridgesTest extends TestCase
 
         $this->assertSame(ActionExecutionStatus::Failed, $result->status);
         $this->assertStringContainsString('requires a linked incident', (string) $result->error_message);
+
+        $this->assertSystemLogged('automation.action.failed', fn (array $c) => $c['reason'] === 'no_linked_incident'
+            && $c['input']['action_type'] === ActionType::Escalate->value
+            && $c['result'] === ['error_class' => 'ActionFailure']);
+    }
+
+    public function test_incident_of_another_team_fails_without_logging_its_id(): void
+    {
+        Event::fake([ActionFailed::class]);
+
+        $foreign = Incident::factory()->create();
+
+        $execution = $this->makeExecution(ActionType::Escalate, [
+            'incident_id' => $foreign->id,
+        ]);
+
+        $result = app(ExecuteAction::class)->execute($execution);
+
+        $this->assertSame(ActionExecutionStatus::Failed, $result->status);
+        $this->assertSame("Incident {$foreign->id} not found for this team.", $result->error_message);
+        $this->assertSystemLogged('automation.action.failed', fn (array $c) => $c['reason'] === 'incident_not_in_team'
+            && $c['result'] === ['error_class' => 'ActionFailure']);
+    }
+
+    public function test_assignee_outside_the_team_fails_as_invalid_assignee(): void
+    {
+        $incident = Incident::factory()->open()->create(['team_id' => $this->team->id]);
+        $stranger = User::factory()->create();
+
+        $execution = $this->makeExecution(ActionType::AssignIncident, [
+            'incident_id' => $incident->id,
+            'target_type' => 'user',
+            'target_reference' => (string) $stranger->id,
+        ]);
+
+        $result = app(ExecuteAction::class)->execute($execution);
+
+        $this->assertSame(ActionExecutionStatus::Failed, $result->status);
+        $this->assertSystemLogged('automation.action.failed', fn (array $c) => $c['reason'] === 'invalid_assignee'
+            && $c['result'] === ['error_class' => 'InvalidArgumentException']);
+        $this->assertStringNotContainsString('"error"', json_encode($this->systemLogEntries('automation.action.failed')));
     }
 
     public function test_create_ticket_and_update_asset_state_remain_deferred(): void
@@ -214,6 +288,9 @@ class ExecuteActionBridgesTest extends TestCase
             $this->assertSame(ActionExecutionStatus::Completed, $result->status);
             $this->assertTrue((bool) ($result->response_json['stub'] ?? false));
             $this->assertSame('deferred_v2', $result->response_json['reason']);
+
+            $this->assertSystemLogged('automation.action.completed', fn (array $c) => $c['input']['action_execution_id'] === $execution->id
+                && $c['result'] === ['stub' => true]);
         }
     }
 

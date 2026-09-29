@@ -20,6 +20,7 @@ use Database\Seeders\IncidentsSeeder;
 use Database\Seeders\NotificationMeterSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\Concerns\AssertsTenantIsolation;
 use Tests\TestCase;
 
@@ -29,7 +30,7 @@ use Tests\TestCase;
  */
 class DelayedStepIncidentRecheckTest extends TestCase
 {
-    use AssertsTenantIsolation, RefreshDatabase;
+    use AssertsSystemLog, AssertsTenantIsolation, RefreshDatabase;
 
     protected function setUp(): void
     {
@@ -60,6 +61,13 @@ class DelayedStepIncidentRecheckTest extends TestCase
         $this->assertSame(ActionExecutionStatus::Cancelled, $execution->status);
         $this->assertStringContainsString('human control', (string) $execution->error_message);
         $this->assertSame(0, Notification::withoutGlobalScopes()->where('team_id', $team->id)->count());
+
+        $this->assertSystemLogged('automation.action.stopped', fn (array $c) => $c['reason'] === 'human_control'
+            && $c['input']['action_execution_id'] === $execution->id
+            && $c['calc']['incident_id'] === $incident->id
+            && $c['calc']['delayed'] === true);
+        $this->assertSystemNotLogged('automation.action.completed');
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_step_is_cancelled_when_the_incident_is_terminal(): void
@@ -74,6 +82,9 @@ class DelayedStepIncidentRecheckTest extends TestCase
 
         $this->assertSame(ActionExecutionStatus::Cancelled, $execution->fresh()->status);
         $this->assertSame(0, Notification::withoutGlobalScopes()->where('team_id', $team->id)->count());
+
+        $this->assertSystemLogged('automation.action.stopped', fn (array $c) => $c['reason'] === 'incident_terminal'
+            && $c['calc']['incident_id'] === $incident->id);
     }
 
     public function test_step_still_runs_while_the_incident_is_open_and_unclaimed(): void

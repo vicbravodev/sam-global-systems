@@ -7,6 +7,7 @@ use App\Domains\Automation\Models\AutomationWorkflow;
 use App\Domains\Automation\Services\RunAutomationWorkflow;
 use App\Support\JobFailureReporter;
 use App\Support\PipelineTrace;
+use App\Support\SystemLog;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -41,6 +42,9 @@ class RunAutomationWorkflowJob implements ShouldQueue
             ->find($this->automationWorkflowId);
 
         if ($workflow === null) {
+            // Sin el id: si no es del team ni de plataforma, es de otro tenant.
+            SystemLog::skipped('automation.workflow.skipped', reason: 'workflow_unavailable', input: ['source_type' => $this->sourceType]);
+
             return;
         }
 
