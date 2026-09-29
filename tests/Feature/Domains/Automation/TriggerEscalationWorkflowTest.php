@@ -101,6 +101,41 @@ class TriggerEscalationWorkflowTest extends TestCase
         $this->assertNoSensitiveDataLogged();
     }
 
+    public function test_a_strict_type_mismatch_logs_the_types_of_both_values(): void
+    {
+        Bus::fake();
+
+        $teamId = User::factory()->create()->currentTeam->id;
+
+        $workflow = AutomationWorkflow::factory()
+            ->trigger(WorkflowTriggerType::IncidentCreated)
+            ->create([
+                'team_id' => $teamId,
+                'trigger_conditions_json' => ['incident_type_id' => '12'],
+            ]);
+
+        $dispatched = app(TriggerEscalationWorkflow::class)->execute(
+            teamId: $teamId,
+            triggerType: WorkflowTriggerType::IncidentCreated,
+            sourceType: ActionExecutionSourceType::Incident,
+            sourceReferenceId: '99',
+            payload: ['incident_type_id' => 12],
+        );
+
+        $this->assertSame([], $dispatched);
+        Bus::assertNotDispatched(RunAutomationWorkflowJob::class);
+
+        // Mismo texto, distinto tipo: la comparación es estricta.
+        $c = $this->assertSystemLogged('automation.workflow.not_matched', fn (array $c) => $c['input']['automation_workflow_id'] === $workflow->id);
+        $this->assertSame('condition_mismatch', $c['reason']);
+        $this->assertSame('incident_type_id', $c['calc']['failed_key']);
+        $this->assertSame('12', $c['calc']['expected']);
+        $this->assertSame('12', $c['calc']['actual']);
+        $this->assertSame('string', $c['calc']['expected_type']);
+        $this->assertSame('int', $c['calc']['actual_type']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
     public function test_free_text_condition_values_never_reach_the_log(): void
     {
         Bus::fake();

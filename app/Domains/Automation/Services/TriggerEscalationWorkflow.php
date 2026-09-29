@@ -51,6 +51,8 @@ class TriggerEscalationWorkflow
                     'failed_key' => $match['failed_key'],
                     'expected' => $match['expected'],
                     'actual' => $match['actual'],
+                    'expected_type' => $match['expected_type'],
+                    'actual_type' => $match['actual_type'],
                     'conditions_count' => $match['conditions_count'],
                 ];
 
@@ -100,7 +102,10 @@ class TriggerEscalationWorkflow
      *
      * @param  array<string, mixed>  $conditions
      * @param  array<string, mixed>  $payload
-     * @return array{matched: bool, failed_key: ?string, expected: ?string, actual: ?string, conditions_count: int}
+     *                                         La comparación es estricta: `expected_type`/`actual_type`
+     *                                         (`get_debug_type`) explican un "12" frente a 12, que en texto se ven
+     *                                         iguales.
+     * @return array{matched: bool, failed_key: ?string, expected: ?string, actual: ?string, expected_type: ?string, actual_type: ?string, conditions_count: int}
      */
     private function conditionsMatch(array $conditions, array $payload): array
     {
@@ -114,11 +119,13 @@ class TriggerEscalationWorkflow
                     'failed_key' => LoggableCode::guard((string) $key),
                     'expected' => LoggableCode::guard(is_scalar($expected) ? (string) $expected : null),
                     'actual' => LoggableCode::guard(is_scalar($actual) ? (string) $actual : null),
+                    'expected_type' => get_debug_type($expected),
+                    'actual_type' => get_debug_type($actual),
                     'conditions_count' => $conditionsCount,
                 ];
             }
         }
 
-        return ['matched' => true, 'failed_key' => null, 'expected' => null, 'actual' => null, 'conditions_count' => $conditionsCount];
+        return ['matched' => true, 'failed_key' => null, 'expected' => null, 'actual' => null, 'expected_type' => null, 'actual_type' => null, 'conditions_count' => $conditionsCount];
     }
 }
