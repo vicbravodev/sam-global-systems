@@ -22,13 +22,13 @@ use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
 use App\Domains\Tenancy\Support\TenantCanSend;
 use App\Support\JobFailureReporter;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Log;
 
 /**
  * Place one operator verification call through SAM's platform Twilio voice
@@ -109,11 +109,7 @@ class PlaceVerificationCallJob implements ShouldQueue
         $blocked = TenantCanSend::blockedReason((int) $verification->team_id);
 
         if ($blocked !== null) {
-            Log::notice('Verification call placed for a blocked tenant (emergency override)', [
-                'verification_id' => $verification->id,
-                'team_id' => $verification->team_id,
-                'blocked_reason' => $blocked,
-            ]);
+            SystemLog::degraded('incidents.call_verification.emergency_override', reason: 'tenant_blocked', input: ['verification_id' => $verification->id, 'team_id' => $verification->team_id, 'blocked_reason' => $blocked]);
         }
 
         $channel = $this->resolveVoiceChannel((int) $verification->team_id);
@@ -128,10 +124,7 @@ class PlaceVerificationCallJob implements ShouldQueue
                 'metadata_json' => ['failure_reason' => 'voice_channel_unavailable'],
             ])->save();
 
-            Log::warning('Verification call skipped: no usable voice channel', [
-                'verification_id' => $verification->id,
-                'team_id' => $verification->team_id,
-            ]);
+            SystemLog::skipped('incidents.call_verification.skipped', reason: 'no_voice_channel', input: ['verification_id' => $verification->id, 'team_id' => $verification->team_id]);
 
             // Nunca en silencio: el pánico queda escalado y explicado.
             $escalateUnverifiable->execute(
@@ -156,10 +149,7 @@ class PlaceVerificationCallJob implements ShouldQueue
                 'timeout' => $config['ring_timeout_seconds'] ?? 25,
             ]);
         } catch (\Throwable $e) {
-            Log::warning('Verification call placement failed', [
-                'verification_id' => $verification->id,
-                'error' => $e->getMessage(),
-            ]);
+            SystemLog::degraded('incidents.call_verification.placement_failed', reason: 'provider_error', input: ['verification_id' => $verification->id], error: $e);
 
             $verification->forceFill(['notification_channel_id' => $channel->id])->save();
             $handleFailure->execute($verification, 'placement_failed: '.$e->getMessage());

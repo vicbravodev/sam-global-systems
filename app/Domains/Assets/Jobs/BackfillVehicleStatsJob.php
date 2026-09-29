@@ -8,6 +8,7 @@ use App\Domains\Integrations\Contracts\ProviderAdapter;
 use App\Domains\Integrations\Exceptions\ProviderRateLimited;
 use App\Domains\Integrations\Exceptions\ProviderUnauthorized;
 use App\Domains\Integrations\Models\TenantIntegration;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Carbon\CarbonInterface;
 use Illuminate\Bus\Queueable;
@@ -17,7 +18,6 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 
 /**
  * Refill a gap the feed can no longer replay (its cursor expired or was
@@ -86,15 +86,7 @@ class BackfillVehicleStatsJob implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        Log::channel('telematics')->info('telematics.backfill', [
-            'team_id' => $this->integration->team_id,
-            'integration_id' => $this->integration->id,
-            'feed' => $this->feed->value,
-            'from' => $from->toIso8601ZuluString(),
-            'until' => $this->until->toIso8601ZuluString(),
-            'pages' => $pages,
-            'stored' => $stored,
-        ]);
+        SystemLog::ok('telematics.backfill.completed', input: ['integration_id' => $this->integration->id, 'feed' => $this->feed->value, 'from' => $from->toIso8601ZuluString(), 'until' => $this->until->toIso8601ZuluString()], result: ['pages' => $pages, 'stored' => $stored], channel: 'telematics');
     }
 
     /**

@@ -14,8 +14,8 @@ use App\Domains\Notifications\Models\NotificationDelivery;
 use App\Domains\Notifications\Models\NotificationRecipient;
 use App\Domains\Notifications\Support\CancelBlockedNotification;
 use App\Domains\Notifications\Support\ChannelAddress;
+use App\Support\SystemLog;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 
 class DispatchNotification
 {
@@ -148,13 +148,7 @@ class DispatchNotification
         } catch (\Throwable $e) {
             // best-effort audit row; never break the dispatch loop, but log so
             // a systemic failure (e.g. DB constraint) stays debuggable.
-            Log::warning('Failed to record skipped notification delivery', [
-                'notification_id' => $notification->id,
-                'recipient_id' => $recipient->id,
-                'channel_id' => $channel->id,
-                'reason' => $reason,
-                'exception' => $e->getMessage(),
-            ]);
+            SystemLog::degraded('notifications.delivery.skip_record_failed', reason: 'record_failed', input: ['notification_id' => $notification->id, 'recipient_id' => $recipient->id, 'channel_id' => $channel->id, 'skip_reason' => $reason], error: $e);
         }
     }
 

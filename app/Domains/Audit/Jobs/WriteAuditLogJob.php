@@ -6,13 +6,13 @@ use App\Domains\Audit\Actions\RecordAuditEntry;
 use App\Domains\Audit\Actions\StoreDomainEvent;
 use App\Domains\Audit\Enums\AuditActorType;
 use App\Domains\Audit\Enums\AuditCategory;
+use App\Support\JobFailureReporter;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Log;
 
 /**
  * Persists a single auditable event captured by the wildcard listener.
@@ -92,12 +92,7 @@ class WriteAuditLogJob implements ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
-        Log::warning('WriteAuditLogJob failed', [
-            'event_name' => $this->eventName,
-            'team_id' => $this->teamId,
-            'signature' => $this->signature,
-            'error' => $exception->getMessage(),
-        ]);
+        JobFailureReporter::report(static::class, $exception, ['event_name' => $this->eventName, 'team_id' => $this->teamId]);
     }
 
     private function buildSummary(): string

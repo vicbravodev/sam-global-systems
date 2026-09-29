@@ -7,7 +7,7 @@ use App\Domains\AI\Support\ModelPricing;
 use App\Domains\Copilot\Data\CopilotAnswer;
 use App\Domains\Copilot\Data\CopilotNarration;
 use App\Domains\Copilot\Support\TemplateCopilotNarrator;
-use Illuminate\Support\Facades\Log;
+use App\Support\SystemLog;
 use Throwable;
 
 /**
@@ -35,7 +35,7 @@ class SdkCopilotNarrator implements CopilotNarrator
         try {
             $response = (new CopilotAgent($history))->prompt($payload);
         } catch (Throwable $exception) {
-            Log::warning('SAM Copilot narration failed, using template', ['error' => $exception->getMessage()]);
+            SystemLog::degraded('copilot.narration.fallback', reason: 'agent_error', error: $exception);
 
             return $this->fallback->narrate($question, $answer, $history);
         }

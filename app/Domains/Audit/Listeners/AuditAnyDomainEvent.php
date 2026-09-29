@@ -5,7 +5,7 @@ namespace App\Domains\Audit\Listeners;
 use App\Domains\Audit\AuditServiceProvider;
 use App\Domains\Audit\Contracts\AuditableEventClassifier;
 use App\Domains\Audit\Jobs\WriteAuditLogJob;
-use Illuminate\Support\Facades\Log;
+use App\Support\SystemLog;
 use Throwable;
 
 /**
@@ -36,7 +36,7 @@ class AuditAnyDomainEvent
         } catch (Throwable $exception) {
             // Never let an audit-classification failure break the dispatcher
             // for the original event. Log silently and bail.
-            $this->logQuietly('AuditAnyDomainEvent classifier threw', $eventName, $exception);
+            $this->logQuietly('classifier_failed', $eventName, $exception);
 
             return;
         }
@@ -63,17 +63,14 @@ class AuditAnyDomainEvent
             );
         } catch (Throwable $exception) {
             // Same principle: never propagate audit failures to the caller.
-            $this->logQuietly('AuditAnyDomainEvent dispatch failed', $eventName, $exception);
+            $this->logQuietly('dispatch_failed', $eventName, $exception);
         }
     }
 
-    private function logQuietly(string $message, string $eventName, Throwable $exception): void
+    private function logQuietly(string $reason, string $eventName, Throwable $exception): void
     {
         try {
-            Log::warning($message, [
-                'event' => $eventName,
-                'error' => $exception->getMessage(),
-            ]);
+            SystemLog::degraded('audit.domain_event.record_failed', reason: $reason, input: ['event_name' => $eventName], error: $exception);
         } catch (Throwable) {
             // Last-ditch silent swallow: the audit subsystem must NEVER
             // surface its own failures into the calling pipeline.

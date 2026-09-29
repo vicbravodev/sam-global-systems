@@ -28,11 +28,11 @@ use App\Domains\Tenancy\Support\TenantCanSend;
 use App\Models\Membership;
 use App\Models\User;
 use App\Support\Http\OutboundUrlGuard;
+use App\Support\SystemLog;
 use App\Support\TeamMembers;
 use App\Support\Templates\TemplateInterpolator;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class ExecuteAction
@@ -185,10 +185,7 @@ class ExecuteAction
         } catch (ConnectionException $exception) {
             // El mensaje de cURL describe la red (IPs, puertos): se registra,
             // pero al tenant le llega uno genérico.
-            Log::warning('automation.webhook.connection_failed', [
-                'action_execution_id' => $execution->id,
-                'error' => $exception->getMessage(),
-            ]);
+            SystemLog::degraded('automation.webhook.connection_failed', reason: 'connection_failed', input: ['action_execution_id' => $execution->id], error: $exception);
 
             throw new \RuntimeException('No se pudo conectar con el webhook.');
         }
@@ -345,10 +342,7 @@ class ExecuteAction
         $skipped = array_values(array_diff($userIds, $users->modelKeys()));
 
         if ($skipped !== []) {
-            Log::warning('automation.recipients.non_member_skipped', [
-                'team_id' => $teamId,
-                'user_ids' => $skipped,
-            ]);
+            SystemLog::skipped('automation.recipients.non_member_skipped', reason: 'not_team_member', input: ['team_id' => $teamId, 'skipped_user_ids' => $skipped]);
         }
 
         return $users

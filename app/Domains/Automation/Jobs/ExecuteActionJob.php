@@ -10,6 +10,7 @@ use App\Domains\Automation\Models\ActionExecution;
 use App\Domains\Automation\Models\WorkflowExecution;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Support\IncidentSuppression;
+use App\Support\JobFailureReporter;
 use App\Support\PipelineTrace;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
@@ -17,7 +18,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Log;
 
 class ExecuteActionJob implements ShouldQueue
 {
@@ -148,9 +148,6 @@ class ExecuteActionJob implements ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
-        Log::warning('ExecuteActionJob failed', [
-            'action_execution_id' => $this->actionExecutionId,
-            'error' => $exception->getMessage(),
-        ]);
+        JobFailureReporter::report(static::class, $exception, ['action_execution_id' => $this->actionExecutionId]);
     }
 }

@@ -2,7 +2,7 @@
 
 namespace App\Domains\Drivers\Exceptions;
 
-use Illuminate\Support\Facades\Log;
+use App\Support\SystemLog;
 use RuntimeException;
 
 /**
@@ -33,10 +33,6 @@ class DriverExternalReferenceConflictException extends RuntimeException
      */
     public function logSkipped(): void
     {
-        Log::warning('Driver sync skipped: external id already owned by another tenant.', [
-            'team_id' => $this->teamId,
-            'provider_id' => $this->providerId,
-            'external_id' => $this->externalId,
-        ]);
+        SystemLog::skipped('drivers.sync.external_id_conflict', reason: 'owned_by_other_tenant', input: ['team_id' => $this->teamId, 'provider_id' => $this->providerId, 'external_id' => $this->externalId]);
     }
 }

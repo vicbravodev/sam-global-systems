@@ -15,7 +15,7 @@ use App\Domains\Incidents\Models\IncidentCallVerification;
 use App\Domains\Incidents\Support\IncidentSupervisors;
 use App\Domains\TenantConfig\Models\TenantEscalationConfig;
 use App\Support\PhoneNumber;
-use Illuminate\Support\Facades\Log;
+use App\Support\SystemLog;
 
 /**
  * Start (or continue) the operator voice-verification chain for an incident
@@ -95,10 +95,7 @@ class StartIncidentCallVerification
         }
 
         if ($candidates === []) {
-            Log::info('Incident call verification skipped: no phone contact configured', [
-                'incident_id' => $incident->id,
-                'team_id' => $incident->team_id,
-            ]);
+            SystemLog::skipped('incidents.call_verification.skipped', reason: 'no_phone_contact', input: ['incident_id' => $incident->id, 'team_id' => $incident->team_id]);
 
             $this->escalateUnverifiable->execute(
                 $incident,

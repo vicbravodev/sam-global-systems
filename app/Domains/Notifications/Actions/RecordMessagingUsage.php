@@ -3,7 +3,7 @@
 namespace App\Domains\Notifications\Actions;
 
 use App\Domains\Tenancy\Actions\RecordUsageEvent;
-use Illuminate\Support\Facades\Log;
+use App\Support\SystemLog;
 
 /**
  * Medición de uso para la capa de entrega que NUNCA rompe un envío ya hecho.
@@ -36,12 +36,7 @@ class RecordMessagingUsage
 
             return true;
         } catch (\Throwable $e) {
-            Log::warning('Messaging usage could not be metered', [
-                'team_id' => $teamId,
-                'meter_code' => $meterCode,
-                'event_key' => $eventKey,
-                'exception' => $e->getMessage(),
-            ]);
+            SystemLog::degraded('billing.messaging_usage.not_metered', reason: 'record_failed', input: ['team_id' => $teamId, 'meter_code' => $meterCode, 'event_key' => $eventKey], error: $e);
 
             return false;
         }
