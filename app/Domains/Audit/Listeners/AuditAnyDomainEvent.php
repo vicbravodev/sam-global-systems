@@ -69,11 +69,8 @@ class AuditAnyDomainEvent
 
     private function logQuietly(string $reason, string $eventName, Throwable $exception): void
     {
-        try {
-            SystemLog::degraded('audit.domain_event.record_failed', reason: $reason, input: ['event_name' => $eventName], error: $exception);
-        } catch (Throwable) {
-            // Last-ditch silent swallow: the audit subsystem must NEVER
-            // surface its own failures into the calling pipeline.
-        }
+        // SystemLog never throws while writing: the audit subsystem must NEVER
+        // surface its own failures into the calling pipeline.
+        SystemLog::degraded('audit.domain_event.record_failed', reason: $reason, input: ['event_name' => $eventName], error: $exception);
     }
 }

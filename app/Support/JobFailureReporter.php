@@ -2,7 +2,6 @@
 
 namespace App\Support;
 
-use InvalidArgumentException;
 use Throwable;
 
 /**
@@ -17,15 +16,8 @@ final class JobFailureReporter
      */
     public static function report(string $jobClass, Throwable $e, array $context = []): void
     {
-        // Corre dentro de `failed()` de los jobs: reportar nunca puede lanzar.
-        // Único error que se relanza: la violación de esquema de SystemLog en tests.
-        try {
-            SystemLog::failed(self::codeFor($jobClass), reason: 'exception', input: ['job' => $jobClass] + $context, error: $e);
-        } catch (Throwable $reportError) {
-            if ($reportError instanceof InvalidArgumentException && app()->runningUnitTests()) {
-                throw $reportError;
-            }
-        }
+        // Corre dentro de `failed()` de los jobs: SystemLog nunca lanza al escribir.
+        SystemLog::failed(self::codeFor($jobClass), reason: 'exception', input: ['job' => $jobClass] + $context, error: $e);
     }
 
     public static function codeFor(string $jobClass): string

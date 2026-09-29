@@ -3,6 +3,7 @@
 namespace Tests\Feature\Support;
 
 use App\Support\SystemLog;
+use App\Support\SystemLogSchemaViolation;
 use Illuminate\Support\Facades\Event;
 use InvalidArgumentException;
 use PHPUnit\Framework\AssertionFailedError;
@@ -86,6 +87,36 @@ class SystemLogTest extends TestCase
             $this->fail('should rethrow');
         } catch (RuntimeException) {
             $this->assertSystemLogged('samsara.api.request', fn (array $c) => $c['outcome'] === 'failed' && $c['reason'] === 'exception');
+        }
+    }
+
+    public function test_a_broken_sink_never_propagates_but_a_schema_violation_still_throws(): void
+    {
+        SystemLog::listen(fn () => throw new RuntimeException('sink down'));
+
+        SystemLog::ok('ai.gate.passed');
+        SystemLog::failed('queue.job.failed', reason: 'exception', error: new RuntimeException('x'));
+
+        $this->assertSystemLogged('ai.gate.passed');
+
+        $this->expectException(SystemLogSchemaViolation::class);
+
+        SystemLog::ok('Bad Code');
+    }
+
+    public function test_measure_rejects_an_invalid_code_before_running_the_callback(): void
+    {
+        $ran = false;
+
+        try {
+            SystemLog::measure('Bad Code', function () use (&$ran): void {
+                $ran = true;
+
+                throw new RuntimeException('callback error');
+            });
+            $this->fail('should throw');
+        } catch (SystemLogSchemaViolation) {
+            $this->assertFalse($ran);
         }
     }
 

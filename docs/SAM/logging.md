@@ -31,7 +31,7 @@ Cada decisión y cada cálculo del sistema deja una línea JSON con un código e
 | `duration_ms` | En operaciones medidas. |
 | `error` | Sólo en `failed`/`degraded` con excepción: `SafeException::describe()`, nunca `getMessage()`. |
 
-`extra` lo pone el `Context` (`trace_id`, `team_id`, `parent_trace_id`, ids de etapa). Nivel derivado: `ok`/`skipped` → `info` (o `debug` en rutas calientes), `degraded` → `warning`, `failed` → `error`. Un código que no cumple `/^[a-z0-9_]+(\.[a-z0-9_]+){2,}$/`, o un `reason` ausente fuera de `ok`, lanza `InvalidArgumentException` fuera de producción.
+`extra` lo pone el `Context` (`trace_id`, `team_id`, `parent_trace_id`, ids de etapa). Nivel derivado: `ok`/`skipped` → `info` (o `debug` en rutas calientes), `degraded` → `warning`, `failed` → `error`. Un código que no cumple `/^[a-z0-9_]+(\.[a-z0-9_]+){2,}$/`, o un `reason` ausente fuera de `ok`, lanza `App\Support\SystemLogSchemaViolation` (un `InvalidArgumentException`) fuera de producción. Cualquier otro fallo al escribir (sink caído, listener que lanza) se traga dentro de `SystemLog`: loguear nunca rompe al llamador.
 
 ## Cómo seguir un evento
 

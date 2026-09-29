@@ -4,7 +4,6 @@ namespace App\Support;
 
 use Closure;
 use Illuminate\Support\Facades\Log;
-use InvalidArgumentException;
 use Throwable;
 
 /**
@@ -92,6 +91,9 @@ final class SystemLog
      */
     public static function measure(string $code, Closure $callback, array $input = [], bool $debug = false, ?string $channel = null): mixed
     {
+        // Antes del callback: un código inválido nunca enmascara su excepción.
+        self::assertSchema(self::violation(self::OK, $code, null), $code);
+
         $started = hrtime(true);
 
         try {
@@ -136,10 +138,7 @@ final class SystemLog
     private static function write(string $outcome, string $code, ?string $reason, array $input, ?array $calc, array $result, ?int $durationMs, ?Throwable $error, bool $debug, ?string $channel): void
     {
         $violation = self::violation($outcome, $code, $reason);
-
-        if ($violation !== null && ! app()->environment('production')) {
-            throw new InvalidArgumentException("SystemLog: {$violation} [{$code}]");
-        }
+        self::assertSchema($violation, $code);
 
         $context = array_filter([
             'outcome' => $outcome,
@@ -158,17 +157,29 @@ final class SystemLog
             default => $debug ? 'debug' : 'info',
         };
 
-        foreach (self::$listeners as $listener) {
-            $listener(['level' => $level, 'code' => $code, 'context' => $context, 'channel' => $channel]);
+        // Loguear nunca rompe al llamador (jobs, catch de rutas de fallo,
+        // respuestas HTTP): un sink caído se traga sin registrar, porque el
+        // log es justo lo que falló. La violación de esquema ya lanzó arriba.
+        try {
+            foreach (self::$listeners as $listener) {
+                $listener(['level' => $level, 'code' => $code, 'context' => $context, 'channel' => $channel]);
+            }
+
+            if ($channel === null) {
+                Log::log($level, $code, $context);
+            } else {
+                Log::channel($channel)->log($level, $code, $context);
+            }
+        } catch (Throwable) {
+            // Se traga sin registrar.
         }
+    }
 
-        if ($channel === null) {
-            Log::log($level, $code, $context);
-
-            return;
+    private static function assertSchema(?string $violation, string $code): void
+    {
+        if ($violation !== null && ! app()->environment('production')) {
+            throw new SystemLogSchemaViolation("SystemLog: {$violation} [{$code}]");
         }
-
-        Log::channel($channel)->log($level, $code, $context);
     }
 
     private static function violation(string $outcome, string $code, ?string $reason): ?string

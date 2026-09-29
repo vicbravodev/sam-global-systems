@@ -18,8 +18,6 @@ use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Queue\MaxAttemptsExceededException;
 use Illuminate\Queue\TimeoutExceededException;
 use Illuminate\Support\Facades\Event;
-use InvalidArgumentException;
-use Throwable;
 
 /**
  * Red de fondo del log narrativo: lo que se registra sin que cada módulo lo
@@ -139,21 +137,11 @@ final class AutomaticSystemLog
     }
 
     /**
-     * Ningún listener automático puede tumbar el job o la petición que observa.
-     * Único error que se relanza: la violación de esquema de SystemLog en tests.
+     * El guard de "nunca romper" vive dentro de SystemLog::write().
      */
     private static function listen(string $event, Closure $handler): void
     {
-        Event::listen($event, static function (object $payload) use ($handler): void {
-            try {
-                $handler($payload);
-            } catch (Throwable $e) {
-                if ($e instanceof InvalidArgumentException && app()->runningUnitTests()) {
-                    throw $e;
-                }
-                // Se traga sin registrar: el log es justo lo que falló.
-            }
-        });
+        Event::listen($event, $handler);
     }
 
     /**
