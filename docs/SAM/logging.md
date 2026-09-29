@@ -321,10 +321,10 @@ Sin `decision_trace_id`: `GenerateDecisionTrace` crea una fila por paso; las tra
 | `no_recipients` | ningún destinatario resuelto | |
 | `notification_not_delivered` | la notificación quedó `failed` en todos los canales | `notification_id` |
 | `assignee_missing` | asignar sin id de usuario | |
-| `invalid_assignee` | `AssignIncident` rechazó al usuario (no miembro) | |
+| `invalid_assignee` | `AssignIncident` rechazó al usuario (no miembro): su `InvalidArgumentException` se re-etiqueta en `assignIncident()`; `error_class` sigue siendo `InvalidArgumentException` | |
 | `no_linked_incident` | acción de incidente sin incidente vinculado | |
 | `incident_not_in_team` | el incidente no existe o no es del team (sin su id) | |
-| `unexpected_exception` | cualquier otra excepción | |
+| `unexpected_exception` | cualquier otra excepción (incluido un `InvalidArgumentException` ajeno al guard de asignación) | |
 
 Un workflow sin pasos no es un "skip": crea la ejecución, mide `incident_workflows` y termina; `automation.workflow.started` lo dice con `steps_count = 0` y `status: completed`. `RetryActionExecutionJob` no está en `routes/console.php`: hoy sólo reintenta el endpoint manual (`ActionExecutionController::retry` → `RetryFailedAction`).
 

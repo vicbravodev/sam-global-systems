@@ -134,7 +134,10 @@ class ExecuteAction
                 reason: $reason,
                 input: $logInput,
                 calc: ['attempt' => $execution->attempts],
-                result: ['error_class' => class_basename($exception), ...$failureContext],
+                result: [
+                    'error_class' => $exception instanceof ActionFailure ? $exception->errorClass() : class_basename($exception),
+                    ...$failureContext,
+                ],
                 durationMs: $durationMs,
             );
 
@@ -200,8 +203,6 @@ class ExecuteAction
             $exception instanceof ActionFailure => [$exception->kind, $exception->context],
             // El host va detrás de ':' y no se registra.
             $exception instanceof UnsafeOutboundUrlException => ['unsafe_url', ['unsafe_url_code' => LoggableCode::guard(explode(':', $exception->reason, 2)[0])]],
-            // Guard de AssignIncident: su mensaje lleva un id de usuario que puede ser ajeno.
-            $exception instanceof InvalidArgumentException => ['invalid_assignee', []],
             default => ['unexpected_exception', []],
         };
     }
@@ -495,13 +496,19 @@ class ExecuteAction
 
         $assigneeType = AssigneeType::tryFrom((string) ($payload['assignee_type'] ?? '')) ?? AssigneeType::User;
 
-        $assignment = $this->assignIncidentAction->execute(
-            incident: $incident,
-            assigneeType: $assigneeType,
-            assigneeId: $assigneeId,
-            role: isset($payload['role']) ? (string) $payload['role'] : null,
-            assignedByType: IncidentCreatorType::System,
-        );
+        try {
+            $assignment = $this->assignIncidentAction->execute(
+                incident: $incident,
+                assigneeType: $assigneeType,
+                assigneeId: $assigneeId,
+                role: isset($payload['role']) ? (string) $payload['role'] : null,
+                assignedByType: IncidentCreatorType::System,
+            );
+        } catch (InvalidArgumentException $e) {
+            // Guard de AssignIncident: su mensaje (intacto) lleva un id de
+            // usuario que puede ser ajeno; el log sólo lleva el `kind`.
+            throw new ActionFailure('invalid_assignee', $e->getMessage(), previous: $e);
+        }
 
         return [
             'incident_id' => $incident->id,

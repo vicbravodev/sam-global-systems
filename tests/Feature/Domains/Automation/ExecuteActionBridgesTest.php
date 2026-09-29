@@ -8,6 +8,7 @@ use App\Domains\Automation\Enums\ActionType;
 use App\Domains\Automation\Events\ActionFailed;
 use App\Domains\Automation\Models\ActionExecution;
 use App\Domains\Incidents\Enums\IncidentStatusCode;
+use App\Domains\Incidents\Events\IncidentStatusChanged;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentAssignment;
 use App\Domains\Incidents\Models\IncidentTimeline;
@@ -24,6 +25,7 @@ use Database\Seeders\NotificationMeterSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Mail;
+use InvalidArgumentException;
 use Mockery;
 use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
@@ -315,9 +317,37 @@ class ExecuteActionBridgesTest extends TestCase
         $result = app(ExecuteAction::class)->execute($execution);
 
         $this->assertSame(ActionExecutionStatus::Failed, $result->status);
+        $this->assertSame(
+            "Assignee user #{$stranger->id} does not belong to team {$this->team->id}.",
+            $result->error_message,
+        );
         $this->assertSystemLogged('automation.action.failed', fn (array $c) => $c['reason'] === 'invalid_assignee'
             && $c['result'] === ['error_class' => 'InvalidArgumentException']);
         $this->assertStringNotContainsString('"error"', json_encode($this->systemLogEntries('automation.action.failed')));
+    }
+
+    public function test_an_unrelated_invalid_argument_exception_is_an_unexpected_exception(): void
+    {
+        $this->seed(IncidentsSeeder::class);
+
+        $incident = Incident::factory()->open()->create(['team_id' => $this->team->id]);
+
+        // Un InvalidArgumentException que no viene del guard de AssignIncident.
+        Event::listen(IncidentStatusChanged::class, fn () => throw new InvalidArgumentException('unrelated'));
+
+        $execution = $this->makeExecution(ActionType::Escalate, [
+            'incident_id' => $incident->id,
+            'payload_json' => ['reason' => 'SLA at risk'],
+        ]);
+
+        $result = app(ExecuteAction::class)->execute($execution);
+
+        $this->assertSame(ActionExecutionStatus::Failed, $result->status);
+        $this->assertSame('unrelated', $result->error_message);
+        $this->assertSystemLogged('automation.action.failed', fn (array $c) => $c['reason'] === 'unexpected_exception'
+            && $c['result'] === ['error_class' => 'InvalidArgumentException']);
+        $this->assertCount(1, $this->systemLogEntries('automation.action.failed'));
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_create_ticket_and_update_asset_state_remain_deferred(): void
