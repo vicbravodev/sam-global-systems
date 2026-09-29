@@ -49,11 +49,16 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        // Todo reporte de excepción lleva quién y dónde (nunca el payload).
-        $exceptions->context(fn (): array => array_filter([
-            'user_id' => request()?->user()?->getAuthIdentifier(),
-            'route_name' => request()?->route()?->getName(),
-        ]));
+        // Todo reporte de excepción lleva dónde ocurrió (nunca el payload).
+        // El usuario ya lo añade Laravel (userId). Jamás debe enmascarar la
+        // excepción original si resolver la ruta falla.
+        $exceptions->context(function (): array {
+            try {
+                return array_filter(['route_name' => request()?->route()?->getName()]);
+            } catch (Throwable) {
+                return [];
+            }
+        });
 
         $exceptions->respond(function (Response $response, Throwable $exception, Request $request) {
             $status = $response->getStatusCode();

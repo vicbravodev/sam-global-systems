@@ -5,6 +5,7 @@ namespace Tests\Feature\Support;
 use App\Models\User;
 use App\Support\SystemLog;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use RuntimeException;
 use Tests\Concerns\AssertsSystemLog;
@@ -67,5 +68,26 @@ class DeniedRequestLogTest extends TestCase
         SystemLog::listen(fn () => throw new RuntimeException('sink down'));
 
         $this->get('/_test/forbidden')->assertForbidden();
+    }
+
+    public function test_a_failing_context_callback_never_masks_the_reported_exception(): void
+    {
+        Route::middleware('web')->get('/_test/report', function (Request $request) {
+            $routeResolver = $request->getRouteResolver();
+            $userResolver = $request->getUserResolver();
+            $request->setRouteResolver(fn () => throw new RuntimeException('route down'));
+            $request->setUserResolver(fn () => throw new RuntimeException('session down'));
+
+            try {
+                report(new RuntimeException('original'));
+            } finally {
+                $request->setRouteResolver($routeResolver);
+                $request->setUserResolver($userResolver);
+            }
+
+            return 'reported';
+        });
+
+        $this->get('/_test/report')->assertOk()->assertSee('reported');
     }
 }
