@@ -165,6 +165,21 @@ Lo emite `App\Support\DeniedRequestLog` (outcome `degraded`); sólo la plantilla
 | `normalization.catalog.fallback_used` | degraded | `catalog_row_missing` | `expected_code` (`unmapped`/`operational`/`low`), `table` (`event_types`/`event_categories`/`event_severities`) |
 | `normalization.job.skipped` | skipped | `raw_event_missing`, `status_not_normalizable` | `raw_event_id`, `status` |
 
+### Contexto (`context`)
+
+| Código | Outcome | Reason posibles | Campos clave |
+|---|---|---|---|
+| `context.live_location.skipped` | skipped | `no_asset`, `not_critical`, `payload_has_gps`, `latest_location_fresh` | `normalized_event_id`; en `not_critical`, `severity_code`; en `latest_location_fresh`, calc `latest_age_seconds`, `staleness_threshold_seconds`. Nunca coordenadas |
+| `context.live_location.failed` | degraded | `no_active_integration`, `provider_returned_nothing` | `normalized_event_id`, `asset_id`; calc `references`, `integrations_tried`, `latest_age_seconds`, `staleness_threshold_seconds`; result `position_stale=true` |
+| `context.live_location.fetched` | ok | | `normalized_event_id`, `asset_id`; calc `latest_age_seconds`, `staleness_threshold_seconds`, `fix_age_seconds`; result `position_stale=false`, `snapshot_updated` |
+| `context.snapshot.built` | ok | | `normalized_event_id`; calc `location_source` (`event_payload`/`live_fetch`/`asset_latest_location`/`unknown`), `location_age_seconds`, `position_stale`, `geofence_matches`, `related_incidents`, `recent_events`, `recent_same_type`, `recent_high_severity`, `correlation_minutes`, `schedule_persisted`, `within_operating_hours`, `has_driver`; result `snapshot_id`, `context_version`, `signals` (sólo nombres de señal activas) |
+| `context.enrich.skipped` | skipped | `normalized_event_missing` | `normalized_event_id` |
+| `context.media.auto_request_skipped` | skipped | `normalized_event_missing`, `not_critical`, `setting_disabled` | `snapshot_id` o `normalized_event_id`; `severity_code`; `setting_key` |
+| `context.media.request_reused` | skipped | `request_in_flight` | `normalized_event_id`, `request_type`, `sweep_only`; result `event_media_request_id`, `status` |
+| `context.media.requested` | ok | | `normalized_event_id`, `request_type`, `sweep_only`; calc `expires_in_hours`; result `event_media_request_id` |
+| `context.usage.not_metered` | degraded | `meter_missing` | `meter_code`, `event_media_request_id`; hueco de facturación |
+| `context.usage.recorded` | ok | | `meter_code`, `event_media_request_id` |
+
 ### Samsara (`samsara`)
 
 | Código | Outcome | Reason posibles | Campos clave |

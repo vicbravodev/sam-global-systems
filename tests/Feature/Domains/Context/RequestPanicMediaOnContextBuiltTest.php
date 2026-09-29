@@ -20,10 +20,12 @@ use App\Models\User;
 use Database\Seeders\ContextMeterSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class RequestPanicMediaOnContextBuiltTest extends TestCase
 {
+    use AssertsSystemLog;
     use RefreshDatabase;
 
     private int $teamId;
@@ -208,5 +210,54 @@ class RequestPanicMediaOnContextBuiltTest extends TestCase
         $this->handle($this->buildContext());
 
         $this->assertSame(0, EventMediaRequest::withoutGlobalScopes()->count());
+    }
+
+    public function test_logs_not_critical_skip(): void
+    {
+        $this->enableAutoRequest();
+        $event = $this->buildContext(severityCode: 'medium');
+
+        $this->handle($event);
+
+        $c = $this->assertSystemLogged('context.media.auto_request_skipped', fn (array $c) => $c['reason'] === 'not_critical');
+        $this->assertSame($event->snapshot->normalized_event_id, $c['input']['normalized_event_id']);
+        $this->assertSame('medium', $c['input']['severity_code']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_logs_setting_disabled_skip(): void
+    {
+        $event = $this->buildContext();
+
+        $this->handle($event);
+
+        $c = $this->assertSystemLogged('context.media.auto_request_skipped', fn (array $c) => $c['reason'] === 'setting_disabled');
+        $this->assertSame(RequestPanicMediaOnContextBuilt::SETTING_KEY, $c['input']['setting_key']);
+    }
+
+    public function test_logs_skip_when_event_not_found(): void
+    {
+        $event = $this->buildContext();
+        NormalizedEvent::withoutGlobalScopes()->whereKey($event->snapshot->normalized_event_id)->delete();
+
+        $this->handle($event);
+
+        $c = $this->assertSystemLogged('context.media.auto_request_skipped', fn (array $c) => $c['reason'] === 'normalized_event_missing');
+        $this->assertSame($event->snapshot->id, $c['input']['snapshot_id']);
+    }
+
+    public function test_logs_media_requested_for_critical_event_with_setting_enabled(): void
+    {
+        $this->enableAutoRequest();
+        $event = $this->buildContext();
+
+        $this->handle($event);
+
+        $request = EventMediaRequest::withoutGlobalScopes()->sole();
+        $c = $this->assertSystemLogged('context.media.requested');
+        $this->assertSame($request->id, $c['result']['event_media_request_id']);
+        $this->assertSame(6, $c['calc']['expires_in_hours']);
+        $this->assertTrue($c['input']['sweep_only']);
+        $this->assertNoSensitiveDataLogged();
     }
 }

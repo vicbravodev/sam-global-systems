@@ -10,6 +10,7 @@ use App\Domains\Integrations\Contracts\ProviderAdapter;
 use App\Domains\Integrations\Enums\TenantIntegrationStatus;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Support\SystemLog;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 
@@ -47,16 +48,25 @@ class FetchLiveLocationForEvent
         $teamId = $normalizedEvent->team_id;
 
         if ($teamId === null || $normalizedEvent->asset_id === null) {
+            SystemLog::skipped('context.live_location.skipped', reason: 'no_asset', input: ['normalized_event_id' => $normalizedEvent->id]);
+
             return $noFetch;
         }
 
         if ($normalizedEvent->eventSeverity?->code !== 'critical') {
+            SystemLog::skipped('context.live_location.skipped', reason: 'not_critical', input: [
+                'normalized_event_id' => $normalizedEvent->id,
+                'severity_code' => $normalizedEvent->eventSeverity?->code,
+            ]);
+
             return $noFetch;
         }
 
         $payloadLocation = Arr::get($normalizedEvent->payload_normalized_json ?? [], 'location');
 
         if (is_array($payloadLocation) && isset($payloadLocation['latitude'], $payloadLocation['longitude'])) {
+            SystemLog::skipped('context.live_location.skipped', reason: 'payload_has_gps', input: ['normalized_event_id' => $normalizedEvent->id]);
+
             return $noFetch;
         }
 
@@ -67,14 +77,39 @@ class FetchLiveLocationForEvent
         );
 
         $latest = $normalizedEvent->asset?->latestLocation;
+        $age = $latest?->recorded_at !== null ? $this->ageSeconds($latest->recorded_at) : null;
 
         if ($latest?->recorded_at !== null && $latest->recorded_at->gt(now()->subSeconds($stalenessSeconds))) {
+            SystemLog::skipped('context.live_location.skipped', reason: 'latest_location_fresh', input: [
+                'normalized_event_id' => $normalizedEvent->id,
+            ], calc: [
+                'latest_age_seconds' => $age,
+                'staleness_threshold_seconds' => $stalenessSeconds,
+            ]);
+
             return $noFetch;
         }
 
-        $live = $this->fetchFromProvider($normalizedEvent, $teamId);
+        $fetch = $this->fetchFromProvider($normalizedEvent, $teamId);
+        $live = $fetch['live'];
 
         if ($live === null) {
+            SystemLog::degraded(
+                'context.live_location.failed',
+                reason: $fetch['integrations_tried'] === 0 ? 'no_active_integration' : 'provider_returned_nothing',
+                input: [
+                    'normalized_event_id' => $normalizedEvent->id,
+                    'asset_id' => $normalizedEvent->asset_id,
+                ],
+                calc: [
+                    'references' => $fetch['references'],
+                    'integrations_tried' => $fetch['integrations_tried'],
+                    'latest_age_seconds' => $age,
+                    'staleness_threshold_seconds' => $stalenessSeconds,
+                ],
+                result: ['position_stale' => true],
+            );
+
             return ['location' => null, 'position_stale' => true];
         }
 
@@ -93,6 +128,18 @@ class FetchLiveLocationForEvent
             formattedLocation: $live['formatted_location'] ?? null,
         );
 
+        SystemLog::ok('context.live_location.fetched', input: [
+            'normalized_event_id' => $normalizedEvent->id,
+            'asset_id' => $normalizedEvent->asset_id,
+        ], calc: [
+            'latest_age_seconds' => $age,
+            'staleness_threshold_seconds' => $stalenessSeconds,
+            'fix_age_seconds' => $this->ageSeconds($recordedAt),
+        ], result: [
+            'position_stale' => false,
+            'snapshot_updated' => true,
+        ]);
+
         return [
             'location' => [
                 'latitude' => (float) $live['latitude'],
@@ -104,15 +151,22 @@ class FetchLiveLocationForEvent
         ];
     }
 
+    private function ageSeconds(\DateTimeInterface $moment): int
+    {
+        return (int) Carbon::instance($moment)->diffInSeconds(now(), false);
+    }
+
     /**
-     * @return array<string, mixed>|null
+     * @return array{live: array<string, mixed>|null, references: int, integrations_tried: int}
      */
-    private function fetchFromProvider(NormalizedEvent $normalizedEvent, int $teamId): ?array
+    private function fetchFromProvider(NormalizedEvent $normalizedEvent, int $teamId): array
     {
         $references = AssetExternalReference::query()
             ->where('asset_id', $normalizedEvent->asset_id)
             ->whereNotNull('external_id')
             ->get();
+
+        $tried = 0;
 
         foreach ($references as $reference) {
             $integration = TenantIntegration::query()
@@ -125,13 +179,15 @@ class FetchLiveLocationForEvent
                 continue;
             }
 
+            $tried++;
+
             $live = $this->providerAdapter->fetchLiveLocation($integration, (string) $reference->external_id);
 
             if ($live !== null) {
-                return $live;
+                return ['live' => $live, 'references' => $references->count(), 'integrations_tried' => $tried];
             }
         }
 
-        return null;
+        return ['live' => null, 'references' => $references->count(), 'integrations_tried' => $tried];
     }
 }

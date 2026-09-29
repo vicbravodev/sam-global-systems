@@ -7,6 +7,7 @@ use App\Domains\Normalization\Enums\NormalizedEventStatus;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Support\JobFailureReporter;
 use App\Support\PipelineTrace;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -42,6 +43,8 @@ class EnrichContextJob implements ShouldBeUnique, ShouldQueue
         $normalizedEvent = NormalizedEvent::withoutGlobalScopes()->find($this->normalizedEventId);
 
         if ($normalizedEvent === null) {
+            SystemLog::skipped('context.enrich.skipped', reason: 'normalized_event_missing', input: ['normalized_event_id' => $this->normalizedEventId]);
+
             return;
         }
 
