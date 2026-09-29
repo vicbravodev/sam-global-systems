@@ -316,7 +316,7 @@ class PlaceVerificationCallJobTest extends TestCase
         $this->assertSystemLogged('incidents.call_verification.attempt_failed', fn (array $c) => $c['outcome'] === 'ok'
             && $c['calc']['failure_code'] === 'placement_failed'
             && $c['calc']['call_status'] === null
-            && $c['result'] === ['next' => 'next_attempt', 'next_attempt' => 2]);
+            && $c['result'] === ['next' => 'next_attempt', 'next_attempt' => 2, 'next_attempt_created' => true]);
         $this->assertStringNotContainsString('twilio down', json_encode($this->systemLogEntries()));
         $this->assertNoSensitiveDataLogged();
     }

@@ -239,7 +239,7 @@ class TwilioVoiceWebhookTest extends TestCase
             && $c['input'] === $this->inputOf($verification)
             && $c['calc']['failure_code'] === 'call_status'
             && $c['calc']['call_status'] === 'no-answer'
-            && $c['result'] === ['next' => 'next_attempt', 'next_attempt' => 2]);
+            && $c['result'] === ['next' => 'next_attempt', 'next_attempt' => 2, 'next_attempt_created' => true]);
         $this->assertSystemNotLogged('incidents.call_verification.status_ignored');
         $this->assertNoPhoneLogged();
     }

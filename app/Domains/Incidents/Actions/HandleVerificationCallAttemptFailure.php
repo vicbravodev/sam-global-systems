@@ -81,9 +81,16 @@ class HandleVerificationCallAttemptFailure
         $logCalc = ['failure_code' => $failureCode, 'call_status' => $callStatus, ...$budget];
 
         if ($verification->attempt < $maxAttempts) {
-            $this->startVerification->execute($incident, $verification->attempt + 1);
+            $next = $this->startVerification->execute($incident, $verification->attempt + 1);
 
-            SystemLog::ok('incidents.call_verification.attempt_failed', input: $logInput, calc: $logCalc, result: ['next' => 'next_attempt', 'next_attempt' => $verification->attempt + 1]);
+            // `next` es lo pedido; si el aviso llegó tarde (status callback
+            // tras el safety net) execute() devuelve el intento que ya existía
+            // (o null si no arrancó): sólo un registro recién creado es nuevo.
+            SystemLog::ok('incidents.call_verification.attempt_failed', input: $logInput, calc: $logCalc, result: [
+                'next' => 'next_attempt',
+                'next_attempt' => $verification->attempt + 1,
+                'next_attempt_created' => $next?->wasRecentlyCreated === true,
+            ]);
 
             return;
         }

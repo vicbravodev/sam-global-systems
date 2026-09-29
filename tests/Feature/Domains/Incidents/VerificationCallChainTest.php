@@ -94,7 +94,7 @@ class VerificationCallChainTest extends TestCase
             && $c['result']['verification_id'] === $second->id);
         $this->assertSystemLogged('incidents.call_verification.attempt_failed', fn (array $c) => $c['outcome'] === 'ok'
             && $c['calc']['failure_code'] === 'no-answer'
-            && $c['result'] === ['next' => 'next_attempt', 'next_attempt' => 2]);
+            && $c['result'] === ['next' => 'next_attempt', 'next_attempt' => 2, 'next_attempt_created' => true]);
 
         $json = json_encode($this->systemLogEntries());
         $this->assertStringNotContainsString('5215500000001', $json);
@@ -123,6 +123,30 @@ class VerificationCallChainTest extends TestCase
         $this->assertSame('debug', $entry['level']);
         $this->assertSame(['incident_id' => $incident->id, 'attempt' => 2], $entry['context']['input']);
         $this->assertSame(['verification_id' => $second->id], $entry['context']['result']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_late_failure_notice_for_the_same_attempt_does_not_claim_a_new_attempt(): void
+    {
+        $this->contacts(['+5215500000031', '+5215500000032', '+5215500000033']);
+        $incident = $this->panicIncident();
+
+        $first = app(StartIncidentCallVerification::class)->execute($incident);
+        // Copia leída antes del primer aviso: el safety net y el status
+        // callback cargan el mismo intento todavía en vuelo.
+        $stale = IncidentCallVerification::withoutGlobalScopes()->findOrFail($first->id);
+
+        app(HandleVerificationCallAttemptFailure::class)->execute($first, 'timeout_without_callback');
+        app(HandleVerificationCallAttemptFailure::class)->execute($stale, 'call_status:no-answer');
+
+        $this->assertSame(1, IncidentCallVerification::withoutGlobalScopes()->where('incident_id', $incident->id)->where('attempt', 2)->count());
+        Queue::assertPushed(PlaceVerificationCallJob::class, 2);
+
+        $entries = array_column($this->systemLogEntries('incidents.call_verification.attempt_failed'), 'context');
+        $this->assertCount(2, $entries);
+        $this->assertSame(['next' => 'next_attempt', 'next_attempt' => 2, 'next_attempt_created' => true], $entries[0]['result']);
+        // Se pidió el siguiente intento, pero ya existía: no se creó otro.
+        $this->assertSame(['next' => 'next_attempt', 'next_attempt' => 2, 'next_attempt_created' => false], $entries[1]['result']);
         $this->assertNoSensitiveDataLogged();
     }
 
@@ -164,7 +188,7 @@ class VerificationCallChainTest extends TestCase
         $this->assertSame(4, $calc['candidates_count']);
         $this->assertSame(min($calc['max_attempts_cap'], max($calc['configured_attempts'], $calc['candidates_count'])), $calc['budget']);
         $this->assertSame(4, $calc['budget']);
-        $this->assertSame(['next' => 'next_attempt', 'next_attempt' => 4], $context['result']);
+        $this->assertSame(['next' => 'next_attempt', 'next_attempt' => 4, 'next_attempt_created' => true], $context['result']);
         $this->assertSame(1, IncidentCallVerification::withoutGlobalScopes()->where('incident_id', $incident->id)->where('attempt', 4)->count());
         $this->assertNoSensitiveDataLogged();
     }
