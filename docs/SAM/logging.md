@@ -140,7 +140,7 @@ Lo emite `App\Support\DeniedRequestLog` (outcome `degraded`); sólo la plantilla
 | `media.frames.extracted` | ok | — | `media_context_id`; result `frames_extracted`, `frames_created` |
 | `media.frames.ffmpeg_unavailable` | degraded | `ffmpeg_missing` | `media_context_id`, `ffmpeg_binary` |
 | `media.frames.offset_missing` | skipped | `no_frame_at_offset` | `offset_seconds`, `exit_code`, `stderr_excerpt` (saneado) |
-| `media.deferred.closed_without_media` | skipped | `closed_without_media` | `event_media_request_id`, `status`, `detail` |
+| `media.deferred.closed_without_media` | skipped | `closed_without_media` | `event_media_request_id`, `status`, `detail` (hoy es una frase fija del sistema, no texto de usuario; pendiente de convertir a código estable) |
 | `media.deferred.download_failed` | degraded | `download_failed` | `normalized_event_id`, `camera_input`, `error` |
 
 ### IA (`ai`) y copiloto (`copilot`)
@@ -148,7 +148,7 @@ Lo emite `App\Support\DeniedRequestLog` (outcome `degraded`); sólo la plantilla
 | Código | Outcome | Reason posibles | Campos clave |
 |---|---|---|---|
 | `ai.evaluation.rules_only` | degraded | `agent_error` | `normalized_event_id`, `error` |
-| `ai.media.assessment_skipped` | skipped | `file_missing`, `image_cap_reached`, `in_progress`, `quota_exceeded` | `evaluation_id`, `event_media_context_id`; en `image_cap_reached`, calc `max_images_per_event` |
+| `ai.media.assessment_skipped` | skipped | `file_missing`, `image_cap_reached`, `in_progress`, `quota_exceeded` | `evaluation_id`, `event_media_context_id`; en `image_cap_reached`, calc `max_images_per_event`; en `file_missing`, `result.error_class` (clase de la excepción, nunca su mensaje) |
 | `ai.media.assessment_rejected` | skipped | `rejected_before_model` | `evaluation_id`, `event_media_context_id`, `rejection` |
 | `ai.media.assessment_retry` | degraded | `transient_failure` | `evaluation_id`, `event_media_context_id`, `error` |
 | `ai.media.assessment_unavailable` | degraded | `agent_error` | `evaluation_id`, `event_media_context_id`, `error` |
