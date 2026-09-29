@@ -19,15 +19,15 @@ use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\File;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Storage;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\Concerns\AssertsTenantIsolation;
 use Tests\TestCase;
 
 class ExtractVideoFramesJobTest extends TestCase
 {
-    use AssertsTenantIsolation, RefreshDatabase;
+    use AssertsSystemLog, AssertsTenantIsolation, RefreshDatabase;
 
     private Team $team;
 
@@ -174,14 +174,13 @@ class ExtractVideoFramesJobTest extends TestCase
     public function test_missing_ffmpeg_logs_warning_and_is_a_no_op(): void
     {
         Event::fake([EventMediaAvailable::class]);
-        Log::spy();
         Process::fake(['*' => Process::result(errorOutput: 'not found', exitCode: 127)]);
         $clip = $this->makeClip();
 
         $this->runJob($clip);
 
         $this->assertCount(0, $this->framesOf($clip));
-        Log::shouldHaveReceived('warning')->withArgs(fn (string $message) => str_contains($message, 'ffmpeg no disponible'))->once();
+        $this->assertSystemLogged('media.frames.ffmpeg_unavailable', fn (array $c) => $c['reason'] === 'ffmpeg_missing' && $c['input']['media_context_id'] === $clip->id);
         Event::assertNotDispatched(EventMediaAvailable::class);
     }
 

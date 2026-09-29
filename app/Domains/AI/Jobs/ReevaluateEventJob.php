@@ -6,6 +6,7 @@ use App\Domains\AI\Actions\ReevaluateEventWithNewEvidence;
 use App\Domains\AI\Enums\ReevaluationTrigger;
 use App\Domains\AI\Support\AIEvaluationGate;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Support\JobFailureReporter;
 use App\Support\PipelineTrace;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
@@ -14,7 +15,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Log;
 
 class ReevaluateEventJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
 {
@@ -80,10 +80,6 @@ class ReevaluateEventJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
-        Log::warning('ReevaluateEventJob failed', [
-            'normalized_event_id' => $this->normalizedEventId,
-            'trigger_type' => $this->triggerType,
-            'error' => $exception->getMessage(),
-        ]);
+        JobFailureReporter::report(static::class, $exception, ['normalized_event_id' => $this->normalizedEventId, 'trigger_type' => $this->triggerType]);
     }
 }

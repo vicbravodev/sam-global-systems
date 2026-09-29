@@ -14,13 +14,15 @@ use App\Domains\Integrations\Exceptions\ProviderRequestFailedException;
 use App\Domains\Integrations\Exceptions\ProviderUnauthorized;
 use App\Domains\Integrations\Exceptions\ProviderUnavailable;
 use App\Domains\Integrations\Models\TenantIntegration;
+use App\Support\RedactSensitiveLogData;
+use App\Support\SystemLog;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 /**
  * Real adapter for Samsara's Fleet API (https://developers.samsara.com).
@@ -580,23 +582,13 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
                 'mediaType' => $mediaType,
             ]);
         } catch (\Throwable $e) {
-            Log::warning('Samsara media retrieval request failed', [
-                'vehicle_id' => $externalAssetId,
-                'media_type' => $mediaType,
-                'error' => $e->getMessage(),
-            ]);
+            SystemLog::degraded('samsara.media_retrieval.request_failed', reason: 'connection_failed', input: ['vehicle_id' => $externalAssetId, 'media_type' => $mediaType], error: $e);
 
             return null;
         }
 
         if (! $response->successful()) {
-            Log::warning('Samsara rejected media retrieval request', [
-                'vehicle_id' => $externalAssetId,
-                'media_type' => $mediaType,
-                'http_status' => $response->status(),
-                'message' => $response->json('message'),
-                'request_id' => $response->json('requestId'),
-            ]);
+            SystemLog::degraded('samsara.media_retrieval.request_failed', reason: 'provider_rejected', input: ['vehicle_id' => $externalAssetId, 'media_type' => $mediaType, 'http_status' => $response->status(), 'provider_message' => Str::limit(RedactSensitiveLogData::sanitize((string) $response->json('message')), 200), 'provider_request_id' => $response->json('requestId')]);
 
             return null;
         }
@@ -620,21 +612,13 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
         try {
             $response = $this->client($token)->get('/cameras/media/retrieval', ['retrievalId' => $retrievalId]);
         } catch (\Throwable $e) {
-            Log::warning('Samsara media retrieval poll failed', [
-                'retrieval_id' => $retrievalId,
-                'error' => $e->getMessage(),
-            ]);
+            SystemLog::degraded('samsara.media_retrieval.poll_failed', reason: 'connection_failed', input: ['retrieval_id' => $retrievalId], error: $e);
 
             return ['items' => []];
         }
 
         if (! $response->successful()) {
-            Log::warning('Samsara rejected media retrieval poll', [
-                'retrieval_id' => $retrievalId,
-                'http_status' => $response->status(),
-                'message' => $response->json('message'),
-                'request_id' => $response->json('requestId'),
-            ]);
+            SystemLog::degraded('samsara.media_retrieval.poll_failed', reason: 'provider_rejected', input: ['retrieval_id' => $retrievalId, 'http_status' => $response->status(), 'provider_message' => Str::limit(RedactSensitiveLogData::sanitize((string) $response->json('message')), 200), 'provider_request_id' => $response->json('requestId')]);
 
             return ['items' => []];
         }
@@ -691,21 +675,13 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
         try {
             $response = $this->client($token)->get('/cameras/media?'.implode('&', $pairs));
         } catch (\Throwable $e) {
-            Log::warning('Samsara uploaded-media listing failed', [
-                'vehicle_id' => $externalAssetId,
-                'error' => $e->getMessage(),
-            ]);
+            SystemLog::degraded('samsara.uploaded_media.listing_failed', reason: 'connection_failed', input: ['vehicle_id' => $externalAssetId], error: $e);
 
             return ['items' => []];
         }
 
         if (! $response->successful()) {
-            Log::warning('Samsara rejected uploaded-media listing', [
-                'vehicle_id' => $externalAssetId,
-                'http_status' => $response->status(),
-                'message' => $response->json('message'),
-                'request_id' => $response->json('requestId'),
-            ]);
+            SystemLog::degraded('samsara.uploaded_media.listing_failed', reason: 'provider_rejected', input: ['vehicle_id' => $externalAssetId, 'http_status' => $response->status(), 'provider_message' => Str::limit(RedactSensitiveLogData::sanitize((string) $response->json('message')), 200), 'provider_request_id' => $response->json('requestId')]);
 
             return ['items' => []];
         }

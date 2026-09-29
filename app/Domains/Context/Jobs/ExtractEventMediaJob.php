@@ -5,7 +5,9 @@ namespace App\Domains\Context\Jobs;
 use App\Domains\Context\Actions\AttachImmediateEventMedia;
 use App\Domains\Context\Actions\RefreshContextMediaSnapshot;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Support\JobFailureReporter;
 use App\Support\PipelineTrace;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -13,7 +15,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Log;
 
 class ExtractEventMediaJob implements ShouldBeUnique, ShouldQueue
 {
@@ -63,17 +64,11 @@ class ExtractEventMediaJob implements ShouldBeUnique, ShouldQueue
             return $created;
         });
 
-        Log::info('ExtractEventMediaJob processed event media', [
-            'normalized_event_id' => $this->normalizedEventId,
-            'media_created_count' => $created->count(),
-        ]);
+        SystemLog::ok('media.event_media.extracted', input: ['normalized_event_id' => $this->normalizedEventId], result: ['media_created_count' => $created->count()]);
     }
 
     public function failed(\Throwable $exception): void
     {
-        Log::warning('ExtractEventMediaJob failed', [
-            'normalized_event_id' => $this->normalizedEventId,
-            'error' => $exception->getMessage(),
-        ]);
+        JobFailureReporter::report(static::class, $exception, ['normalized_event_id' => $this->normalizedEventId]);
     }
 }

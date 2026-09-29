@@ -21,6 +21,8 @@ use App\Domains\Integrations\Models\TenantIntegration;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Infrastructure\Storage\MediaDownloadException;
 use App\Infrastructure\Storage\SecureMediaDownloader;
+use App\Support\JobFailureReporter;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -28,7 +30,6 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Log;
 
 /**
  * Drive a deferred media request through the provider's retrieval cycle
@@ -762,11 +763,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         try {
             $download = app(SecureMediaDownloader::class)->download((string) $item['url']);
         } catch (MediaDownloadException $e) {
-            Log::warning('Deferred media download failed', [
-                'normalized_event_id' => $event->id,
-                'input' => $item['input'],
-                'error' => $e->getMessage(),
-            ]);
+            SystemLog::degraded('media.deferred.download_failed', reason: 'download_failed', input: ['normalized_event_id' => $event->id, 'camera_input' => $item['input']], error: $e);
 
             return MediaDownloadOutcome::Failed;
         }
@@ -890,11 +887,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
 
         EventMediaFailed::dispatch($request, $reason);
 
-        Log::warning('FetchDeferredEventMediaJob closed request without media', [
-            'event_media_request_id' => $request->id,
-            'status' => $status->value,
-            'reason' => $reason,
-        ]);
+        SystemLog::skipped('media.deferred.closed_without_media', reason: 'closed_without_media', input: ['event_media_request_id' => $request->id, 'status' => $status->value, 'detail' => $reason]);
     }
 
     /**
@@ -935,9 +928,6 @@ class FetchDeferredEventMediaJob implements ShouldQueue
             EventMediaFailed::dispatch($request, $exception->getMessage());
         }
 
-        Log::warning('FetchDeferredEventMediaJob failed', [
-            'event_media_request_id' => $this->eventMediaRequestId,
-            'error' => $exception->getMessage(),
-        ]);
+        JobFailureReporter::report(static::class, $exception, ['event_media_request_id' => $this->eventMediaRequestId]);
     }
 }

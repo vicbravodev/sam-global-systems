@@ -5,6 +5,7 @@ namespace App\Domains\Normalization\Jobs;
 use App\Domains\Ingestion\Enums\RawEventStatus;
 use App\Domains\Ingestion\Models\RawEvent;
 use App\Domains\Normalization\Actions\NormalizeRawEvent;
+use App\Support\JobFailureReporter;
 use App\Support\PipelineTrace;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
@@ -12,7 +13,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Log;
 
 class NormalizeEventJob implements ShouldQueue
 {
@@ -70,9 +70,6 @@ class NormalizeEventJob implements ShouldQueue
             $rawEvent->markAsFailed();
         }
 
-        Log::error('NormalizeEventJob failed', [
-            'raw_event_id' => $this->rawEventId,
-            'exception' => $exception->getMessage(),
-        ]);
+        JobFailureReporter::report(static::class, $exception, ['raw_event_id' => $this->rawEventId]);
     }
 }
