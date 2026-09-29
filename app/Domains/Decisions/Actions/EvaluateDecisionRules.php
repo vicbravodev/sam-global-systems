@@ -13,6 +13,7 @@ use App\Domains\Decisions\Models\Decision;
 use App\Domains\Decisions\Models\DecisionOutcome;
 use App\Domains\Decisions\Models\DecisionRule;
 use App\Support\PipelineTrace;
+use App\Support\SystemLog;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -32,6 +33,11 @@ class EvaluateDecisionRules
             ->first();
 
         if ($existing !== null) {
+            SystemLog::skipped('decisions.decision.already_exists', reason: 'decision_exists', input: [
+                'ai_evaluation_id' => $eval->id,
+                'stage' => 'evaluate_rules',
+            ], result: ['decision_id' => $existing->id]);
+
             return $existing;
         }
 

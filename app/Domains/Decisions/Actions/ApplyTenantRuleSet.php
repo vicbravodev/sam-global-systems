@@ -9,6 +9,8 @@ use App\Domains\Decisions\Models\DecisionRule;
 use App\Domains\Decisions\Models\RuleSet;
 use App\Domains\Decisions\Support\DecisionFactsBuilder;
 use App\Domains\Decisions\Support\RuleConditionEvaluator;
+use App\Support\LoggableCode;
+use App\Support\SystemLog;
 use Illuminate\Support\Collection;
 
 class ApplyTenantRuleSet
@@ -29,6 +31,11 @@ class ApplyTenantRuleSet
         $matched = collect();
 
         if ($ruleSet === null) {
+            SystemLog::degraded('decisions.ruleset.missing', reason: 'no_active_ruleset', input: [
+                'ai_evaluation_id' => $eval->id,
+                'default_ruleset_code' => LoggableCode::guard($this->rulesResolver->resolve($teamId)->defaultRuleSetCode),
+            ], result: ['falls_back_to' => 'ai_mapping']);
+
             return ['ruleset' => null, 'matchedRules' => $matched];
         }
 
@@ -44,14 +51,55 @@ class ApplyTenantRuleSet
             ->orderBy('id')
             ->get();
 
+        $evaluated = 0;
+        $stoppedAt = null;
+
         foreach ($rules as $rule) {
+            $evaluated++;
+
+            $problems = $this->conditionEvaluator->problems($rule->conditions_json ?? []);
+
+            if ($problems !== []) {
+                SystemLog::degraded('decisions.rule.invalid', reason: $problems[0]['problem'], input: [
+                    'rule_id' => $rule->id,
+                    'rule_code' => LoggableCode::guard($rule->code),
+                    'ruleset_id' => $ruleSet->id,
+                    'rule_team_id' => $rule->team_id,
+                ], calc: [
+                    'problems' => $problems,
+                    'problems_count' => count($problems),
+                ], result: ['invalid_nodes_evaluate_as' => false]);
+            }
+
             if ($this->conditionEvaluator->matches($rule->conditions_json ?? [], $facts)) {
                 $matched->push($rule);
                 if ($rule->stop_processing) {
+                    $stoppedAt = $rule;
                     break;
                 }
             }
         }
+
+        SystemLog::ok('decisions.rules.evaluated', input: [
+            'ai_evaluation_id' => $eval->id,
+        ], calc: [
+            'ruleset_id' => $ruleSet->id,
+            'ruleset_scope' => $ruleSet->team_id !== null ? 'tenant' : 'global',
+            'candidate_count' => $rules->count(),
+            'evaluated_count' => $evaluated,
+            'matched_rule_ids' => $matched->pluck('id')->all(),
+            'matched' => $matched->map(fn (DecisionRule $r) => LoggableCode::guard($r->code))->all(),
+            'stopped_at' => $stoppedAt !== null ? LoggableCode::guard($stoppedAt->code) : null,
+            'facts' => [
+                'classification' => $facts['classification'],
+                'risk_score' => $facts['risk_score'],
+                'confidence_score' => $facts['confidence_score'],
+                'priority_level' => $facts['priority_level'],
+                'media_assessment' => $facts['media_assessment'],
+                'has_context_snapshot' => $facts['has_context_snapshot'],
+                'event_type_code' => LoggableCode::guard($facts['event_type_code']),
+            ],
+        ], result: ['matched_count' => $matched->count()]);
 
         return ['ruleset' => $ruleSet, 'matchedRules' => $matched];
     }

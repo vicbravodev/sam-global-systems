@@ -2,6 +2,8 @@
 
 namespace App\Domains\Decisions\Support;
 
+use App\Support\LoggableCode;
+
 class RuleConditionEvaluator
 {
     /**
@@ -56,6 +58,56 @@ class RuleConditionEvaluator
         }
 
         return false;
+    }
+
+    /**
+     * Reports the nodes that `matches()` silently evaluates to false because
+     * they are malformed or use an unknown operator. Pure: walks the tree
+     * with the same semantics as `matches()` and never logs condition values.
+     *
+     * @param  array<string, mixed>  $conditions
+     * @return list<array{path: string, problem: string, operator: ?string, field: ?string}>
+     */
+    public function problems(array $conditions, string $path = '$'): array
+    {
+        if ($conditions === []) {
+            return [];
+        }
+
+        foreach (['all', 'any'] as $block) {
+            if (isset($conditions[$block]) && is_array($conditions[$block])) {
+                $problems = [];
+
+                foreach ($conditions[$block] as $i => $child) {
+                    $childPath = "{$path}.{$block}.{$i}";
+
+                    if (! is_array($child)) {
+                        $problems[] = ['path' => $childPath, 'problem' => 'malformed_condition', 'operator' => null, 'field' => null];
+
+                        continue;
+                    }
+
+                    array_push($problems, ...$this->problems($child, $childPath));
+                }
+
+                return $problems;
+            }
+        }
+
+        if (isset($conditions['field'], $conditions['operator'])) {
+            if (in_array((string) $conditions['operator'], self::OPERATORS, true)) {
+                return [];
+            }
+
+            return [[
+                'path' => $path,
+                'problem' => 'unknown_operator',
+                'operator' => LoggableCode::guard((string) $conditions['operator']),
+                'field' => LoggableCode::guard((string) $conditions['field']),
+            ]];
+        }
+
+        return [['path' => $path, 'problem' => 'malformed_condition', 'operator' => null, 'field' => null]];
     }
 
     /**

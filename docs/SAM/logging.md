@@ -144,11 +144,11 @@ Lo emite `App\Support\DeniedRequestLog` (outcome `degraded`); sólo la plantilla
 
 | Código | Outcome | Reason posibles | Campos clave |
 |---|---|---|---|
-| `webhook.event.received` | ok | | `webhook_event_id`, `event_type` (sólo si cumple `/^[A-Za-z0-9_.]{1,64}$/`, `App\Support\LoggableCode`; si no, `null`), `event_type_valid`; calc `body_bytes`, `has_signature_header`, `has_timestamp_header`. Nunca cuerpo, firma ni timestamp. Un endpoint desconocido no llega aquí: lo registra `http.request.not_found` (`DeniedRequestLog`, fase 1) |
+| `webhook.event.received` | ok | | `webhook_event_id`, `event_type` (sólo si cumple `/^[A-Za-z0-9_.-]{1,64}$/`, `App\Support\LoggableCode`; si no, `null`), `event_type_valid`; calc `body_bytes`, `has_signature_header`, `has_timestamp_header`. Nunca cuerpo, firma ni timestamp. Un endpoint desconocido no llega aquí: lo registra `http.request.not_found` (`DeniedRequestLog`, fase 1) |
 | `webhook.signature.verified` | ok | | `input.scheme` (`timestamped`/`plain`), `calc.secret_variant` (`base64_decoded`/`raw`), `key_variants_tried`, `skew_seconds`, `tolerance_seconds` (`null` en `plain`: no se revisa hora) |
 | `webhook.signature.rejected` | degraded | `empty_signature`, `invalid_timestamp`, `stale_timestamp`, `hmac_mismatch` | `input.scheme`; en `stale_timestamp`, calc `skew_seconds`, `tolerance_seconds`, `reference` (`received_at`/`now`), `timestamp_unit`; en `hmac_mismatch`, calc `key_variants_tried`, `skew_seconds`, `tolerance_seconds` (`null` en `plain`). Nunca firma, secreto ni cuerpo |
 | `webhook.event.discarded` | skipped | `tenant_deleted` | `webhook_event_id` |
-| `webhook.event.rejected` | skipped | `invalid_signature` | `webhook_event_id`, `signature_mode` (`raw_header`/`legacy_body`), `event_type` (sólo si cumple `/^[A-Za-z0-9_.]{1,64}$/`; si no, `null`: viene de una petición sin autenticar), `event_type_valid` |
+| `webhook.event.rejected` | skipped | `invalid_signature` | `webhook_event_id`, `signature_mode` (`raw_header`/`legacy_body`), `event_type` (sólo si cumple `/^[A-Za-z0-9_.-]{1,64}$/`; si no, `null`: viene de una petición sin autenticar), `event_type_valid` |
 | `webhook.event.ingested` | ok | | `webhook_event_id`, `event_type` (con la misma guarda: puede venir de la query string, fuera del HMAC), `event_type_valid`, `signature_mode`, `provider_code` (con la misma guarda); `result.provider_code_fallback` |
 
 ### Normalización (`normalization`)
@@ -245,6 +245,18 @@ Las líneas del listener síncrono `RequestPanicMediaOnContextBuilt` (`context.m
 | `ai.reevaluation.requested` | ok | - | `normalized_event_id`, `evaluation_id`, `trigger_type`, `requested_by` (`media_assessment` u `operator`), `trigger_reference_id` (solo media), `reason_present` (solo operador; nunca el texto); calc `debounce_s`, `new_media_count` (solo media); result `latest_assessment_result` (solo media). Dice "pedido", no "encolado": `ReevaluateEventJob` es único por (evento, trigger), así que el pedido puede absorberse en un job ya pendiente y no crear otro |
 | `ai.media.assessment_unavailable` | degraded | `agent_error` | `evaluation_id`, `event_media_context_id`, `error` |
 | `copilot.narration.fallback` | degraded | `agent_error` | `error` |
+
+### Decisiones (`decisions`)
+
+| Código | Outcome | Reason posibles | Campos clave |
+|---|---|---|---|
+| `decisions.engine.skipped` | skipped | `evaluation_missing` | `ai_evaluation_id`, `stage` (`engine_job`/`reevaluate_job`) |
+| `decisions.decision.already_exists` | skipped | `decision_exists` | `ai_evaluation_id`, `stage` (`engine_job`/`evaluate_rules`); result `decision_id` |
+| `decisions.ruleset.missing` | degraded | `no_active_ruleset` | `ai_evaluation_id`, `default_ruleset_code`; result `falls_back_to` (`ai_mapping`) |
+| `decisions.rule.invalid` | degraded | `unknown_operator`, `malformed_condition` | `rule_id`, `rule_code`, `ruleset_id`, `rule_team_id`; calc `problems[]` (`path`, `problem`, `operator`, `field`), `problems_count`; result `invalid_nodes_evaluate_as` (false) |
+| `decisions.rules.evaluated` | ok | — | `ai_evaluation_id`; calc `ruleset_id`, `ruleset_scope`, `candidate_count`, `evaluated_count`, `matched_rule_ids`, `matched`, `stopped_at`, `facts` (solo los que deciden las reglas por defecto); result `matched_count` |
+
+`decisions.rule.invalid` = hallazgo §8, antes silencioso; la regla sigue evaluando `false` en ese nodo. Nunca se registran valores de condición ni nombres de reglas.
 
 ### Automatización (`automation`)
 

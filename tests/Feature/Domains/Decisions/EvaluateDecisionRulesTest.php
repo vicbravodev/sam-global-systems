@@ -23,10 +23,12 @@ use Database\Seeders\DecisionOutcomeSeeder;
 use Database\Seeders\IncidentsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class EvaluateDecisionRulesTest extends TestCase
 {
+    use AssertsSystemLog;
     use RefreshDatabase;
 
     protected function setUp(): void
@@ -74,6 +76,17 @@ class EvaluateDecisionRulesTest extends TestCase
 
         $this->assertSame(DecisionOutcomeCode::Incident->value, $decision->decision_code);
         Event::assertDispatched(DecisionMade::class);
+
+        $context = $this->assertSystemLogged('decisions.rules.evaluated');
+        $this->assertSame(['safety-high-risk'], $context['calc']['matched']);
+        $this->assertSame('safety-high-risk', $context['calc']['stopped_at']);
+        $this->assertSame('global', $context['calc']['ruleset_scope']);
+        $this->assertSame(1, $context['calc']['evaluated_count']);
+        $this->assertSame(1, $context['calc']['candidate_count']);
+        $this->assertSame(1, $context['result']['matched_count']);
+        $this->assertSame('real_event', $context['calc']['facts']['classification']);
+        $this->assertArrayNotHasKey('team_id', $context['calc']['facts']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_low_confidence_forces_human_review(): void
@@ -249,6 +262,142 @@ class EvaluateDecisionRulesTest extends TestCase
 
         $this->assertSame($first->id, $second->id);
         $this->assertSame(1, Decision::withoutGlobalScopes()->where('ai_evaluation_id', $eval->id)->count());
+
+        $context = $this->assertSystemLogged('decisions.decision.already_exists', fn (array $c) => $c['input']['stage'] === 'evaluate_rules');
+        $this->assertSame('decision_exists', $context['reason']);
+        $this->assertSame($first->id, $context['result']['decision_id']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_missing_ruleset_logs_degraded_and_still_decides(): void
+    {
+        $user = User::factory()->create();
+        $teamId = $user->currentTeam->id;
+        $event = NormalizedEvent::factory()->create(['team_id' => $teamId]);
+        $eval = AIEventEvaluation::factory()->create([
+            'normalized_event_id' => $event->id,
+            'team_id' => $teamId,
+            'classification' => EventClassification::RealEvent,
+            'risk_score' => 0.7,
+            'confidence_score' => 0.9,
+            'priority_level' => EvaluationPriority::Normal,
+        ]);
+
+        $decision = app(EvaluateDecisionRules::class)->execute($eval);
+
+        $this->assertNotNull($decision->id);
+        $this->assertNull($decision->ruleset_id);
+        $context = $this->assertSystemLogged('decisions.ruleset.missing');
+        $this->assertSame('no_active_ruleset', $context['reason']);
+        $this->assertSame('default', $context['input']['default_ruleset_code']);
+        $this->assertSame($eval->id, $context['input']['ai_evaluation_id']);
+        $this->assertSame('ai_mapping', $context['result']['falls_back_to']);
+        $this->assertSystemNotLogged('decisions.rules.evaluated');
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    /**
+     * @return array{0: AIEventEvaluation, 1: RuleSet}
+     */
+    private function evaluationWithGlobalRuleSet(): array
+    {
+        $user = User::factory()->create();
+        $teamId = $user->currentTeam->id;
+        $event = NormalizedEvent::factory()->create(['team_id' => $teamId]);
+        $eval = AIEventEvaluation::factory()->create([
+            'normalized_event_id' => $event->id,
+            'team_id' => $teamId,
+            'classification' => EventClassification::RealEvent,
+            'risk_score' => 0.7,
+            'confidence_score' => 0.9,
+            'priority_level' => EvaluationPriority::Normal,
+        ]);
+
+        return [$eval, RuleSet::factory()->global()->create(['code' => 'default'])];
+    }
+
+    public function test_unknown_operator_rule_is_logged_invalid_and_does_not_match(): void
+    {
+        [$eval, $ruleset] = $this->evaluationWithGlobalRuleSet();
+        $baseline = app(EvaluateDecisionRules::class)->execute(
+            AIEventEvaluation::factory()->create([
+                'normalized_event_id' => NormalizedEvent::factory()->create(['team_id' => $eval->team_id])->id,
+                'team_id' => $eval->team_id,
+                'classification' => EventClassification::RealEvent,
+                'risk_score' => 0.7,
+                'confidence_score' => 0.9,
+                'priority_level' => EvaluationPriority::Normal,
+            ]),
+        );
+        $this->setUpAssertsSystemLog();
+
+        $rule = DecisionRule::factory()->create([
+            'ruleset_id' => $ruleset->id,
+            'code' => 'bad-operator',
+            'conditions_json' => ['all' => [['field' => 'risk_score', 'operator' => 'between', 'value' => 1]]],
+        ]);
+
+        $decision = app(EvaluateDecisionRules::class)->execute($eval);
+
+        $this->assertSame($baseline->decision_code, $decision->decision_code);
+        $context = $this->assertSystemLogged('decisions.rule.invalid');
+        $this->assertSame('unknown_operator', $context['reason']);
+        $this->assertSame($rule->id, $context['input']['rule_id']);
+        $this->assertSame('bad-operator', $context['input']['rule_code']);
+        $this->assertSame($ruleset->id, $context['input']['ruleset_id']);
+        $this->assertSame('$.all.0', $context['calc']['problems'][0]['path']);
+        $this->assertSame('between', $context['calc']['problems'][0]['operator']);
+        $this->assertSame('risk_score', $context['calc']['problems'][0]['field']);
+        $this->assertSame(1, $context['calc']['problems_count']);
+        $this->assertFalse($context['result']['invalid_nodes_evaluate_as']);
+
+        $evaluated = $this->assertSystemLogged('decisions.rules.evaluated');
+        $this->assertSame([], $evaluated['calc']['matched']);
+        $this->assertSame(1, $evaluated['calc']['evaluated_count']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_malformed_condition_rule_is_logged_invalid_and_does_not_match(): void
+    {
+        [$eval, $ruleset] = $this->evaluationWithGlobalRuleSet();
+
+        DecisionRule::factory()->create([
+            'ruleset_id' => $ruleset->id,
+            'code' => 'bad-shape',
+            'conditions_json' => ['foo' => 'bar'],
+        ]);
+
+        $decision = app(EvaluateDecisionRules::class)->execute($eval);
+
+        $this->assertNotNull($decision->id);
+        $context = $this->assertSystemLogged('decisions.rule.invalid');
+        $this->assertSame('malformed_condition', $context['reason']);
+        $this->assertSame('$', $context['calc']['problems'][0]['path']);
+        $this->assertNull($context['calc']['problems'][0]['operator']);
+
+        $evaluated = $this->assertSystemLogged('decisions.rules.evaluated');
+        $this->assertNotContains('bad-shape', $evaluated['calc']['matched']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_rule_free_text_name_is_never_logged(): void
+    {
+        [$eval, $ruleset] = $this->evaluationWithGlobalRuleSet();
+
+        DecisionRule::factory()->create([
+            'ruleset_id' => $ruleset->id,
+            'name' => 'Nombre libre xyz',
+            'conditions_json' => ['foo' => 'bar'],
+        ]);
+        DecisionRule::factory()->create([
+            'ruleset_id' => $ruleset->id,
+            'name' => 'Nombre libre xyz',
+        ]);
+
+        app(EvaluateDecisionRules::class)->execute($eval);
+
+        $this->assertNotSame([], $this->systemLogEntries('decisions.rules.evaluated'));
+        $this->assertStringNotContainsString('Nombre libre xyz', json_encode($this->systemLogEntries()));
     }
 
     public function test_deterministic_same_input_produces_same_outcome(): void

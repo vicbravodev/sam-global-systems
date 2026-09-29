@@ -7,6 +7,7 @@ use App\Domains\Decisions\Actions\EvaluateDecisionRules;
 use App\Domains\Decisions\Models\Decision;
 use App\Support\JobFailureReporter;
 use App\Support\PipelineTrace;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -44,6 +45,11 @@ class RunDecisionEngineJob implements ShouldBeUnique, ShouldQueue
         $eval = AIEventEvaluation::withoutGlobalScopes()->find($this->aiEvaluationId);
 
         if ($eval === null) {
+            SystemLog::skipped('decisions.engine.skipped', reason: 'evaluation_missing', input: [
+                'ai_evaluation_id' => $this->aiEvaluationId,
+                'stage' => 'engine_job',
+            ]);
+
             return;
         }
 
@@ -55,11 +61,16 @@ class RunDecisionEngineJob implements ShouldBeUnique, ShouldQueue
         // Entra en el tenant de la evaluación: el motor lee las reglas y la
         // política de escalación del tenant. Ver §2.1.
         TenantContext::for($eval->team_id, function () use ($eval, $evaluateDecisionRules) {
-            $existing = Decision::query()
+            $existingId = Decision::query()
                 ->where('ai_evaluation_id', $eval->id)
-                ->exists();
+                ->value('id');
 
-            if ($existing) {
+            if ($existingId) {
+                SystemLog::skipped('decisions.decision.already_exists', reason: 'decision_exists', input: [
+                    'ai_evaluation_id' => $eval->id,
+                    'stage' => 'engine_job',
+                ], result: ['decision_id' => $existingId]);
+
                 return;
             }
 
