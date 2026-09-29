@@ -43,6 +43,15 @@ final class AutomaticSystemLog
     ];
 
     /**
+     * Proveedores cuyo path es un endpoint de API, nunca una credencial. En el
+     * resto (webhooks de tenant: Slack, Discord, Zapier, propios) el path puede
+     * SER el secreto: se registra sólo su hash.
+     *
+     * @var list<string>
+     */
+    private const array PATH_ALLOWED_PROVIDERS = ['samsara', 'twilio', 'openai', 'anthropic', 's3'];
+
+    /**
      * @var array<int, int> spl_object_id(job) → hrtime de inicio
      */
     private static array $startedAt = [];
@@ -162,7 +171,7 @@ final class AutomaticSystemLog
     }
 
     /**
-     * @return array{provider: string, method: string, host: string, path: string}
+     * @return array{provider: string, method: string, host: string, path?: string, path_hash?: string}
      */
     private static function httpInput(string $url, string $method): array
     {
@@ -177,12 +186,15 @@ final class AutomaticSystemLog
             }
         }
 
+        $path = (string) (parse_url($url, PHP_URL_PATH) ?: '/');
+
         return [
             'provider' => $provider,
             'method' => strtoupper($method),
             'host' => $host,
-            'path' => (string) (parse_url($url, PHP_URL_PATH) ?: '/'),
-        ];
+        ] + (in_array($provider, self::PATH_ALLOWED_PROVIDERS, true)
+            ? ['path' => $path]
+            : ['path_hash' => substr(hash('sha256', $path), 0, 12)]);
     }
 
     private static function fingerprint(mixed $identifier): ?string

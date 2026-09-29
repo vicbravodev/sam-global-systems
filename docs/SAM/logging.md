@@ -53,7 +53,7 @@ jq 'select(.message == "telematics.cycle.completed")' storage/logs/telematics-*.
 - Teléfonos, emails, nombres de personas, direcciones, tokens, secretos, firmas, URLs con query, payloads crudos de proveedor, texto libre de operadores, prompts o respuestas de IA.
 - Coordenadas sin redondear (máximo 3 decimales, y sólo donde expliquen una decisión).
 
-**Red de seguridad:** `App\Support\RedactSensitiveLogData` corre como tap en cada canal y enmascara teléfonos, emails, tokens y claves sensibles. Es la red, no el permiso: el código no debe depender de ella.
+**Red de seguridad:** `App\Support\RedactSensitiveLogData` corre como tap en cada canal y enmascara teléfonos, emails, tokens, claves sensibles y el path de las URLs de webhook. Es la red, no el permiso: el código no debe depender de ella.
 
 ## Cómo se prueba
 
@@ -80,8 +80,10 @@ Patrón de `JobFailureReporter::codeFor`: dominio en snake_case (de `App\Domains
 
 | Código | Outcome | Reason posibles | Campos clave |
 |---|---|---|---|
-| `http.client.request.completed` | ok / degraded | `http_error` (respuesta 4xx/5xx) | `provider`, `method`, `host`, `path`, `duration_ms` |
-| `http.client.request.failed` | failed | `connection_failed` | `provider`, `method`, `host`, `path`, `error` |
+| `http.client.request.completed` | ok / degraded | `http_error` (respuesta 4xx/5xx) | `provider`, `method`, `host`, `path` o `path_hash`, `duration_ms` |
+| `http.client.request.failed` | failed | `connection_failed` | `provider`, `method`, `host`, `path` o `path_hash`, `error` |
+
+El `path` se conserva sólo para los proveedores de la allowlist (`samsara`, `twilio`, `openai`, `anthropic`, `s3`). Para el resto (`slack`, `other`: webhooks de tenant, donde el path ES la credencial) se registra `path_hash` = primeros 12 caracteres del sha256 del path. Además, `RedactSensitiveLogData::sanitize()` sustituye path y query de las URLs de hosts de webhook conocidos (`hooks.slack.com`, `discord.com/api/webhooks`, `discordapp.com/api/webhooks`, `hooks.zapier.com`, `*.webhook.office.com`, `outlook.office.com/webhook`) por `/[redacted]`, también dentro de `error.message`.
 
 ### HTTP entrante rechazado (`http.request`)
 

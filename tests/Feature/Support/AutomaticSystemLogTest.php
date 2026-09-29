@@ -75,6 +75,44 @@ class AutomaticSystemLogTest extends TestCase
         $this->assertSystemLogged('http.client.request.failed', fn (array $c) => $c['reason'] === 'connection_failed' && $c['input']['provider'] === 'openai');
     }
 
+    public function test_webhook_calls_never_log_the_secret_path(): void
+    {
+        Http::fake([
+            'hooks.slack.com/*' => Http::response('ok', 200),
+            'example.org/*' => Http::response('ok', 200),
+        ]);
+
+        Http::post('https://hooks.slack.com/services/T0001/B0002/XyZsecret123', ['text' => 'hola']);
+        Http::post('https://example.org/hooks/tenant-7/s3cr3tSegment', ['a' => 1]);
+
+        $slack = $this->assertSystemLogged('http.client.request.completed', fn (array $c) => $c['input']['host'] === 'hooks.slack.com');
+        $this->assertSame('slack', $slack['input']['provider']);
+        $this->assertArrayNotHasKey('path', $slack['input']);
+        $this->assertSame(substr(hash('sha256', '/services/T0001/B0002/XyZsecret123'), 0, 12), $slack['input']['path_hash']);
+
+        $custom = $this->assertSystemLogged('http.client.request.completed', fn (array $c) => $c['input']['host'] === 'example.org');
+        $this->assertSame('other', $custom['input']['provider']);
+        $this->assertArrayNotHasKey('path', $custom['input']);
+
+        $json = json_encode($this->systemLogEntries('http.client.request.completed'));
+        $this->assertStringNotContainsString('XyZsecret123', (string) $json);
+        $this->assertStringNotContainsString('s3cr3tSegment', (string) $json);
+    }
+
+    public function test_webhook_connection_failures_never_log_the_secret_in_the_error(): void
+    {
+        Http::fake(fn () => Http::failedConnection('cURL error 28: Operation timed out for https://hooks.slack.com/services/T0001/B0002/XyZsecret123'));
+
+        try {
+            Http::post('https://hooks.slack.com/services/T0001/B0002/XyZsecret123', ['text' => 'hola']);
+        } catch (ConnectionException) {
+        }
+
+        $failed = $this->assertSystemLogged('http.client.request.failed');
+        $this->assertArrayNotHasKey('path', $failed['input']);
+        $this->assertStringNotContainsString('XyZsecret123', (string) json_encode($failed));
+    }
+
     public function test_a_broken_log_sink_never_breaks_http_or_jobs(): void
     {
         SystemLog::listen(fn () => throw new RuntimeException('sink down'));

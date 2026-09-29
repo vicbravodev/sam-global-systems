@@ -37,6 +37,33 @@ class RedactSensitiveLogDataTest extends TestCase
     }
 
     /**
+     * @return array<string, array{string, string}>
+     */
+    public static function webhookUrls(): array
+    {
+        return [
+            'slack' => ['cURL error 28 for https://hooks.slack.com/services/T0001/B0002/XyZsecret123 timed out', 'cURL error 28 for https://hooks.slack.com/[redacted] timed out'],
+            'discord' => ['POST https://discord.com/api/webhooks/123456/tok-SECRET_abc failed', 'POST https://discord.com/[redacted] failed'],
+            'discordapp' => ['POST https://discordapp.com/api/webhooks/123456/tok-SECRET_abc?wait=true failed', 'POST https://discordapp.com/[redacted] failed'],
+            'zapier' => ['to https://hooks.zapier.com/hooks/catch/123/abcSECRET/ failed', 'to https://hooks.zapier.com/[redacted] failed'],
+            'office webhook subdomain' => ['to https://acme.webhook.office.com/webhookb2/uuid@uuid/IncomingWebhook/SECRET/uuid failed', 'to https://acme.webhook.office.com/[redacted] failed'],
+            'outlook webhook' => ['to https://outlook.office.com/webhook/uuid@uuid/IncomingWebhook/SECRET/uuid failed', 'to https://outlook.office.com/[redacted] failed'],
+        ];
+    }
+
+    #[DataProvider('webhookUrls')]
+    public function test_sanitize_redacts_the_whole_path_of_webhook_urls(string $input, string $expected): void
+    {
+        $this->assertSame($expected, RedactSensitiveLogData::sanitize($input));
+    }
+
+    public function test_sanitize_keeps_the_path_of_non_webhook_urls(): void
+    {
+        $this->assertSame('GET https://api.samsara.com/fleet/vehicles failed', RedactSensitiveLogData::sanitize('GET https://api.samsara.com/fleet/vehicles failed'));
+        $this->assertSame('GET https://discord.com/channels/1 failed', RedactSensitiveLogData::sanitize('GET https://discord.com/channels/1 failed'));
+    }
+
+    /**
      * @return array<string, array{string}>
      */
     public static function harmlessStrings(): array

@@ -67,6 +67,12 @@ final class RedactSensitiveLogData implements ProcessorInterface
         'secret', 'private', 'access', 'signing', 'api', 'encryption', 'client', 'master',
     ];
 
+    /**
+     * URL de un host de webhooks conocido: se conserva esquema y host, el
+     * path y la query se sustituyen enteros.
+     */
+    private const string WEBHOOK_URL = '~(https?://(?:hooks\\.slack\\.com|(?:discord|discordapp)\\.com(?=/api/webhooks)|hooks\\.zapier\\.com|(?:[a-z0-9-]+\\.)+webhook\\.office\\.com|outlook\\.office\\.com(?=/webhook)))/[^\\s"\']*~i';
+
     public function __invoke(LogRecord $record): LogRecord
     {
         return $record->with(
@@ -81,6 +87,8 @@ final class RedactSensitiveLogData implements ProcessorInterface
      */
     public static function sanitize(string $text): string
     {
+        // En un webhook entrante (Slack, Discord, Zapier, Teams) el path ES la credencial.
+        $text = (string) preg_replace(self::WEBHOOK_URL, '$1/'.self::MASK, $text);
         $text = (string) preg_replace('/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i', '[email]', $text);
         $text = (string) preg_replace('~(https?://[^\s?#"\']+)\?[^\s"\'#]*~i', '$1?'.self::MASK, $text);
         $text = (string) preg_replace('/\b(Bearer|Basic)\s+[A-Za-z0-9._~+\/=-]+/i', '$1 '.self::MASK, $text);
