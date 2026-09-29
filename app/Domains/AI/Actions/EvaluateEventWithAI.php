@@ -3,6 +3,7 @@
 namespace App\Domains\AI\Actions;
 
 use App\Contracts\AI\EventEvaluationAgent;
+use App\Domains\AI\Data\AIEvaluationResult;
 use App\Domains\AI\Data\AIInputContext;
 use App\Domains\AI\Data\TenantAIProfileData;
 use App\Domains\AI\Enums\EvaluationMode;
@@ -28,6 +29,11 @@ use Throwable;
 
 class EvaluateEventWithAI
 {
+    /**
+     * Umbrales de riesgo (inclusivos) de la prioridad de un evento accionable.
+     */
+    private const array PRIORITY_THRESHOLDS = ['urgent' => 0.85, 'high' => 0.6, 'normal' => 0.3];
+
     public function __construct(
         private readonly ResolveTenantAIProfile $resolveTenantProfile,
         private readonly BuildAIInputContext $buildInputContext,
@@ -69,9 +75,10 @@ class EvaluateEventWithAI
         $rulesDecision = $this->rulesRunner->evaluate($event, $snapshot?->signals_json ?? []);
 
         $version ??= $this->nextVersion($event->id);
+        $operatorFeedbackPresent = $operatorFeedback !== null && $operatorFeedback !== [];
 
         if ($rulesDecision !== null) {
-            return DB::transaction(function () use ($event, $version, $rulesDecision, $riskScore, $input) {
+            $evaluation = DB::transaction(function () use ($event, $version, $rulesDecision, $riskScore, $input) {
                 return $this->persistEvaluation(
                     event: $event,
                     version: $version,
@@ -90,12 +97,31 @@ class EvaluateEventWithAI
                     inferenceStatus: InferenceStatus::Success,
                 );
             });
+
+            $this->narrate(
+                $evaluation,
+                route: 'heuristic',
+                baseRisk: $riskScore,
+                agentRiskDelta: null,
+                riskAfterAgent: $riskScore,
+                baseConfidence: 0.95,
+                fusion: null,
+                result: null,
+                operatorFeedbackPresent: $operatorFeedbackPresent,
+                heuristicRule: explode(':', $rulesDecision['reason'], 2)[0],
+            );
+
+            return $evaluation;
         }
 
         if ($this->quotaExceeded($event, $profile)) {
-            return DB::transaction(function () use ($event, $version, $riskScore, $input, $fuseMedia) {
+            // fuse() es puro (solo arrays): calcularlo fuera de la transacción
+            // da el mismo resultado y deja el delta disponible para la narrativa.
+            $fusion = $fuseMedia(EventClassification::Unclear);
+
+            $evaluation = DB::transaction(function () use ($event, $version, $riskScore, $input, $fusion) {
                 $fused = $this->applyFusion(
-                    $fuseMedia(EventClassification::Unclear),
+                    $fusion,
                     confidence: 0.5,
                     riskScore: $riskScore,
                     explanation: 'Cuota de IA del tenant agotada; se evalúa solo con reglas.',
@@ -121,16 +147,35 @@ class EvaluateEventWithAI
                     inferenceStatus: InferenceStatus::Success,
                 );
             });
+
+            $this->narrate(
+                $evaluation,
+                route: 'quota_exceeded',
+                baseRisk: $riskScore,
+                agentRiskDelta: null,
+                riskAfterAgent: $riskScore,
+                baseConfidence: 0.5,
+                fusion: $fusion,
+                result: null,
+                operatorFeedbackPresent: $operatorFeedbackPresent,
+                heuristicRule: null,
+            );
+
+            return $evaluation;
         }
 
         try {
             $result = $this->agent->evaluate($input);
         } catch (Throwable $exception) {
-            SystemLog::degraded('ai.evaluation.rules_only', reason: 'agent_error', input: ['normalized_event_id' => $event->id], error: $exception);
+            // Solo afirma que el agente falló; el fallback a reglas se narra
+            // después del commit (ai.evaluation.rules_only).
+            SystemLog::degraded('ai.evaluation.agent_failed', reason: 'agent_error', input: ['normalized_event_id' => $event->id], error: $exception);
 
-            return DB::transaction(function () use ($event, $version, $riskScore, $input, $exception, $fuseMedia) {
+            $fusion = $fuseMedia(EventClassification::Unclear);
+
+            $evaluation = DB::transaction(function () use ($event, $version, $riskScore, $input, $exception, $fusion) {
                 $fused = $this->applyFusion(
-                    $fuseMedia(EventClassification::Unclear),
+                    $fusion,
                     confidence: 0.4,
                     riskScore: $riskScore,
                     // El mensaje crudo de la excepción (URLs, cuerpos del
@@ -159,13 +204,28 @@ class EvaluateEventWithAI
                     inferenceStatus: InferenceStatus::Error,
                 );
             });
+
+            $this->narrate(
+                $evaluation,
+                route: 'agent_error',
+                baseRisk: $riskScore,
+                agentRiskDelta: null,
+                riskAfterAgent: $riskScore,
+                baseConfidence: 0.4,
+                fusion: $fusion,
+                result: null,
+                operatorFeedbackPresent: $operatorFeedbackPresent,
+                heuristicRule: null,
+            );
+
+            return $evaluation;
         }
 
         $finalRiskScore = round(max(0.0, min(1.0, $riskScore + $result->riskScoreDelta)), 2);
 
         $fusion = $fuseMedia($result->classification);
 
-        return DB::transaction(function () use ($event, $version, $result, $finalRiskScore, $input, $fusion) {
+        $evaluation = DB::transaction(function () use ($event, $version, $result, $finalRiskScore, $input, $fusion) {
             $fused = $this->applyFusion(
                 $fusion,
                 confidence: $result->confidenceScore,
@@ -201,6 +261,119 @@ class EvaluateEventWithAI
 
             return $evaluation;
         });
+
+        $this->narrate(
+            $evaluation,
+            route: 'ai',
+            baseRisk: $riskScore,
+            agentRiskDelta: $result->riskScoreDelta,
+            riskAfterAgent: $finalRiskScore,
+            baseConfidence: $result->confidenceScore,
+            fusion: $fusion,
+            result: $result,
+            operatorFeedbackPresent: $operatorFeedbackPresent,
+            heuristicRule: null,
+        );
+
+        return $evaluation;
+    }
+
+    /**
+     * Narrativa post-commit de la evaluación: se llama después de que
+     * `DB::transaction()` devolvió, así nada afirma una evaluación que un
+     * rollback pudo deshacer. Nunca registra explicación, key_factors (salvo
+     * la clase de error ya persistida), feedback del operador ni prompt.
+     *
+     * @param  array{step: string, sentence: string, confidenceDelta: float, riskDelta: float, keyFactors: array<string, int>}|null  $fusion
+     */
+    private function narrate(
+        AIEventEvaluation $evaluation,
+        string $route,
+        float $baseRisk,
+        ?float $agentRiskDelta,
+        float $riskAfterAgent,
+        float $baseConfidence,
+        ?array $fusion,
+        ?AIEvaluationResult $result,
+        bool $operatorFeedbackPresent,
+        ?string $heuristicRule,
+    ): void {
+        if ($route !== 'ai') {
+            $errorClass = $route === 'agent_error'
+                ? ($evaluation->signals_json['key_factors']['error_class'] ?? null)
+                : null;
+
+            $rulesOnlyInput = ['normalized_event_id' => $evaluation->normalized_event_id];
+            $rulesOnlyResult = [
+                'evaluation_id' => $evaluation->id,
+                'heuristic_rule' => $heuristicRule,
+                'error_class' => is_string($errorClass) ? $errorClass : null,
+            ];
+
+            if ($route === 'heuristic') {
+                SystemLog::skipped('ai.evaluation.rules_only', reason: 'heuristic_short_circuit', input: $rulesOnlyInput, result: $rulesOnlyResult);
+            } else {
+                SystemLog::degraded('ai.evaluation.rules_only', reason: $route, input: $rulesOnlyInput, result: $rulesOnlyResult);
+            }
+        }
+
+        SystemLog::ok(
+            'ai.priority.resolved',
+            input: ['evaluation_id' => $evaluation->id],
+            calc: [
+                'risk_score' => $evaluation->risk_score,
+                'classification' => $evaluation->classification->value,
+                'actionable' => $evaluation->classification->isActionable(),
+                'thresholds' => self::PRIORITY_THRESHOLDS,
+            ],
+            result: [
+                'priority_level' => $evaluation->priority_level->value,
+                'requires_action' => $evaluation->requires_action,
+            ],
+        );
+
+        SystemLog::ok(
+            'ai.false_positive.checked',
+            input: ['evaluation_id' => $evaluation->id],
+            calc: [
+                'classification' => $evaluation->classification->value,
+                'confidence' => $evaluation->confidence_score,
+                'threshold' => DetectFalsePositive::HIGH_CONFIDENCE_THRESHOLD,
+            ],
+            result: ['is_false_positive' => $this->detectFalsePositive->isFalsePositive($evaluation)],
+        );
+
+        SystemLog::ok(
+            'ai.evaluation.completed',
+            input: [
+                'normalized_event_id' => $evaluation->normalized_event_id,
+                'evaluation_version' => $evaluation->evaluation_version,
+                'route' => $route,
+                'operator_feedback_present' => $operatorFeedbackPresent,
+            ],
+            calc: [
+                'base_risk' => $baseRisk,
+                'agent_risk_delta' => $agentRiskDelta,
+                'risk_after_agent' => $riskAfterAgent,
+                'fusion_risk_delta' => $fusion['riskDelta'] ?? 0.0,
+                'risk_score' => $evaluation->risk_score,
+                'base_confidence' => $baseConfidence,
+                'fusion_confidence_delta' => $fusion['confidenceDelta'] ?? 0.0,
+                'confidence' => $evaluation->confidence_score,
+            ],
+            result: [
+                'evaluation_id' => $evaluation->id,
+                'mode' => $evaluation->evaluation_mode->value,
+                'classification' => $evaluation->classification->value,
+                'priority_level' => $evaluation->priority_level->value,
+                'model' => $evaluation->model_used,
+                'input_tokens' => $result?->inputTokens,
+                'output_tokens' => $result?->outputTokens,
+                'cost_estimate' => $result?->costEstimate,
+                'latency_ms' => $result?->latencyMs,
+                'ai_inference_log_id' => AIInferenceLog::query()->where('evaluation_id', $evaluation->id)->value('id'),
+            ],
+        );
     }
 
     /**
@@ -384,9 +557,9 @@ class EvaluateEventWithAI
         }
 
         return match (true) {
-            $riskScore >= 0.85 => EvaluationPriority::Urgent,
-            $riskScore >= 0.6 => EvaluationPriority::High,
-            $riskScore >= 0.3 => EvaluationPriority::Normal,
+            $riskScore >= self::PRIORITY_THRESHOLDS['urgent'] => EvaluationPriority::Urgent,
+            $riskScore >= self::PRIORITY_THRESHOLDS['high'] => EvaluationPriority::High,
+            $riskScore >= self::PRIORITY_THRESHOLDS['normal'] => EvaluationPriority::Normal,
             default => EvaluationPriority::Low,
         };
     }

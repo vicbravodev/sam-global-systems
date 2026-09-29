@@ -73,6 +73,21 @@ class TenantAIQuotaTest extends TestCase
         $this->assertSame(now()->format('Y-m'), $ctx['calc']['billing_period_key']);
         $this->assertNull($ctx['calc']['calls_today']);
         $this->assertSame('monthly_tokens', $ctx['result']['exceeded_by']);
+
+        $rulesOnly = $this->systemLogEntries('ai.evaluation.rules_only')[0] ?? null;
+        $this->assertNotNull($rulesOnly);
+        $this->assertSame('warning', $rulesOnly['level']);
+        $this->assertSame('degraded', $rulesOnly['context']['outcome']);
+        $this->assertSame('quota_exceeded', $rulesOnly['context']['reason']);
+        $this->assertSame($evaluation->id, $rulesOnly['context']['result']['evaluation_id']);
+        $this->assertNull($rulesOnly['context']['result']['error_class']);
+
+        $completed = $this->assertSystemLogged('ai.evaluation.completed');
+        $this->assertSame('quota_exceeded', $completed['input']['route']);
+        $this->assertSame(0.5, $completed['calc']['base_confidence']);
+        $this->assertSame($evaluation->risk_score, $completed['calc']['risk_score']);
+        $this->assertSame('rules_only', $completed['result']['mode']);
+        $this->assertSystemNotLogged('ai.evaluation.agent_failed');
         $this->assertNoSensitiveDataLogged();
     }
 

@@ -8,7 +8,7 @@ use App\Domains\AI\Models\AIEventEvaluation;
 
 class DetectFalsePositive
 {
-    private const HIGH_CONFIDENCE_THRESHOLD = 0.85;
+    public const float HIGH_CONFIDENCE_THRESHOLD = 0.85;
 
     /**
      * Returns true when the evaluation is a confident false positive and
@@ -16,13 +16,21 @@ class DetectFalsePositive
      */
     public function execute(AIEventEvaluation $evaluation): bool
     {
-        $isFalsePositive = $evaluation->classification === EventClassification::FalsePositive
-            && ($evaluation->confidence_score ?? 0.0) >= self::HIGH_CONFIDENCE_THRESHOLD;
+        $isFalsePositive = $this->isFalsePositive($evaluation);
 
         if ($isFalsePositive) {
             FalsePositiveDetected::dispatch($evaluation);
         }
 
         return $isFalsePositive;
+    }
+
+    /**
+     * Condición pura (sin despachar nada): falso positivo con confianza alta.
+     */
+    public function isFalsePositive(AIEventEvaluation $evaluation): bool
+    {
+        return $evaluation->classification === EventClassification::FalsePositive
+            && ($evaluation->confidence_score ?? 0.0) >= self::HIGH_CONFIDENCE_THRESHOLD;
     }
 }
