@@ -140,8 +140,9 @@ class EmergencyFastPathTest extends TestCase
         $this->assertSame(0, Incident::withoutGlobalScopes()->count());
 
         $c = $this->assertSystemLogged('incidents.emergency.job_skipped', fn (array $c) => ($c['reason'] ?? null) === 'team_mismatch');
-        $this->assertFalse($c['calc']['team_matches']);
-        $this->assertSame($event->id, $c['input']['normalized_event_id']);
+        $this->assertSame(['team_matches' => false], $c['calc']);
+        // El evento es del otro tenant respecto al team del job: nunca su id.
+        $this->assertArrayNotHasKey('normalized_event_id', $c['input'] ?? []);
         $this->assertStringNotContainsString('"team_id":'.$other->id.',', json_encode($this->systemLogEntries()));
         $this->assertNoSensitiveDataLogged();
     }

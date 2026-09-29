@@ -85,11 +85,10 @@ class ApplyReevaluationToIncident
     public function execute(Incident $incident, Decision $decision): bool
     {
         if ((int) $decision->team_id !== (int) $incident->team_id) {
-            // El incidente es de otro tenant: nunca su id.
-            $decisionId = $decision->id;
+            // Uno de los dos es de otro tenant: ni el id del incidente ni el
+            // de la decisión.
             DB::afterCommit(fn () => SystemLog::skipped('incidents.reevaluation.applied',
                 reason: 'team_mismatch',
-                input: ['decision_id' => $decisionId],
                 calc: ['team_matches' => false],
             ));
 

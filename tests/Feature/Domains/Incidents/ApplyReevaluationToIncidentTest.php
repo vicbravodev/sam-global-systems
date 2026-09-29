@@ -286,8 +286,10 @@ class ApplyReevaluationToIncidentTest extends TestCase
         $this->assertNull($foreign->fresh()->related_decision_id);
 
         $c = $this->assertSystemLogged('incidents.reevaluation.applied', fn (array $c) => ($c['reason'] ?? null) === 'team_mismatch');
-        $this->assertSame(['decision_id' => $decision->id], $c['input']);
-        $this->assertFalse($c['calc']['team_matches']);
+        // Ni el incidente ni la decisión: en un cruce cualquiera de los dos puede ser ajeno.
+        $this->assertArrayNotHasKey('decision_id', $c['input'] ?? []);
+        $this->assertArrayNotHasKey('incident_id', $c['input'] ?? []);
+        $this->assertSame(['team_matches' => false], $c['calc']);
         $this->assertArrayNotHasKey('result', $c);
         $this->assertNoSensitiveDataLogged();
     }
