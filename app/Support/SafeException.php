@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use Illuminate\Database\QueryException;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -18,7 +19,7 @@ final class SafeException
     private const int MAX_FRAMES = 15;
 
     /**
-     * @return array{class: string, code: int|string, message: string, at: string, previous?: string, sqlstate?: string, trace?: list<string>}
+     * @return array{class: string, code: int|string, message: string, at: string, previous?: string, sqlstate?: string, http_status?: int, trace?: list<string>}
      */
     public static function describe(Throwable $e, bool $withTrace = false): array
     {
@@ -37,6 +38,10 @@ final class SafeException
             $description['sqlstate'] = (string) ($e->errorInfo[0] ?? $e->getCode());
         }
 
+        if ($e instanceof RequestException) {
+            $description['http_status'] = $e->response->status();
+        }
+
         if ($withTrace) {
             $description['trace'] = self::trace($e);
         }
@@ -47,7 +52,12 @@ final class SafeException
     private static function message(Throwable $e): string
     {
         // El mensaje de QueryException incluye los bindings: sólo el SQL con `?`.
-        $message = $e instanceof QueryException ? $e->getSql() : $e->getMessage();
+        // El de RequestException, un resumen del body de la respuesta: sólo el status.
+        $message = match (true) {
+            $e instanceof QueryException => $e->getSql(),
+            $e instanceof RequestException => "HTTP request returned status code {$e->response->status()}",
+            default => $e->getMessage(),
+        };
 
         return Str::limit(RedactSensitiveLogData::sanitize($message), self::MAX_MESSAGE - 1, '…');
     }

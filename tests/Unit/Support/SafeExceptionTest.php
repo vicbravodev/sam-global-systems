@@ -3,7 +3,10 @@
 namespace Tests\Unit\Support;
 
 use App\Support\SafeException;
+use GuzzleHttp\Psr7\Response as Psr7Response;
 use Illuminate\Database\QueryException;
+use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Client\Response;
 use LogicException;
 use PDOException;
 use PHPUnit\Framework\TestCase;
@@ -24,6 +27,18 @@ class SafeExceptionTest extends TestCase
         $this->assertStringStartsNotWith('/', $d['at']);
         $this->assertSame(LogicException::class, $d['previous']);
         $this->assertArrayNotHasKey('trace', $d);
+    }
+
+    public function test_http_request_exceptions_never_carry_the_response_body(): void
+    {
+        $e = new RequestException(new Response(new Psr7Response(422, [], '{"error":"invalid","to":"driver-secret-body"}')));
+        $this->assertStringContainsString('driver-secret-body', $e->getMessage());
+
+        $d = SafeException::describe($e);
+
+        $this->assertSame('HTTP request returned status code 422', $d['message']);
+        $this->assertSame(422, $d['http_status']);
+        $this->assertStringNotContainsString('driver-secret-body', (string) json_encode($d));
     }
 
     public function test_truncates_long_messages_to_300_chars(): void
