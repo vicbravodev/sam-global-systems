@@ -7,6 +7,8 @@ use App\Domains\Ingestion\Actions\QueueRawEventForProcessing;
 use App\Domains\Ingestion\Actions\StoreRawEvent;
 use App\Domains\Ingestion\Enums\EventSourceType;
 use App\Domains\Integrations\Models\IntegrationProvider;
+use App\Support\LoggableCode;
+use App\Support\SystemLog;
 
 class RawEventIngestionService implements RawEventIngestion
 {
@@ -26,6 +28,18 @@ class RawEventIngestionService implements RawEventIngestion
         $providerId = IntegrationProvider::query()
             ->where('code', $source)
             ->value('id');
+
+        if ($providerId === null) {
+            // Sin proveedor el evento terminará `unmapped`.
+            // Ambos pueden venir de una petición sin autenticar: sólo si parecen códigos.
+            $loggableEventType = LoggableCode::guard($eventType);
+
+            SystemLog::degraded('ingestion.provider.unresolved', reason: 'unknown_provider_code', input: [
+                'provider_code' => LoggableCode::guard($source),
+                'event_type' => $loggableEventType,
+                'event_type_valid' => $loggableEventType !== null,
+            ]);
+        }
 
         $externalEventId = $payload['eventId'] ?? $payload['id'] ?? null;
 

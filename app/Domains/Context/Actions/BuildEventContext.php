@@ -13,7 +13,9 @@ use App\Domains\Context\Models\EventRelatedIncidentLink;
 use App\Domains\Context\Models\GeofenceMatch;
 use App\Domains\Context\Support\SignalsBuilder;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Support\SystemLog;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class BuildEventContext
@@ -46,7 +48,11 @@ class BuildEventContext
             $normalizedEvent->asset?->unsetRelation('latestLocation');
         }
 
-        return DB::transaction(function () use ($normalizedEvent, $liveFetch) {
+        // Filled inside the transaction, logged only once it has committed: a
+        // rolled-back snapshot must never be reported as built.
+        $built = null;
+
+        $snapshot = DB::transaction(function () use ($normalizedEvent, $liveFetch, &$built) {
             $location = $this->extractLocation($normalizedEvent, $liveFetch['location']);
             $lat = $location['latitude'] ?? null;
             $lng = $location['longitude'] ?? null;
@@ -66,15 +72,16 @@ class BuildEventContext
                 ...$this->getRelatedOpenIncidents->execute($normalizedEvent)->all(),
                 ...$this->getPriorSimilarIncidents->execute($normalizedEvent)->all(),
             ];
+            $correlationMinutes = max(1, (int) $this->tenantConfigResolver->resolve(
+                (int) $normalizedEvent->team_id,
+                self::SETTING_SAFETY_CORRELATION,
+                self::DEFAULT_SAFETY_CORRELATION_MINUTES,
+            ));
             $recentHistory = $this->loadRecentAssetHistory->execute(
                 $normalizedEvent->asset_id,
                 $normalizedEvent->event_type_id,
                 $normalizedEvent->occurred_at ?? now(),
-                correlationMinutes: max(1, (int) $this->tenantConfigResolver->resolve(
-                    (int) $normalizedEvent->team_id,
-                    self::SETTING_SAFETY_CORRELATION,
-                    self::DEFAULT_SAFETY_CORRELATION_MINUTES,
-                )),
+                correlationMinutes: $correlationMinutes,
                 excludeEventId: $normalizedEvent->id,
             );
 
@@ -154,12 +161,45 @@ class BuildEventContext
 
             $this->persistRelatedIncidentLinks($normalizedEvent, $incidents);
 
+            $locationAge = isset($location['recorded_at'])
+                ? (int) Carbon::parse($location['recorded_at'])->diffInSeconds(now(), false)
+                : null;
+
+            $built = ['calc' => [
+                'location_source' => $location['source'],
+                'location_age_seconds' => $locationAge,
+                'position_stale' => $liveFetch['position_stale'],
+                'geofence_matches' => count($geofenceMatches),
+                'related_incidents' => count($incidents),
+                'recent_events' => $recentHistory['recent_events_count'],
+                'recent_same_type' => $recentHistory['recent_same_type_count'],
+                'recent_high_severity' => $recentHistory['recent_high_severity_count'],
+                'correlation_minutes' => $correlationMinutes,
+                'schedule_persisted' => $schedule->isPersisted,
+                'within_operating_hours' => $schedule->withinOperatingHours,
+                'has_driver' => $driverSnapshot !== null,
+            ], 'result' => [
+                'snapshot_id' => $snapshot->id,
+                'context_version' => $nextVersion,
+                'signals' => array_keys(array_filter($signals, static fn ($value) => (bool) $value)),
+            ]];
+
             $profile = $this->buildOperationalContextProfile->execute($snapshot->fresh());
 
+            $built['result']['risk_level'] = $profile->risk_level?->value;
+
+            // Sync listeners (RequestPanicMediaOnContextBuilt) log inside this
+            // transaction, before `context.snapshot.built`.
             EventContextBuilt::dispatch($snapshot->fresh(), $profile);
 
             return $snapshot->fresh();
         });
+
+        SystemLog::ok('context.snapshot.built', input: [
+            'normalized_event_id' => $normalizedEvent->id,
+        ], calc: $built['calc'], result: $built['result']);
+
+        return $snapshot;
     }
 
     /**

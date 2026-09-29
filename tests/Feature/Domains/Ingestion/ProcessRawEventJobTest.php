@@ -9,15 +9,18 @@ use App\Domains\Ingestion\Enums\RawEventStatus;
 use App\Domains\Ingestion\Events\RawEventFailed;
 use App\Domains\Ingestion\Events\RawEventProcessed;
 use App\Domains\Ingestion\Jobs\ProcessRawEventJob;
+use App\Domains\Ingestion\Models\EventDeduplicationKey;
 use App\Domains\Ingestion\Models\EventSource;
 use App\Domains\Ingestion\Models\RawEvent;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class ProcessRawEventJobTest extends TestCase
 {
+    use AssertsSystemLog;
     use RefreshDatabase;
 
     private function createRawEvent(): array
@@ -164,5 +167,89 @@ class ProcessRawEventJobTest extends TestCase
             return $event->rawEvent->id === $rawEvent->id
                 && $event->reason === 'Processing timeout';
         });
+    }
+
+    private function process(RawEvent $rawEvent): void
+    {
+        (new ProcessRawEventJob($rawEvent->id))->handle(app(DetectDuplicateEvent::class));
+    }
+
+    private function cloneEvent(RawEvent $rawEvent, string $key): RawEvent
+    {
+        return RawEvent::withoutGlobalScopes()->create([
+            'team_id' => $rawEvent->team_id,
+            'event_source_id' => $rawEvent->event_source_id,
+            'payload_json' => $rawEvent->payload_json,
+            'received_at' => now(),
+            'status' => RawEventStatus::PendingProcessing,
+            'deduplication_key' => $key,
+            'checksum' => $rawEvent->checksum,
+        ]);
+    }
+
+    public function test_first_event_logs_key_registered_and_processed(): void
+    {
+        Event::fake([RawEventProcessed::class]);
+        [, , , $rawEvent] = $this->createRawEvent();
+
+        $this->process($rawEvent);
+
+        $c = $this->assertSystemLogged('ingestion.dedup.key_registered');
+        $this->assertSame($rawEvent->id, $c['input']['raw_event_id']);
+        $this->assertSame('deduplication_key', $c['input']['dedup_source']);
+        $this->assertSame(24, $c['calc']['ttl_hours']);
+        $this->assertSystemLogged('ingestion.raw_event.processed', fn (array $c): bool => $c['input']['raw_event_id'] === $rawEvent->id);
+        $this->assertNoSensitiveDataLogged();
+        $this->assertStringNotContainsString('proc-001', json_encode($this->systemLogEntries('ingestion.dedup.key_registered')));
+    }
+
+    public function test_second_event_with_the_same_key_logs_the_existing_key_duplicate(): void
+    {
+        Event::fake([RawEventProcessed::class]);
+        [, , , $first] = $this->createRawEvent();
+        $second = $this->cloneEvent($first, 'proc-001');
+
+        $this->process($first);
+        $this->process($second);
+
+        $this->assertSystemLogged('ingestion.duplicate.detected', fn (array $c): bool => $c['reason'] === 'existing_key'
+            && $c['input']['raw_event_id'] === $second->id
+            && $c['result']['first_raw_event_id'] === $first->id);
+        $this->assertSame(1, count($this->systemLogEntries('ingestion.raw_event.processed')));
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_expired_key_is_logged_and_replaced(): void
+    {
+        Event::fake([RawEventProcessed::class]);
+        [, $team, $source, $first] = $this->createRawEvent();
+        $old = $this->cloneEvent($first, 'proc-001');
+
+        EventDeduplicationKey::query()->create([
+            'team_id' => $team->id,
+            'event_source_id' => $source->id,
+            'deduplication_key' => 'proc-001',
+            'raw_event_id' => $old->id,
+            'first_seen_at' => now()->subDays(2),
+            'expires_at' => now()->subDay(),
+        ]);
+
+        $this->process($first);
+
+        $this->assertSystemLogged('ingestion.dedup.key_expired', fn (array $c): bool => $c['result']['expired_key_raw_event_id'] === $old->id
+            && $c['input']['raw_event_id'] === $first->id);
+        $this->assertSystemLogged('ingestion.dedup.key_registered');
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_event_without_any_key_logs_dedup_skipped(): void
+    {
+        Event::fake([RawEventProcessed::class]);
+        [, , , $rawEvent] = $this->createRawEvent();
+        $rawEvent->update(['deduplication_key' => null, 'checksum' => null]);
+
+        $this->process($rawEvent);
+
+        $this->assertSystemLogged('ingestion.dedup.skipped', fn (array $c): bool => $c['reason'] === 'no_dedup_key' && $c['input']['raw_event_id'] === $rawEvent->id);
     }
 }

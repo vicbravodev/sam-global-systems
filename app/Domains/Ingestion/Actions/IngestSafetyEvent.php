@@ -80,7 +80,9 @@ class IngestSafetyEvent
             // ProcessRawEventJob, which marks them and stops the pipeline — but
             // their media was already captured by the first delivery, so the
             // expiring URLs are not re-downloaded.
-            if (! $isKnownDuplicate) {
+            if ($isKnownDuplicate) {
+                SystemLog::skipped('ingestion.media.inline_skipped', reason: 'known_duplicate', input: ['raw_event_id' => $rawEvent->id, 'event_state' => $eventState]);
+            } else {
                 $this->downloadInlineMedia($rawEvent, $payload);
             }
 
@@ -111,6 +113,10 @@ class IngestSafetyEvent
      */
     private function downloadInlineMedia(RawEvent $rawEvent, array $payload): void
     {
+        $found = 0;
+        $downloaded = 0;
+        $failed = 0;
+
         // Legacy safety-event shape: top-level download URLs.
         foreach (self::MEDIA_URL_KEYS as $key => $filename) {
             $url = Arr::get($payload, $key);
@@ -119,7 +125,8 @@ class IngestSafetyEvent
                 continue;
             }
 
-            $this->storeMediaDownload($rawEvent, $url, $filename, ['source_url_key' => $key]);
+            $found++;
+            $this->storeMediaDownload($rawEvent, $url, $filename, ['source_url_key' => $key]) ? $downloaded++ : $failed++;
         }
 
         // Stream v2 shape (`GET /safety-events/stream`): a `media` array with
@@ -135,12 +142,15 @@ class IngestSafetyEvent
 
             $filename = sprintf('media-%d-%s.mp4', (int) $index, $this->mediaInputSlug($media['input'] ?? null));
 
+            $found++;
             $this->storeMediaDownload($rawEvent, $url, $filename, array_filter([
                 'source_url_key' => "media.{$index}.url",
                 'input' => $media['input'] ?? null,
                 'camera_role' => $media['cameraRole'] ?? null,
-            ]));
+            ])) ? $downloaded++ : $failed++;
         }
+
+        SystemLog::ok('ingestion.media.inline_collected', input: ['raw_event_id' => $rawEvent->id], calc: ['urls_found' => $found, 'downloaded' => $downloaded, 'failed' => $failed], debug: $found === 0);
     }
 
     /**
@@ -149,14 +159,14 @@ class IngestSafetyEvent
      *
      * @param  array<string, mixed>  $metadata
      */
-    private function storeMediaDownload(RawEvent $rawEvent, string $url, string $filename, array $metadata): void
+    private function storeMediaDownload(RawEvent $rawEvent, string $url, string $filename, array $metadata): bool
     {
         try {
             $download = $this->downloader->download($url);
         } catch (MediaDownloadException $e) {
             SystemLog::degraded('ingestion.media.inline_download_failed', reason: 'download_failed', input: ['raw_event_id' => $rawEvent->id, 'url_key' => $metadata['source_url_key'] ?? null], error: $e);
 
-            return;
+            return false;
         }
 
         $storagePath = "teams/{$rawEvent->team_id}/raw-events/{$rawEvent->id}/{$filename}";
@@ -187,6 +197,8 @@ class IngestSafetyEvent
             'size_bytes' => $download->size,
             'metadata_json' => $metadata,
         ]);
+
+        return true;
     }
 
     private function mediaInputSlug(?string $input): string
@@ -201,6 +213,9 @@ class IngestSafetyEvent
     private function recordUsage(TenantIntegration $integration, string $externalEventId, string $eventState, RawEvent $rawEvent): void
     {
         if (! UsageMeter::where('code', self::USAGE_METER_CODE)->exists()) {
+            // Sin meter es un hueco de facturación.
+            SystemLog::degraded('ingestion.usage.not_metered', reason: 'meter_missing', input: ['meter_code' => self::USAGE_METER_CODE, 'raw_event_id' => $rawEvent->id]);
+
             return;
         }
 
@@ -216,5 +231,7 @@ class IngestSafetyEvent
             ],
             occurredAt: $rawEvent->occurred_at,
         );
+
+        SystemLog::ok('ingestion.usage.recorded', input: ['meter_code' => self::USAGE_METER_CODE, 'raw_event_id' => $rawEvent->id, 'event_state' => $eventState]);
     }
 }

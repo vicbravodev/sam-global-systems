@@ -19,6 +19,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\Concerns\AssertsTenantIsolation;
 use Tests\Concerns\FakesSamsaraSafetyStream;
 use Tests\TestCase;
@@ -30,6 +31,7 @@ use Tests\TestCase;
  */
 class PollSafetyEventsJobResilienceTest extends TestCase
 {
+    use AssertsSystemLog;
     use AssertsTenantIsolation;
     use FakesSamsaraSafetyStream;
     use RefreshDatabase;
@@ -371,5 +373,41 @@ class PollSafetyEventsJobResilienceTest extends TestCase
 
         $this->assertSame('cursor-other', $other->fresh()->sync_state_json['safety_events']['cursor']);
         $this->assertSame(0, RawEvent::withoutGlobalScopes()->where('team_id', $other->team_id)->count());
+    }
+
+    public function test_rate_limit_logs_retry_after_and_release_delay(): void
+    {
+        $feed = ['cursor' => 'cursor-prev', 'start_time' => self::PINNED_START, 'last_polled_at' => '2026-09-27T11:58:00+00:00'];
+        $integration = $this->makeIntegration($feed);
+        $this->fakeSafetyStream(
+            [['status' => 429, 'body' => ['message' => 'Exceeded rate limit.'], 'headers' => ['Retry-After' => '30']]],
+            knownCursors: ['cursor-prev' => self::PINNED_START],
+        );
+
+        $job = (new PollSafetyEventsJob($integration))->withFakeQueueInteractions();
+        $job->handle(app(ProviderAdapter::class), app(IngestSafetyEvent::class));
+
+        $this->assertSystemLogged('ingestion.poll.rate_limited', fn (array $c): bool => $c['reason'] === 'provider_rate_limited'
+            && $c['calc']['retry_after_seconds'] === 30
+            && $c['calc']['released_for_seconds'] === 30
+            && $c['calc']['fallback_seconds'] === PollSafetyEventsJob::RATE_LIMIT_FALLBACK_SECONDS
+            && $c['input']['integration_id'] === $integration->id);
+        $this->assertSystemNotLogged('ingestion.poll.cycle_completed');
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_resumed_cycle_logs_completion_without_restart(): void
+    {
+        $feed = ['cursor' => 'cursor-prev', 'start_time' => self::PINNED_START, 'last_polled_at' => '2026-09-27T11:58:00+00:00'];
+        $integration = $this->makeIntegration($feed);
+        $this->fakeSafetyStream([['data' => [$this->event('evt-1')], 'endCursor' => 'cursor-2']], knownCursors: ['cursor-prev' => self::PINNED_START]);
+
+        $this->poll($integration);
+
+        $this->assertSystemNotLogged('ingestion.poll.cursor_restarted');
+        $this->assertSystemLogged('ingestion.poll.cycle_completed', fn (array $c): bool => $c['calc']['had_cursor'] === true
+            && $c['calc']['start_time'] === self::PINNED_START
+            && $c['result']['events'] === 1);
+        $this->assertNoSensitiveDataLogged();
     }
 }

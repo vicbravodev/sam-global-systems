@@ -55,6 +55,8 @@ jq 'select(.message == "telematics.cycle.completed")' storage/logs/telematics-*.
 
 **Red de seguridad:** `App\Support\RedactSensitiveLogData` corre como tap en cada canal y enmascara teléfonos, emails, tokens, claves sensibles y el path de las URLs de hosts fuera de la allowlist. Es la red, no el permiso: el código no debe depender de ella.
 
+**Líneas en debug (volumen):** siguen existiendo, en nivel `debug`: `context.live_location.skipped` y `context.media.auto_request_skipped` con reason `not_critical`; `ingestion.media.inline_collected` con `urls_found = 0`; `normalization.asset.resolved` / `normalization.driver.resolved` ok sin id en el payload (path `null`); `ingestion.raw_event.processed`.
+
 ## Cómo se prueba
 
 Los tests usan `Tests\Concerns\AssertsSystemLog`: `assertSystemLogged($code, fn ($entry) => ...)`, `assertSystemNotLogged($code)` y `assertNoSensitiveDataLogged()`. Cada código nuevo lleva su entrada en este catálogo (el test arquitectural lo exige para los literales) y un test que lo afirme.
@@ -123,6 +125,65 @@ Lo emite `App\Support\DeniedRequestLog` (outcome `degraded`); sólo la plantilla
 |---|---|---|---|
 | `ingestion.media.inline_download_failed` | degraded | `download_failed` | `raw_event_id`, `url_key`, `error` |
 | `ingestion.poll.cursor_rejected` | degraded | `provider_rejected_cursor` | `integration_id`, `http_status`, `provider_message` (saneado, 200 car.), `restart_from` |
+| `ingestion.provider.unresolved` | degraded | `unknown_provider_code` | `provider_code`, `event_type` (ambos sólo si cumplen `App\Support\LoggableCode::PATTERN`; si no, `null`), `event_type_valid`; sin proveedor el evento terminará `unmapped` |
+| `ingestion.raw_event.stored` | ok | | `source_type`, `provider_id`, `external_event_id`, `external_event_type`, `calc.dedup_key_strategy` (`explicit`/`external_event_id`/`checksum`), `calc.occurred_at_source` (clave del payload), `calc.occurred_at_parse_failed`, `raw_event_id`, `event_source_id` |
+| `ingestion.raw_event.processed` | ok | | `raw_event_id` |
+| `ingestion.dedup.skipped` | skipped | `no_dedup_key` | `raw_event_id` |
+| `ingestion.dedup.key_expired` | ok | | `raw_event_id`, `expired_key_raw_event_id` |
+| `ingestion.dedup.key_registered` | ok | | `raw_event_id`, `dedup_source` (`deduplication_key`/`checksum`), `calc.ttl_hours` |
+| `ingestion.duplicate.detected` | skipped | `existing_key`, `lost_insert_race` | `raw_event_id`, `dedup_source`, `first_raw_event_id` (sólo `existing_key`). Nunca el valor de la clave |
+| `ingestion.media.inline_skipped` | skipped | `known_duplicate` | `raw_event_id`, `event_state` |
+| `ingestion.media.inline_collected` | ok | | `raw_event_id`, `calc.urls_found`, `calc.downloaded`, `calc.failed` |
+| `ingestion.usage.not_metered` | degraded | `meter_missing` | `meter_code`, `raw_event_id`; hueco de facturación |
+| `ingestion.usage.recorded` | ok | | `meter_code`, `raw_event_id`, `event_state` |
+| `ingestion.poll.cursor_restarted` | ok | | `integration_id`, `calc.restart_from`, `had_cursor`, `had_start_time`, `backfill_hours`, `restart_margin_minutes` |
+| `ingestion.poll.rate_limited` | degraded | `provider_rate_limited` | `integration_id`, `calc.retry_after_seconds`, `fallback_seconds`, `released_for_seconds` |
+| `ingestion.poll.cycle_completed` | ok | | `integration_id`, `calc.start_time`, `had_cursor`, `result.events`, `has_more`, `next_cursor_present` |
+
+### Webhooks (`webhook`)
+
+| Código | Outcome | Reason posibles | Campos clave |
+|---|---|---|---|
+| `webhook.event.received` | ok | | `webhook_event_id`, `event_type` (sólo si cumple `/^[A-Za-z0-9_.]{1,64}$/`, `App\Support\LoggableCode`; si no, `null`), `event_type_valid`; calc `body_bytes`, `has_signature_header`, `has_timestamp_header`. Nunca cuerpo, firma ni timestamp. Un endpoint desconocido no llega aquí: lo registra `http.request.not_found` (`DeniedRequestLog`, fase 1) |
+| `webhook.signature.verified` | ok | | `input.scheme` (`timestamped`/`plain`), `calc.secret_variant` (`base64_decoded`/`raw`), `key_variants_tried`, `skew_seconds`, `tolerance_seconds` (`null` en `plain`: no se revisa hora) |
+| `webhook.signature.rejected` | degraded | `empty_signature`, `invalid_timestamp`, `stale_timestamp`, `hmac_mismatch` | `input.scheme`; en `stale_timestamp`, calc `skew_seconds`, `tolerance_seconds`, `reference` (`received_at`/`now`), `timestamp_unit`; en `hmac_mismatch`, calc `key_variants_tried`, `skew_seconds`, `tolerance_seconds` (`null` en `plain`). Nunca firma, secreto ni cuerpo |
+| `webhook.event.discarded` | skipped | `tenant_deleted` | `webhook_event_id` |
+| `webhook.event.rejected` | skipped | `invalid_signature` | `webhook_event_id`, `signature_mode` (`raw_header`/`legacy_body`), `event_type` (sólo si cumple `/^[A-Za-z0-9_.]{1,64}$/`; si no, `null`: viene de una petición sin autenticar), `event_type_valid` |
+| `webhook.event.ingested` | ok | | `webhook_event_id`, `event_type` (con la misma guarda: puede venir de la query string, fuera del HMAC), `event_type_valid`, `signature_mode`, `provider_code` (con la misma guarda); `result.provider_code_fallback` |
+
+### Normalización (`normalization`)
+
+| Código | Outcome | Reason posibles | Campos clave |
+|---|---|---|---|
+| `normalization.type.mapped` | ok | | `input.provider_id`, `external_event_type`; calc `candidates`, `evaluated`, `rejected` (lista de `mapping_rule_id` + `failed_path`, sólo el path, nunca los valores); result `mapping_rule_id`, `event_type_code`, `priority` |
+| `normalization.type.unmapped` | skipped | `no_rule_for_type`, `conditions_not_met`, `no_provider` | `provider_id` o `raw_event_id`, `external_event_type`; calc `candidates`, `rejected` |
+| `normalization.severity.resolved` | ok | | `mapping_rule_id`, `event_type_code`; calc `severity_source` (`rule_override`/`type_default`/`medium_fallback`); result `severity_code` |
+| `normalization.internal.resolved` | ok | | `raw_event_id`, `event_type_code` (evento de monitor interno, sin proveedor ni regla) |
+| `normalization.asset.resolved` | ok / degraded | `cross_tenant_reference`, `referenced_asset_trashed`, `referenced_asset_missing` | `raw_event_id`; calc `asset_path_used` (clave del payload o `null`), `reference_found`, `cross_tenant_rejected` (sólo `true` con `cross_tenant_reference`), `rejection` (el mismo código que `reason`, `null` en ok); result `asset_id` (`null` si se rechazó; el id ajeno nunca se registra). Un activo propio borrado (soft delete) no es alarma cross-tenant. Ok sin id en el payload (`asset_path_used = null`) va en debug |
+| `normalization.driver.resolved` | ok / degraded | `cross_tenant_reference`, `referenced_driver_trashed`, `referenced_driver_missing` | igual, con `driver_path_used` y `driver_id` |
+| `normalization.asset.rejected` | degraded | `cross_tenant_internal_asset`, `internal_asset_trashed`, `internal_asset_missing` | `raw_event_id`; calc `rejection` (= `reason`); nunca el id ajeno ni ningún `team_id` |
+| `normalization.event.discarded` | skipped | `asset_not_monitored` | `raw_event_id`, `asset_id`, `event_type_code`, `category_code`, `monitoring_state` (`pending`/`excluded`); calc `is_emergency` (real), `emergency_exemption_applies` (`true` en la ruta mapeada; `false` en la interna, que descarta incluso emergencias) |
+| `normalization.event.emergency_unmonitored_passed` | ok | | `raw_event_id`, `asset_id`, `event_type_code`, `category_code`; calc `is_emergency=true`; result `normalized_event_id`, `extra_charge_dispatched=true`, `charge_scope=asset_local_day`. Sólo afirma que se despachó `UnmonitoredAssetEmergencyReceived`: el cobro real lo registra billing (fase 5), idempotente por activo y día local |
+| `normalization.event.normalized` | ok | | `raw_event_id`; result `normalized_event_id`, `route` (`mapped`/`internal`/`unmapped`), `event_type_code`, `category_code`, `severity_code`, `asset_id`, `driver_id`, `unmonitored_asset` |
+| `normalization.catalog.fallback_used` | degraded | `catalog_row_missing` | `expected_code` (`unmapped`/`operational`/`low`), `table` (`event_types`/`event_categories`/`event_severities`) |
+| `normalization.job.skipped` | skipped | `raw_event_missing`, `status_not_normalizable` | `raw_event_id`, `status` |
+
+### Contexto (`context`)
+
+| Código | Outcome | Reason posibles | Campos clave |
+|---|---|---|---|
+| `context.live_location.skipped` | skipped | `no_asset`, `not_critical`, `payload_has_gps`, `latest_location_fresh` | `normalized_event_id`; en `not_critical`, `severity_code`; en `latest_location_fresh`, calc `latest_age_seconds`, `staleness_threshold_seconds`. Nunca coordenadas |
+| `context.live_location.failed` | degraded | `no_active_integration`, `provider_returned_nothing` | `normalized_event_id`, `asset_id`; calc `references`, `integrations_tried`, `latest_age_seconds`, `staleness_threshold_seconds`; result `position_stale=true` |
+| `context.live_location.fetched` | ok | | `normalized_event_id`, `asset_id`; calc `latest_age_seconds`, `staleness_threshold_seconds`, `fix_age_seconds` (`null` si el proveedor no dio hora), `fix_time_source` (`provider`/`assumed_now`); result `position_stale=false`, `snapshot_updated` (`false` si ese fix ya estaba guardado) |
+| `context.snapshot.built` | ok | | `normalized_event_id`; calc `location_source` (`event_payload`/`live_fetch`/`asset_latest_location`/`unknown`), `location_age_seconds`, `position_stale`, `geofence_matches`, `related_incidents`, `recent_events`, `recent_same_type`, `recent_high_severity`, `correlation_minutes`, `schedule_persisted`, `within_operating_hours`, `has_driver`; result `snapshot_id`, `context_version`, `signals` (sólo nombres de señal activas), `risk_level` (del perfil operativo). Se emite después de que la transacción del snapshot confirma: un snapshot revertido nunca se reporta. `location_age_seconds` es siempre `null` con `location_source = event_payload` (el payload no trae hora del fix) |
+| `context.enrich.skipped` | skipped | `normalized_event_missing` | `normalized_event_id` |
+| `context.media.auto_request_skipped` | skipped | `normalized_event_missing`, `not_critical`, `setting_disabled` | `snapshot_id` o `normalized_event_id`; `severity_code`; `setting_key` |
+| `context.media.request_reused` | skipped | `request_in_flight` | `normalized_event_id`, `request_type`, `sweep_only`; result `event_media_request_id`, `status` |
+| `context.media.requested` | ok | | `normalized_event_id`, `request_type`, `sweep_only`; calc `expires_in_hours`; result `event_media_request_id` |
+| `context.usage.not_metered` | degraded | `meter_missing` | `meter_code`, `event_media_request_id`; hueco de facturación |
+| `context.usage.recorded` | ok | | `meter_code`, `event_media_request_id` |
+
+Las líneas del listener síncrono `RequestPanicMediaOnContextBuilt` (`context.media.requested`, `context.media.request_reused`, `context.usage.*`, `context.media.auto_request_skipped`), cuando las dispara ese listener, se emiten dentro de la transacción del snapshot, antes de `context.snapshot.built`: si esa transacción se revierte, describen algo que no quedó persistido.
 
 ### Samsara (`samsara`)
 
@@ -140,7 +201,14 @@ Lo emite `App\Support\DeniedRequestLog` (outcome `degraded`); sólo la plantilla
 | `media.frames.extracted` | ok | — | `media_context_id`; result `frames_extracted`, `frames_created` |
 | `media.frames.ffmpeg_unavailable` | degraded | `ffmpeg_missing` | `media_context_id`, `ffmpeg_binary` |
 | `media.frames.offset_missing` | skipped | `no_frame_at_offset` | `offset_seconds`, `exit_code`, `stderr_excerpt` (saneado) |
-| `media.deferred.closed_without_media` | skipped | `closed_without_media` | `event_media_request_id`, `status`, `detail` (hoy es una frase fija del sistema, no texto de usuario; pendiente de convertir a código estable) |
+| `media.deferred.skipped` | skipped | `request_missing`, `not_in_flight` | `event_media_request_id`, `status` |
+| `media.deferred.closed` | skipped / ok | skipped: `normalized_event_missing`, `retrieval_window_expired`, `no_active_integration`, `older_than_footage_retention`, `provider_rejected_retrieval`, `provider_rejected_all_stills`, `all_clips_failed`, `all_stills_failed`. ok: sin reason; cierra con evidencia subida y el motivo va en `result.close_reason` (cualquiera de los anteriores, y `fulfilled_by_sweep` / `no_camera_fulfilled_by_sweep`, que sólo se alcanzan por esta vía) | `event_media_request_id`, `normalized_event_id`, `calc.event_age_hours`/`max_age_hours` (retención), `result.status`, `result.completed_via`, `result.close_reason` |
+| `media.deferred.sweep_completed` | ok | - | `event_media_request_id`, `normalized_event_id`, `calc.window_seconds`, `items_found`, `available`, `result.downloaded` (bajados en este barrido), `result.already_stored` (ya estaban en storage de un barrido anterior) |
+| `media.deferred.retrieval_placed` | ok | - | `event_media_request_id`, `normalized_event_id`, `calc.media_type`, `inputs`, `next_poll_seconds` |
+| `media.deferred.stills_placed` | ok | - | `event_media_request_id`, `normalized_event_id`, `calc.stills_requested`, `stills_rejected`, `next_poll_seconds` |
+| `media.deferred.polling` | ok | - | `event_media_request_id`, `normalized_event_id`, `calc.pending`, `available`, `failed_downloads`, `items`, `next_poll_seconds`, `result.requeue_reason` (`pending_at_provider`/`provider_unreachable`/`download_failed`) |
+| `media.deferred.completed` | ok | - | `event_media_request_id`, `normalized_event_id`, `result.available`, `result.downloaded` (de este sondeo), `result.already_stored` (disponibles que ya estaban guardados de un sondeo anterior), `result.stills_downloaded_total` (acumulado, solo stills) |
+| `media.deferred.sweep_polling` | ok | - | `event_media_request_id`, `normalized_event_id`, `calc.next_poll_seconds` |
 | `media.deferred.download_failed` | degraded | `download_failed` | `normalized_event_id`, `camera_input`, `error` |
 
 ### IA (`ai`) y copiloto (`copilot`)

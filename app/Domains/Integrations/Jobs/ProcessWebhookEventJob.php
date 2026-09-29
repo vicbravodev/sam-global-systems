@@ -7,6 +7,8 @@ use App\Domains\Integrations\Actions\ValidateWebhookSignature;
 use App\Domains\Integrations\Models\WebhookEndpoint;
 use App\Domains\Integrations\Models\WebhookEvent;
 use App\Models\Team;
+use App\Support\LoggableCode;
+use App\Support\SystemLog;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -36,6 +38,7 @@ class ProcessWebhookEventJob implements ShouldQueue
         // Eventos encolados antes de dar de baja al tenant: no se ingieren.
         if (! Team::query()->whereKey($this->webhookEvent->team_id)->exists()) {
             $this->webhookEvent->markAsFailed('Tenant dado de baja: evento descartado.');
+            SystemLog::skipped('webhook.event.discarded', reason: 'tenant_deleted', input: ['webhook_event_id' => $this->webhookEvent->id]);
 
             return;
         }
@@ -49,6 +52,7 @@ class ProcessWebhookEventJob implements ShouldQueue
         $signature = $this->webhookEvent->signature;
         $timestamp = $this->webhookEvent->signature_timestamp;
         $rawPayload = $this->webhookEvent->raw_payload;
+        $signatureMode = $rawPayload === null ? 'legacy_body' : 'raw_header';
 
         // Legacy fallback for events persisted without the raw body (e.g. crafted
         // programmatically): the signature travelled inside the body and the HMAC
@@ -68,6 +72,15 @@ class ProcessWebhookEventJob implements ShouldQueue
 
         if (! $isValid) {
             $this->webhookEvent->markAsInvalidSignature();
+            // event_type viene de la petición sin autenticar: sólo se registra si parece un código.
+            $eventType = LoggableCode::guard($this->webhookEvent->event_type);
+
+            SystemLog::skipped('webhook.event.rejected', reason: 'invalid_signature', input: [
+                'webhook_event_id' => $this->webhookEvent->id,
+                'signature_mode' => $signatureMode,
+                'event_type' => $eventType,
+                'event_type_valid' => $eventType !== null,
+            ]);
 
             return;
         }
@@ -75,14 +88,27 @@ class ProcessWebhookEventJob implements ShouldQueue
         try {
             $integration = $this->endpoint->tenantIntegration;
 
+            $providerCode = $integration->provider->code ?? 'unknown';
+
             $rawEventIngestion->ingest(
                 $integration->team_id,
-                $integration->provider->code ?? 'unknown',
+                $providerCode,
                 $this->webhookEvent->event_type,
                 $payload,
             );
 
             $this->webhookEvent->markAsProcessed();
+
+            // event_type puede venir de la query string, fuera del HMAC.
+            $eventType = LoggableCode::guard($this->webhookEvent->event_type);
+
+            SystemLog::ok('webhook.event.ingested', input: [
+                'webhook_event_id' => $this->webhookEvent->id,
+                'event_type' => $eventType,
+                'event_type_valid' => $eventType !== null,
+                'signature_mode' => $signatureMode,
+                'provider_code' => LoggableCode::guard($providerCode),
+            ], result: ['provider_code_fallback' => $integration->provider?->code === null]);
         } catch (\Throwable $e) {
             $this->webhookEvent->markAsFailed($e->getMessage());
 

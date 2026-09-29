@@ -9,6 +9,7 @@ use App\Domains\Ingestion\Models\EventReceipt;
 use App\Domains\Ingestion\Models\EventSource;
 use App\Domains\Ingestion\Models\RawEvent;
 use App\Support\PipelineTrace;
+use App\Support\SystemLog;
 use Illuminate\Support\Facades\Cache;
 
 class StoreRawEvent
@@ -61,7 +62,11 @@ class StoreRawEvent
 
         $payloadJson = json_encode($payload);
         $checksum = hash('sha256', $payloadJson);
+        $strategy = $deduplicationKey !== null
+            ? 'explicit'
+            : ($externalEventId !== null ? 'external_event_id' : 'checksum');
         $deduplicationKey ??= $externalEventId ?? $checksum;
+        $occurredAt = $this->parseOccurredAt($payload);
 
         $rawEvent = RawEvent::withoutGlobalScopes()->create([
             'team_id' => $teamId,
@@ -77,7 +82,7 @@ class StoreRawEvent
             'payload_json' => $payload,
             'headers_json' => $headers,
             'received_at' => now(),
-            'occurred_at' => $this->parseOccurredAt($payload),
+            'occurred_at' => $occurredAt['value'],
             'deduplication_key' => $deduplicationKey,
             'status' => RawEventStatus::Received,
             'checksum' => $checksum,
@@ -99,6 +104,13 @@ class StoreRawEvent
             'signature_valid' => null,
             'received_at' => now(),
         ]);
+
+        SystemLog::ok(
+            'ingestion.raw_event.stored',
+            input: ['source_type' => $sourceType, 'provider_id' => $providerId, 'external_event_id' => $externalEventId, 'external_event_type' => $rawEvent->event_type_raw],
+            calc: ['dedup_key_strategy' => $strategy, 'occurred_at_source' => $occurredAt['source'], 'occurred_at_parse_failed' => $occurredAt['parse_failed']],
+            result: ['raw_event_id' => $rawEvent->id, 'event_source_id' => $eventSource->id],
+        );
 
         RawEventReceived::dispatch($rawEvent);
 
@@ -143,24 +155,37 @@ class StoreRawEvent
 
     /**
      * @param  array<string, mixed>  $payload
+     * @return array{value: ?\DateTimeInterface, source: ?string, parse_failed: bool}
      */
-    private function parseOccurredAt(array $payload): ?\DateTimeInterface
+    private function parseOccurredAt(array $payload): array
     {
         // Safety events stream (v2): `startMs` es el inicio real del evento
         // (ISO 8601 pese al nombre; o epoch ms) y `createdAtTime` cuando
         // Samsara lo registró. Sin ellos, el evento quedaba fechado a la hora
         // de recepción: tras una caída, todas las frenadas "ocurrían" al
         // recuperarse y la correlación alrededor del pánico mentía.
-        $timestamp = $payload['eventTime']
-            ?? $payload['data']['happenedAtTime']
-            ?? $payload['startMs']
-            ?? $payload['time']
-            ?? $payload['createdAtTime']
-            ?? $payload['occurred_at']
-            ?? null;
+        $candidates = [
+            'eventTime' => $payload['eventTime'] ?? null,
+            'data.happenedAtTime' => $payload['data']['happenedAtTime'] ?? null,
+            'startMs' => $payload['startMs'] ?? null,
+            'time' => $payload['time'] ?? null,
+            'createdAtTime' => $payload['createdAtTime'] ?? null,
+            'occurred_at' => $payload['occurred_at'] ?? null,
+        ];
+
+        $source = null;
+        $timestamp = null;
+
+        foreach ($candidates as $key => $candidate) {
+            if ($candidate !== null) {
+                $source = $key;
+                $timestamp = $candidate;
+                break;
+            }
+        }
 
         if ($timestamp === null) {
-            return null;
+            return ['value' => null, 'source' => null, 'parse_failed' => false];
         }
 
         if (is_int($timestamp) || (is_string($timestamp) && ctype_digit($timestamp))) {
@@ -168,13 +193,17 @@ class StoreRawEvent
             // Epoch en segundos (≤ 10 dígitos) o en milisegundos.
             $seconds = $value > 9_999_999_999 ? intdiv($value, 1000) : $value;
 
-            return (new \DateTimeImmutable('@'.$seconds))->setTimezone(new \DateTimeZone('UTC'));
+            return [
+                'value' => (new \DateTimeImmutable('@'.$seconds))->setTimezone(new \DateTimeZone('UTC')),
+                'source' => $source,
+                'parse_failed' => false,
+            ];
         }
 
         try {
-            return new \DateTimeImmutable($timestamp);
+            return ['value' => new \DateTimeImmutable($timestamp), 'source' => $source, 'parse_failed' => false];
         } catch (\Exception) {
-            return null;
+            return ['value' => null, 'source' => $source, 'parse_failed' => true];
         }
     }
 }

@@ -149,7 +149,7 @@ Un PR por fase, cada uno con tests que afirman sus códigos y con `assertNoSensi
 ### Fase 2 — Pipeline de entrada (Integrations → Ingestion → Normalization → Context)
 - **Webhook:**
   - `webhook.endpoint.not_found`;
-  - `webhook.received` (tamaño y tipo, nunca el payload);
+  - `webhook.event.received` (tamaño y tipo, nunca el payload);
   - `webhook.signature.verified` / `webhook.signature.rejected` con `reason` = `empty` \| `stale_timestamp` \| `hmac_mismatch` y `calc: {skew_seconds, tolerance_seconds, secret_variant}`;
   - `webhook.discarded` (`tenant_deleted`);
   - `webhook.ingested` (`provider_code_fallback`).

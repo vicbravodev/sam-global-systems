@@ -9,6 +9,7 @@ use App\Domains\Context\Models\EventMediaRequest;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
+use App\Support\SystemLog;
 
 class RequestDeferredEventMedia
 {
@@ -48,6 +49,15 @@ class RequestDeferredEventMedia
             ->first();
 
         if ($existing !== null) {
+            SystemLog::skipped('context.media.request_reused', reason: 'request_in_flight', input: [
+                'normalized_event_id' => $normalizedEvent->id,
+                'request_type' => $type->value,
+                'sweep_only' => $sweepOnly,
+            ], result: [
+                'event_media_request_id' => $existing->id,
+                'status' => $existing->status->value,
+            ]);
+
             return $existing;
         }
 
@@ -62,6 +72,12 @@ class RequestDeferredEventMedia
             'expires_at' => now()->addHours(6),
         ]);
 
+        SystemLog::ok('context.media.requested', input: [
+            'normalized_event_id' => $normalizedEvent->id,
+            'request_type' => $type->value,
+            'sweep_only' => $sweepOnly,
+        ], calc: ['expires_in_hours' => 6], result: ['event_media_request_id' => $request->id]);
+
         $this->recordUsage($request);
 
         FetchDeferredEventMediaJob::dispatch($request->id);
@@ -72,6 +88,11 @@ class RequestDeferredEventMedia
     private function recordUsage(EventMediaRequest $request): void
     {
         if (! UsageMeter::where('code', self::USAGE_METER_CODE)->exists()) {
+            SystemLog::degraded('context.usage.not_metered', reason: 'meter_missing', input: [
+                'meter_code' => self::USAGE_METER_CODE,
+                'event_media_request_id' => $request->id,
+            ]);
+
             return;
         }
 
@@ -87,5 +108,10 @@ class RequestDeferredEventMedia
             ],
             occurredAt: $request->requested_at,
         );
+
+        SystemLog::ok('context.usage.recorded', input: [
+            'meter_code' => self::USAGE_METER_CODE,
+            'event_media_request_id' => $request->id,
+        ]);
     }
 }

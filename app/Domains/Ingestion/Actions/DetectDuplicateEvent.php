@@ -5,6 +5,7 @@ namespace App\Domains\Ingestion\Actions;
 use App\Domains\Ingestion\Events\RawEventDuplicated;
 use App\Domains\Ingestion\Models\EventDeduplicationKey;
 use App\Domains\Ingestion\Models\RawEvent;
+use App\Support\SystemLog;
 
 class DetectDuplicateEvent
 {
@@ -14,8 +15,12 @@ class DetectDuplicateEvent
     public function execute(RawEvent $rawEvent): bool
     {
         $deduplicationKey = $rawEvent->deduplication_key ?? $rawEvent->checksum;
+        // Nunca se registra el valor de la clave (puede ser un checksum del payload): sólo su procedencia.
+        $dedupSource = $rawEvent->deduplication_key !== null ? 'deduplication_key' : 'checksum';
 
         if ($deduplicationKey === null) {
+            SystemLog::skipped('ingestion.dedup.skipped', reason: 'no_dedup_key', input: ['raw_event_id' => $rawEvent->id]);
+
             return false;
         }
 
@@ -26,7 +31,11 @@ class DetectDuplicateEvent
         if ($existingKey !== null) {
             if ($existingKey->isExpired()) {
                 $existingKey->delete();
+
+                SystemLog::ok('ingestion.dedup.key_expired', input: ['raw_event_id' => $rawEvent->id], result: ['expired_key_raw_event_id' => $existingKey->raw_event_id]);
             } else {
+                SystemLog::skipped('ingestion.duplicate.detected', reason: 'existing_key', input: ['raw_event_id' => $rawEvent->id, 'dedup_source' => $dedupSource], result: ['first_raw_event_id' => $existingKey->raw_event_id]);
+
                 return $this->markDuplicate($rawEvent, $deduplicationKey);
             }
         }
@@ -49,8 +58,12 @@ class DetectDuplicateEvent
         ]);
 
         if ($inserted === 0) {
+            SystemLog::skipped('ingestion.duplicate.detected', reason: 'lost_insert_race', input: ['raw_event_id' => $rawEvent->id, 'dedup_source' => $dedupSource]);
+
             return $this->markDuplicate($rawEvent, $deduplicationKey);
         }
+
+        SystemLog::ok('ingestion.dedup.key_registered', input: ['raw_event_id' => $rawEvent->id, 'dedup_source' => $dedupSource], calc: ['ttl_hours' => 24]);
 
         return false;
     }

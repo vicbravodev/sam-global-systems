@@ -8,6 +8,7 @@ use App\Domains\Context\Enums\MediaRequestType;
 use App\Domains\Context\Events\EventContextBuilt;
 use App\Domains\Context\Jobs\FetchDeferredEventMediaJob;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 
 /**
@@ -39,7 +40,18 @@ class RequestPanicMediaOnContextBuilt
             ->with('eventSeverity')
             ->find($snapshot->normalized_event_id);
 
-        if ($normalizedEvent === null || $normalizedEvent->eventSeverity?->code !== 'critical') {
+        if ($normalizedEvent === null) {
+            SystemLog::skipped('context.media.auto_request_skipped', reason: 'normalized_event_missing', input: ['snapshot_id' => $snapshot->id]);
+
+            return;
+        }
+
+        if ($normalizedEvent->eventSeverity?->code !== 'critical') {
+            SystemLog::skipped('context.media.auto_request_skipped', reason: 'not_critical', input: [
+                'normalized_event_id' => $normalizedEvent->id,
+                'severity_code' => $normalizedEvent->eventSeverity?->code,
+            ], debug: true);
+
             return;
         }
 
@@ -53,6 +65,11 @@ class RequestPanicMediaOnContextBuilt
         );
 
         if (! $enabled) {
+            SystemLog::skipped('context.media.auto_request_skipped', reason: 'setting_disabled', input: [
+                'normalized_event_id' => $normalizedEvent->id,
+                'setting_key' => self::SETTING_KEY,
+            ]);
+
             return;
         }
 

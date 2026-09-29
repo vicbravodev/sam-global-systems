@@ -17,10 +17,12 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 use Mockery;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class WebhookProcessingTest extends TestCase
 {
+    use AssertsSystemLog;
     use RefreshDatabase;
 
     private function createEndpointWithIntegration(): array
@@ -219,6 +221,151 @@ class WebhookProcessingTest extends TestCase
             'A webhook whose HMAC does not match the endpoint secret must be rejected',
         );
         $this->assertNull($webhookEvent->processed_at);
+    }
+
+    public function test_it_logs_ingested_webhook_with_raw_header_signature_mode(): void
+    {
+        [, , , , $endpoint] = $this->createEndpointWithIntegration();
+
+        $body = ['eventType' => 'AlertIncident', 'data' => ['id' => 42]];
+        $rawPayload = json_encode($body);
+        $timestamp = (string) now()->getTimestampMs();
+        $signature = 'v1='.hash_hmac('sha256', 'v1:'.$timestamp.':'.$rawPayload, $endpoint->secret);
+
+        $webhookEvent = WebhookEvent::withoutGlobalScopes()->create([
+            'team_id' => $endpoint->tenantIntegration->team_id,
+            'provider_id' => $endpoint->tenantIntegration->provider_id,
+            'event_type' => 'AlertIncident',
+            'payload_json' => $body,
+            'signature' => $signature,
+            'signature_timestamp' => $timestamp,
+            'raw_payload' => $rawPayload,
+            'received_at' => now(),
+            'status' => WebhookEventStatus::Received,
+        ]);
+
+        $mockIngestion = Mockery::mock(RawEventIngestion::class);
+        $mockIngestion->shouldReceive('ingest')->once();
+
+        (new ProcessWebhookEventJob($webhookEvent, $endpoint))->handle(app(ValidateWebhookSignature::class), $mockIngestion);
+
+        $this->assertSystemLogged('webhook.event.ingested', fn (array $c) => $c['input']['webhook_event_id'] === $webhookEvent->id
+            && $c['input']['signature_mode'] === 'raw_header'
+            && $c['input']['event_type'] === 'AlertIncident'
+            && $c['input']['event_type_valid'] === true
+            && $c['input']['provider_code'] === 'samsara'
+            && $c['result']['provider_code_fallback'] === false);
+        $this->assertSystemLogged('webhook.signature.verified');
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_it_logs_ingested_webhook_with_legacy_body_signature_mode(): void
+    {
+        [, , , , $endpoint] = $this->createEndpointWithIntegration();
+
+        $payload = ['event_type' => 'vehicle.updated', 'data' => ['id' => 42]];
+        $payload['signature'] = hash_hmac('sha256', json_encode(['event_type' => 'vehicle.updated', 'data' => ['id' => 42]]), $endpoint->secret);
+
+        $webhookEvent = WebhookEvent::withoutGlobalScopes()->create([
+            'team_id' => $endpoint->tenantIntegration->team_id,
+            'provider_id' => $endpoint->tenantIntegration->provider_id,
+            'event_type' => 'vehicle.updated',
+            'payload_json' => $payload,
+            'received_at' => now(),
+            'status' => WebhookEventStatus::Received,
+        ]);
+
+        $mockIngestion = Mockery::mock(RawEventIngestion::class);
+        $mockIngestion->shouldReceive('ingest')->once();
+
+        (new ProcessWebhookEventJob($webhookEvent, $endpoint))->handle(app(ValidateWebhookSignature::class), $mockIngestion);
+
+        $this->assertSystemLogged('webhook.event.ingested', fn (array $c) => $c['input']['signature_mode'] === 'legacy_body');
+    }
+
+    public function test_it_logs_rejected_webhook_with_invalid_signature(): void
+    {
+        [, , , , $endpoint] = $this->createEndpointWithIntegration();
+
+        $webhookEvent = WebhookEvent::withoutGlobalScopes()->create([
+            'team_id' => $endpoint->tenantIntegration->team_id,
+            'provider_id' => $endpoint->tenantIntegration->provider_id,
+            'event_type' => 'alert.triggered',
+            'payload_json' => ['event_type' => 'alert.triggered', 'signature' => 'bad-hash'],
+            'received_at' => now(),
+            'status' => WebhookEventStatus::Received,
+        ]);
+
+        (new ProcessWebhookEventJob($webhookEvent, $endpoint))->handle(app(ValidateWebhookSignature::class), app(RawEventIngestion::class));
+
+        $this->assertSystemLogged('webhook.event.rejected', fn (array $c) => $c['reason'] === 'invalid_signature'
+            && $c['input']['webhook_event_id'] === $webhookEvent->id
+            && $c['input']['signature_mode'] === 'legacy_body'
+            && $c['input']['event_type'] === 'alert.triggered'
+            && $c['input']['event_type_valid'] === true);
+        $this->assertSystemLogged('webhook.signature.rejected', fn (array $c) => $c['reason'] === 'hmac_mismatch');
+        $this->assertSystemNotLogged('webhook.event.ingested');
+        $this->assertStringNotContainsString('bad-hash', json_encode($this->systemLogEntries()));
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_it_does_not_log_attacker_controlled_event_type_on_rejection(): void
+    {
+        [, , , , $endpoint] = $this->createEndpointWithIntegration();
+
+        foreach (["x\ninjected", str_repeat('a', 200)] as $eventType) {
+            $webhookEvent = WebhookEvent::withoutGlobalScopes()->create([
+                'team_id' => $endpoint->tenantIntegration->team_id,
+                'provider_id' => $endpoint->tenantIntegration->provider_id,
+                'event_type' => $eventType,
+                'payload_json' => ['signature' => 'bad-hash'],
+                'received_at' => now(),
+                'status' => WebhookEventStatus::Received,
+            ]);
+
+            (new ProcessWebhookEventJob($webhookEvent, $endpoint))->handle(app(ValidateWebhookSignature::class), app(RawEventIngestion::class));
+        }
+
+        $entries = $this->systemLogEntries('webhook.event.rejected');
+        $this->assertCount(2, $entries);
+
+        foreach ($entries as $entry) {
+            $this->assertNull($entry['context']['input']['event_type'] ?? null);
+            $this->assertFalse($entry['context']['input']['event_type_valid']);
+        }
+
+        $this->assertStringNotContainsString('injected', json_encode($this->systemLogEntries()));
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_it_does_not_log_attacker_controlled_event_type_on_ingestion(): void
+    {
+        [, , , , $endpoint] = $this->createEndpointWithIntegration();
+
+        $payload = ['data' => ['id' => 42]];
+        $payload['signature'] = hash_hmac('sha256', json_encode(['data' => ['id' => 42]]), $endpoint->secret);
+
+        $webhookEvent = WebhookEvent::withoutGlobalScopes()->create([
+            'team_id' => $endpoint->tenantIntegration->team_id,
+            'provider_id' => $endpoint->tenantIntegration->provider_id,
+            // Viene de la query string, fuera del HMAC.
+            'event_type' => "x\ninjected",
+            'payload_json' => $payload,
+            'received_at' => now(),
+            'status' => WebhookEventStatus::Received,
+        ]);
+
+        $mockIngestion = Mockery::mock(RawEventIngestion::class);
+        $mockIngestion->shouldReceive('ingest')->once();
+
+        (new ProcessWebhookEventJob($webhookEvent, $endpoint))->handle(app(ValidateWebhookSignature::class), $mockIngestion);
+
+        $c = $this->assertSystemLogged('webhook.event.ingested');
+        $this->assertNull($c['input']['event_type']);
+        $this->assertFalse($c['input']['event_type_valid']);
+        $this->assertSame('samsara', $c['input']['provider_code']);
+        $this->assertStringNotContainsString('injected', json_encode($this->systemLogEntries()));
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_it_dispatches_process_webhook_event_job_on_receipt(): void

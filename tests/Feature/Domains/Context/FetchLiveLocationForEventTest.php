@@ -21,10 +21,12 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class FetchLiveLocationForEventTest extends TestCase
 {
+    use AssertsSystemLog;
     use RefreshDatabase;
 
     private int $teamId;
@@ -155,6 +157,145 @@ class FetchLiveLocationForEventTest extends TestCase
         $this->assertTrue($snapshot->telemetry_snapshot_json['position_stale']);
     }
 
+    public function test_logs_skip_when_event_has_no_asset(): void
+    {
+        $event = NormalizedEvent::factory()->create(['team_id' => $this->teamId, 'asset_id' => null]);
+
+        app(FetchLiveLocationForEvent::class)->execute($event);
+
+        $c = $this->assertSystemLogged('context.live_location.skipped', fn (array $c) => $c['reason'] === 'no_asset');
+        $this->assertSame($event->id, $c['input']['normalized_event_id']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_logs_skip_when_severity_is_not_critical(): void
+    {
+        $event = $this->makeEvent(severityCode: 'high');
+
+        app(FetchLiveLocationForEvent::class)->execute($event);
+
+        $c = $this->assertSystemLogged('context.live_location.skipped', fn (array $c) => $c['reason'] === 'not_critical');
+        $this->assertSame('high', $c['input']['severity_code']);
+        $this->assertSame('debug', $this->systemLogEntries('context.live_location.skipped')[0]['level']);
+    }
+
+    public function test_logs_skip_when_payload_has_gps_without_coordinates(): void
+    {
+        $event = $this->makeEvent(severityCode: 'critical', payload: [
+            'event_type' => 'panic_button',
+            'location' => ['latitude' => 19.123456, 'longitude' => -98.654321],
+        ]);
+
+        app(FetchLiveLocationForEvent::class)->execute($event);
+
+        $this->assertSystemLogged('context.live_location.skipped', fn (array $c) => $c['reason'] === 'payload_has_gps');
+        $json = json_encode($this->systemLogEntries());
+        $this->assertStringNotContainsString('19.123456', $json);
+        $this->assertStringNotContainsString('98.654321', $json);
+    }
+
+    public function test_logs_skip_when_latest_location_is_fresh(): void
+    {
+        $this->travelTo(now()->startOfSecond());
+        AssetLocationSnapshot::factory()->create([
+            'asset_id' => $this->asset->id,
+            'recorded_at' => now()->subSeconds(10),
+        ]);
+
+        app(FetchLiveLocationForEvent::class)->execute($this->makeEvent(severityCode: 'critical'));
+
+        $c = $this->assertSystemLogged('context.live_location.skipped', fn (array $c) => $c['reason'] === 'latest_location_fresh');
+        $this->assertSame(10, $c['calc']['latest_age_seconds']);
+        $this->assertSame(60, $c['calc']['staleness_threshold_seconds']);
+    }
+
+    public function test_logs_fetched_with_ages_and_no_coordinates(): void
+    {
+        $this->travelTo(now()->startOfSecond());
+        $this->makeStaleLocation(minutesAgo: 10);
+        $this->makeSamsaraIntegration();
+        $this->fakeLiveLocationResponse();
+
+        $result = app(FetchLiveLocationForEvent::class)->execute($this->makeEvent(severityCode: 'critical'));
+
+        $this->assertSame('live_fetch', $result['location']['source']);
+        $this->assertFalse($result['position_stale']);
+        $c = $this->assertSystemLogged('context.live_location.fetched');
+        $this->assertSame(600, $c['calc']['latest_age_seconds']);
+        $this->assertSame(60, $c['calc']['staleness_threshold_seconds']);
+        $this->assertSame(0, $c['calc']['fix_age_seconds']);
+        $this->assertFalse($c['result']['position_stale']);
+        $this->assertTrue($c['result']['snapshot_updated']);
+        $this->assertSame('provider', $c['calc']['fix_time_source']);
+        $this->assertNoSensitiveDataLogged();
+        $json = json_encode($this->systemLogEntries());
+        $this->assertStringNotContainsString('19.4326077', $json);
+        $this->assertStringNotContainsString('99.133208', $json);
+    }
+
+    public function test_the_same_fix_fetched_twice_does_not_claim_a_second_write(): void
+    {
+        $this->travelTo(now()->startOfSecond());
+        $this->makeStaleLocation(minutesAgo: 10);
+        $this->makeSamsaraIntegration();
+        $this->fakeLiveLocationResponse(time: now()->subMinutes(5)->toIso8601String());
+
+        app(FetchLiveLocationForEvent::class)->execute($this->makeEvent(severityCode: 'critical'));
+        app(FetchLiveLocationForEvent::class)->execute($this->makeEvent(severityCode: 'critical'));
+
+        $lines = $this->systemLogEntries('context.live_location.fetched');
+        $this->assertCount(2, $lines);
+        $this->assertTrue($lines[0]['context']['result']['snapshot_updated']);
+        $this->assertFalse($lines[1]['context']['result']['snapshot_updated']);
+        $this->assertSame(300, $lines[1]['context']['calc']['fix_age_seconds']);
+        $this->assertSame(2, AssetLocationSnapshot::where('asset_id', $this->asset->id)->count());
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_fix_without_provider_time_is_not_given_an_age(): void
+    {
+        $this->makeStaleLocation(minutesAgo: 10);
+        $this->makeSamsaraIntegration();
+        $this->fakeLiveLocationResponse(time: null);
+
+        app(FetchLiveLocationForEvent::class)->execute($this->makeEvent(severityCode: 'critical'));
+
+        $c = $this->assertSystemLogged('context.live_location.fetched');
+        $this->assertNull($c['calc']['fix_age_seconds']);
+        $this->assertSame('assumed_now', $c['calc']['fix_time_source']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_logs_failed_when_provider_returns_nothing(): void
+    {
+        $this->makeStaleLocation();
+        $this->makeSamsaraIntegration();
+        Http::fake(fn () => throw new ConnectionException('cURL error 28: timed out'));
+
+        app(FetchLiveLocationForEvent::class)->execute($this->makeEvent(severityCode: 'critical'));
+
+        $c = $this->assertSystemLogged('context.live_location.failed', fn (array $c) => $c['reason'] === 'provider_returned_nothing');
+        $this->assertSame(1, $c['calc']['references']);
+        $this->assertSame(1, $c['calc']['integrations_tried']);
+        $this->assertSame(60, $c['calc']['staleness_threshold_seconds']);
+        $this->assertTrue($c['result']['position_stale']);
+        $this->assertSame($this->asset->id, $c['input']['asset_id']);
+    }
+
+    public function test_logs_failed_without_active_integration(): void
+    {
+        $this->makeStaleLocation();
+        $otherUser = User::factory()->create();
+        $this->makeSamsaraIntegration(teamId: $otherUser->currentTeam->id);
+        Http::fake();
+
+        app(FetchLiveLocationForEvent::class)->execute($this->makeEvent(severityCode: 'critical'));
+
+        $c = $this->assertSystemLogged('context.live_location.failed', fn (array $c) => $c['reason'] === 'no_active_integration');
+        $this->assertSame(1, $c['calc']['references']);
+        $this->assertSame(0, $c['calc']['integrations_tried']);
+    }
+
     /**
      * @param  array<string, mixed>|null  $payload
      */
@@ -207,20 +348,25 @@ class FetchLiveLocationForEventTest extends TestCase
         return $integration;
     }
 
-    private function fakeLiveLocationResponse(): void
+    private function fakeLiveLocationResponse(?string $time = 'now'): void
     {
+        $location = [
+            'latitude' => 19.4326077,
+            'longitude' => -99.133208,
+            'speed' => 0.0,
+            'heading' => 90,
+        ];
+
+        if ($time !== null) {
+            $location['time'] = $time === 'now' ? now()->toIso8601String() : $time;
+        }
+
         Http::fake([
             'api.samsara.com/fleet/vehicles/locations*' => Http::response([
                 'data' => [
                     [
                         'id' => 'veh-1',
-                        'location' => [
-                            'latitude' => 19.4326077,
-                            'longitude' => -99.133208,
-                            'speed' => 0.0,
-                            'heading' => 90,
-                            'time' => now()->toIso8601String(),
-                        ],
+                        'location' => $location,
                     ],
                 ],
             ], 200),

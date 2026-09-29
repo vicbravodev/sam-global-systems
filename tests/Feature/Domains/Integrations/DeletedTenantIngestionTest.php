@@ -24,6 +24,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Queue;
 use Mockery;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 /**
@@ -33,6 +34,7 @@ use Tests\TestCase;
  */
 class DeletedTenantIngestionTest extends TestCase
 {
+    use AssertsSystemLog;
     use RefreshDatabase;
 
     private function integration(Team $team): TenantIntegration
@@ -98,6 +100,9 @@ class DeletedTenantIngestionTest extends TestCase
         (new ProcessWebhookEventJob($event, $endpoint))->handle(app(ValidateWebhookSignature::class), $ingestion);
 
         $this->assertSame(WebhookEventStatus::Failed, $event->fresh()->status);
+        $this->assertSystemLogged('webhook.event.discarded', fn (array $c) => $c['reason'] === 'tenant_deleted' && $c['input']['webhook_event_id'] === $event->id);
+        $this->assertSystemNotLogged('webhook.event.ingested');
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_scheduled_pollers_skip_deleted_tenants(): void
