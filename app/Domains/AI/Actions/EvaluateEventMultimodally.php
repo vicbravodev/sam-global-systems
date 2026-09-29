@@ -145,7 +145,7 @@ class EvaluateEventMultimodally
                 }
 
                 // Misma cuota que el texto: un evento crítico siempre pasa.
-                if ($event !== null && $this->quota->blocks($event, $profile)) {
+                if ($event !== null && $this->quota->blocks($event, $profile, 'vision')) {
                     SystemLog::skipped('ai.media.assessment_skipped', reason: 'quota_exceeded', input: ['evaluation_id' => $evaluation->id, 'event_media_context_id' => $media->id]);
 
                     continue;

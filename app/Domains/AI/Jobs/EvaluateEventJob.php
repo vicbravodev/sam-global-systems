@@ -8,6 +8,7 @@ use App\Domains\AI\Support\AIEvaluationGate;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Support\JobFailureReporter;
 use App\Support\PipelineTrace;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -47,22 +48,27 @@ class EvaluateEventJob implements ShouldBeUnique, ShouldQueue
             ->find($this->normalizedEventId);
 
         if ($normalizedEvent === null) {
+            SystemLog::skipped('ai.evaluation.skipped', reason: 'normalized_event_missing', input: ['normalized_event_id' => $this->normalizedEventId]);
+
             return;
         }
 
         PipelineTrace::adopt($normalizedEvent->trace_id, $normalizedEvent->team_id, ['normalized_event_id' => $normalizedEvent->id]);
 
-        if (! $gate->shouldEvaluate($normalizedEvent)) {
+        if (! $gate->allows($normalizedEvent, 'evaluate_job')) {
             return;
         }
 
         // Entra en el tenant del evento: la evaluación lee el perfil de IA del
         // tenant, su contexto y su cuota. Ver §2.1.
         TenantContext::for($normalizedEvent->team_id, function () use ($normalizedEvent, $evaluateEventWithAI) {
-            if (AIEventEvaluation::query()
+            $existingId = AIEventEvaluation::query()
                 ->where('normalized_event_id', $normalizedEvent->id)
-                ->exists()
-            ) {
+                ->value('id');
+
+            if ($existingId !== null) {
+                SystemLog::skipped('ai.evaluation.already_exists', reason: 'evaluation_exists', input: ['normalized_event_id' => $normalizedEvent->id], result: ['existing_evaluation_id' => $existingId]);
+
                 return;
             }
 

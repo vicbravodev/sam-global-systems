@@ -63,7 +63,7 @@ class ReevaluateEventJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
 
         PipelineTrace::adopt($normalizedEvent->trace_id, $normalizedEvent->team_id, ['normalized_event_id' => $normalizedEvent->id]);
 
-        if (! $gate->shouldEvaluate($normalizedEvent)) {
+        if (! $gate->allows($normalizedEvent, 'reevaluate_job')) {
             return;
         }
 

@@ -16,10 +16,12 @@ use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Models\User;
 use Database\Seeders\AIMeterSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class EvaluateEventWithAITest extends TestCase
 {
+    use AssertsSystemLog;
     use RefreshDatabase;
 
     protected function setUp(): void
@@ -51,6 +53,35 @@ class EvaluateEventWithAITest extends TestCase
         $this->assertTrue(AIDecisionSignal::where('evaluation_id', $evaluation->id)->exists());
         $this->assertTrue(AIInferenceLog::where('evaluation_id', $evaluation->id)->exists());
         $this->assertTrue(AIRecommendedAction::where('evaluation_id', $evaluation->id)->exists());
+
+        $ctx = $this->assertSystemLogged('ai.heuristics.evaluated');
+        $this->assertNull($ctx['calc']['signature_source']);
+        $this->assertNull($ctx['calc']['noise_match']);
+        $this->assertFalse($ctx['calc']['duplicates_signal_present']);
+        $this->assertNull($ctx['calc']['recent_duplicates_count']);
+        $this->assertSame(3, $ctx['calc']['duplicate_threshold']);
+        $this->assertSame(4, $ctx['calc']['known_noise_signatures_count']);
+        $this->assertSame(['payload.signature', 'signals.recent_duplicates_count'], $ctx['calc']['signals_missing']);
+        $this->assertFalse($ctx['result']['short_circuit']);
+        $this->assertNull($ctx['result']['rule']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_free_form_signature_value_is_never_logged(): void
+    {
+        $user = User::factory()->create();
+        $event = NormalizedEvent::factory()->create([
+            'team_id' => $user->currentTeam->id,
+            'payload_normalized_json' => ['severity' => 'low', 'signature' => 'algo-libre-xyz'],
+        ]);
+
+        app(EvaluateEventWithAI::class)->execute($event);
+
+        $ctx = $this->assertSystemLogged('ai.heuristics.evaluated');
+        $this->assertSame('signature', $ctx['calc']['signature_source']);
+        $this->assertNull($ctx['calc']['noise_match']);
+        $this->assertSame(['signals.recent_duplicates_count'], $ctx['calc']['signals_missing']);
+        $this->assertStringNotContainsString('algo-libre-xyz', json_encode($this->systemLogEntries()));
     }
 
     public function test_false_positive_short_circuit_via_known_noise_signature(): void
@@ -77,6 +108,13 @@ class EvaluateEventWithAITest extends TestCase
             $evaluation->signals_json['reasoning_steps'],
         );
         $this->assertSame('known_noise_signature:heartbeat', $evaluation->signals_json['key_factors']['rule_reason']);
+
+        $ctx = $this->assertSystemLogged('ai.heuristics.evaluated');
+        $this->assertSame($event->id, $ctx['input']['normalized_event_id']);
+        $this->assertSame('signature', $ctx['calc']['signature_source']);
+        $this->assertSame('heartbeat', $ctx['calc']['noise_match']);
+        $this->assertTrue($ctx['result']['short_circuit']);
+        $this->assertSame('known_noise_signature', $ctx['result']['rule']);
     }
 
     public function test_fallback_to_rules_only_when_agent_throws(): void

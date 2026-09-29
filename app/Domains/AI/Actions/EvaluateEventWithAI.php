@@ -404,7 +404,7 @@ class EvaluateEventWithAI
      */
     private function quotaExceeded(NormalizedEvent $event, TenantAIProfileData $profile): bool
     {
-        return app(TenantAIQuota::class)->blocks($event, $profile);
+        return app(TenantAIQuota::class)->blocks($event, $profile, 'text');
     }
 
     private function recordCallUsage(AIEventEvaluation $evaluation): void

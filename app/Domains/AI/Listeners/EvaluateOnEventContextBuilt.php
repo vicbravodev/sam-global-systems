@@ -20,7 +20,7 @@ class EvaluateOnEventContextBuilt
             ->with(['eventCategory', 'eventType'])
             ->find($event->snapshot->normalized_event_id);
 
-        if ($normalizedEvent === null || ! $this->gate->shouldEvaluate($normalizedEvent)) {
+        if ($normalizedEvent === null || ! $this->gate->allows($normalizedEvent, 'context_listener')) {
             return;
         }
 

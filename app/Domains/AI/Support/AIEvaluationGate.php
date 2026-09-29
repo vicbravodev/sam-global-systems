@@ -3,6 +3,7 @@
 namespace App\Domains\AI\Support;
 
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Support\SystemLog;
 
 /**
  * Decides whether a normalized event should be analyzed by the AI pipeline.
@@ -52,18 +53,55 @@ class AIEvaluationGate
 
     public function shouldEvaluate(NormalizedEvent $event): bool
     {
+        return $this->skipReason($event) === null;
+    }
+
+    /**
+     * Why the event is skipped (`skip_type` | `skip_category`), or null when it
+     * should be evaluated. Pure: same logic `shouldEvaluate` always had.
+     */
+    public function skipReason(NormalizedEvent $event): ?string
+    {
         $typeCode = $event->eventType?->code;
 
         if ($typeCode !== null && in_array($typeCode, $this->skipEventTypes, true)) {
-            return false;
+            return 'skip_type';
         }
 
         $categoryCode = $event->eventCategory?->code;
 
-        if ($categoryCode === null) {
+        if ($categoryCode !== null && in_array($categoryCode, $this->skipCategories, true)) {
+            return 'skip_category';
+        }
+
+        return null;
+    }
+
+    /**
+     * `shouldEvaluate` plus the narrative log line when the event is skipped.
+     * `$stage` names the caller: context_listener | evaluate_job | reevaluate_job.
+     */
+    public function allows(NormalizedEvent $event, string $stage): bool
+    {
+        $reason = $this->skipReason($event);
+
+        if ($reason === null) {
             return true;
         }
 
-        return ! in_array($categoryCode, $this->skipCategories, true);
+        SystemLog::skipped(
+            'ai.gate.skipped',
+            reason: $reason,
+            input: [
+                'normalized_event_id' => $event->id,
+                'event_type_code' => $event->eventType?->code,
+                'category_code' => $event->eventCategory?->code,
+                'stage' => $stage,
+            ],
+            calc: ['config_key' => $reason === 'skip_type' ? 'ai.skip_evaluation_event_types' : 'ai.skip_evaluation_categories'],
+            result: ['evaluated' => false, 'decision_engine_runs' => false],
+        );
+
+        return false;
     }
 }
