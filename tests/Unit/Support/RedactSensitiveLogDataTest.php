@@ -47,6 +47,11 @@ class RedactSensitiveLogDataTest extends TestCase
             'discordapp' => ['POST https://discordapp.com/api/webhooks/123456/tok-SECRET_abc?wait=true failed', 'POST https://discordapp.com/[redacted] failed'],
             'zapier' => ['to https://hooks.zapier.com/hooks/catch/123/abcSECRET/ failed', 'to https://hooks.zapier.com/[redacted] failed'],
             'office webhook subdomain' => ['to https://acme.webhook.office.com/webhookb2/uuid@uuid/IncomingWebhook/SECRET/uuid failed', 'to https://acme.webhook.office.com/[redacted] failed'],
+            'ptb discord' => ['POST https://ptb.discord.com/api/webhooks/1/x failed', 'POST https://ptb.discord.com/[redacted] failed'],
+            'canary discord' => ['POST https://canary.discord.com/api/webhooks/1/x failed', 'POST https://canary.discord.com/[redacted] failed'],
+            'custom tenant webhook' => ['https://example.org/hooks/tenant-7/s3cr3t', 'https://example.org/[redacted]'],
+            'custom webhook with port' => ['http://10.0.0.5:8080/hook/abc', 'http://10.0.0.5:8080/[redacted]'],
+            'curl sentence' => ['cURL error 28: timed out for https://example.org/hooks/t/s3cr3t', 'cURL error 28: timed out for https://example.org/[redacted]'],
             'outlook webhook' => ['to https://outlook.office.com/webhook/uuid@uuid/IncomingWebhook/SECRET/uuid failed', 'to https://outlook.office.com/[redacted] failed'],
         ];
     }
@@ -57,10 +62,16 @@ class RedactSensitiveLogDataTest extends TestCase
         $this->assertSame($expected, RedactSensitiveLogData::sanitize($input));
     }
 
-    public function test_sanitize_keeps_the_path_of_non_webhook_urls(): void
+    public function test_sanitize_keeps_the_path_of_allowlisted_provider_urls_and_bare_hosts(): void
     {
         $this->assertSame('GET https://api.samsara.com/fleet/vehicles failed', RedactSensitiveLogData::sanitize('GET https://api.samsara.com/fleet/vehicles failed'));
-        $this->assertSame('GET https://discord.com/channels/1 failed', RedactSensitiveLogData::sanitize('GET https://discord.com/channels/1 failed'));
+        $this->assertSame('GET https://api.samsara.com/fleet/vehicles/stats?[redacted] failed', RedactSensitiveLogData::sanitize('GET https://api.samsara.com/fleet/vehicles/stats?after=x failed'));
+        $this->assertSame('GET https://example.org failed', RedactSensitiveLogData::sanitize('GET https://example.org failed'));
+    }
+
+    public function test_sanitize_redacts_the_path_of_any_non_allowlisted_host(): void
+    {
+        $this->assertSame('GET https://discord.com/[redacted] failed', RedactSensitiveLogData::sanitize('GET https://discord.com/channels/1 failed'));
     }
 
     /**

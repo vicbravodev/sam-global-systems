@@ -67,12 +67,6 @@ final class RedactSensitiveLogData implements ProcessorInterface
         'secret', 'private', 'access', 'signing', 'api', 'encryption', 'client', 'master',
     ];
 
-    /**
-     * URL de un host de webhooks conocido: se conserva esquema y host, el
-     * path y la query se sustituyen enteros.
-     */
-    private const string WEBHOOK_URL = '~(https?://(?:hooks\\.slack\\.com|(?:discord|discordapp)\\.com(?=/api/webhooks)|hooks\\.zapier\\.com|(?:[a-z0-9-]+\\.)+webhook\\.office\\.com|outlook\\.office\\.com(?=/webhook)))/[^\\s"\']*~i';
-
     public function __invoke(LogRecord $record): LogRecord
     {
         return $record->with(
@@ -87,8 +81,22 @@ final class RedactSensitiveLogData implements ProcessorInterface
      */
     public static function sanitize(string $text): string
     {
-        // En un webhook entrante (Slack, Discord, Zapier, Teams) el path ES la credencial.
-        $text = (string) preg_replace(self::WEBHOOK_URL, '$1/'.self::MASK, $text);
+        // En un webhook (propio del tenant, Slack, Discord, Zapier, Teams) el path ES la
+        // credencial: sólo se conserva el de los proveedores de la allowlist.
+        $text = (string) preg_replace_callback(
+            '~(https?://)([^\s/?#"\']+)([/?#][^\s"\']*)?~i',
+            static function (array $match): string {
+                $authority = (string) preg_replace('/^[^@]*@/', '', $match[2]);
+                $host = strtolower((string) preg_replace('/:\d+$/', '', $authority));
+
+                if (AutomaticSystemLog::isPathAllowedHost($host)) {
+                    return $match[0];
+                }
+
+                return $match[1].$authority.(($match[3] ?? '') === '' ? '' : '/'.self::MASK);
+            },
+            $text,
+        );
         $text = (string) preg_replace('/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i', '[email]', $text);
         $text = (string) preg_replace('~(https?://[^\s?#"\']+)\?[^\s"\'#]*~i', '$1?'.self::MASK, $text);
         $text = (string) preg_replace('/\b(Bearer|Basic)\s+[A-Za-z0-9._~+\/=-]+/i', '$1 '.self::MASK, $text);

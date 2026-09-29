@@ -31,7 +31,7 @@ final class AutomaticSystemLog
      *
      * @var array<string, string>
      */
-    private const array PROVIDERS = [
+    public const array PROVIDERS = [
         'samsara.com' => 'samsara',
         'twilio.com' => 'twilio',
         'openai.com' => 'openai',
@@ -47,7 +47,7 @@ final class AutomaticSystemLog
      *
      * @var list<string>
      */
-    private const array PATH_ALLOWED_PROVIDERS = ['samsara', 'twilio', 'openai', 'anthropic', 's3'];
+    public const array PATH_ALLOWED_PROVIDERS = ['samsara', 'twilio', 'openai', 'anthropic', 's3'];
 
     /**
      * @var array<int, int> spl_object_id(job) → hrtime de inicio
@@ -183,20 +183,35 @@ final class AutomaticSystemLog
     }
 
     /**
+     * ¿El host es de un proveedor cuyo path es un endpoint de API (allowlist)?
+     * Fuente única para `httpInput` y para `RedactSensitiveLogData`.
+     */
+    public static function isPathAllowedHost(string $host): bool
+    {
+        return self::providerForHost($host) !== 'other'
+            && in_array(self::providerForHost($host), self::PATH_ALLOWED_PROVIDERS, true);
+    }
+
+    private static function providerForHost(string $host): string
+    {
+        $host = strtolower($host);
+
+        foreach (self::PROVIDERS as $suffix => $name) {
+            if ($host === $suffix || str_ends_with($host, '.'.$suffix)) {
+                return $name;
+            }
+        }
+
+        return 'other';
+    }
+
+    /**
      * @return array{provider: string, method: string, host: string, path?: string, path_hash?: string}
      */
     private static function httpInput(string $url, string $method): array
     {
         $host = strtolower((string) parse_url($url, PHP_URL_HOST));
-        $provider = 'other';
-
-        foreach (self::PROVIDERS as $suffix => $name) {
-            if ($host === $suffix || str_ends_with($host, '.'.$suffix)) {
-                $provider = $name;
-
-                break;
-            }
-        }
+        $provider = self::providerForHost($host);
 
         $path = (string) (parse_url($url, PHP_URL_PATH) ?: '/');
 

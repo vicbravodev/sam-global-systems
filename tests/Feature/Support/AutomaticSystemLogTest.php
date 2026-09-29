@@ -114,6 +114,19 @@ class AutomaticSystemLogTest extends TestCase
         $this->assertStringNotContainsString('XyZsecret123', (string) json_encode($failed));
     }
 
+    public function test_custom_webhook_connection_failures_never_log_the_secret_in_the_error(): void
+    {
+        Http::fake(fn () => Http::failedConnection('cURL error 28: Operation timed out for https://example.org/hooks/tenant-7/s3cr3tSegment'));
+
+        try {
+            Http::post('https://example.org/hooks/tenant-7/s3cr3tSegment', ['text' => 'hola']);
+        } catch (ConnectionException) {
+        }
+
+        $failed = $this->assertSystemLogged('http.client.request.failed');
+        $this->assertStringNotContainsString('s3cr3tSegment', (string) json_encode($failed));
+    }
+
     public function test_http_inside_a_telematics_job_goes_to_the_telematics_channel_at_debug(): void
     {
         Http::fake(['api.samsara.com/*' => Http::response(['data' => []], 200)]);

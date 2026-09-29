@@ -45,12 +45,12 @@ class SystemLogTest extends TestCase
 
     public function test_errors_are_described_safely(): void
     {
-        SystemLog::degraded('media.download.failed', reason: 'http_error', error: new RuntimeException('GET https://x.s3/a.jpg?sig=1 → 403'));
+        SystemLog::degraded('media.download.failed', reason: 'http_error', error: new RuntimeException('GET https://x.s3.amazonaws.com/a.jpg?sig=1 → 403'));
 
         $ctx = $this->assertSystemLogged('media.download.failed');
 
         $this->assertSame(RuntimeException::class, $ctx['error']['class']);
-        $this->assertSame('GET https://x.s3/a.jpg?[redacted] → 403', $ctx['error']['message']);
+        $this->assertSame('GET https://x.s3.amazonaws.com/a.jpg?[redacted] → 403', $ctx['error']['message']);
     }
 
     public function test_invalid_codes_and_missing_reasons_throw_outside_production(): void

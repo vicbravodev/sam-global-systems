@@ -16,13 +16,13 @@ class SafeExceptionTest extends TestCase
 {
     public function test_describes_class_code_location_and_sanitized_message(): void
     {
-        $e = new RuntimeException('GET https://bucket.s3/x.jpg?X-Amz-Signature=secret failed for a@b.co', 42, new LogicException('inner'));
+        $e = new RuntimeException('GET https://bucket.s3.amazonaws.com/x.jpg?X-Amz-Signature=secret failed for a@b.co', 42, new LogicException('inner'));
 
         $d = SafeException::describe($e);
 
         $this->assertSame(RuntimeException::class, $d['class']);
         $this->assertSame(42, $d['code']);
-        $this->assertSame('GET https://bucket.s3/x.jpg?[redacted] failed for [email]', $d['message']);
+        $this->assertSame('GET https://bucket.s3.amazonaws.com/x.jpg?[redacted] failed for [email]', $d['message']);
         $this->assertStringContainsString('SafeExceptionTest.php:', $d['at']);
         $this->assertStringStartsNotWith('/', $d['at']);
         $this->assertSame(LogicException::class, $d['previous']);
