@@ -348,4 +348,32 @@ class AssignOnCallOnIncidentCreatedTest extends TestCase
         $this->assertSystemNotLogged('incidents.on_call.notified');
         $this->assertSystemLogged('incidents.type.resolved');
     }
+
+    public function test_a_malformed_later_shift_never_rolls_back_incident_creation(): void
+    {
+        $this->makeScheduleProfile([
+            'on_call' => [
+                ['user_id' => $this->operator->id],
+                ['user_id' => $this->operator->id, 'days' => [['mon']]],
+            ],
+        ]);
+
+        $event = NormalizedEvent::factory()->create(['team_id' => $this->team->id]);
+
+        $incident = app(CreateIncidentFromEvent::class)->execute($event, ['priority_code' => 'critical']);
+
+        $this->assertTrue(Incident::withoutGlobalScopes()->whereKey($incident->id)->exists());
+        $this->assertSame(
+            $this->operator->id,
+            (int) IncidentAssignment::query()->where('incident_id', $incident->id)->whereNull('unassigned_at')->sole()->assigned_to_id,
+        );
+
+        $c = $this->assertSystemLogged('incidents.assignment.resolved', fn (array $c) => $c['outcome'] === 'ok'
+            && $c['input']['incident_id'] === $incident->id);
+        $this->assertSame(2, $c['calc']['shifts_count']);
+        $this->assertSame(1, $c['calc']['shifts_matched_count']);
+        $this->assertSame(1, $c['calc']['malformed_shifts_count']);
+        $this->assertSame(0, $c['calc']['matched_shift_index']);
+        $this->assertNoSensitiveDataLogged();
+    }
 }

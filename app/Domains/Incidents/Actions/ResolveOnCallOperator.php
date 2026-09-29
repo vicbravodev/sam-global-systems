@@ -55,6 +55,7 @@ class ResolveOnCallOperator
             'shifts_count' => 0,
             'matched_shift_index' => null,
             'shifts_matched_count' => 0,
+            'malformed_shifts_count' => 0,
             'non_member_skipped_count' => 0,
             'fallback_configured' => false,
             'fallback_is_member' => null,
@@ -78,11 +79,20 @@ class ResolveOnCallOperator
         $calc['shifts_count'] = count($shifts);
 
         // Pure pass (no queries): every shift that matches the schedule,
-        // whether or not its user is still a member.
-        $calc['shifts_matched_count'] = count(array_filter(
-            $shifts,
-            fn ($shift) => $this->isCandidate($shift, $localized),
-        ));
+        // whether or not its user is still a member. It must never throw
+        // (it runs inside the incident-creation transaction): a malformed
+        // shift is counted apart and never as matched.
+        foreach ($shifts as $shift) {
+            if (is_array($shift) && $this->isMalformed($shift)) {
+                $calc['malformed_shifts_count']++;
+
+                continue;
+            }
+
+            if ($this->isCandidate($shift, $localized)) {
+                $calc['shifts_matched_count']++;
+            }
+        }
 
         foreach (array_values($shifts) as $index => $shift) {
             if (! $this->isCandidate($shift, $localized)) {
@@ -122,6 +132,34 @@ class ResolveOnCallOperator
         return is_array($shift)
             && is_numeric($shift['user_id'] ?? null)
             && $this->shiftMatches($shift, $at);
+    }
+
+    /**
+     * A shift whose `days` holds non-string entries or whose `start`/`end`
+     * are present but not strings. Only the counting pass uses it: the
+     * winner loop keeps evaluating shifts exactly as before.
+     *
+     * @param  array<mixed>  $shift
+     */
+    private function isMalformed(array $shift): bool
+    {
+        $days = $shift['days'] ?? null;
+
+        if (is_array($days)) {
+            foreach ($days as $day) {
+                if (! is_string($day)) {
+                    return true;
+                }
+            }
+        }
+
+        foreach (['start', 'end'] as $key) {
+            if (isset($shift[$key]) && ! is_string($shift[$key])) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
