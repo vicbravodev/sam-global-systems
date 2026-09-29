@@ -12,6 +12,8 @@ use App\Domains\Notifications\Events\NotificationDelivered;
 use App\Domains\Notifications\Events\NotificationFailed;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Models\NotificationDelivery;
+use App\Support\LoggableCode;
+use App\Support\SystemLog;
 
 /**
  * Un intento de envío de una entrega, común al primer envío, al reintento y
@@ -53,20 +55,62 @@ class AttemptDelivery
             ],
         ]);
 
+        $started = hrtime(true);
         $result = $this->drivers->driverFor($channel->channel_type)->send($rendered, $channel);
+        $durationMs = SystemLog::elapsedMs($started);
 
         $this->recordAttempt->execute($delivery, $result);
         $delivery->refresh();
 
-        if ($result->success) {
-            $this->recordAcceptedResource($delivery, $channel->channel_type, $result);
+        // Nunca errorMessage (puede traer el número), response, address,
+        // subject ni body: el fallo del proveedor sólo como código.
+        $logInput = [
+            'delivery_id' => $delivery->id,
+            'notification_id' => $delivery->notification_id,
+            'recipient_id' => $delivery->recipient_id,
+            'channel_id' => $channel->id,
+            'channel_type' => $channel->channel_type->value,
+            'provider' => LoggableCode::guard($channel->provider),
+            'stage' => match (true) {
+                $delivery->fallback_from_delivery_id !== null => 'fallback',
+                $delivery->attempt_number > 1 => 'retry',
+                default => 'first',
+            },
+            'attempt_number' => $delivery->attempt_number,
+        ];
 
-            $this->recordUsage->execute(
+        if ($result->success) {
+            $chargeRecorded = $this->recordAcceptedResource($delivery, $channel->channel_type, $result);
+
+            $usageMetered = $this->recordUsage->execute(
                 teamId: (int) $delivery->team_id,
                 meterCode: $channel->channel_type->usageMeterCode(),
                 quantity: $channel->channel_type === ChannelType::Sms ? max(1, (int) $result->segments) : 1,
                 eventKey: $usageEventKey,
             );
+
+            // "sent" = el proveedor aceptó. En Twilio la entrega real llega
+            // después (awaiting_provider_confirmation, delivery_status queued).
+            SystemLog::ok('notifications.delivery.sent', input: $logInput, result: [
+                'delivery_status' => $delivery->status->value,
+                'awaiting_provider_confirmation' => $result->awaitingProviderConfirmation,
+                'provider_message_id' => LoggableCode::guard($result->providerMessageId),
+                'provider_status' => LoggableCode::guard($result->providerStatus),
+                'resource_type' => $result->resourceType?->value,
+                'segments' => $result->segments,
+                'charge_recorded' => $chargeRecorded,
+                'usage_meter_code' => $channel->channel_type->usageMeterCode(),
+                'usage_metered' => $usageMetered,
+            ], durationMs: $durationMs);
+        } else {
+            // degraded: la cadena sigue con reintento o fallback; el fracaso
+            // definitivo lo dicen fallback.exhausted y dispatch.completed.
+            SystemLog::degraded('notifications.delivery.failed', reason: $result->permanent ? 'permanent_failure' : 'transient_failure', input: $logInput, result: [
+                'delivery_status' => $delivery->status->value,
+                'provider_error_code' => LoggableCode::guard($result->providerErrorCode),
+                'permanent' => $result->permanent,
+                'metered' => false,
+            ], durationMs: $durationMs);
         }
 
         if ($refreshNotificationStatus && $delivery->notification !== null) {
@@ -93,13 +137,16 @@ class AttemptDelivery
         return $result;
     }
 
-    private function recordAcceptedResource(NotificationDelivery $delivery, ChannelType $channelType, DeliveryResult $result): void
+    /**
+     * @return bool si quedó un cargo Twilio registrado para esta entrega.
+     */
+    private function recordAcceptedResource(NotificationDelivery $delivery, ChannelType $channelType, DeliveryResult $result): bool
     {
         if ($result->resourceType === null || $result->providerMessageId === null) {
-            return;
+            return false;
         }
 
-        $this->recordCharge->execute(
+        return $this->recordCharge->execute(
             teamId: (int) $delivery->team_id,
             providerSid: $result->providerMessageId,
             resourceType: $result->resourceType,
@@ -108,6 +155,6 @@ class AttemptDelivery
             channelType: $channelType,
             status: $result->providerStatus,
             segments: $result->segments,
-        );
+        ) !== null;
     }
 }

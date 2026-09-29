@@ -25,6 +25,7 @@ use App\Models\User;
 use Database\Seeders\NotificationMeterSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\Concerns\AssertsTenantIsolation;
 use Tests\TestCase;
 
@@ -36,7 +37,7 @@ use Tests\TestCase;
  */
 class ChannelToggleEnforcementTest extends TestCase
 {
-    use AssertsTenantIsolation, RefreshDatabase;
+    use AssertsSystemLog, AssertsTenantIsolation, RefreshDatabase;
 
     private Team $team;
 
@@ -116,6 +117,15 @@ class ChannelToggleEnforcementTest extends TestCase
 
         $this->assertSame(0, NotificationDelivery::query()->where('channel_id', $whatsapp->id)->count());
         $this->assertSame(1, NotificationDelivery::query()->where('channel_id', $sms->id)->count());
+
+        $this->assertSystemLogged('notifications.channels.selected', fn (array $c) => $c['outcome'] === 'ok'
+            && in_array('sms', $c['calc']['usable_channel_types'], true)
+            && ! in_array('whatsapp', $c['calc']['usable_channel_types'], true)
+            && $c['calc']['selected_channel_ids'] === [$sms->id]);
+        $this->assertSystemLogged('notifications.delivery.sent', fn (array $c) => $c['input']['channel_id'] === $sms->id
+            && $c['input']['provider'] === 'twilio');
+        $this->assertStringNotContainsString('5215555550188', json_encode($this->systemLogEntries()));
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_fallback_skips_a_switched_off_channel_and_links_the_failed_delivery(): void

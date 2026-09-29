@@ -14,6 +14,17 @@ class ResolveRecipients
      */
     public function execute(Notification $notification): array
     {
+        return $this->explain($notification)['descriptors'];
+    }
+
+    /**
+     * La misma resolución, con de dónde salieron los destinatarios y cuántos
+     * candidatos se descartaron por motivo (sólo conteos: nunca direcciones).
+     *
+     * @return array{descriptors: list<RecipientDescriptor>, source: 'explicit'|'team_members', candidates_count: int, dropped_count_by_reason: array<string, int>}
+     */
+    public function explain(Notification $notification): array
+    {
         $payload = $notification->payload_json ?? [];
 
         $explicit = $payload['recipients'] ?? null;
@@ -27,20 +38,25 @@ class ResolveRecipients
 
     /**
      * @param  array<int, array<string, mixed>>  $explicit
-     * @return array<int, RecipientDescriptor>
+     * @return array{descriptors: list<RecipientDescriptor>, source: 'explicit', candidates_count: int, dropped_count_by_reason: array<string, int>}
      */
     private function buildExplicit(array $explicit): array
     {
         $descriptors = [];
+        $dropped = [];
 
         foreach ($explicit as $entry) {
             if (! is_array($entry)) {
+                $dropped['not_an_array'] = ($dropped['not_an_array'] ?? 0) + 1;
+
                 continue;
             }
 
             $address = $entry['address'] ?? null;
 
             if (! is_string($address) || $address === '') {
+                $dropped['no_address'] = ($dropped['no_address'] ?? 0) + 1;
+
                 continue;
             }
 
@@ -69,11 +85,16 @@ class ResolveRecipients
             );
         }
 
-        return $descriptors;
+        return [
+            'descriptors' => $descriptors,
+            'source' => 'explicit',
+            'candidates_count' => count($explicit),
+            'dropped_count_by_reason' => $dropped,
+        ];
     }
 
     /**
-     * @return array<int, RecipientDescriptor>
+     * @return array{descriptors: list<RecipientDescriptor>, source: 'team_members', candidates_count: int, dropped_count_by_reason: array<string, int>}
      */
     private function buildFromTeamMembers(Notification $notification): array
     {
@@ -82,11 +103,15 @@ class ResolveRecipients
             ->get();
 
         $descriptors = [];
+        $dropped = [];
 
         foreach ($memberships as $membership) {
             $user = $membership->user;
 
             if (! $user || ! $user->email) {
+                $reason = $user ? 'no_email' : 'no_user';
+                $dropped[$reason] = ($dropped[$reason] ?? 0) + 1;
+
                 continue;
             }
 
@@ -102,7 +127,12 @@ class ResolveRecipients
             );
         }
 
-        return $descriptors;
+        return [
+            'descriptors' => $descriptors,
+            'source' => 'team_members',
+            'candidates_count' => $memberships->count(),
+            'dropped_count_by_reason' => $dropped,
+        ];
     }
 
     private function looksLikePhone(string $value): bool

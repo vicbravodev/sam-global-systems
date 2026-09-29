@@ -12,6 +12,9 @@ use App\Domains\Notifications\Enums\NotificationPriority;
 use App\Domains\Notifications\Enums\NotificationSourceType;
 use App\Domains\Notifications\Enums\NotificationTriggeredByType;
 use App\Domains\Notifications\Models\NotificationTemplate;
+use App\Support\LoggableCode;
+use App\Support\SystemLog;
+use Illuminate\Support\Facades\DB;
 
 class NotifyOnIncidentCreated
 {
@@ -60,15 +63,30 @@ class NotifyOnIncidentCreated
             'has_media' => $this->hasMedia($context),
         ];
 
+        $notificationType = $this->resolveNotificationType($incident);
+
         // Un incidente por debajo del umbral del tenant (por defecto: low)
         // sólo avisa dentro de la app: no justifica un correo/SMS al equipo.
-        if (! $this->reachesOutOfBandThreshold((int) $incident->team_id, $severity)) {
+        $threshold = $this->reachesOutOfBandThreshold((int) $incident->team_id, $severity);
+
+        if (! $threshold['reaches']) {
             $payload['force_channels'] = [ChannelType::Web->value];
+
+            // Corre dentro de la transacción de la apertura del incidente.
+            $skipInput = [
+                'incident_id' => $incident->id,
+                'setting_key' => self::SETTING_MIN_SEVERITY,
+                'type_source' => $notificationType['source'],
+            ];
+            $skipCalc = $threshold['calc'];
+            $skipResult = ['forced_channel_types' => [ChannelType::Web->value]];
+
+            DB::afterCommit(fn () => SystemLog::skipped('notifications.out_of_band.skipped', reason: 'below_min_severity', input: $skipInput, calc: $skipCalc, result: $skipResult));
         }
 
         $this->sendNotification->execute(
             teamId: (int) $incident->team_id,
-            notificationType: $this->resolveNotificationType($incident),
+            notificationType: $notificationType['type'],
             sourceType: NotificationSourceType::Incident,
             sourceReferenceId: (string) $incident->id,
             priority: NotificationPriority::fromIncidentPriority($severity),
@@ -86,13 +104,15 @@ class NotifyOnIncidentCreated
      * `incident.panic_emergency.created`) when an active template exists for
      * it — that's how the panic alert gets its rich template — and fall back
      * to the generic `incident.created` otherwise.
+     *
+     * @return array{type: string, source: 'type_specific_template'|'generic'}
      */
-    private function resolveNotificationType(Incident $incident): string
+    private function resolveNotificationType(Incident $incident): array
     {
         $typeCode = $incident->type?->code;
 
         if ($typeCode === null) {
-            return 'incident.created';
+            return ['type' => 'incident.created', 'source' => 'generic'];
         }
 
         $specific = "incident.{$typeCode}.created";
@@ -106,17 +126,32 @@ class NotifyOnIncidentCreated
             ->where('is_active', true)
             ->exists();
 
-        return $hasTemplate ? $specific : 'incident.created';
+        return $hasTemplate
+            ? ['type' => $specific, 'source' => 'type_specific_template']
+            : ['type' => 'incident.created', 'source' => 'generic'];
     }
 
-    private function reachesOutOfBandThreshold(int $teamId, ?string $severity): bool
+    /**
+     * @return array{reaches: bool, calc: array<string, mixed>}
+     */
+    private function reachesOutOfBandThreshold(int $teamId, ?string $severity): array
     {
         $minimum = (string) $this->tenantConfig->resolve($teamId, self::SETTING_MIN_SEVERITY, self::DEFAULT_MIN_SEVERITY);
 
         $minimumRank = self::SEVERITY_RANK[$minimum] ?? self::SEVERITY_RANK[self::DEFAULT_MIN_SEVERITY];
         $severityRank = self::SEVERITY_RANK[$severity ?? ''] ?? self::SEVERITY_RANK['medium'];
 
-        return $severityRank >= $minimumRank;
+        return [
+            'reaches' => $severityRank >= $minimumRank,
+            'calc' => [
+                'severity' => LoggableCode::guard($severity),
+                'severity_rank' => $severityRank,
+                'severity_rank_source' => isset(self::SEVERITY_RANK[$severity ?? '']) ? 'priority' : 'default_medium',
+                'min_severity' => LoggableCode::guard($minimum),
+                'min_severity_rank' => $minimumRank,
+                'min_severity_valid' => isset(self::SEVERITY_RANK[$minimum]),
+            ],
+        ];
     }
 
     private function contextSnapshot(Incident $incident): ?EventContextSnapshot
