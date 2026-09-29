@@ -19,10 +19,13 @@ use App\Domains\Decisions\Models\DecisionTrace;
 use App\Domains\Decisions\Models\EscalationPolicy;
 use App\Domains\Decisions\Models\RuleSet;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Models\Team;
 use App\Models\User;
+use App\Support\SystemLog;
 use Database\Seeders\DecisionOutcomeSeeder;
 use Database\Seeders\IncidentsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use RuntimeException;
 use Tests\Concerns\AssertsSystemLog;
@@ -347,6 +350,9 @@ class EvaluateDecisionRulesTest extends TestCase
         $escalation = $this->assertSystemLogged('decisions.escalation_policy.resolved');
         $this->assertSame('ok', $escalation['outcome']);
         $this->assertSame('source_rule', $escalation['calc']['policy_source']);
+        $this->assertTrue($escalation['calc']['rule_policy_used']);
+        $this->assertTrue($escalation['calc']['rule_policy_present']);
+        $this->assertSame('own', $escalation['calc']['rule_policy_scope']);
         $this->assertSame($policy->id, $escalation['calc']['rule_policy_id']);
         $this->assertSame($policy->id, $escalation['result']['escalation_policy_id']);
         $this->assertSame($decision->id, $escalation['input']['decision_id']);
@@ -380,10 +386,11 @@ class EvaluateDecisionRulesTest extends TestCase
         $this->assertSame('degraded', $escalation['outcome']);
         $this->assertSame('no_active_team_policy', $escalation['reason']);
         $this->assertSame($decision->id, $escalation['input']['decision_id']);
+        $this->assertArrayNotHasKey('calc', $escalation);
         $this->assertNoSensitiveDataLogged();
     }
 
-    public function test_rule_policy_unavailable_is_logged_degraded(): void
+    public function test_own_inactive_rule_policy_is_logged_degraded(): void
     {
         Event::fake([EscalationTriggered::class]);
 
@@ -407,9 +414,108 @@ class EvaluateDecisionRulesTest extends TestCase
 
         $escalation = $this->assertSystemLogged('decisions.escalation_policy.resolved');
         $this->assertSame('degraded', $escalation['outcome']);
-        $this->assertSame('rule_policy_unavailable', $escalation['reason']);
+        $this->assertSame('rule_policy_inactive', $escalation['reason']);
+        $this->assertTrue($escalation['calc']['rule_policy_present']);
+        $this->assertSame('own', $escalation['calc']['rule_policy_scope']);
         $this->assertSame($inactive->id, $escalation['calc']['rule_policy_id']);
         $this->assertNoSensitiveDataLogged();
+    }
+
+    /**
+     * Regla global que apunta a la política activa de OTRO team: el id ajeno
+     * nunca llega al log.
+     */
+    private function globalRuleWithForeignPolicy(DecisionOutcomeCode $outcome): array
+    {
+        [$eval, $ruleset] = $this->evaluationWithGlobalRuleSet();
+        $foreign = EscalationPolicy::factory()->create(['team_id' => Team::factory()->create()->id]);
+        DecisionRule::factory()->create([
+            'ruleset_id' => $ruleset->id,
+            'team_id' => null,
+            'code' => 'global-foreign-policy',
+            'priority' => 100,
+            'conditions_json' => ['all' => [['field' => 'classification', 'operator' => 'eq', 'value' => 'real_event']]],
+            'outcome_override' => DecisionOutcome::firstWhere('code', $outcome->value)->id,
+            'escalation_policy_id' => $foreign->id,
+            'stop_processing' => true,
+        ]);
+
+        return [$eval, $foreign];
+    }
+
+    private function assertForeignPolicyIdNeverLogged(EscalationPolicy $foreign): void
+    {
+        foreach ($this->systemLogEntries() as $entry) {
+            array_walk_recursive($entry['context'], function (mixed $value, string|int $key) use ($foreign): void {
+                $this->assertFalse(
+                    str_contains((string) $key, 'policy') && $value === $foreign->id,
+                    "El id de la política ajena llegó al log en [{$key}]",
+                );
+            });
+        }
+        $this->assertStringNotContainsString('"rule_policy_id":'.$foreign->id, json_encode($this->systemLogEntries()));
+    }
+
+    public function test_foreign_rule_policy_on_alert_is_logged_without_its_id(): void
+    {
+        Event::fake([EscalationTriggered::class]);
+        [$eval, $foreign] = $this->globalRuleWithForeignPolicy(DecisionOutcomeCode::Alert);
+
+        $decision = app(EvaluateDecisionRules::class)->execute($eval);
+
+        $this->assertNull($decision->escalation_policy_id);
+        $escalation = $this->assertSystemLogged('decisions.escalation_policy.resolved');
+        $this->assertSame('degraded', $escalation['outcome']);
+        $this->assertSame('rule_policy_foreign', $escalation['reason']);
+        $this->assertTrue($escalation['calc']['rule_policy_present']);
+        $this->assertSame('foreign', $escalation['calc']['rule_policy_scope']);
+        $this->assertArrayNotHasKey('rule_policy_id', $escalation['calc']);
+        $this->assertForeignPolicyIdNeverLogged($foreign);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_foreign_rule_policy_on_escalate_falls_back_to_team_default_without_its_id(): void
+    {
+        Event::fake([EscalationTriggered::class]);
+        [$eval, $foreign] = $this->globalRuleWithForeignPolicy(DecisionOutcomeCode::Escalate);
+        $teamDefault = EscalationPolicy::factory()->create(['team_id' => $eval->team_id]);
+
+        $decision = app(EvaluateDecisionRules::class)->execute($eval);
+
+        $this->assertSame($teamDefault->id, $decision->escalation_policy_id);
+        $escalation = $this->assertSystemLogged('decisions.escalation_policy.resolved');
+        $this->assertSame('ok', $escalation['outcome']);
+        $this->assertSame('team_default_for_escalate', $escalation['calc']['policy_source']);
+        $this->assertFalse($escalation['calc']['rule_policy_used']);
+        $this->assertTrue($escalation['calc']['rule_policy_present']);
+        $this->assertSame('foreign', $escalation['calc']['rule_policy_scope']);
+        $this->assertArrayNotHasKey('rule_policy_id', $escalation['calc']);
+        $this->assertSame($teamDefault->id, $escalation['result']['escalation_policy_id']);
+        $this->assertForeignPolicyIdNeverLogged($foreign);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_decision_narrative_is_emitted_outside_the_decision_transaction(): void
+    {
+        [$eval] = $this->evaluationWithGlobalRuleSet();
+        $baseline = DB::transactionLevel();
+        $levels = [];
+
+        SystemLog::listen(function (array $entry) use (&$levels): void {
+            if (preg_match('/^decisions\.(outcome\.|priority\.resolved$|escalation_policy\.resolved$)/', $entry['code']) === 1) {
+                $levels[] = [$entry['code'], DB::transactionLevel()];
+            }
+        });
+
+        app(EvaluateDecisionRules::class)->execute($eval);
+
+        $codes = array_column($levels, 0);
+        $this->assertContains('decisions.outcome.resolved', $codes);
+        $this->assertContains('decisions.priority.resolved', $codes);
+        $this->assertContains('decisions.escalation_policy.resolved', $codes);
+        foreach ($levels as [$code, $level]) {
+            $this->assertSame($baseline, $level, "[{$code}] se emitió dentro de la transacción de la decisión");
+        }
     }
 
     public function test_rolled_back_decision_logs_no_outcome_narrative(): void

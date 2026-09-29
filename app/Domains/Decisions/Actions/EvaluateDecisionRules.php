@@ -198,12 +198,17 @@ class EvaluateDecisionRules
 
     private function narrateEscalation(Decision $decision, ?int $rulePolicyId, ?EscalationPolicy $policy): void
     {
+        $rulePolicy = $this->describeRulePolicy($decision, $rulePolicyId);
+
         if ($policy !== null) {
+            $ruleUsed = $rulePolicyId === $policy->id;
+
             SystemLog::ok('decisions.escalation_policy.resolved', input: [
                 'decision_id' => $decision->id,
             ], calc: [
-                'policy_source' => $rulePolicyId === $policy->id ? 'source_rule' : 'team_default_for_escalate',
-                'rule_policy_id' => $rulePolicyId,
+                'policy_source' => $ruleUsed ? 'source_rule' : 'team_default_for_escalate',
+                'rule_policy_used' => $ruleUsed,
+                ...$rulePolicy,
             ], result: [
                 'escalation_policy_id' => $policy->id,
             ]);
@@ -215,19 +220,21 @@ class EvaluateDecisionRules
             // Un ESCALATE sin política activa no escala a nadie.
             SystemLog::degraded('decisions.escalation_policy.resolved', reason: 'no_active_team_policy', input: [
                 'decision_id' => $decision->id,
-            ], calc: [
-                'rule_policy_id' => $rulePolicyId,
-            ]);
+            ], calc: $rulePolicyId !== null ? [
+                'rule_policy_present' => true,
+                'rule_policy_scope' => $rulePolicy['rule_policy_scope'],
+            ] : null);
 
             return;
         }
 
         if ($rulePolicyId !== null) {
-            SystemLog::degraded('decisions.escalation_policy.resolved', reason: 'rule_policy_unavailable', input: [
-                'decision_id' => $decision->id,
-            ], calc: [
-                'rule_policy_id' => $rulePolicyId,
-            ]);
+            SystemLog::degraded(
+                'decisions.escalation_policy.resolved',
+                reason: $rulePolicy['rule_policy_scope'] === 'own' ? 'rule_policy_inactive' : 'rule_policy_foreign',
+                input: ['decision_id' => $decision->id],
+                calc: $rulePolicy,
+            );
 
             return;
         }
@@ -235,6 +242,29 @@ class EvaluateDecisionRules
         SystemLog::skipped('decisions.escalation_policy.resolved', reason: 'not_required', input: [
             'decision_id' => $decision->id,
         ], debug: true);
+    }
+
+    /**
+     * La política de la regla fuente, sin filtrar nunca un id ajeno: una regla
+     * global puede apuntar a la política de otro team, y ese id no sale del
+     * tenant del evento. Lectura después del commit, filtrada por el team.
+     *
+     * @return array{rule_policy_present: bool, rule_policy_scope?: 'own'|'foreign', rule_policy_id?: int}
+     */
+    private function describeRulePolicy(Decision $decision, ?int $rulePolicyId): array
+    {
+        if ($rulePolicyId === null) {
+            return ['rule_policy_present' => false];
+        }
+
+        $own = EscalationPolicy::query()
+            ->where('id', $rulePolicyId)
+            ->where('team_id', $decision->team_id)
+            ->exists();
+
+        return $own
+            ? ['rule_policy_present' => true, 'rule_policy_scope' => 'own', 'rule_policy_id' => $rulePolicyId]
+            : ['rule_policy_present' => true, 'rule_policy_scope' => 'foreign'];
     }
 
     private function mapPriority(AIEventEvaluation $eval, bool $requiresHumanReview): DecisionPriority
