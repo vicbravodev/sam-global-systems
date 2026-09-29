@@ -2,9 +2,14 @@
 
 namespace App\Support;
 
+use DateTimeInterface;
+use Illuminate\Contracts\Support\Arrayable;
+use JsonSerializable;
 use Monolog\LogRecord;
 use Monolog\Processor\ProcessorInterface;
+use Stringable;
 use Throwable;
+use UnitEnum;
 
 /**
  * Red de seguridad de TODOS los canales de log: enmascara lo que nunca debe
@@ -52,6 +57,16 @@ final class RedactSensitiveLogData implements ProcessorInterface
         'class', 'route_name', 'meter_code', 'code',
     ];
 
+    /**
+     * Palabras que, antes de un `key` final, hacen de la clave un secreto
+     * (`secret_key`, `X-Api-Key`) frente a las técnicas (`event_key`, `cache_key`).
+     *
+     * @var list<string>
+     */
+    private const array SECRET_KEY_QUALIFIERS = [
+        'secret', 'private', 'access', 'signing', 'api', 'encryption', 'client', 'master',
+    ];
+
     public function __invoke(LogRecord $record): LogRecord
     {
         return $record->with(
@@ -71,12 +86,21 @@ final class RedactSensitiveLogData implements ProcessorInterface
         $text = (string) preg_replace('/\b(Bearer|Basic)\s+[A-Za-z0-9._~+\/=-]+/i', '$1 '.self::MASK, $text);
 
         return (string) preg_replace_callback(
-            '/(?<![\w.:\/-])\+?\d[\d\s()-]{7,}\d(?![\w.:\/-])/',
+            '/(?<![\w.:\/-])\+?\d[\d\s()-]{7,}\d(?![\w\/-]|[.:]\w)/',
             static function (array $match): string {
                 $candidate = $match[0];
                 $digits = strlen((string) preg_replace('/\D/', '', $candidate));
 
                 if (preg_match('/^\d{4}-\d{2}-\d{2}/', $candidate) === 1 || $digits < 10 || $digits > 15) {
+                    return $candidate;
+                }
+
+                // Una racha pelada de 11-15 dígitos (ids de Samsara, epochs en ms) no es teléfono.
+                $looksLikePhone = str_starts_with($candidate, '+')
+                    || preg_match('/[\s()-]/', $candidate) === 1
+                    || $digits === 10;
+
+                if (! $looksLikePhone) {
                     return $candidate;
                 }
 
@@ -97,6 +121,14 @@ final class RedactSensitiveLogData implements ProcessorInterface
 
         if ($key !== null && self::isSensitiveKey($key) && ! is_bool($value) && $value !== null) {
             return self::MASK;
+        }
+
+        if (is_object($value)) {
+            return self::redactObject($value);
+        }
+
+        if ($key !== null && is_string($value) && self::isIdKey($key)) {
+            return $value;
         }
 
         if (is_array($value)) {
@@ -129,6 +161,26 @@ final class RedactSensitiveLogData implements ProcessorInterface
         foreach ($value as $key => $child) {
             $childPath = $path === '' ? (string) $key : $path.'.'.$key;
 
+            if ($child instanceof Throwable) {
+                if (self::sanitize($child->getMessage()) !== $child->getMessage()) {
+                    $found[] = $childPath;
+                }
+
+                continue;
+            }
+
+            if (is_object($child)) {
+                $normalized = self::normalizeObject($child);
+
+                if (is_array($normalized)) {
+                    array_push($found, ...self::findings($normalized, $childPath));
+                } elseif (is_string($normalized) && self::sanitize($normalized) !== $normalized) {
+                    $found[] = $childPath;
+                }
+
+                continue;
+            }
+
             if (is_array($child) && ! (is_string($key) && self::isSensitiveKey($key))) {
                 array_push($found, ...self::findings($child, $childPath));
 
@@ -143,23 +195,82 @@ final class RedactSensitiveLogData implements ProcessorInterface
         return $found;
     }
 
+    /**
+     * @return array<mixed>|string|object
+     */
+    private static function normalizeObject(object $value): array|string|object
+    {
+        return match (true) {
+            $value instanceof DateTimeInterface, $value instanceof UnitEnum => $value,
+            $value instanceof Arrayable => $value->toArray(),
+            $value instanceof JsonSerializable => self::jsonArray($value),
+            $value instanceof Stringable => (string) $value,
+            default => ['object' => $value::class],
+        };
+    }
+
+    /**
+     * @return array<mixed>
+     */
+    private static function jsonArray(JsonSerializable $value): array
+    {
+        $data = $value->jsonSerialize();
+
+        return is_array($data) ? $data : ['value' => $data];
+    }
+
+    private static function redactObject(object $value): mixed
+    {
+        $normalized = self::normalizeObject($value);
+
+        if (is_array($normalized)) {
+            return self::redact($normalized);
+        }
+
+        return is_string($normalized) ? self::sanitize($normalized) : $normalized;
+    }
+
+    private static function isIdKey(string $key): bool
+    {
+        return ! self::isSensitiveKey($key) && in_array(self::lastWord($key), ['id', 'ids'], true);
+    }
+
+    private static function lastWord(string $key): string
+    {
+        $words = self::words($key);
+
+        return $words === [] ? '' : end($words);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function words(string $key): array
+    {
+        $normalized = strtolower((string) preg_replace('/(?<=[a-z0-9])(?=[A-Z])/', '_', $key));
+
+        return array_values(array_filter(
+            preg_split('/[_\-.\s]+/', $normalized) ?: [],
+            static fn (string $word): bool => $word !== '',
+        ));
+    }
+
     private static function isSensitiveKey(string $key): bool
     {
         if (in_array($key, self::ALLOWED_KEYS, true)) {
             return false;
         }
 
-        $normalized = strtolower((string) preg_replace('/(?<=[a-z0-9])(?=[A-Z])/', '_', $key));
+        $words = self::words($key);
 
-        // `key` es sufijo técnico (`event_key`), salvo en estas claves exactas.
-        if (in_array($normalized, ['api_key', 'code_hash'], true)) {
+        // `key` es sufijo técnico (`event_key`), salvo `api_key` o `secret_key`.
+        if (in_array(implode('_', $words), ['api_key', 'code_hash'], true)) {
             return true;
         }
 
-        $words = array_values(array_filter(
-            preg_split('/[_\-.\s]+/', $normalized) ?: [],
-            static fn (string $word): bool => $word !== '',
-        ));
+        if (count($words) > 1 && end($words) === 'key' && array_intersect(array_slice($words, 0, -1), self::SECRET_KEY_QUALIFIERS) !== []) {
+            return true;
+        }
 
         if ($words === [] || in_array(end($words), self::TECHNICAL_SUFFIXES, true) || in_array($words[0], ['has', 'is'], true)) {
             return false;

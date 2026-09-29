@@ -4,6 +4,7 @@ namespace Tests\Unit\Support;
 
 use App\Support\RedactSensitiveLogData;
 use DateTimeImmutable;
+use Illuminate\Contracts\Support\Arrayable;
 use Monolog\Level;
 use Monolog\LogRecord;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -23,6 +24,9 @@ class RedactSensitiveLogDataTest extends TestCase
             'email' => ['user Ana.Perez+x@empresa.com.mx rechazado', 'user [email] rechazado'],
             'signed url' => ['GET https://s3.amazonaws.com/b/k.jpg?X-Amz-Signature=abc&X-Amz-Credential=d failed', 'GET https://s3.amazonaws.com/b/k.jpg?[redacted] failed'],
             'bearer' => ['Authorization: Bearer eyJhbGciOi.abc-def_ghi', 'Authorization: Bearer [redacted]'],
+            'phone with trailing dot' => ['llamada a +525512345678.', 'llamada a [phone].'],
+            'phone with trailing colon' => ['tel +525512345678: fallo', 'tel [phone]: fallo'],
+            'bare 10-digit run (indistinguishable from an MX phone, masked)' => ['ts 1727517600 epoch', 'ts [phone] epoch'],
         ];
     }
 
@@ -45,6 +49,8 @@ class RedactSensitiveLogDataTest extends TestCase
             'uuid' => ['0e8f1c2a-3b4d-4e5f-8a9b-123456789012'],
             'short number' => ['intento 3 de 5, 1200 ms'],
             'url without query' => ['https://api.samsara.com/fleet/vehicles/stats'],
+            '13-digit ms epoch' => ['ts 1727517600000 epoch'],
+            '15-digit bare id' => ['vehicle 281474978683353 offline'],
         ];
     }
 
@@ -129,5 +135,81 @@ class RedactSensitiveLogDataTest extends TestCase
         $this->assertSame('aviso a [email]', $out->message);
         $this->assertSame(['phone' => '[redacted]', 'raw_event_id' => 1], $out->context);
         $this->assertSame(['trace_id' => '01k6b7yq3m9x2c4d5e6f7g8h9j', 'email' => '[redacted]'], $out->extra);
+    }
+
+    public function test_secret_like_keys_ending_in_key_are_redacted_and_technical_keys_are_kept(): void
+    {
+        $out = RedactSensitiveLogData::redact([
+            'secret_key' => 'a', 'private_key' => 'b', 'X-Api-Key' => 'c', 'access_key' => 'd', 'signing_key' => 'e',
+            'event_key' => 'evt:1', 'url_key' => 'u', 'cache_key' => 'c', 'lock_key' => 'l', 'idempotency_key' => 'i', 'route_key' => 'r',
+        ]);
+
+        foreach (['secret_key', 'private_key', 'X-Api-Key', 'access_key', 'signing_key'] as $key) {
+            $this->assertSame('[redacted]', $out[$key], $key);
+        }
+        foreach (['event_key', 'url_key', 'cache_key', 'lock_key', 'idempotency_key', 'route_key'] as $key) {
+            $this->assertNotSame('[redacted]', $out[$key], $key);
+        }
+    }
+
+    public function test_id_keys_keep_numeric_strings_but_other_keys_are_still_masked(): void
+    {
+        $out = RedactSensitiveLogData::redact([
+            'vehicle_id' => '281474978683353',
+            'samsara_event_id' => '1727517600000',
+            'epoch_id' => '1727517600',
+            'contact' => '+525512345678',
+        ]);
+
+        $this->assertSame('281474978683353', $out['vehicle_id']);
+        $this->assertSame('1727517600000', $out['samsara_event_id']);
+        $this->assertSame('1727517600', $out['epoch_id']);
+        $this->assertSame('[phone]', $out['contact']);
+    }
+
+    public function test_objects_are_normalized_before_redaction(): void
+    {
+        $json = new class implements \JsonSerializable
+        {
+            public function jsonSerialize(): array
+            {
+                return ['email' => 'a@b.co', 'note' => 'llama a +525512345678', 'user_id' => 3];
+            }
+        };
+        $arrayable = new class implements Arrayable
+        {
+            public function toArray(): array
+            {
+                return ['phone' => '5512345678', 'status' => 'ok'];
+            }
+        };
+        $stringable = new class implements \Stringable
+        {
+            public function __toString(): string
+            {
+                return 'mail a@b.co';
+            }
+        };
+        $plain = new class
+        {
+            public string $email = 'a@b.co';
+        };
+        $date = new DateTimeImmutable('2026-09-28T10:00:00Z');
+
+        $out = RedactSensitiveLogData::redact(['j' => $json, 'a' => $arrayable, 's' => $stringable, 'p' => $plain, 'd' => $date]);
+
+        $this->assertSame(['email' => '[redacted]', 'note' => 'llama a [phone]', 'user_id' => 3], $out['j']);
+        $this->assertSame(['phone' => '[redacted]', 'status' => 'ok'], $out['a']);
+        $this->assertSame('mail a [email]', $out['s']);
+        $this->assertSame(['object' => $plain::class], $out['p']);
+        $this->assertSame($date, $out['d']);
+        $this->assertStringNotContainsString('a@b.co', json_encode($out));
+        $this->assertStringNotContainsString('5512345678', json_encode($out));
+    }
+
+    public function test_findings_reports_throwables_only_when_the_message_is_sensitive(): void
+    {
+        $this->assertSame([], RedactSensitiveLogData::findings(['exception' => new RuntimeException('connection refused')]));
+        $this->assertSame(['exception'], RedactSensitiveLogData::findings(['exception' => new RuntimeException('falló +525512345678')]));
     }
 }
