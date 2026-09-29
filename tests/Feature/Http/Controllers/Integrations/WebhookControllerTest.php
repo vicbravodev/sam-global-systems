@@ -13,10 +13,12 @@ use App\Models\Team;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class WebhookControllerTest extends TestCase
 {
+    use AssertsSystemLog;
     use RefreshDatabase;
 
     private function createActiveEndpoint(string $url): WebhookEndpoint
@@ -93,6 +95,54 @@ class WebhookControllerTest extends TestCase
             $event->raw_payload,
             'The controller must persist the exact raw request body for byte-for-byte HMAC verification',
         );
+    }
+
+    public function test_it_logs_the_received_webhook_by_size_and_headers_never_by_content(): void
+    {
+        Queue::fake();
+        Event::fake([WebhookReceived::class]);
+
+        $endpoint = $this->createActiveEndpoint('ctrl-'.bin2hex(random_bytes(6)));
+        $body = ['event_type' => 'AlertIncident', 'data' => ['driver' => 'secret-body-value']];
+        $timestamp = (string) now()->getTimestampMs();
+        $signature = 'v1='.hash_hmac('sha256', 'v1:'.$timestamp.':'.json_encode($body), $endpoint->secret);
+
+        $this->postJson("/api/webhooks/{$endpoint->url}", $body, [
+            'X-Samsara-Signature' => $signature,
+            'X-Samsara-Timestamp' => $timestamp,
+        ])->assertStatus(202);
+
+        $event = WebhookEvent::withoutGlobalScopes()->latest('id')->firstOrFail();
+        $c = $this->assertSystemLogged('webhook.event.received');
+        $this->assertSame($event->id, $c['input']['webhook_event_id']);
+        $this->assertSame('AlertIncident', $c['input']['event_type']);
+        $this->assertTrue($c['input']['event_type_valid']);
+        $this->assertSame(strlen((string) $event->raw_payload), $c['calc']['body_bytes']);
+        $this->assertGreaterThan(0, $c['calc']['body_bytes']);
+        $this->assertTrue($c['calc']['has_signature_header']);
+        $this->assertTrue($c['calc']['has_timestamp_header']);
+
+        $json = json_encode($this->systemLogEntries());
+        $this->assertStringNotContainsString('secret-body-value', $json);
+        $this->assertStringNotContainsString($signature, $json);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_the_received_line_nulls_an_event_type_that_is_not_a_code(): void
+    {
+        Queue::fake();
+        Event::fake([WebhookReceived::class]);
+
+        $endpoint = $this->createActiveEndpoint('ctrl-'.bin2hex(random_bytes(6)));
+
+        $this->postJson("/api/webhooks/{$endpoint->url}", ['event_type' => "x\ninjected"])->assertStatus(202);
+
+        $c = $this->assertSystemLogged('webhook.event.received');
+        $this->assertNull($c['input']['event_type']);
+        $this->assertFalse($c['input']['event_type_valid']);
+        $this->assertFalse($c['calc']['has_signature_header']);
+        $this->assertFalse($c['calc']['has_timestamp_header']);
+        $this->assertStringNotContainsString('injected', json_encode($this->systemLogEntries()));
     }
 
     public function test_it_defaults_event_type_to_unknown_when_missing(): void

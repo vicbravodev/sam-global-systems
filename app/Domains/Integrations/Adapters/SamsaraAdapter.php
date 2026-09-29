@@ -752,7 +752,8 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
         }
 
         $skew = null;
-        $tolerance = (int) config('services.samsara.webhook_tolerance_seconds', 300);
+        // The plain scheme checks no timestamp: there is no tolerance to report.
+        $tolerance = null;
 
         if ($hasTimestamp) {
             $check = $this->checkTimestamp($timestamp, $receivedAt);
@@ -798,6 +799,8 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
 
         SystemLog::degraded('webhook.signature.rejected', reason: 'hmac_mismatch', input: ['scheme' => $scheme], calc: [
             'key_variants_tried' => count($candidates),
+            'skew_seconds' => $skew,
+            'tolerance_seconds' => $tolerance,
         ]);
 
         return false;

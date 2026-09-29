@@ -252,6 +252,7 @@ class WebhookProcessingTest extends TestCase
         $this->assertSystemLogged('webhook.event.ingested', fn (array $c) => $c['input']['webhook_event_id'] === $webhookEvent->id
             && $c['input']['signature_mode'] === 'raw_header'
             && $c['input']['event_type'] === 'AlertIncident'
+            && $c['input']['event_type_valid'] === true
             && $c['input']['provider_code'] === 'samsara'
             && $c['result']['provider_code_fallback'] === false);
         $this->assertSystemLogged('webhook.signature.verified');
@@ -333,6 +334,36 @@ class WebhookProcessingTest extends TestCase
             $this->assertFalse($entry['context']['input']['event_type_valid']);
         }
 
+        $this->assertStringNotContainsString('injected', json_encode($this->systemLogEntries()));
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_it_does_not_log_attacker_controlled_event_type_on_ingestion(): void
+    {
+        [, , , , $endpoint] = $this->createEndpointWithIntegration();
+
+        $payload = ['data' => ['id' => 42]];
+        $payload['signature'] = hash_hmac('sha256', json_encode(['data' => ['id' => 42]]), $endpoint->secret);
+
+        $webhookEvent = WebhookEvent::withoutGlobalScopes()->create([
+            'team_id' => $endpoint->tenantIntegration->team_id,
+            'provider_id' => $endpoint->tenantIntegration->provider_id,
+            // Viene de la query string, fuera del HMAC.
+            'event_type' => "x\ninjected",
+            'payload_json' => $payload,
+            'received_at' => now(),
+            'status' => WebhookEventStatus::Received,
+        ]);
+
+        $mockIngestion = Mockery::mock(RawEventIngestion::class);
+        $mockIngestion->shouldReceive('ingest')->once();
+
+        (new ProcessWebhookEventJob($webhookEvent, $endpoint))->handle(app(ValidateWebhookSignature::class), $mockIngestion);
+
+        $c = $this->assertSystemLogged('webhook.event.ingested');
+        $this->assertNull($c['input']['event_type']);
+        $this->assertFalse($c['input']['event_type_valid']);
+        $this->assertSame('samsara', $c['input']['provider_code']);
         $this->assertStringNotContainsString('injected', json_encode($this->systemLogEntries()));
         $this->assertNoSensitiveDataLogged();
     }

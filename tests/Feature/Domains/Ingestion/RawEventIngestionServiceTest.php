@@ -59,7 +59,7 @@ class RawEventIngestionServiceTest extends TestCase
 
         app(RawEventIngestion::class)->ingest(
             $team->id,
-            'provider-without-row',
+            'provider_without_row',
             'AlertIncident',
             ['eventType' => 'AlertIncident', 'eventId' => 'svc-2'],
         );
@@ -78,12 +78,31 @@ class RawEventIngestionServiceTest extends TestCase
 
         $team = User::factory()->create()->currentTeam;
 
-        app(RawEventIngestion::class)->ingest($team->id, 'provider-without-row', 'AlertIncident', ['eventId' => 'svc-unk']);
+        app(RawEventIngestion::class)->ingest($team->id, 'provider_without_row', 'AlertIncident', ['eventId' => 'svc-unk']);
 
         $this->assertSystemLogged('ingestion.provider.unresolved', fn (array $c): bool => $c['reason'] === 'unknown_provider_code'
             && $c['outcome'] === 'degraded'
-            && $c['input']['provider_code'] === 'provider-without-row'
-            && $c['input']['event_type'] === 'AlertIncident');
+            && $c['input']['provider_code'] === 'provider_without_row'
+            && $c['input']['event_type'] === 'AlertIncident'
+            && $c['input']['event_type_valid'] === true);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_unresolved_provider_line_never_logs_values_that_are_not_codes(): void
+    {
+        Bus::fake();
+
+        $team = User::factory()->create()->currentTeam;
+
+        app(RawEventIngestion::class)->ingest($team->id, "bad\nprovider", "x\ninjected", ['eventId' => 'svc-inj']);
+
+        $c = $this->assertSystemLogged('ingestion.provider.unresolved', fn (array $c): bool => $c['reason'] === 'unknown_provider_code');
+        $this->assertNull($c['input']['event_type']);
+        $this->assertFalse($c['input']['event_type_valid']);
+        $this->assertNull($c['input']['provider_code']);
+        $json = json_encode($this->systemLogEntries());
+        $this->assertStringNotContainsString('injected', $json);
+        $this->assertStringNotContainsString('bad', $json);
         $this->assertNoSensitiveDataLogged();
     }
 

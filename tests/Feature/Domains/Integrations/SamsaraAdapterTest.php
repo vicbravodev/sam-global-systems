@@ -293,7 +293,8 @@ class SamsaraAdapterTest extends TestCase
 
         $this->assertSystemLogged('webhook.signature.rejected', fn (array $c) => $c['reason'] === 'hmac_mismatch'
             && $c['input']['scheme'] === 'timestamped'
-            && $c['calc']['key_variants_tried'] === 2);
+            && $c['calc']['key_variants_tried'] === 2
+            && $c['calc']['tolerance_seconds'] === (int) config('services.samsara.webhook_tolerance_seconds', 300));
         $this->assertStringNotContainsString($signature, json_encode($this->systemLogEntries()));
         $this->assertStringNotContainsString($secret, json_encode($this->systemLogEntries()));
         $this->assertNoSensitiveDataLogged();
@@ -334,6 +335,22 @@ class SamsaraAdapterTest extends TestCase
             && $c['calc']['secret_variant'] === 'raw'
             && $c['calc']['key_variants_tried'] === 1);
         $this->assertNull($context['calc']['skew_seconds'] ?? null);
+        // El esquema plain no revisa hora: no hay tolerancia que reportar.
+        $this->assertArrayHasKey('tolerance_seconds', $context['calc']);
+        $this->assertNull($context['calc']['tolerance_seconds']);
+    }
+
+    public function test_plain_scheme_hmac_mismatch_reports_no_tolerance(): void
+    {
+        config()->set('services.samsara.webhook_tolerance_seconds', 300);
+
+        $this->assertFalse(app(SamsaraAdapter::class)->validateWebhookSignature('{"a":1}', hash_hmac('sha256', '{"a":1}', 'other'), 'whsec'));
+
+        $context = $this->assertSystemLogged('webhook.signature.rejected', fn (array $c) => $c['reason'] === 'hmac_mismatch'
+            && $c['input']['scheme'] === 'plain');
+        $this->assertArrayHasKey('tolerance_seconds', $context['calc']);
+        $this->assertNull($context['calc']['tolerance_seconds']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_signature_log_has_no_skew_when_tolerance_check_is_disabled(): void

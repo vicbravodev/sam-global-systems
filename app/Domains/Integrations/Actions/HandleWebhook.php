@@ -7,7 +7,9 @@ use App\Domains\Integrations\Events\WebhookReceived;
 use App\Domains\Integrations\Jobs\ProcessWebhookEventJob;
 use App\Domains\Integrations\Models\WebhookEndpoint;
 use App\Domains\Integrations\Models\WebhookEvent;
+use App\Support\LoggableCode;
 use App\Support\PipelineTrace;
+use App\Support\SystemLog;
 
 class HandleWebhook
 {
@@ -46,6 +48,19 @@ class HandleWebhook
         ]);
 
         PipelineTrace::add(['webhook_event_id' => $webhookEvent->id]);
+
+        // Only sizes and header presence: never the body, signature or timestamp.
+        $loggableEventType = LoggableCode::guard($eventType);
+
+        SystemLog::ok('webhook.event.received', input: [
+            'webhook_event_id' => $webhookEvent->id,
+            'event_type' => $loggableEventType,
+            'event_type_valid' => $loggableEventType !== null,
+        ], calc: [
+            'body_bytes' => strlen($rawPayload ?? ''),
+            'has_signature_header' => $signature !== null && $signature !== '',
+            'has_timestamp_header' => $signatureTimestamp !== null && $signatureTimestamp !== '',
+        ]);
 
         // Minute resolution is all the UI shows; writing the same hot row on
         // every webhook (up to 300/min) only adds lock contention.

@@ -125,7 +125,7 @@ Lo emite `App\Support\DeniedRequestLog` (outcome `degraded`); sólo la plantilla
 |---|---|---|---|
 | `ingestion.media.inline_download_failed` | degraded | `download_failed` | `raw_event_id`, `url_key`, `error` |
 | `ingestion.poll.cursor_rejected` | degraded | `provider_rejected_cursor` | `integration_id`, `http_status`, `provider_message` (saneado, 200 car.), `restart_from` |
-| `ingestion.provider.unresolved` | degraded | `unknown_provider_code` | `provider_code`, `event_type`; sin proveedor el evento terminará `unmapped` |
+| `ingestion.provider.unresolved` | degraded | `unknown_provider_code` | `provider_code`, `event_type` (ambos sólo si cumplen `App\Support\LoggableCode::PATTERN`; si no, `null`), `event_type_valid`; sin proveedor el evento terminará `unmapped` |
 | `ingestion.raw_event.stored` | ok | | `source_type`, `provider_id`, `external_event_id`, `external_event_type`, `calc.dedup_key_strategy` (`explicit`/`external_event_id`/`checksum`), `calc.occurred_at_source` (clave del payload), `calc.occurred_at_parse_failed`, `raw_event_id`, `event_source_id` |
 | `ingestion.raw_event.processed` | ok | | `raw_event_id` |
 | `ingestion.dedup.skipped` | skipped | `no_dedup_key` | `raw_event_id` |
@@ -144,11 +144,12 @@ Lo emite `App\Support\DeniedRequestLog` (outcome `degraded`); sólo la plantilla
 
 | Código | Outcome | Reason posibles | Campos clave |
 |---|---|---|---|
-| `webhook.signature.verified` | ok | | `input.scheme` (`timestamped`/`plain`), `calc.secret_variant` (`base64_decoded`/`raw`), `key_variants_tried`, `skew_seconds`, `tolerance_seconds` |
-| `webhook.signature.rejected` | degraded | `empty_signature`, `invalid_timestamp`, `stale_timestamp`, `hmac_mismatch` | `input.scheme`; en `stale_timestamp`, calc `skew_seconds`, `tolerance_seconds`, `reference` (`received_at`/`now`), `timestamp_unit`; en `hmac_mismatch`, calc `key_variants_tried`. Nunca firma, secreto ni cuerpo |
+| `webhook.event.received` | ok | | `webhook_event_id`, `event_type` (sólo si cumple `/^[A-Za-z0-9_.]{1,64}$/`, `App\Support\LoggableCode`; si no, `null`), `event_type_valid`; calc `body_bytes`, `has_signature_header`, `has_timestamp_header`. Nunca cuerpo, firma ni timestamp. Un endpoint desconocido no llega aquí: lo registra `http.request.not_found` (`DeniedRequestLog`, fase 1) |
+| `webhook.signature.verified` | ok | | `input.scheme` (`timestamped`/`plain`), `calc.secret_variant` (`base64_decoded`/`raw`), `key_variants_tried`, `skew_seconds`, `tolerance_seconds` (`null` en `plain`: no se revisa hora) |
+| `webhook.signature.rejected` | degraded | `empty_signature`, `invalid_timestamp`, `stale_timestamp`, `hmac_mismatch` | `input.scheme`; en `stale_timestamp`, calc `skew_seconds`, `tolerance_seconds`, `reference` (`received_at`/`now`), `timestamp_unit`; en `hmac_mismatch`, calc `key_variants_tried`, `skew_seconds`, `tolerance_seconds` (`null` en `plain`). Nunca firma, secreto ni cuerpo |
 | `webhook.event.discarded` | skipped | `tenant_deleted` | `webhook_event_id` |
 | `webhook.event.rejected` | skipped | `invalid_signature` | `webhook_event_id`, `signature_mode` (`raw_header`/`legacy_body`), `event_type` (sólo si cumple `/^[A-Za-z0-9_.]{1,64}$/`; si no, `null`: viene de una petición sin autenticar), `event_type_valid` |
-| `webhook.event.ingested` | ok | | `webhook_event_id`, `event_type`, `signature_mode`, `provider_code`; `result.provider_code_fallback` |
+| `webhook.event.ingested` | ok | | `webhook_event_id`, `event_type` (con la misma guarda: puede venir de la query string, fuera del HMAC), `event_type_valid`, `signature_mode`, `provider_code` (con la misma guarda); `result.provider_code_fallback` |
 
 ### Normalización (`normalization`)
 

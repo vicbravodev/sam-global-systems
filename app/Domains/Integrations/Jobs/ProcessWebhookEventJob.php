@@ -7,6 +7,7 @@ use App\Domains\Integrations\Actions\ValidateWebhookSignature;
 use App\Domains\Integrations\Models\WebhookEndpoint;
 use App\Domains\Integrations\Models\WebhookEvent;
 use App\Models\Team;
+use App\Support\LoggableCode;
 use App\Support\SystemLog;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -72,13 +73,13 @@ class ProcessWebhookEventJob implements ShouldQueue
         if (! $isValid) {
             $this->webhookEvent->markAsInvalidSignature();
             // event_type viene de la petición sin autenticar: sólo se registra si parece un código.
-            $eventTypeValid = preg_match('/^[A-Za-z0-9_.]{1,64}$/D', (string) $this->webhookEvent->event_type) === 1;
+            $eventType = LoggableCode::guard($this->webhookEvent->event_type);
 
             SystemLog::skipped('webhook.event.rejected', reason: 'invalid_signature', input: [
                 'webhook_event_id' => $this->webhookEvent->id,
                 'signature_mode' => $signatureMode,
-                'event_type' => $eventTypeValid ? $this->webhookEvent->event_type : null,
-                'event_type_valid' => $eventTypeValid,
+                'event_type' => $eventType,
+                'event_type_valid' => $eventType !== null,
             ]);
 
             return;
@@ -98,11 +99,15 @@ class ProcessWebhookEventJob implements ShouldQueue
 
             $this->webhookEvent->markAsProcessed();
 
+            // event_type puede venir de la query string, fuera del HMAC.
+            $eventType = LoggableCode::guard($this->webhookEvent->event_type);
+
             SystemLog::ok('webhook.event.ingested', input: [
                 'webhook_event_id' => $this->webhookEvent->id,
-                'event_type' => $this->webhookEvent->event_type,
+                'event_type' => $eventType,
+                'event_type_valid' => $eventType !== null,
                 'signature_mode' => $signatureMode,
-                'provider_code' => $providerCode,
+                'provider_code' => LoggableCode::guard($providerCode),
             ], result: ['provider_code_fallback' => $integration->provider?->code === null]);
         } catch (\Throwable $e) {
             $this->webhookEvent->markAsFailed($e->getMessage());
