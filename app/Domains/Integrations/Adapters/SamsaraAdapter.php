@@ -742,13 +742,37 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
     public function validateWebhookSignature(string $payload, string $signature, string $secret, ?string $timestamp = null, ?\DateTimeInterface $receivedAt = null): bool
     {
         $provided = str_starts_with($signature, 'v1=') ? substr($signature, 3) : $signature;
+        $hasTimestamp = $timestamp !== null && $timestamp !== '';
+        $scheme = $hasTimestamp ? 'timestamped' : 'plain';
 
         if ($provided === '') {
+            SystemLog::degraded('webhook.signature.rejected', reason: 'empty_signature', input: ['scheme' => $scheme]);
+
             return false;
         }
 
-        if ($timestamp !== null && $timestamp !== '') {
-            if (! $this->timestampWithinTolerance($timestamp, $receivedAt)) {
+        $skew = null;
+        $tolerance = (int) config('services.samsara.webhook_tolerance_seconds', 300);
+
+        if ($hasTimestamp) {
+            $check = $this->checkTimestamp($timestamp, $receivedAt);
+            $skew = $check['skew_seconds'];
+            $tolerance = $check['tolerance_seconds'];
+
+            if (! $check['valid']) {
+                SystemLog::degraded('webhook.signature.rejected', reason: 'invalid_timestamp', input: ['scheme' => 'timestamped']);
+
+                return false;
+            }
+
+            if (! $check['within']) {
+                SystemLog::degraded('webhook.signature.rejected', reason: 'stale_timestamp', input: ['scheme' => 'timestamped'], calc: [
+                    'skew_seconds' => $skew,
+                    'tolerance_seconds' => $tolerance,
+                    'reference' => $receivedAt !== null ? 'received_at' : 'now',
+                    'timestamp_unit' => $check['unit'],
+                ]);
+
                 return false;
             }
 
@@ -757,11 +781,24 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
             $message = $payload;
         }
 
-        foreach ($this->candidateSecrets($secret) as $key) {
-            if (hash_equals(hash_hmac('sha256', $message, $key), $provided)) {
+        $candidates = $this->candidateSecrets($secret);
+
+        foreach ($candidates as $index => $candidate) {
+            if (hash_equals(hash_hmac('sha256', $message, $candidate['key']), $provided)) {
+                SystemLog::ok('webhook.signature.verified', input: ['scheme' => $scheme], calc: [
+                    'secret_variant' => $candidate['variant'],
+                    'key_variants_tried' => $index + 1,
+                    'skew_seconds' => $skew,
+                    'tolerance_seconds' => $tolerance,
+                ]);
+
                 return true;
             }
         }
+
+        SystemLog::degraded('webhook.signature.rejected', reason: 'hmac_mismatch', input: ['scheme' => $scheme], calc: [
+            'key_variants_tried' => count($candidates),
+        ]);
 
         return false;
     }
@@ -773,19 +810,19 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
      * the decoded bytes are tried first. The raw secret is also tried so callers
      * that store an already-decoded or non-Base64 secret keep working.
      *
-     * @return array<int, string>
+     * @return list<array{key: string, variant: string}>
      */
     private function candidateSecrets(string $secret): array
     {
-        $candidates = [$secret];
+        $candidates = [['key' => $secret, 'variant' => 'raw']];
 
         $decoded = base64_decode($secret, true);
 
         if ($decoded !== false && $decoded !== '' && $decoded !== $secret) {
-            array_unshift($candidates, $decoded);
+            array_unshift($candidates, ['key' => $decoded, 'variant' => 'base64_decoded']);
         }
 
-        return array_values(array_unique($candidates));
+        return $candidates;
     }
 
     /**
@@ -795,27 +832,38 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
      * Samsara sends `X-Samsara-Timestamp` in seconds; we defensively also accept
      * a millisecond-precision value.
      */
-    private function timestampWithinTolerance(string $timestamp, ?\DateTimeInterface $receivedAt = null): bool
+    /**
+     * @return array{within: bool, valid: bool, skew_seconds: ?int, tolerance_seconds: int, unit: ?string}
+     */
+    private function checkTimestamp(string $timestamp, ?\DateTimeInterface $receivedAt = null): array
     {
         $tolerance = (int) config('services.samsara.webhook_tolerance_seconds', 300);
 
         if ($tolerance <= 0) {
-            return true;
+            return ['within' => true, 'valid' => true, 'skew_seconds' => null, 'tolerance_seconds' => 0, 'unit' => null];
         }
 
         if (! is_numeric($timestamp)) {
-            return false;
+            return ['within' => false, 'valid' => false, 'skew_seconds' => null, 'tolerance_seconds' => $tolerance, 'unit' => null];
         }
 
         $value = (int) $timestamp;
         // Treat <= 10-digit values as seconds, otherwise milliseconds.
-        $seconds = $value > 9_999_999_999 ? intdiv($value, 1000) : $value;
+        $isMilliseconds = $value > 9_999_999_999;
+        $seconds = $isMilliseconds ? intdiv($value, 1000) : $value;
 
         // Contra la hora de RECEPCIÓN: una cola atrasada (deploy, pico) no
         // puede convertir pánicos auténticos en "firma inválida".
         $reference = ($receivedAt ?? now())->getTimestamp();
+        $skew = abs($reference - $seconds);
 
-        return abs($reference - $seconds) <= $tolerance;
+        return [
+            'within' => $skew <= $tolerance,
+            'valid' => true,
+            'skew_seconds' => $skew,
+            'tolerance_seconds' => $tolerance,
+            'unit' => $isMilliseconds ? 'milliseconds' : 'seconds',
+        ];
     }
 
     /**

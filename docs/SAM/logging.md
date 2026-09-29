@@ -124,6 +124,16 @@ Lo emite `App\Support\DeniedRequestLog` (outcome `degraded`); sólo la plantilla
 | `ingestion.media.inline_download_failed` | degraded | `download_failed` | `raw_event_id`, `url_key`, `error` |
 | `ingestion.poll.cursor_rejected` | degraded | `provider_rejected_cursor` | `integration_id`, `http_status`, `provider_message` (saneado, 200 car.), `restart_from` |
 
+### Webhooks (`webhook`)
+
+| Código | Outcome | Reason posibles | Campos clave |
+|---|---|---|---|
+| `webhook.signature.verified` | ok | | `input.scheme` (`timestamped`/`plain`), `calc.secret_variant` (`base64_decoded`/`raw`), `key_variants_tried`, `skew_seconds`, `tolerance_seconds` |
+| `webhook.signature.rejected` | degraded | `empty_signature`, `invalid_timestamp`, `stale_timestamp`, `hmac_mismatch` | `input.scheme`; en `stale_timestamp`, calc `skew_seconds`, `tolerance_seconds`, `reference` (`received_at`/`now`), `timestamp_unit`; en `hmac_mismatch`, calc `key_variants_tried`. Nunca firma, secreto ni cuerpo |
+| `webhook.event.discarded` | skipped | `tenant_deleted` | `webhook_event_id` |
+| `webhook.event.rejected` | skipped | `invalid_signature` | `webhook_event_id`, `signature_mode` (`raw_header`/`legacy_body`), `event_type` |
+| `webhook.event.ingested` | ok | | `webhook_event_id`, `event_type`, `signature_mode`, `provider_code`; `result.provider_code_fallback` |
+
 ### Samsara (`samsara`)
 
 | Código | Outcome | Reason posibles | Campos clave |
