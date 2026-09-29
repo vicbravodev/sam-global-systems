@@ -26,13 +26,32 @@ class ResolveAssetLimit
 
     public function execute(int $teamId): ?int
     {
+        return $this->explain($teamId)['cap'];
+    }
+
+    /**
+     * La misma cascada, con la fuente del tope y los valores que la
+     * decidieron (`none_reason` cuando no hay tope).
+     *
+     * @return array{cap: ?int, source: 'billing_terms'|'tenant_feature'|'plan_rate'|'none', calc: array<string, mixed>}
+     */
+    public function explain(int $teamId): array
+    {
         return TenantContext::for($teamId, function () use ($teamId) {
             $contracted = TenantBillingTerms::query()
                 ->where('team_id', $teamId)
                 ->value('included_assets');
 
+            $calc = ['contracted_value' => $contracted !== null ? (int) $contracted : null];
+
             if ($contracted !== null) {
-                return (int) $contracted > 0 ? (int) $contracted : null;
+                $unlimited = (int) $contracted <= 0;
+
+                return [
+                    'cap' => $unlimited ? null : (int) $contracted,
+                    'source' => 'billing_terms',
+                    'calc' => [...$calc, 'unlimited_by_terms' => $unlimited],
+                ];
             }
 
             $feature = TenantFeature::query()
@@ -43,13 +62,17 @@ class ResolveAssetLimit
             $featureLimit = $feature?->limits_json['included_quantity'] ?? null;
 
             if (is_numeric($featureLimit)) {
-                return (int) $featureLimit;
+                return [
+                    'cap' => (int) $featureLimit,
+                    'source' => 'tenant_feature',
+                    'calc' => [...$calc, 'feature_limit' => $featureLimit],
+                ];
             }
 
             $meterId = UsageMeter::query()->where('code', self::METER_CODE)->value('id');
 
             if ($meterId === null) {
-                return null;
+                return ['cap' => null, 'source' => 'none', 'calc' => [...$calc, 'none_reason' => 'meter_missing']];
             }
 
             $subscription = Subscription::query()
@@ -58,7 +81,7 @@ class ResolveAssetLimit
                 ->first();
 
             if ($subscription?->plan_id === null) {
-                return null;
+                return ['cap' => null, 'source' => 'none', 'calc' => [...$calc, 'none_reason' => 'no_plan']];
             }
 
             $included = BillingRate::query()
@@ -66,7 +89,13 @@ class ResolveAssetLimit
                 ->where('usage_meter_id', $meterId)
                 ->value('included_quantity');
 
-            return $included !== null && (int) $included > 0 ? (int) $included : null;
+            $calc = [...$calc, 'subscription_id' => $subscription->id, 'plan_id' => $subscription->plan_id, 'included_quantity' => $included !== null ? (int) $included : null];
+
+            if ($included !== null && (int) $included > 0) {
+                return ['cap' => (int) $included, 'source' => 'plan_rate', 'calc' => $calc];
+            }
+
+            return ['cap' => null, 'source' => 'none', 'calc' => [...$calc, 'none_reason' => 'no_included_quantity']];
         });
     }
 }

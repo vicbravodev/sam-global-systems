@@ -78,6 +78,21 @@ final class AssetDayPricing
     }
 
     /**
+     * La línea tal cual para el log narrativo, sin `meter_name` (texto en
+     * español cuya clave enmascara el redactor). Los números son los mismos
+     * `float` que van a `breakdown_json`.
+     *
+     * @param  array<string, mixed>  $line
+     * @return array<string, mixed>
+     */
+    public static function loggable(array $line): array
+    {
+        unset($line['meter_name']);
+
+        return $line;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public static function assetDayLine(BillingTermsData $terms, int $assetDays, int $daysInPeriod, ?int $cap): array
