@@ -139,7 +139,7 @@ class TwilioVoiceWebhookTest extends TestCase
 
         $this->assertSystemLogged('incidents.call_verification.answered', fn (array $c) => $c['outcome'] === 'ok'
             && $c['input'] === $this->inputOf($verification)
-            && $c['result'] === ['outcome' => CallVerificationOutcome::ConfirmedReal->value, 'acknowledged' => true, 'escalated' => true, 'level_notified' => 0]);
+            && $c['result'] === ['outcome' => CallVerificationOutcome::ConfirmedReal->value, 'acknowledged' => true, 'escalated' => true, 'level_requested' => 0]);
         $this->assertNoPhoneLogged();
     }
 

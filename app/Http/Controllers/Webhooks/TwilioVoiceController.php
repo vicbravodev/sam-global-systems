@@ -163,7 +163,7 @@ class TwilioVoiceController extends Controller
             'outcome' => CallVerificationOutcome::ConfirmedReal->value,
             'acknowledged' => true,
             'escalated' => true,
-            'level_notified' => 0,
+            'level_requested' => 0,
         ]);
 
         return $this->twiml(VerificationCallTwiml::say(
