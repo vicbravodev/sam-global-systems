@@ -135,6 +135,8 @@ class NormalizeRawEventLogTest extends TestCase
         $this->assertSame('speeding', $c['input']['event_type_code']);
         $this->assertSame('safety', $c['input']['category_code']);
         $this->assertFalse($c['calc']['is_emergency']);
+        $this->assertSame('pending', $c['input']['monitoring_state']);
+        $this->assertTrue($c['calc']['emergency_exemption_applies']);
         $this->assertSystemNotLogged('normalization.event.normalized');
         $this->assertSame(RawEventStatus::Discarded, $rawEvent->fresh()->status);
         $this->assertNoSensitiveDataLogged();
@@ -163,7 +165,11 @@ class NormalizeRawEventLogTest extends TestCase
         $this->assertSame($asset->id, $c['input']['asset_id']);
         $this->assertSame('panic_button', $c['input']['event_type_code']);
         $this->assertSame('emergency', $c['input']['category_code']);
-        $this->assertTrue($c['result']['billed_as_extra_asset_day']);
+        // El cargo real lo registra billing después (idempotente por activo y
+        // día local): la línea sólo afirma lo que ya es cierto al emitirse.
+        $this->assertArrayNotHasKey('billed_as_extra_asset_day', $c['result']);
+        $this->assertTrue($c['result']['extra_charge_dispatched']);
+        $this->assertSame('asset_local_day', $c['result']['charge_scope']);
         $this->assertNotNull($c['result']['normalized_event_id']);
 
         $c = $this->assertSystemLogged('normalization.event.normalized');
@@ -193,6 +199,7 @@ class NormalizeRawEventLogTest extends TestCase
 
         $c = $this->assertSystemLogged('normalization.asset.resolved', fn ($c) => ($c['reason'] ?? null) === 'cross_tenant_reference');
         $this->assertTrue($c['calc']['cross_tenant_rejected']);
+        $this->assertSame('cross_tenant_reference', $c['calc']['rejection']);
         $this->assertTrue($c['calc']['reference_found']);
         $this->assertSame('vehicle.id', $c['calc']['asset_path_used']);
         $this->assertNull($c['result']['asset_id']);
@@ -328,6 +335,7 @@ class NormalizeRawEventLogTest extends TestCase
         $this->run_($forged);
 
         $this->assertSystemLogged('normalization.asset.rejected', fn ($c) => $c['reason'] === 'cross_tenant_internal_asset'
+            && $c['calc']['rejection'] === 'cross_tenant_internal_asset'
             && $c['input']['raw_event_id'] === $forged->id);
         $this->assertStringNotContainsString((string) self::FOREIGN_ID, json_encode($this->systemLogEntries()));
         $this->assertNoSensitiveDataLogged();
@@ -348,6 +356,126 @@ class NormalizeRawEventLogTest extends TestCase
         $c = $this->assertSystemLogged('normalization.event.discarded', fn ($c) => $c['reason'] === 'asset_not_monitored');
         $this->assertSame('speeding', $c['input']['event_type_code']);
         $this->assertSame($asset->id, $c['input']['asset_id']);
+        $this->assertSame('pending', $c['input']['monitoring_state']);
+        $this->assertFalse($c['calc']['is_emergency']);
+        $this->assertFalse($c['calc']['emergency_exemption_applies']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_an_internal_emergency_of_an_unmonitored_asset_is_discarded_and_the_line_says_it_was_an_emergency(): void
+    {
+        EventType::factory()->create([
+            'code' => 'panic_button',
+            'category_id' => EventCategory::factory()->emergency()->create()->id,
+            'default_severity_id' => EventSeverity::factory()->critical()->create()->id,
+        ]);
+        $asset = Asset::factory()->excluded()->create(['team_id' => $this->teamId]);
+        $rawEvent = RawEvent::factory()->pendingProcessing()->create([
+            'team_id' => $this->teamId,
+            'provider_id' => null,
+            'event_type_raw' => 'panic_button',
+            'payload_json' => ['internal' => ['asset_id' => $asset->id]],
+        ]);
+
+        $this->run_($rawEvent);
+
+        // Comportamiento actual: la ruta interna descarta incluso emergencias.
+        $c = $this->assertSystemLogged('normalization.event.discarded', fn ($c) => $c['reason'] === 'asset_not_monitored');
+        $this->assertSame('excluded', $c['input']['monitoring_state']);
+        $this->assertTrue($c['calc']['is_emergency']);
+        $this->assertFalse($c['calc']['emergency_exemption_applies']);
+        $this->assertSame(RawEventStatus::Discarded, $rawEvent->fresh()->status);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_trashed_own_asset_reference_is_not_reported_as_cross_tenant(): void
+    {
+        $asset = Asset::factory()->create(['team_id' => $this->teamId]);
+        $rawEvent = $this->providerEventFor($asset);
+        $asset->delete();
+
+        $this->run_($rawEvent);
+
+        $c = $this->assertSystemLogged('normalization.asset.resolved', fn ($c) => ($c['reason'] ?? null) === 'referenced_asset_trashed');
+        $this->assertSame('referenced_asset_trashed', $c['calc']['rejection']);
+        $this->assertFalse($c['calc']['cross_tenant_rejected']);
+        $this->assertTrue($c['calc']['reference_found']);
+        $this->assertNull($c['result']['asset_id']);
+        $this->assertStringNotContainsString('team_id', json_encode($this->systemLogEntries('normalization.asset.resolved')));
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_trashed_own_driver_reference_is_not_reported_as_cross_tenant(): void
+    {
+        $driver = Driver::factory()->create(['team_id' => $this->teamId]);
+        DriverExternalReference::factory()->create([
+            'driver_id' => $driver->id,
+            'provider_id' => $this->provider->id,
+            'external_id' => 'ext-own-driver',
+        ]);
+        $driver->delete();
+        $rawEvent = RawEvent::factory()->pendingProcessing()->create([
+            'team_id' => $this->teamId,
+            'provider_id' => $this->provider->id,
+            'event_type_raw' => 'MaxSpeed',
+            'payload_json' => ['driver' => ['id' => 'ext-own-driver']],
+        ]);
+
+        $this->run_($rawEvent);
+
+        $c = $this->assertSystemLogged('normalization.driver.resolved', fn ($c) => ($c['reason'] ?? null) === 'referenced_driver_trashed');
+        $this->assertSame('referenced_driver_trashed', $c['calc']['rejection']);
+        $this->assertFalse($c['calc']['cross_tenant_rejected']);
+        $this->assertNull($c['result']['driver_id']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_internal_asset_rejections_are_classified_as_trashed_or_missing(): void
+    {
+        $trashed = Asset::factory()->create(['team_id' => $this->teamId]);
+        $trashed->delete();
+        $onTrashed = RawEvent::factory()->pendingProcessing()->create([
+            'team_id' => $this->teamId,
+            'provider_id' => null,
+            'event_type_raw' => 'speeding',
+            'payload_json' => ['internal' => ['asset_id' => $trashed->id]],
+        ]);
+        $onMissing = RawEvent::factory()->pendingProcessing()->create([
+            'team_id' => $this->teamId,
+            'provider_id' => null,
+            'event_type_raw' => 'speeding',
+            'payload_json' => ['internal' => ['asset_id' => self::FOREIGN_ID]],
+        ]);
+
+        $this->run_($onTrashed);
+        $this->run_($onMissing);
+
+        $this->assertSystemLogged('normalization.asset.rejected', fn ($c) => $c['reason'] === 'internal_asset_trashed'
+            && $c['calc']['rejection'] === 'internal_asset_trashed'
+            && $c['input']['raw_event_id'] === $onTrashed->id);
+        $this->assertSystemLogged('normalization.asset.rejected', fn ($c) => $c['reason'] === 'internal_asset_missing'
+            && $c['calc']['rejection'] === 'internal_asset_missing'
+            && $c['input']['raw_event_id'] === $onMissing->id);
+        $this->assertSame([], array_filter(
+            $this->systemLogEntries('normalization.asset.rejected'),
+            fn (array $e) => $e['context']['reason'] === 'cross_tenant_internal_asset',
+        ));
+        $this->assertStringNotContainsString((string) self::FOREIGN_ID, json_encode($this->systemLogEntries()));
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_resolution_without_any_payload_id_is_logged_at_debug_level(): void
+    {
+        $asset = Asset::factory()->create(['team_id' => $this->teamId]);
+        $this->run_($this->providerEventFor($asset));
+
+        $driverLine = $this->systemLogEntries('normalization.driver.resolved')[0];
+        $this->assertSame('debug', $driverLine['level']);
+        $this->assertNull($driverLine['context']['calc']['driver_path_used']);
+
+        $assetLine = $this->systemLogEntries('normalization.asset.resolved')[0];
+        $this->assertSame('info', $assetLine['level']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_the_job_logs_when_the_raw_event_is_missing_or_not_normalizable(): void

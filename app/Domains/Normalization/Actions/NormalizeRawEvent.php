@@ -108,7 +108,8 @@ class NormalizeRawEvent
         $assetId = $this->resolveInternalAssetId($rawEvent, $payload);
 
         if ($this->assetIsSwitchedOff($assetId)) {
-            $this->logDiscarded($rawEvent, $assetId, $eventType, $eventType->category);
+            // La ruta interna descarta incluso emergencias (comportamiento vigente).
+            $this->logDiscarded($rawEvent, $assetId, $eventType, $eventType->category, emergencyExemptionApplies: false);
             $this->discard($rawEvent);
 
             return null;
@@ -159,9 +160,15 @@ class NormalizeRawEvent
             ->exists();
 
         if (! $belongs) {
-            SystemLog::degraded('normalization.asset.rejected', reason: 'cross_tenant_internal_asset', input: [
+            $rejection = match ($this->classifyRejection(Asset::class, $assetId, $rawEvent->team_id)) {
+                'foreign' => 'cross_tenant_internal_asset',
+                'trashed' => 'internal_asset_trashed',
+                'missing' => 'internal_asset_missing',
+            };
+
+            SystemLog::degraded('normalization.asset.rejected', reason: $rejection, input: [
                 'raw_event_id' => $rawEvent->id,
-            ]);
+            ], calc: ['rejection' => $rejection]);
         }
 
         return $belongs ? $assetId : null;
@@ -221,7 +228,7 @@ class NormalizeRawEvent
         $unmonitored = $this->assetIsSwitchedOff($assetId);
 
         if ($unmonitored && ! $this->isEmergency($eventType, $category)) {
-            $this->logDiscarded($rawEvent, $assetId, $eventType, $category);
+            $this->logDiscarded($rawEvent, $assetId, $eventType, $category, emergencyExemptionApplies: true);
             $this->discard($rawEvent);
 
             return null;
@@ -264,7 +271,13 @@ class NormalizeRawEvent
                     'category_code' => $category?->code,
                 ],
                 calc: ['is_emergency' => true],
-                result: ['normalized_event_id' => $normalizedEvent->id, 'billed_as_extra_asset_day' => true],
+                // Sólo se afirma el despacho: el cargo real lo decide billing
+                // (ChargeUnmonitoredEmergency, idempotente por activo y día local).
+                result: [
+                    'normalized_event_id' => $normalizedEvent->id,
+                    'extra_charge_dispatched' => true,
+                    'charge_scope' => 'asset_local_day',
+                ],
             );
         }
 
@@ -311,8 +324,18 @@ class NormalizeRawEvent
             ->doesntExist();
     }
 
-    private function logDiscarded(RawEvent $rawEvent, ?int $assetId, EventType $eventType, ?EventCategory $category): void
+    /**
+     * `emergency_exemption_applies` records whether the route lets emergencies
+     * through an unmonitored asset: the mapped route does, the internal route
+     * discards even emergencies.
+     */
+    private function logDiscarded(RawEvent $rawEvent, ?int $assetId, EventType $eventType, ?EventCategory $category, bool $emergencyExemptionApplies): void
     {
+        $monitoringState = $assetId === null ? null : Asset::query()
+            ->whereKey($assetId)
+            ->where('team_id', $rawEvent->team_id)
+            ->value('monitoring_state');
+
         SystemLog::skipped(
             'normalization.event.discarded',
             reason: 'asset_not_monitored',
@@ -321,8 +344,12 @@ class NormalizeRawEvent
                 'asset_id' => $assetId,
                 'event_type_code' => $eventType->code,
                 'category_code' => $category?->code,
+                'monitoring_state' => $monitoringState instanceof \BackedEnum ? $monitoringState->value : $monitoringState,
             ],
-            calc: ['is_emergency' => false],
+            calc: [
+                'is_emergency' => self::isEmergencyCode($category?->code, $eventType->code),
+                'emergency_exemption_applies' => $emergencyExemptionApplies,
+            ],
         );
     }
 
@@ -369,7 +396,7 @@ class NormalizeRawEvent
     {
         $path = null;
         $referenceFound = false;
-        $crossTenant = false;
+        $rejection = null;
         $assetId = null;
 
         if ($providerId && $teamId) {
@@ -397,33 +424,81 @@ class NormalizeRawEvent
                     ->where('team_id', $teamId)
                     ->exists();
 
-                $crossTenant = ! $belongs;
                 $assetId = $belongs ? $reference->asset_id : null;
+                $rejection = $belongs ? null : $this->referenceRejection('asset', Asset::class, $reference->asset_id, $teamId);
             }
         }
 
-        $this->logReference('asset', 'asset_path_used', $rawEventId, $path, $referenceFound, $crossTenant, $assetId);
+        $this->logReference('asset', 'asset_path_used', $rawEventId, $path, $referenceFound, $rejection, $assetId);
 
         return $assetId;
     }
 
     /**
      * One line per resolution. The foreign id of a rejected reference is never
-     * logged: `cross_tenant_rejected` is only a flag.
+     * logged: `cross_tenant_rejected` is only a flag, and `rejection` says why
+     * the reference did not resolve (the tenant's own trashed row is not a
+     * cross-tenant alarm). A payload with no id at all is routine: debug.
      */
-    private function logReference(string $kind, string $pathKey, int $rawEventId, ?string $path, bool $referenceFound, bool $crossTenant, ?int $resolvedId): void
+    private function logReference(string $kind, string $pathKey, int $rawEventId, ?string $path, bool $referenceFound, ?string $rejection, ?int $resolvedId): void
     {
         $input = ['raw_event_id' => $rawEventId];
-        $calc = [$pathKey => $path, 'reference_found' => $referenceFound, 'cross_tenant_rejected' => $crossTenant];
+        $calc = [
+            $pathKey => $path,
+            'reference_found' => $referenceFound,
+            'cross_tenant_rejected' => $rejection === 'cross_tenant_reference',
+            'rejection' => $rejection,
+        ];
         $result = ["{$kind}_id" => $resolvedId];
 
-        if ($crossTenant) {
-            SystemLog::degraded("normalization.{$kind}.resolved", reason: 'cross_tenant_reference', input: $input, calc: $calc, result: $result);
+        if ($rejection !== null) {
+            SystemLog::degraded("normalization.{$kind}.resolved", reason: $rejection, input: $input, calc: $calc, result: $result);
 
             return;
         }
 
-        SystemLog::ok("normalization.{$kind}.resolved", input: $input, calc: $calc, result: $result);
+        SystemLog::ok("normalization.{$kind}.resolved", input: $input, calc: $calc, result: $result, debug: $path === null);
+    }
+
+    /**
+     * @param  class-string<Asset|Driver>  $model
+     */
+    private function referenceRejection(string $kind, string $model, int $id, ?int $teamId): string
+    {
+        return match ($this->classifyRejection($model, $id, $teamId)) {
+            'foreign' => 'cross_tenant_reference',
+            'trashed' => "referenced_{$kind}_trashed",
+            'missing' => "referenced_{$kind}_missing",
+        };
+    }
+
+    /**
+     * Why a referenced row did not resolve for the event's tenant. Runs only
+     * after a rejection and only to classify it: one query by primary key that
+     * bypasses the tenant scope and soft deletes, selecting `team_id` and
+     * `deleted_at` alone. Neither value is ever logged, and the resolved id is
+     * decided before (and independently of) this query.
+     *
+     * @param  class-string<Asset|Driver>  $model
+     * @return 'foreign'|'trashed'|'missing'
+     */
+    private function classifyRejection(string $model, int $id, ?int $teamId): string
+    {
+        $row = $model::query()
+            ->withoutGlobalScope('tenant')
+            ->withTrashed()
+            ->whereKey($id)
+            ->first(['team_id', 'deleted_at']);
+
+        if ($row === null) {
+            return 'missing';
+        }
+
+        if ((int) $row->team_id !== (int) $teamId) {
+            return 'foreign';
+        }
+
+        return $row->deleted_at !== null ? 'trashed' : 'missing';
     }
 
     /**
@@ -437,7 +512,7 @@ class NormalizeRawEvent
     {
         $path = null;
         $referenceFound = false;
-        $crossTenant = false;
+        $rejection = null;
         $driverId = null;
 
         if ($providerId && $teamId) {
@@ -464,12 +539,12 @@ class NormalizeRawEvent
                     ->where('team_id', $teamId)
                     ->exists();
 
-                $crossTenant = ! $belongs;
                 $driverId = $belongs ? $reference->driver_id : null;
+                $rejection = $belongs ? null : $this->referenceRejection('driver', Driver::class, $reference->driver_id, $teamId);
             }
         }
 
-        $this->logReference('driver', 'driver_path_used', $rawEventId, $path, $referenceFound, $crossTenant, $driverId);
+        $this->logReference('driver', 'driver_path_used', $rawEventId, $path, $referenceFound, $rejection, $driverId);
 
         return $driverId;
     }

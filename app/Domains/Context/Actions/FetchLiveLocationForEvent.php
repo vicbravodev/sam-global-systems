@@ -57,7 +57,7 @@ class FetchLiveLocationForEvent
             SystemLog::skipped('context.live_location.skipped', reason: 'not_critical', input: [
                 'normalized_event_id' => $normalizedEvent->id,
                 'severity_code' => $normalizedEvent->eventSeverity?->code,
-            ]);
+            ], debug: true);
 
             return $noFetch;
         }
@@ -113,11 +113,11 @@ class FetchLiveLocationForEvent
             return ['location' => null, 'position_stale' => true];
         }
 
-        $recordedAt = isset($live['recorded_at']) && $live['recorded_at'] !== null
-            ? Carbon::parse($live['recorded_at'])
-            : now();
+        $providerTime = isset($live['recorded_at']) && $live['recorded_at'] !== null;
+        $recordedAt = $providerTime ? Carbon::parse($live['recorded_at']) : now();
 
-        $this->updateAssetLocationSnapshot->execute(
+        // Returns the existing row untouched when this fix is already stored.
+        $stored = $this->updateAssetLocationSnapshot->execute(
             asset: $normalizedEvent->asset,
             latitude: (float) $live['latitude'],
             longitude: (float) $live['longitude'],
@@ -134,10 +134,12 @@ class FetchLiveLocationForEvent
         ], calc: [
             'latest_age_seconds' => $age,
             'staleness_threshold_seconds' => $stalenessSeconds,
-            'fix_age_seconds' => $this->ageSeconds($recordedAt),
+            // Without a provider time the fix is stamped "now": its age is unknown.
+            'fix_age_seconds' => $providerTime ? $this->ageSeconds($recordedAt) : null,
+            'fix_time_source' => $providerTime ? 'provider' : 'assumed_now',
         ], result: [
             'position_stale' => false,
-            'snapshot_updated' => true,
+            'snapshot_updated' => $stored->wasRecentlyCreated,
         ]);
 
         return [
