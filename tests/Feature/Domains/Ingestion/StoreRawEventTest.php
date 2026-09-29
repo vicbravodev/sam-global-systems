@@ -7,14 +7,17 @@ use App\Domains\Ingestion\Enums\RawEventStatus;
 use App\Domains\Ingestion\Events\RawEventReceived;
 use App\Domains\Ingestion\Models\EventReceipt;
 use App\Domains\Ingestion\Models\EventSource;
+use App\Domains\Ingestion\Models\RawEvent;
 use App\Domains\Integrations\Models\IntegrationProvider;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class StoreRawEventTest extends TestCase
 {
+    use AssertsSystemLog;
     use RefreshDatabase;
 
     private function createTeamSetup(): array
@@ -343,5 +346,52 @@ class StoreRawEventTest extends TestCase
         $this->assertSame('2026-09-27 06:43:31', $iso->occurred_at->utc()->format('Y-m-d H:i:s'));
         $this->assertSame(1790491411, $epoch->occurred_at->getTimestamp());
         $this->assertSame('2026-09-27 06:45:59', $created->occurred_at->utc()->format('Y-m-d H:i:s'));
+    }
+
+    private function storeLogged(array $payload, ?string $externalEventId = null): RawEvent
+    {
+        Event::fake([RawEventReceived::class]);
+        [, $team, $provider] = $this->createTeamSetup();
+
+        return app(StoreRawEvent::class)->execute(
+            payload: $payload,
+            sourceType: 'polling',
+            teamId: $team->id,
+            providerId: $provider->id,
+            externalEventId: $externalEventId,
+        );
+    }
+
+    public function test_log_reports_the_payload_key_used_for_occurred_at(): void
+    {
+        $rawEvent = $this->storeLogged(['id' => 'se-log', 'startMs' => 1790491411483], 'se-log');
+
+        $c = $this->assertSystemLogged('ingestion.raw_event.stored');
+        $this->assertSame('startMs', $c['calc']['occurred_at_source']);
+        $this->assertFalse($c['calc']['occurred_at_parse_failed']);
+        $this->assertSame('external_event_id', $c['calc']['dedup_key_strategy']);
+        $this->assertSame($rawEvent->id, $c['result']['raw_event_id']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_log_flags_an_unparseable_timestamp(): void
+    {
+        $this->storeLogged(['eventType' => 'X', 'eventTime' => 'no-es-fecha']);
+
+        $c = $this->assertSystemLogged('ingestion.raw_event.stored');
+        $this->assertTrue($c['calc']['occurred_at_parse_failed']);
+        $this->assertSame('eventTime', $c['calc']['occurred_at_source']);
+    }
+
+    public function test_log_reports_no_date_source_and_checksum_strategy_without_leaking_the_checksum(): void
+    {
+        $rawEvent = $this->storeLogged(['eventType' => 'NoDate', 'data' => ['value' => 1]]);
+
+        $c = $this->assertSystemLogged('ingestion.raw_event.stored');
+        $this->assertNull($c['calc']['occurred_at_source']);
+        $this->assertFalse($c['calc']['occurred_at_parse_failed']);
+        $this->assertSame('checksum', $c['calc']['dedup_key_strategy']);
+        $this->assertStringNotContainsString($rawEvent->checksum, json_encode($this->systemLogEntries()));
+        $this->assertNoSensitiveDataLogged();
     }
 }

@@ -8,6 +8,7 @@ use App\Domains\Ingestion\Events\RawEventProcessed;
 use App\Domains\Ingestion\Models\RawEvent;
 use App\Support\JobFailureReporter;
 use App\Support\PipelineTrace;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -51,6 +52,8 @@ class ProcessRawEventJob implements ShouldQueue
             $rawEvent->markAsProcessing();
 
             $rawEvent->markAsProcessed();
+
+            SystemLog::ok('ingestion.raw_event.processed', input: ['raw_event_id' => $rawEvent->id]);
 
             RawEventProcessed::dispatch($rawEvent);
         });

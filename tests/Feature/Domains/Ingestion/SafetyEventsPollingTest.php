@@ -32,11 +32,13 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\Concerns\FakesSamsaraSafetyStream;
 use Tests\TestCase;
 
 class SafetyEventsPollingTest extends TestCase
 {
+    use AssertsSystemLog;
     use FakesSamsaraSafetyStream;
     use RefreshDatabase;
 
@@ -401,5 +403,82 @@ class SafetyEventsPollingTest extends TestCase
             ['latitude' => 19.4326, 'longitude' => -99.1332],
             $normalized->payload_normalized_json['location'],
         );
+    }
+
+    public function test_poll_cycle_logs_events_and_a_fresh_feed_restart(): void
+    {
+        Queue::fake();
+        $integration = $this->makeIntegration();
+        $this->fakeSafetyStream([['data' => [$this->safetyEventPayload(['id' => 'a']), $this->safetyEventPayload(['id' => 'b'])], 'endCursor' => 'c1']]);
+
+        (new PollSafetyEventsJob($integration))->handle(app(ProviderAdapter::class), app(IngestSafetyEvent::class));
+
+        $this->assertSystemLogged('ingestion.poll.cursor_restarted', fn (array $c): bool => $c['input']['integration_id'] === $integration->id
+            && $c['calc']['had_cursor'] === false
+            && $c['calc']['had_start_time'] === false
+            && $c['calc']['backfill_hours'] === PollSafetyEventsJob::BACKFILL_HOURS);
+        $this->assertSystemLogged('ingestion.poll.cycle_completed', fn (array $c): bool => $c['result']['events'] === 2
+            && $c['result']['has_more'] === false
+            && $c['result']['next_cursor_present'] === true
+            && $c['calc']['had_cursor'] === false);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_inline_media_logs_urls_found_and_downloaded(): void
+    {
+        Queue::fake();
+        $integration = $this->makeIntegration();
+        Http::fake([
+            'media.samsara.com/ok*' => Http::response('bytes', 200, ['Content-Type' => 'video/mp4']),
+            'media.samsara.com/bad*' => Http::response('nope', 500),
+        ]);
+
+        $rawEvent = app(IngestSafetyEvent::class)->execute($integration, $this->safetyEventPayload([
+            'media' => [
+                ['input' => 'dashcamRoadFacing', 'url' => 'https://media.samsara.com/ok/road.mp4'],
+                ['input' => 'dashcamDriverFacing', 'url' => 'https://media.samsara.com/bad/driver.mp4'],
+            ],
+        ]));
+
+        $this->assertSystemLogged('ingestion.media.inline_collected', fn (array $c): bool => $c['input']['raw_event_id'] === $rawEvent->id
+            && $c['calc'] === ['urls_found' => 2, 'downloaded' => 1, 'failed' => 1]);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_redelivery_logs_inline_media_skipped(): void
+    {
+        Queue::fake();
+        $integration = $this->makeIntegration();
+        $ingest = app(IngestSafetyEvent::class);
+
+        $ingest->execute($integration, $this->safetyEventPayload());
+        $this->assertSame([], $this->systemLogEntries('ingestion.media.inline_skipped'));
+        $second = $ingest->execute($integration, $this->safetyEventPayload());
+
+        $this->assertSystemLogged('ingestion.media.inline_skipped', fn (array $c): bool => $c['reason'] === 'known_duplicate'
+            && $c['input']['raw_event_id'] === $second->id
+            && $c['input']['event_state'] === 'needsReview');
+    }
+
+    public function test_usage_logs_not_metered_without_meter_and_recorded_with_it(): void
+    {
+        Queue::fake();
+        $integration = $this->makeIntegration();
+        $ingest = app(IngestSafetyEvent::class);
+
+        $first = $ingest->execute($integration, $this->safetyEventPayload(['id' => 'u1']));
+
+        $this->assertSystemLogged('ingestion.usage.not_metered', fn (array $c): bool => $c['reason'] === 'meter_missing'
+            && $c['outcome'] === 'degraded'
+            && $c['input']['meter_code'] === IngestSafetyEvent::USAGE_METER_CODE
+            && $c['input']['raw_event_id'] === $first->id);
+        $this->assertSystemNotLogged('ingestion.usage.recorded');
+
+        $this->seed(IngestionMeterSeeder::class);
+        $second = $ingest->execute($integration, $this->safetyEventPayload(['id' => 'u2']));
+
+        $this->assertSystemLogged('ingestion.usage.recorded', fn (array $c): bool => $c['input']['raw_event_id'] === $second->id
+            && $c['input']['event_state'] === 'needsReview');
+        $this->assertNoSensitiveDataLogged();
     }
 }

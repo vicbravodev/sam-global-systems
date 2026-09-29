@@ -96,8 +96,12 @@ class PollSafetyEventsJob implements ShouldBeUnique, ShouldQueue
         $startTime = $this->nonEmptyString($feed['start_time'] ?? null);
 
         if ($cursor === null || $startTime === null) {
+            $cursorBefore = $cursor;
+            $startBefore = $startTime;
             $cursor = null;
             $startTime = $this->restartFrom($feed);
+
+            SystemLog::ok('ingestion.poll.cursor_restarted', input: ['integration_id' => $this->integration->id], calc: ['restart_from' => $startTime, 'had_cursor' => $cursorBefore !== null, 'had_start_time' => $startBefore !== null, 'backfill_hours' => self::BACKFILL_HOURS, 'restart_margin_minutes' => self::RESTART_MARGIN_MINUTES]);
         }
 
         try {
@@ -106,7 +110,11 @@ class PollSafetyEventsJob implements ShouldBeUnique, ShouldQueue
             $this->recordError($e);
 
             if ($e instanceof ProviderRequestFailedException && $e->isRateLimited()) {
-                $this->release($e->retryAfterSeconds ?? self::RATE_LIMIT_FALLBACK_SECONDS);
+                $releaseFor = $e->retryAfterSeconds ?? self::RATE_LIMIT_FALLBACK_SECONDS;
+
+                SystemLog::degraded('ingestion.poll.rate_limited', reason: 'provider_rate_limited', input: ['integration_id' => $this->integration->id], calc: ['retry_after_seconds' => $e->retryAfterSeconds, 'fallback_seconds' => self::RATE_LIMIT_FALLBACK_SECONDS, 'released_for_seconds' => $releaseFor]);
+
+                $this->release($releaseFor);
 
                 return;
             }
@@ -132,6 +140,8 @@ class PollSafetyEventsJob implements ShouldBeUnique, ShouldQueue
         }
 
         $this->integration->update($attributes);
+
+        SystemLog::ok('ingestion.poll.cycle_completed', input: ['integration_id' => $this->integration->id], calc: ['start_time' => $startTime, 'had_cursor' => $cursor !== null], result: ['events' => count($result['events']), 'has_more' => $result['has_more'] ?? false, 'next_cursor_present' => $result['cursor'] !== null]);
     }
 
     public function failed(\Throwable $exception): void

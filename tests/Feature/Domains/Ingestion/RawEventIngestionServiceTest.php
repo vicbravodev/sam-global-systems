@@ -10,10 +10,12 @@ use App\Domains\Integrations\Models\IntegrationProvider;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class RawEventIngestionServiceTest extends TestCase
 {
+    use AssertsSystemLog;
     use RefreshDatabase;
 
     public function test_ingest_resolves_provider_from_code_and_uses_valid_source_type(): void
@@ -68,5 +70,38 @@ class RawEventIngestionServiceTest extends TestCase
             $rawEvent->provider_id,
             'an unrecognized provider code resolves to a null provider id rather than throwing',
         );
+    }
+
+    public function test_unknown_provider_code_is_logged_as_unresolved(): void
+    {
+        Bus::fake();
+
+        $team = User::factory()->create()->currentTeam;
+
+        app(RawEventIngestion::class)->ingest($team->id, 'provider-without-row', 'AlertIncident', ['eventId' => 'svc-unk']);
+
+        $this->assertSystemLogged('ingestion.provider.unresolved', fn (array $c): bool => $c['reason'] === 'unknown_provider_code'
+            && $c['outcome'] === 'degraded'
+            && $c['input']['provider_code'] === 'provider-without-row'
+            && $c['input']['event_type'] === 'AlertIncident');
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_resolution_state_payload_is_stored_with_an_explicit_dedup_key(): void
+    {
+        Bus::fake();
+
+        $team = User::factory()->create()->currentTeam;
+        IntegrationProvider::factory()->samsara()->create();
+
+        app(RawEventIngestion::class)->ingest($team->id, 'samsara', 'AlertIncident', ['eventId' => 'svc-res', 'data' => ['isResolved' => true]]);
+
+        $rawEvent = RawEvent::withoutGlobalScopes()->where('external_event_id', 'svc-res')->firstOrFail();
+
+        $this->assertSystemLogged('ingestion.raw_event.stored', fn (array $c): bool => $c['calc']['dedup_key_strategy'] === 'explicit'
+            && $c['result']['raw_event_id'] === $rawEvent->id
+            && $c['input']['external_event_id'] === 'svc-res');
+        $this->assertSystemNotLogged('ingestion.provider.unresolved');
+        $this->assertNoSensitiveDataLogged();
     }
 }

@@ -123,6 +123,20 @@ Lo emite `App\Support\DeniedRequestLog` (outcome `degraded`); sólo la plantilla
 |---|---|---|---|
 | `ingestion.media.inline_download_failed` | degraded | `download_failed` | `raw_event_id`, `url_key`, `error` |
 | `ingestion.poll.cursor_rejected` | degraded | `provider_rejected_cursor` | `integration_id`, `http_status`, `provider_message` (saneado, 200 car.), `restart_from` |
+| `ingestion.provider.unresolved` | degraded | `unknown_provider_code` | `provider_code`, `event_type`; sin proveedor el evento terminará `unmapped` |
+| `ingestion.raw_event.stored` | ok | | `source_type`, `provider_id`, `external_event_id`, `external_event_type`, `calc.dedup_key_strategy` (`explicit`/`external_event_id`/`checksum`), `calc.occurred_at_source` (clave del payload), `calc.occurred_at_parse_failed`, `raw_event_id`, `event_source_id` |
+| `ingestion.raw_event.processed` | ok | | `raw_event_id` |
+| `ingestion.dedup.skipped` | skipped | `no_dedup_key` | `raw_event_id` |
+| `ingestion.dedup.key_expired` | ok | | `raw_event_id`, `expired_key_raw_event_id` |
+| `ingestion.dedup.key_registered` | ok | | `raw_event_id`, `dedup_source` (`deduplication_key`/`checksum`), `calc.ttl_hours` |
+| `ingestion.duplicate.detected` | skipped | `existing_key`, `lost_insert_race` | `raw_event_id`, `dedup_source`, `first_raw_event_id` (sólo `existing_key`). Nunca el valor de la clave |
+| `ingestion.media.inline_skipped` | skipped | `known_duplicate` | `raw_event_id`, `event_state` |
+| `ingestion.media.inline_collected` | ok | | `raw_event_id`, `calc.urls_found`, `calc.downloaded`, `calc.failed` |
+| `ingestion.usage.not_metered` | degraded | `meter_missing` | `meter_code`, `raw_event_id`; hueco de facturación |
+| `ingestion.usage.recorded` | ok | | `meter_code`, `raw_event_id`, `event_state` |
+| `ingestion.poll.cursor_restarted` | ok | | `integration_id`, `calc.restart_from`, `had_cursor`, `had_start_time`, `backfill_hours`, `restart_margin_minutes` |
+| `ingestion.poll.rate_limited` | degraded | `provider_rate_limited` | `integration_id`, `calc.retry_after_seconds`, `fallback_seconds`, `released_for_seconds` |
+| `ingestion.poll.cycle_completed` | ok | | `integration_id`, `calc.start_time`, `had_cursor`, `result.events`, `has_more`, `next_cursor_present` |
 
 ### Webhooks (`webhook`)
 
