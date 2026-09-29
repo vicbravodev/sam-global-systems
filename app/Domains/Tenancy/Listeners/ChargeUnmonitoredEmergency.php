@@ -12,6 +12,7 @@ use App\Domains\Notifications\Enums\NotificationSourceType;
 use App\Domains\Notifications\Enums\NotificationTriggeredByType;
 use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Domains\Tenancy\Support\AssetDayPricing;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Contracts\Queue\ShouldQueue;
 
@@ -37,17 +38,29 @@ class ChargeUnmonitoredEmergency implements ShouldQueue
         $assetId = $normalized->asset_id;
 
         if ($assetId === null) {
+            SystemLog::skipped('billing.emergency_surcharge.skipped', reason: 'no_asset', input: [
+                'team_id' => $teamId,
+                'normalized_event_id' => $normalized->id,
+            ]);
+
             return;
         }
 
         TenantContext::for($teamId, function () use ($normalized, $teamId, $assetId) {
             $localDate = AssetDayPricing::localDate($normalized->occurred_at ?? now());
+            $eventKey = "unmonitored_emergency:{$teamId}:{$assetId}:{$localDate}";
+            // Nunca el nombre ni la placa del activo, ni el asunto/cuerpo del aviso.
+            $logInput = [
+                'team_id' => $teamId,
+                'asset_id' => $assetId,
+                'normalized_event_id' => $normalized->id,
+            ];
 
-            $this->recordUsage->execute(
+            $recorded = $this->recordUsage->record(
                 teamId: $teamId,
                 meterCode: AssetDayPricing::UNMONITORED_EMERGENCY_METER_CODE,
                 quantity: 1,
-                eventKey: "unmonitored_emergency:{$teamId}:{$assetId}:{$localDate}",
+                eventKey: $eventKey,
                 metadata: [
                     'asset_id' => $assetId,
                     'normalized_event_id' => $normalized->id,
@@ -56,16 +69,39 @@ class ChargeUnmonitoredEmergency implements ShouldQueue
                 occurredAt: AssetDayPricing::localNoon($localDate),
             );
 
+            // El importe no se conoce aquí: sale al cerrar la factura con la tarifa diaria.
+            if ($recorded) {
+                SystemLog::ok('billing.emergency_surcharge.charged', input: $logInput, calc: [
+                    'local_date' => $localDate,
+                    'occurred_at_source' => $normalized->occurred_at !== null ? 'event' : 'now',
+                    'surcharge_percent' => AssetDayPricing::unmonitoredEmergencySurchargePercent(),
+                    'meter_code' => AssetDayPricing::UNMONITORED_EMERGENCY_METER_CODE,
+                ], result: ['event_key' => $eventKey, 'recorded' => true]);
+            } else {
+                SystemLog::skipped(
+                    'billing.emergency_surcharge.skipped',
+                    reason: 'already_charged_today',
+                    input: $logInput,
+                    calc: ['local_date' => $localDate],
+                    result: ['event_key' => $eventKey],
+                );
+            }
+
             $recipients = IncidentSupervisors::recipients($teamId);
 
             if ($recipients === []) {
+                SystemLog::skipped('billing.emergency_surcharge.notified', reason: 'no_supervisors', input: [
+                    'team_id' => $teamId,
+                    'asset_id' => $assetId,
+                ]);
+
                 return;
             }
 
             $assetName = Asset::query()->whereKey($assetId)->value('name') ?? "#{$assetId}";
             $surcharge = AssetDayPricing::unmonitoredEmergencySurchargePercent();
 
-            $this->sendNotification->execute(
+            $notification = $this->sendNotification->execute(
                 teamId: $teamId,
                 notificationType: 'billing.unmonitored_emergency',
                 sourceType: NotificationSourceType::SystemEvent,
@@ -87,6 +123,14 @@ class ChargeUnmonitoredEmergency implements ShouldQueue
                     rtrim(rtrim(number_format($surcharge, 2), '0'), '.'),
                 ),
             );
+
+            SystemLog::ok('billing.emergency_surcharge.notified', input: [
+                'team_id' => $teamId,
+                'asset_id' => $assetId,
+            ], result: [
+                'notification_id' => $notification->id,
+                'recipients_count' => count($recipients),
+            ]);
         });
     }
 }

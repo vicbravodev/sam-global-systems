@@ -244,6 +244,7 @@ Las líneas del listener síncrono `RequestPanicMediaOnContextBuilt` (`context.m
 | `ai.reevaluation.not_requested` | skipped | `no_normalized_event`, `decision_pending` (el motor aún no corrió y leerá el hecho `media_assessment`), `media_already_assessed` (calc `media_context_count`, `assessed_elsewhere_count`), `incident_terminal` (result `incident_id`, `incident_status_id`) | `evaluation_id`, `normalized_event_id`. Listener de media evaluada |
 | `ai.reevaluation.requested` | ok | - | `normalized_event_id`, `evaluation_id`, `trigger_type`, `requested_by` (`media_assessment` u `operator`), `trigger_reference_id` (solo media), `reason_present` (solo operador; nunca el texto); calc `debounce_s`, `new_media_count` (solo media); result `latest_assessment_result` (solo media). Dice "pedido", no "encolado": `ReevaluateEventJob` es único por (evento, trigger), así que el pedido puede absorberse en un job ya pendiente y no crear otro |
 | `ai.media.assessment_unavailable` | degraded | `agent_error` | `evaluation_id`, `event_media_context_id`, `error` |
+| `ai.usage.not_metered` | skipped / degraded | `no_conversation_link` (debug; calc `conversation_id_present`: caso normal de los wrappers propios, que miden por su cuenta), `zero_tokens` (debug; calc `direction`), `meter_missing` (degraded, hueco de cobro; calc `direction`, `meter_code`, `tokens`) | `team_id` (el del link), `invocation_id`; calc `direction` (`in` u `out`). Lo medido lo narra `billing.usage.recorded` / `billing.usage.duplicate_ignored` |
 | `copilot.narration.fallback` | degraded | `agent_error` | `error` |
 
 ### Decisiones (`decisions`)
@@ -431,8 +432,16 @@ Selección de canales vacía (`notifications.channels.selected` skipped): antes 
 
 ### Billing (`billing`)
 
+`billing.usage.recorded` es el libro mayor (una fila insertada en `usage_events`); `ingestion.usage.*` y `context.usage.*` explican por qué se pidió medir.
+
 | Código | Outcome | Reason posibles | Campos clave |
 |---|---|---|---|
+| `billing.usage.recorded` | ok | - | `team_id`, `meter_code`, `event_key`; calc `quantity`, `reset_period`, `occurred_at` (ISO 8601), `billing_period_key` (`Y-m` para `monthly` y el default, `Y-m-d` para `daily`); result `recorded=true`. Solo si `insertOrIgnore` insertó la fila, y por `DB::afterCommit` (una transacción que revierte no lo emite). Nunca `metadata` del uso |
+| `billing.usage.duplicate_ignored` | skipped | `event_key_exists` | `team_id`, `meter_code`, `event_key`; calc `quantity` (la pedida, no la guardada), `billing_period_key`. Directo: que este insert no escribió nada es cierto aunque la transacción revierta |
+| `billing.meter.missing` | degraded | `meter_missing` | `team_id`, `meter_code`, `stage` (`record_usage`: `RecordUsageEvent` relanza la misma `ModelNotFoundException`, con `event_key`; `invoice` y `estimate`: la factura y la estimación leen ese meter como `0`) |
+| `billing.emergency_surcharge.charged` | ok | - | `team_id`, `asset_id`, `normalized_event_id`; calc `local_date`, `occurred_at_source` (`event` o `now`), `surcharge_percent`, `meter_code`; result `event_key`, `recorded=true` (sale de `RecordUsageEvent::record`). El importe no se registra aquí: la tarifa diaria se conoce al cerrar la factura (`billing.invoice_line.calculated` con `billing_model = asset_day_surcharge`). Nunca nombre ni placa del activo |
+| `billing.emergency_surcharge.skipped` | skipped | `no_asset` (`team_id`, `normalized_event_id`), `already_charged_today` (calc `local_date`, result `event_key`) | `team_id`, `asset_id`, `normalized_event_id` |
+| `billing.emergency_surcharge.notified` | ok / skipped | `no_supervisors` (skipped) | `team_id`, `asset_id`; result `notification_id`, `recipients_count`. Nunca asunto ni cuerpo del aviso |
 | `billing.messaging_charge.reconcile_failed` | degraded | `provider_error` | `charge_id`, `provider_sid`, `error` |
 | `billing.messaging_charge.record_failed` | degraded | `record_failed` | `team_id`, `provider_sid`, `source_type`, `source_id`, `error` |
 | `billing.messaging_usage.not_metered` | degraded | `record_failed` | `team_id`, `meter_code`, `event_key`, `error` |
