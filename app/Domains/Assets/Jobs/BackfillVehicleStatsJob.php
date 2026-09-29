@@ -8,6 +8,7 @@ use App\Domains\Integrations\Contracts\ProviderAdapter;
 use App\Domains\Integrations\Exceptions\ProviderRateLimited;
 use App\Domains\Integrations\Exceptions\ProviderUnauthorized;
 use App\Domains\Integrations\Models\TenantIntegration;
+use App\Support\PipelineTrace;
 use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Carbon\CarbonInterface;
@@ -54,6 +55,10 @@ class BackfillVehicleStatsJob implements ShouldBeUnique, ShouldQueue
     public function handle(ProviderAdapter $providerAdapter, IngestVehicleStatsPage $ingest): void
     {
         TenantContext::set($this->integration->team_id);
+        PipelineTrace::beginOperation(
+            $this->integration->team_id,
+            $this->integration->relationLoaded('provider') ? $this->integration->provider?->code : null,
+        );
 
         $floor = $this->until->copy()->subHours((int) config('telematics.backfill_hours', 24));
         $from = $this->from->greaterThan($floor) ? $this->from : $floor;

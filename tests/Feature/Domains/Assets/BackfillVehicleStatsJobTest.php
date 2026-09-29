@@ -13,6 +13,7 @@ use App\Domains\Integrations\Models\TenantIntegration;
 use App\Models\Team;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -59,6 +60,10 @@ class BackfillVehicleStatsJobTest extends TestCase
         $this->assertSame(3, AssetLocationSnapshot::query()->where('asset_id', $asset->id)->count());
         Http::assertSent(fn (Request $request) => str_contains($request->url(), 'after=h1'));
         $this->assertEqualsWithDelta(1.0, $asset->fresh()->last_latitude, 0.0001);
+
+        // La línea `telematics.backfill.completed` sale atribuida al tenant.
+        $this->assertSame($integration->team_id, Context::get('team_id'));
+        $this->assertNotNull(Context::get('trace_id'));
     }
 
     public function test_the_window_is_capped_at_the_configured_hours(): void
