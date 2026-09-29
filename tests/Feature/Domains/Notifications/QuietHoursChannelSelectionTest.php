@@ -150,6 +150,28 @@ class QuietHoursChannelSelectionTest extends TestCase
         $this->assertFalse($this->explained['calc']['muted']);
     }
 
+    public function test_stale_allowed_channel_values_are_logged_without_the_bogus_entries(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+        $team->forceFill(['timezone' => 'UTC'])->save();
+
+        NotificationPreference::factory()->create([
+            'team_id' => $team->id,
+            'user_id' => $user->id,
+            'notification_type' => 'manual.test',
+            'allowed_channels_json' => ['email', 'carrier pigeon', 'sms'],
+            'quiet_hours_json' => null,
+        ]);
+
+        $types = $this->selectedTypes($team, NotificationPriority::High, [], (string) $user->id);
+
+        $this->assertSame(['email', 'sms'], $types);
+        $this->assertSame('user_preference', $this->explained['calc']['allowed_types_source']);
+        $this->assertSame(['email', 'sms'], $this->explained['calc']['allowed_types']);
+        $this->assertStringNotContainsString('carrier pigeon', json_encode($this->explained['calc']));
+    }
+
     public function test_another_tenants_quiet_hours_never_apply(): void
     {
         $quietTeam = $this->teamWithQuietPolicy();

@@ -33,6 +33,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 /**
@@ -42,7 +43,7 @@ use Tests\TestCase;
  */
 class DispatchNotificationChannelMeterTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsSystemLog, RefreshDatabase;
 
     protected function setUp(): void
     {
@@ -73,6 +74,17 @@ class DispatchNotificationChannelMeterTest extends TestCase
         $this->assertCount(1, $events);
         $this->assertSame("notif_delivery_{$delivery->id}", $events->first()->event_key);
         $this->assertCount(0, $this->usageEventsFor('outbound_notifications'));
+
+        // Twilio aceptó (hay SID): "sent" no es "delivered"; cargo y uso quedaron registrados.
+        $this->assertSystemLogged('notifications.delivery.sent', fn (array $c) => $c['input']['delivery_id'] === $delivery->id
+            && $c['input']['channel_type'] === 'sms'
+            && $c['result']['awaiting_provider_confirmation'] === true
+            && $c['result']['delivery_status'] === 'queued'
+            && $c['result']['resource_type'] === 'message'
+            && $c['result']['charge_recorded'] === true
+            && $c['result']['usage_metered'] === true
+            && $c['result']['usage_meter_code'] === 'sms_messages');
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_whatsapp_delivery_bills_whatsapp_messages_meter(): void

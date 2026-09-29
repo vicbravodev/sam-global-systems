@@ -117,7 +117,11 @@ class SelectNotificationChannels
 
         $allowed = $this->resolveAllowedTypes($preference, $policy);
         $allowedTypes = $allowed['types'];
-        $calc['allowed_types'] = $allowedTypes;
+        // Sólo tipos reales: allowed_channels_json puede traer valores viejos o sembrados.
+        $calc['allowed_types'] = array_values(array_filter(array_map(
+            static fn (string $type): ?string => ChannelType::tryFrom($type)?->value,
+            $allowedTypes,
+        )));
         $calc['allowed_types_source'] = $allowed['source'];
 
         $candidates = $channels->filter(fn (NotificationChannel $channel) => in_array($channel->channel_type->value, $allowedTypes, true))
