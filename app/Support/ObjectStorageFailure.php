@@ -3,7 +3,7 @@
 namespace App\Support;
 
 use Aws\Exception\AwsException;
-use Illuminate\Support\Facades\Log;
+use InvalidArgumentException;
 use League\Flysystem\FilesystemException;
 use Throwable;
 
@@ -27,10 +27,14 @@ final class ObjectStorageFailure
      */
     public static function report(string $operation, Throwable $e, array $context = []): void
     {
-        Log::error('Object storage failure: '.$operation, array_merge([
-            'operation' => $operation,
-            'exception' => $e::class,
-            'message' => $e->getMessage(),
-        ], $context));
+        // Corre en rutas de fallo: reportar nunca puede lanzar. Único error
+        // que se relanza: la violación de esquema de SystemLog en tests.
+        try {
+            SystemLog::failed('storage.object.operation_failed', reason: 'storage_unavailable', input: ['operation' => $operation] + $context, error: $e);
+        } catch (Throwable $reportError) {
+            if ($reportError instanceof InvalidArgumentException && app()->runningUnitTests()) {
+                throw $reportError;
+            }
+        }
     }
 }

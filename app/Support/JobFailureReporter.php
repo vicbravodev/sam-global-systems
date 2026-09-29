@@ -2,9 +2,14 @@
 
 namespace App\Support;
 
-use Illuminate\Support\Facades\Log;
+use InvalidArgumentException;
 use Throwable;
 
+/**
+ * Fallo definitivo de un job con su contexto de dominio (ids del recurso).
+ * Además de la línea genérica `queue.job.failed` (AutomaticSystemLog), deja
+ * `{dominio}.{job}.failed` para filtrar por módulo.
+ */
 final class JobFailureReporter
 {
     /**
@@ -12,11 +17,33 @@ final class JobFailureReporter
      */
     public static function report(string $jobClass, Throwable $e, array $context = []): void
     {
-        Log::error('Job failed: '.$jobClass, array_merge([
-            'job' => $jobClass,
-            'exception' => $e::class,
-            'message' => $e->getMessage(),
-            'file' => $e->getFile().':'.$e->getLine(),
-        ], $context));
+        // Corre dentro de `failed()` de los jobs: reportar nunca puede lanzar.
+        // Único error que se relanza: la violación de esquema de SystemLog en tests.
+        try {
+            SystemLog::failed(self::codeFor($jobClass), reason: 'exception', input: ['job' => $jobClass] + $context, error: $e);
+        } catch (Throwable $reportError) {
+            if ($reportError instanceof InvalidArgumentException && app()->runningUnitTests()) {
+                throw $reportError;
+            }
+        }
+    }
+
+    public static function codeFor(string $jobClass): string
+    {
+        $job = self::snake((string) preg_replace('/Job$/', '', class_basename($jobClass)));
+        $domain = preg_match('/^App\\\\Domains\\\\([^\\\\]+)\\\\/', $jobClass, $match) === 1
+            ? self::snake($match[1])
+            : 'app';
+
+        return "{$domain}.{$job}.failed";
+    }
+
+    /**
+     * `AI` → `ai`, `TenantConfig` → `tenant_config`, `ApplyAIProfile` →
+     * `apply_ai_profile` (Str::snake daría `a_i`).
+     */
+    private static function snake(string $name): string
+    {
+        return strtolower((string) preg_replace('/(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])/', '_', $name));
     }
 }

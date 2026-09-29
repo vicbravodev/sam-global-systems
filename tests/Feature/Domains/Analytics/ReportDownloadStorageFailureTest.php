@@ -14,10 +14,10 @@ use App\Support\ObjectStorageFailure;
 use Database\Seeders\AccessSeeder;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use League\Flysystem\UnableToCheckExistence;
 use Mockery;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 /**
@@ -27,6 +27,7 @@ use Tests\TestCase;
  */
 class ReportDownloadStorageFailureTest extends TestCase
 {
+    use AssertsSystemLog;
     use RefreshDatabase;
 
     private User $user;
@@ -63,8 +64,6 @@ class ReportDownloadStorageFailureTest extends TestCase
         $failing->shouldReceive('exists')
             ->andThrow(UnableToCheckExistence::forLocation((string) $this->execution->file_path));
         Storage::set('rustfs', $failing);
-
-        Log::spy();
     }
 
     public function test_web_download_redirects_with_a_spanish_toast_when_storage_is_down(): void
@@ -77,11 +76,16 @@ class ReportDownloadStorageFailureTest extends TestCase
             ->assertInertiaFlash('toast.type', 'error')
             ->assertInertiaFlash('toast.message', 'No se pudo descargar el reporte. '.ObjectStorageFailure::USER_MESSAGE);
 
-        Log::shouldHaveReceived('error')->withArgs(
-            fn (string $message, array $context) => str_contains($message, 'report_download')
-                && $context['report_execution_id'] === $this->execution->id
-                && $context['team_id'] === $team->id,
-        )->once();
+        $this->assertSystemLogged(
+            'storage.object.operation_failed',
+            fn (array $c) => $c['input']['operation'] === 'report_download'
+                && $c['input']['report_execution_id'] === $this->execution->id
+                && $c['input']['team_id'] === $team->id
+                && $c['error']['class'] === UnableToCheckExistence::class,
+        );
+        $entries = $this->systemLogEntries('storage.object.operation_failed');
+        $this->assertCount(1, $entries);
+        $this->assertSame('error', $entries[0]['level']);
     }
 
     public function test_api_download_returns_503_with_message_when_storage_is_down(): void

@@ -11,10 +11,10 @@ use Database\Seeders\AccessSeeder;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use League\Flysystem\UnableToWriteFile;
 use Mockery;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 /**
@@ -23,6 +23,7 @@ use Tests\TestCase;
  */
 class InvoicePaymentLifecycleTest extends TestCase
 {
+    use AssertsSystemLog;
     use RefreshDatabase;
 
     private User $user;
@@ -111,7 +112,6 @@ class InvoicePaymentLifecycleTest extends TestCase
         $failing = Mockery::mock(Filesystem::class);
         $failing->shouldReceive('put')->andThrow(UnableToWriteFile::atLocation('billing/x.pdf', 'connection refused'));
         Storage::set('rustfs', $failing);
-        Log::spy();
 
         $invoice = InvoiceSnapshot::factory()->create([
             'team_id' => $this->team->id,
@@ -131,10 +131,15 @@ class InvoicePaymentLifecycleTest extends TestCase
         $this->assertNull($invoice->refresh()->payment_receipt_file_object_id);
         $this->assertDatabaseMissing('file_objects', ['team_id' => $this->team->id, 'category' => 'payment_receipt']);
 
-        Log::shouldHaveReceived('error')->withArgs(
-            fn (string $message, array $context) => str_contains($message, 'invoice_receipt_upload')
-                && $context['invoice_id'] === $invoice->id,
-        )->once();
+        $this->assertSystemLogged(
+            'storage.object.operation_failed',
+            fn (array $c) => $c['input']['operation'] === 'invoice_receipt_upload'
+                && $c['input']['invoice_id'] === $invoice->id
+                && $c['error']['class'] === UnableToWriteFile::class,
+        );
+        $entries = $this->systemLogEntries('storage.object.operation_failed');
+        $this->assertCount(1, $entries);
+        $this->assertSame('error', $entries[0]['level']);
     }
 
     public function test_super_admin_marks_invoice_paid_with_audit(): void
