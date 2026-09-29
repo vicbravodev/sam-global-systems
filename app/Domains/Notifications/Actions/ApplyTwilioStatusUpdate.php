@@ -110,10 +110,10 @@ class ApplyTwilioStatusUpdate
             $result = ['from_status' => $applied['from'], 'to_status' => $applied['to']];
 
             match ($applied['outcome']) {
-                // El SID ya no es el del intento actual (un reintento lo
-                // reemplazó): sólo se actualizó su cargo.
                 // La entrega ya no existe: sólo se actualizó el cargo.
                 'delivery_missing' => SystemLog::skipped('notifications.provider_status.skipped', reason: 'delivery_missing', input: $input, calc: $calc),
+                // El SID ya no es el del intento actual (un reintento lo
+                // reemplazó): sólo se actualizó su cargo.
                 'superseded_attempt' => SystemLog::skipped('notifications.provider_status.skipped', reason: 'superseded_attempt', input: $input, calc: $calc),
                 // Tardío, fuera de orden o repetido: la entrega no retrocede.
                 'not_advancing' => SystemLog::skipped('notifications.provider_status.skipped', reason: 'not_advancing', input: $input, calc: $calc, result: $result, debug: true),
