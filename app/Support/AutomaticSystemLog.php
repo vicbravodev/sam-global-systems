@@ -85,9 +85,10 @@ final class AutomaticSystemLog
         self::listen(JobExceptionOccurred::class, static function (JobExceptionOccurred $event): void {
             self::$inTelematicsJob = false;
 
+            // jobDuration libera el inicio: un intento que se reintenta no deja rastro.
             SystemLog::degraded('queue.job.attempt_failed', reason: 'exception', input: self::jobInput($event->job) + [
                 'max_tries' => $event->job->maxTries(),
-            ], error: $event->exception, channel: self::jobChannel($event->job));
+            ], error: $event->exception, durationMs: self::jobDuration($event->job), channel: self::jobChannel($event->job));
         });
 
         self::listen(JobFailed::class, static function (JobFailed $event): void {
@@ -98,8 +99,9 @@ final class AutomaticSystemLog
                 default => 'exception',
             };
 
-            SystemLog::failed('queue.job.failed', reason: $reason, input: self::jobInput($event->job), error: $event->exception, channel: self::jobChannel($event->job));
             unset(self::$startedAt[spl_object_id($event->job)]);
+
+            SystemLog::failed('queue.job.failed', reason: $reason, input: self::jobInput($event->job), error: $event->exception, channel: self::jobChannel($event->job));
         });
 
         self::listen(ResponseReceived::class, static function (ResponseReceived $event): void {

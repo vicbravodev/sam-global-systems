@@ -67,7 +67,7 @@ Los tests usan `Tests\Concerns\AssertsSystemLog`: `assertSystemLogged($code, fn 
 |---|---|---|---|
 | `queue.job.finished` | ok | — | `job`, `queue`, `connection`, `attempt`, `duration_ms` |
 | `queue.job.released` | skipped | `released` | `job`, `queue`, `connection`, `attempt` |
-| `queue.job.attempt_failed` | degraded | `exception` | `job`, `queue`, `attempt`, `max_tries`, `error` |
+| `queue.job.attempt_failed` | degraded | `exception` | `job`, `queue`, `attempt`, `max_tries`, `duration_ms`, `error` |
 | `queue.job.failed` | failed | `max_attempts_exceeded`, `timeout`, `exception` | `job`, `queue`, `attempt`, `error` |
 
 Los jobs de la cola `telematics` (feed cada 5 s) escriben sus líneas de cola en el canal `telematics`: `finished` y `released` a `debug` (el nivel `info` del canal los descarta por defecto), `attempt_failed` y `failed` con su nivel. Mientras corre un job de esa cola, sus `http.client.*` también van al canal `telematics`: las `ok` a `debug`, las `degraded`/`failed` con su nivel.

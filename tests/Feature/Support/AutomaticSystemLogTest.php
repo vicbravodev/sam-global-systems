@@ -3,6 +3,7 @@
 namespace Tests\Feature\Support;
 
 use App\Models\User;
+use App\Support\AutomaticSystemLog;
 use App\Support\SystemLog;
 use Illuminate\Auth\Events\Failed;
 use Illuminate\Auth\Events\Lockout;
@@ -157,6 +158,20 @@ class AutomaticSystemLogTest extends TestCase
         AutomaticSystemLogTelematicsHttpJob::dispatch()->onQueue('telematics');
 
         $this->artisan('queue:work', ['connection' => 'database', '--queue' => 'telematics', '--once' => true, '--tries' => 1])->assertSuccessful();
+    }
+
+    public function test_a_retried_attempt_logs_its_duration_and_frees_the_start_time(): void
+    {
+        config(['queue.default' => 'database']);
+
+        AutomaticSystemLogFailingJob::dispatch();
+
+        $this->artisan('queue:work', ['connection' => 'database', '--once' => true, '--tries' => 3])->assertSuccessful();
+
+        $attempt = $this->assertSystemLogged('queue.job.attempt_failed', fn (array $c) => $c['input']['job'] === AutomaticSystemLogFailingJob::class);
+        $this->assertIsInt($attempt['duration_ms']);
+        $this->assertSystemNotLogged('queue.job.failed');
+        $this->assertSame([], (new \ReflectionProperty(AutomaticSystemLog::class, 'startedAt'))->getValue());
     }
 
     public function test_a_broken_log_sink_never_breaks_http_or_jobs(): void
