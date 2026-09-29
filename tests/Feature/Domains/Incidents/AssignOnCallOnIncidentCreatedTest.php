@@ -376,4 +376,27 @@ class AssignOnCallOnIncidentCreatedTest extends TestCase
         $this->assertSame(0, $c['calc']['matched_shift_index']);
         $this->assertNoSensitiveDataLogged();
     }
+
+    public function test_a_winning_shift_is_never_counted_as_malformed(): void
+    {
+        // start/end numéricos no lanzan: shiftMatches() los trata como "sin
+        // horario" y el turno gana. La línea no puede contarlo como mal formado
+        // ni dejar al ganador fuera de los turnos que casaron.
+        $this->makeScheduleProfile([
+            'on_call' => [
+                ['user_id' => $this->operator->id, 'start' => 800, 'end' => 2000],
+            ],
+        ]);
+
+        $event = NormalizedEvent::factory()->create(['team_id' => $this->team->id]);
+
+        $incident = app(CreateIncidentFromEvent::class)->execute($event, ['priority_code' => 'critical']);
+
+        $c = $this->assertSystemLogged('incidents.assignment.resolved', fn (array $c) => $c['outcome'] === 'ok'
+            && $c['input']['incident_id'] === $incident->id);
+        $this->assertSame(0, $c['calc']['matched_shift_index']);
+        $this->assertSame(1, $c['calc']['shifts_matched_count']);
+        $this->assertSame(0, $c['calc']['malformed_shifts_count']);
+        $this->assertNoSensitiveDataLogged();
+    }
 }

@@ -135,26 +135,30 @@ class ResolveOnCallOperator
     }
 
     /**
-     * A shift whose `days` holds non-string entries or whose `start`/`end`
-     * are present but not strings. Only the counting pass uses it: the
-     * winner loop keeps evaluating shifts exactly as before.
+     * Exactly the shifts `shiftMatches()` would throw on: a numeric user (the
+     * only ones the winner loop evaluates) with a non-empty `days` holding an
+     * array or object entry (`strtolower()` raises a TypeError on it). Any
+     * other oddity (numeric `start`/`end`, scalar days) evaluates without
+     * throwing, so it is counted like the winner loop sees it. Only the
+     * counting pass uses it: the winner loop keeps evaluating shifts exactly
+     * as before.
      *
      * @param  array<mixed>  $shift
      */
     private function isMalformed(array $shift): bool
     {
-        $days = $shift['days'] ?? null;
-
-        if (is_array($days)) {
-            foreach ($days as $day) {
-                if (! is_string($day)) {
-                    return true;
-                }
-            }
+        if (! is_numeric($shift['user_id'] ?? null)) {
+            return false;
         }
 
-        foreach (['start', 'end'] as $key) {
-            if (isset($shift[$key]) && ! is_string($shift[$key])) {
+        $days = $shift['days'] ?? null;
+
+        if (! is_array($days) || $days === []) {
+            return false;
+        }
+
+        foreach ($days as $day) {
+            if (is_array($day) || is_object($day)) {
                 return true;
             }
         }
