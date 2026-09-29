@@ -10,7 +10,7 @@ namespace App\Support;
  */
 final class LoggableCode
 {
-    public const string PATTERN = '/^[A-Za-z0-9_.]{1,64}$/D';
+    public const string PATTERN = '/^[A-Za-z0-9_.-]{1,64}$/D';
 
     public static function guard(mixed $value): ?string
     {

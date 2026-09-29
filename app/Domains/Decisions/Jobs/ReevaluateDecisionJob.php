@@ -6,6 +6,7 @@ use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\Decisions\Actions\EvaluateDecisionRules;
 use App\Support\JobFailureReporter;
 use App\Support\PipelineTrace;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -32,6 +33,11 @@ class ReevaluateDecisionJob implements ShouldQueue
         $eval = AIEventEvaluation::withoutGlobalScopes()->find($this->aiEvaluationId);
 
         if ($eval === null) {
+            SystemLog::skipped('decisions.engine.skipped', reason: 'evaluation_missing', input: [
+                'ai_evaluation_id' => $this->aiEvaluationId,
+                'stage' => 'reevaluate_job',
+            ]);
+
             return;
         }
 

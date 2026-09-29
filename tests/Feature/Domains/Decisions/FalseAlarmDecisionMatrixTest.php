@@ -22,6 +22,7 @@ use App\Models\User;
 use Database\Seeders\DecisionOutcomeSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 /**
@@ -31,6 +32,7 @@ use Tests\TestCase;
  */
 class FalseAlarmDecisionMatrixTest extends TestCase
 {
+    use AssertsSystemLog;
     use RefreshDatabase;
 
     private int $teamId;
@@ -170,6 +172,14 @@ class FalseAlarmDecisionMatrixTest extends TestCase
             $decision->requires_human_review,
             'the degraded outcome must still demand a human, never auto-dismiss',
         );
+
+        $resolved = $this->assertSystemLogged('decisions.outcome.resolved');
+        $this->assertSame('hard_safety', $resolved['calc']['source']);
+        $this->assertSame('panic-false-alarm-review', $resolved['result']['rule_code']);
+        $this->assertTrue($resolved['calc']['review_by_outcome']);
+        $this->assertFalse($resolved['calc']['review_by_confidence']);
+        $this->assertTrue($resolved['result']['requires_human_review']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_resolved_on_the_road_stays_urgent_incident(): void

@@ -7,6 +7,7 @@ use App\Domains\AI\Data\TenantAIProfileData;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\Tenancy\Models\UsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 
 /**
@@ -35,56 +36,98 @@ class TenantAIQuota
 
     /**
      * True when the model must NOT be called for this event: the tenant is
-     * over quota and the event is not critical.
+     * over quota and the event is not critical. `$purpose` (text|vision) only
+     * labels the log line.
      */
-    public function blocks(NormalizedEvent $event, ?TenantAIProfileData $profile = null): bool
+    public function blocks(NormalizedEvent $event, ?TenantAIProfileData $profile = null, string $purpose = 'text'): bool
     {
         if ($this->isCritical($event)) {
+            SystemLog::ok(
+                'ai.quota.checked',
+                input: ['normalized_event_id' => $event->id, 'purpose' => $purpose],
+                calc: ['is_critical' => true, 'bypassed' => true],
+                result: ['blocked' => false],
+            );
+
             return false;
         }
 
         $profile ??= $this->resolveTenantProfile->execute((int) $event->team_id);
 
-        return $this->exceeded((int) $event->team_id, $profile);
+        $usage = $this->usage((int) $event->team_id, $profile);
+        $blocked = $usage['exceeded_by'] !== null;
+
+        SystemLog::ok(
+            'ai.quota.checked',
+            input: ['normalized_event_id' => $event->id, 'purpose' => $purpose],
+            calc: ['is_critical' => false, 'bypassed' => false, ...$usage],
+            result: ['blocked' => $blocked, 'exceeded_by' => $usage['exceeded_by']],
+            debug: ! $blocked,
+        );
+
+        return $blocked;
     }
 
     public function exceeded(int $teamId, TenantAIProfileData $profile): bool
     {
-        return TenantContext::for($teamId, fn (): bool => $this->monthlyTokensExceeded($teamId, $profile->monthlyTokenLimit)
-            || $this->dailyCallsExceeded($teamId, $profile->dailyCallLimit));
+        return $this->usage($teamId, $profile)['exceeded_by'] !== null;
     }
 
-    private function monthlyTokensExceeded(int $teamId, int $monthlyLimit): bool
+    /**
+     * Consumption against both limits. Monthly tokens are checked first and
+     * short-circuit the daily-calls query (calls_* stay null when not consulted).
+     * Without meters the limit does not apply (as before).
+     *
+     * @return array{billing_period_key: string, tokens_meters_present: bool, tokens_used_this_period: ?int, tokens_limit: int, calls_meter_present: ?bool, calls_today: ?int, calls_limit: int, exceeded_by: ?string}
+     */
+    private function usage(int $teamId, TenantAIProfileData $profile): array
     {
-        $meterIds = UsageMeter::query()->whereIn('code', ['ai_tokens_in', 'ai_tokens_out'])->pluck('id');
+        return TenantContext::for($teamId, function () use ($teamId, $profile): array {
+            $periodKey = now()->format('Y-m');
+            $usage = [
+                'billing_period_key' => $periodKey,
+                'tokens_meters_present' => false,
+                'tokens_used_this_period' => null,
+                'tokens_limit' => $profile->monthlyTokenLimit,
+                'calls_meter_present' => null,
+                'calls_today' => null,
+                'calls_limit' => $profile->dailyCallLimit,
+                'exceeded_by' => null,
+            ];
 
-        if ($meterIds->isEmpty()) {
-            return false;
-        }
+            $meterIds = UsageMeter::query()->whereIn('code', ['ai_tokens_in', 'ai_tokens_out'])->pluck('id');
 
-        $consumed = (int) UsageEvent::query()
-            ->where('team_id', $teamId)
-            ->whereIn('usage_meter_id', $meterIds)
-            ->where('billing_period_key', now()->format('Y-m'))
-            ->sum('quantity');
+            if ($meterIds->isNotEmpty()) {
+                $usage['tokens_meters_present'] = true;
+                $usage['tokens_used_this_period'] = (int) UsageEvent::query()
+                    ->where('team_id', $teamId)
+                    ->whereIn('usage_meter_id', $meterIds)
+                    ->where('billing_period_key', $periodKey)
+                    ->sum('quantity');
 
-        return $consumed >= $monthlyLimit;
-    }
+                if ($usage['tokens_used_this_period'] >= $profile->monthlyTokenLimit) {
+                    $usage['exceeded_by'] = 'monthly_tokens';
 
-    private function dailyCallsExceeded(int $teamId, int $dailyLimit): bool
-    {
-        $meterId = UsageMeter::query()->where('code', 'ai_calls')->value('id');
+                    return $usage;
+                }
+            }
 
-        if ($meterId === null) {
-            return false;
-        }
+            $meterId = UsageMeter::query()->where('code', 'ai_calls')->value('id');
+            $usage['calls_meter_present'] = $meterId !== null;
 
-        $calls = (int) UsageEvent::query()
-            ->where('team_id', $teamId)
-            ->where('usage_meter_id', $meterId)
-            ->where('occurred_at', '>=', now()->startOfDay())
-            ->sum('quantity');
+            if ($meterId !== null) {
+                $usage['calls_today'] = (int) UsageEvent::query()
+                    ->where('team_id', $teamId)
+                    ->where('usage_meter_id', $meterId)
+                    ->where('occurred_at', '>=', now()->startOfDay())
+                    ->sum('quantity');
 
-        return $calls >= $dailyLimit;
+                if ($usage['calls_today'] >= $profile->dailyCallLimit) {
+                    $usage['exceeded_by'] = 'daily_calls';
+                }
+            }
+
+            return $usage;
+        });
     }
 }

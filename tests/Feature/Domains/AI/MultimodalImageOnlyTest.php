@@ -11,10 +11,12 @@ use App\Domains\Context\Models\EventMediaContext;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class MultimodalImageOnlyTest extends TestCase
 {
+    use AssertsSystemLog;
     use RefreshDatabase;
 
     public function test_video_and_audio_are_not_sent_to_the_model(): void
@@ -61,5 +63,18 @@ class MultimodalImageOnlyTest extends TestCase
         $this->assertDatabaseMissing('ai_media_assessments', [
             'event_media_context_id' => $audio->id,
         ]);
+
+        $ctx = $this->assertSystemLogged('ai.media.filtered');
+        $this->assertSame('non_image_media', $ctx['reason']);
+        $this->assertSame($evaluation->id, $ctx['input']['evaluation_id']);
+        $this->assertSame(3, $ctx['calc']['received_count']);
+        $this->assertSame(1, $ctx['calc']['image_count']);
+        $this->assertSame(2, $ctx['calc']['excluded_count']);
+        $this->assertEqualsCanonicalizing(['video', 'audio'], $ctx['calc']['excluded_media_types']);
+
+        $batch = $this->assertSystemLogged('ai.media.batch_completed');
+        $this->assertSame(3, $batch['calc']['received_count']);
+        $this->assertSame(1, $batch['calc']['image_count']);
+        $this->assertNoSensitiveDataLogged();
     }
 }

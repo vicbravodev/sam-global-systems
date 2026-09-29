@@ -6,6 +6,7 @@ use App\Domains\AI\Enums\EventClassification;
 use App\Domains\AI\Events\AIEvaluationCompleted;
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\Decisions\Actions\EvaluateDecisionRules;
+use App\Domains\Decisions\Jobs\ReevaluateDecisionJob;
 use App\Domains\Decisions\Jobs\RunDecisionEngineJob;
 use App\Domains\Decisions\Listeners\RunDecisionEngineOnAIEvaluationCompleted;
 use App\Domains\Decisions\Models\Decision;
@@ -16,10 +17,12 @@ use Database\Seeders\DecisionOutcomeSeeder;
 use Database\Seeders\IncidentsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class RunDecisionEngineJobTest extends TestCase
 {
+    use AssertsSystemLog;
     use RefreshDatabase;
 
     protected function setUp(): void
@@ -72,6 +75,13 @@ class RunDecisionEngineJobTest extends TestCase
             1,
             Decision::withoutGlobalScopes()->where('ai_evaluation_id', $eval->id)->count(),
         );
+
+        $decisionId = Decision::withoutGlobalScopes()->where('ai_evaluation_id', $eval->id)->value('id');
+        $context = $this->assertSystemLogged('decisions.decision.already_exists', fn (array $c) => $c['input']['stage'] === 'engine_job');
+        $this->assertSame('decision_exists', $context['reason']);
+        $this->assertSame($eval->id, $context['input']['ai_evaluation_id']);
+        $this->assertSame($decisionId, $context['result']['decision_id']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_job_no_ops_when_evaluation_missing(): void
@@ -79,6 +89,20 @@ class RunDecisionEngineJobTest extends TestCase
         (new RunDecisionEngineJob(999999))->handle(app(EvaluateDecisionRules::class));
 
         $this->assertSame(0, Decision::withoutGlobalScopes()->count());
+
+        $context = $this->assertSystemLogged('decisions.engine.skipped');
+        $this->assertSame('evaluation_missing', $context['reason']);
+        $this->assertSame(999999, $context['input']['ai_evaluation_id']);
+        $this->assertSame('engine_job', $context['input']['stage']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_reevaluate_job_skips_when_evaluation_missing(): void
+    {
+        (new ReevaluateDecisionJob(999999))->handle(app(EvaluateDecisionRules::class));
+
+        $context = $this->assertSystemLogged('decisions.engine.skipped');
+        $this->assertSame('reevaluate_job', $context['input']['stage']);
     }
 
     public function test_job_unique_id_is_evaluation_id(): void

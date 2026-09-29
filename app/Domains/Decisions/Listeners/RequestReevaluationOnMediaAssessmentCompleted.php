@@ -9,6 +9,7 @@ use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\AI\Models\AIMediaAssessment;
 use App\Domains\Decisions\Models\Decision;
 use App\Domains\Incidents\Models\Incident;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 
 /**
@@ -24,6 +25,8 @@ class RequestReevaluationOnMediaAssessmentCompleted
         $evaluation = $event->evaluation;
 
         if ($evaluation->normalized_event_id === null) {
+            SystemLog::skipped('ai.reevaluation.not_requested', reason: 'no_normalized_event', input: ['evaluation_id' => $evaluation->id]);
+
             return;
         }
 
@@ -41,6 +44,12 @@ class RequestReevaluationOnMediaAssessmentCompleted
             ->exists();
 
         if (! $decisionExists) {
+            SystemLog::skipped(
+                'ai.reevaluation.not_requested',
+                reason: 'decision_pending',
+                input: ['evaluation_id' => $evaluation->id, 'normalized_event_id' => $evaluation->normalized_event_id],
+            );
+
             return;
         }
 
@@ -54,6 +63,16 @@ class RequestReevaluationOnMediaAssessmentCompleted
             ->pluck('event_media_context_id');
 
         if ($mediaContextIds->diff($assessedElsewhere)->isEmpty()) {
+            SystemLog::skipped(
+                'ai.reevaluation.not_requested',
+                reason: 'media_already_assessed',
+                input: ['evaluation_id' => $evaluation->id, 'normalized_event_id' => $evaluation->normalized_event_id],
+                calc: [
+                    'media_context_count' => $mediaContextIds->count(),
+                    'assessed_elsewhere_count' => $assessedElsewhere->unique()->count(),
+                ],
+            );
+
             return;
         }
 
@@ -65,6 +84,13 @@ class RequestReevaluationOnMediaAssessmentCompleted
             ->first();
 
         if ($incident !== null && $incident->isTerminal()) {
+            SystemLog::skipped(
+                'ai.reevaluation.not_requested',
+                reason: 'incident_terminal',
+                input: ['evaluation_id' => $evaluation->id, 'normalized_event_id' => $evaluation->normalized_event_id],
+                result: ['incident_id' => $incident->id, 'incident_status_id' => $incident->incident_status_id],
+            );
+
             return;
         }
 
@@ -77,12 +103,32 @@ class RequestReevaluationOnMediaAssessmentCompleted
         // every assessment present at that moment (DecisionFactsBuilder
         // aggregates across evaluation versions), so one re-evaluation — one
         // decision — reflects the whole burst instead of one per clip.
+        $debounce = $this->debounceSeconds();
+
+        // "Pedido", no "encolado": el job es único por (evento, trigger) y un
+        // pedido puede absorberse en uno ya pendiente.
+        SystemLog::ok(
+            'ai.reevaluation.requested',
+            input: [
+                'normalized_event_id' => (int) $evaluation->normalized_event_id,
+                'evaluation_id' => $evaluation->id,
+                'trigger_type' => ReevaluationTrigger::MediaArrived->value,
+                'trigger_reference_id' => $latest?->id,
+                'requested_by' => 'media_assessment',
+            ],
+            calc: [
+                'debounce_s' => $debounce,
+                'new_media_count' => $mediaContextIds->diff($assessedElsewhere)->count(),
+            ],
+            result: ['latest_assessment_result' => $latest?->result?->value],
+        );
+
         ReevaluateEventJob::dispatch(
             (int) $evaluation->normalized_event_id,
             ReevaluationTrigger::MediaArrived->value,
             $latest?->id,
             'Deferred media assessed: '.($latest?->result?->value ?? 'unknown'),
-        )->delay($this->debounceSeconds());
+        )->delay($debounce);
     }
 
     private function debounceSeconds(): int

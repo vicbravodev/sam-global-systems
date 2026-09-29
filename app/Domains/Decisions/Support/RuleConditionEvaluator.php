@@ -2,6 +2,8 @@
 
 namespace App\Domains\Decisions\Support;
 
+use App\Support\LoggableCode;
+
 class RuleConditionEvaluator
 {
     /**
@@ -56,6 +58,68 @@ class RuleConditionEvaluator
         }
 
         return false;
+    }
+
+    /**
+     * Reports the invalid nodes of a condition tree and what `matches()` does
+     * when it reaches each one (`evaluates_as`):
+     * - `malformed_condition` / `unknown_operator` → `false` (silently no match);
+     * - `unknown_operator` with a non-scalar operator or field → `'error_exception'`
+     *   (the string cast warns, and Laravel's handler turns it into an ErrorException);
+     * - `non_array_node` (a non-array child of `all`/`any`) → `'type_error'`:
+     *   `matches()` throws a TypeError when it reaches it (it may short-circuit
+     *   before). That crash is known and deliberately left as is here.
+     * Pure: walks the tree with the same semantics as `matches()` and never
+     * logs condition values.
+     *
+     * @param  array<string, mixed>  $conditions
+     * @return list<array{path: string, problem: string, operator: ?string, field: ?string, evaluates_as: false|string}>
+     */
+    public function problems(array $conditions, string $path = '$'): array
+    {
+        if ($conditions === []) {
+            return [];
+        }
+
+        foreach (['all', 'any'] as $block) {
+            if (isset($conditions[$block]) && is_array($conditions[$block])) {
+                $problems = [];
+
+                foreach ($conditions[$block] as $i => $child) {
+                    $segment = is_int($i) ? $i : (LoggableCode::guard((string) $i) ?? '?');
+                    $childPath = "{$path}.{$block}.{$segment}";
+
+                    if (! is_array($child)) {
+                        $problems[] = ['path' => $childPath, 'problem' => 'non_array_node', 'operator' => null, 'field' => null, 'evaluates_as' => 'type_error'];
+
+                        continue;
+                    }
+
+                    array_push($problems, ...$this->problems($child, $childPath));
+                }
+
+                return $problems;
+            }
+        }
+
+        if (isset($conditions['field'], $conditions['operator'])) {
+            $operator = $conditions['operator'];
+            $field = $conditions['field'];
+
+            if (is_scalar($operator) && in_array((string) $operator, self::OPERATORS, true)) {
+                return [];
+            }
+
+            return [[
+                'path' => $path,
+                'problem' => 'unknown_operator',
+                'operator' => is_scalar($operator) ? LoggableCode::guard((string) $operator) : null,
+                'field' => is_scalar($field) ? LoggableCode::guard((string) $field) : null,
+                'evaluates_as' => is_scalar($operator) && is_scalar($field) ? false : 'error_exception',
+            ]];
+        }
+
+        return [['path' => $path, 'problem' => 'malformed_condition', 'operator' => null, 'field' => null, 'evaluates_as' => false]];
     }
 
     /**

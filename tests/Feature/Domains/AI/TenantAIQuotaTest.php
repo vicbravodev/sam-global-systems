@@ -10,6 +10,7 @@ use App\Domains\AI\Enums\EvaluationMode;
 use App\Domains\AI\Events\AIEvaluationCompleted;
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\AI\Models\AIMediaAssessment;
+use App\Domains\AI\Support\TenantAIQuota;
 use App\Domains\Context\Enums\MediaType;
 use App\Domains\Context\Models\EventMediaContext;
 use App\Domains\Normalization\Models\EventSeverity;
@@ -21,10 +22,12 @@ use App\Models\User;
 use Database\Seeders\AIMeterSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class TenantAIQuotaTest extends TestCase
 {
+    use AssertsSystemLog;
     use RefreshDatabase;
 
     protected function setUp(): void
@@ -58,6 +61,34 @@ class TenantAIQuotaTest extends TestCase
         $this->assertSame(EvaluationMode::RulesOnly, $evaluation->evaluation_mode);
         $this->assertSame('rules_engine:1.0', $evaluation->model_used);
         $this->assertStringContainsString('Cuota', $evaluation->explanation_text);
+
+        $ctx = $this->assertSystemLogged('ai.quota.checked', fn (array $c): bool => $c['result']['blocked'] === true);
+        $this->assertSame($event->id, $ctx['input']['normalized_event_id']);
+        $this->assertSame('text', $ctx['input']['purpose']);
+        $this->assertFalse($ctx['calc']['is_critical']);
+        $this->assertFalse($ctx['calc']['bypassed']);
+        $this->assertTrue($ctx['calc']['tokens_meters_present']);
+        $this->assertSame(6_000_000, $ctx['calc']['tokens_used_this_period']);
+        $this->assertSame(5_000_000, $ctx['calc']['tokens_limit']);
+        $this->assertSame(now()->format('Y-m'), $ctx['calc']['billing_period_key']);
+        $this->assertNull($ctx['calc']['calls_today']);
+        $this->assertSame('monthly_tokens', $ctx['result']['exceeded_by']);
+
+        $rulesOnly = $this->systemLogEntries('ai.evaluation.rules_only')[0] ?? null;
+        $this->assertNotNull($rulesOnly);
+        $this->assertSame('warning', $rulesOnly['level']);
+        $this->assertSame('degraded', $rulesOnly['context']['outcome']);
+        $this->assertSame('quota_exceeded', $rulesOnly['context']['reason']);
+        $this->assertSame($evaluation->id, $rulesOnly['context']['result']['evaluation_id']);
+        $this->assertNull($rulesOnly['context']['result']['error_class']);
+
+        $completed = $this->assertSystemLogged('ai.evaluation.completed');
+        $this->assertSame('quota_exceeded', $completed['input']['route']);
+        $this->assertSame(0.5, $completed['calc']['base_confidence']);
+        $this->assertSame($evaluation->risk_score, $completed['calc']['risk_score']);
+        $this->assertSame('rules_only', $completed['result']['mode']);
+        $this->assertSystemNotLogged('ai.evaluation.agent_failed');
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_limits_come_from_config(): void
@@ -86,6 +117,12 @@ class TenantAIQuotaTest extends TestCase
 
         $this->assertSame(EvaluationMode::RulesOnly, $evaluation->evaluation_mode);
         $this->assertStringContainsString('Cuota', $evaluation->explanation_text);
+
+        $ctx = $this->assertSystemLogged('ai.quota.checked', fn (array $c): bool => $c['result']['blocked'] === true);
+        $this->assertSame('daily_calls', $ctx['result']['exceeded_by']);
+        $this->assertTrue($ctx['calc']['calls_meter_present']);
+        $this->assertSame(3, $ctx['calc']['calls_limit']);
+        $this->assertGreaterThanOrEqual($ctx['calc']['calls_limit'], $ctx['calc']['calls_today']);
     }
 
     public function test_calls_from_previous_days_do_not_count_toward_the_daily_limit(): void
@@ -113,6 +150,27 @@ class TenantAIQuotaTest extends TestCase
 
         $this->assertNotSame(EvaluationMode::RulesOnly, $evaluation->evaluation_mode);
         $this->assertSame('null-agent:1.0', $evaluation->model_used);
+
+        $ctx = $this->assertSystemLogged('ai.quota.checked');
+        $this->assertTrue($ctx['calc']['is_critical']);
+        $this->assertTrue($ctx['calc']['bypassed']);
+        $this->assertFalse($ctx['result']['blocked']);
+        $this->assertArrayNotHasKey('tokens_used_this_period', $ctx['calc']);
+    }
+
+    public function test_missing_meters_make_the_limit_not_apply_and_say_so(): void
+    {
+        UsageMeter::query()->delete();
+        $team = Team::factory()->create();
+
+        $blocked = app(TenantAIQuota::class)->blocks($this->makeEvent($team, 'high'));
+
+        $this->assertFalse($blocked);
+        $ctx = $this->assertSystemLogged('ai.quota.checked');
+        $this->assertFalse($ctx['calc']['tokens_meters_present']);
+        $this->assertNull($ctx['calc']['tokens_used_this_period']);
+        $this->assertFalse($ctx['result']['blocked']);
+        $this->assertNull($ctx['result']['exceeded_by']);
     }
 
     public function test_vision_is_skipped_over_quota_for_non_critical_events(): void
@@ -127,6 +185,12 @@ class TenantAIQuotaTest extends TestCase
 
         $this->assertSame(0, AIMediaAssessment::query()->count());
         $this->assertSame([], app(MediaAssessmentAgent::class)->receivedInputs);
+
+        $ctx = $this->assertSystemLogged('ai.quota.checked', fn (array $c): bool => $c['input']['purpose'] === 'vision');
+        $this->assertTrue($ctx['result']['blocked']);
+        $this->assertSame('quota_exceeded', $this->assertSystemLogged('ai.media.assessment_skipped')['reason']);
+        $this->assertSame(0, $this->assertSystemLogged('ai.media.batch_completed')['result']['created_count']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_vision_for_critical_events_bypasses_quota(): void

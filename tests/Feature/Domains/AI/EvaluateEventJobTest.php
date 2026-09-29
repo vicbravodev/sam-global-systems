@@ -17,10 +17,12 @@ use Database\Seeders\AIMeterSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Event;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class EvaluateEventJobTest extends TestCase
 {
+    use AssertsSystemLog;
     use RefreshDatabase;
 
     protected function setUp(): void
@@ -82,6 +84,13 @@ class EvaluateEventJobTest extends TestCase
             ->count();
 
         $this->assertSame(1, $count);
+
+        $firstId = AIEventEvaluation::withoutGlobalScopes()->where('normalized_event_id', $event->id)->value('id');
+        $ctx = $this->assertSystemLogged('ai.evaluation.already_exists');
+        $this->assertSame('evaluation_exists', $ctx['reason']);
+        $this->assertSame($event->id, $ctx['input']['normalized_event_id']);
+        $this->assertSame($firstId, $ctx['result']['existing_evaluation_id']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_job_no_ops_when_event_missing(): void
@@ -89,6 +98,10 @@ class EvaluateEventJobTest extends TestCase
         (new EvaluateEventJob(999999))->handle(app(EvaluateEventWithAI::class), app(AIEvaluationGate::class));
 
         $this->assertSame(0, AIEventEvaluation::withoutGlobalScopes()->count());
+
+        $ctx = $this->assertSystemLogged('ai.evaluation.skipped');
+        $this->assertSame('normalized_event_missing', $ctx['reason']);
+        $this->assertSame(999999, $ctx['input']['normalized_event_id']);
     }
 
     public function test_job_unique_id_is_normalized_event_id(): void

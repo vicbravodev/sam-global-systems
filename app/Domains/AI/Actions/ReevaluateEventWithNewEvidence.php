@@ -9,6 +9,7 @@ use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\AI\Models\AIReevaluationRequest;
 use App\Domains\AI\Support\OperatorFeedbackCollector;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Support\SystemLog;
 
 class ReevaluateEventWithNewEvidence
 {
@@ -46,6 +47,21 @@ class ReevaluateEventWithNewEvidence
             'processed_at' => now(),
         ]);
 
+        SystemLog::ok(
+            'ai.reevaluation.completed',
+            input: [
+                'normalized_event_id' => $event->id,
+                'trigger_type' => $trigger->value,
+                'trigger_reference_id' => $triggerReferenceId,
+                'reason_present' => $reason !== null && $reason !== '',
+            ],
+            result: [
+                'reevaluation_request_id' => $request->id,
+                'evaluation_id' => $evaluation->id,
+                'evaluation_version' => $evaluation->evaluation_version,
+            ],
+        );
+
         return $evaluation;
     }
 
@@ -61,11 +77,19 @@ class ReevaluateEventWithNewEvidence
             ->first();
 
         if ($existing !== null) {
+            $previousStatus = $existing->status->value;
+
             $existing->update([
                 'status' => ReevaluationStatus::Skipped,
                 'processed_at' => now(),
                 'reason' => trim((string) ($existing->reason ?? '').' | superseded by new request'),
             ]);
+
+            SystemLog::ok(
+                'ai.reevaluation.superseded',
+                input: ['normalized_event_id' => $event->id, 'trigger_type' => $trigger->value],
+                result: ['superseded_request_id' => $existing->id, 'previous_status' => $previousStatus],
+            );
         }
 
         return AIReevaluationRequest::create([

@@ -16,6 +16,7 @@ use App\Models\Team;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 /**
@@ -25,6 +26,7 @@ use Tests\TestCase;
  */
 class RequestReevaluationOnMediaAssessmentCompletedTest extends TestCase
 {
+    use AssertsSystemLog;
     use RefreshDatabase;
 
     private Team $team;
@@ -107,6 +109,31 @@ class RequestReevaluationOnMediaAssessmentCompletedTest extends TestCase
                 && $job->triggerType === ReevaluationTrigger::MediaArrived->value
                 && $job->triggerReferenceId === $assessment->id
         );
+
+        $this->assertSystemLogged('ai.reevaluation.requested', fn (array $c) => $c['input']['requested_by'] === 'media_assessment'
+            && $c['input']['normalized_event_id'] === $event->id
+            && $c['input']['evaluation_id'] === $evaluation->id
+            && $c['input']['trigger_reference_id'] === $assessment->id
+            && $c['calc']['debounce_s'] === 60
+            && $c['calc']['new_media_count'] === 1);
+        $this->assertNoSensitiveDataLogged();
+        $this->assertStringNotContainsString('Deferred media assessed', json_encode($this->systemLogEntries()));
+    }
+
+    public function test_debounce_config_is_logged(): void
+    {
+        config(['ai.reevaluation.media_debounce_seconds' => 5]);
+
+        [$event, $evaluation, $assessment] = $this->makeAssessedEvaluation();
+        Decision::factory()->create([
+            'team_id' => $this->team->id,
+            'normalized_event_id' => $event->id,
+            'ai_evaluation_id' => $evaluation->id,
+        ]);
+
+        $this->handle($evaluation, $assessment);
+
+        $this->assertSystemLogged('ai.reevaluation.requested', fn (array $c) => $c['calc']['debounce_s'] === 5);
     }
 
     public function test_burst_of_assessments_coalesces_into_one_delayed_reevaluation(): void
@@ -171,6 +198,8 @@ class RequestReevaluationOnMediaAssessmentCompletedTest extends TestCase
         $this->handle($evaluation, $assessment);
 
         Bus::assertNotDispatched(ReevaluateEventJob::class);
+        $this->assertSystemLogged('ai.reevaluation.not_requested', fn (array $c) => $c['reason'] === 'decision_pending'
+            && $c['input']['evaluation_id'] === $evaluation->id);
     }
 
     public function test_no_ops_when_incident_is_terminal(): void
@@ -191,6 +220,10 @@ class RequestReevaluationOnMediaAssessmentCompletedTest extends TestCase
         $this->handle($evaluation, $assessment);
 
         Bus::assertNotDispatched(ReevaluateEventJob::class);
+        $incident = Incident::query()->where('related_event_id', $event->id)->first();
+        $this->assertSystemLogged('ai.reevaluation.not_requested', fn (array $c) => $c['reason'] === 'incident_terminal'
+            && $c['result']['incident_id'] === $incident->id
+            && $c['result']['incident_status_id'] === $incident->incident_status_id);
     }
 
     public function test_no_ops_when_media_was_already_assessed_under_previous_evaluation(): void
@@ -219,6 +252,9 @@ class RequestReevaluationOnMediaAssessmentCompletedTest extends TestCase
         $this->handle($currentEvaluation, $reAssessment);
 
         Bus::assertNotDispatched(ReevaluateEventJob::class);
+        $this->assertSystemLogged('ai.reevaluation.not_requested', fn (array $c) => $c['reason'] === 'media_already_assessed'
+            && $c['calc']['media_context_count'] === 1
+            && $c['calc']['assessed_elsewhere_count'] === 1);
 
         // Sanity: the previous evaluation's assessment still exists untouched.
         $this->assertSame(2, AIMediaAssessment::query()->count());

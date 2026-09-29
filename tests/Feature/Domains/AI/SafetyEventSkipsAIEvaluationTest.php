@@ -30,10 +30,12 @@ use Database\Seeders\AIMeterSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Storage;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class SafetyEventSkipsAIEvaluationTest extends TestCase
 {
+    use AssertsSystemLog;
     use RefreshDatabase;
 
     protected function setUp(): void
@@ -52,6 +54,15 @@ class SafetyEventSkipsAIEvaluationTest extends TestCase
         app(EvaluateOnEventContextBuilt::class)->handle(new EventContextBuilt($snapshot, $profile));
 
         Bus::assertNotDispatched(EvaluateEventJob::class);
+
+        $ctx = $this->assertSystemLogged('ai.gate.skipped', fn (array $c): bool => ($c['reason'] ?? null) === 'skip_category');
+        $this->assertSame($event->id, $ctx['input']['normalized_event_id']);
+        $this->assertSame('safety', $ctx['input']['category_code']);
+        $this->assertSame('context_listener', $ctx['input']['stage']);
+        $this->assertSame('ai.skip_evaluation_categories', $ctx['calc']['config_key']);
+        $this->assertFalse($ctx['result']['evaluated']);
+        $this->assertFalse($ctx['result']['decision_engine_runs']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_listener_skips_dispatch_for_maintenance_category_event(): void
@@ -76,6 +87,7 @@ class SafetyEventSkipsAIEvaluationTest extends TestCase
         app(EvaluateOnEventContextBuilt::class)->handle(new EventContextBuilt($snapshot, $profile));
 
         Bus::assertDispatched(EvaluateEventJob::class, fn (EvaluateEventJob $job) => $job->normalizedEventId === $event->id);
+        $this->assertSystemNotLogged('ai.gate.skipped');
     }
 
     public function test_job_creates_no_evaluation_for_safety_category_event(): void
@@ -87,6 +99,8 @@ class SafetyEventSkipsAIEvaluationTest extends TestCase
         $this->assertSame(0, AIEventEvaluation::withoutGlobalScopes()
             ->where('normalized_event_id', $event->id)
             ->count());
+
+        $this->assertSystemLogged('ai.gate.skipped', fn (array $c): bool => $c['input']['stage'] === 'evaluate_job' && $c['reason'] === 'skip_category');
     }
 
     public function test_job_evaluates_non_safety_category_event(): void
@@ -113,6 +127,7 @@ class SafetyEventSkipsAIEvaluationTest extends TestCase
         $this->assertSame(0, AIReevaluationRequest::query()
             ->where('normalized_event_id', $event->id)
             ->count());
+        $this->assertSystemLogged('ai.gate.skipped', fn (array $c): bool => $c['input']['stage'] === 'reevaluate_job');
     }
 
     public function test_safety_event_keeps_media_as_evidence_without_multimodal_assessment(): void
@@ -211,6 +226,10 @@ class SafetyEventSkipsAIEvaluationTest extends TestCase
         app(EvaluateOnEventContextBuilt::class)->handle(new EventContextBuilt($snapshot, $profile));
 
         Bus::assertNotDispatched(EvaluateEventJob::class);
+
+        $ctx = $this->assertSystemLogged('ai.gate.skipped', fn (array $c): bool => ($c['reason'] ?? null) === 'skip_type');
+        $this->assertSame('geofence_exit', $ctx['input']['event_type_code']);
+        $this->assertSame('ai.skip_evaluation_event_types', $ctx['calc']['config_key']);
     }
 
     public function test_job_creates_no_evaluation_for_low_value_event_type(): void

@@ -63,6 +63,21 @@ class AIEvaluationGateTest extends TestCase
         }
     }
 
+    public function test_skip_reason_reports_why_an_event_is_skipped(): void
+    {
+        $gate = new AIEvaluationGate(['safety'], ['geofence_exit']);
+
+        $this->assertSame('skip_type', $gate->skipReason($this->eventWithType('geofence_exit', 'operational')));
+        $this->assertSame('skip_type', $gate->skipReason($this->eventWithType('geofence_exit', 'safety')));
+        $this->assertSame('skip_category', $gate->skipReason($this->eventWithCategory('safety')));
+        $this->assertNull($gate->skipReason($this->eventWithCategory('emergency')));
+        $this->assertNull($gate->skipReason($this->eventWithType('panic_button', 'emergency')));
+
+        $noCategory = new NormalizedEvent;
+        $noCategory->setRelation('eventCategory', null);
+        $this->assertNull($gate->skipReason($noCategory));
+    }
+
     private function eventWithType(string $typeCode, ?string $categoryCode): NormalizedEvent
     {
         $event = new NormalizedEvent;

@@ -10,12 +10,14 @@ use App\Domains\Decisions\Actions\EvaluateDecisionRules;
 use App\Domains\Decisions\Enums\DecisionOutcomeCode;
 use App\Domains\Decisions\Events\DecisionMade;
 use App\Domains\Decisions\Models\Decision;
+use App\Domains\Normalization\Models\EventSeverity;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Models\Team;
 use App\Models\User;
 use Database\Seeders\DecisionOutcomeSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 /**
@@ -25,6 +27,7 @@ use Tests\TestCase;
  */
 class MediaContradictionGuardTest extends TestCase
 {
+    use AssertsSystemLog;
     use RefreshDatabase;
 
     private Team $team;
@@ -107,6 +110,68 @@ class MediaContradictionGuardTest extends TestCase
 
         $this->assertSame(DecisionOutcomeCode::RequireHumanReview->value, $decision->decision_code);
         $this->assertTrue($decision->requires_human_review);
+
+        $forced = $this->assertSystemLogged('decisions.outcome.forced_human_review');
+        $this->assertSame('IGNORE', $forced['calc']['from_code']);
+        $this->assertSame('contradicts_event', $forced['calc']['latest_media_result']);
+        $this->assertTrue($forced['calc']['prior_actionable_decision']);
+        $this->assertSame($decision->id, $forced['result']['decision_id']);
+        $this->assertSame('REQUIRE_HUMAN_REVIEW', $forced['result']['decision_code']);
+        $this->assertSame($secondEvaluation->id, $forced['input']['ai_evaluation_id']);
+
+        $resolved = $this->assertSystemLogged('decisions.outcome.resolved');
+        $this->assertSame('forced_review', $resolved['calc']['guard_check']);
+        $this->assertSame('contradicts_event', $resolved['calc']['latest_media_result']);
+        $this->assertFalse($resolved['calc']['review_by_confidence']);
+        $this->assertTrue($resolved['calc']['review_by_resolver']);
+        $this->assertArrayNotHasKey('guard_from_code', $resolved['calc']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_critical_event_with_contradicting_media_is_forced_then_floored(): void
+    {
+        $event = NormalizedEvent::factory()->create([
+            'team_id' => $this->team->id,
+            'event_severity_id' => EventSeverity::factory()->critical()->create()->id,
+        ]);
+        $firstEvaluation = AIEventEvaluation::factory()->create([
+            'team_id' => $this->team->id,
+            'normalized_event_id' => $event->id,
+            'evaluation_version' => 1,
+        ]);
+        Decision::factory()->create([
+            'team_id' => $this->team->id,
+            'normalized_event_id' => $event->id,
+            'ai_evaluation_id' => $firstEvaluation->id,
+            'decision_code' => DecisionOutcomeCode::Incident->value,
+        ]);
+        $secondEvaluation = AIEventEvaluation::factory()->create([
+            'team_id' => $this->team->id,
+            'normalized_event_id' => $event->id,
+            'evaluation_version' => 2,
+            'classification' => EventClassification::FalsePositive,
+            'confidence_score' => 0.95,
+            'risk_score' => 0.1,
+        ]);
+        $this->attachAssessment($event, $firstEvaluation, contradicts: true);
+
+        $decision = app(EvaluateDecisionRules::class)->execute($secondEvaluation);
+
+        $this->assertSame(DecisionOutcomeCode::Incident->value, $decision->decision_code);
+
+        $forced = $this->assertSystemLogged('decisions.outcome.forced_human_review');
+        $this->assertSame('IGNORE', $forced['calc']['from_code']);
+        // El código persistido: el piso actuó después del guard.
+        $this->assertSame('INCIDENT', $forced['result']['decision_code']);
+
+        $floored = $this->assertSystemLogged('decisions.outcome.floored');
+        $this->assertSame('REQUIRE_HUMAN_REVIEW', $floored['calc']['from_code']);
+        $this->assertSame('INCIDENT', $floored['calc']['to_code']);
+
+        $resolved = $this->assertSystemLogged('decisions.outcome.resolved');
+        $this->assertSame('forced_review', $resolved['calc']['guard_check']);
+        $this->assertSame('floored', $resolved['calc']['floor_check']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_without_prior_actionable_decision_the_downgrade_stands(): void
@@ -119,6 +184,12 @@ class MediaContradictionGuardTest extends TestCase
 
         $this->assertSame(DecisionOutcomeCode::Ignore->value, $decision->decision_code);
         $this->assertFalse($decision->requires_human_review);
+
+        $resolved = $this->assertSystemLogged('decisions.outcome.resolved');
+        $this->assertSame('no_prior_actionable_decision', $resolved['calc']['guard_check']);
+        $this->assertSame('contradicts_event', $resolved['calc']['latest_media_result']);
+        $this->assertSystemNotLogged('decisions.outcome.forced_human_review');
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_confirming_media_does_not_trigger_the_guard(): void
@@ -130,5 +201,10 @@ class MediaContradictionGuardTest extends TestCase
         $decision = app(EvaluateDecisionRules::class)->execute($secondEvaluation);
 
         $this->assertSame(DecisionOutcomeCode::Ignore->value, $decision->decision_code);
+
+        $resolved = $this->assertSystemLogged('decisions.outcome.resolved');
+        $this->assertSame('media_not_contradicting', $resolved['calc']['guard_check']);
+        $this->assertSame('confirms_event', $resolved['calc']['latest_media_result']);
+        $this->assertSystemNotLogged('decisions.outcome.forced_human_review');
     }
 }

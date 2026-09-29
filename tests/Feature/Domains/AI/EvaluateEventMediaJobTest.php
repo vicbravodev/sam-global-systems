@@ -14,10 +14,12 @@ use App\Models\User;
 use Database\Seeders\AIMeterSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class EvaluateEventMediaJobTest extends TestCase
 {
+    use AssertsSystemLog;
     use RefreshDatabase;
 
     protected function setUp(): void
@@ -68,6 +70,12 @@ class EvaluateEventMediaJobTest extends TestCase
         (new EvaluateMediaOnEventMediaAvailable)->handle(new EventMediaAvailable($media, $event));
 
         Bus::assertNotDispatched(EvaluateEventMediaJob::class);
+
+        $ctx = $this->assertSystemLogged('ai.media.assessment_deferred');
+        $this->assertSame('no_evaluation_yet', $ctx['reason']);
+        $this->assertSame($event->id, $ctx['input']['normalized_event_id']);
+        $this->assertSame($media->id, $ctx['input']['event_media_context_id']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_listener_targets_latest_evaluation_version(): void
@@ -140,6 +148,11 @@ class EvaluateEventMediaJobTest extends TestCase
             ->handle(app(EvaluateEventMultimodally::class));
 
         $this->assertSame(0, AIMediaAssessment::query()->count());
+
+        $ctx = $this->assertSystemLogged('ai.media.job_skipped');
+        $this->assertSame('evaluation_missing', $ctx['reason']);
+        $this->assertSame(999_999, $ctx['input']['evaluation_id']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_job_no_ops_when_media_collection_empty(): void
@@ -157,6 +170,10 @@ class EvaluateEventMediaJobTest extends TestCase
             ->handle(app(EvaluateEventMultimodally::class));
 
         $this->assertSame(0, AIMediaAssessment::query()->count());
+
+        $ctx = $this->assertSystemLogged('ai.media.job_skipped');
+        $this->assertSame('no_media_ids', $ctx['reason']);
+        $this->assertSame($evaluation->id, $ctx['input']['evaluation_id']);
     }
 
     public function test_job_skips_media_belonging_to_other_event(): void
@@ -180,5 +197,9 @@ class EvaluateEventMediaJobTest extends TestCase
             ->handle(app(EvaluateEventMultimodally::class));
 
         $this->assertSame(0, AIMediaAssessment::query()->count());
+
+        $ctx = $this->assertSystemLogged('ai.media.job_skipped');
+        $this->assertSame('media_not_found', $ctx['reason']);
+        $this->assertSame(1, $ctx['calc']['requested_count']);
     }
 }
