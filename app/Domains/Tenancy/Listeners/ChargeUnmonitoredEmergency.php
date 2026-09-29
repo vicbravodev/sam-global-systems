@@ -124,10 +124,21 @@ class ChargeUnmonitoredEmergency implements ShouldQueue
                 ),
             );
 
-            SystemLog::ok('billing.emergency_surcharge.notified', input: [
-                'team_id' => $teamId,
-                'asset_id' => $assetId,
-            ], result: [
+            $notifiedInput = ['team_id' => $teamId, 'asset_id' => $assetId];
+
+            // SendNotification deduplica por event_key: si devolvió la fila existente, no se envió nada.
+            if (! $notification->wasRecentlyCreated) {
+                SystemLog::skipped(
+                    'billing.emergency_surcharge.notified',
+                    reason: 'already_notified',
+                    input: $notifiedInput,
+                    result: ['notification_id' => $notification->id],
+                );
+
+                return;
+            }
+
+            SystemLog::ok('billing.emergency_surcharge.notified', input: $notifiedInput, result: [
                 'notification_id' => $notification->id,
                 'recipients_count' => count($recipients),
             ]);

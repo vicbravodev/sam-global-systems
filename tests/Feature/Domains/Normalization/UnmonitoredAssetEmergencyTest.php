@@ -189,6 +189,12 @@ class UnmonitoredAssetEmergencyTest extends TestCase
             && $c['input']['asset_id'] === $asset->id
             && $c['result']['notification_id'] === $notice->id
             && $c['result']['recipients_count'] >= 1);
+        $notified = $this->systemLogEntries('billing.emergency_surcharge.notified');
+        $this->assertSame(['ok', 'skipped', 'skipped'], array_map(fn (array $e) => $e['context']['outcome'], $notified));
+        $this->assertCount(2, array_filter($notified, fn (array $e) => ($e['context']['reason'] ?? null) === 'already_notified'
+            && $e['context']['input']['team_id'] === $this->teamId
+            && $e['context']['input']['asset_id'] === $asset->id
+            && $e['context']['result']['notification_id'] === $notice->id));
 
         $json = json_encode($this->systemLogEntries());
         $this->assertStringNotContainsString('Tracto 12', $json);
