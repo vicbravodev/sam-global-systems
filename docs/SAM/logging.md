@@ -100,7 +100,7 @@ Lo emite `App\Support\DeniedRequestLog` (outcome `degraded`); sólo la plantilla
 | Código | Outcome | Reason posibles | Campos clave |
 |---|---|---|---|
 | `auth.login.succeeded` | ok | — | `user_id`, `guard`, `remember` |
-| `auth.login.failed` | skipped | `invalid_credentials` | `user_id`, `guard`, `login_fingerprint` (hash truncado, nunca el email) |
+| `auth.login.failed` | skipped | `invalid_credentials` | `user_id`, `guard`, `login_fingerprint` (HMAC-SHA256 con `app.key` del email normalizado, 12 caracteres; nunca el email ni un hash enumerable) |
 | `auth.login.locked_out` | degraded | `too_many_attempts` | `route_name`, `login_fingerprint` |
 | `auth.logout.succeeded` | ok | — | `user_id`, `guard` |
 | `auth.password.reset` | ok | — | `user_id` |

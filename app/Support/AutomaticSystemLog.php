@@ -207,10 +207,14 @@ final class AutomaticSystemLog
             : ['path_hash' => substr(hash('sha256', $path), 0, 12)]);
     }
 
+    /**
+     * HMAC con la app key: correlaciona intentos contra el mismo login sin que
+     * un sha256 pelado permita recuperar el email probando una lista.
+     */
     private static function fingerprint(mixed $identifier): ?string
     {
         return is_string($identifier) && $identifier !== ''
-            ? substr(hash('sha256', strtolower(trim($identifier))), 0, 12)
+            ? substr(hash_hmac('sha256', strtolower(trim($identifier)), (string) config('app.key')), 0, 12)
             : null;
     }
 }

@@ -182,7 +182,7 @@ class AutomaticSystemLogTest extends TestCase
 
         $failed = $this->assertSystemLogged('auth.login.failed');
         $this->assertSame('invalid_credentials', $failed['reason']);
-        $this->assertSame(substr(hash('sha256', 'ana@empresa.com'), 0, 12), $failed['input']['login_fingerprint']);
+        $this->assertSame(substr(hash_hmac('sha256', 'ana@empresa.com', (string) config('app.key')), 0, 12), $failed['input']['login_fingerprint']);
 
         $this->assertSystemLogged('auth.login.locked_out', fn (array $c) => $c['input']['login_fingerprint'] === $failed['input']['login_fingerprint']);
         $this->assertSystemLogged('auth.login.succeeded', fn (array $c) => $c['input']['user_id'] === $user->id);
