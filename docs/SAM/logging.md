@@ -307,6 +307,13 @@ Sin `decision_trace_id`: `GenerateDecisionTrace` crea una fila por paso; las tra
 | `incidents.call_verification.skipped` | skipped | `no_voice_channel`, `no_phone_contact` | `verification_id` o `incident_id`, `team_id` |
 | `incidents.call_verification.emergency_override` | degraded | `tenant_blocked` | `verification_id`, `team_id`, `blocked_reason` |
 | `incidents.call_verification.placement_failed` | degraded | `provider_error` | `verification_id`, `error` |
+| `incidents.emergency.fast_path` | ok / skipped | `no_event_type` (debug), `offline_parked`, `not_emergency` (debug) | `normalized_event_id`, `event_type_code`, `category_code`; calc `trigger` (`emergency_code`/`offline_in_motion`), `was_in_motion`; result `priority_code`, `job_requested`. Va por `DB::afterCommit`: corre dentro de la transacción de normalización |
+| `incidents.emergency.job_skipped` | skipped | `event_missing`, `team_mismatch`, `incident_exists` | `normalized_event_id`; calc `team_matches` (`false`, nunca el id ajeno); result `incident_id` (el existente) |
+| `incidents.creation.skipped` | skipped | `unknown_outcome`, `outcome_not_surfaced`, `no_normalized_event`, `event_missing` | `decision_id` o `normalized_event_id`; calc `outcome_code`. Las de decisión van por `DB::afterCommit` |
+| `incidents.creation.requested` | ok | | `decision_id`, `normalized_event_id`; calc `outcome_code`, `priority_code`, `priority_source` (`review_default_medium`/`alert_default_low`/`decision_priority`), `request_review`; result `job_requested`. `*_requested` = pedido; las colas son `after_commit`, así que un pedido dentro de una transacción que revierte no sale |
+| `incidents.creation.routed_to_existing` | ok | | `normalized_event_id`, `decision_id`; result `incident_id`, `decision_found` (la reevaluación la narra `ApplyReevaluationToIncident`) |
+| `incidents.auto_assign.requested` | ok | | `incident_id`; result `job_requested` |
+| `incidents.review.flagged` | ok / skipped | `linked_to_other_incident`, `not_open` | `incident_id`, `decision_id` (nunca el motivo de la revisión) |
 
 ### Notificaciones (`notifications`)
 

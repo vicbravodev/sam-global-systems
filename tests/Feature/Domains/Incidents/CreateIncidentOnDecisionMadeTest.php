@@ -18,11 +18,12 @@ use App\Models\User;
 use Database\Seeders\IncidentsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class CreateIncidentOnDecisionMadeTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsSystemLog, RefreshDatabase;
 
     protected function setUp(): void
     {
@@ -45,6 +46,13 @@ class CreateIncidentOnDecisionMadeTest extends TestCase
             return $job->normalizedEventId === $event->id
                 && ($job->context['decision_id'] ?? null) === $decision->id;
         });
+
+        $c = $this->assertSystemLogged('incidents.creation.requested');
+        $this->assertSame($decision->id, $c['input']['decision_id']);
+        $this->assertSame('decision_priority', $c['calc']['priority_source']);
+        $this->assertFalse($c['calc']['request_review']);
+        $this->assertTrue($c['result']['job_requested']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_non_actionable_outcome_is_ignored(): void
@@ -59,6 +67,8 @@ class CreateIncidentOnDecisionMadeTest extends TestCase
         app(CreateIncidentOnDecisionMade::class)->handle(new DecisionMade($decision));
 
         Bus::assertNotDispatched(CreateIncidentJob::class);
+        $c = $this->assertSystemLogged('incidents.creation.skipped', fn (array $c) => ($c['reason'] ?? null) === 'outcome_not_surfaced');
+        $this->assertSame('IGNORE', $c['calc']['outcome_code']);
     }
 
     public function test_log_only_outcome_is_ignored(): void
@@ -73,6 +83,8 @@ class CreateIncidentOnDecisionMadeTest extends TestCase
         app(CreateIncidentOnDecisionMade::class)->handle(new DecisionMade($decision));
 
         Bus::assertNotDispatched(CreateIncidentJob::class);
+        $c = $this->assertSystemLogged('incidents.creation.skipped', fn (array $c) => ($c['reason'] ?? null) === 'outcome_not_surfaced');
+        $this->assertSame('LOG_ONLY', $c['calc']['outcome_code']);
     }
 
     public function test_require_human_review_dispatches_flagged_medium_incident(): void
@@ -93,6 +105,12 @@ class CreateIncidentOnDecisionMadeTest extends TestCase
                 && is_string($job->context['request_review'] ?? null)
                 && ($job->context['metadata']['requires_review'] ?? null) === true;
         });
+
+        $c = $this->assertSystemLogged('incidents.creation.requested');
+        $this->assertSame('review_default_medium', $c['calc']['priority_source']);
+        $this->assertSame('medium', $c['calc']['priority_code']);
+        $this->assertTrue($c['calc']['request_review']);
+        $this->assertStringNotContainsString(CreateIncidentOnDecisionMade::REVIEW_REASON, json_encode($this->systemLogEntries()));
     }
 
     public function test_alert_dispatches_low_priority_incident(): void
@@ -145,6 +163,10 @@ class CreateIncidentOnDecisionMadeTest extends TestCase
         $this->assertSame('medium', $incident->priority->code);
         $this->assertSame($decision->id, (int) $incident->related_decision_id);
         $this->assertTrue($incident->metadata_json['requires_review']);
+
+        $c = $this->assertSystemLogged('incidents.review.flagged');
+        $this->assertSame($incident->id, $c['input']['incident_id']);
+        $this->assertSame($decision->id, $c['input']['decision_id']);
     }
 
     public function test_review_job_does_not_move_an_existing_open_incident_to_review(): void
@@ -169,6 +191,14 @@ class CreateIncidentOnDecisionMadeTest extends TestCase
         $incident = Incident::withoutGlobalScopes()->with('status')->where('related_event_id', $first->id)->sole();
 
         $this->assertSame('open', $incident->status->code);
+
+        // Ni el evento tiene incidente previo (findExistingFor) ni se vincula por
+        // dedup: abre el suyo y se marca. El primero conserva su estado.
+        $second_incident = Incident::withoutGlobalScopes()->where('related_event_id', $second->id)->sole();
+        $c = $this->assertSystemLogged('incidents.review.flagged');
+        $this->assertSame($second_incident->id, $c['input']['incident_id']);
+        $this->assertSame($decision->id, $c['input']['decision_id']);
+        $this->assertSystemNotLogged('incidents.creation.routed_to_existing');
     }
 
     public function test_alert_job_opens_low_priority_incident(): void
@@ -215,6 +245,34 @@ class CreateIncidentOnDecisionMadeTest extends TestCase
             ->count(),
             'Same normalized event must not create more than one incident — the dedup guard in CreateIncidentFromEvent must reuse the existing one.',
         );
+
+        $incident = Incident::withoutGlobalScopes()->where('related_event_id', $event->id)->sole();
+        $c = $this->assertSystemLogged('incidents.creation.routed_to_existing');
+        $this->assertSame($incident->id, $c['result']['incident_id']);
+        $this->assertSame(1, count($this->systemLogEntries('incidents.auto_assign.requested')));
+    }
+
+    public function test_a_job_whose_event_vanished_logs_event_missing(): void
+    {
+        (new CreateIncidentJob(999999))->handle(app(CreateIncidentFromEvent::class));
+
+        $c = $this->assertSystemLogged('incidents.creation.skipped', fn (array $c) => ($c['reason'] ?? null) === 'event_missing');
+        $this->assertSame(999999, $c['input']['normalized_event_id']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_decision_without_normalized_event_logs_why_no_incident_opens(): void
+    {
+        Bus::fake();
+        $user = User::factory()->create();
+        $decision = $this->makeDecision($user->currentTeam->id, NormalizedEvent::factory()->create(['team_id' => $user->currentTeam->id])->id, DecisionOutcomeCode::Incident);
+        $decision->normalized_event_id = null;
+
+        app(CreateIncidentOnDecisionMade::class)->handle(new DecisionMade($decision));
+
+        Bus::assertNotDispatched(CreateIncidentJob::class);
+        $c = $this->assertSystemLogged('incidents.creation.skipped', fn (array $c) => ($c['reason'] ?? null) === 'no_normalized_event');
+        $this->assertSame('INCIDENT', $c['calc']['outcome_code']);
     }
 
     private function makeDecision(int $teamId, int $normalizedEventId, DecisionOutcomeCode $outcomeCode): Decision

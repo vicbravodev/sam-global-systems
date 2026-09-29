@@ -20,6 +20,7 @@ use Database\Seeders\IncidentsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\Concerns\AssertsTenantIsolation;
 use Tests\TestCase;
 
@@ -30,7 +31,7 @@ use Tests\TestCase;
  */
 class EmergencyFastPathTest extends TestCase
 {
-    use AssertsTenantIsolation, RefreshDatabase;
+    use AssertsSystemLog, AssertsTenantIsolation, RefreshDatabase;
 
     private Team $team;
 
@@ -71,6 +72,15 @@ class EmergencyFastPathTest extends TestCase
         Queue::assertPushed(OpenEmergencyIncidentJob::class, fn (OpenEmergencyIncidentJob $job) => $job->normalizedEventId === $event->id
             && $job->teamId === $this->team->id
             && $job->priorityCode === 'critical');
+
+        $c = $this->assertSystemLogged('incidents.emergency.fast_path');
+        $this->assertSame('ok', $c['outcome']);
+        $this->assertSame($event->id, $c['input']['normalized_event_id']);
+        $this->assertSame('emergency_code', $c['calc']['trigger']);
+        $this->assertNull($c['calc']['was_in_motion']);
+        $this->assertSame('critical', $c['result']['priority_code']);
+        $this->assertTrue($c['result']['job_requested']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_non_emergencies_wait_for_the_ai(): void
@@ -81,6 +91,10 @@ class EmergencyFastPathTest extends TestCase
         app(OpenEmergencyIncidentOnEventNormalized::class)->handle(new EventNormalized($event));
 
         Queue::assertNotPushed(OpenEmergencyIncidentJob::class);
+
+        $c = $this->assertSystemLogged('incidents.emergency.fast_path', fn (array $c) => ($c['reason'] ?? null) === 'not_emergency');
+        $this->assertSame('skipped', $c['outcome']);
+        $this->assertSame('debug', $this->systemLogEntries('incidents.emergency.fast_path')[0]['level']);
     }
 
     public function test_the_job_opens_a_critical_panic_incident_once(): void
@@ -92,6 +106,8 @@ class EmergencyFastPathTest extends TestCase
         app()->call([new OpenEmergencyIncidentJob($event->id, $this->team->id), 'handle']);
 
         $incident = Incident::withoutGlobalScopes()->with(['priority', 'type'])->sole();
+        $c = $this->assertSystemLogged('incidents.emergency.job_skipped', fn (array $c) => ($c['reason'] ?? null) === 'incident_exists');
+        $this->assertSame($incident->id, $c['result']['incident_id']);
         $this->assertSame($this->team->id, (int) $incident->team_id);
         $this->assertSame('critical', $incident->priority->code);
         $this->assertSame('panic_emergency', $incident->type->code);
@@ -122,6 +138,12 @@ class EmergencyFastPathTest extends TestCase
         );
 
         $this->assertSame(0, Incident::withoutGlobalScopes()->count());
+
+        $c = $this->assertSystemLogged('incidents.emergency.job_skipped', fn (array $c) => ($c['reason'] ?? null) === 'team_mismatch');
+        $this->assertFalse($c['calc']['team_matches']);
+        $this->assertSame($event->id, $c['input']['normalized_event_id']);
+        $this->assertStringNotContainsString('"team_id":'.$other->id.',', json_encode($this->systemLogEntries()));
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_a_unit_that_goes_silent_in_motion_opens_a_high_incident(): void
@@ -136,5 +158,14 @@ class EmergencyFastPathTest extends TestCase
         Queue::assertPushed(OpenEmergencyIncidentJob::class, 1);
         Queue::assertPushed(OpenEmergencyIncidentJob::class, fn (OpenEmergencyIncidentJob $job) => $job->normalizedEventId === $moving->id
             && $job->priorityCode === 'high');
+
+        $c = $this->assertSystemLogged('incidents.emergency.fast_path', fn (array $c) => ($c['outcome'] ?? null) === 'ok');
+        $this->assertSame('offline_in_motion', $c['calc']['trigger']);
+        $this->assertTrue($c['calc']['was_in_motion']);
+        $this->assertSame('high', $c['result']['priority_code']);
+
+        $c = $this->assertSystemLogged('incidents.emergency.fast_path', fn (array $c) => ($c['reason'] ?? null) === 'offline_parked');
+        $this->assertSame($parked->id, $c['input']['normalized_event_id']);
+        $this->assertFalse($c['calc']['was_in_motion']);
     }
 }
