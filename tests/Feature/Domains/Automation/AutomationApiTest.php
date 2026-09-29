@@ -178,6 +178,72 @@ class AutomationApiTest extends TestCase
         $response->assertStatus(409);
     }
 
+    public function test_two_tenants_can_trigger_the_same_global_workflow_with_the_same_reference(): void
+    {
+        Bus::fake();
+
+        $userA = User::factory()->create();
+        $userB = User::factory()->create();
+        $teamA = $userA->currentTeam;
+        $teamB = $userB->currentTeam;
+
+        // Workflow global de plataforma: lo comparten todos los tenants.
+        $workflow = AutomationWorkflow::factory()->systemWide()->create();
+
+        $this->actingAs($userA);
+        $this->postJson(
+            "/api/{$teamA->slug}/automation/workflows/{$workflow->id}/trigger",
+            ['source_reference_id' => 'shared-ref'],
+        )->assertStatus(202);
+
+        // El tenant B no choca con la ejecución de A (antes: 500 por el
+        // unique global) ni recibe un 409 que le revele que A ya lo corrió.
+        $this->actingAs($userB);
+        $responseB = $this->postJson(
+            "/api/{$teamB->slug}/automation/workflows/{$workflow->id}/trigger",
+            ['source_reference_id' => 'shared-ref'],
+        );
+
+        $responseB->assertStatus(202);
+        $this->assertSame($teamB->id, $responseB->json('data.team_id'));
+
+        foreach ([$teamA, $teamB] as $team) {
+            $this->assertSame(1, WorkflowExecution::withoutGlobalScopes()
+                ->where('team_id', $team->id)
+                ->where('automation_workflow_id', $workflow->id)
+                ->where('source_type', ActionExecutionSourceType::Manual->value)
+                ->where('source_reference_id', 'shared-ref')
+                ->count());
+        }
+    }
+
+    public function test_same_tenant_triggering_a_global_workflow_twice_is_idempotent(): void
+    {
+        Bus::fake();
+
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+
+        $workflow = AutomationWorkflow::factory()->systemWide()->create();
+
+        $this->actingAs($user);
+
+        $this->postJson(
+            "/api/{$team->slug}/automation/workflows/{$workflow->id}/trigger",
+            ['source_reference_id' => 'same-ref'],
+        )->assertStatus(202);
+
+        $this->postJson(
+            "/api/{$team->slug}/automation/workflows/{$workflow->id}/trigger",
+            ['source_reference_id' => 'same-ref'],
+        )->assertStatus(409);
+
+        $this->assertSame(1, WorkflowExecution::withoutGlobalScopes()
+            ->where('team_id', $team->id)
+            ->where('automation_workflow_id', $workflow->id)
+            ->count());
+    }
+
     public function test_cross_tenant_workflow_show_is_blocked(): void
     {
         $userA = User::factory()->create();
