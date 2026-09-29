@@ -41,7 +41,11 @@ class RunAutomationWorkflow
         ActionExecutionSourceType $sourceType,
         ?string $sourceReferenceId,
     ): ?WorkflowExecution {
+        // Filtro de tenant explícito: un workflow global lo comparten todos
+        // los teams y aquí no siempre hay TenantContext ambiente; la ejecución
+        // de otro team nunca hace saltar ésta (y su id nunca va al log).
         $existing = WorkflowExecution::query()
+            ->where('team_id', $teamId)
             ->where('automation_workflow_id', $workflow->id)
             ->where('source_type', $sourceType->value)
             ->when(

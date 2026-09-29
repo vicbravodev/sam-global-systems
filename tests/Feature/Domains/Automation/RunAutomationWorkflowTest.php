@@ -122,6 +122,47 @@ class RunAutomationWorkflowTest extends TestCase
         $this->assertNoSensitiveDataLogged();
     }
 
+    public function test_an_execution_of_another_team_never_makes_this_team_skip_a_global_workflow(): void
+    {
+        Bus::fake();
+
+        $teamId = User::factory()->create()->currentTeam->id;
+        $otherTeamId = User::factory()->create()->currentTeam->id;
+
+        $workflow = AutomationWorkflow::factory()->systemWide()->create();
+
+        // Ejecución del otro tenant para la misma fuente (sin referencia):
+        // sin TenantContext ambiente, sólo el filtro explícito la separa.
+        $foreign = WorkflowExecution::withoutGlobalScopes()->create([
+            'team_id' => $otherTeamId,
+            'automation_workflow_id' => $workflow->id,
+            'source_type' => ActionExecutionSourceType::Manual->value,
+            'source_reference_id' => null,
+            'status' => WorkflowExecutionStatus::Completed,
+            'started_at' => now(),
+            'completed_at' => now(),
+        ]);
+
+        $execution = app(RunAutomationWorkflow::class)->execute(
+            workflow: $workflow,
+            teamId: $teamId,
+            sourceType: ActionExecutionSourceType::Manual,
+            sourceReferenceId: null,
+        );
+
+        $this->assertNotNull($execution);
+        $this->assertSame($teamId, (int) $execution->team_id);
+        $this->assertNotSame($foreign->id, $execution->id);
+
+        $this->assertSystemNotLogged('automation.workflow.skipped');
+        $this->assertSystemLogged('automation.workflow.started', fn (array $c) => $c['input']['workflow_scope'] === 'global'
+            && $c['result']['workflow_execution_id'] === $execution->id);
+
+        $json = (string) json_encode($this->systemLogEntries());
+        $this->assertDoesNotMatchRegularExpression('/"[a-z_]*workflow_execution_id":'.$foreign->id.'\\b/', $json);
+        $this->assertNoSensitiveDataLogged();
+    }
+
     public function test_idempotent_when_called_twice_for_same_source(): void
     {
         Bus::fake();
