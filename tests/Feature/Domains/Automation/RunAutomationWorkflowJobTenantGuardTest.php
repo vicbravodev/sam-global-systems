@@ -9,6 +9,7 @@ use App\Domains\Automation\Models\WorkflowExecution;
 use App\Models\Team;
 use Database\Seeders\AutomationMeterSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 /**
@@ -21,7 +22,7 @@ use Tests\TestCase;
  */
 class RunAutomationWorkflowJobTenantGuardTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsSystemLog, RefreshDatabase;
 
     protected function setUp(): void
     {
@@ -44,6 +45,12 @@ class RunAutomationWorkflowJobTenantGuardTest extends TestCase
         );
 
         $this->assertSame(0, WorkflowExecution::withoutGlobalScopes()->count());
+
+        $this->assertSystemLogged('automation.workflow.skipped', fn (array $c) => $c['reason'] === 'workflow_unavailable'
+            && $c['input'] === ['source_type' => ActionExecutionSourceType::Manual->value]);
+        $this->assertStringNotContainsString('"automation_workflow_id"', json_encode($this->systemLogEntries()));
+        $this->assertStringNotContainsString((string) $foreignWorkflow->id, json_encode(array_column($this->systemLogEntries('automation.workflow.skipped'), 'context')));
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_it_runs_the_tenants_own_workflow(): void

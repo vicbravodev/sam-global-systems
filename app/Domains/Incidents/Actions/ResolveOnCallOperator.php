@@ -31,42 +31,139 @@ class ResolveOnCallOperator
 {
     public function execute(int $teamId, ?DateTimeInterface $at = null): ?int
     {
+        return $this->explain($teamId, $at)['user_id'];
+    }
+
+    /**
+     * Same resolution as execute(), plus the terms that produced it. Read-only.
+     * Never carries the ids of candidates that are not members of the team:
+     * only how many were skipped.
+     *
+     * @return array{user_id: ?int, source: 'shift'|'fallback'|null, reason: ?string, calc: array<string, mixed>}
+     */
+    public function explain(int $teamId, ?DateTimeInterface $at = null): array
+    {
         $profile = TenantScheduleProfile::query()
             ->where('team_id', $teamId)
             ->where('is_active', true)
             ->first();
 
-        $rules = $profile?->shift_rules_json;
+        $calc = [
+            'profile_present' => $profile !== null,
+            'local_time' => null,
+            'local_day' => null,
+            'shifts_count' => 0,
+            'matched_shift_index' => null,
+            'shifts_matched_count' => 0,
+            'malformed_shifts_count' => 0,
+            'non_member_skipped_count' => 0,
+            'fallback_configured' => false,
+            'fallback_is_member' => null,
+        ];
+
+        if ($profile === null) {
+            return ['user_id' => null, 'source' => null, 'reason' => 'no_active_profile', 'calc' => $calc];
+        }
+
+        $rules = $profile->shift_rules_json;
 
         if (! is_array($rules)) {
-            return null;
+            return ['user_id' => null, 'source' => null, 'reason' => 'no_shift_rules', 'calc' => $calc];
         }
 
         $localized = Carbon::instance($at ?? now())->setTimezone($profile->timezone ?? 'UTC');
+        $shifts = (array) ($rules['on_call'] ?? []);
 
-        foreach ((array) ($rules['on_call'] ?? []) as $shift) {
-            if (! is_array($shift)) {
+        $calc['local_time'] = $localized->format('H:i');
+        $calc['local_day'] = strtolower($localized->englishDayOfWeek);
+        $calc['shifts_count'] = count($shifts);
+
+        // Pure pass (no queries): every shift that matches the schedule,
+        // whether or not its user is still a member. It must never throw
+        // (it runs inside the incident-creation transaction): a malformed
+        // shift is counted apart and never as matched.
+        foreach ($shifts as $shift) {
+            if (is_array($shift) && $this->isMalformed($shift)) {
+                $calc['malformed_shifts_count']++;
+
                 continue;
             }
 
-            $userId = $shift['user_id'] ?? null;
+            if ($this->isCandidate($shift, $localized)) {
+                $calc['shifts_matched_count']++;
+            }
+        }
 
-            if (! is_numeric($userId) || ! $this->shiftMatches($shift, $localized)) {
+        foreach (array_values($shifts) as $index => $shift) {
+            if (! $this->isCandidate($shift, $localized)) {
                 continue;
             }
+
+            $userId = $shift['user_id'];
 
             if ($this->isMember($teamId, (int) $userId)) {
-                return (int) $userId;
+                $calc['matched_shift_index'] = $index;
+
+                return ['user_id' => (int) $userId, 'source' => 'shift', 'reason' => null, 'calc' => $calc];
             }
+
+            $calc['non_member_skipped_count']++;
         }
 
         $fallback = $rules['fallback_on_call_user_id'] ?? null;
+        $calc['fallback_configured'] = is_numeric($fallback);
 
-        if (is_numeric($fallback) && $this->isMember($teamId, (int) $fallback)) {
-            return (int) $fallback;
+        if (is_numeric($fallback)) {
+            $calc['fallback_is_member'] = $this->isMember($teamId, (int) $fallback);
+
+            if ($calc['fallback_is_member']) {
+                return ['user_id' => (int) $fallback, 'source' => 'fallback', 'reason' => null, 'calc' => $calc];
+            }
         }
 
-        return null;
+        return ['user_id' => null, 'source' => null, 'reason' => 'no_eligible_member', 'calc' => $calc];
+    }
+
+    /**
+     * A shift with a numeric user that matches the schedule at $at.
+     */
+    private function isCandidate(mixed $shift, Carbon $at): bool
+    {
+        return is_array($shift)
+            && is_numeric($shift['user_id'] ?? null)
+            && $this->shiftMatches($shift, $at);
+    }
+
+    /**
+     * Exactly the shifts `shiftMatches()` would throw on: a numeric user (the
+     * only ones the winner loop evaluates) with a non-empty `days` holding an
+     * array or object entry (`strtolower()` raises a TypeError on it). Any
+     * other oddity (numeric `start`/`end`, scalar days) evaluates without
+     * throwing, so it is counted like the winner loop sees it. Only the
+     * counting pass uses it: the winner loop keeps evaluating shifts exactly
+     * as before.
+     *
+     * @param  array<mixed>  $shift
+     */
+    private function isMalformed(array $shift): bool
+    {
+        if (! is_numeric($shift['user_id'] ?? null)) {
+            return false;
+        }
+
+        $days = $shift['days'] ?? null;
+
+        if (! is_array($days) || $days === []) {
+            return false;
+        }
+
+        foreach ($days as $day) {
+            if (is_array($day) || is_object($day)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

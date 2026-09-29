@@ -35,6 +35,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Mockery;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 /**
@@ -44,7 +45,7 @@ use Tests\TestCase;
  */
 class DeliveryHardeningTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsSystemLog, RefreshDatabase;
 
     private Team $team;
 
@@ -82,6 +83,67 @@ class DeliveryHardeningTest extends TestCase
         $this->assertSame(DeliveryStatus::Skipped, $delivery->status);
         $this->assertStringContainsString('E.164', (string) $delivery->error_message);
         $this->assertSame(NotificationStatus::Cancelled, $notification->fresh()->status);
+
+        $this->assertSystemLogged('notifications.delivery.skipped', fn (array $c) => $c['reason'] === 'invalid_address'
+            && $c['input']['notification_id'] === $notification->id
+            && $c['input']['recipient_id'] === $delivery->recipient_id
+            && $c['input']['channel_id'] === $delivery->channel_id
+            && $c['input']['channel_type'] === 'sms');
+        $this->assertSystemLogged('notifications.dispatch.completed', fn (array $c) => $c['calc']['deliveries_skipped_count_by_reason'] === ['invalid_address_count' => 1]
+            && $c['calc']['deliveries_attempted_count'] === 0
+            && $c['result']['notification_status'] === 'cancelled');
+
+        $logged = json_encode($this->systemLogEntries());
+        $this->assertStringNotContainsString('E.164', $logged);
+        $this->assertStringNotContainsString('ops@example.com', $logged);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_failed_notification_delivery_is_logged_as_not_metered(): void
+    {
+        $this->bindDriver(DeliveryResult::failure('twilio sms error: bad number +5215555550188', permanent: true, providerErrorCode: '21211'));
+        $sms = NotificationChannel::factory()->sms()->create(['provider' => 'twilio']);
+
+        $notification = Notification::factory()->create([
+            'team_id' => $this->team->id,
+            'priority' => NotificationPriority::Normal,
+            'payload_json' => [
+                'force_channels' => ['sms'],
+                'recipients' => [[
+                    'recipient_type' => RecipientType::ExternalContact->value,
+                    'address' => '+5215555550188',
+                ]],
+            ],
+        ]);
+
+        app(DispatchNotification::class)->execute($notification);
+
+        $delivery = NotificationDelivery::query()->where('notification_id', $notification->id)->sole();
+        $this->assertSame(DeliveryStatus::Failed, $delivery->status);
+        $this->assertSame(0, UsageEvent::withoutGlobalScopes()->where('team_id', $this->team->id)->count());
+
+        $this->assertSystemLogged('notifications.delivery.failed', fn (array $c) => $c['outcome'] === 'degraded'
+            && $c['reason'] === 'permanent_failure'
+            && $c['input']['delivery_id'] === $delivery->id
+            && $c['input']['channel_id'] === $sms->id
+            && $c['input']['channel_type'] === 'sms'
+            && $c['input']['provider'] === 'twilio'
+            && $c['input']['stage'] === 'first'
+            && $c['input']['attempt_number'] === 1
+            && $c['result']['delivery_status'] === 'failed'
+            && $c['result']['provider_error_code'] === '21211'
+            && $c['result']['permanent'] === true
+            && $c['result']['metered'] === false
+            && array_key_exists('duration_ms', $c));
+        $this->assertSystemNotLogged('notifications.delivery.sent');
+        $this->assertSystemLogged('notifications.dispatch.completed', fn (array $c) => $c['calc']['failed_count'] === 1
+            && $c['calc']['sent_count'] === 0
+            && $c['calc']['deliveries_attempted_count'] === 1);
+
+        $logged = json_encode($this->systemLogEntries());
+        $this->assertStringNotContainsString('bad number', $logged);
+        $this->assertStringNotContainsString('5215555550188', $logged);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_notification_status_is_computed_per_recipient(): void
@@ -208,6 +270,12 @@ class DeliveryHardeningTest extends TestCase
         $this->assertNotNull($winner);
         $this->assertSame($winner->id, $result->id);
         $this->assertSame(1, Notification::query()->where('event_key', 'incident_created:1')->count());
+
+        $this->assertSystemLogged('notifications.dedup.skipped', fn (array $c) => $c['reason'] === 'event_key_race'
+            && $c['input']['notification_type'] === 'incident.created'
+            && $c['result']['existing_notification_id'] === $winner->id);
+        $this->assertSystemNotLogged('notifications.notification.requested');
+        $this->assertNoSensitiveDataLogged();
     }
 
     private function deliveryFor(Notification $notification, NotificationRecipient $recipient, NotificationChannel $channel, DeliveryStatus $status): NotificationDelivery

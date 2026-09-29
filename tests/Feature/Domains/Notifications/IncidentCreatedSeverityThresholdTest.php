@@ -17,6 +17,7 @@ use Database\Seeders\IncidentsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\Concerns\AssertsTenantIsolation;
 use Tests\TestCase;
 
@@ -27,7 +28,7 @@ use Tests\TestCase;
  */
 class IncidentCreatedSeverityThresholdTest extends TestCase
 {
-    use AssertsTenantIsolation, RefreshDatabase;
+    use AssertsSystemLog, AssertsTenantIsolation, RefreshDatabase;
 
     protected function setUp(): void
     {
@@ -44,6 +45,26 @@ class IncidentCreatedSeverityThresholdTest extends TestCase
         $notification = $this->notifyFor($team, 'low');
 
         $this->assertSame(['web'], $notification->payload_json['force_channels']);
+
+        $incidentId = (int) $notification->payload_json['incident_id'];
+        $context = $this->assertSystemLogged('notifications.out_of_band.skipped', fn (array $c) => $c['reason'] === 'below_min_severity'
+            && $c['input']['incident_id'] === $incidentId
+            && $c['input']['setting_key'] === NotifyOnIncidentCreated::SETTING_MIN_SEVERITY
+            && $c['input']['type_source'] === 'generic'
+            && $c['calc']['severity'] === 'low'
+            && $c['calc']['severity_rank'] === 1
+            && $c['calc']['severity_rank_source'] === 'priority'
+            && $c['calc']['min_severity'] === 'medium'
+            && $c['calc']['min_severity_rank'] === 2
+            && $c['calc']['min_severity_valid'] === true
+            && $c['result']['forced_channel_types'] === ['web']);
+
+        // Se rehace el umbral con los términos registrados.
+        $this->assertTrue($context['calc']['severity_rank'] < $context['calc']['min_severity_rank']);
+
+        $this->assertSystemLogged('notifications.notification.requested', fn (array $c) => $c['result']['notification_id'] === $notification->id
+            && $c['calc']['forced_channel_types'] === ['web']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_medium_and_critical_incidents_keep_the_normal_policy_by_default(): void
@@ -59,8 +80,34 @@ class IncidentCreatedSeverityThresholdTest extends TestCase
         $team = User::factory()->create()->currentTeam;
         $this->setThreshold($team, 'high');
 
-        $this->assertSame(['web'], $this->notifyFor($team, 'medium')->payload_json['force_channels']);
-        $this->assertArrayNotHasKey('force_channels', $this->notifyFor($team, 'critical')->payload_json);
+        $medium = $this->notifyFor($team, 'medium');
+        $this->assertSame(['web'], $medium->payload_json['force_channels']);
+        $critical = $this->notifyFor($team, 'critical');
+        $this->assertArrayNotHasKey('force_channels', $critical->payload_json);
+
+        $this->assertSystemLogged('notifications.out_of_band.skipped', fn (array $c) => $c['input']['incident_id'] === (int) $medium->payload_json['incident_id']
+            && $c['calc']['severity_rank'] === 2
+            && $c['calc']['min_severity'] === 'high'
+            && $c['calc']['min_severity_rank'] === 3
+            && $c['calc']['severity_rank'] < $c['calc']['min_severity_rank']);
+        $this->assertCount(1, $this->systemLogEntries('notifications.out_of_band.skipped'));
+        $this->assertSystemLogged('notifications.notification.requested', fn (array $c) => $c['result']['notification_id'] === $critical->id
+            && $c['calc']['forced_channel_types'] === null);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_an_invalid_tenant_threshold_falls_back_to_the_default_and_is_logged_as_such(): void
+    {
+        $team = User::factory()->create()->currentTeam;
+        $this->setThreshold($team, 'urgent now');
+
+        $notification = $this->notifyFor($team, 'low');
+
+        $this->assertSame(['web'], $notification->payload_json['force_channels']);
+        $this->assertSystemLogged('notifications.out_of_band.skipped', fn (array $c) => $c['calc']['min_severity'] === null
+            && $c['calc']['min_severity_valid'] === false
+            && $c['calc']['min_severity_rank'] === 2);
+        $this->assertStringNotContainsString('urgent now', json_encode($this->systemLogEntries()));
     }
 
     public function test_another_tenants_threshold_never_applies(): void

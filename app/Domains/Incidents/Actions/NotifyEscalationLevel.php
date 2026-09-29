@@ -11,7 +11,10 @@ use App\Domains\Notifications\Enums\NotificationPriority;
 use App\Domains\Notifications\Enums\NotificationSourceType;
 use App\Domains\Notifications\Enums\NotificationTriggeredByType;
 use App\Domains\TenantConfig\Models\TenantEscalationConfig;
+use App\Support\LoggableCode;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Avisa a un nivel de la escalación del tenant. Lo usan el watchdog de SLA,
@@ -23,6 +26,10 @@ use App\Support\TenantContext;
  *   canales del paso (voz/SMS a su teléfono verificado, decisión
  *   2026-09-28: el teléfono es el canal de arranque); en uno medio o bajo,
  *   sólo app y correo.
+ *
+ * Corre suelta (watchdog) o dentro de una transacción (escalamiento de una
+ * verificación imposible desde un listener de IncidentCreated): sus líneas van
+ * por DB::afterCommit y nunca llevan contactos, destinatarios ni el texto.
  */
 class NotifyEscalationLevel
 {
@@ -77,6 +84,13 @@ class NotifyEscalationLevel
             fn ($contact) => is_string($contact) && $contact !== '',
         ));
 
+        $logInput = [
+            'incident_id' => $incident->id,
+            'level' => $level,
+            'notification_type' => LoggableCode::guard($notificationType),
+        ];
+        $urgent = null;
+
         if ($contacts !== []) {
             $payload['recipients'] = array_map(fn (string $address) => [
                 'recipient_type' => 'external_contact',
@@ -90,6 +104,13 @@ class NotifyEscalationLevel
             $supervisors = IncidentSupervisors::recipients($teamId);
 
             if ($supervisors === []) {
+                $skippedCalc = ['step_present' => $step !== null, 'contacts_count' => 0];
+                DB::afterCommit(fn () => SystemLog::skipped('incidents.escalation_level.notified',
+                    reason: 'no_supervisors',
+                    input: $logInput,
+                    calc: $skippedCalc,
+                ));
+
                 return;
             }
 
@@ -101,7 +122,7 @@ class NotifyEscalationLevel
                 : [ChannelType::Web->value, ChannelType::Email->value];
         }
 
-        $this->sendNotification->execute(
+        $notification = $this->sendNotification->execute(
             teamId: $teamId,
             notificationType: $notificationType,
             sourceType: NotificationSourceType::Incident,
@@ -114,5 +135,20 @@ class NotifyEscalationLevel
             subject: $subject,
             bodyPreview: $body,
         );
+
+        $notifiedLine = [
+            'input' => $logInput,
+            'calc' => [
+                'step_present' => $step !== null,
+                'recipients_source' => $contacts !== [] ? 'step_contacts' : 'supervisors',
+                'contacts_count' => count($contacts),
+                'recipients_count' => count($payload['recipients']),
+                'step_channel_types' => $channels,
+                'urgent' => $urgent,
+                'forced_channel_types' => $payload['force_channels'] ?? null,
+            ],
+            'result' => ['notification_id' => $notification->id],
+        ];
+        DB::afterCommit(fn () => SystemLog::ok('incidents.escalation_level.notified', ...$notifiedLine));
     }
 }

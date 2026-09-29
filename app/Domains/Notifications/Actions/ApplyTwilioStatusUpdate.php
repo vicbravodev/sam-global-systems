@@ -10,6 +10,8 @@ use App\Domains\Notifications\Events\NotificationFailed;
 use App\Domains\Notifications\Models\MessagingCharge;
 use App\Domains\Notifications\Models\NotificationDelivery;
 use App\Domains\Notifications\Support\TwilioErrorCatalog;
+use App\Support\LoggableCode;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 
 /**
@@ -75,19 +77,51 @@ class ApplyTwilioStatusUpdate
         string $source = 'callback',
     ): void {
         $providerStatus = strtolower(trim($providerStatus));
+        $input = ['charge_id' => $charge->id, 'source' => $source, 'resource_type' => $charge->resource_type->value];
 
         if ($providerStatus === '') {
+            SystemLog::skipped('notifications.provider_status.skipped', reason: 'empty_status', input: $input, debug: true);
+
             return;
         }
 
         $errorCode = $errorCode !== null && $errorCode !== '' && $errorCode !== '0' ? $errorCode : null;
 
-        TenantContext::for($charge->team_id, function () use ($charge, $providerStatus, $errorCode, $durationSeconds, $segments, $source) {
+        TenantContext::for($charge->team_id, function () use ($charge, $providerStatus, $errorCode, $durationSeconds, $segments, $source, $input) {
             $this->updateCharge($charge, $providerStatus, $errorCode, $durationSeconds, $segments, $source);
 
-            if ($charge->source_type === MessagingChargeSource::NotificationDelivery && $charge->source_id !== null) {
-                $this->updateDelivery($charge, $providerStatus, $errorCode, $durationSeconds, $segments);
+            if ($charge->source_type !== MessagingChargeSource::NotificationDelivery || $charge->source_id === null) {
+                // Verificación de llamada, OTP…: sólo se actualiza el cargo.
+                SystemLog::skipped('notifications.provider_status.skipped', reason: 'not_a_notification_delivery', input: $input, calc: [
+                    'provider_status' => LoggableCode::guard($providerStatus),
+                ], debug: true);
+
+                return;
             }
+
+            $applied = $this->updateDelivery($charge, $providerStatus, $errorCode, $durationSeconds, $segments);
+
+            $input['delivery_id'] = $applied['delivery_id'];
+            $calc = [
+                'provider_status' => LoggableCode::guard($providerStatus),
+                'provider_error_code' => LoggableCode::guard($errorCode),
+                'duration_seconds' => $durationSeconds,
+            ];
+            $result = ['from_status' => $applied['from'], 'to_status' => $applied['to']];
+
+            match ($applied['outcome']) {
+                // La entrega ya no existe: sólo se actualizó el cargo.
+                'delivery_missing' => SystemLog::skipped('notifications.provider_status.skipped', reason: 'delivery_missing', input: $input, calc: $calc),
+                // El SID ya no es el del intento actual (un reintento lo
+                // reemplazó): sólo se actualizó su cargo.
+                'superseded_attempt' => SystemLog::skipped('notifications.provider_status.skipped', reason: 'superseded_attempt', input: $input, calc: $calc),
+                // Tardío, fuera de orden o repetido: la entrega no retrocede.
+                'not_advancing' => SystemLog::skipped('notifications.provider_status.skipped', reason: 'not_advancing', input: $input, calc: $calc, result: $result, debug: true),
+                'advanced' => SystemLog::ok('notifications.provider_status.applied', input: $input, calc: $calc, result: [
+                    ...$result,
+                    'permanent' => $applied['to'] === DeliveryStatus::Failed->value ? TwilioErrorCatalog::isPermanent($errorCode) : null,
+                ]),
+            };
         });
     }
 
@@ -129,19 +163,26 @@ class ApplyTwilioStatusUpdate
         ])->save();
     }
 
+    /**
+     * @return array{outcome: 'delivery_missing'|'superseded_attempt'|'not_advancing'|'advanced', from: ?string, to: ?string, delivery_id: ?int}
+     */
     private function updateDelivery(
         MessagingCharge $charge,
         string $status,
         ?string $errorCode,
         ?int $durationSeconds,
         ?int $segments,
-    ): void {
+    ): array {
         $delivery = NotificationDelivery::query()->with(['notification', 'channel'])->find($charge->source_id);
 
         // A retry replaces the delivery's SID: events for an older attempt
         // only update its charge, never the current attempt's state.
-        if ($delivery === null || $delivery->provider_message_id !== $charge->provider_sid) {
-            return;
+        if ($delivery === null) {
+            return ['outcome' => 'delivery_missing', 'from' => null, 'to' => null, 'delivery_id' => null];
+        }
+
+        if ($delivery->provider_message_id !== $charge->provider_sid) {
+            return ['outcome' => 'superseded_attempt', 'from' => $delivery->status->value, 'to' => null, 'delivery_id' => $delivery->id];
         }
 
         $now = now();
@@ -189,7 +230,7 @@ class ApplyTwilioStatusUpdate
 
             $delivery->fill($changes)->save();
 
-            return;
+            return ['outcome' => 'not_advancing', 'from' => $current->value, 'to' => $target?->value, 'delivery_id' => $delivery->id];
         }
 
         $changes['status'] = $target;
@@ -225,6 +266,8 @@ class ApplyTwilioStatusUpdate
                 (string) $changes['error_message'],
             );
         }
+
+        return ['outcome' => 'advanced', 'from' => $current->value, 'to' => $target->value, 'delivery_id' => $delivery->id];
     }
 
     /**

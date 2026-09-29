@@ -7,6 +7,7 @@ use App\Domains\Notifications\Enums\DeliveryStatus;
 use App\Domains\Notifications\Enums\NotificationSourceType;
 use App\Domains\Notifications\Models\NotificationDelivery;
 use App\Domains\Tenancy\Support\TenantCanSend;
+use App\Support\SystemLog;
 
 /**
  * ¿Sigue teniendo sentido reintentar o caer a otro canal para una entrega
@@ -36,23 +37,57 @@ final class DeliveryEscalationGuard
      */
     public static function blockReason(NotificationDelivery $delivery): ?string
     {
+        return self::explain($delivery)['reason'];
+    }
+
+    /**
+     * La misma cascada que {@see blockReason()}, con los términos de cada
+     * paso para el log. `notification_age_seconds` (con signo, segundos desde
+     * `created_at`; null sin `created_at`) se calcula en cuanto hay
+     * notificación, aunque luego bloquee el tenant. El resto de pasos que la
+     * cascada no llegó a evaluar van null.
+     *
+     * @return array{reason: ?string, calc: array{ttl_minutes: int, notification_age_seconds: ?int, incident_id: ?int, incident_handled_at_present: ?bool, reached_elsewhere: ?bool}}
+     */
+    public static function explain(NotificationDelivery $delivery): array
+    {
+        $calc = [
+            'ttl_minutes' => self::TTL_MINUTES,
+            'notification_age_seconds' => null,
+            'incident_id' => null,
+            'incident_handled_at_present' => null,
+            'reached_elsewhere' => null,
+        ];
+
         $notification = $delivery->notification;
 
         if ($notification === null) {
-            return 'notification_missing';
+            return ['reason' => 'notification_missing', 'calc' => $calc];
+        }
+
+        if ($notification->created_at !== null) {
+            $calc['notification_age_seconds'] = (int) $notification->created_at->diffInSeconds(now());
         }
 
         if (($blocked = TenantCanSend::blockedReason((int) $delivery->team_id)) !== null) {
-            return $blocked;
+            return ['reason' => $blocked, 'calc' => $calc];
         }
 
         if ($notification->created_at !== null
             && $notification->created_at->lt(now()->subMinutes(self::TTL_MINUTES))) {
-            return 'expired';
+            return ['reason' => 'expired', 'calc' => $calc];
         }
 
-        if (self::incidentHandledSince($notification->source_type, $notification->source_reference_id, $notification->created_at)) {
-            return 'incident_handled';
+        $handled = self::incidentHandledSince($notification->source_type, $notification->source_reference_id, $notification->created_at);
+
+        // Sólo el id de un incidente del propio team de la entrega.
+        if ($handled['incident'] !== null && (int) $handled['incident']->team_id === (int) $delivery->team_id) {
+            $calc['incident_id'] = $handled['incident']->id;
+            $calc['incident_handled_at_present'] = $handled['handled_at_present'];
+        }
+
+        if ($handled['handled']) {
+            return ['reason' => 'incident_handled', 'calc' => $calc];
         }
 
         $reachedElsewhere = NotificationDelivery::query()
@@ -62,22 +97,57 @@ final class DeliveryEscalationGuard
             ->whereIn('status', [DeliveryStatus::Queued, DeliveryStatus::Sent, DeliveryStatus::Delivered])
             ->exists();
 
-        return $reachedElsewhere ? 'recipient_reached' : null;
+        $calc['reached_elsewhere'] = $reachedElsewhere;
+
+        return ['reason' => $reachedElsewhere ? 'recipient_reached' : null, 'calc' => $calc];
     }
 
+    /**
+     * Línea común de los tres sitios que consultan el guard.
+     *
+     * @param  array{reason: ?string, calc: array<string, mixed>}  $guard  resultado de {@see explain()} con `reason` no null
+     * @param  string  $stage  `listener` | `retry_job` | `fallback_job`
+     */
+    public static function logBlocked(NotificationDelivery $delivery, array $guard, string $stage): void
+    {
+        SystemLog::skipped('notifications.escalation_guard.blocked',
+            reason: self::logReason((string) $guard['reason']),
+            input: ['delivery_id' => $delivery->id, 'notification_id' => $delivery->notification_id, 'stage' => $stage],
+            calc: [...$guard['calc'], 'blocked_reason' => $guard['reason']],
+        );
+    }
+
+    /**
+     * El `reason` del log para un motivo de bloqueo: los de
+     * {@see TenantCanSend} (`tenant_missing`, `subscription_*`) se agrupan en
+     * `tenant_cannot_send`, como `notifications.notification.cancelled`; el
+     * motivo exacto va en `calc.blocked_reason`.
+     */
+    public static function logReason(string $reason): string
+    {
+        if ($reason === TenantCanSend::REASON_TEAM_MISSING || str_starts_with($reason, 'subscription_')) {
+            return 'tenant_cannot_send';
+        }
+
+        return $reason;
+    }
+
+    /**
+     * @return array{handled: bool, incident: ?Incident, handled_at_present: ?bool}
+     */
     private static function incidentHandledSince(
         ?NotificationSourceType $sourceType,
         ?string $sourceReferenceId,
         mixed $notifiedAt,
-    ): bool {
+    ): array {
         if ($sourceType !== NotificationSourceType::Incident || ! is_numeric($sourceReferenceId)) {
-            return false;
+            return ['handled' => false, 'incident' => null, 'handled_at_present' => null];
         }
 
         $incident = Incident::query()->find((int) $sourceReferenceId);
 
         if ($incident === null) {
-            return false;
+            return ['handled' => false, 'incident' => null, 'handled_at_present' => null];
         }
 
         $handledAt = collect([
@@ -91,9 +161,13 @@ final class DeliveryEscalationGuard
             // Tomado sin marca de tiempo, o terminal por estado: igualmente
             // atendido, pero sin saber cuándo — no bloquear avisos que
             // pudieron generarse por ese mismo cambio.
-            return false;
+            return ['handled' => false, 'incident' => $incident, 'handled_at_present' => false];
         }
 
-        return $notifiedAt === null || $handledAt->gte($notifiedAt);
+        return [
+            'handled' => $notifiedAt === null || $handledAt->gte($notifiedAt),
+            'incident' => $incident,
+            'handled_at_present' => true,
+        ];
     }
 }

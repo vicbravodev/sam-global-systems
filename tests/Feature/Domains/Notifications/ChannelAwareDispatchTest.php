@@ -14,11 +14,12 @@ use App\Models\User;
 use Database\Seeders\NotificationMeterSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class ChannelAwareDispatchTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsSystemLog, RefreshDatabase;
 
     protected function setUp(): void
     {
@@ -57,6 +58,16 @@ class ChannelAwareDispatchTest extends TestCase
         $this->assertNotNull($delivery);
         $this->assertSame(DeliveryStatus::Skipped, $delivery->status);
         $this->assertStringContainsString('phone', (string) $delivery->error_message);
+
+        $this->assertSystemLogged('notifications.delivery.skipped', fn (array $c) => $c['reason'] === 'no_address'
+            && $c['input']['notification_id'] === $notification->id
+            && $c['input']['recipient_id'] === $delivery->recipient_id
+            && $c['input']['channel_id'] === $delivery->channel_id
+            && $c['input']['channel_type'] === 'sms');
+        $this->assertSystemLogged('notifications.channels.selected', fn (array $c) => $c['calc']['branch'] === 'critical_policy');
+        $this->assertSystemNotLogged('notifications.delivery.sent');
+        $this->assertStringNotContainsString('ops@example.com', json_encode($this->systemLogEntries()));
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_sms_to_recipient_with_phone_targets_the_phone(): void
@@ -119,6 +130,15 @@ class ChannelAwareDispatchTest extends TestCase
         app(DispatchNotification::class)->execute($notification);
 
         $this->assertSame(NotificationStatus::Cancelled, $notification->refresh()->status);
+
+        $this->assertSystemLogged('notifications.dispatch.completed', fn (array $c) => $c['input']['notification_id'] === $notification->id
+            && $c['calc']['recipients_count'] === 1
+            && $c['calc']['deliveries_attempted_count'] === 0
+            && $c['calc']['deliveries_skipped_count_by_reason'] === ['no_address_count' => 1]
+            && $c['calc']['sent_count'] === 0
+            && $c['calc']['failed_count'] === 0
+            && $c['result']['notification_status'] === 'cancelled');
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_one_delivered_one_skipped_keeps_notification_sent(): void

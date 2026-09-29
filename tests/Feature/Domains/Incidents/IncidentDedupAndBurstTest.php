@@ -15,9 +15,11 @@ use App\Models\User;
 use Database\Seeders\IncidentsSeeder;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\Concerns\AssertsTenantIsolation;
 use Tests\TestCase;
 
@@ -28,7 +30,7 @@ use Tests\TestCase;
  */
 class IncidentDedupAndBurstTest extends TestCase
 {
-    use AssertsTenantIsolation, RefreshDatabase;
+    use AssertsSystemLog, AssertsTenantIsolation, RefreshDatabase;
 
     private EventType $offline;
 
@@ -56,6 +58,16 @@ class IncidentDedupAndBurstTest extends TestCase
         $this->assertSame($first->id, $second->id);
         $this->assertSame($first->id, $third->id);
         $this->assertSame(1, Incident::query()->where('team_id', $teamId)->count());
+
+        $linked = $this->systemLogEntries('incidents.dedup.linked');
+        $this->assertCount(2, $linked);
+        $this->assertSame('opened_in_window', $linked[0]['context']['calc']['match_basis']);
+        $third = end($linked)['context'];
+        $this->assertSame('linked_event_in_window', $third['calc']['match_basis']);
+        $this->assertSame($first->id, $third['result']['existing_incident_id']);
+        // La apertura quedó fuera de la ventana: la sostiene el evento vinculado.
+        $this->assertTrue($first->opened_at->lt(Carbon::parse($third['calc']['window_start'])));
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_a_new_event_after_a_long_silence_opens_a_new_incident(): void
@@ -119,6 +131,39 @@ class IncidentDedupAndBurstTest extends TestCase
         $this->assertSame($aggregate->id, $incidents[4]->id);
         $this->assertSame(3, $aggregate->eventLinks()->count());
         Event::assertDispatchedTimes(IncidentCreated::class, 3);
+
+        $opened = $this->assertSystemLogged('incidents.offline_burst.aggregated', fn (array $c) => $c['calc']['branch'] === 'opened_aggregate');
+        $this->assertSame($aggregate->id, $opened['result']['aggregate_incident_id']);
+        // link_created sale del vínculo RootTrigger real, no de una constante.
+        $this->assertTrue($opened['result']['link_created']);
+        $this->assertTrue($aggregate->eventLinks()->where('relation_type', 'root_trigger')->exists());
+        $this->assertSame(2, $opened['calc']['recent_singles_count']);
+        $this->assertSame(3, $opened['calc']['effective_threshold']);
+        $this->assertFalse($opened['calc']['aggregate_found']);
+        $this->assertTrue($opened['calc']['recent_singles_count'] + 1 >= $opened['calc']['effective_threshold']);
+        $this->assertSame(max(2, $opened['calc']['configured_threshold']), $opened['calc']['effective_threshold']);
+        $this->assertSame(CreateIncidentFromEvent::OFFLINE_BURST_WINDOW_MINUTES, $opened['calc']['window_minutes']);
+
+        $linked = array_values(array_filter(
+            $this->systemLogEntries('incidents.offline_burst.aggregated'),
+            fn (array $e) => $e['context']['calc']['branch'] === 'linked_to_aggregate',
+        ));
+        $this->assertCount(2, $linked);
+        foreach ($linked as $entry) {
+            $this->assertSame($aggregate->id, $entry['context']['result']['aggregate_incident_id']);
+            $this->assertTrue($entry['context']['calc']['aggregate_found']);
+            $this->assertNull($entry['context']['calc']['recent_singles_count']);
+        }
+
+        $created = $this->systemLogEntries('incidents.incident.created');
+        $this->assertCount(3, $created);
+        $this->assertSame('below_threshold', $created[0]['context']['calc']['offline_burst']['branch']);
+        $this->assertSame(0, $created[0]['context']['calc']['offline_burst']['recent_singles_count']);
+        $this->assertSame('below_threshold', $created[1]['context']['calc']['offline_burst']['branch']);
+        $this->assertSame(1, $created[1]['context']['calc']['offline_burst']['recent_singles_count']);
+        $this->assertTrue($created[2]['context']['calc']['aggregate_burst']);
+        $this->assertSame('opened_aggregate', $created[2]['context']['calc']['offline_burst']['branch']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_offline_burst_of_another_tenant_never_absorbs_this_tenants_event(): void
@@ -139,6 +184,16 @@ class IncidentDedupAndBurstTest extends TestCase
         );
 
         $this->assertSame($assetB->id, $incidentB->asset_id);
+
+        $teamAIncidentIds = Incident::withoutGlobalScopes()->where('team_id', $teamA)->pluck('id')->all();
+        foreach ($this->systemLogEntries('incidents.offline_burst.aggregated') as $entry) {
+            if ($entry['context']['input']['normalized_event_id'] === $eventB->id) {
+                $this->assertNotContains($entry['context']['result']['aggregate_incident_id'], $teamAIncidentIds);
+            }
+        }
+        $this->assertSystemLogged('incidents.incident.created', fn (array $c) => $c['result']['incident_id'] === $incidentB->id
+            && $c['calc']['offline_burst']['branch'] === 'below_threshold'
+            && $c['calc']['offline_burst']['recent_singles_count'] === 0);
     }
 
     public function test_late_event_sla_runs_from_now_not_from_when_it_happened(): void
@@ -151,6 +206,17 @@ class IncidentDedupAndBurstTest extends TestCase
         $this->assertTrue($incident->sla_due_at->isFuture());
         $this->assertTrue($incident->opened_at->lt(now()->subHours(9)));
         Queue::assertPushed(CheckIncidentAcknowledgementJob::class, fn ($job) => $job->incidentId === $incident->id);
+
+        $c = $this->assertSystemLogged('incidents.sla.calculated', fn (array $c) => $c['input']['incident_id'] === $incident->id);
+        $this->assertSame('now', $c['calc']['base_source']);
+        $this->assertGreaterThanOrEqual(36000, $c['calc']['late_by_seconds']);
+        $this->assertTrue($c['calc']['backfill_adjusted']);
+        $this->assertSame($c['calc']['now_at'], $c['calc']['base_at']);
+        $this->assertSame(
+            Carbon::parse($c['calc']['base_at'])->addSeconds($c['calc']['sla_seconds'])->toIso8601String(),
+            $c['result']['sla_due_at'],
+        );
+        $this->assertSame($incident->sla_due_at->toIso8601String(), $c['result']['sla_due_at']);
     }
 
     private function create(int $teamId, int $assetId, string $typeCode, int $minutesAgo = 0, ?NormalizedEvent $event = null): Incident

@@ -14,11 +14,12 @@ use App\Models\User;
 use Database\Seeders\IncidentsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class HumanControlSuppressionTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsSystemLog, RefreshDatabase;
 
     protected function setUp(): void
     {
@@ -76,6 +77,11 @@ class HumanControlSuppressionTest extends TestCase
             'incident_id' => $incident->id,
             'entry_type' => 'sla_breached',
         ]);
+
+        $this->assertSystemLogged('incidents.ack_check.skipped', fn (array $c) => $c['reason'] === 'human_control'
+            && $c['input'] === ['incident_id' => $incident->id, 'level' => 1, 'attempt' => 1]);
+        $this->assertSystemNotLogged('incidents.ack_check.breached');
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_suppressed_verification_is_terminal_and_does_not_block_future_attempts(): void
@@ -107,6 +113,9 @@ class HumanControlSuppressionTest extends TestCase
             $verification->metadata_json['failure_reason'] ?? null,
         );
 
+        $this->assertSystemLogged('incidents.call_verification.closed', fn (array $c) => $c['reason'] === 'human_control'
+            && $c['input'] === ['verification_id' => $verification->id, 'incident_id' => $incident->id, 'attempt' => 1]);
+
         // Release: the incident is no longer under human control.
         $incident->forceFill([
             'claimed_by_user_id' => null,
@@ -125,5 +134,10 @@ class HumanControlSuppressionTest extends TestCase
             PlaceVerificationCallJob::class,
             fn (PlaceVerificationCallJob $job) => $job->verificationId === $restarted->id,
         );
+
+        $this->assertSystemLogged('incidents.call_verification.requested', fn (array $c) => $c['input'] === ['incident_id' => $incident->id, 'attempt' => 2]
+            && $c['calc']['restarted_after_suppression'] === true
+            && $c['result']['verification_id'] === $restarted->id);
+        $this->assertNoSensitiveDataLogged();
     }
 }

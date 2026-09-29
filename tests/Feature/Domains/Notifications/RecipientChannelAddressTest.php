@@ -11,11 +11,12 @@ use App\Domains\Notifications\Models\Notification;
 use App\Domains\Notifications\Models\NotificationRecipient;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class RecipientChannelAddressTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsSystemLog, RefreshDatabase;
 
     public function test_address_for_channel_picks_phone_for_telephony_and_email_for_mail(): void
     {
@@ -134,5 +135,69 @@ class RecipientChannelAddressTest extends TestCase
         $this->assertNull($descriptors[0]->email);
         $this->assertSame('ops@example.com', $descriptors[1]->email);
         $this->assertNull($descriptors[1]->phone);
+
+        $explain = app(ResolveRecipients::class)->explain($notification);
+        $this->assertEquals($descriptors, $explain['descriptors']);
+        $this->assertSame('explicit', $explain['source']);
+        $this->assertSame(2, $explain['candidates_count']);
+        $this->assertSame([], $explain['dropped_count_by_reason']);
+    }
+
+    public function test_explain_counts_explicit_entries_dropped_by_reason(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+        $this->actingAs($user);
+
+        $notification = Notification::factory()->create([
+            'team_id' => $team->id,
+            'notification_type' => 'manual.test',
+            'priority' => NotificationPriority::Normal,
+            'status' => NotificationStatus::Queued,
+            'payload_json' => [
+                'recipients' => [
+                    ['recipient_type' => RecipientType::ExternalContact->value, 'address' => 'ops@example.com'],
+                    ['recipient_type' => RecipientType::ExternalContact->value, 'name' => 'Sin dirección'],
+                    ['recipient_type' => RecipientType::ExternalContact->value, 'address' => ''],
+                    'not-an-array',
+                ],
+            ],
+        ]);
+
+        $explain = app(ResolveRecipients::class)->explain($notification);
+
+        $this->assertCount(1, $explain['descriptors']);
+        $this->assertSame('explicit', $explain['source']);
+        $this->assertSame(4, $explain['candidates_count']);
+        $this->assertSame(2, $explain['dropped_count_by_reason']['no_address']);
+        $this->assertSame(1, $explain['dropped_count_by_reason']['not_an_array']);
+        $this->assertEquals($explain['descriptors'], app(ResolveRecipients::class)->execute($notification));
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_explain_counts_team_members_without_email(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+        $this->actingAs($user);
+
+        $mute = User::factory()->create();
+        $team->members()->attach($mute, ['role' => 'member']);
+        $mute->forceFill(['email' => ''])->saveQuietly();
+
+        $notification = Notification::factory()->create([
+            'team_id' => $team->id,
+            'notification_type' => 'manual.test',
+            'priority' => NotificationPriority::Normal,
+            'status' => NotificationStatus::Queued,
+            'payload_json' => [],
+        ]);
+
+        $explain = app(ResolveRecipients::class)->explain($notification);
+
+        $this->assertSame('team_members', $explain['source']);
+        $this->assertSame(2, $explain['candidates_count']);
+        $this->assertCount(1, $explain['descriptors']);
+        $this->assertSame(['no_email' => 1], $explain['dropped_count_by_reason']);
     }
 }

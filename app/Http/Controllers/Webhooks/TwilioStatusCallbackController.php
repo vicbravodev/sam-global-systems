@@ -6,6 +6,7 @@ use App\Domains\Notifications\Actions\ApplyTwilioStatusUpdate;
 use App\Domains\Notifications\Models\MessagingCharge;
 use App\Domains\Notifications\Support\PlatformTwilioConfig;
 use App\Http\Controllers\Controller;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -49,6 +50,11 @@ class TwilioStatusCallbackController extends Controller
         $status = (string) ($isCall ? $request->input('CallStatus', '') : $request->input('MessageStatus', ''));
 
         if ($sid === '' || $status === '') {
+            SystemLog::skipped('notifications.provider_status.skipped', reason: 'missing_fields', calc: [
+                'sid_present' => $sid !== '',
+                'status_present' => $status !== '',
+            ]);
+
             return response('', 200);
         }
 
@@ -57,6 +63,11 @@ class TwilioStatusCallbackController extends Controller
         $charge = MessagingCharge::withoutGlobalScopes()->where('provider_sid', $sid)->first();
 
         if ($charge === null) {
+            // Sin el SID: viene del request y no hay tenant resuelto.
+            SystemLog::skipped('notifications.provider_status.skipped', reason: 'unknown_sid', calc: [
+                'resource_type' => $isCall ? 'call' : 'message',
+            ]);
+
             return response('', 200);
         }
 

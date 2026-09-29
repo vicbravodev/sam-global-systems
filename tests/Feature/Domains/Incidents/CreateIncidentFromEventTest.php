@@ -29,12 +29,15 @@ use App\Models\Team;
 use App\Models\User;
 use Database\Seeders\IncidentsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Event;
+use RuntimeException;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class CreateIncidentFromEventTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsSystemLog, RefreshDatabase;
 
     protected function setUp(): void
     {
@@ -84,6 +87,52 @@ class CreateIncidentFromEventTest extends TestCase
         ]);
 
         Event::assertDispatched(IncidentCreated::class);
+
+        $this->assertSystemLogged('incidents.incident.created', fn (array $c) => $c['result']['incident_id'] === $incident->id
+            && $c['result']['priority_code'] === 'critical'
+            && $c['result']['status_code'] === 'open'
+            && $c['input']['decision_id'] === 7
+            && $c['input']['source_type'] === IncidentSourceType::AiDecision->value
+            && $c['calc']['dedup_checked'] === true
+            && $c['calc']['dedup_window_minutes'] === 30
+            && $c['calc']['offline_burst'] === null
+            && $c['calc']['aggregate_burst'] === false
+            && $c['result']['usage_event_key'] === 'incident_workflows:'.$incident->id);
+        $this->assertSystemLogged('incidents.priority.resolved', fn (array $c) => $c['calc']['source'] === 'context_code'
+            && $c['calc']['requested_code'] === 'critical'
+            && $c['calc']['requested_found'] === true
+            && $c['result']['priority_code'] === 'critical'
+            && $c['result']['priority_level'] === 4);
+
+        // Nunca el título ni el resumen del incidente.
+        $json = json_encode($this->systemLogEntries());
+        $this->assertStringNotContainsString($incident->title, $json);
+        $this->assertStringNotContainsString('Creado automáticamente', $json);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_rollback_logs_the_type_calculation_but_no_persisted_fact(): void
+    {
+        Event::listen(IncidentCreated::class, fn () => throw new RuntimeException('boom'));
+
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+        $event = NormalizedEvent::factory()->create([
+            'team_id' => $team->id,
+            'asset_id' => $this->makeAsset($team)->id,
+        ]);
+
+        try {
+            app(CreateIncidentFromEvent::class)->execute($event, ['priority_code' => 'critical']);
+            $this->fail('La creación debía lanzar.');
+        } catch (RuntimeException $e) {
+            $this->assertSame('boom', $e->getMessage());
+        }
+
+        $this->assertSame(0, Incident::withoutGlobalScopes()->count());
+        $this->assertSystemNotLogged('incidents.incident.created');
+        $this->assertSystemNotLogged('incidents.sla.calculated');
+        $this->assertSystemLogged('incidents.type.resolved');
     }
 
     public function test_does_not_create_duplicate_when_open_incident_exists_for_same_asset(): void
@@ -112,6 +161,16 @@ class CreateIncidentFromEventTest extends TestCase
         ]);
 
         $this->assertSame($first->id, $second->id, 'Second event must reuse the existing open incident.');
+
+        $this->assertSystemLogged('incidents.dedup.linked', fn (array $c) => $c['input']['normalized_event_id'] === $secondEvent->id
+            && $c['calc']['matched_on'] === 'asset'
+            && $c['calc']['match_basis'] === 'opened_in_window'
+            && $c['calc']['window_minutes'] === 30
+            && $c['result']['existing_incident_id'] === $first->id
+            && $c['result']['link_created'] === true
+            && $c['result']['priority_raised'] === false);
+        $this->assertCount(1, $this->systemLogEntries('incidents.incident.created'));
+        $this->assertNoSensitiveDataLogged();
 
         $this->assertSame(2, IncidentEventLink::query()->where('incident_id', $first->id)->count());
         $this->assertDatabaseHas('incident_event_links', [
@@ -217,6 +276,14 @@ class CreateIncidentFromEventTest extends TestCase
         // A speeding event must NEVER masquerade as another incident type
         // (the old first-active-type fallback labeled these Panic Emergency).
         $this->assertSame('safety_violation', $incident->type->code);
+
+        $c = $this->assertSystemLogged('incidents.type.resolved', fn (array $c) => $c['calc']['category_bucket_code'] === 'safety_violation'
+            && $c['calc']['category_code'] === 'safety'
+            && $c['calc']['event_type_code'] === 'speeding'
+            && $c['calc']['used_last_resort'] === false);
+        $this->assertSame('safety_violation', end($c['calc']['tried']));
+        $this->assertSame(['speeding', 'safety_violation', 'other'], $c['calc']['candidates']);
+        $this->assertSame('safety_violation', $c['result']['incident_type_code']);
     }
 
     public function test_panic_button_event_type_aliases_to_panic_emergency(): void
@@ -236,6 +303,10 @@ class CreateIncidentFromEventTest extends TestCase
         $incident = app(CreateIncidentFromEvent::class)->execute($event);
 
         $this->assertSame('panic_emergency', $incident->type->code);
+
+        $this->assertSystemLogged('incidents.type.resolved', fn (array $c) => $c['calc']['alias_code'] === 'panic_emergency'
+            && $c['calc']['event_type_code'] === 'panic_button'
+            && $c['result']['incident_type_code'] === 'panic_emergency');
     }
 
     public function test_sla_due_at_uses_tenant_override_when_present(): void
@@ -269,6 +340,13 @@ class CreateIncidentFromEventTest extends TestCase
             $occurredAt->copy()->addSeconds(120)->toIso8601String(),
             $incident->sla_due_at->toIso8601String(),
         );
+
+        $c = $this->assertSystemLogged('incidents.sla.calculated', fn (array $c) => $c['outcome'] === 'ok'
+            && $c['calc']['sla_source'] === 'tenant_override'
+            && $c['calc']['sla_seconds'] === 120);
+        $this->assertSlaRecomputes($c, $incident);
+        $this->assertSame($incident->id, $c['input']['incident_id']);
+        $this->assertTrue($c['result']['watchdog_requested']);
     }
 
     public function test_sla_due_at_falls_back_to_priority_catalog(): void
@@ -295,6 +373,49 @@ class CreateIncidentFromEventTest extends TestCase
             $occurredAt->copy()->addSeconds(300)->toIso8601String(),
             $incident->sla_due_at->toIso8601String(),
         );
+
+        $c = $this->assertSystemLogged('incidents.sla.calculated', fn (array $c) => $c['calc']['sla_source'] === 'priority_catalog'
+            && $c['calc']['sla_seconds'] === 300);
+        $this->assertSlaRecomputes($c, $incident);
+        $this->assertSame('opened_at', $c['calc']['base_source']);
+        $this->assertSame(0, $c['calc']['late_by_seconds']);
+        $this->assertFalse($c['calc']['backfill_adjusted']);
+    }
+
+    public function test_priority_without_sla_logs_the_skip_and_arms_no_watchdog(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+
+        $event = NormalizedEvent::factory()->create(['team_id' => $team->id]);
+
+        $incident = app(CreateIncidentFromEvent::class)->execute($event, ['priority_code' => 'low']);
+
+        $this->assertNull($incident->sla_due_at);
+        $this->assertSystemLogged('incidents.sla.calculated', fn (array $c) => $c['outcome'] === 'skipped'
+            && $c['reason'] === 'no_sla_for_priority'
+            && $c['calc']['sla_source'] === 'none'
+            && $c['result']['watchdog_requested'] === false
+            && $c['input']['incident_id'] === $incident->id);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    /**
+     * sla_due_at = max(opened_at, now_at) + sla_seconds: se rehace con los
+     * términos registrados y se compara con lo registrado y lo persistido.
+     *
+     * @param  array<string, mixed>  $c
+     */
+    private function assertSlaRecomputes(array $c, Incident $incident): void
+    {
+        $openedAt = Carbon::parse($c['calc']['opened_at']);
+        $nowAt = Carbon::parse($c['calc']['now_at']);
+
+        $this->assertSame($openedAt->copy()->max($nowAt)->toIso8601String(), $c['calc']['base_at']);
+
+        $recomputed = Carbon::parse($c['calc']['base_at'])->addSeconds($c['calc']['sla_seconds'])->toIso8601String();
+        $this->assertSame($recomputed, $c['result']['sla_due_at']);
+        $this->assertSame($recomputed, $incident->fresh()->sla_due_at->toIso8601String());
     }
 
     public function test_unknown_event_type_resolves_to_the_generic_other_type(): void
@@ -312,6 +433,11 @@ class CreateIncidentFromEventTest extends TestCase
         $incident = app(CreateIncidentFromEvent::class)->execute($event);
 
         $this->assertSame('other', $incident->type->code);
+
+        $this->assertSystemLogged('incidents.type.resolved', fn (array $c) => $c['result']['incident_type_code'] === 'other'
+            && $c['calc']['used_last_resort'] === false
+            && $c['calc']['alias_code'] === null
+            && $c['calc']['category_bucket_code'] === null);
     }
 
     private function makeAsset(Team $team): Asset

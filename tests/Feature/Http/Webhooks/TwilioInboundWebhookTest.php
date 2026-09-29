@@ -14,6 +14,7 @@ use App\Models\User;
 use Database\Seeders\IncidentStatusSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 use Twilio\Security\RequestValidator;
 
@@ -23,7 +24,7 @@ use Twilio\Security\RequestValidator;
  */
 class TwilioInboundWebhookTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsSystemLog, RefreshDatabase;
 
     private const AUTH_TOKEN = 'tok-456';
 
@@ -127,6 +128,9 @@ class TwilioInboundWebhookTest extends TestCase
             ->where('team_id', $this->team->id)
             ->where('action', 'incident.reply.si')
             ->count());
+
+        $this->assertReplyApplied($token, 'SI', 'acknowledge');
+        $this->assertNoReplySecretsLogged($token, 'SI-W4K9');
     }
 
     public function test_no_reply_dismisses_the_incident_as_false_positive(): void
@@ -140,6 +144,9 @@ class TwilioInboundWebhookTest extends TestCase
 
         $incident = $token->incident()->first()->fresh('status');
         $this->assertSame(IncidentStatusCode::FalsePositive->value, $incident->status?->code);
+
+        $this->assertReplyApplied($token, 'NO', 'dismiss');
+        $this->assertNoReplySecretsLogged($token, 'NO-W4K9');
     }
 
     public function test_esc_reply_escalates_the_incident(): void
@@ -153,6 +160,9 @@ class TwilioInboundWebhookTest extends TestCase
 
         $incident = $token->incident()->first()->fresh('status');
         $this->assertSame(IncidentStatusCode::Escalated->value, $incident->status?->code);
+
+        $this->assertReplyApplied($token, 'ESC', 'escalate');
+        $this->assertNoReplySecretsLogged($token, 'ESC-W4K9');
     }
 
     public function test_expired_token_takes_no_action(): void
@@ -164,6 +174,28 @@ class TwilioInboundWebhookTest extends TestCase
         $response->assertOk();
         $this->assertStringContainsString('expirado', $response->getContent());
         $this->assertNull($token->incident()->first()->acknowledged_at);
+
+        $this->assertSystemLogged('notifications.inbound_reply.ignored', fn (array $c) => $c['reason'] === 'token_expired'
+            && $c['input'] === $this->replyInput($token));
+        $this->assertSystemNotLogged('notifications.inbound_reply.applied');
+        $this->assertNoReplySecretsLogged($token, 'SI-W4K9');
+    }
+
+    public function test_reply_to_a_closed_incident_is_ignored_as_terminal(): void
+    {
+        $closed = Incident::factory()->closed()->create(['team_id' => $this->team->id]);
+        $token = $this->makeToken(['incident_id' => $closed->id]);
+
+        $response = $this->postReply('SI-W4K9');
+
+        $response->assertOk();
+        $this->assertStringContainsString('ya está cerrado', $response->getContent());
+        $this->assertSame('noop_terminal', $token->fresh()->consumed_action);
+
+        $this->assertSystemLogged('notifications.inbound_reply.ignored', fn (array $c) => $c['reason'] === 'incident_terminal'
+            && $c['input'] === $this->replyInput($token)
+            && $c['result'] === ['consumed_action' => 'noop_terminal']);
+        $this->assertNoReplySecretsLogged($token, 'SI-W4K9');
     }
 
     public function test_second_reply_is_idempotent(): void
@@ -181,6 +213,38 @@ class TwilioInboundWebhookTest extends TestCase
         $incident = $token->incident()->first()->fresh('status');
         $this->assertEquals($firstAck, $incident->acknowledged_at);
         $this->assertNotSame(IncidentStatusCode::FalsePositive->value, $incident->status?->code);
+
+        $this->assertCount(1, $this->systemLogEntries('notifications.inbound_reply.applied'));
+        $this->assertSystemLogged('notifications.inbound_reply.ignored', fn (array $c) => $c['reason'] === 'already_consumed'
+            && $c['input'] === $this->replyInput($token)
+            && $c['result'] === ['consumed_action' => 'SI']);
+        $this->assertNoReplySecretsLogged($token, 'NO-W4K9');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function replyInput(NotificationReplyToken $token): array
+    {
+        return ['token_id' => $token->id, 'incident_id' => $token->incident_id, 'channel_type' => 'sms'];
+    }
+
+    private function assertReplyApplied(NotificationReplyToken $token, string $keyword, string $action): void
+    {
+        $this->assertSystemLogged('notifications.inbound_reply.applied', fn (array $c) => $c['input'] === $this->replyInput($token)
+            && $c['calc'] === ['keyword' => $keyword, 'user_linked' => true]
+            && $c['result'] === ['action' => $action]);
+    }
+
+    private function assertNoReplySecretsLogged(NotificationReplyToken $token, string $body): void
+    {
+        $json = json_encode($this->systemLogEntries());
+
+        $this->assertStringNotContainsString($token->token, $json);
+        $this->assertStringNotContainsString($body, $json);
+        $this->assertStringNotContainsString(ltrim(self::OPERATOR_PHONE, '+'), $json);
+        $this->assertStringNotContainsString(ltrim((string) $token->address, '+'), $json);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_unknown_token_is_answered_with_silence(): void

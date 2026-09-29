@@ -14,6 +14,7 @@ use App\Models\User;
 use Database\Seeders\IncidentsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 /**
@@ -23,7 +24,7 @@ use Tests\TestCase;
  */
 class IncidentDedupByTypeTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsSystemLog, RefreshDatabase;
 
     private int $teamId;
 
@@ -88,6 +89,12 @@ class IncidentDedupByTypeTest extends TestCase
 
         $this->assertNotNull($entry);
         $this->assertSame('Prioridad elevada por un nuevo evento', $entry->title);
+
+        $this->assertSystemLogged('incidents.dedup.linked', fn (array $c) => $c['result']['existing_incident_id'] === $incident->id
+            && $c['result']['priority_raised'] === true
+            && $c['result']['previous_priority_code'] === 'medium'
+            && $c['result']['new_priority_code'] === 'critical');
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_a_less_severe_supporting_event_never_lowers_the_priority(): void
@@ -103,6 +110,10 @@ class IncidentDedupByTypeTest extends TestCase
                 ->where('entry_type', TimelineEntryType::PriorityChanged->value)
                 ->exists(),
         );
+
+        $this->assertSystemLogged('incidents.dedup.linked', fn (array $c) => $c['result']['existing_incident_id'] === $incident->id
+            && $c['result']['priority_raised'] === false
+            && $c['result']['new_priority_code'] === null);
     }
 
     private function createIncident(

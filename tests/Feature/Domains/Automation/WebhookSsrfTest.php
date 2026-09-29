@@ -13,6 +13,7 @@ use Database\Seeders\AccessSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\Concerns\FakesHostResolution;
 use Tests\TestCase;
 
@@ -23,7 +24,7 @@ use Tests\TestCase;
  */
 class WebhookSsrfTest extends TestCase
 {
-    use FakesHostResolution, RefreshDatabase;
+    use AssertsSystemLog, FakesHostResolution, RefreshDatabase;
 
     private User $owner;
 
@@ -80,6 +81,25 @@ class WebhookSsrfTest extends TestCase
         }
 
         Http::assertNothingSent();
+
+        $codes = array_map(
+            fn (array $entry) => $entry['context']['result']['unsafe_url_code'] ?? null,
+            $this->systemLogEntries('automation.action.failed'),
+        );
+        $this->assertCount(5, $codes);
+        foreach ($this->systemLogEntries('automation.action.failed') as $entry) {
+            $this->assertSame('unsafe_url', $entry['context']['reason']);
+            $this->assertSame('UnsafeOutboundUrlException', $entry['context']['result']['error_class']);
+        }
+        $this->assertContains('reserved_host', $codes);
+        $this->assertContains('blocked_ip', $codes);
+        $this->assertNotContains(null, $codes);
+
+        $encoded = json_encode($this->systemLogEntries());
+        foreach (['169.254.169.254', '127.0.0.1', 'localhost', 'rebind.example.com', '10.0.0.7', '::1'] as $host) {
+            $this->assertStringNotContainsString($host, $encoded);
+        }
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_public_target_is_called_without_redirects_and_with_capped_timeout(): void

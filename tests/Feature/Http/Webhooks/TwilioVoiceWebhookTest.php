@@ -6,6 +6,7 @@ use App\Domains\Audit\Models\AuditLog;
 use App\Domains\Incidents\Enums\CallVerificationOutcome;
 use App\Domains\Incidents\Enums\CallVerificationStatus;
 use App\Domains\Incidents\Enums\IncidentStatusCode;
+use App\Domains\Incidents\Enums\ResolutionCode;
 use App\Domains\Incidents\Jobs\PlaceVerificationCallJob;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentCallVerification;
@@ -19,6 +20,7 @@ use Database\Seeders\IncidentStatusSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Testing\TestResponse;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 use Twilio\Security\RequestValidator;
 
@@ -28,7 +30,7 @@ use Twilio\Security\RequestValidator;
  */
 class TwilioVoiceWebhookTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsSystemLog, RefreshDatabase;
 
     private const AUTH_TOKEN = 'voice-tok-789';
 
@@ -64,6 +66,19 @@ class TwilioVoiceWebhookTest extends TestCase
             'notification_channel_id' => $this->channel->id,
             'phone' => '+5215512345678',
         ], $attributes));
+    }
+
+    private function inputOf(IncidentCallVerification $verification): array
+    {
+        return ['verification_id' => $verification->id, 'incident_id' => $verification->incident_id, 'attempt' => $verification->attempt];
+    }
+
+    private function assertNoPhoneLogged(): void
+    {
+        $json = json_encode($this->systemLogEntries());
+
+        $this->assertStringNotContainsString('5215512345678', $json);
+        $this->assertNoSensitiveDataLogged();
     }
 
     private function postSigned(string $path, array $params, ?string $authToken = self::AUTH_TOKEN): TestResponse
@@ -121,6 +136,11 @@ class TwilioVoiceWebhookTest extends TestCase
             ->where('team_id', $this->team->id)
             ->where('action', 'incident.call_verification.confirmed_real')
             ->count());
+
+        $this->assertSystemLogged('incidents.call_verification.answered', fn (array $c) => $c['outcome'] === 'ok'
+            && $c['input'] === $this->inputOf($verification)
+            && $c['result'] === ['outcome' => CallVerificationOutcome::ConfirmedReal->value, 'acknowledged' => true, 'escalated' => true, 'level_requested' => 0]);
+        $this->assertNoPhoneLogged();
     }
 
     public function test_digit_2_closes_the_incident_as_false_alarm(): void
@@ -137,6 +157,11 @@ class TwilioVoiceWebhookTest extends TestCase
 
         $incident = Incident::withoutGlobalScopes()->with('status')->find($verification->incident_id);
         $this->assertSame(IncidentStatusCode::FalsePositive->value, $incident->status?->code);
+
+        $this->assertSystemLogged('incidents.call_verification.answered', fn (array $c) => $c['outcome'] === 'ok'
+            && $c['input'] === $this->inputOf($verification)
+            && $c['result'] === ['outcome' => CallVerificationOutcome::ConfirmedFalse->value, 'closed' => true, 'resolution_code' => ResolutionCode::FalsePositive->value]);
+        $this->assertNoPhoneLogged();
     }
 
     public function test_invalid_digit_replays_the_prompt(): void
@@ -148,6 +173,11 @@ class TwilioVoiceWebhookTest extends TestCase
         $response->assertOk();
         $this->assertStringContainsString('<Gather', $response->getContent());
         $this->assertNull($verification->fresh()->outcome);
+
+        $this->assertSystemLogged('incidents.call_verification.answered', fn (array $c) => $c['reason'] === 'invalid_digit'
+            && $c['input'] === $this->inputOf($verification)
+            && $c['calc'] === ['digits_length' => 1]);
+        $this->assertNoPhoneLogged();
     }
 
     public function test_invalid_signature_is_rejected_with_403(): void
@@ -181,6 +211,10 @@ class TwilioVoiceWebhookTest extends TestCase
         $incident = Incident::withoutGlobalScopes()->with('status')->find($verification->incident_id);
         $this->assertEquals($ackAt, $incident->acknowledged_at);
         $this->assertNotSame(IncidentStatusCode::FalsePositive->value, $incident->status?->code);
+
+        $this->assertSystemLogged('incidents.call_verification.answered', fn (array $c) => ($c['reason'] ?? null) === 'already_answered'
+            && $c['input'] === $this->inputOf($verification));
+        $this->assertNoPhoneLogged();
     }
 
     public function test_unanswered_status_chains_the_next_attempt(): void
@@ -200,6 +234,14 @@ class TwilioVoiceWebhookTest extends TestCase
             PlaceVerificationCallJob::class,
             fn (PlaceVerificationCallJob $job) => $job->verificationId === $next->id,
         );
+
+        $this->assertSystemLogged('incidents.call_verification.attempt_failed', fn (array $c) => $c['outcome'] === 'ok'
+            && $c['input'] === $this->inputOf($verification)
+            && $c['calc']['failure_code'] === 'call_status'
+            && $c['calc']['call_status'] === 'no-answer'
+            && $c['result'] === ['next' => 'next_attempt', 'next_attempt' => 2, 'next_attempt_created' => true]);
+        $this->assertSystemNotLogged('incidents.call_verification.status_ignored');
+        $this->assertNoPhoneLogged();
     }
 
     public function test_unanswered_last_attempt_escalates_the_incident(): void
@@ -226,6 +268,25 @@ class TwilioVoiceWebhookTest extends TestCase
 
         $this->assertSame(CallVerificationOutcome::ConfirmedReal, $verification->fresh()->outcome);
         $this->assertSame(1, IncidentCallVerification::withoutGlobalScopes()->count());
+
+        $entry = collect($this->systemLogEntries('incidents.call_verification.status_ignored'))->sole();
+        $this->assertSame('debug', $entry['level']);
+        $this->assertSame('not_in_flight', $entry['context']['reason']);
+        $this->assertSame($this->inputOf($verification), $entry['context']['input']);
+        $this->assertSame(['call_status' => 'completed'], $entry['context']['calc']);
+        $this->assertNoPhoneLogged();
+    }
+
+    public function test_a_non_final_status_is_ignored_while_the_call_rings(): void
+    {
+        $verification = $this->makeVerification();
+
+        $this->postStatus($verification, 'ringing')->assertNoContent();
+
+        $this->assertSame(CallVerificationStatus::Calling, $verification->fresh()->status);
+        $this->assertSystemLogged('incidents.call_verification.status_ignored', fn (array $c) => $c['reason'] === 'status_not_final'
+            && $c['calc'] === ['call_status' => 'ringing']);
+        $this->assertSystemNotLogged('incidents.call_verification.attempt_failed');
     }
 
     public function test_terminal_incident_answers_politely_without_acting(): void
@@ -243,6 +304,11 @@ class TwilioVoiceWebhookTest extends TestCase
         $response->assertOk();
         $this->assertStringContainsString('ya está cerrado', $response->getContent());
         $this->assertSame(CallVerificationStatus::Answered, $verification->fresh()->status);
+
+        $this->assertSystemLogged('incidents.call_verification.answered', fn (array $c) => $c['reason'] === 'incident_closed'
+            && $c['input'] === $this->inputOf($verification)
+            && $c['result'] === ['outcome' => CallVerificationOutcome::ConfirmedReal->value]);
+        $this->assertNoPhoneLogged();
     }
 
     /**

@@ -16,8 +16,10 @@ use App\Domains\Notifications\Enums\NotificationPriority;
 use App\Domains\Notifications\Enums\NotificationSourceType;
 use App\Domains\Notifications\Enums\NotificationTriggeredByType;
 use App\Models\User;
+use App\Support\SystemLog;
 use App\Support\TeamMembers;
 use App\Support\TenantContext;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Aviso de cambio de estado de un incidente, dirigido SÓLO a quien lo lleva
@@ -48,18 +50,28 @@ class NotifyOnIncidentStatusChanged
         $newStatus = $event instanceof IncidentStatusChanged ? $event->newStatus : IncidentStatusCode::Closed->value;
         $actorUserId = $event instanceof IncidentStatusChanged ? $event->actorUserId : null;
 
+        // Corre dentro de EscalateIncident/CloseIncident: las líneas salen
+        // tras el commit más externo.
+        $logInput = ['incident_id' => $incident->id, 'new_status' => $newStatus];
+
         if ($newStatus === IncidentStatusCode::InReview->value) {
+            DB::afterCommit(fn () => SystemLog::skipped('notifications.status_change.skipped', reason: 'internal_status', input: $logInput, debug: true));
+
             return;
         }
 
-        TenantContext::for((int) $incident->team_id, function () use ($incident, $newStatus, $actorUserId): void {
+        TenantContext::for((int) $incident->team_id, function () use ($incident, $newStatus, $actorUserId, $logInput): void {
             if ($newStatus === IncidentStatusCode::Escalated->value && $this->escalatedBySla($incident)) {
+                DB::afterCommit(fn () => SystemLog::skipped('notifications.status_change.skipped', reason: 'escalated_by_sla', input: $logInput));
+
                 return;
             }
 
-            $recipients = $this->recipients($incident, $actorUserId);
+            ['recipients' => $recipients, 'calc' => $recipientCalc] = $this->recipients($incident, $actorUserId);
 
             if ($recipients === []) {
+                DB::afterCommit(fn () => SystemLog::skipped('notifications.status_change.skipped', reason: 'no_recipients', input: $logInput, calc: $recipientCalc));
+
                 return;
             }
 
@@ -101,9 +113,10 @@ class NotifyOnIncidentStatusChanged
 
     /**
      * Asignado actual (usuario) + quien reclamó el incidente, miembros del
-     * team, sin el actor del cambio.
+     * team, sin el actor del cambio. `calc` sólo lleva conteos: nunca ids de
+     * candidatos, que pueden ser de otro tenant.
      *
-     * @return array<int, array<string, mixed>>
+     * @return array{recipients: array<int, array<string, mixed>>, calc: array{candidates_count: int, actor_excluded: bool, non_member_dropped_count: int, without_email_dropped_count: int}}
      */
     private function recipients(Incident $incident, ?int $actorUserId): array
     {
@@ -119,18 +132,31 @@ class NotifyOnIncidentStatusChanged
             $userIds[] = (int) $incident->claimed_by_user_id;
         }
 
+        $candidates = array_values(array_unique(array_filter($userIds, fn (int $id): bool => $id > 0)));
+
         $userIds = array_values(array_unique(array_filter(
             $userIds,
             fn (int $id): bool => $id > 0 && $id !== $actorUserId,
         )));
 
+        $calc = [
+            'candidates_count' => count($candidates),
+            'actor_excluded' => $actorUserId !== null && in_array($actorUserId, $candidates, true),
+            'non_member_dropped_count' => 0,
+            'without_email_dropped_count' => 0,
+        ];
+
         if ($userIds === []) {
-            return [];
+            return ['recipients' => [], 'calc' => $calc];
         }
 
-        return TeamMembers::scope(User::query()->whereIn('id', $userIds), (int) $incident->team_id)
-            ->get()
-            ->filter(fn (User $user): bool => (string) $user->email !== '')
+        $members = TeamMembers::scope(User::query()->whereIn('id', $userIds), (int) $incident->team_id)->get();
+        $withEmail = $members->filter(fn (User $user): bool => (string) $user->email !== '');
+
+        $calc['non_member_dropped_count'] = count($userIds) - $members->count();
+        $calc['without_email_dropped_count'] = $members->count() - $withEmail->count();
+
+        $recipients = $withEmail
             ->map(fn (User $user): array => [
                 'recipient_type' => 'user',
                 'address' => (string) $user->email,
@@ -141,5 +167,7 @@ class NotifyOnIncidentStatusChanged
             ])
             ->values()
             ->all();
+
+        return ['recipients' => $recipients, 'calc' => $calc];
     }
 }

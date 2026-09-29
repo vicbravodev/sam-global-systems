@@ -12,6 +12,7 @@ use App\Domains\Notifications\Models\NotificationDelivery;
 use App\Domains\Notifications\Support\ChannelAddress;
 use App\Domains\Notifications\Support\DeliveryEscalationGuard;
 use App\Support\JobFailureReporter;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -82,10 +83,13 @@ class RetryNotificationDeliveryJob implements ShouldQueue
     public function handle(AttemptDelivery $attemptDelivery, RenderNotificationContent $render): void
     {
         $delivery = NotificationDelivery::withoutGlobalScopes()->find($this->deliveryId);
+        $input = ['delivery_id' => $this->deliveryId, 'stage' => 'retry_job'];
 
         // Sólo una entrega que sigue fallida se reintenta: si entretanto llegó
         // (callback tardío) o ya está en vuelo, reenviar sería duplicar.
         if ($delivery === null || $delivery->status !== DeliveryStatus::Failed) {
+            SystemLog::skipped('notifications.retry.skipped', reason: 'not_failed', input: $input, debug: true);
+
             return;
         }
 
@@ -96,10 +100,22 @@ class RetryNotificationDeliveryJob implements ShouldQueue
         $delivery->load(['notification', 'recipient', 'channel']);
 
         if ($delivery->notification === null || $delivery->recipient === null || $delivery->channel === null) {
+            SystemLog::skipped('notifications.retry.skipped', reason: 'relations_missing', input: $input);
+
             return;
         }
 
-        if ($delivery->permanent_failure || DeliveryEscalationGuard::blockReason($delivery) !== null) {
+        if ($delivery->permanent_failure) {
+            SystemLog::skipped('notifications.retry.skipped', reason: 'permanent_failure', input: $input);
+
+            return;
+        }
+
+        $guard = DeliveryEscalationGuard::explain($delivery);
+
+        if ($guard['reason'] !== null) {
+            DeliveryEscalationGuard::logBlocked($delivery, $guard, 'retry_job');
+
             return;
         }
 
@@ -120,6 +136,11 @@ class RetryNotificationDeliveryJob implements ShouldQueue
 
             FallbackNotificationChannelJob::dispatch($delivery->id);
 
+            SystemLog::skipped('notifications.retry.skipped', reason: 'channel_disabled', input: $input, result: [
+                'delivery_status' => 'cancelled',
+                'fallback_requested' => true,
+            ]);
+
             return;
         }
 
@@ -130,6 +151,8 @@ class RetryNotificationDeliveryJob implements ShouldQueue
                 'status' => DeliveryStatus::Skipped,
                 'error_message' => "no valid {$delivery->channel->channel_type->value} address to retry",
             ]);
+
+            SystemLog::skipped('notifications.retry.skipped', reason: 'no_valid_address', input: $input, result: ['delivery_status' => 'skipped']);
 
             return;
         }

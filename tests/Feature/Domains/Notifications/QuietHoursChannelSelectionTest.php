@@ -16,6 +16,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\Concerns\AssertsTenantIsolation;
 use Tests\TestCase;
 
@@ -25,7 +26,14 @@ use Tests\TestCase;
  */
 class QuietHoursChannelSelectionTest extends TestCase
 {
-    use AssertsTenantIsolation, RefreshDatabase;
+    use AssertsSystemLog, AssertsTenantIsolation, RefreshDatabase;
+
+    /**
+     * La explicación de la última selección de {@see selectedTypes()}.
+     *
+     * @var array{channels: list<NotificationChannel>, branch: string, calc: array<string, mixed>}|null
+     */
+    private ?array $explained = null;
 
     protected function setUp(): void
     {
@@ -62,6 +70,15 @@ class QuietHoursChannelSelectionTest extends TestCase
         $this->assertContains('email', $types);
         $this->assertNotContains('sms', $types);
         $this->assertNotContains('whatsapp', $types);
+
+        $this->assertSame('allowed_types', $this->explained['branch']);
+        $this->assertTrue($this->explained['calc']['quiet_hours_active']);
+        $this->assertSame('tenant_policy', $this->explained['calc']['quiet_hours_source']);
+        $this->assertSame('tenant_policy', $this->explained['calc']['allowed_types_source']);
+        $this->assertContains('sms', $this->explained['calc']['silenced_types']);
+        $this->assertContains('whatsapp', $this->explained['calc']['silenced_types']);
+        $this->assertSame($types, $this->sorted($this->explained['calc']['selected_types']));
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_outside_quiet_hours_sms_still_goes_out(): void
@@ -70,6 +87,10 @@ class QuietHoursChannelSelectionTest extends TestCase
         $this->travelToLocal($team, '12:00');
 
         $this->assertContains('sms', $this->selectedTypes($team, NotificationPriority::High));
+
+        $this->assertSame('allowed_types', $this->explained['branch']);
+        $this->assertFalse($this->explained['calc']['quiet_hours_active']);
+        $this->assertSame([], $this->explained['calc']['silenced_types']);
     }
 
     public function test_critical_priority_ignores_quiet_hours(): void
@@ -78,6 +99,14 @@ class QuietHoursChannelSelectionTest extends TestCase
         $this->travelToLocal($team, '23:30');
 
         $this->assertContains('sms', $this->selectedTypes($team, NotificationPriority::Critical));
+
+        $this->assertSame('critical_policy', $this->explained['branch']);
+        $this->assertSame('critical', $this->explained['calc']['priority']);
+        $this->assertNotEmpty($this->explained['calc']['critical_policy_types']);
+        // Las ramas críticas no leen silencio ni preferencia.
+        $this->assertNull($this->explained['calc']['quiet_hours_active']);
+        $this->assertNull($this->explained['calc']['quiet_hours_source']);
+        $this->assertNull($this->explained['calc']['muted']);
     }
 
     public function test_forced_channels_are_also_silenced_for_non_critical(): void
@@ -88,6 +117,10 @@ class QuietHoursChannelSelectionTest extends TestCase
         $types = $this->selectedTypes($team, NotificationPriority::Normal, ['force_channels' => ['voice', 'email']]);
 
         $this->assertSame(['email'], $types);
+
+        $this->assertSame('forced', $this->explained['branch']);
+        $this->assertSame(['voice', 'email'], $this->explained['calc']['forced_types']);
+        $this->assertSame(['voice'], $this->explained['calc']['silenced_types']);
     }
 
     public function test_user_preference_quiet_hours_apply_without_a_tenant_window(): void
@@ -108,6 +141,35 @@ class QuietHoursChannelSelectionTest extends TestCase
         $types = $this->selectedTypes($team, NotificationPriority::High, [], (string) $user->id);
 
         $this->assertSame(['email'], $types);
+
+        $this->assertSame('allowed_types', $this->explained['branch']);
+        $this->assertSame('user_preference', $this->explained['calc']['quiet_hours_source']);
+        $this->assertSame('user_preference', $this->explained['calc']['allowed_types_source']);
+        $this->assertSame(['sms', 'email'], $this->explained['calc']['allowed_types']);
+        $this->assertSame(['sms'], $this->explained['calc']['silenced_types']);
+        $this->assertFalse($this->explained['calc']['muted']);
+    }
+
+    public function test_stale_allowed_channel_values_are_logged_without_the_bogus_entries(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+        $team->forceFill(['timezone' => 'UTC'])->save();
+
+        NotificationPreference::factory()->create([
+            'team_id' => $team->id,
+            'user_id' => $user->id,
+            'notification_type' => 'manual.test',
+            'allowed_channels_json' => ['email', 'carrier pigeon', 'sms'],
+            'quiet_hours_json' => null,
+        ]);
+
+        $types = $this->selectedTypes($team, NotificationPriority::High, [], (string) $user->id);
+
+        $this->assertSame(['email', 'sms'], $types);
+        $this->assertSame('user_preference', $this->explained['calc']['allowed_types_source']);
+        $this->assertSame(['email', 'sms'], $this->explained['calc']['allowed_types']);
+        $this->assertStringNotContainsString('carrier pigeon', json_encode($this->explained['calc']));
     }
 
     public function test_another_tenants_quiet_hours_never_apply(): void
@@ -166,10 +228,32 @@ class QuietHoursChannelSelectionTest extends TestCase
     {
         [$notification, $recipient] = $this->notificationFor($team, $priority, $payload, $userId);
 
-        $types = array_map(
-            fn (NotificationChannel $channel) => $channel->channel_type->value,
-            app(SelectNotificationChannels::class)->execute($notification, $recipient),
+        $select = app(SelectNotificationChannels::class);
+        $channels = $select->execute($notification, $recipient);
+
+        // explain() es la misma selección, con sus términos.
+        $this->explained = $select->explain($notification, $recipient);
+        $this->assertSame(
+            array_map(fn (NotificationChannel $channel) => $channel->id, $channels),
+            array_map(fn (NotificationChannel $channel) => $channel->id, $this->explained['channels']),
         );
+        $this->assertSame(
+            array_map(fn (NotificationChannel $channel) => $channel->id, $channels),
+            $this->explained['calc']['selected_channel_ids'],
+        );
+
+        return $this->sorted(array_map(
+            fn (NotificationChannel $channel) => $channel->channel_type->value,
+            $channels,
+        ));
+    }
+
+    /**
+     * @param  array<int, string>  $types
+     * @return array<int, string>
+     */
+    private function sorted(array $types): array
+    {
         sort($types);
 
         return $types;

@@ -17,6 +17,7 @@ use Database\Seeders\AccessSeeder;
 use Database\Seeders\IncidentsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\Concerns\AssertsTenantIsolation;
 use Tests\TestCase;
 
@@ -27,7 +28,7 @@ use Tests\TestCase;
  */
 class SlaEscalationRecipientPolicyTest extends TestCase
 {
-    use AssertsTenantIsolation, RefreshDatabase;
+    use AssertsSystemLog, AssertsTenantIsolation, RefreshDatabase;
 
     private User $owner;
 
@@ -70,6 +71,24 @@ class SlaEscalationRecipientPolicyTest extends TestCase
         $this->assertNotContains((string) $this->member->id, $recipientIds);
         $this->assertSame(['web', 'email'], $notification->payload_json['force_channels']);
         $this->assertSame(NotificationPriority::Normal, $notification->priority);
+
+        $c = $this->assertSystemLogged('incidents.escalation_level.notified', fn (array $c) => $c['outcome'] === 'ok');
+        $this->assertSame(['incident_id' => $incident->id, 'level' => 0, 'notification_type' => 'incident.sla_breached'], $c['input']);
+        $this->assertSame('supervisors', $c['calc']['recipients_source']);
+        $this->assertFalse($c['calc']['step_present']);
+        $this->assertSame(0, $c['calc']['contacts_count']);
+        $this->assertSame(2, $c['calc']['recipients_count']);
+        $this->assertFalse($c['calc']['urgent']);
+        $this->assertSame(['web', 'email'], $c['calc']['forced_channel_types']);
+        $this->assertSame($notification->id, $c['result']['notification_id']);
+
+        $json = json_encode($this->systemLogEntries());
+        foreach ([$this->owner, $this->admin] as $user) {
+            $this->assertStringNotContainsString((string) json_encode($user->email), $json);
+            $this->assertStringNotContainsString((string) json_encode($user->name), $json);
+        }
+        $this->assertStringNotContainsString('+5215555550101', $json);
+        $this->assertNoSensitiveDataLogged();
     }
 
     /**
@@ -121,6 +140,44 @@ class SlaEscalationRecipientPolicyTest extends TestCase
         $this->assertSame(['voice'], $notification->payload_json['force_channels']);
         $this->assertSame(NotificationPriority::Critical, $notification->priority);
         $this->assertSame(IncidentStatusCode::Escalated->value, $incident->fresh()->status->code);
+
+        $c = $this->assertSystemLogged('incidents.escalation_level.notified', fn (array $c) => $c['outcome'] === 'ok');
+        $this->assertSame('step_contacts', $c['calc']['recipients_source']);
+        $this->assertTrue($c['calc']['step_present']);
+        $this->assertGreaterThan(0, $c['calc']['contacts_count']);
+        $this->assertSame(1, $c['calc']['recipients_count']);
+        $this->assertSame(['voice'], $c['calc']['step_channel_types']);
+        $this->assertNull($c['calc']['urgent']);
+        $this->assertSame(['voice'], $c['calc']['forced_channel_types']);
+
+        $json = json_encode($this->systemLogEntries());
+        $this->assertStringNotContainsString('+5215512345678', $json);
+        $this->assertStringNotContainsString('5512345678', $json);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_level_without_contacts_nor_supervisors_is_logged_instead_of_silent(): void
+    {
+        Queue::fake();
+
+        // Un equipo sin admins ni supervisores: sólo un miembro raso.
+        $team = Team::factory()->create();
+        $plain = User::factory()->create();
+        $team->members()->attach($plain, ['role' => TeamRole::Member->value]);
+
+        $incident = $this->breachedIncident($team, 'medium');
+
+        $this->runWatchdog($incident);
+
+        $this->assertSame(0, Notification::withoutGlobalScopes()
+            ->where('event_key', "incident_sla_breached:{$incident->id}:0")
+            ->count());
+
+        $this->assertSystemLogged('incidents.escalation_level.notified', fn (array $c) => $c['outcome'] === 'skipped'
+            && $c['reason'] === 'no_supervisors'
+            && $c['input'] === ['incident_id' => $incident->id, 'level' => 0, 'notification_type' => 'incident.sla_breached']
+            && $c['calc'] === ['step_present' => false, 'contacts_count' => 0]);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_default_supervisor_fanout_never_reaches_another_tenant(): void

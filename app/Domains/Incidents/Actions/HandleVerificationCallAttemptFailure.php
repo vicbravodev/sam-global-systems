@@ -10,6 +10,8 @@ use App\Domains\Incidents\Enums\TimelineEntryType;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentCallVerification;
 use App\Domains\Incidents\Support\IncidentSuppression;
+use App\Support\LoggableCode;
+use App\Support\SystemLog;
 
 /**
  * Close one unanswered/failed verification-call attempt (Roadmap V2-A3):
@@ -28,11 +30,27 @@ class HandleVerificationCallAttemptFailure
 
     public function execute(IncidentCallVerification $verification, string $reason): void
     {
+        // Sólo el prefijo estable del motivo (`placement_failed`,
+        // `timeout_without_callback`, `call_status`): el resto puede traer el
+        // mensaje del proveedor (con el número marcado) y nunca se registra.
+        $failureCode = LoggableCode::guard(strtok($reason, ':'));
+        $callStatus = $failureCode === 'call_status'
+            ? LoggableCode::guard(trim(substr($reason, strlen('call_status:'))))
+            : null;
+
         // The gather webhook may have landed first — an answered attempt is
         // never reinterpreted as a failure.
         if (! $verification->status->isInFlight()) {
+            SystemLog::skipped('incidents.call_verification.attempt_failed', reason: 'already_answered', input: ['verification_id' => $verification->id], calc: ['failure_code' => $failureCode]);
+
             return;
         }
+
+        $logInput = [
+            'verification_id' => $verification->id,
+            'incident_id' => $verification->incident_id,
+            'attempt' => $verification->attempt,
+        ];
 
         $metadata = $verification->metadata_json ?? [];
         $metadata['failure_reason'] = $reason;
@@ -45,19 +63,34 @@ class HandleVerificationCallAttemptFailure
         $incident = Incident::query()->find($verification->incident_id);
 
         if ($incident === null || $incident->isTerminal()) {
+            SystemLog::skipped('incidents.call_verification.attempt_failed', reason: 'incident_terminal', input: $logInput, calc: ['failure_code' => $failureCode]);
+
             return;
         }
 
         // Un humano tomó el incidente o acusó recibo mientras sonaba la
         // llamada: ni otro intento ni escalación, el operador ya está encima.
         if (IncidentSuppression::isUnderHumanControl($incident)) {
+            SystemLog::skipped('incidents.call_verification.attempt_failed', reason: 'human_control', input: $logInput, calc: ['failure_code' => $failureCode]);
+
             return;
         }
 
-        $maxAttempts = $this->startVerification->attemptBudget($verification);
+        $budget = $this->startVerification->attemptBudgetTerms($verification);
+        $maxAttempts = $budget['budget'];
+        $logCalc = ['failure_code' => $failureCode, 'call_status' => $callStatus, ...$budget];
 
         if ($verification->attempt < $maxAttempts) {
-            $this->startVerification->execute($incident, $verification->attempt + 1);
+            $next = $this->startVerification->execute($incident, $verification->attempt + 1);
+
+            // `next` es lo pedido; si el aviso llegó tarde (status callback
+            // tras el safety net) execute() devuelve el intento que ya existía
+            // (o null si no arrancó): sólo un registro recién creado es nuevo.
+            SystemLog::ok('incidents.call_verification.attempt_failed', input: $logInput, calc: $logCalc, result: [
+                'next' => 'next_attempt',
+                'next_attempt' => $verification->attempt + 1,
+                'next_attempt_created' => $next?->wasRecentlyCreated === true,
+            ]);
 
             return;
         }
@@ -91,5 +124,7 @@ class HandleVerificationCallAttemptFailure
             subject: 'Emergencia sin respuesta del operador: '.$incident->title,
             body: "Nadie contestó la llamada de verificación tras {$verification->attempt} intentos. Atiéndela ahora.",
         );
+
+        SystemLog::ok('incidents.call_verification.attempt_failed', input: $logInput, calc: $logCalc, result: ['next' => 'exhausted_escalated', 'outcome' => CallVerificationOutcome::NoAnswer->value]);
     }
 }

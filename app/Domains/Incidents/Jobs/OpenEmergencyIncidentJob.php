@@ -8,6 +8,7 @@ use App\Domains\Incidents\Enums\IncidentPriorityCode;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Support\JobFailureReporter;
 use App\Support\PipelineTrace;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -53,7 +54,17 @@ class OpenEmergencyIncidentJob implements ShouldBeUnique, ShouldQueue
         // Lookup de entrada sin scope: así descubre el job su tenant (§2.1).
         $event = NormalizedEvent::withoutGlobalScopes()->find($this->normalizedEventId);
 
-        if ($event === null || (int) $event->team_id !== $this->teamId) {
+        if ($event === null) {
+            SystemLog::skipped('incidents.emergency.job_skipped', reason: 'event_missing', input: ['normalized_event_id' => $this->normalizedEventId]);
+
+            return;
+        }
+
+        if ((int) $event->team_id !== $this->teamId) {
+            // Ni $this->teamId ni $event->team_id, ni el id del evento: el
+            // evento es ajeno al team del job (o el job al del evento).
+            SystemLog::skipped('incidents.emergency.job_skipped', reason: 'team_mismatch', calc: ['team_matches' => false]);
+
             return;
         }
 
@@ -61,7 +72,11 @@ class OpenEmergencyIncidentJob implements ShouldBeUnique, ShouldQueue
 
         TenantContext::set($event->team_id);
 
-        if ($reevaluation->findExistingFor($event) !== null) {
+        $existing = $reevaluation->findExistingFor($event);
+
+        if ($existing !== null) {
+            SystemLog::skipped('incidents.emergency.job_skipped', reason: 'incident_exists', input: ['normalized_event_id' => $event->id], result: ['incident_id' => $existing->id]);
+
             return;
         }
 

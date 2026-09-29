@@ -12,7 +12,10 @@ use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Enums\NotificationPriority;
 use App\Domains\Notifications\Enums\NotificationSourceType;
 use App\Domains\Notifications\Enums\NotificationTriggeredByType;
+use App\Domains\Notifications\Models\Notification;
 use App\Models\User;
+use App\Support\SystemLog;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Auto-assign new incidents to the tenant's on-call operator (Roadmap B6-P5).
@@ -23,6 +26,10 @@ use App\Models\User;
  * theirs: the out-of-band critical alert (SMS/push) already reaches them
  * through the team-wide `incident.created` notification, and a second SMS for
  * the same incident only costs money and trains people to ignore alerts.
+ *
+ * Runs inside CreateIncidentFromEvent's transaction: every log line goes
+ * through DB::afterCommit, so a rolled-back creation never claims an
+ * assignment.
  */
 class AssignOnCallOnIncidentCreated
 {
@@ -40,37 +47,81 @@ class AssignOnCallOnIncidentCreated
             return;
         }
 
+        $input = ['incident_id' => $incident->id, 'stage' => 'on_call_listener'];
+
         if ($incident->currentAssignment()->exists()) {
+            DB::afterCommit(fn () => SystemLog::skipped('incidents.assignment.resolved', reason: 'already_assigned', input: $input));
+
             return;
         }
 
-        $userId = $this->resolveOnCallOperator->execute((int) $incident->team_id, $incident->opened_at);
+        $explain = $this->resolveOnCallOperator->explain((int) $incident->team_id, $incident->opened_at);
+        $userId = $explain['user_id'];
 
         if ($userId === null) {
+            DB::afterCommit(fn () => SystemLog::skipped('incidents.assignment.resolved',
+                reason: $explain['reason'] ?? 'no_eligible_member',
+                input: $input,
+                calc: $explain['calc'],
+            ));
+
             return;
         }
 
-        $this->assignIncident->execute(
+        $assignment = $this->assignIncident->execute(
             incident: $incident,
             assigneeType: AssigneeType::User,
             assigneeId: $userId,
             role: 'on_call',
         );
 
+        $assignedLine = [
+            'input' => $input,
+            'calc' => [...$explain['calc'], 'source' => $explain['source']],
+            'result' => [
+                'assignee_type' => AssigneeType::User->value,
+                'assignee_user_id' => $userId,
+                'assignment_id' => $assignment->id,
+                'role' => 'on_call',
+            ],
+        ];
+        DB::afterCommit(fn () => SystemLog::ok('incidents.assignment.resolved', ...$assignedLine));
+
+        $notifyInput = ['incident_id' => $incident->id, 'assignee_user_id' => $userId];
+
         if ($incident->priority?->code === 'critical') {
-            $this->notifyAssignee($incident, $userId);
+            $notification = $this->notifyAssignee($incident, $userId);
+
+            if ($notification === null) {
+                DB::afterCommit(fn () => SystemLog::skipped('incidents.on_call.notified', reason: 'user_without_email', input: $notifyInput));
+
+                return;
+            }
+
+            // SendNotification dedups by event_key: an existing row comes back
+            // from a query (wasRecentlyCreated false), a new one from create().
+            $notifiedResult = [
+                'notification_id' => $notification->id,
+                'notification_reused' => $notification->wasRecentlyCreated === false,
+                'forced_channel_types' => [ChannelType::Web->value],
+            ];
+            DB::afterCommit(fn () => SystemLog::ok('incidents.on_call.notified', input: $notifyInput, result: $notifiedResult));
+
+            return;
         }
+
+        DB::afterCommit(fn () => SystemLog::skipped('incidents.on_call.notified', reason: 'not_critical', input: $notifyInput));
     }
 
-    private function notifyAssignee(Incident $incident, int $userId): void
+    private function notifyAssignee(Incident $incident, int $userId): ?Notification
     {
         $user = User::query()->find($userId);
 
         if ($user === null || ! $user->email) {
-            return;
+            return null;
         }
 
-        $this->sendNotification->execute(
+        return $this->sendNotification->execute(
             teamId: (int) $incident->team_id,
             notificationType: 'incident.assigned.on_call',
             sourceType: NotificationSourceType::Incident,

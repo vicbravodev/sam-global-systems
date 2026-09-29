@@ -8,6 +8,8 @@ use App\Domains\Incidents\Enums\TimelineActorType;
 use App\Domains\Incidents\Enums\TimelineEntryType;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentTimeline;
+use App\Support\SystemLog;
+use Illuminate\Support\Facades\DB;
 
 /**
  * La llamada de verificación NO se pudo hacer (sin teléfono a quién llamar,
@@ -26,7 +28,13 @@ class EscalateUnverifiableIncident
 
     public function execute(Incident $incident, string $reason, string $description): void
     {
+        // `$reason` es una constante del código; `$description` (texto en
+        // español) nunca se registra.
+        $logInput = ['incident_id' => $incident->id, 'unverifiable_code' => $reason];
+
         if ($incident->isTerminal()) {
+            DB::afterCommit(fn () => SystemLog::skipped('incidents.call_verification.unverifiable_escalated', reason: 'incident_terminal', input: $logInput));
+
             return;
         }
 
@@ -37,6 +45,8 @@ class EscalateUnverifiableIncident
             ->exists();
 
         if ($alreadyRecorded) {
+            DB::afterCommit(fn () => SystemLog::skipped('incidents.call_verification.unverifiable_escalated', reason: 'already_recorded', input: $logInput));
+
             return;
         }
 
@@ -51,7 +61,9 @@ class EscalateUnverifiableIncident
 
         $incident->loadMissing('status');
 
-        if ($incident->status?->code !== IncidentStatusCode::Escalated->value) {
+        $escalatedNow = $incident->status?->code !== IncidentStatusCode::Escalated->value;
+
+        if ($escalatedNow) {
             $incident = $this->escalateIncident->execute(
                 incident: $incident,
                 reason: $description,
@@ -68,5 +80,9 @@ class EscalateUnverifiableIncident
             subject: 'Emergencia sin verificar: '.$incident->title,
             body: $description.' Atiéndela ahora.',
         );
+
+        $incident->loadMissing('status');
+        $escalatedResult = ['escalated_now' => $escalatedNow, 'status_after' => $incident->status?->code];
+        DB::afterCommit(fn () => SystemLog::ok('incidents.call_verification.unverifiable_escalated', input: $logInput, result: $escalatedResult));
     }
 }

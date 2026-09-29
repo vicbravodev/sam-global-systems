@@ -34,10 +34,21 @@ class DispatchNotification
             return $notification;
         }
 
-        $descriptors = $this->resolveRecipients->execute($notification);
+        // Corre en SendNotificationJob, sin transacción: las líneas van directas.
+        $input = ['notification_id' => $notification->id];
+
+        $explain = $this->resolveRecipients->explain($notification);
+        $descriptors = $explain['descriptors'];
+        $recipientCalc = [
+            'source' => $explain['source'],
+            'candidates_count' => $explain['candidates_count'],
+            'dropped_count_by_reason' => self::countKeys($explain['dropped_count_by_reason']),
+        ];
 
         if ($descriptors === []) {
             $notification->update(['status' => NotificationStatus::Cancelled]);
+
+            SystemLog::skipped('notifications.recipients.resolved', reason: 'no_recipients', input: $input, calc: $recipientCalc);
 
             return $notification;
         }
@@ -52,6 +63,12 @@ class DispatchNotification
             $recipients[] = $this->firstOrCreateRecipient($notification, $descriptor);
         }
 
+        SystemLog::ok('notifications.recipients.resolved', input: $input, calc: $recipientCalc, result: [
+            'recipient_ids' => array_map(fn (NotificationRecipient $recipient) => $recipient->id, $recipients),
+            'recipients_count' => count($recipients),
+            'recipients_reused' => $recipientsExisted,
+        ]);
+
         // Only the genuine first fan-out announces the notification; a retried
         // SendNotificationJob ($tries = 3) re-enters here with recipients already
         // persisted and must not re-emit NotificationCreated.
@@ -64,10 +81,42 @@ class DispatchNotification
             );
         }
 
+        $attempted = 0;
+        $sent = 0;
+        $failed = 0;
+        /** @var array<string, int> $skippedByReason */
+        $skippedByReason = [];
+
         foreach ($recipients as $recipient) {
-            $channels = $this->selectChannels->execute($notification, $recipient);
+            $selection = $this->selectChannels->explain($notification, $recipient);
+            $channels = $selection['channels'];
+
+            $recipientInput = $input + [
+                'recipient_id' => $recipient->id,
+                'recipient_type' => $recipient->recipient_type->value,
+            ];
+            $selectionCalc = [...$selection['calc'], 'branch' => $selection['branch']];
+
+            if ($channels === []) {
+                // Antes una selección vacía no dejaba rastro ni en la DB.
+                $reason = match ($selection['branch']) {
+                    'muted' => 'muted',
+                    'no_usable_channels' => 'no_usable_channels',
+                    default => 'no_channel_after_filters',
+                };
+
+                SystemLog::skipped('notifications.channels.selected', reason: $reason, input: $recipientInput, calc: $selectionCalc);
+            } else {
+                SystemLog::ok('notifications.channels.selected', input: $recipientInput, calc: $selectionCalc, debug: true);
+            }
 
             foreach ($channels as $channel) {
+                $channelInput = $input + [
+                    'recipient_id' => $recipient->id,
+                    'channel_id' => $channel->id,
+                    'channel_type' => $channel->channel_type->value,
+                ];
+
                 $targetAddress = $recipient->addressForChannel($channel->channel_type);
 
                 if ($targetAddress === null || $targetAddress === '') {
@@ -78,6 +127,9 @@ class DispatchNotification
                         "no {$channel->channel_type->value} address (missing phone/email) for recipient",
                     );
 
+                    SystemLog::skipped('notifications.delivery.skipped', reason: 'no_address', input: $channelInput);
+                    $skippedByReason['no_address'] = ($skippedByReason['no_address'] ?? 0) + 1;
+
                     continue;
                 }
 
@@ -86,17 +138,25 @@ class DispatchNotification
                 if (($invalid = ChannelAddress::invalidReason($channel->channel_type, $targetAddress)) !== null) {
                     $this->recordSkippedDelivery($notification, $recipient, $channel, $invalid);
 
+                    // El texto de invalidReason no se registra.
+                    SystemLog::skipped('notifications.delivery.skipped', reason: 'invalid_address', input: $channelInput);
+                    $skippedByReason['invalid_address'] = ($skippedByReason['invalid_address'] ?? 0) + 1;
+
                     continue;
                 }
 
-                $delivery = $this->createDeliveryOrSkip($notification, $recipient, $channel);
+                $delivery = $this->createDeliveryOrSkip($notification, $recipient, $channel, $skipReason);
 
                 if ($delivery === null) {
+                    $skippedByReason[$skipReason] = ($skippedByReason[$skipReason] ?? 0) + 1;
+
                     continue;
                 }
 
                 $rendered = $this->render->execute($notification, $recipient, $channel->channel_type, null, $targetAddress);
                 $rendered = $this->appendReplyInstructions->execute($notification, $recipient, $rendered);
+
+                $attempted++;
 
                 $result = $this->attemptDelivery->execute(
                     $delivery,
@@ -107,14 +167,44 @@ class DispatchNotification
                 );
 
                 if ($result->success) {
+                    $sent++;
                     $this->broadcastWebDelivery($notification, $recipient, $channel->channel_type);
+                } else {
+                    $failed++;
                 }
             }
         }
 
         $this->refreshStatus->execute($notification);
+        $notification->refresh();
 
-        return $notification->refresh();
+        SystemLog::ok('notifications.dispatch.completed', input: $input, calc: [
+            'recipients_count' => count($recipients),
+            'deliveries_attempted_count' => $attempted,
+            'deliveries_skipped_count_by_reason' => self::countKeys($skippedByReason),
+            'sent_count' => $sent,
+            'failed_count' => $failed,
+        ], result: ['notification_status' => $notification->status->value]);
+
+        return $notification;
+    }
+
+    /**
+     * Claves `{reason}_count` en el log: `no_address`/`no_email` como clave
+     * las enmascararía el redactor (segmento sensible sin sufijo técnico).
+     *
+     * @param  array<string, int>  $byReason
+     * @return array<string, int>
+     */
+    private static function countKeys(array $byReason): array
+    {
+        $out = [];
+
+        foreach ($byReason as $reason => $count) {
+            $out["{$reason}_count"] = $count;
+        }
+
+        return $out;
     }
 
     private function recordSkippedDelivery(
@@ -198,13 +288,20 @@ class DispatchNotification
         ]);
     }
 
+    /**
+     * @param-out 'delivery_exists'|'record_failed'|null $skipReason
+     */
     private function createDeliveryOrSkip(
         Notification $notification,
         NotificationRecipient $recipient,
         NotificationChannel $channel,
+        ?string &$skipReason = null,
     ): ?NotificationDelivery {
+        $skipReason = null;
+        $input = ['notification_id' => $notification->id, 'recipient_id' => $recipient->id, 'channel_id' => $channel->id];
+
         try {
-            return DB::transaction(function () use ($notification, $recipient, $channel) {
+            $delivery = DB::transaction(function () use ($notification, $recipient, $channel) {
                 $existing = NotificationDelivery::query()
                     ->where('notification_id', $notification->id)
                     ->where('recipient_id', $recipient->id)
@@ -224,9 +321,20 @@ class DispatchNotification
                     'attempt_number' => 1,
                 ]);
             });
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            // Error de DB, sin texto de terceros: antes se tragaba sin rastro.
+            $skipReason = 'record_failed';
+            SystemLog::degraded('notifications.delivery.create_failed', reason: 'record_failed', input: $input, error: $e);
+
             return null;
         }
+
+        if ($delivery === null) {
+            $skipReason = 'delivery_exists';
+            SystemLog::skipped('notifications.dedup.skipped', reason: 'delivery_exists', input: $input, debug: true);
+        }
+
+        return $delivery;
     }
 
     private function broadcastWebDelivery(
