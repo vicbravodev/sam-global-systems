@@ -283,6 +283,33 @@ class EvaluateEventWithAITest extends TestCase
         $this->assertNoSensitiveDataLogged();
     }
 
+    public function test_completed_line_logs_no_clamp_when_there_is_no_fusion(): void
+    {
+        $agent = app(EventEvaluationAgent::class);
+        $agent->forcedConfidence = 1.0;
+
+        $user = User::factory()->create();
+        $event = NormalizedEvent::factory()->create([
+            'team_id' => $user->currentTeam->id,
+            'payload_normalized_json' => ['severity' => 'high'],
+        ]);
+
+        $evaluation = app(EvaluateEventWithAI::class)->execute($event);
+
+        $calc = $this->assertSystemLogged('ai.evaluation.completed', fn (array $c): bool => $c['result']['evaluation_id'] === $evaluation->id)['calc'];
+        $this->assertFalse($calc['fusion_applied']);
+        // Sin fusión no se aplica ningún clamp en este paso: la confianza del
+        // agente (1.0) se persiste solo redondeada, nunca recortada a 0.99.
+        $this->assertNull($calc['confidence_clamp']);
+        $this->assertNull($calc['risk_clamp']);
+        $this->assertSame(1.0, $calc['base_confidence']);
+        $this->assertSame(round($calc['base_confidence'], 2), $calc['confidence']);
+        $this->assertSame($evaluation->fresh()->confidence_score, $calc['confidence']);
+        $this->assertSame($calc['risk_after_agent'], $calc['risk_score']);
+        $this->assertSame($evaluation->fresh()->risk_score, $calc['risk_score']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
     public function test_confident_false_positive_is_reported_by_the_check(): void
     {
         $agent = app(EventEvaluationAgent::class);

@@ -411,11 +411,13 @@ class EvaluateEventWithAI
                 'risk_after_agent' => $riskAfterAgent,
                 'fusion_applied' => $fusion !== null,
                 'fusion_risk_delta' => $fusion['riskDelta'] ?? 0.0,
-                'risk_clamp' => self::RISK_BOUNDS,
+                // Sin fusión este paso no recorta nada (solo se redondea al
+                // persistir): el clamp se registra solo cuando se aplicó.
+                'risk_clamp' => $fusion !== null ? self::RISK_BOUNDS : null,
                 'risk_score' => $evaluation->risk_score,
                 'base_confidence' => $baseConfidence,
                 'fusion_confidence_delta' => $fusion['confidenceDelta'] ?? 0.0,
-                'confidence_clamp' => self::CONFIDENCE_BOUNDS,
+                'confidence_clamp' => $fusion !== null ? self::CONFIDENCE_BOUNDS : null,
                 'confidence' => $evaluation->confidence_score,
             ],
             result: [
