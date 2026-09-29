@@ -200,7 +200,7 @@ class RedactSensitiveLogDataTest extends TestCase
 
         $this->assertSame(['email' => '[redacted]', 'note' => 'llama a [phone]', 'user_id' => 3], $out['j']);
         $this->assertSame(['phone' => '[redacted]', 'status' => 'ok'], $out['a']);
-        $this->assertSame('mail a [email]', $out['s']);
+        $this->assertSame('mail [email]', $out['s']);
         $this->assertSame(['object' => $plain::class], $out['p']);
         $this->assertSame($date, $out['d']);
         $this->assertStringNotContainsString('a@b.co', json_encode($out));
