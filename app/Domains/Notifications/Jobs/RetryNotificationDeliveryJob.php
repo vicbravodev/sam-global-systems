@@ -114,11 +114,7 @@ class RetryNotificationDeliveryJob implements ShouldQueue
         $guard = DeliveryEscalationGuard::explain($delivery);
 
         if ($guard['reason'] !== null) {
-            SystemLog::skipped('notifications.escalation_guard.blocked',
-                reason: DeliveryEscalationGuard::logReason($guard['reason']),
-                input: ['delivery_id' => $delivery->id, 'notification_id' => $delivery->notification_id, 'stage' => 'retry_job'],
-                calc: [...$guard['calc'], 'blocked_reason' => $guard['reason']],
-            );
+            DeliveryEscalationGuard::logBlocked($delivery, $guard, 'retry_job');
 
             return;
         }

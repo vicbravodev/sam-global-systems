@@ -7,6 +7,7 @@ use App\Domains\Notifications\Enums\DeliveryStatus;
 use App\Domains\Notifications\Enums\NotificationSourceType;
 use App\Domains\Notifications\Models\NotificationDelivery;
 use App\Domains\Tenancy\Support\TenantCanSend;
+use App\Support\SystemLog;
 
 /**
  * ¿Sigue teniendo sentido reintentar o caer a otro canal para una entrega
@@ -41,7 +42,10 @@ final class DeliveryEscalationGuard
 
     /**
      * La misma cascada que {@see blockReason()}, con los términos de cada
-     * paso para el log. Los pasos que la cascada no llegó a evaluar van null.
+     * paso para el log. `notification_age_seconds` (con signo, segundos desde
+     * `created_at`; null sin `created_at`) se calcula en cuanto hay
+     * notificación, aunque luego bloquee el tenant. El resto de pasos que la
+     * cascada no llegó a evaluar van null.
      *
      * @return array{reason: ?string, calc: array{ttl_minutes: int, notification_age_seconds: ?int, incident_id: ?int, incident_handled_at_present: ?bool, reached_elsewhere: ?bool}}
      */
@@ -96,6 +100,21 @@ final class DeliveryEscalationGuard
         $calc['reached_elsewhere'] = $reachedElsewhere;
 
         return ['reason' => $reachedElsewhere ? 'recipient_reached' : null, 'calc' => $calc];
+    }
+
+    /**
+     * Línea común de los tres sitios que consultan el guard.
+     *
+     * @param  array{reason: ?string, calc: array<string, mixed>}  $guard  resultado de {@see explain()} con `reason` no null
+     * @param  string  $stage  `listener` | `retry_job` | `fallback_job`
+     */
+    public static function logBlocked(NotificationDelivery $delivery, array $guard, string $stage): void
+    {
+        SystemLog::skipped('notifications.escalation_guard.blocked',
+            reason: self::logReason((string) $guard['reason']),
+            input: ['delivery_id' => $delivery->id, 'notification_id' => $delivery->notification_id, 'stage' => $stage],
+            calc: [...$guard['calc'], 'blocked_reason' => $guard['reason']],
+        );
     }
 
     /**

@@ -81,11 +81,7 @@ class FallbackNotificationChannelJob implements ShouldQueue
         $guard = DeliveryEscalationGuard::explain($primary);
 
         if ($guard['reason'] !== null) {
-            SystemLog::skipped('notifications.escalation_guard.blocked',
-                reason: DeliveryEscalationGuard::logReason($guard['reason']),
-                input: ['delivery_id' => $primary->id, 'notification_id' => $primary->notification_id, 'stage' => 'fallback_job'],
-                calc: [...$guard['calc'], 'blocked_reason' => $guard['reason']],
-            );
+            DeliveryEscalationGuard::logBlocked($primary, $guard, 'fallback_job');
 
             return;
         }

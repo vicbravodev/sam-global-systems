@@ -74,6 +74,32 @@ class TwilioStatusCallbackTest extends TestCase
         $this->assertNoSensitiveDataLogged();
     }
 
+    public function test_callback_for_a_deleted_delivery_only_updates_the_charge(): void
+    {
+        $delivery = $this->queuedDelivery(ChannelType::Sms, 'SM_GONE');
+        $charge = MessagingCharge::withoutGlobalScopes()->where('provider_sid', 'SM_GONE')->sole();
+        NotificationDelivery::withoutGlobalScopes()->whereKey($delivery->id)->delete();
+
+        $this->postStatus(['MessageSid' => 'SM_GONE', 'MessageStatus' => 'delivered'])->assertOk()->assertContent('');
+
+        $this->assertSame('delivered', $charge->fresh()->status);
+
+        $entries = array_values(array_filter(
+            $this->systemLogEntries('notifications.provider_status.skipped'),
+            fn (array $e) => $e['context']['reason'] === 'delivery_missing',
+        ));
+        $this->assertCount(1, $entries);
+        $this->assertSame('info', $entries[0]['level']);
+        $this->assertSame(['charge_id' => $charge->id, 'source' => 'callback', 'resource_type' => 'message', 'delivery_id' => null], $entries[0]['context']['input']);
+        $this->assertSystemNotLogged('notifications.provider_status.applied');
+        $this->assertSame([], array_filter(
+            $this->systemLogEntries('notifications.provider_status.skipped'),
+            fn (array $e) => $e['context']['reason'] === 'superseded_attempt',
+        ));
+        $this->assertStringNotContainsString('SM_GONE', json_encode($this->systemLogEntries()));
+        $this->assertNoSensitiveDataLogged();
+    }
+
     public function test_callback_without_status_is_skipped_as_missing_fields(): void
     {
         $this->postStatus(['MessageSid' => 'SM_EMPTY'])->assertOk()->assertContent('');

@@ -48,11 +48,7 @@ class RetryOrFallbackOnNotificationFailed
         $guard = DeliveryEscalationGuard::explain($delivery);
 
         if ($guard['reason'] !== null) {
-            SystemLog::skipped('notifications.escalation_guard.blocked',
-                reason: DeliveryEscalationGuard::logReason($guard['reason']),
-                input: ['delivery_id' => $delivery->id, 'notification_id' => $delivery->notification_id, 'stage' => 'listener'],
-                calc: [...$guard['calc'], 'blocked_reason' => $guard['reason']],
-            );
+            DeliveryEscalationGuard::logBlocked($delivery, $guard, 'listener');
 
             return;
         }

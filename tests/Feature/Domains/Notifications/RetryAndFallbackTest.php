@@ -97,6 +97,13 @@ class RetryAndFallbackTest extends TestCase
         $this->assertCount(1, $this->sent);
         $this->assertSame('+5215512345678', $this->sent[0]->address);
         $this->assertStringContainsString('SI-AB12', $this->sent[0]->body);
+
+        $this->assertSystemLogged('notifications.delivery.sent', fn (array $c) => $c['input']['delivery_id'] === $delivery->id
+            && $c['input']['stage'] === 'retry'
+            && $c['input']['attempt_number'] === 2);
+        $this->assertStringNotContainsString('5215512345678', json_encode($this->systemLogEntries()));
+        $this->assertStringNotContainsString('SI-AB12', json_encode($this->systemLogEntries()));
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_retry_backoff_is_exponential_for_default_channels(): void
@@ -470,6 +477,35 @@ class RetryAndFallbackTest extends TestCase
             RetryNotificationDeliveryJob::class,
             fn (RetryNotificationDeliveryJob $job) => $job->deliveryId === $delivery->id && $job->delay === 60,
         );
+
+        $this->assertSystemLogged('notifications.delivery.failed', fn (array $c) => $c['input']['delivery_id'] === $delivery->id
+            && $c['input']['stage'] === 'retry'
+            && $c['input']['attempt_number'] === 2
+            && $c['reason'] === 'transient_failure');
+        $this->assertSystemNotLogged('notifications.delivery.sent');
+        $this->assertStringNotContainsString('provider unavailable', json_encode($this->systemLogEntries()));
+    }
+
+    public function test_failed_fallback_send_is_logged_with_the_fallback_stage(): void
+    {
+        Queue::fake();
+
+        $primary = $this->channel(ChannelType::Sms);
+        $email = $this->channel(ChannelType::Email);
+        $failed = $this->failedDelivery($primary, attemptNumber: 5);
+        $this->bindCapturingDriver(DeliveryResult::failure('provider unavailable'));
+
+        $this->runFallback($failed);
+
+        $fallbackDelivery = NotificationDelivery::query()->where('channel_id', $email->id)->sole();
+        $this->assertSame(DeliveryStatus::Failed, $fallbackDelivery->status);
+
+        $this->assertSystemLogged('notifications.delivery.failed', fn (array $c) => $c['input']['delivery_id'] === $fallbackDelivery->id
+            && $c['input']['stage'] === 'fallback'
+            && $c['input']['attempt_number'] === 1);
+        $this->assertSystemLogged('notifications.fallback.chosen', fn (array $c) => $c['result']['delivery_id'] === $fallbackDelivery->id);
+        $this->assertStringNotContainsString('provider unavailable', json_encode($this->systemLogEntries()));
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_failed_retry_is_not_metered(): void

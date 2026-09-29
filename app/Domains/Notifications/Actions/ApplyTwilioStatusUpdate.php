@@ -112,6 +112,8 @@ class ApplyTwilioStatusUpdate
             match ($applied['outcome']) {
                 // El SID ya no es el del intento actual (un reintento lo
                 // reemplazó): sólo se actualizó su cargo.
+                // La entrega ya no existe: sólo se actualizó el cargo.
+                'delivery_missing' => SystemLog::skipped('notifications.provider_status.skipped', reason: 'delivery_missing', input: $input, calc: $calc),
                 'superseded_attempt' => SystemLog::skipped('notifications.provider_status.skipped', reason: 'superseded_attempt', input: $input, calc: $calc),
                 // Tardío, fuera de orden o repetido: la entrega no retrocede.
                 'not_advancing' => SystemLog::skipped('notifications.provider_status.skipped', reason: 'not_advancing', input: $input, calc: $calc, result: $result, debug: true),
@@ -162,7 +164,7 @@ class ApplyTwilioStatusUpdate
     }
 
     /**
-     * @return array{outcome: 'superseded_attempt'|'not_advancing'|'advanced', from: ?string, to: ?string, delivery_id: ?int}
+     * @return array{outcome: 'delivery_missing'|'superseded_attempt'|'not_advancing'|'advanced', from: ?string, to: ?string, delivery_id: ?int}
      */
     private function updateDelivery(
         MessagingCharge $charge,
@@ -175,8 +177,12 @@ class ApplyTwilioStatusUpdate
 
         // A retry replaces the delivery's SID: events for an older attempt
         // only update its charge, never the current attempt's state.
-        if ($delivery === null || $delivery->provider_message_id !== $charge->provider_sid) {
-            return ['outcome' => 'superseded_attempt', 'from' => $delivery?->status->value, 'to' => null, 'delivery_id' => $delivery?->id];
+        if ($delivery === null) {
+            return ['outcome' => 'delivery_missing', 'from' => null, 'to' => null, 'delivery_id' => null];
+        }
+
+        if ($delivery->provider_message_id !== $charge->provider_sid) {
+            return ['outcome' => 'superseded_attempt', 'from' => $delivery->status->value, 'to' => null, 'delivery_id' => $delivery->id];
         }
 
         $now = now();
