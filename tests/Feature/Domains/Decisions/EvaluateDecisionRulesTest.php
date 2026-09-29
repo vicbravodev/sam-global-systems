@@ -696,26 +696,57 @@ class EvaluateDecisionRulesTest extends TestCase
         $this->assertNoSensitiveDataLogged();
     }
 
-    public function test_non_array_node_rule_is_logged_with_type_error_and_no_global_false_claim(): void
+    public function test_non_array_node_rule_does_not_crash_the_engine_and_never_matches(): void
     {
         [$eval, $ruleset] = $this->evaluationWithGlobalRuleSet();
         $this->setUpAssertsSystemLog();
 
-        // 'any' con un hijo válido primero que ya casa: matches() corta antes
-        // de alcanzar 'oops', así el motor no revienta y la línea se afirma.
+        // 'oops' va primero: antes matches() lo alcanzaba y lanzaba TypeError,
+        // tumbando el motor de decisiones para todo el tenant.
         $rule = DecisionRule::factory()->create([
             'ruleset_id' => $ruleset->id,
             'code' => 'bad-node',
-            'conditions_json' => ['any' => [['field' => 'classification', 'operator' => 'is_not_null'], 'oops']],
+            'conditions_json' => ['all' => ['oops', ['field' => 'classification', 'operator' => 'is_not_null']]],
         ]);
 
-        app(EvaluateDecisionRules::class)->execute($eval);
+        $decision = app(EvaluateDecisionRules::class)->execute($eval);
 
+        $this->assertNotNull($decision->id);
         $context = $this->assertSystemLogged('decisions.rule.invalid', fn (array $c): bool => $c['input']['rule_id'] === $rule->id);
         $this->assertSame('non_array_node', $context['reason']);
-        $this->assertSame('$.any.1', $context['calc']['problems'][0]['path']);
-        $this->assertSame('type_error', $context['calc']['problems'][0]['evaluates_as']);
-        $this->assertArrayNotHasKey('invalid_nodes_evaluate_as', $context['result'] ?? []);
+        $this->assertSame('$.all.0', $context['calc']['problems'][0]['path']);
+        $this->assertFalse($context['calc']['problems'][0]['evaluates_as']);
+        $this->assertFalse($context['result']['invalid_nodes_evaluate_as']);
+
+        $evaluated = $this->assertSystemLogged('decisions.rules.evaluated');
+        $this->assertNotContains('bad-node', $evaluated['calc']['matched']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_non_scalar_field_rule_does_not_crash_the_engine_and_never_matches(): void
+    {
+        [$eval, $ruleset] = $this->evaluationWithGlobalRuleSet();
+        $this->setUpAssertsSystemLog();
+
+        // Operador válido con un field que es array: antes el cast a string
+        // lanzaba ErrorException bajo el handler de Laravel.
+        $rule = DecisionRule::factory()->create([
+            'ruleset_id' => $ruleset->id,
+            'code' => 'bad-field',
+            'conditions_json' => ['all' => [['field' => ['classification'], 'operator' => 'is_not_null']]],
+        ]);
+
+        $decision = app(EvaluateDecisionRules::class)->execute($eval);
+
+        $this->assertNotNull($decision->id);
+        $context = $this->assertSystemLogged('decisions.rule.invalid', fn (array $c): bool => $c['input']['rule_id'] === $rule->id);
+        $this->assertSame('non_scalar_leaf', $context['reason']);
+        $this->assertSame('is_not_null', $context['calc']['problems'][0]['operator']);
+        $this->assertNull($context['calc']['problems'][0]['field']);
+        $this->assertFalse($context['calc']['problems'][0]['evaluates_as']);
+
+        $evaluated = $this->assertSystemLogged('decisions.rules.evaluated');
+        $this->assertNotContains('bad-field', $evaluated['calc']['matched']);
         $this->assertNoSensitiveDataLogged();
     }
 

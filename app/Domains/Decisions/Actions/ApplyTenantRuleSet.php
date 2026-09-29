@@ -68,7 +68,7 @@ class ApplyTenantRuleSet
                 ], calc: [
                     'problems' => $problems,
                     'problems_count' => count($problems),
-                ], result: $this->invalidNodesResult($problems));
+                ], result: ['invalid_nodes_evaluate_as' => false]);
             }
 
             if ($this->conditionEvaluator->matches($rule->conditions_json ?? [], $facts)) {
@@ -136,24 +136,5 @@ class ApplyTenantRuleSet
             })
             ->orderByDesc('is_default')
             ->first();
-    }
-
-    /**
-     * La afirmación global solo se hace cuando es cierta: todos los nodos
-     * inválidos evalúan false. Si alguno lanza (`type_error`,
-     * `error_exception`), cada problema lo dice en su `evaluates_as`.
-     *
-     * @param  list<array{evaluates_as: false|string}>  $problems
-     * @return array<string, false>
-     */
-    private function invalidNodesResult(array $problems): array
-    {
-        foreach ($problems as $problem) {
-            if ($problem['evaluates_as'] !== false) {
-                return [];
-            }
-        }
-
-        return ['invalid_nodes_evaluate_as' => false];
     }
 }

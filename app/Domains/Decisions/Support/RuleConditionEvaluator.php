@@ -24,6 +24,11 @@ class RuleConditionEvaluator
      * form `{field, operator, value}`. Supported operators:
      * eq, neq, gt, gte, lt, lte, in, not_in, contains, is_null, is_not_null.
      *
+     * A malformed node (a non-array child of `all`/`any`, a leaf whose field or
+     * operator is not scalar, an unknown operator, an unrecognised shape) never
+     * matches and never throws: a misconfigured rule must not take the decision
+     * engine down. `problems()` reports those nodes.
+     *
      * @param  array<string, mixed>  $conditions
      * @param  array<string, mixed>  $facts
      */
@@ -35,7 +40,7 @@ class RuleConditionEvaluator
 
         if (isset($conditions['all']) && is_array($conditions['all'])) {
             foreach ($conditions['all'] as $child) {
-                if (! $this->matches($child, $facts)) {
+                if (! is_array($child) || ! $this->matches($child, $facts)) {
                     return false;
                 }
             }
@@ -45,7 +50,7 @@ class RuleConditionEvaluator
 
         if (isset($conditions['any']) && is_array($conditions['any'])) {
             foreach ($conditions['any'] as $child) {
-                if ($this->matches($child, $facts)) {
+                if (is_array($child) && $this->matches($child, $facts)) {
                     return true;
                 }
             }
@@ -54,6 +59,10 @@ class RuleConditionEvaluator
         }
 
         if (isset($conditions['field'], $conditions['operator'])) {
+            if (! is_scalar($conditions['field']) || ! is_scalar($conditions['operator'])) {
+                return false;
+            }
+
             return $this->evaluateLeaf($conditions, $facts);
         }
 
@@ -61,19 +70,15 @@ class RuleConditionEvaluator
     }
 
     /**
-     * Reports the invalid nodes of a condition tree and what `matches()` does
-     * when it reaches each one (`evaluates_as`):
-     * - `malformed_condition` / `unknown_operator` → `false` (silently no match);
-     * - `unknown_operator` with a non-scalar operator or field → `'error_exception'`
-     *   (the string cast warns, and Laravel's handler turns it into an ErrorException);
-     * - `non_array_node` (a non-array child of `all`/`any`) → `'type_error'`:
-     *   `matches()` throws a TypeError when it reaches it (it may short-circuit
-     *   before). That crash is known and deliberately left as is here.
+     * Reports the invalid nodes of a condition tree. Every one of them evaluates
+     * as `false` in `matches()` (`evaluates_as`): `malformed_condition`,
+     * `unknown_operator`, `non_array_node` (a non-array child of `all`/`any`)
+     * and `non_scalar_leaf` (a leaf whose field or operator is not scalar).
      * Pure: walks the tree with the same semantics as `matches()` and never
      * logs condition values.
      *
      * @param  array<string, mixed>  $conditions
-     * @return list<array{path: string, problem: string, operator: ?string, field: ?string, evaluates_as: false|string}>
+     * @return list<array{path: string, problem: string, operator: ?string, field: ?string, evaluates_as: false}>
      */
     public function problems(array $conditions, string $path = '$'): array
     {
@@ -90,7 +95,7 @@ class RuleConditionEvaluator
                     $childPath = "{$path}.{$block}.{$segment}";
 
                     if (! is_array($child)) {
-                        $problems[] = ['path' => $childPath, 'problem' => 'non_array_node', 'operator' => null, 'field' => null, 'evaluates_as' => 'type_error'];
+                        $problems[] = ['path' => $childPath, 'problem' => 'non_array_node', 'operator' => null, 'field' => null, 'evaluates_as' => false];
 
                         continue;
                     }
@@ -105,17 +110,18 @@ class RuleConditionEvaluator
         if (isset($conditions['field'], $conditions['operator'])) {
             $operator = $conditions['operator'];
             $field = $conditions['field'];
+            $scalar = is_scalar($operator) && is_scalar($field);
 
-            if (is_scalar($operator) && in_array((string) $operator, self::OPERATORS, true)) {
+            if ($scalar && in_array((string) $operator, self::OPERATORS, true)) {
                 return [];
             }
 
             return [[
                 'path' => $path,
-                'problem' => 'unknown_operator',
+                'problem' => $scalar ? 'unknown_operator' : 'non_scalar_leaf',
                 'operator' => is_scalar($operator) ? LoggableCode::guard((string) $operator) : null,
                 'field' => is_scalar($field) ? LoggableCode::guard((string) $field) : null,
-                'evaluates_as' => is_scalar($operator) && is_scalar($field) ? false : 'error_exception',
+                'evaluates_as' => false,
             ]];
         }
 
