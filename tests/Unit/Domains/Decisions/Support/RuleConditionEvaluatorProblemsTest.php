@@ -40,4 +40,16 @@ class RuleConditionEvaluatorProblemsTest extends TestCase
         $this->assertNull($problems[0]['operator']);
         $this->assertNull($problems[0]['field']);
     }
+
+    public function test_tenant_authored_block_keys_never_reach_the_path(): void
+    {
+        $problems = (new RuleConditionEvaluator)->problems([
+            'all' => ['Texto libre del tenant' => ['foo' => 'bar'], 3 => ['field' => 'x', 'operator' => ['a']]],
+        ]);
+
+        $this->assertSame('$.all.?', $problems[0]['path']);
+        $this->assertSame('$.all.3', $problems[1]['path']);
+        $this->assertNull($problems[1]['operator']);
+        $this->assertStringNotContainsString('Texto libre', json_encode($problems));
+    }
 }

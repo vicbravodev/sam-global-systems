@@ -360,6 +360,17 @@ class EvaluateDecisionRulesTest extends TestCase
     public function test_malformed_condition_rule_is_logged_invalid_and_does_not_match(): void
     {
         [$eval, $ruleset] = $this->evaluationWithGlobalRuleSet();
+        $baseline = app(EvaluateDecisionRules::class)->execute(
+            AIEventEvaluation::factory()->create([
+                'normalized_event_id' => NormalizedEvent::factory()->create(['team_id' => $eval->team_id])->id,
+                'team_id' => $eval->team_id,
+                'classification' => EventClassification::RealEvent,
+                'risk_score' => 0.7,
+                'confidence_score' => 0.9,
+                'priority_level' => EvaluationPriority::Normal,
+            ]),
+        );
+        $this->setUpAssertsSystemLog();
 
         DecisionRule::factory()->create([
             'ruleset_id' => $ruleset->id,
@@ -369,7 +380,7 @@ class EvaluateDecisionRulesTest extends TestCase
 
         $decision = app(EvaluateDecisionRules::class)->execute($eval);
 
-        $this->assertNotNull($decision->id);
+        $this->assertSame($baseline->decision_code, $decision->decision_code);
         $context = $this->assertSystemLogged('decisions.rule.invalid');
         $this->assertSame('malformed_condition', $context['reason']);
         $this->assertSame('$', $context['calc']['problems'][0]['path']);

@@ -79,7 +79,8 @@ class RuleConditionEvaluator
                 $problems = [];
 
                 foreach ($conditions[$block] as $i => $child) {
-                    $childPath = "{$path}.{$block}.{$i}";
+                    $segment = is_int($i) ? $i : (LoggableCode::guard((string) $i) ?? '?');
+                    $childPath = "{$path}.{$block}.{$segment}";
 
                     if (! is_array($child)) {
                         $problems[] = ['path' => $childPath, 'problem' => 'malformed_condition', 'operator' => null, 'field' => null];
@@ -95,15 +96,18 @@ class RuleConditionEvaluator
         }
 
         if (isset($conditions['field'], $conditions['operator'])) {
-            if (in_array((string) $conditions['operator'], self::OPERATORS, true)) {
+            $operator = $conditions['operator'];
+            $field = $conditions['field'];
+
+            if (is_scalar($operator) && in_array((string) $operator, self::OPERATORS, true)) {
                 return [];
             }
 
             return [[
                 'path' => $path,
                 'problem' => 'unknown_operator',
-                'operator' => LoggableCode::guard((string) $conditions['operator']),
-                'field' => LoggableCode::guard((string) $conditions['field']),
+                'operator' => is_scalar($operator) ? LoggableCode::guard((string) $operator) : null,
+                'field' => is_scalar($field) ? LoggableCode::guard((string) $field) : null,
             ]];
         }
 
