@@ -177,7 +177,7 @@ class IncidentSlaEscalationTest extends TestCase
         $input = ['incident_id' => $incident->id, 'level' => 0, 'attempt' => 1];
 
         $this->assertSystemLogged('incidents.ack_check.breached', fn (array $c) => $c['input'] === $input
-            && $c['calc']['first_breach'] === true
+            && $c['calc']['first_attempt_at_level'] === true
             && $c['calc']['status_before'] === 'open'
             && $c['calc']['steps_count'] === 2
             && $c['result']['escalated_now'] === true
@@ -270,7 +270,7 @@ class IncidentSlaEscalationTest extends TestCase
         $this->runWatchdog($incident, level: 0, attempt: 2);
 
         $this->assertSystemLogged('incidents.ack_check.breached', fn (array $c) => $c['input']['attempt'] === 2
-            && $c['calc']['first_breach'] === false
+            && $c['calc']['first_attempt_at_level'] === false
             && $c['result']['escalated_now'] === false);
         $this->assertSystemLogged('incidents.ack_check.rearmed', fn (array $c) => $c['input']['attempt'] === 2
             && $c['calc']['mode'] === 'next_level'

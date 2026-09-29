@@ -142,7 +142,7 @@ class CheckIncidentAcknowledgementJob implements ShouldQueue
 
         SystemLog::ok('incidents.ack_check.breached',
             input: $input,
-            calc: ['first_breach' => $this->attempt === 1, 'status_before' => $statusBefore, 'steps_count' => count($steps)],
+            calc: ['first_attempt_at_level' => $this->attempt === 1, 'status_before' => $statusBefore, 'steps_count' => count($steps)],
             result: ['escalated_now' => $escalatedNow, 'status_after' => $incident->status?->code],
         );
 
