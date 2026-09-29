@@ -9,6 +9,7 @@ use App\Domains\AI\Models\AIEventEvaluation;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
 use App\Support\Http\PerPage;
+use App\Support\SystemLog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -60,6 +61,20 @@ class AIEvaluationController extends Controller
         $this->authorize('reevaluate', $evaluation);
 
         $reason = $request->input('reason');
+
+        // "Pedido", no "encolado": el job es único por (evento, trigger). Solo
+        // se registra si hubo motivo, nunca su texto.
+        SystemLog::ok(
+            'ai.reevaluation.requested',
+            input: [
+                'normalized_event_id' => $evaluation->normalized_event_id,
+                'evaluation_id' => $evaluation->id,
+                'trigger_type' => ReevaluationTrigger::ManualReviewRequested->value,
+                'requested_by' => 'operator',
+                'reason_present' => is_string($reason) && $reason !== '',
+            ],
+            calc: ['debounce_s' => 0],
+        );
 
         ReevaluateEventJob::dispatch(
             $evaluation->normalized_event_id,

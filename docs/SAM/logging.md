@@ -238,6 +238,11 @@ Las líneas del listener síncrono `RequestPanicMediaOnContextBuilt` (`context.m
 | `ai.media.assessment_skipped` | skipped | `file_missing`, `image_cap_reached`, `in_progress`, `quota_exceeded` | `evaluation_id`, `event_media_context_id`; en `image_cap_reached`, calc `max_images_per_event`; en `file_missing`, `result.error_class` (clase de la excepción, nunca su mensaje) |
 | `ai.media.assessment_rejected` | skipped | `rejected_before_model` | `evaluation_id`, `event_media_context_id`, `rejection` |
 | `ai.media.assessment_retry` | degraded | `transient_failure` | `evaluation_id`, `event_media_context_id`, `error` |
+| `ai.reevaluation.skipped` | skipped | `normalized_event_missing` | `normalized_event_id`, `trigger_type` (el gate del job lo narra `ai.gate.skipped` con `stage=reevaluate_job`) |
+| `ai.reevaluation.superseded` | ok | - | `normalized_event_id`, `trigger_type`; result `superseded_request_id`, `previous_status` (`pending` o `processing`). El request previo queda `skipped` |
+| `ai.reevaluation.completed` | ok | - | `normalized_event_id`, `trigger_type`, `trigger_reference_id`, `reason_present` (nunca el texto); result `reevaluation_request_id`, `evaluation_id`, `evaluation_version`. Tras marcar el request `completed` |
+| `ai.reevaluation.not_requested` | skipped | `no_normalized_event`, `decision_pending` (el motor aún no corrió y leerá el hecho `media_assessment`), `media_already_assessed` (calc `media_context_count`, `assessed_elsewhere_count`), `incident_terminal` (result `incident_id`, `incident_status_id`) | `evaluation_id`, `normalized_event_id`. Listener de media evaluada |
+| `ai.reevaluation.requested` | ok | - | `normalized_event_id`, `evaluation_id`, `trigger_type`, `requested_by` (`media_assessment` u `operator`), `trigger_reference_id` (solo media), `reason_present` (solo operador; nunca el texto); calc `debounce_s`, `new_media_count` (solo media); result `latest_assessment_result` (solo media). Dice "pedido", no "encolado": `ReevaluateEventJob` es único por (evento, trigger), así que el pedido puede absorberse en un job ya pendiente y no crear otro |
 | `ai.media.assessment_unavailable` | degraded | `agent_error` | `evaluation_id`, `event_media_context_id`, `error` |
 | `copilot.narration.fallback` | degraded | `agent_error` | `error` |
 

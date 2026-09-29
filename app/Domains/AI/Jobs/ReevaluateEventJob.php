@@ -8,6 +8,7 @@ use App\Domains\AI\Support\AIEvaluationGate;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Support\JobFailureReporter;
 use App\Support\PipelineTrace;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUniqueUntilProcessing;
@@ -58,6 +59,12 @@ class ReevaluateEventJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
             ->find($this->normalizedEventId);
 
         if ($normalizedEvent === null) {
+            SystemLog::skipped(
+                'ai.reevaluation.skipped',
+                reason: 'normalized_event_missing',
+                input: ['normalized_event_id' => $this->normalizedEventId, 'trigger_type' => $this->triggerType],
+            );
+
             return;
         }
 

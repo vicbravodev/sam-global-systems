@@ -11,10 +11,12 @@ use App\Models\User;
 use Database\Seeders\AccessSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class AIEvaluationControllerTest extends TestCase
 {
+    use AssertsSystemLog;
     use RefreshDatabase;
 
     protected function setUp(): void
@@ -128,6 +130,14 @@ class AIEvaluationControllerTest extends TestCase
             return $job->normalizedEventId === $event->id
                 && $job->triggerType === ReevaluationTrigger::ManualReviewRequested->value;
         });
+
+        $this->assertSystemLogged('ai.reevaluation.requested', fn (array $c) => $c['input']['requested_by'] === 'operator'
+            && $c['input']['reason_present'] === true
+            && $c['input']['evaluation_id'] === $evaluation->id
+            && $c['input']['normalized_event_id'] === $event->id
+            && $c['calc']['debounce_s'] === 0);
+        $this->assertNoSensitiveDataLogged();
+        $this->assertStringNotContainsString('manual trigger', json_encode($this->systemLogEntries()));
     }
 
     public function test_cross_tenant_access_is_blocked(): void
