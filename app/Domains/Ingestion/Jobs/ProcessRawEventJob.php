@@ -7,6 +7,7 @@ use App\Domains\Ingestion\Events\RawEventFailed;
 use App\Domains\Ingestion\Events\RawEventProcessed;
 use App\Domains\Ingestion\Models\RawEvent;
 use App\Support\JobFailureReporter;
+use App\Support\PipelineTrace;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -36,6 +37,11 @@ class ProcessRawEventJob implements ShouldQueue
         // que todo lo demás sí lo esté, herede o no contexto del que despachó.
         // Ver §2.1.
         $rawEvent = RawEvent::withoutGlobalScopes()->findOrFail($this->rawEventId);
+
+        PipelineTrace::adopt($rawEvent->trace_id, $rawEvent->team_id, [
+            'raw_event_id' => $rawEvent->id,
+            'external_event_id' => $rawEvent->external_event_id,
+        ]);
 
         TenantContext::for($rawEvent->team_id, function () use ($rawEvent, $detectDuplicate) {
             if ($detectDuplicate->execute($rawEvent)) {

@@ -5,6 +5,7 @@ namespace App\Domains\Normalization\Jobs;
 use App\Domains\Ingestion\Enums\RawEventStatus;
 use App\Domains\Ingestion\Models\RawEvent;
 use App\Domains\Normalization\Actions\NormalizeRawEvent;
+use App\Support\PipelineTrace;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -35,6 +36,11 @@ class NormalizeEventJob implements ShouldQueue
         if (! $rawEvent) {
             return;
         }
+
+        PipelineTrace::adopt($rawEvent->trace_id, $rawEvent->team_id, [
+            'raw_event_id' => $rawEvent->id,
+            'external_event_id' => $rawEvent->external_event_id,
+        ]);
 
         $allowedStatuses = [
             RawEventStatus::PendingProcessing,

@@ -8,6 +8,7 @@ use App\Domains\Ingestion\Events\RawEventReceived;
 use App\Domains\Ingestion\Models\EventReceipt;
 use App\Domains\Ingestion\Models\EventSource;
 use App\Domains\Ingestion\Models\RawEvent;
+use App\Support\PipelineTrace;
 use Illuminate\Support\Facades\Cache;
 
 class StoreRawEvent
@@ -30,6 +31,32 @@ class StoreRawEvent
         ?string $deduplicationKey = null,
         ?string $eventTypeRaw = null,
     ): RawEvent {
+        // Cada evento guardado es su propia traza: la del webhook que lo trajo
+        // o una nueva (poll, monitores internos). En bucles, la traza nueva
+        // sólo vive mientras se guarda: el contexto del llamador no cambia.
+        return PipelineTrace::within(
+            PipelineTrace::claimForNewEvent($teamId),
+            $teamId,
+            fn (): RawEvent => $this->store($payload, $sourceType, $teamId, $providerId, $externalEventId, $headers, $transportMeta, $deduplicationKey, $eventTypeRaw),
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @param  array<string, mixed>|null  $headers
+     * @param  array{source_ip?: string, user_agent?: string, request_id?: string}  $transportMeta
+     */
+    private function store(
+        array $payload,
+        string $sourceType,
+        ?int $teamId,
+        ?int $providerId,
+        ?string $externalEventId,
+        ?array $headers,
+        array $transportMeta,
+        ?string $deduplicationKey,
+        ?string $eventTypeRaw,
+    ): RawEvent {
         $eventSource = $this->resolveEventSource($sourceType, $teamId, $providerId);
 
         $payloadJson = json_encode($payload);
@@ -38,6 +65,7 @@ class StoreRawEvent
 
         $rawEvent = RawEvent::withoutGlobalScopes()->create([
             'team_id' => $teamId,
+            'trace_id' => PipelineTrace::id(),
             'event_source_id' => $eventSource->id,
             'provider_id' => $providerId,
             'external_event_id' => $externalEventId,
@@ -53,6 +81,12 @@ class StoreRawEvent
             'deduplication_key' => $deduplicationKey,
             'status' => RawEventStatus::Received,
             'checksum' => $checksum,
+        ]);
+
+        PipelineTrace::add([
+            'raw_event_id' => $rawEvent->id,
+            'external_event_id' => $externalEventId,
+            'provider_id' => $providerId,
         ]);
 
         EventReceipt::create([

@@ -24,6 +24,7 @@ use App\Domains\Incidents\Support\IncidentCreatedBroadcast;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Domains\TenantConfig\Actions\ResolveIncidentSla;
+use App\Support\PipelineTrace;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
@@ -207,6 +208,8 @@ class CreateIncidentFromEvent
             );
 
             $fresh = $incident->fresh(['type', 'status', 'priority']);
+
+            PipelineTrace::add(['incident_id' => $fresh->id]);
 
             IncidentCreated::dispatch($fresh);
             broadcast(IncidentCreatedBroadcast::fromModel($fresh));

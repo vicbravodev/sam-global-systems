@@ -5,6 +5,7 @@ namespace App\Domains\Context\Jobs;
 use App\Domains\Context\Actions\BuildEventContext;
 use App\Domains\Normalization\Enums\NormalizedEventStatus;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Support\PipelineTrace;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -43,6 +44,8 @@ class EnrichContextJob implements ShouldBeUnique, ShouldQueue
         if ($normalizedEvent === null) {
             return;
         }
+
+        PipelineTrace::adopt($normalizedEvent->trace_id, $normalizedEvent->team_id, ['normalized_event_id' => $normalizedEvent->id]);
 
         // Entra en el tenant del evento antes de construir el contexto: el
         // enriquecimiento lee historial, geocercas e incidentes previos, y todo

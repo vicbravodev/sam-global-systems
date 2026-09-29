@@ -5,6 +5,7 @@ namespace App\Domains\Context\Jobs;
 use App\Domains\Context\Actions\AttachImmediateEventMedia;
 use App\Domains\Context\Actions\RefreshContextMediaSnapshot;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Support\PipelineTrace;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -47,6 +48,8 @@ class ExtractEventMediaJob implements ShouldBeUnique, ShouldQueue
         if ($normalizedEvent === null) {
             return;
         }
+
+        PipelineTrace::adopt($normalizedEvent->trace_id, $normalizedEvent->team_id, ['normalized_event_id' => $normalizedEvent->id]);
 
         $created = TenantContext::for($normalizedEvent->team_id, function () use (
             $normalizedEvent,

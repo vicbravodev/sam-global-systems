@@ -7,6 +7,7 @@ use App\Domains\Incidents\Actions\CreateIncidentFromEvent;
 use App\Domains\Incidents\Enums\IncidentPriorityCode;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Support\JobFailureReporter;
+use App\Support\PipelineTrace;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -55,6 +56,8 @@ class OpenEmergencyIncidentJob implements ShouldBeUnique, ShouldQueue
         if ($event === null || (int) $event->team_id !== $this->teamId) {
             return;
         }
+
+        PipelineTrace::adopt($event->trace_id, $event->team_id, ['normalized_event_id' => $event->id]);
 
         TenantContext::set($event->team_id);
 

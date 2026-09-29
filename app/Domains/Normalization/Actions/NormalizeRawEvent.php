@@ -17,6 +17,7 @@ use App\Domains\Normalization\Models\EventMappingRule;
 use App\Domains\Normalization\Models\EventSeverity;
 use App\Domains\Normalization\Models\EventType;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Support\PipelineTrace;
 use Illuminate\Support\Arr;
 
 class NormalizeRawEvent
@@ -103,6 +104,7 @@ class NormalizeRawEvent
             ['raw_event_id' => $rawEvent->id],
             [
                 'team_id' => $rawEvent->team_id,
+                'trace_id' => $rawEvent->trace_id,
                 'provider_id' => null,
                 'asset_id' => $assetId,
                 'driver_id' => null,
@@ -117,6 +119,8 @@ class NormalizeRawEvent
         );
 
         $rawEvent->markAsProcessed();
+
+        PipelineTrace::add(['normalized_event_id' => $normalizedEvent->id]);
 
         EventNormalized::dispatch($normalizedEvent);
 
@@ -150,6 +154,7 @@ class NormalizeRawEvent
             ['raw_event_id' => $rawEvent->id],
             [
                 'team_id' => $rawEvent->team_id,
+                'trace_id' => $rawEvent->trace_id,
                 'provider_id' => $rawEvent->provider_id,
                 'asset_id' => null,
                 'driver_id' => null,
@@ -164,6 +169,8 @@ class NormalizeRawEvent
         );
 
         $rawEvent->markAsProcessed();
+
+        PipelineTrace::add(['normalized_event_id' => $normalizedEvent->id]);
 
         EventUnmapped::dispatch($rawEvent, $externalEventType, $providerId ?? 0);
 
@@ -201,6 +208,7 @@ class NormalizeRawEvent
             ['raw_event_id' => $rawEvent->id],
             [
                 'team_id' => $rawEvent->team_id,
+                'trace_id' => $rawEvent->trace_id,
                 'provider_id' => $rawEvent->provider_id,
                 'asset_id' => $assetId,
                 'driver_id' => $driverId,
@@ -218,6 +226,8 @@ class NormalizeRawEvent
         );
 
         $rawEvent->markAsProcessed();
+
+        PipelineTrace::add(['normalized_event_id' => $normalizedEvent->id]);
 
         EventNormalized::dispatch($normalizedEvent);
 

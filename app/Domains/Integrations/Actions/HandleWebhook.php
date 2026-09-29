@@ -7,6 +7,7 @@ use App\Domains\Integrations\Events\WebhookReceived;
 use App\Domains\Integrations\Jobs\ProcessWebhookEventJob;
 use App\Domains\Integrations\Models\WebhookEndpoint;
 use App\Domains\Integrations\Models\WebhookEvent;
+use App\Support\PipelineTrace;
 
 class HandleWebhook
 {
@@ -28,6 +29,10 @@ class HandleWebhook
     ): WebhookEvent {
         $integration = $endpoint->tenantIntegration;
 
+        // Punto de entrada: un webhook es UN evento, y su traza la reclama el
+        // RawEvent que se guarde al procesarlo (ProcessWebhookEventJob).
+        PipelineTrace::beginEvent($integration->team_id, $integration->provider?->code);
+
         $webhookEvent = WebhookEvent::query()->create([
             'team_id' => $integration->team_id,
             'provider_id' => $integration->provider_id,
@@ -39,6 +44,8 @@ class HandleWebhook
             'received_at' => now(),
             'status' => WebhookEventStatus::Received,
         ]);
+
+        PipelineTrace::add(['webhook_event_id' => $webhookEvent->id]);
 
         // Minute resolution is all the UI shows; writing the same hot row on
         // every webhook (up to 300/min) only adds lock contention.

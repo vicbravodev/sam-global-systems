@@ -12,6 +12,7 @@ use App\Domains\Decisions\Events\DecisionMade;
 use App\Domains\Decisions\Models\Decision;
 use App\Domains\Decisions\Models\DecisionOutcome;
 use App\Domains\Decisions\Models\DecisionRule;
+use App\Support\PipelineTrace;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -81,6 +82,8 @@ class EvaluateDecisionRules
 
             $steps = $this->buildTraceSteps($eval, $matchedRules, $resolved);
             $this->generateDecisionTrace->execute($decision, $steps);
+
+            PipelineTrace::add(['decision_id' => $decision->id]);
 
             DecisionMade::dispatch($decision);
 

@@ -21,6 +21,7 @@ use App\Domains\Context\Models\EventContextSnapshot;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
+use App\Support\PipelineTrace;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -372,6 +373,8 @@ class EvaluateEventWithAI
 
         $this->generateRecommendedActions->execute($evaluation);
         $this->detectFalsePositive->execute($evaluation);
+
+        PipelineTrace::add(['ai_evaluation_id' => $evaluation->id]);
 
         AIEvaluationCompleted::dispatch($evaluation);
 

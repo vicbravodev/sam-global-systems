@@ -22,6 +22,7 @@ class NormalizedEvent extends Model
     protected $fillable = [
         'raw_event_id',
         'team_id',
+        'trace_id',
         'provider_id',
         'asset_id',
         'driver_id',

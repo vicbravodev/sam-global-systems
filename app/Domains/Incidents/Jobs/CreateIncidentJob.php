@@ -11,6 +11,7 @@ use App\Domains\Incidents\Enums\IncidentStatusCode;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Support\JobFailureReporter;
+use App\Support\PipelineTrace;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -56,6 +57,8 @@ class CreateIncidentJob implements ShouldBeUnique, ShouldQueue
         if ($event === null) {
             return;
         }
+
+        PipelineTrace::adopt($event->trace_id, $event->team_id, ['normalized_event_id' => $event->id]);
 
         // Trabaja dentro del tenant del propio registro: el lookup de
         // entrada no puede estar scopeado, todo lo que sigue sí. Ver §2.1.

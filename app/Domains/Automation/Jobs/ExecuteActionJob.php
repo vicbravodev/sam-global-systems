@@ -10,6 +10,7 @@ use App\Domains\Automation\Models\ActionExecution;
 use App\Domains\Automation\Models\WorkflowExecution;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Support\IncidentSuppression;
+use App\Support\PipelineTrace;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -42,6 +43,12 @@ class ExecuteActionJob implements ShouldQueue
         if ($execution === null) {
             return;
         }
+
+        PipelineTrace::adopt(null, $execution->team_id, [
+            'incident_id' => $execution->incident_id,
+            'decision_id' => $execution->decision_id,
+            'action_execution_id' => $execution->id,
+        ]);
 
         if (in_array($execution->status, [
             ActionExecutionStatus::Completed,
