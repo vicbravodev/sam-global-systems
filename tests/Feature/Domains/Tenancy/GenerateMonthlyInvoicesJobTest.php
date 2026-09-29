@@ -117,6 +117,21 @@ class GenerateMonthlyInvoicesJobTest extends TestCase
         $this->assertSame(1, $generated['calc']['plan_meters_billed_count']);
         $this->assertSame(1, $generated['calc']['plan_meters_skipped_count']);
         $this->assertSame($invoice->total, $generated['result']['total']);
+
+        $run = $this->assertSystemLogged('billing.invoice.run_dispatched');
+        $this->assertSame('2026-09-01', $run['calc']['period_start']);
+        $this->assertSame('2026-09-30', $run['calc']['period_end']);
+        $this->assertSame(1, $run['result']['chains_dispatched_count']);
+        $this->assertArrayNotHasKey('input', $run);
+
+        // El cierre recalcula el mes pasado: el excedente de mensajes no es un primer cruce.
+        $closing = $this->assertSystemLogged('billing.overage.computed', fn (array $c) => $c['input']['team_id'] === $team->id
+            && $c['input']['meter_code'] === 'messages');
+        $this->assertSame('2026-09-01', $closing['input']['period_start']);
+        $this->assertTrue($closing['calc']['closed_period']);
+        $this->assertFalse($closing['calc']['first_crossing']);
+        $this->assertSame(15, $closing['calc']['consumed']);
+        $this->assertSame(5, $closing['result']['overage']);
         $this->assertNoSensitiveDataLogged();
     }
 
@@ -130,6 +145,8 @@ class GenerateMonthlyInvoicesJobTest extends TestCase
 
         $this->assertSame(1, InvoiceSnapshot::query()->where('team_id', $active->id)->count());
         $this->assertSame(0, InvoiceSnapshot::query()->whereIn('team_id', [$canceled->id, $suspended->id])->count());
+
+        $this->assertSame(1, $this->assertSystemLogged('billing.invoice.run_dispatched')['result']['chains_dispatched_count']);
     }
 
     public function test_each_invoice_only_contains_its_own_tenant_usage(): void

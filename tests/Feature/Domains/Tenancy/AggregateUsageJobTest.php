@@ -8,6 +8,7 @@ use App\Domains\Tenancy\Jobs\AggregateUsageJob;
 use App\Domains\Tenancy\Models\BillingRate;
 use App\Domains\Tenancy\Models\Plan;
 use App\Domains\Tenancy\Models\Subscription;
+use App\Domains\Tenancy\Models\TenantUsageCounter;
 use App\Domains\Tenancy\Models\UsageDailyAggregate;
 use App\Domains\Tenancy\Models\UsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
@@ -15,11 +16,12 @@ use App\Models\Team;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class AggregateUsageJobTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsSystemLog, RefreshDatabase;
 
     public function test_daily_aggregation_sums_usage_events_correctly(): void
     {
@@ -131,6 +133,29 @@ class AggregateUsageJobTest extends TestCase
             'included_value' => 100,
             'overage_value' => 50,
         ]);
+
+        $computed = $this->assertSystemLogged('billing.overage.computed', fn (array $c) => $c['input']['meter_code'] === 'ai_calls');
+        $this->assertSame($team->id, $computed['input']['team_id']);
+        $this->assertSame(now()->startOfMonth()->toDateString(), $computed['input']['period_start']);
+        $this->assertSame('sum', $computed['calc']['aggregation_type']);
+        $this->assertSame(150, $computed['calc']['consumed']);
+        $this->assertSame(100, $computed['calc']['included']);
+        $this->assertSame('plan_rate', $computed['calc']['included_source']);
+        $this->assertSame(max(0, $computed['calc']['consumed'] - $computed['calc']['included']), $computed['result']['overage']);
+        $this->assertSame(
+            TenantUsageCounter::withoutGlobalScopes()->where('team_id', $team->id)->where('usage_meter_id', $meter->id)->sole()->overage_value,
+            $computed['result']['overage'],
+        );
+
+        $completed = $this->assertSystemLogged('billing.aggregate.completed', fn (array $c) => $c['input']['team_id'] === $team->id);
+        $this->assertSame('ok', $completed['outcome']);
+        $this->assertFalse($completed['calc']['closed_period']);
+        $this->assertSame(UsageMeter::count(), $completed['result']['meters_count']);
+        $this->assertSame(1, $completed['result']['meters_with_overage_count']);
+        $this->assertSame(1, $completed['result']['daily_rows_upserted_count']);
+        $this->assertSame(1, $completed['result']['limit_events_dispatched_count']);
+        $this->assertSame(0, $completed['result']['broadcasts_dispatched_count']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_usage_limit_exceeded_event_dispatched_on_overage(): void
@@ -173,6 +198,55 @@ class AggregateUsageJobTest extends TestCase
                 && $event->consumed === 1500
                 && $event->included === 1000;
         });
+
+        $first = $this->assertSystemLogged('billing.overage.computed', fn (array $c) => $c['input']['meter_code'] === 'ai_tokens_in');
+        $this->assertTrue($first['calc']['first_crossing']);
+        $this->assertSame(0, $first['calc']['previous_overage']);
+        $this->assertFalse($first['calc']['previous_counter_found']);
+        $this->assertFalse($first['calc']['closed_period']);
+        $this->assertTrue($first['result']['limit_event_dispatched']);
+        $this->assertSame(500, $first['result']['overage']);
+        $firstEntry = collect($this->systemLogEntries('billing.overage.computed'))->first(fn (array $e) => $e['context']['input']['meter_code'] === 'ai_tokens_in');
+        $this->assertSame('info', $firstEntry['level']);
+
+        // Segunda corrida: ya estaba por encima, no es el primer cruce.
+        $this->setUpAssertsSystemLog();
+        (new AggregateUsageJob($team->id))->handle();
+
+        $second = $this->assertSystemLogged('billing.overage.computed', fn (array $c) => $c['input']['meter_code'] === 'ai_tokens_in');
+        $this->assertFalse($second['calc']['first_crossing']);
+        $this->assertTrue($second['calc']['previous_counter_found']);
+        $this->assertGreaterThan(0, $second['calc']['previous_overage']);
+        $this->assertFalse($second['result']['limit_event_dispatched']);
+        Event::assertDispatchedTimes(UsageLimitExceeded::class, 1);
+
+        // Los medidores sin consumo ni cruce van en debug.
+        foreach ($this->systemLogEntries('billing.overage.computed') as $entry) {
+            if ($entry['context']['result']['overage'] === 0 && ! $entry['context']['calc']['first_crossing']) {
+                $this->assertSame('debug', $entry['level']);
+            }
+        }
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_tenant_without_an_operational_subscription_is_skipped_with_a_reason(): void
+    {
+        $team = Team::factory()->create();
+        Subscription::factory()->create([
+            'team_id' => $team->id,
+            'status' => SubscriptionStatus::Canceled,
+        ]);
+
+        (new AggregateUsageJob($team->id))->handle();
+
+        $skipped = $this->assertSystemLogged('billing.aggregate.completed');
+        $this->assertSame('skipped', $skipped['outcome']);
+        $this->assertSame('no_operational_subscription', $skipped['reason']);
+        $this->assertSame($team->id, $skipped['input']['team_id']);
+        $this->assertSame(now()->startOfMonth()->toDateString(), $skipped['input']['period_start']);
+        $this->assertSystemNotLogged('billing.overage.computed');
+        $this->assertSame(0, TenantUsageCounter::withoutGlobalScopes()->where('team_id', $team->id)->count());
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_the_scheduled_run_fans_out_one_job_per_subscribed_tenant(): void
@@ -196,5 +270,14 @@ class AggregateUsageJobTest extends TestCase
                 && $job->forMonth === '2026-08-15'
                 && $job->queue === 'billing');
         }
+
+        $fanned = $this->assertSystemLogged('billing.aggregate.fanned_out');
+        $this->assertSame(2, $fanned['result']['jobs_dispatched_count']);
+        $this->assertSame('2026-08-15', $fanned['calc']['for_month']);
+        $this->assertSame('2026-08-01', $fanned['calc']['period_start']);
+        $this->assertArrayNotHasKey('input', $fanned);
+        $json = json_encode($fanned);
+        $this->assertStringNotContainsString('team_id', $json);
+        $this->assertNoSensitiveDataLogged();
     }
 }

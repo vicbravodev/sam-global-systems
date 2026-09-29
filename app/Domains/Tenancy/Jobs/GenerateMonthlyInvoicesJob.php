@@ -3,6 +3,7 @@
 namespace App\Domains\Tenancy\Jobs;
 
 use App\Models\Team;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -38,15 +39,27 @@ class GenerateMonthlyInvoicesJob implements ShouldQueue
         // Platform run across tenants on purpose (`teamSubscription` only
         // matches active/past_due); each tenant's chain is dispatched
         // inside its own context. Ver CLAUDE.md §2.1.
-        TenantContext::withoutTenant(fn () => Team::query()
-            ->whereHas('teamSubscription')
-            ->chunkById(100, function ($teams) use ($start, $end) {
-                foreach ($teams as $team) {
-                    TenantContext::for($team->id, fn () => Bus::chain([
-                        new AggregateUsageJob($team->id, $start),
-                        new GenerateInvoiceSnapshotJob($team->id, $start, $end),
-                    ])->onQueue('billing')->dispatch());
-                }
-            }));
+        $chains = 0;
+
+        // Closure (no arrow fn): el contador se comparte por referencia.
+        TenantContext::withoutTenant(function () use ($start, $end, &$chains) {
+            Team::query()
+                ->whereHas('teamSubscription')
+                ->chunkById(100, function ($teams) use ($start, $end, &$chains) {
+                    foreach ($teams as $team) {
+                        TenantContext::for($team->id, fn () => Bus::chain([
+                            new AggregateUsageJob($team->id, $start),
+                            new GenerateInvoiceSnapshotJob($team->id, $start, $end),
+                        ])->onQueue('billing')->dispatch());
+                        $chains++;
+                    }
+                });
+        });
+
+        // Recorrido de plataforma: solo el conteo de cadenas pedidas, nunca ids.
+        SystemLog::ok('billing.invoice.run_dispatched',
+            calc: ['period_start' => $start, 'period_end' => $end],
+            result: ['chains_dispatched_count' => $chains],
+        );
     }
 }

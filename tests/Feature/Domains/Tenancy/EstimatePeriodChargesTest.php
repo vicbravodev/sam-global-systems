@@ -10,12 +10,13 @@ use App\Domains\Tenancy\Models\UsageMeter;
 use App\Models\Team;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\Concerns\AssertsTenantIsolation;
 use Tests\TestCase;
 
 class EstimatePeriodChargesTest extends TestCase
 {
-    use AssertsTenantIsolation, RefreshDatabase;
+    use AssertsSystemLog, AssertsTenantIsolation, RefreshDatabase;
 
     public function test_it_projects_the_month_from_asset_days_so_far_and_units_monitored_now(): void
     {
@@ -80,6 +81,64 @@ class EstimatePeriodChargesTest extends TestCase
         $this->assertSame(0, $estimate['assetDaysExtra']);
         $this->assertSame(3, $estimate['daysElapsed']);
         $this->assertSame(28, $estimate['remainingDays']);
+
+        $log = $this->assertSystemLogged('billing.estimate.calculated', fn (array $c) => $c['input']['team_id'] === $team->id);
+        $calc = $log['calc'];
+        $this->assertSame('2026-09-03', $log['input']['today']);
+        $this->assertSame('2026-09-01', $calc['period_start']);
+        $this->assertSame('2026-09-30', $calc['period_end']);
+        $this->assertSame(30, $calc['days_in_period']);
+        $this->assertFalse($calc['today_sampled']);
+        // remaining_days = diff(today, period_end) + (today_sampled ? 0 : 1)
+        $this->assertSame(
+            (int) CarbonImmutable::parse($log['input']['today'])->diffInDays(CarbonImmutable::parse($calc['period_end'])) + ($calc['today_sampled'] ? 0 : 1),
+            $calc['remaining_days'],
+        );
+        // projected_asset_days = asset_days + monitored_now * remaining_days
+        $this->assertSame($calc['asset_days'] + $calc['monitored_now'] * $calc['remaining_days'], $calc['projected_asset_days']);
+        $this->assertSame($estimate['projectedAssetDays'], $calc['projected_asset_days']);
+        $this->assertSame(2, $calc['cap']);
+        $this->assertSame('billing_terms', $calc['cap_source']);
+        $this->assertSame('tenant', $calc['terms_sources']['unit_price']);
+        $this->assertSame('platform_default', $calc['markup_source']);
+        $this->assertArrayNotHasKey('meter_name', $calc['projected']);
+        $this->assertSame($estimate['assetsProjected'], $calc['projected']['amount']);
+        $this->assertSame($estimate['aiProjected'], $calc['ai']['amount']);
+
+        $total = round($calc['projected']['amount'] + $calc['ai']['amount'] + $calc['messaging']['amount'] + $calc['emergency']['amount'], 2);
+        $this->assertSame(number_format($total, 2, '.', ''), number_format($estimate['totalProjected'], 2, '.', ''));
+        $this->assertSame(number_format($total, 2, '.', ''), number_format($log['result']['total_projected'], 2, '.', ''));
+        $toDate = round($calc['to_date']['amount'] + $calc['ai']['amount'] + $calc['messaging']['amount'] + $calc['emergency']['amount'], 2);
+        $this->assertSame(number_format($toDate, 2, '.', ''), number_format($estimate['totalToDate'], 2, '.', ''));
+        $this->assertSame(number_format($toDate, 2, '.', ''), number_format($log['result']['total_to_date'], 2, '.', ''));
+        $this->assertSame('mxn', $log['result']['currency']);
+        $this->assertTrue($log['result']['over_cap']);
+        $this->assertSame('info', $this->systemLogEntries('billing.estimate.calculated')[0]['level']);
+        $this->assertSystemNotLogged('billing.meter.missing');
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_missing_meter_in_the_estimate_is_logged(): void
+    {
+        $team = Team::factory()->create();
+        TenantBillingTerms::factory()->create(['team_id' => $team->id, 'unit_price' => 300]);
+        UsageMeter::query()->where('code', 'unmonitored_emergency_asset_days')->delete();
+
+        $estimate = app(EstimatePeriodCharges::class)->execute($team->id, CarbonImmutable::parse('2026-09-03'));
+
+        $this->assertSame(0, $estimate['unmonitoredEmergencyDays']);
+        $missing = $this->systemLogEntries('billing.meter.missing');
+        $codes = array_map(fn (array $e) => $e['context']['input']['meter_code'] ?? $e['context']['input']['meter_unit'], $missing);
+        // ai_calls no existe en una instalación limpia; la estimación lo lee como 0.
+        $this->assertContains('unmonitored_emergency_asset_days', $codes);
+        $this->assertContains('ai_calls', $codes);
+        foreach ($missing as $entry) {
+            $this->assertSame('degraded', $entry['context']['outcome']);
+            $this->assertSame('meter_missing', $entry['context']['reason']);
+            $this->assertSame('estimate', $entry['context']['input']['stage']);
+            $this->assertSame($team->id, $entry['context']['input']['team_id']);
+        }
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_past_days_without_a_sample_are_not_projected(): void
@@ -136,6 +195,13 @@ class EstimatePeriodChargesTest extends TestCase
 
         $this->assertSame(2, $estimate['remainingDays']);
         $this->assertSame(2 + 2 * 2, $estimate['projectedAssetDays']);
+
+        $calc = $this->assertSystemLogged('billing.estimate.calculated')['calc'];
+        $this->assertTrue($calc['today_sampled']);
+        $this->assertSame(2, $calc['remaining_days']);
+        $this->assertSame(1, $calc['days_recorded']);
+        $this->assertSame($calc['asset_days'] + $calc['monitored_now'] * $calc['remaining_days'], $calc['projected_asset_days']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_the_estimate_only_reads_the_tenants_own_usage_and_fleet(): void
@@ -160,6 +226,20 @@ class EstimatePeriodChargesTest extends TestCase
 
         $this->assertSame(0, $estimate['assetDays']);
         $this->assertSame(1, $estimate['monitoredNow']);
+
+        $log = $this->assertSystemLogged('billing.estimate.calculated');
+        $this->assertSame($actor->id, $log['input']['team_id']);
+        $this->assertSame(0, $log['calc']['asset_days']);
+        $this->assertSame(1, $log['calc']['monitored_now']);
+        foreach ($this->systemLogEntries() as $entry) {
+            array_walk_recursive($entry['context'], function ($value, $key) use ($victim, $entry) {
+                if (in_array($key, ['team_id', 'tenant_id'], true)) {
+                    $this->assertNotSame($victim->id, $value, "[{$entry['code']}] lleva el team_id del otro tenant");
+                }
+            });
+        }
+        $this->assertDoesNotMatchRegularExpression('/"(team|tenant)_id":'.$victim->id.'[,}]/', json_encode($this->systemLogEntries()));
+        $this->assertNoSensitiveDataLogged();
     }
 
     /**
