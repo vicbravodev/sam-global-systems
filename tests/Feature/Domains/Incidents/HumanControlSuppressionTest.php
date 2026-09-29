@@ -113,6 +113,9 @@ class HumanControlSuppressionTest extends TestCase
             $verification->metadata_json['failure_reason'] ?? null,
         );
 
+        $this->assertSystemLogged('incidents.call_verification.closed', fn (array $c) => $c['reason'] === 'human_control'
+            && $c['input'] === ['verification_id' => $verification->id, 'incident_id' => $incident->id, 'attempt' => 1]);
+
         // Release: the incident is no longer under human control.
         $incident->forceFill([
             'claimed_by_user_id' => null,
@@ -131,5 +134,10 @@ class HumanControlSuppressionTest extends TestCase
             PlaceVerificationCallJob::class,
             fn (PlaceVerificationCallJob $job) => $job->verificationId === $restarted->id,
         );
+
+        $this->assertSystemLogged('incidents.call_verification.requested', fn (array $c) => $c['input'] === ['incident_id' => $incident->id, 'attempt' => 2]
+            && $c['calc']['restarted_after_suppression'] === true
+            && $c['result']['verification_id'] === $restarted->id);
+        $this->assertNoSensitiveDataLogged();
     }
 }

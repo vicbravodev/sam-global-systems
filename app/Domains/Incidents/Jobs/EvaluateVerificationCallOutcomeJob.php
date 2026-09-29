@@ -6,6 +6,7 @@ use App\Contracts\TenantConfig\TenantConfigResolver;
 use App\Domains\Incidents\Actions\HandleVerificationCallAttemptFailure;
 use App\Domains\Incidents\Actions\StartIncidentCallVerification;
 use App\Domains\Incidents\Models\IncidentCallVerification;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -39,6 +40,8 @@ class EvaluateVerificationCallOutcomeJob implements ShouldQueue
         $verification = IncidentCallVerification::withoutGlobalScopes()->find($this->verificationId);
 
         if ($verification === null || ! $verification->status->isInFlight()) {
+            SystemLog::skipped('incidents.call_verification.skipped', reason: 'not_in_flight', input: ['verification_id' => $this->verificationId], debug: true);
+
             return;
         }
 
@@ -52,9 +55,24 @@ class EvaluateVerificationCallOutcomeJob implements ShouldQueue
             StartIncidentCallVerification::DEFAULT_RETRY_DELAY_SECONDS,
         ));
 
+        $logInput = [
+            'verification_id' => $verification->id,
+            'incident_id' => $verification->incident_id,
+            'attempt' => $verification->attempt,
+        ];
+        $logCalc = [
+            'placed_at' => $verification->placed_at?->toIso8601String(),
+            'retry_delay_seconds' => $retryDelay,
+            'due_at' => $verification->placed_at?->copy()->addSeconds($retryDelay)->toIso8601String(),
+        ];
+
         if ($verification->placed_at !== null && $verification->placed_at->copy()->addSeconds($retryDelay)->isFuture()) {
+            SystemLog::skipped('incidents.call_verification.safety_net', reason: 'not_due_yet', input: $logInput, calc: $logCalc);
+
             return;
         }
+
+        SystemLog::ok('incidents.call_verification.safety_net', input: $logInput, calc: $logCalc, result: ['failure_code' => 'timeout_without_callback']);
 
         $handleFailure->execute($verification, 'timeout_without_callback');
     }

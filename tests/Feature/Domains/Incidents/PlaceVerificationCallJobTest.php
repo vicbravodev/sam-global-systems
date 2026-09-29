@@ -20,12 +20,14 @@ use App\Models\User;
 use Database\Seeders\IncidentsMeterSeeder;
 use Database\Seeders\IncidentStatusSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Queue;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class PlaceVerificationCallJobTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsSystemLog, RefreshDatabase;
 
     private int $teamId;
 
@@ -103,6 +105,84 @@ class PlaceVerificationCallJobTest extends TestCase
             EvaluateVerificationCallOutcomeJob::class,
             fn (EvaluateVerificationCallOutcomeJob $job) => $job->verificationId === $verification->id,
         );
+
+        $context = $this->assertSystemLogged('incidents.call_verification.placed', fn (array $c) => $c['input'] === [
+            'verification_id' => $verification->id,
+            'incident_id' => $verification->incident_id,
+            'attempt' => 1,
+        ]);
+        $calc = $context['calc'];
+        $this->assertSame(30, $calc['min_retry_delay_seconds']);
+        $this->assertSame(90, $calc['configured_retry_delay_seconds']);
+        $this->assertSame(max($calc['min_retry_delay_seconds'], $calc['configured_retry_delay_seconds']), $calc['retry_delay_seconds']);
+        $this->assertArrayHasKey('ring_timeout_seconds', $calc);
+        $this->assertArrayHasKey('duration_ms', $context);
+        $this->assertSame([
+            'call_sid' => 'CA-test-1',
+            'provider_status' => 'queued',
+            'channel_id' => $channel->id,
+            'safety_net_requested' => true,
+        ], $context['result']);
+
+        // El delay del job empujado es exactamente el registrado.
+        Queue::assertPushed(
+            EvaluateVerificationCallOutcomeJob::class,
+            fn (EvaluateVerificationCallOutcomeJob $job) => (int) round(Carbon::now()->diffInSeconds($job->delay, true)) === $calc['retry_delay_seconds'],
+        );
+
+        $this->assertStringNotContainsString('5215512345678', json_encode($this->systemLogEntries()));
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_the_safety_net_waits_until_the_retry_delay_is_due(): void
+    {
+        $verification = $this->makeVerification([
+            'status' => CallVerificationStatus::Calling,
+            'placed_at' => now()->subSeconds(10),
+        ]);
+
+        app()->call([new EvaluateVerificationCallOutcomeJob($verification->id), 'handle']);
+
+        $this->assertSame(CallVerificationStatus::Calling, $verification->fresh()->status);
+
+        $context = $this->assertSystemLogged('incidents.call_verification.safety_net', fn (array $c) => $c['reason'] === 'not_due_yet');
+        $this->assertSame(['verification_id' => $verification->id, 'incident_id' => $verification->incident_id, 'attempt' => 1], $context['input']);
+        $this->assertSame(90, $context['calc']['retry_delay_seconds']);
+        $this->assertSame(
+            Carbon::parse($context['calc']['placed_at'])->addSeconds($context['calc']['retry_delay_seconds'])->toIso8601String(),
+            $context['calc']['due_at'],
+        );
+        $this->assertSystemNotLogged('incidents.call_verification.attempt_failed');
+    }
+
+    public function test_the_safety_net_fails_an_overdue_attempt_without_callback(): void
+    {
+        $verification = $this->makeVerification([
+            'status' => CallVerificationStatus::Calling,
+            'placed_at' => now()->subSeconds(120),
+        ]);
+
+        app()->call([new EvaluateVerificationCallOutcomeJob($verification->id), 'handle']);
+
+        $this->assertSame(CallVerificationStatus::NoAnswer, $verification->fresh()->status);
+
+        $this->assertSystemLogged('incidents.call_verification.safety_net', fn (array $c) => $c['outcome'] === 'ok'
+            && $c['result'] === ['failure_code' => 'timeout_without_callback']
+            && $c['calc']['retry_delay_seconds'] === 90);
+        $this->assertSystemLogged('incidents.call_verification.attempt_failed', fn (array $c) => $c['calc']['failure_code'] === 'timeout_without_callback');
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_the_safety_net_ignores_an_attempt_that_is_no_longer_in_flight(): void
+    {
+        $verification = $this->makeVerification(['status' => CallVerificationStatus::Answered]);
+
+        app()->call([new EvaluateVerificationCallOutcomeJob($verification->id), 'handle']);
+
+        $entry = collect($this->systemLogEntries('incidents.call_verification.skipped'))->sole();
+        $this->assertSame('debug', $entry['level']);
+        $this->assertSame('not_in_flight', $entry['context']['reason']);
+        $this->assertSame(['verification_id' => $verification->id], $entry['context']['input']);
     }
 
     public function test_uses_the_platform_voice_channel(): void
@@ -160,6 +240,12 @@ class PlaceVerificationCallJobTest extends TestCase
         $this->runJob($verification);
 
         $this->assertSame('voice_channel_unavailable', $verification->fresh()->metadata_json['failure_reason']);
+
+        $this->assertSystemLogged('incidents.call_verification.skipped', fn (array $c) => $c['reason'] === 'no_voice_channel'
+            && $c['calc'] === ['channel_present' => true, 'from_present' => true, 'credentials_present' => false]);
+        $this->assertSystemLogged('incidents.call_verification.unverifiable_escalated', fn (array $c) => $c['input']['unverifiable_code'] === 'voice_channel_unavailable'
+            && $c['result']['escalated_now'] === true);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_global_voice_channel_disabled_by_the_tenant_never_serves_calls(): void
@@ -196,6 +282,10 @@ class PlaceVerificationCallJobTest extends TestCase
         $this->assertSame(CallVerificationStatus::Failed, $fresh->status);
         $this->assertSame('voice_channel_unavailable', $fresh->metadata_json['failure_reason']);
         $this->assertSame(1, IncidentCallVerification::withoutGlobalScopes()->count());
+
+        $this->assertSystemLogged('incidents.call_verification.skipped', fn (array $c) => $c['reason'] === 'no_voice_channel'
+            && $c['calc']['channel_present'] === false);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_placement_exception_chains_the_next_attempt(): void
@@ -220,6 +310,15 @@ class PlaceVerificationCallJobTest extends TestCase
             PlaceVerificationCallJob::class,
             fn (PlaceVerificationCallJob $job) => $job->verificationId === $next->id,
         );
+
+        $this->assertSystemLogged('incidents.call_verification.placement_failed', fn (array $c) => $c['reason'] === 'provider_error'
+            && $c['result']['error_class'] === 'RuntimeException');
+        $this->assertSystemLogged('incidents.call_verification.attempt_failed', fn (array $c) => $c['outcome'] === 'ok'
+            && $c['calc']['failure_code'] === 'placement_failed'
+            && $c['calc']['call_status'] === null
+            && $c['result'] === ['next' => 'next_attempt', 'next_attempt' => 2]);
+        $this->assertStringNotContainsString('twilio down', json_encode($this->systemLogEntries()));
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_exhausted_attempts_escalate_the_incident_with_no_answer_outcome(): void
@@ -248,6 +347,13 @@ class PlaceVerificationCallJobTest extends TestCase
             ->count());
 
         Queue::assertNotPushed(PlaceVerificationCallJob::class);
+
+        $context = $this->assertSystemLogged('incidents.call_verification.attempt_failed', fn (array $c) => $c['result']['next'] === 'exhausted_escalated');
+        $this->assertSame(CallVerificationOutcome::NoAnswer->value, $context['result']['outcome']);
+        $this->assertSame(3, $context['calc']['budget']);
+        $this->assertSame(min($context['calc']['max_attempts_cap'], max($context['calc']['configured_attempts'], $context['calc']['candidates_count'])), $context['calc']['budget']);
+        $this->assertStringNotContainsString('twilio down', json_encode($this->systemLogEntries()));
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_no_ops_when_request_is_not_pending(): void
@@ -262,6 +368,11 @@ class PlaceVerificationCallJobTest extends TestCase
         $this->runJob($verification);
 
         $this->assertSame(CallVerificationStatus::Answered, $verification->fresh()->status);
+
+        $entry = collect($this->systemLogEntries('incidents.call_verification.skipped'))->sole();
+        $this->assertSame('debug', $entry['level']);
+        $this->assertSame('not_pending', $entry['context']['reason']);
+        $this->assertSame(['verification_id' => $verification->id], $entry['context']['input']);
     }
 
     public function test_terminal_incident_cancels_the_call(): void
@@ -283,5 +394,9 @@ class PlaceVerificationCallJobTest extends TestCase
         $fresh = $verification->fresh();
         $this->assertSame(CallVerificationStatus::Failed, $fresh->status);
         $this->assertSame('incident_terminal', $fresh->metadata_json['failure_reason']);
+
+        $this->assertSystemLogged('incidents.call_verification.closed', fn (array $c) => $c['reason'] === 'incident_terminal'
+            && $c['input'] === ['verification_id' => $verification->id, 'incident_id' => $incident->id, 'attempt' => $verification->attempt]);
+        $this->assertNoSensitiveDataLogged();
     }
 }

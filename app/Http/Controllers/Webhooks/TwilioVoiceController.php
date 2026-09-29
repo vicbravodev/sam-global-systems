@@ -23,6 +23,8 @@ use App\Domains\Incidents\Support\VerificationCallTwiml;
 use App\Domains\Notifications\Enums\NotificationPriority;
 use App\Domains\Notifications\Support\PlatformTwilioConfig;
 use App\Http\Controllers\Controller;
+use App\Support\LoggableCode;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -54,12 +56,17 @@ class TwilioVoiceController extends Controller
         $row = $this->authorizeWebhook($request, $verification);
 
         if ($row->outcome !== null || $row->status === CallVerificationStatus::Answered) {
+            SystemLog::skipped('incidents.call_verification.answered', reason: 'already_answered', input: $this->logInput($row));
+
             return $this->twiml(VerificationCallTwiml::say('Ya registramos su respuesta. Gracias.'));
         }
 
         $digits = trim((string) $request->input('Digits', ''));
 
         if (! in_array($digits, ['1', '2'], true)) {
+            // Nunca los dígitos: sólo cuántos llegaron.
+            SystemLog::skipped('incidents.call_verification.answered', reason: 'invalid_digit', input: $this->logInput($row), calc: ['digits_length' => strlen($digits)]);
+
             // Invalid or absent digit: re-prompt once more on the same call.
             $incident = Incident::query()->with('asset')->find($row->incident_id);
 
@@ -77,7 +84,10 @@ class TwilioVoiceController extends Controller
         $incident = Incident::query()->find($row->incident_id);
 
         if ($incident === null || $incident->isTerminal()) {
-            $this->consume($row, $digits, $digits === '1' ? CallVerificationOutcome::ConfirmedReal : CallVerificationOutcome::ConfirmedFalse);
+            $outcome = $digits === '1' ? CallVerificationOutcome::ConfirmedReal : CallVerificationOutcome::ConfirmedFalse;
+            $this->consume($row, $digits, $outcome);
+
+            SystemLog::skipped('incidents.call_verification.answered', reason: 'incident_closed', input: $this->logInput($row), result: ['outcome' => $outcome->value]);
 
             return $this->twiml(VerificationCallTwiml::say("El incidente número {$row->incident_id} ya está cerrado. Gracias."));
         }
@@ -96,8 +106,19 @@ class TwilioVoiceController extends Controller
         if ($row->status->isInFlight() && in_array($callStatus, ['no-answer', 'busy', 'failed', 'canceled', 'completed'], true)) {
             // `completed` without a gathered digit means the callee hung up
             // without answering the prompt — also an unanswered attempt.
+            // La línea la emite HandleVerificationCallAttemptFailure
+            // (`failure_code = call_status`).
             $this->handleFailure->execute($row, "call_status: {$callStatus}");
+
+            return response('', 204);
         }
+
+        SystemLog::skipped('incidents.call_verification.status_ignored',
+            reason: $row->status->isInFlight() ? 'status_not_final' : 'not_in_flight',
+            input: $this->logInput($row),
+            calc: ['call_status' => LoggableCode::guard($callStatus)],
+            debug: true,
+        );
 
         return response('', 204);
     }
@@ -138,6 +159,13 @@ class TwilioVoiceController extends Controller
             priority: NotificationPriority::Critical,
         );
 
+        SystemLog::ok('incidents.call_verification.answered', input: $this->logInput($row), result: [
+            'outcome' => CallVerificationOutcome::ConfirmedReal->value,
+            'acknowledged' => true,
+            'escalated' => true,
+            'level_notified' => 0,
+        ]);
+
         return $this->twiml(VerificationCallTwiml::say(
             'Emergencia confirmada. SAM escaló el incidente y está avisando a los contactos de emergencia. Gracias.',
         ));
@@ -165,9 +193,25 @@ class TwilioVoiceController extends Controller
 
         $this->audit($row, $incident, 'confirmed_false');
 
+        SystemLog::ok('incidents.call_verification.answered', input: $this->logInput($row), result: [
+            'outcome' => CallVerificationOutcome::ConfirmedFalse->value,
+            'closed' => true,
+            'resolution_code' => ResolutionCode::FalsePositive->value,
+        ]);
+
         return $this->twiml(VerificationCallTwiml::say(
             'Registrado como falsa alarma. El incidente fue cerrado. Gracias.',
         ));
+    }
+
+    /**
+     * Nunca `phone`, `digits_received` ni el TwiML.
+     *
+     * @return array{verification_id: int, incident_id: int, attempt: int}
+     */
+    private function logInput(IncidentCallVerification $row): array
+    {
+        return ['verification_id' => $row->id, 'incident_id' => $row->incident_id, 'attempt' => $row->attempt];
     }
 
     private function consume(IncidentCallVerification $row, string $digits, CallVerificationOutcome $outcome): void

@@ -22,6 +22,7 @@ use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
 use App\Domains\Tenancy\Support\TenantCanSend;
 use App\Support\JobFailureReporter;
+use App\Support\LoggableCode;
 use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
@@ -71,12 +72,20 @@ class PlaceVerificationCallJob implements ShouldQueue
         $verification = IncidentCallVerification::withoutGlobalScopes()->find($this->verificationId);
 
         if ($verification === null || $verification->status !== CallVerificationStatus::Pending) {
+            SystemLog::skipped('incidents.call_verification.skipped', reason: 'not_pending', input: ['verification_id' => $this->verificationId], debug: true);
+
             return;
         }
 
         // Trabaja dentro del tenant del propio registro: el lookup de
         // entrada no puede estar scopeado, todo lo que sigue sí. Ver §2.1.
         TenantContext::set($verification->team_id);
+
+        $logInput = [
+            'verification_id' => $verification->id,
+            'incident_id' => $verification->incident_id,
+            'attempt' => $verification->attempt,
+        ];
 
         $incident = Incident::query()->find($verification->incident_id);
 
@@ -85,6 +94,8 @@ class PlaceVerificationCallJob implements ShouldQueue
                 'status' => CallVerificationStatus::Failed,
                 'metadata_json' => ['failure_reason' => 'incident_terminal'],
             ])->save();
+
+            SystemLog::skipped('incidents.call_verification.closed', reason: 'incident_terminal', input: $logInput);
 
             return;
         }
@@ -99,6 +110,8 @@ class PlaceVerificationCallJob implements ShouldQueue
                 'status' => CallVerificationStatus::Failed,
                 'metadata_json' => ['failure_reason' => self::SUPPRESSED_FAILURE_REASON],
             ])->save();
+
+            SystemLog::skipped('incidents.call_verification.closed', reason: 'human_control', input: $logInput, result: ['failure_reason' => self::SUPPRESSED_FAILURE_REASON]);
 
             return;
         }
@@ -124,7 +137,11 @@ class PlaceVerificationCallJob implements ShouldQueue
                 'metadata_json' => ['failure_reason' => 'voice_channel_unavailable'],
             ])->save();
 
-            SystemLog::skipped('incidents.call_verification.skipped', reason: 'no_voice_channel', input: ['verification_id' => $verification->id, 'team_id' => $verification->team_id]);
+            SystemLog::skipped('incidents.call_verification.skipped', reason: 'no_voice_channel', input: ['verification_id' => $verification->id, 'team_id' => $verification->team_id], calc: [
+                'channel_present' => $channel !== null,
+                'from_present' => $from !== null,
+                'credentials_present' => PlatformTwilioConfig::hasCredentials(),
+            ]);
 
             // Nunca en silencio: el pánico queda escalado y explicado.
             $escalateUnverifiable->execute(
@@ -138,6 +155,8 @@ class PlaceVerificationCallJob implements ShouldQueue
 
         $incident->loadMissing('asset');
 
+        $started = hrtime(true);
+
         try {
             $call = $caller->createCall($verification->phone, $from, [
                 'twiml' => VerificationCallTwiml::prompt(
@@ -148,8 +167,11 @@ class PlaceVerificationCallJob implements ShouldQueue
                 'statusCallback' => route('webhooks.twilio.voice.status', ['verification' => $verification->id]),
                 'timeout' => $config['ring_timeout_seconds'] ?? 25,
             ]);
+            $durationMs = SystemLog::elapsedMs($started);
         } catch (\Throwable $e) {
-            SystemLog::degraded('incidents.call_verification.placement_failed', reason: 'provider_error', input: ['verification_id' => $verification->id], error: $e);
+            // Sin `error: $e`: el mensaje del proveedor puede traer el
+            // número marcado. Sólo la clase de la excepción.
+            SystemLog::degraded('incidents.call_verification.placement_failed', reason: 'provider_error', input: ['verification_id' => $verification->id], result: ['error_class' => class_basename($e)], durationMs: SystemLog::elapsedMs($started));
 
             $verification->forceFill(['notification_channel_id' => $channel->id])->save();
             $handleFailure->execute($verification, 'placement_failed: '.$e->getMessage());
@@ -178,14 +200,32 @@ class PlaceVerificationCallJob implements ShouldQueue
             status: isset($call->status) ? (string) $call->status : null,
         );
 
-        $retryDelay = max(30, (int) $tenantConfig->resolve(
+        $configuredDelay = (int) $tenantConfig->resolve(
             (int) $verification->team_id,
             StartIncidentCallVerification::SETTING_RETRY_DELAY,
             StartIncidentCallVerification::DEFAULT_RETRY_DELAY_SECONDS,
-        ));
+        );
+        $retryDelay = max(30, $configuredDelay);
 
         EvaluateVerificationCallOutcomeJob::dispatch($verification->id)
             ->delay(now()->addSeconds($retryDelay));
+
+        SystemLog::ok('incidents.call_verification.placed',
+            input: $logInput,
+            calc: [
+                'ring_timeout_seconds' => $config['ring_timeout_seconds'] ?? 25,
+                'configured_retry_delay_seconds' => $configuredDelay,
+                'retry_delay_seconds' => $retryDelay,
+                'min_retry_delay_seconds' => 30,
+            ],
+            result: [
+                'call_sid' => LoggableCode::guard((string) ($call->sid ?? '')),
+                'provider_status' => LoggableCode::guard(isset($call->status) ? (string) $call->status : null),
+                'channel_id' => $channel->id,
+                'safety_net_requested' => true,
+            ],
+            durationMs: $durationMs,
+        );
     }
 
     /**

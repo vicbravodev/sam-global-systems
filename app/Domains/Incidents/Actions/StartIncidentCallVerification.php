@@ -16,6 +16,7 @@ use App\Domains\Incidents\Support\IncidentSupervisors;
 use App\Domains\TenantConfig\Models\TenantEscalationConfig;
 use App\Support\PhoneNumber;
 use App\Support\SystemLog;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Start (or continue) the operator voice-verification chain for an incident
@@ -53,6 +54,9 @@ class StartIncidentCallVerification
     public function execute(Incident $incident, int $attempt = 1): ?IncidentCallVerification
     {
         if ($incident->team_id === null || $incident->isTerminal()) {
+            $terminalInput = ['incident_id' => $incident->id, 'attempt' => $attempt];
+            DB::afterCommit(fn () => SystemLog::skipped('incidents.call_verification.skipped', reason: 'incident_terminal', input: $terminalInput));
+
             return null;
         }
 
@@ -60,6 +64,9 @@ class StartIncidentCallVerification
             ->where('incident_id', $incident->id)
             ->orderByDesc('attempt')
             ->first();
+
+        $restartedAfterSuppression = false;
+        $logInput = ['incident_id' => $incident->id, 'attempt' => $attempt];
 
         if ($existing !== null && $attempt === 1) {
             if ($this->wasSuppressedByHumanControl($existing)) {
@@ -69,14 +76,29 @@ class StartIncidentCallVerification
                 // incident is released, a fresh start restarts the chain as
                 // the next attempt instead of staying blocked forever.
                 $attempt = $existing->attempt + 1;
+                $restartedAfterSuppression = true;
             } else {
                 // A fresh start never duplicates a chain that is already
                 // running or already produced an outcome.
-                return $existing->status->isInFlight() ? $existing : null;
+                if ($existing->status->isInFlight()) {
+                    $inFlightResult = ['verification_id' => $existing->id];
+                    DB::afterCommit(fn () => SystemLog::skipped('incidents.call_verification.skipped', reason: 'already_in_flight', input: $logInput, result: $inFlightResult));
+
+                    return $existing;
+                }
+
+                $concludedResult = ['verification_id' => $existing->id, 'status' => $existing->status->value];
+                DB::afterCommit(fn () => SystemLog::skipped('incidents.call_verification.skipped', reason: 'already_concluded', input: $logInput, result: $concludedResult));
+
+                return null;
             }
         }
 
         if ($existing !== null && $existing->attempt >= $attempt) {
+            $requestedInput = ['incident_id' => $incident->id, 'attempt' => $attempt];
+            $requestedResult = ['verification_id' => $existing->id];
+            DB::afterCommit(fn () => SystemLog::skipped('incidents.call_verification.skipped', reason: 'attempt_already_requested', input: $requestedInput, result: $requestedResult, debug: true));
+
             return $existing;
         }
 
@@ -84,18 +106,31 @@ class StartIncidentCallVerification
         // viaja en la metadata: los reintentos recorren la MISMA lista aunque
         // la configuración cambie a media llamada.
         $candidates = $existing?->metadata_json['candidates'] ?? null;
+        $fromMetadata = true;
+        $counts = null;
 
         if (! is_array($candidates) || $candidates === []) {
+            $fromMetadata = false;
+            $bySource = $this->resolveCandidatesBySource($incident);
+            $counts = array_map(
+                fn (array $phones) => count(array_filter($phones, fn ($phone) => is_string($phone) && $phone !== '')),
+                $bySource,
+            );
+
             // Una cadena anterior sin lista guardada (intentos previos a esta
             // versión) conserva su número como primer destinatario.
             $candidates = array_values(array_unique(array_filter([
                 $existing?->phone,
-                ...$this->resolveCandidates($incident),
+                ...$this->uniquePhones($this->flattenCandidates($bySource)),
             ])));
         }
 
         if ($candidates === []) {
-            SystemLog::skipped('incidents.call_verification.skipped', reason: 'no_phone_contact', input: ['incident_id' => $incident->id, 'team_id' => $incident->team_id]);
+            $noPhoneLine = [
+                'input' => ['incident_id' => $incident->id, 'team_id' => $incident->team_id],
+                'calc' => ['candidate_counts_by_source' => $counts],
+            ];
+            DB::afterCommit(fn () => SystemLog::skipped('incidents.call_verification.skipped', 'no_phone_contact', ...$noPhoneLine));
 
             $this->escalateUnverifiable->execute(
                 $incident,
@@ -107,7 +142,8 @@ class StartIncidentCallVerification
         }
 
         // Chofer primero, luego los contactos de la empresa, en ronda.
-        $phone = (string) $candidates[($attempt - 1) % count($candidates)];
+        $candidateIndex = ($attempt - 1) % count($candidates);
+        $phone = (string) $candidates[$candidateIndex];
 
         $verification = IncidentCallVerification::query()->firstOrCreate(
             [
@@ -124,6 +160,19 @@ class StartIncidentCallVerification
 
         if ($verification->wasRecentlyCreated) {
             PlaceVerificationCallJob::dispatch($verification->id);
+
+            $requestedLine = [
+                'input' => ['incident_id' => $incident->id, 'attempt' => $attempt],
+                'calc' => [
+                    'candidates_from' => $fromMetadata ? 'metadata' : 'resolved',
+                    'candidates_count' => count($candidates),
+                    'candidate_index' => $candidateIndex,
+                    'candidate_counts_by_source' => $counts,
+                    'restarted_after_suppression' => $restartedAfterSuppression,
+                ],
+                'result' => ['verification_id' => $verification->id, 'job_requested' => true],
+            ];
+            DB::afterCommit(fn () => SystemLog::ok('incidents.call_verification.requested', ...$requestedLine));
         }
 
         return $verification;
@@ -136,6 +185,17 @@ class StartIncidentCallVerification
      */
     public function attemptBudget(IncidentCallVerification $verification): int
     {
+        return $this->attemptBudgetTerms($verification)['budget'];
+    }
+
+    /**
+     * Términos del presupuesto de intentos, recomputables:
+     * `budget = min(max_attempts_cap, max(configured_attempts, candidates_count))`.
+     *
+     * @return array{configured_attempts: int, candidates_count: int, max_attempts_cap: int, budget: int}
+     */
+    public function attemptBudgetTerms(IncidentCallVerification $verification): array
+    {
         $configured = max(1, (int) $this->tenantConfig->resolve(
             (int) $verification->team_id,
             self::SETTING_ATTEMPTS,
@@ -144,7 +204,12 @@ class StartIncidentCallVerification
 
         $candidates = count((array) ($verification->metadata_json['candidates'] ?? []));
 
-        return min(self::MAX_ATTEMPTS, max($configured, $candidates));
+        return [
+            'configured_attempts' => $configured,
+            'candidates_count' => $candidates,
+            'max_attempts_cap' => self::MAX_ATTEMPTS,
+            'budget' => min(self::MAX_ATTEMPTS, max($configured, $candidates)),
+        ];
     }
 
     /**
@@ -157,15 +222,26 @@ class StartIncidentCallVerification
      */
     public function resolveCandidates(Incident $incident): array
     {
+        return $this->uniquePhones($this->flattenCandidates($this->resolveCandidatesBySource($incident)));
+    }
+
+    /**
+     * Los mismos destinatarios de {@see resolveCandidates()}, agrupados por
+     * fuente y sin filtrar (cada entrada puede ser null o vacía).
+     *
+     * @return array{driver: list<?string>, verification_contacts: list<?string>, escalation_steps: list<?string>, supervisors: list<?string>}
+     */
+    public function resolveCandidatesBySource(Incident $incident): array
+    {
         $teamId = (int) $incident->team_id;
-        $phones = [];
+        $bySource = ['driver' => [], 'verification_contacts' => [], 'escalation_steps' => [], 'supervisors' => []];
 
         foreach ($this->driverPhones($incident) as $phone) {
-            $phones[] = $phone;
+            $bySource['driver'][] = $phone;
         }
 
         foreach ((array) $this->tenantConfig->resolve($teamId, self::SETTING_CONTACTS, []) as $contact) {
-            $phones[] = is_string($contact) ? PhoneNumber::normalize($contact) : null;
+            $bySource['verification_contacts'][] = is_string($contact) ? PhoneNumber::normalize($contact) : null;
         }
 
         $config = TenantEscalationConfig::query()
@@ -175,15 +251,38 @@ class StartIncidentCallVerification
 
         foreach ((array) ($config?->steps_json ?? []) as $step) {
             foreach ((array) (is_array($step) ? ($step['contacts'] ?? []) : []) as $contact) {
-                $phones[] = is_string($contact) ? PhoneNumber::normalize($contact) : null;
+                $bySource['escalation_steps'][] = is_string($contact) ? PhoneNumber::normalize($contact) : null;
             }
         }
 
         foreach (IncidentSupervisors::recipients($teamId) as $recipient) {
-            $phones[] = is_string($recipient['phone'] ?? null) ? PhoneNumber::normalize($recipient['phone']) : null;
+            $bySource['supervisors'][] = is_string($recipient['phone'] ?? null) ? PhoneNumber::normalize($recipient['phone']) : null;
         }
 
+        return $bySource;
+    }
+
+    /**
+     * @param  list<?string>  $phones
+     * @return array<int, string>
+     */
+    private function uniquePhones(array $phones): array
+    {
         return array_values(array_unique(array_filter($phones, fn ($phone) => is_string($phone) && $phone !== '')));
+    }
+
+    /**
+     * @param  array{driver: list<?string>, verification_contacts: list<?string>, escalation_steps: list<?string>, supervisors: list<?string>}  $bySource
+     * @return list<?string>
+     */
+    private function flattenCandidates(array $bySource): array
+    {
+        return [
+            ...$bySource['driver'],
+            ...$bySource['verification_contacts'],
+            ...$bySource['escalation_steps'],
+            ...$bySource['supervisors'],
+        ];
     }
 
     /**
