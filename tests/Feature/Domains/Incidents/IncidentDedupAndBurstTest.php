@@ -134,6 +134,9 @@ class IncidentDedupAndBurstTest extends TestCase
 
         $opened = $this->assertSystemLogged('incidents.offline_burst.aggregated', fn (array $c) => $c['calc']['branch'] === 'opened_aggregate');
         $this->assertSame($aggregate->id, $opened['result']['aggregate_incident_id']);
+        // link_created sale del vínculo RootTrigger real, no de una constante.
+        $this->assertTrue($opened['result']['link_created']);
+        $this->assertTrue($aggregate->eventLinks()->where('relation_type', 'root_trigger')->exists());
         $this->assertSame(2, $opened['calc']['recent_singles_count']);
         $this->assertSame(3, $opened['calc']['effective_threshold']);
         $this->assertFalse($opened['calc']['aggregate_found']);

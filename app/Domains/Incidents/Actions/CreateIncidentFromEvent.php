@@ -214,15 +214,6 @@ class CreateIncidentFromEvent
                 'metadata_json' => $context['metadata'] ?? null,
             ]);
 
-            if ($aggregateBurst) {
-                $burstLine = [
-                    'input' => ['normalized_event_id' => $event->id],
-                    'calc' => $burstCalc,
-                    'result' => ['aggregate_incident_id' => $incident->id, 'link_created' => true],
-                ];
-                DB::afterCommit(fn () => SystemLog::ok('incidents.offline_burst.aggregated', ...$burstLine));
-            }
-
             $slaInput = ['incident_id' => $incident->id, 'incident_priority_id' => $priority->id, 'team_id' => $teamId];
 
             // SLA watchdog: one delayed job instead of a per-minute cron. It
@@ -270,11 +261,20 @@ class CreateIncidentFromEvent
                 occurredAt: $incident->opened_at,
             );
 
-            $this->linkEventToIncident->execute(
+            $rootLink = $this->linkEventToIncident->execute(
                 $incident,
                 $event,
                 EventRelationType::RootTrigger,
             );
+
+            if ($aggregateBurst) {
+                $burstLine = [
+                    'input' => ['normalized_event_id' => $event->id],
+                    'calc' => $burstCalc,
+                    'result' => ['aggregate_incident_id' => $incident->id, 'link_created' => $rootLink->wasRecentlyCreated],
+                ];
+                DB::afterCommit(fn () => SystemLog::ok('incidents.offline_burst.aggregated', ...$burstLine));
+            }
 
             $this->autoAttachEvidence($incident, $event);
 
