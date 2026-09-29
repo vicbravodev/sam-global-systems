@@ -8,6 +8,10 @@ use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentAssignment;
 use App\Domains\Incidents\Models\IncidentPriority;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Domains\Notifications\Actions\SendNotification;
+use App\Domains\Notifications\Enums\NotificationPriority;
+use App\Domains\Notifications\Enums\NotificationSourceType;
+use App\Domains\Notifications\Enums\NotificationTriggeredByType;
 use App\Domains\Notifications\Models\Notification;
 use App\Domains\TenantConfig\Models\TenantScheduleProfile;
 use App\Enums\TeamRole;
@@ -124,6 +128,7 @@ class AssignOnCallOnIncidentCreatedTest extends TestCase
             && $c['input']['incident_id'] === $incident->id
             && $c['input']['assignee_user_id'] === $this->operator->id
             && $c['result']['notification_id'] === $notification->id
+            && $c['result']['notification_reused'] === false
             && $c['result']['forced_channel_types'] === ['web']);
 
         $json = json_encode($this->systemLogEntries());
@@ -131,6 +136,68 @@ class AssignOnCallOnIncidentCreatedTest extends TestCase
         $this->assertStringNotContainsString((string) json_encode($this->operator->name), $json);
         $this->assertStringNotContainsString((string) json_encode($incident->title), $json);
         $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_counts_every_shift_that_matches_the_schedule_and_the_first_member_wins(): void
+    {
+        $second = User::factory()->create();
+        $this->team->members()->attach($second, ['role' => TeamRole::Member->value]);
+
+        $this->makeScheduleProfile([
+            'on_call' => [
+                ['user_id' => $this->operator->id],
+                ['user_id' => $second->id],
+                ['user_id' => $second->id, 'start' => '00:00', 'end' => '00:00'],
+            ],
+        ]);
+
+        $incident = $this->makeIncident();
+
+        IncidentCreated::dispatch($incident);
+
+        $this->assertSame(
+            $this->operator->id,
+            (int) IncidentAssignment::query()->where('incident_id', $incident->id)->whereNull('unassigned_at')->sole()->assigned_to_id,
+        );
+
+        $c = $this->assertSystemLogged('incidents.assignment.resolved', fn (array $c) => $c['outcome'] === 'ok');
+        $this->assertSame(3, $c['calc']['shifts_count']);
+        $this->assertSame(2, $c['calc']['shifts_matched_count']);
+        $this->assertSame(0, $c['calc']['matched_shift_index']);
+        $this->assertSame(0, $c['calc']['non_member_skipped_count']);
+        $this->assertSame($this->operator->id, $c['result']['assignee_user_id']);
+    }
+
+    public function test_a_directed_notification_that_already_existed_is_marked_as_reused(): void
+    {
+        $this->makeScheduleProfile([
+            'on_call' => [['user_id' => $this->operator->id]],
+        ]);
+
+        $incident = $this->makeIncident('critical');
+
+        // Ya había un aviso con la misma event_key (reintento): SendNotification
+        // devuelve el existente y no crea otro.
+        $existing = app(SendNotification::class)->execute(
+            teamId: $this->team->id,
+            notificationType: 'incident.assigned.on_call',
+            sourceType: NotificationSourceType::Incident,
+            sourceReferenceId: (string) $incident->id,
+            priority: NotificationPriority::Critical,
+            triggeredByType: NotificationTriggeredByType::System,
+            triggeredById: null,
+            eventKey: 'incident_oncall_assigned:'.$incident->id,
+        );
+
+        IncidentCreated::dispatch($incident);
+
+        $this->assertSame(1, Notification::withoutGlobalScopes()
+            ->where('event_key', "incident_oncall_assigned:{$incident->id}")
+            ->count());
+
+        $this->assertSystemLogged('incidents.on_call.notified', fn (array $c) => $c['outcome'] === 'ok'
+            && $c['result']['notification_id'] === $existing->id
+            && $c['result']['notification_reused'] === true);
     }
 
     public function test_assigns_without_directed_notification_for_non_critical(): void

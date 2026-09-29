@@ -202,6 +202,28 @@ class ApplyExternalResolutionTest extends TestCase
         $this->assertNoSensitiveDataLogged();
     }
 
+    public function test_job_logs_event_missing_when_the_event_does_not_exist(): void
+    {
+        (new ApplyExternalResolutionJob(999999))->handle(app(ApplyExternalResolution::class));
+
+        $this->assertSystemLogged('incidents.external_resolution.matched', fn (array $c) => $c['outcome'] === 'skipped'
+            && $c['reason'] === 'event_missing'
+            && $c['input'] === ['normalized_event_id' => 999999]);
+        $this->assertSystemNotLogged('incidents.external_resolution.applied');
+    }
+
+    public function test_job_logs_not_resolved_for_an_unresolved_event(): void
+    {
+        $event = NormalizedEvent::factory()->create([
+            'team_id' => $this->makeTeam()->id,
+            'payload_normalized_json' => ['is_resolved' => false],
+        ]);
+
+        (new ApplyExternalResolutionJob($event->id))->handle(app(ApplyExternalResolution::class));
+
+        $this->assertSystemLogged('incidents.external_resolution.matched', fn (array $c) => $c['reason'] === 'not_resolved');
+    }
+
     public function test_job_logs_when_no_open_incident_matches(): void
     {
         $team = $this->makeTeam();

@@ -154,6 +154,8 @@ class ApplyReevaluationToIncidentTest extends TestCase
         $this->assertSame('critical', $c['calc']['mapped_priority_code']);
         $this->assertSame($incident->priority->level, $c['calc']['mapped_level']);
         $this->assertFalse($c['calc']['priority_alias_used']);
+        $this->assertSame('critical', $c['calc']['decision_priority_code']);
+        $this->assertArrayNotHasKey('decision_priority_level', $c['calc']);
         $this->assertSame($v1->id, $c['calc']['previous_decision_id']);
         $this->assertTrue($c['calc']['is_root_event']);
         $this->assertTrue($c['result']['related_decision_moved']);

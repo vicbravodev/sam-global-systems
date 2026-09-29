@@ -230,7 +230,7 @@ class ApplyReevaluationToIncident
                     'previous_decision_id' => $currentDecisionId,
                     'previous_priority_code' => $previousPriority?->code,
                     'previous_level' => $previousPriority?->level,
-                    'decision_priority_level' => $decisionPriorityCode,
+                    'decision_priority_code' => $decisionPriorityCode,
                     'mapped_priority_code' => $newPriority?->code,
                     'priority_alias_used' => $newPriority !== null && $newPriority->code !== $decisionPriorityCode,
                     'mapped_level' => $newPriority?->level,

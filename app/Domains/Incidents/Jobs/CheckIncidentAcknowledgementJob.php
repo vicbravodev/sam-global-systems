@@ -92,11 +92,18 @@ class CheckIncidentAcknowledgementJob implements ShouldQueue
 
         // Delivered before the SLA actually expired (clock skew, sync queue in
         // tests): not a breach yet, never escalate early.
-        if ($this->level === 0 && $this->attempt === 1 && $incident->sla_due_at !== null && now()->lt($incident->sla_due_at)) {
+        $now = now();
+
+        if ($this->level === 0 && $this->attempt === 1 && $incident->sla_due_at !== null && $now->lt($incident->sla_due_at)) {
+            // Same instant, at the second precision the log carries, so
+            // seconds_until_due === sla_due_at − now_at exactly.
+            $nowAt = $now->copy()->startOfSecond();
+            $dueAt = $incident->sla_due_at->copy()->startOfSecond();
+
             SystemLog::skipped('incidents.ack_check.skipped', reason: 'not_due_yet', input: $input, calc: [
-                'sla_due_at' => $incident->sla_due_at->toIso8601String(),
-                'now_at' => now()->toIso8601String(),
-                'seconds_until_due' => (int) now()->diffInSeconds($incident->sla_due_at, false),
+                'sla_due_at' => $dueAt->toIso8601String(),
+                'now_at' => $nowAt->toIso8601String(),
+                'seconds_until_due' => (int) $nowAt->diffInSeconds($dueAt, false),
             ]);
 
             return;

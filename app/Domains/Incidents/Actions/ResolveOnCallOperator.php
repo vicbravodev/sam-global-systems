@@ -77,18 +77,19 @@ class ResolveOnCallOperator
         $calc['local_day'] = strtolower($localized->englishDayOfWeek);
         $calc['shifts_count'] = count($shifts);
 
+        // Pure pass (no queries): every shift that matches the schedule,
+        // whether or not its user is still a member.
+        $calc['shifts_matched_count'] = count(array_filter(
+            $shifts,
+            fn ($shift) => $this->isCandidate($shift, $localized),
+        ));
+
         foreach (array_values($shifts) as $index => $shift) {
-            if (! is_array($shift)) {
+            if (! $this->isCandidate($shift, $localized)) {
                 continue;
             }
 
-            $userId = $shift['user_id'] ?? null;
-
-            if (! is_numeric($userId) || ! $this->shiftMatches($shift, $localized)) {
-                continue;
-            }
-
-            $calc['shifts_matched_count']++;
+            $userId = $shift['user_id'];
 
             if ($this->isMember($teamId, (int) $userId)) {
                 $calc['matched_shift_index'] = $index;
@@ -111,6 +112,16 @@ class ResolveOnCallOperator
         }
 
         return ['user_id' => null, 'source' => null, 'reason' => 'no_eligible_member', 'calc' => $calc];
+    }
+
+    /**
+     * A shift with a numeric user that matches the schedule at $at.
+     */
+    private function isCandidate(mixed $shift, Carbon $at): bool
+    {
+        return is_array($shift)
+            && is_numeric($shift['user_id'] ?? null)
+            && $this->shiftMatches($shift, $at);
     }
 
     /**

@@ -36,7 +36,13 @@ class ApplyExternalResolutionJob implements ShouldQueue
 
         $input = ['normalized_event_id' => $this->normalizedEventId];
 
-        if ($event === null || ($event->payload_normalized_json['is_resolved'] ?? null) !== true) {
+        if ($event === null) {
+            SystemLog::skipped('incidents.external_resolution.matched', reason: 'event_missing', input: $input);
+
+            return;
+        }
+
+        if (($event->payload_normalized_json['is_resolved'] ?? null) !== true) {
             SystemLog::skipped('incidents.external_resolution.matched', reason: 'not_resolved', input: $input);
 
             return;

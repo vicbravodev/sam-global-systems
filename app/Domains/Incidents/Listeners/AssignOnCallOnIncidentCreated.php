@@ -98,11 +98,14 @@ class AssignOnCallOnIncidentCreated
                 return;
             }
 
-            $notificationId = $notification->id;
-            DB::afterCommit(fn () => SystemLog::ok('incidents.on_call.notified',
-                input: $notifyInput,
-                result: ['notification_id' => $notificationId, 'forced_channel_types' => [ChannelType::Web->value]],
-            ));
+            // SendNotification dedups by event_key: an existing row comes back
+            // from a query (wasRecentlyCreated false), a new one from create().
+            $notifiedResult = [
+                'notification_id' => $notification->id,
+                'notification_reused' => $notification->wasRecentlyCreated === false,
+                'forced_channel_types' => [ChannelType::Web->value],
+            ];
+            DB::afterCommit(fn () => SystemLog::ok('incidents.on_call.notified', input: $notifyInput, result: $notifiedResult));
 
             return;
         }

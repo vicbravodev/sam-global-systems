@@ -118,7 +118,9 @@ class IncidentSlaEscalationTest extends TestCase
     {
         Queue::fake();
 
-        $this->freezeSecond();
+        // Reloj con fracción de segundo: los términos registrados (ISO, al
+        // segundo) deben rehacer exactamente seconds_until_due.
+        Carbon::setTestNow(Carbon::parse('2026-09-29 10:00:00.700000'));
         $incident = $this->makeOpenIncident(['sla_due_at' => now()->addHour()]);
 
         $this->runWatchdog($incident);
@@ -131,6 +133,10 @@ class IncidentSlaEscalationTest extends TestCase
         $this->assertSame(3600, $c['calc']['seconds_until_due']);
         $this->assertSame($incident->fresh()->sla_due_at->toIso8601String(), $c['calc']['sla_due_at']);
         $this->assertSame(now()->toIso8601String(), $c['calc']['now_at']);
+        $this->assertSame(
+            Carbon::parse($c['calc']['now_at'])->diffInSeconds(Carbon::parse($c['calc']['sla_due_at']), false),
+            (float) $c['calc']['seconds_until_due'],
+        );
     }
 
     public function test_unacknowledged_breach_escalates_notifies_and_rearms(): void
