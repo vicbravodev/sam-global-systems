@@ -7,6 +7,8 @@ use App\Domains\Incidents\Events\IncidentCreated;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentAssignment;
 use App\Domains\Incidents\Models\IncidentPriority;
+use App\Domains\Normalization\Models\EventCategory;
+use App\Domains\Normalization\Models\EventType;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\Notifications\Actions\SendNotification;
 use App\Domains\Notifications\Enums\NotificationPriority;
@@ -397,6 +399,46 @@ class AssignOnCallOnIncidentCreatedTest extends TestCase
         $this->assertSame(0, $c['calc']['matched_shift_index']);
         $this->assertSame(1, $c['calc']['shifts_matched_count']);
         $this->assertSame(0, $c['calc']['malformed_shifts_count']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_malformed_earlier_shift_never_rolls_back_a_panic_incident(): void
+    {
+        // El turno mal formado va ANTES del ganador: el bucle del ganador lo
+        // evaluaba y strtolower() lanzaba un TypeError dentro de la
+        // transacción de creación, revirtiendo el incidente de pánico.
+        $this->makeScheduleProfile([
+            'on_call' => [
+                ['user_id' => $this->operator->id, 'days' => [['mon']]],
+                ['user_id' => $this->operator->id],
+            ],
+        ]);
+
+        $category = EventCategory::factory()->create(['code' => 'emergency']);
+        $eventType = EventType::factory()->create(['code' => 'panic_button', 'category_id' => $category->id]);
+
+        $event = NormalizedEvent::factory()->create([
+            'team_id' => $this->team->id,
+            'event_type_id' => $eventType->id,
+            'event_category_id' => $category->id,
+        ]);
+
+        $incident = app(CreateIncidentFromEvent::class)->execute($event, ['priority_code' => 'critical']);
+
+        $this->assertSame('panic_emergency', $incident->type->code);
+        $this->assertTrue(Incident::withoutGlobalScopes()->whereKey($incident->id)->exists());
+        $this->assertSame(
+            $this->operator->id,
+            (int) IncidentAssignment::query()->where('incident_id', $incident->id)->whereNull('unassigned_at')->sole()->assigned_to_id,
+        );
+
+        $c = $this->assertSystemLogged('incidents.assignment.resolved', fn (array $c) => $c['outcome'] === 'ok'
+            && $c['input']['incident_id'] === $incident->id);
+        $this->assertSame('shift', $c['calc']['source']);
+        $this->assertSame(2, $c['calc']['shifts_count']);
+        $this->assertSame(1, $c['calc']['shifts_matched_count']);
+        $this->assertSame(1, $c['calc']['malformed_shifts_count']);
+        $this->assertSame(1, $c['calc']['matched_shift_index']);
         $this->assertNoSensitiveDataLogged();
     }
 }
