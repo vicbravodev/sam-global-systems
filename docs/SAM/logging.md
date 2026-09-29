@@ -70,7 +70,7 @@ Los tests usan `Tests\Concerns\AssertsSystemLog`: `assertSystemLogged($code, fn 
 | `queue.job.attempt_failed` | degraded | `exception` | `job`, `queue`, `attempt`, `max_tries`, `error` |
 | `queue.job.failed` | failed | `max_attempts_exceeded`, `timeout`, `exception` | `job`, `queue`, `attempt`, `error` |
 
-Las colas calientes (telemática, realtime) bajan `finished` y `released` a `debug`.
+Los jobs de la cola `telematics` (feed cada 5 s) escriben sus líneas de cola en el canal `telematics`: `finished` y `released` a `debug` (el nivel `info` del canal los descarta por defecto), `attempt_failed` y `failed` con su nivel. Mientras corre un job de esa cola, sus `http.client.*` también van al canal `telematics`: las `ok` a `debug`, las `degraded`/`failed` con su nivel.
 
 ### Fallo definitivo de un job: `{dominio}.{job}.failed`
 

@@ -113,6 +113,52 @@ class AutomaticSystemLogTest extends TestCase
         $this->assertStringNotContainsString('XyZsecret123', (string) json_encode($failed));
     }
 
+    public function test_http_inside_a_telematics_job_goes_to_the_telematics_channel_at_debug(): void
+    {
+        Http::fake(['api.samsara.com/*' => Http::response(['data' => []], 200)]);
+
+        $this->runOnTelematicsQueue();
+
+        $entry = collect($this->systemLogEntries('http.client.request.completed'))->firstWhere('context.input.provider', 'samsara');
+        $this->assertNotNull($entry);
+        $this->assertSame('debug', $entry['level']);
+        $this->assertSame('telematics', $entry['channel']);
+
+        $finished = collect($this->systemLogEntries('queue.job.finished'))->firstWhere('context.input.job', AutomaticSystemLogTelematicsHttpJob::class);
+        $this->assertSame('debug', $finished['level']);
+        $this->assertSame('telematics', $finished['channel']);
+
+        // Fuera del job, el flag está limpio: la siguiente llamada vuelve al canal por defecto a info.
+        Http::get('https://api.samsara.com/fleet/vehicles');
+        $after = $this->systemLogEntries('http.client.request.completed');
+        $this->assertSame('info', end($after)['level']);
+        $this->assertNull(end($after)['channel']);
+    }
+
+    public function test_failures_inside_a_telematics_job_keep_their_level_on_the_telematics_channel(): void
+    {
+        Http::fake(['api.samsara.com/*' => Http::response('down', 503)]);
+
+        $this->runOnTelematicsQueue();
+
+        $entry = $this->systemLogEntries('http.client.request.completed')[0];
+        $this->assertSame('warning', $entry['level']);
+        $this->assertSame('telematics', $entry['channel']);
+    }
+
+    /**
+     * La cola `sync` reporta siempre `sync` como nombre de cola: se pasa por
+     * la cola `database` y un worker real para que el job vea `telematics`.
+     */
+    private function runOnTelematicsQueue(): void
+    {
+        config(['queue.default' => 'database']);
+
+        AutomaticSystemLogTelematicsHttpJob::dispatch()->onQueue('telematics');
+
+        $this->artisan('queue:work', ['connection' => 'database', '--queue' => 'telematics', '--once' => true, '--tries' => 1])->assertSuccessful();
+    }
+
     public function test_a_broken_log_sink_never_breaks_http_or_jobs(): void
     {
         SystemLog::listen(fn () => throw new RuntimeException('sink down'));
@@ -162,5 +208,17 @@ class AutomaticSystemLogFailingJob implements ShouldQueue
     public function handle(): void
     {
         throw new RuntimeException('llamada a +525512345678 falló');
+    }
+}
+
+class AutomaticSystemLogTelematicsHttpJob implements ShouldQueue
+{
+    use Dispatchable;
+    use InteractsWithQueue;
+    use Queueable;
+
+    public function handle(): void
+    {
+        Http::get('https://api.samsara.com/fleet/vehicles/stats/feed');
     }
 }

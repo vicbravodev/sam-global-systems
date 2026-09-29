@@ -56,39 +56,51 @@ final class AutomaticSystemLog
      */
     private static array $startedAt = [];
 
+    /**
+     * Dentro de un job de la cola `telematics` (feed cada 5 s): sus llamadas
+     * HTTP van al canal de telemática, las `ok` a debug.
+     */
+    private static bool $inTelematicsJob = false;
+
     public static function register(): void
     {
         self::listen(JobProcessing::class, static function (JobProcessing $event): void {
             self::$startedAt[spl_object_id($event->job)] = hrtime(true);
+            self::$inTelematicsJob = self::isHotQueue($event->job);
         });
 
         self::listen(JobProcessed::class, static function (JobProcessed $event): void {
+            self::$inTelematicsJob = false;
             $input = self::jobInput($event->job);
             $duration = self::jobDuration($event->job);
+            $hot = self::isHotQueue($event->job);
 
             if ($event->job->isReleased()) {
-                SystemLog::skipped('queue.job.released', reason: 'released', input: $input, debug: self::isHotQueue($event->job));
+                SystemLog::skipped('queue.job.released', reason: 'released', input: $input, debug: $hot, channel: self::jobChannel($event->job));
 
                 return;
             }
 
-            SystemLog::ok('queue.job.finished', input: $input, durationMs: $duration, debug: self::isHotQueue($event->job));
+            SystemLog::ok('queue.job.finished', input: $input, durationMs: $duration, debug: $hot, channel: self::jobChannel($event->job));
         });
 
         self::listen(JobExceptionOccurred::class, static function (JobExceptionOccurred $event): void {
+            self::$inTelematicsJob = false;
+
             SystemLog::degraded('queue.job.attempt_failed', reason: 'exception', input: self::jobInput($event->job) + [
                 'max_tries' => $event->job->maxTries(),
-            ], error: $event->exception);
+            ], error: $event->exception, channel: self::jobChannel($event->job));
         });
 
         self::listen(JobFailed::class, static function (JobFailed $event): void {
+            self::$inTelematicsJob = false;
             $reason = match (true) {
                 $event->exception instanceof MaxAttemptsExceededException => 'max_attempts_exceeded',
                 $event->exception instanceof TimeoutExceededException => 'timeout',
                 default => 'exception',
             };
 
-            SystemLog::failed('queue.job.failed', reason: $reason, input: self::jobInput($event->job), error: $event->exception);
+            SystemLog::failed('queue.job.failed', reason: $reason, input: self::jobInput($event->job), error: $event->exception, channel: self::jobChannel($event->job));
             unset(self::$startedAt[spl_object_id($event->job)]);
         });
 
@@ -98,16 +110,16 @@ final class AutomaticSystemLog
             $duration = is_numeric($seconds) ? (int) round(((float) $seconds) * 1000) : null;
 
             if ($event->response->successful() || $event->response->redirect()) {
-                SystemLog::ok('http.client.request.completed', input: $input, durationMs: $duration);
+                SystemLog::ok('http.client.request.completed', input: $input, durationMs: $duration, debug: self::$inTelematicsJob, channel: self::httpChannel());
 
                 return;
             }
 
-            SystemLog::degraded('http.client.request.completed', reason: 'http_error', input: $input, durationMs: $duration);
+            SystemLog::degraded('http.client.request.completed', reason: 'http_error', input: $input, durationMs: $duration, channel: self::httpChannel());
         });
 
         self::listen(ConnectionFailed::class, static function (ConnectionFailed $event): void {
-            SystemLog::failed('http.client.request.failed', reason: 'connection_failed', input: self::httpInput($event->request->url(), $event->request->method()), error: $event->exception);
+            SystemLog::failed('http.client.request.failed', reason: 'connection_failed', input: self::httpInput($event->request->url(), $event->request->method()), error: $event->exception, channel: self::httpChannel());
         });
 
         self::listen(Login::class, static fn (Login $event) => SystemLog::ok('auth.login.succeeded', input: ['user_id' => $event->user->getAuthIdentifier(), 'guard' => $event->guard, 'remember' => $event->remember]));
@@ -168,6 +180,16 @@ final class AutomaticSystemLog
     private static function isHotQueue(Job $job): bool
     {
         return $job->getQueue() === 'telematics';
+    }
+
+    private static function jobChannel(Job $job): ?string
+    {
+        return self::isHotQueue($job) ? 'telematics' : null;
+    }
+
+    private static function httpChannel(): ?string
+    {
+        return self::$inTelematicsJob ? 'telematics' : null;
     }
 
     /**
