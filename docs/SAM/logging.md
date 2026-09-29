@@ -83,7 +83,7 @@ Patrón de `JobFailureReporter::codeFor`: dominio en snake_case (de `App\Domains
 | `http.client.request.completed` | ok / degraded | `http_error` (respuesta 4xx/5xx) | `provider`, `method`, `host`, `path` o `path_hash`, `duration_ms` |
 | `http.client.request.failed` | failed | `connection_failed` | `provider`, `method`, `host`, `path` o `path_hash`, `error` |
 
-El `path` se conserva sólo para los proveedores de la allowlist (`samsara`, `twilio`, `openai`, `anthropic`, `s3`). Para el resto (`slack`, `other`: webhooks de tenant, donde el path ES la credencial) se registra `path_hash` = primeros 12 caracteres del sha256 del path. Además, `RedactSensitiveLogData::sanitize()` conserva el path de las URLs en texto libre sólo para los hosts de la allowlist (misma fuente: `AutomaticSystemLog::isPathAllowedHost`); en cualquier otro host (webhooks de tenant, Slack, Discord, Zapier, Teams) sustituye path y query por `/[redacted]`, también dentro de `error.message`.
+El `path` se conserva sólo para los proveedores de la allowlist (`samsara`, `twilio`, `openai`, `anthropic`, `s3`; `s3` = sólo hosts S3 de `amazonaws.com`, no API Gateway/Lambda/ELB). Para el resto (`slack`, `other`: webhooks de tenant, donde el path ES la credencial) se registra `path_hash` = primeros 12 caracteres del sha256 del path. Además, `RedactSensitiveLogData::sanitize()` conserva el path de las URLs en texto libre sólo para los hosts de la allowlist, sin userinfo (misma fuente: `AutomaticSystemLog::isPathAllowedHost`); en cualquier otro host (webhooks de tenant, Slack, Discord, Zapier, Teams) sustituye path y query por `/[redacted]`, también dentro de `error.message`.
 
 ### HTTP entrante rechazado (`http.request`)
 

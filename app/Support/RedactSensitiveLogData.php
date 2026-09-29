@@ -90,7 +90,7 @@ final class RedactSensitiveLogData implements ProcessorInterface
                 $host = strtolower((string) preg_replace('/:\d+$/', '', $authority));
 
                 if (AutomaticSystemLog::isPathAllowedHost($host)) {
-                    return $match[0];
+                    return $match[1].$authority.($match[3] ?? '');
                 }
 
                 return $match[1].$authority.(($match[3] ?? '') === '' ? '' : '/'.self::MASK);

@@ -192,12 +192,28 @@ final class AutomaticSystemLog
             && in_array(self::providerForHost($host), self::PATH_ALLOWED_PROVIDERS, true);
     }
 
+    /**
+     * Sólo S3 (`s3.amazonaws.com`, `s3.<region>…`, `s3-<region>…`, `<bucket>.s3…`):
+     * API Gateway, Lambda URLs o ELB también viven en amazonaws.com y pueden
+     * llevar el secreto en el path.
+     */
+    private static function isS3Host(string $host): bool
+    {
+        foreach (explode('.', $host) as $label) {
+            if ($label === 's3' || str_starts_with($label, 's3-')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static function providerForHost(string $host): string
     {
         $host = strtolower($host);
 
         foreach (self::PROVIDERS as $suffix => $name) {
-            if ($host === $suffix || str_ends_with($host, '.'.$suffix)) {
+            if (($host === $suffix || str_ends_with($host, '.'.$suffix)) && ($name !== 's3' || self::isS3Host($host))) {
                 return $name;
             }
         }

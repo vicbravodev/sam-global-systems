@@ -52,6 +52,11 @@ class RedactSensitiveLogDataTest extends TestCase
             'custom tenant webhook' => ['https://example.org/hooks/tenant-7/s3cr3t', 'https://example.org/[redacted]'],
             'custom webhook with port' => ['http://10.0.0.5:8080/hook/abc', 'http://10.0.0.5:8080/[redacted]'],
             'curl sentence' => ['cURL error 28: timed out for https://example.org/hooks/t/s3cr3t', 'cURL error 28: timed out for https://example.org/[redacted]'],
+            'aws execute-api is not s3' => ['to https://abc.execute-api.us-east-1.amazonaws.com/prod/hook/SECRET failed', 'to https://abc.execute-api.us-east-1.amazonaws.com/[redacted] failed'],
+            'aws lambda url is not s3' => ['to https://x.lambda-url.us-east-1.on.aws.amazonaws.com/SECRET failed', 'to https://x.lambda-url.us-east-1.on.aws.amazonaws.com/[redacted] failed'],
+            'lookalike suffix' => ['to https://evilsamsara.com/x/secret failed', 'to https://evilsamsara.com/[redacted] failed'],
+            'suffix as subdomain of attacker' => ['to https://samsara.com.attacker.io/x/secret failed', 'to https://samsara.com.attacker.io/[redacted] failed'],
+            'allowlisted host as userinfo' => ['to https://api.samsara.com@evil.com/sec/ret failed', 'to https://evil.com/[redacted] failed'],
             'outlook webhook' => ['to https://outlook.office.com/webhook/uuid@uuid/IncomingWebhook/SECRET/uuid failed', 'to https://outlook.office.com/[redacted] failed'],
         ];
     }
@@ -66,6 +71,10 @@ class RedactSensitiveLogDataTest extends TestCase
     {
         $this->assertSame('GET https://api.samsara.com/fleet/vehicles failed', RedactSensitiveLogData::sanitize('GET https://api.samsara.com/fleet/vehicles failed'));
         $this->assertSame('GET https://api.samsara.com/fleet/vehicles/stats?[redacted] failed', RedactSensitiveLogData::sanitize('GET https://api.samsara.com/fleet/vehicles/stats?after=x failed'));
+        $this->assertSame('GET https://x.s3.amazonaws.com/a/b.jpg failed', RedactSensitiveLogData::sanitize('GET https://x.s3.amazonaws.com/a/b.jpg failed'));
+        $this->assertSame('GET https://s3.us-east-1.amazonaws.com/b/k failed', RedactSensitiveLogData::sanitize('GET https://s3.us-east-1.amazonaws.com/b/k failed'));
+        $this->assertSame('GET https://s3-us-west-2.amazonaws.com/b/k failed', RedactSensitiveLogData::sanitize('GET https://s3-us-west-2.amazonaws.com/b/k failed'));
+        $this->assertSame('GET https://api.samsara.com/fleet failed', RedactSensitiveLogData::sanitize('GET https://user:pw@api.samsara.com/fleet failed'));
         $this->assertSame('GET https://example.org failed', RedactSensitiveLogData::sanitize('GET https://example.org failed'));
     }
 

@@ -127,6 +127,23 @@ class AutomaticSystemLogTest extends TestCase
         $this->assertStringNotContainsString('s3cr3tSegment', (string) json_encode($failed));
     }
 
+    public function test_only_s3_hosts_of_amazonaws_keep_their_path(): void
+    {
+        Http::fake(['*' => Http::response('ok', 200)]);
+
+        Http::post('https://abc.execute-api.us-east-1.amazonaws.com/prod/hook/SECRET', ['a' => 1]);
+        Http::get('https://x.s3.amazonaws.com/a/b.jpg');
+
+        $api = $this->assertSystemLogged('http.client.request.completed', fn (array $c) => str_contains($c['input']['host'], 'execute-api'));
+        $this->assertSame('other', $api['input']['provider']);
+        $this->assertArrayNotHasKey('path', $api['input']);
+        $this->assertArrayHasKey('path_hash', $api['input']);
+
+        $s3 = $this->assertSystemLogged('http.client.request.completed', fn (array $c) => $c['input']['host'] === 'x.s3.amazonaws.com');
+        $this->assertSame('s3', $s3['input']['provider']);
+        $this->assertSame('/a/b.jpg', $s3['input']['path']);
+    }
+
     public function test_http_inside_a_telematics_job_goes_to_the_telematics_channel_at_debug(): void
     {
         Http::fake(['api.samsara.com/*' => Http::response(['data' => []], 200)]);
