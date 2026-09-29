@@ -131,7 +131,7 @@ Lo emite `App\Support\DeniedRequestLog` (outcome `degraded`); sólo la plantilla
 | `webhook.signature.verified` | ok | | `input.scheme` (`timestamped`/`plain`), `calc.secret_variant` (`base64_decoded`/`raw`), `key_variants_tried`, `skew_seconds`, `tolerance_seconds` |
 | `webhook.signature.rejected` | degraded | `empty_signature`, `invalid_timestamp`, `stale_timestamp`, `hmac_mismatch` | `input.scheme`; en `stale_timestamp`, calc `skew_seconds`, `tolerance_seconds`, `reference` (`received_at`/`now`), `timestamp_unit`; en `hmac_mismatch`, calc `key_variants_tried`. Nunca firma, secreto ni cuerpo |
 | `webhook.event.discarded` | skipped | `tenant_deleted` | `webhook_event_id` |
-| `webhook.event.rejected` | skipped | `invalid_signature` | `webhook_event_id`, `signature_mode` (`raw_header`/`legacy_body`), `event_type` |
+| `webhook.event.rejected` | skipped | `invalid_signature` | `webhook_event_id`, `signature_mode` (`raw_header`/`legacy_body`), `event_type` (sólo si cumple `/^[A-Za-z0-9_.]{1,64}$/`; si no, `null`: viene de una petición sin autenticar), `event_type_valid` |
 | `webhook.event.ingested` | ok | | `webhook_event_id`, `event_type`, `signature_mode`, `provider_code`; `result.provider_code_fallback` |
 
 ### Samsara (`samsara`)

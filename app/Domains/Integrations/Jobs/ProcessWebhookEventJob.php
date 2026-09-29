@@ -71,10 +71,14 @@ class ProcessWebhookEventJob implements ShouldQueue
 
         if (! $isValid) {
             $this->webhookEvent->markAsInvalidSignature();
+            // event_type viene de la petición sin autenticar: sólo se registra si parece un código.
+            $eventTypeValid = preg_match('/^[A-Za-z0-9_.]{1,64}$/D', (string) $this->webhookEvent->event_type) === 1;
+
             SystemLog::skipped('webhook.event.rejected', reason: 'invalid_signature', input: [
                 'webhook_event_id' => $this->webhookEvent->id,
                 'signature_mode' => $signatureMode,
-                'event_type' => $this->webhookEvent->event_type,
+                'event_type' => $eventTypeValid ? $this->webhookEvent->event_type : null,
+                'event_type_valid' => $eventTypeValid,
             ]);
 
             return;

@@ -300,10 +300,40 @@ class WebhookProcessingTest extends TestCase
         $this->assertSystemLogged('webhook.event.rejected', fn (array $c) => $c['reason'] === 'invalid_signature'
             && $c['input']['webhook_event_id'] === $webhookEvent->id
             && $c['input']['signature_mode'] === 'legacy_body'
-            && $c['input']['event_type'] === 'alert.triggered');
+            && $c['input']['event_type'] === 'alert.triggered'
+            && $c['input']['event_type_valid'] === true);
         $this->assertSystemLogged('webhook.signature.rejected', fn (array $c) => $c['reason'] === 'hmac_mismatch');
         $this->assertSystemNotLogged('webhook.event.ingested');
         $this->assertStringNotContainsString('bad-hash', json_encode($this->systemLogEntries()));
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_it_does_not_log_attacker_controlled_event_type_on_rejection(): void
+    {
+        [, , , , $endpoint] = $this->createEndpointWithIntegration();
+
+        foreach (["x\ninjected", str_repeat('a', 200)] as $eventType) {
+            $webhookEvent = WebhookEvent::withoutGlobalScopes()->create([
+                'team_id' => $endpoint->tenantIntegration->team_id,
+                'provider_id' => $endpoint->tenantIntegration->provider_id,
+                'event_type' => $eventType,
+                'payload_json' => ['signature' => 'bad-hash'],
+                'received_at' => now(),
+                'status' => WebhookEventStatus::Received,
+            ]);
+
+            (new ProcessWebhookEventJob($webhookEvent, $endpoint))->handle(app(ValidateWebhookSignature::class), app(RawEventIngestion::class));
+        }
+
+        $entries = $this->systemLogEntries('webhook.event.rejected');
+        $this->assertCount(2, $entries);
+
+        foreach ($entries as $entry) {
+            $this->assertNull($entry['context']['input']['event_type'] ?? null);
+            $this->assertFalse($entry['context']['input']['event_type_valid']);
+        }
+
+        $this->assertStringNotContainsString('injected', json_encode($this->systemLogEntries()));
         $this->assertNoSensitiveDataLogged();
     }
 
