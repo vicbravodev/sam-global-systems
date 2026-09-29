@@ -117,6 +117,11 @@ class EvaluateEventMultimodally
 
         $retryableFailure = null;
         $reusedCount = 0;
+        /** @var array<string, int> $skippedByReason cada media saltada cuenta una sola vez */
+        $skippedByReason = [];
+        $countSkip = function (string $reason) use (&$skippedByReason): void {
+            $skippedByReason[$reason] = ($skippedByReason[$reason] ?? 0) + 1;
+        };
         $remainingSlots = $this->remainingImageSlots($evaluation);
         $slotsAtStart = $remainingSlots;
         $profile = $this->resolveTenantProfile->execute((int) $evaluation->team_id);
@@ -164,6 +169,7 @@ class EvaluateEventMultimodally
 
             if (! $lock->get()) {
                 SystemLog::skipped('ai.media.assessment_skipped', reason: 'in_progress', input: ['evaluation_id' => $evaluation->id, 'event_media_context_id' => $media->id]);
+                $countSkip('in_progress');
 
                 continue;
             }
@@ -183,6 +189,7 @@ class EvaluateEventMultimodally
 
                 if ($remainingSlots <= 0) {
                     SystemLog::skipped('ai.media.assessment_skipped', reason: 'image_cap_reached', input: ['evaluation_id' => $evaluation->id, 'event_media_context_id' => $media->id], calc: ['max_images_per_event' => $this->maxImagesPerEvent()]);
+                    $countSkip('image_cap_reached');
 
                     continue;
                 }
@@ -190,6 +197,7 @@ class EvaluateEventMultimodally
                 // Misma cuota que el texto: un evento crítico siempre pasa.
                 if ($event !== null && $this->quota->blocks($event, $profile, purpose: 'vision')) {
                     SystemLog::skipped('ai.media.assessment_skipped', reason: 'quota_exceeded', input: ['evaluation_id' => $evaluation->id, 'event_media_context_id' => $media->id]);
+                    $countSkip('quota_exceeded');
 
                     continue;
                 }
@@ -201,6 +209,7 @@ class EvaluateEventMultimodally
                     $output = $this->agent->assess($input);
                 } catch (MediaFileMissingException $exception) {
                     SystemLog::skipped('ai.media.assessment_skipped', reason: 'file_missing', input: ['evaluation_id' => $evaluation->id, 'event_media_context_id' => $media->id], result: ['error_class' => $exception::class]);
+                    $countSkip('file_missing');
 
                     continue;
                 } catch (MediaFileRejectedException $exception) {
@@ -216,6 +225,7 @@ class EvaluateEventMultimodally
                         SystemLog::degraded('ai.media.assessment_retry', reason: 'transient_failure', input: ['evaluation_id' => $evaluation->id, 'event_media_context_id' => $media->id], error: $exception);
 
                         $retryableFailure ??= $exception;
+                        $countSkip('transient_failure');
 
                         continue;
                     }
@@ -311,23 +321,29 @@ class EvaluateEventMultimodally
             $this->refreshInferenceMediaCount($evaluation);
         }
 
-        SystemLog::ok(
-            'ai.media.batch_completed',
-            input: ['evaluation_id' => $evaluation->id],
-            calc: [
-                'received_count' => $receivedCount,
-                'image_count' => $mediaContexts->count(),
-                'remaining_slots_at_start' => $slotsAtStart,
-                'max_images_per_event' => $this->maxImagesPerEvent(),
-            ],
-            result: [
-                'reused_count' => $reusedCount,
-                'created_count' => $createdAssessments->count(),
-                'retry_pending' => $retryableFailure !== null,
-                'mode_before' => $modeBefore,
-                'mode_after' => $evaluation->evaluation_mode?->value,
-            ],
-        );
+        // Conciliable: image_count = reused_count + created_count + skipped_count.
+        $batchInput = ['evaluation_id' => $evaluation->id];
+        $batchCalc = [
+            'received_count' => $receivedCount,
+            'image_count' => $mediaContexts->count(),
+            'remaining_slots_at_start' => $slotsAtStart,
+            'max_images_per_event' => $this->maxImagesPerEvent(),
+        ];
+        $batchResult = [
+            'reused_count' => $reusedCount,
+            'created_count' => $createdAssessments->count(),
+            'skipped_count' => array_sum($skippedByReason),
+            'skipped_by_reason' => $skippedByReason,
+            'retry_pending' => $retryableFailure !== null,
+            'mode_before' => $modeBefore,
+            'mode_after' => $evaluation->evaluation_mode?->value,
+        ];
+
+        if ($retryableFailure !== null) {
+            SystemLog::degraded('ai.media.batch_completed', reason: 'retry_pending', input: $batchInput, calc: $batchCalc, result: $batchResult);
+        } else {
+            SystemLog::ok('ai.media.batch_completed', input: $batchInput, calc: $batchCalc, result: $batchResult);
+        }
 
         if ($createdAssessments->isNotEmpty()) {
             MediaAssessmentCompleted::dispatch($evaluation, $createdAssessments);

@@ -7,6 +7,8 @@ use App\Contracts\AI\Exceptions\MediaFileRejectedException;
 use App\Contracts\AI\MediaAssessmentAgent;
 use App\Contracts\NullImplementations\NullMediaAssessmentAgent;
 use App\Domains\AI\Actions\EvaluateEventMultimodally;
+use App\Domains\AI\Data\MediaAssessmentInput;
+use App\Domains\AI\Data\MediaAssessmentOutput;
 use App\Domains\AI\Enums\EvaluationMode;
 use App\Domains\AI\Enums\MediaAssessmentResult;
 use App\Domains\AI\Events\MediaAssessmentCompleted;
@@ -109,6 +111,80 @@ class VisionRetryAndValidationTest extends TestCase
         $batch = $this->assertSystemLogged('ai.media.batch_completed');
         $this->assertTrue($batch['result']['retry_pending']);
         $this->assertSame(0, $batch['result']['created_count']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_batch_with_pending_retry_is_logged_as_degraded(): void
+    {
+        [$evaluation, $media] = $this->makeEvaluationWithMedia(1);
+        $this->agent->failWith = new RuntimeException(
+            'Laravel AI SDK media invocation failed',
+            previous: RateLimitedException::forProvider('openai'),
+        );
+
+        try {
+            app(EvaluateEventMultimodally::class)->execute($evaluation, $media, finalAttempt: false);
+            $this->fail('Expected the transient error to be rethrown');
+        } catch (RuntimeException) {
+        }
+
+        $entry = $this->systemLogEntries('ai.media.batch_completed')[0] ?? null;
+        $this->assertNotNull($entry);
+        $this->assertSame('warning', $entry['level']);
+        $this->assertSame('degraded', $entry['context']['outcome']);
+        $this->assertSame('retry_pending', $entry['context']['reason']);
+        $this->assertTrue($entry['context']['result']['retry_pending']);
+        $this->assertSame(1, $entry['context']['result']['skipped_count']);
+        $this->assertSame(['transient_failure' => 1], $entry['context']['result']['skipped_by_reason']);
+        $this->assertSame(
+            $entry['context']['calc']['image_count'],
+            $entry['context']['result']['reused_count'] + $entry['context']['result']['created_count'] + $entry['context']['result']['skipped_count'],
+        );
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_batch_completed_reconciles_reused_created_and_skipped(): void
+    {
+        [$evaluation, $media] = $this->makeEvaluationWithMedia(3);
+        [$reusedMedia, $createdMedia, $missingMedia] = $media->all();
+
+        AIMediaAssessment::factory()->create([
+            'evaluation_id' => $evaluation->id,
+            'event_media_context_id' => $reusedMedia->id,
+        ]);
+
+        $missingId = $missingMedia->id;
+        $agent = new class($missingId) extends NullMediaAssessmentAgent
+        {
+            public function __construct(private readonly int $missingId) {}
+
+            public function assess(MediaAssessmentInput $input): MediaAssessmentOutput
+            {
+                if ($input->mediaContextId === $this->missingId) {
+                    throw MediaFileMissingException::forPath('x.jpg');
+                }
+
+                return parent::assess($input);
+            }
+        };
+        $this->app->instance(MediaAssessmentAgent::class, $agent);
+
+        app(EvaluateEventMultimodally::class)->execute($evaluation, $media);
+
+        $this->assertSame(2, AIMediaAssessment::query()->count());
+
+        $batch = $this->assertSystemLogged('ai.media.batch_completed');
+        $this->assertSame('ok', $batch['outcome']);
+        $this->assertSame(3, $batch['calc']['image_count']);
+        $this->assertSame(1, $batch['result']['reused_count']);
+        $this->assertSame(1, $batch['result']['created_count']);
+        $this->assertSame(1, $batch['result']['skipped_count']);
+        $this->assertSame(['file_missing' => 1], $batch['result']['skipped_by_reason']);
+        $this->assertSame(
+            $batch['calc']['image_count'],
+            $batch['result']['reused_count'] + $batch['result']['created_count'] + $batch['result']['skipped_count'],
+        );
+        $this->assertSame($batch['result']['skipped_count'], array_sum($batch['result']['skipped_by_reason']));
         $this->assertNoSensitiveDataLogged();
     }
 
