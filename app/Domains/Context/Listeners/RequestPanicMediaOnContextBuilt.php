@@ -50,7 +50,7 @@ class RequestPanicMediaOnContextBuilt
             SystemLog::skipped('context.media.auto_request_skipped', reason: 'not_critical', input: [
                 'normalized_event_id' => $normalizedEvent->id,
                 'severity_code' => $normalizedEvent->eventSeverity?->code,
-            ]);
+            ], debug: true);
 
             return;
         }

@@ -55,6 +55,8 @@ jq 'select(.message == "telematics.cycle.completed")' storage/logs/telematics-*.
 
 **Red de seguridad:** `App\Support\RedactSensitiveLogData` corre como tap en cada canal y enmascara teléfonos, emails, tokens, claves sensibles y el path de las URLs de hosts fuera de la allowlist. Es la red, no el permiso: el código no debe depender de ella.
 
+**Líneas en debug (volumen):** siguen existiendo, en nivel `debug`: `context.live_location.skipped` y `context.media.auto_request_skipped` con reason `not_critical`; `ingestion.media.inline_collected` con `urls_found = 0`; `normalization.asset.resolved` / `normalization.driver.resolved` ok sin id en el payload (path `null`); `ingestion.raw_event.processed`.
+
 ## Cómo se prueba
 
 Los tests usan `Tests\Concerns\AssertsSystemLog`: `assertSystemLogged($code, fn ($entry) => ...)`, `assertSystemNotLogged($code)` y `assertNoSensitiveDataLogged()`. Cada código nuevo lleva su entrada en este catálogo (el test arquitectural lo exige para los literales) y un test que lo afirme.
@@ -172,13 +174,15 @@ Lo emite `App\Support\DeniedRequestLog` (outcome `degraded`); sólo la plantilla
 | `context.live_location.skipped` | skipped | `no_asset`, `not_critical`, `payload_has_gps`, `latest_location_fresh` | `normalized_event_id`; en `not_critical`, `severity_code`; en `latest_location_fresh`, calc `latest_age_seconds`, `staleness_threshold_seconds`. Nunca coordenadas |
 | `context.live_location.failed` | degraded | `no_active_integration`, `provider_returned_nothing` | `normalized_event_id`, `asset_id`; calc `references`, `integrations_tried`, `latest_age_seconds`, `staleness_threshold_seconds`; result `position_stale=true` |
 | `context.live_location.fetched` | ok | | `normalized_event_id`, `asset_id`; calc `latest_age_seconds`, `staleness_threshold_seconds`, `fix_age_seconds` (`null` si el proveedor no dio hora), `fix_time_source` (`provider`/`assumed_now`); result `position_stale=false`, `snapshot_updated` (`false` si ese fix ya estaba guardado) |
-| `context.snapshot.built` | ok | | `normalized_event_id`; calc `location_source` (`event_payload`/`live_fetch`/`asset_latest_location`/`unknown`), `location_age_seconds`, `position_stale`, `geofence_matches`, `related_incidents`, `recent_events`, `recent_same_type`, `recent_high_severity`, `correlation_minutes`, `schedule_persisted`, `within_operating_hours`, `has_driver`; result `snapshot_id`, `context_version`, `signals` (sólo nombres de señal activas) |
+| `context.snapshot.built` | ok | | `normalized_event_id`; calc `location_source` (`event_payload`/`live_fetch`/`asset_latest_location`/`unknown`), `location_age_seconds`, `position_stale`, `geofence_matches`, `related_incidents`, `recent_events`, `recent_same_type`, `recent_high_severity`, `correlation_minutes`, `schedule_persisted`, `within_operating_hours`, `has_driver`; result `snapshot_id`, `context_version`, `signals` (sólo nombres de señal activas), `risk_level` (del perfil operativo). Se emite después de que la transacción del snapshot confirma: un snapshot revertido nunca se reporta. `location_age_seconds` es siempre `null` con `location_source = event_payload` (el payload no trae hora del fix) |
 | `context.enrich.skipped` | skipped | `normalized_event_missing` | `normalized_event_id` |
 | `context.media.auto_request_skipped` | skipped | `normalized_event_missing`, `not_critical`, `setting_disabled` | `snapshot_id` o `normalized_event_id`; `severity_code`; `setting_key` |
 | `context.media.request_reused` | skipped | `request_in_flight` | `normalized_event_id`, `request_type`, `sweep_only`; result `event_media_request_id`, `status` |
 | `context.media.requested` | ok | | `normalized_event_id`, `request_type`, `sweep_only`; calc `expires_in_hours`; result `event_media_request_id` |
 | `context.usage.not_metered` | degraded | `meter_missing` | `meter_code`, `event_media_request_id`; hueco de facturación |
 | `context.usage.recorded` | ok | | `meter_code`, `event_media_request_id` |
+
+Las líneas del listener síncrono `RequestPanicMediaOnContextBuilt` (`context.media.requested`, `context.media.request_reused`, `context.usage.*`, `context.media.auto_request_skipped`), cuando las dispara ese listener, se emiten dentro de la transacción del snapshot, antes de `context.snapshot.built`: si esa transacción se revierte, describen algo que no quedó persistido.
 
 ### Samsara (`samsara`)
 
@@ -197,12 +201,12 @@ Lo emite `App\Support\DeniedRequestLog` (outcome `degraded`); sólo la plantilla
 | `media.frames.ffmpeg_unavailable` | degraded | `ffmpeg_missing` | `media_context_id`, `ffmpeg_binary` |
 | `media.frames.offset_missing` | skipped | `no_frame_at_offset` | `offset_seconds`, `exit_code`, `stderr_excerpt` (saneado) |
 | `media.deferred.skipped` | skipped | `request_missing`, `not_in_flight` | `event_media_request_id`, `status` |
-| `media.deferred.closed` | skipped / ok | skipped: `normalized_event_missing`, `retrieval_window_expired`, `no_active_integration`, `older_than_footage_retention`, `fulfilled_by_sweep`, `no_camera_fulfilled_by_sweep`, `provider_rejected_retrieval`, `provider_rejected_all_stills`, `all_clips_failed`, `all_stills_failed` (ok: sin reason, cierra con evidencia subida en `close_reason`) | `event_media_request_id`, `normalized_event_id`, `calc.event_age_hours`/`max_age_hours` (retención), `result.status`, `result.completed_via`, `result.close_reason` |
-| `media.deferred.sweep_completed` | ok | - | `event_media_request_id`, `normalized_event_id`, `calc.window_seconds`, `items_found`, `available`, `result.downloaded` |
+| `media.deferred.closed` | skipped / ok | skipped: `normalized_event_missing`, `retrieval_window_expired`, `no_active_integration`, `older_than_footage_retention`, `provider_rejected_retrieval`, `provider_rejected_all_stills`, `all_clips_failed`, `all_stills_failed`. ok: sin reason; cierra con evidencia subida y el motivo va en `result.close_reason` (cualquiera de los anteriores, y `fulfilled_by_sweep` / `no_camera_fulfilled_by_sweep`, que sólo se alcanzan por esta vía) | `event_media_request_id`, `normalized_event_id`, `calc.event_age_hours`/`max_age_hours` (retención), `result.status`, `result.completed_via`, `result.close_reason` |
+| `media.deferred.sweep_completed` | ok | - | `event_media_request_id`, `normalized_event_id`, `calc.window_seconds`, `items_found`, `available`, `result.downloaded` (bajados en este barrido), `result.already_stored` (ya estaban en storage de un barrido anterior) |
 | `media.deferred.retrieval_placed` | ok | - | `event_media_request_id`, `normalized_event_id`, `calc.media_type`, `inputs`, `next_poll_seconds` |
 | `media.deferred.stills_placed` | ok | - | `event_media_request_id`, `normalized_event_id`, `calc.stills_requested`, `stills_rejected`, `next_poll_seconds` |
 | `media.deferred.polling` | ok | - | `event_media_request_id`, `normalized_event_id`, `calc.pending`, `available`, `failed_downloads`, `items`, `next_poll_seconds`, `result.requeue_reason` (`pending_at_provider`/`provider_unreachable`/`download_failed`) |
-| `media.deferred.completed` | ok | - | `event_media_request_id`, `normalized_event_id`, `result.available`, `result.downloaded` (de este sondeo), `result.stills_downloaded_total` (acumulado, solo stills) |
+| `media.deferred.completed` | ok | - | `event_media_request_id`, `normalized_event_id`, `result.available`, `result.downloaded` (de este sondeo), `result.already_stored` (disponibles que ya estaban guardados de un sondeo anterior), `result.stills_downloaded_total` (acumulado, solo stills) |
 | `media.deferred.sweep_polling` | ok | - | `event_media_request_id`, `normalized_event_id`, `calc.next_poll_seconds` |
 | `media.deferred.download_failed` | degraded | `download_failed` | `normalized_event_id`, `camera_input`, `error` |
 

@@ -226,7 +226,76 @@ class FetchDeferredEventMediaJobTest extends TestCase
             && $c['calc']['available'] === 0
             && $c['calc']['window_seconds'] === FetchDeferredEventMediaJob::DEFAULT_STILL_WINDOW_MINUTES * 60
             && $c['result']['downloaded'] === 0);
-        $this->assertSystemNotLogged('media.deferred.closed_without_media');
+        // Completed with retrieved media: never closed without new media.
+        $this->assertSystemNotLogged('media.deferred.closed');
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_clips_and_uploads_stored_on_an_earlier_poll_are_counted_as_already_stored(): void
+    {
+        $this->makeSamsaraIntegration();
+
+        $occurredAt = Carbon::parse('2026-06-11 12:00:00', 'UTC');
+        Carbon::setTestNow($occurredAt->copy()->addMinutes(5));
+
+        $event = NormalizedEvent::factory()->create([
+            'team_id' => $this->teamId,
+            'asset_id' => $this->asset->id,
+            'occurred_at' => $occurredAt,
+        ]);
+
+        $clip = fn (string $input, string $name) => [
+            'input' => $input,
+            'status' => 'available',
+            'urlInfo' => ['url' => "https://media.samsara.com/ret-1/{$name}.mp4"],
+        ];
+
+        Http::fake([
+            // The same uploaded clip is listed on every sweep.
+            'api.samsara.com/cameras/media?*' => Http::response(['data' => ['media' => [[
+                'input' => 'dashcamForwardFacing',
+                'mediaType' => 'videoHighRes',
+                'triggerReason' => 'panicButton',
+                'startTime' => '2026-06-11T11:59:50Z',
+                'urlInfo' => ['url' => 'https://media.samsara.com/uploads/panic.mp4'],
+            ]]]]),
+            'api.samsara.com/cameras/media/retrieval*' => Http::sequence()
+                // Poll 1: road clip ready, cab clip still pending.
+                ->push(['data' => ['media' => [
+                    $clip('dashcamRoadFacing', 'road'),
+                    ['input' => 'dashcamDriverFacing', 'status' => 'pending'],
+                ]]])
+                // Poll 2: road clip listed again (already stored), cab clip lands.
+                ->push(['data' => ['media' => [
+                    $clip('dashcamRoadFacing', 'road'),
+                    $clip('dashcamDriverFacing', 'cab'),
+                ]]]),
+            'media.samsara.com/*' => Http::response('clip-bytes', 200, ['Content-Type' => 'video/mp4']),
+        ]);
+        Queue::fake();
+
+        $request = $this->makeRequest($event, [
+            'status' => MediaRequestStatus::Sent,
+            'response_metadata_json' => ['retrieval_id' => 'ret-1'],
+        ]);
+
+        $this->runJob($request);
+        $this->assertSystemNotLogged('media.deferred.completed');
+
+        $this->runJob($request);
+        $this->assertSame(MediaRequestStatus::Completed, $request->fresh()->status);
+
+        $result = $this->assertSystemLogged('media.deferred.completed')['result'];
+        $this->assertSame(2, $result['available']);
+        $this->assertSame(1, $result['downloaded']);
+        $this->assertSame(1, $result['already_stored']);
+
+        $sweeps = $this->systemLogEntries('media.deferred.sweep_completed');
+        $this->assertCount(2, $sweeps);
+        $this->assertSame(1, $sweeps[0]['context']['result']['downloaded']);
+        $this->assertSame(0, $sweeps[0]['context']['result']['already_stored']);
+        $this->assertSame(0, $sweeps[1]['context']['result']['downloaded']);
+        $this->assertSame(1, $sweeps[1]['context']['result']['already_stored']);
         $this->assertNoSensitiveDataLogged();
     }
 
@@ -431,6 +500,7 @@ class FetchDeferredEventMediaJobTest extends TestCase
         $result = $this->assertSystemLogged('media.deferred.completed')['result'];
         $this->assertSame(2, $result['available']);
         $this->assertSame(1, $result['downloaded']);
+        $this->assertSame(1, $result['already_stored']);
         $this->assertSame(2, $result['stills_downloaded_total']);
         $this->assertNoSensitiveDataLogged();
     }

@@ -150,7 +150,7 @@ class IngestSafetyEvent
             ])) ? $downloaded++ : $failed++;
         }
 
-        SystemLog::ok('ingestion.media.inline_collected', input: ['raw_event_id' => $rawEvent->id], calc: ['urls_found' => $found, 'downloaded' => $downloaded, 'failed' => $failed]);
+        SystemLog::ok('ingestion.media.inline_collected', input: ['raw_event_id' => $rawEvent->id], calc: ['urls_found' => $found, 'downloaded' => $downloaded, 'failed' => $failed], debug: $found === 0);
     }
 
     /**

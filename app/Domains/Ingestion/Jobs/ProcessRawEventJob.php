@@ -53,7 +53,7 @@ class ProcessRawEventJob implements ShouldQueue
 
             $rawEvent->markAsProcessed();
 
-            SystemLog::ok('ingestion.raw_event.processed', input: ['raw_event_id' => $rawEvent->id]);
+            SystemLog::ok('ingestion.raw_event.processed', input: ['raw_event_id' => $rawEvent->id], debug: true);
 
             RawEventProcessed::dispatch($rawEvent);
         });

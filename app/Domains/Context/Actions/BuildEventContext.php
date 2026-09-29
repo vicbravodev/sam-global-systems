@@ -48,7 +48,11 @@ class BuildEventContext
             $normalizedEvent->asset?->unsetRelation('latestLocation');
         }
 
-        return DB::transaction(function () use ($normalizedEvent, $liveFetch) {
+        // Filled inside the transaction, logged only once it has committed: a
+        // rolled-back snapshot must never be reported as built.
+        $built = null;
+
+        $snapshot = DB::transaction(function () use ($normalizedEvent, $liveFetch, &$built) {
             $location = $this->extractLocation($normalizedEvent, $liveFetch['location']);
             $lat = $location['latitude'] ?? null;
             $lng = $location['longitude'] ?? null;
@@ -161,9 +165,7 @@ class BuildEventContext
                 ? (int) Carbon::parse($location['recorded_at'])->diffInSeconds(now(), false)
                 : null;
 
-            SystemLog::ok('context.snapshot.built', input: [
-                'normalized_event_id' => $normalizedEvent->id,
-            ], calc: [
+            $built = ['calc' => [
                 'location_source' => $location['source'],
                 'location_age_seconds' => $locationAge,
                 'position_stale' => $liveFetch['position_stale'],
@@ -176,18 +178,28 @@ class BuildEventContext
                 'schedule_persisted' => $schedule->isPersisted,
                 'within_operating_hours' => $schedule->withinOperatingHours,
                 'has_driver' => $driverSnapshot !== null,
-            ], result: [
+            ], 'result' => [
                 'snapshot_id' => $snapshot->id,
                 'context_version' => $nextVersion,
                 'signals' => array_keys(array_filter($signals, static fn ($value) => (bool) $value)),
-            ]);
+            ]];
 
             $profile = $this->buildOperationalContextProfile->execute($snapshot->fresh());
 
+            $built['result']['risk_level'] = $profile->risk_level?->value;
+
+            // Sync listeners (RequestPanicMediaOnContextBuilt) log inside this
+            // transaction, before `context.snapshot.built`.
             EventContextBuilt::dispatch($snapshot->fresh(), $profile);
 
             return $snapshot->fresh();
         });
+
+        SystemLog::ok('context.snapshot.built', input: [
+            'normalized_event_id' => $normalizedEvent->id,
+        ], calc: $built['calc'], result: $built['result']);
+
+        return $snapshot;
     }
 
     /**

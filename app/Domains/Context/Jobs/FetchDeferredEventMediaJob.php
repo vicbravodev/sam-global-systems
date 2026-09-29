@@ -410,6 +410,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         $pending = array_filter($items, fn (array $item) => $item['status'] === 'pending');
 
         $downloaded = 0;
+        $alreadyStored = 0;
         $failedDownloads = 0;
 
         foreach ($available as $item) {
@@ -419,6 +420,8 @@ class FetchDeferredEventMediaJob implements ShouldQueue
 
             if ($outcome === MediaDownloadOutcome::Stored) {
                 $downloaded++;
+            } elseif ($outcome === MediaDownloadOutcome::AlreadyExists) {
+                $alreadyStored++;
             } elseif ($outcome === MediaDownloadOutcome::Failed) {
                 $failedDownloads++;
             }
@@ -471,7 +474,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         SystemLog::ok(
             'media.deferred.completed',
             input: $this->logInput($request),
-            result: ['available' => count($available), 'downloaded' => $downloaded],
+            result: ['available' => count($available), 'downloaded' => $downloaded, 'already_stored' => $alreadyStored],
         );
     }
 
@@ -495,6 +498,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         $anyPending = false;
         $anyTransient = false;
         $downloaded = 0;
+        $alreadyStored = 0;
         $itemsSeen = 0;
         $pendingCount = 0;
         $availableCount = 0;
@@ -536,6 +540,8 @@ class FetchDeferredEventMediaJob implements ShouldQueue
 
                 if ($outcome === MediaDownloadOutcome::Stored) {
                     $downloaded++;
+                } elseif ($outcome === MediaDownloadOutcome::AlreadyExists) {
+                    $alreadyStored++;
                 } elseif ($outcome === MediaDownloadOutcome::Failed) {
                     $anyTransient = true;
                     $failedDownloads++;
@@ -595,7 +601,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         SystemLog::ok(
             'media.deferred.completed',
             input: $this->logInput($request),
-            result: ['available' => $availableCount, 'downloaded' => $downloaded, 'stills_downloaded_total' => (int) $metadata['stills_downloaded']],
+            result: ['available' => $availableCount, 'downloaded' => $downloaded, 'already_stored' => $alreadyStored, 'stills_downloaded_total' => (int) $metadata['stills_downloaded']],
         );
     }
 
@@ -633,6 +639,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         )['items'];
 
         $downloaded = 0;
+        $alreadyStored = 0;
         $availableCount = 0;
 
         foreach ($items as $item) {
@@ -656,6 +663,8 @@ class FetchDeferredEventMediaJob implements ShouldQueue
 
             if ($outcome === MediaDownloadOutcome::Stored) {
                 $downloaded++;
+            } elseif ($outcome === MediaDownloadOutcome::AlreadyExists) {
+                $alreadyStored++;
             }
         }
 
@@ -667,7 +676,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
                 'items_found' => count($items),
                 'available' => $availableCount,
             ],
-            result: ['downloaded' => $downloaded],
+            result: ['downloaded' => $downloaded, 'already_stored' => $alreadyStored],
         );
 
         if ($downloaded === 0) {

@@ -3,9 +3,11 @@
 namespace Tests\Feature\Domains\Context;
 
 use App\Domains\Context\Actions\BuildEventContext;
+use App\Domains\Context\Actions\BuildOperationalContextProfile;
 use App\Domains\Context\Jobs\EnrichContextJob;
 use App\Domains\Context\Listeners\EnrichContextOnEventNormalized;
 use App\Domains\Context\Models\EventContextSnapshot;
+use App\Domains\Context\Models\OperationalContextProfile;
 use App\Domains\Normalization\Enums\NormalizedEventStatus;
 use App\Domains\Normalization\Events\EventNormalized;
 use App\Domains\Normalization\Models\NormalizedEvent;
@@ -107,10 +109,37 @@ class EnrichContextJobTest extends TestCase
             $this->assertArrayHasKey($key, $first['calc']);
         }
         $this->assertIsArray($first['result']['signals']);
+        $this->assertSame(
+            OperationalContextProfile::withoutGlobalScopes()->where('normalized_event_id', $event->id)->value('risk_level')?->value,
+            $entries[1]['context']['result']['risk_level'],
+        );
+        $this->assertContains($first['result']['risk_level'], ['low', 'medium', 'high', 'critical']);
         $this->assertNoSensitiveDataLogged();
         $json = json_encode($this->systemLogEntries());
         $this->assertStringNotContainsString('19.777777', $json);
         $this->assertStringNotContainsString('98.888888', $json);
+    }
+
+    public function test_snapshot_built_is_not_logged_when_the_transaction_rolls_back(): void
+    {
+        $this->app->instance(BuildOperationalContextProfile::class, new class extends BuildOperationalContextProfile
+        {
+            public function execute(EventContextSnapshot $snapshot): OperationalContextProfile
+            {
+                throw new \RuntimeException('profile failed');
+            }
+        });
+        $event = NormalizedEvent::factory()->create(['team_id' => $this->teamId]);
+
+        try {
+            app(BuildEventContext::class)->execute($event);
+            $this->fail('The profile failure must propagate.');
+        } catch (\RuntimeException) {
+        }
+
+        $this->assertSame(0, EventContextSnapshot::withoutGlobalScopes()->where('normalized_event_id', $event->id)->count());
+        $this->assertSystemNotLogged('context.snapshot.built');
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_logs_unknown_location_source_without_any_position(): void
