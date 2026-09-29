@@ -14,6 +14,7 @@ use App\Models\Team;
 use App\Models\User;
 use Database\Seeders\AccessSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class TenantConfigApiTest extends TestCase
@@ -207,6 +208,91 @@ class TenantConfigApiTest extends TestCase
             'after_hours_behavior' => ['suppress_low_priority' => true],
         ]);
         $update->assertOk()->assertJsonPath('data.timezone', 'America/Mexico_City');
+    }
+
+    /**
+     * @return array<string, array{0: array<string, mixed>, 1: string}>
+     */
+    public static function malformedShiftRules(): array
+    {
+        return [
+            'shift that is not an object' => [['on_call' => ['oops']], 'shift_rules.on_call.0'],
+            'on_call that is not a list' => [['on_call' => 'oops'], 'shift_rules.on_call'],
+            'nested days entry' => [['on_call' => [['user_id' => 5, 'days' => [['mon']]]]], 'shift_rules.on_call.0.days.0'],
+            'unknown day name' => [['on_call' => [['user_id' => 5, 'days' => ['mon']]]], 'shift_rules.on_call.0.days.0'],
+            'days that is not a list' => [['on_call' => [['user_id' => 5, 'days' => 'monday']]], 'shift_rules.on_call.0.days'],
+            'missing user_id' => [['on_call' => [['days' => ['monday']]]], 'shift_rules.on_call.0.user_id'],
+            'non-integer user_id' => [['on_call' => [['user_id' => 'abc']]], 'shift_rules.on_call.0.user_id'],
+            'nested user_id' => [['on_call' => [['user_id' => [5]]]], 'shift_rules.on_call.0.user_id'],
+            'numeric start' => [['on_call' => [['user_id' => 5, 'start' => 800, 'end' => '20:00']]], 'shift_rules.on_call.0.start'],
+            'bad end format' => [['on_call' => [['user_id' => 5, 'start' => '08:00', 'end' => '8pm']]], 'shift_rules.on_call.0.end'],
+            'non-integer fallback' => [['on_call' => [], 'fallback_on_call_user_id' => 'abc'], 'shift_rules.fallback_on_call_user_id'],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $shiftRules
+     */
+    #[DataProvider('malformedShiftRules')]
+    public function test_schedule_profile_update_rejects_malformed_on_call_shifts(array $shiftRules, string $errorKey): void
+    {
+        [$user, $team] = $this->createUserWithRole('cfg_sched_admin', ['config.view', 'config.manage']);
+
+        $profile = TenantScheduleProfile::withoutGlobalScopes()->create([
+            'team_id' => $team->id,
+            'profile_code' => 'biz',
+            'timezone' => 'UTC',
+            'operating_hours_json' => [],
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($user)->putJson("/api/{$team->slug}/settings/schedule/{$profile->id}", [
+            'shift_rules' => $shiftRules,
+        ])->assertUnprocessable()->assertJsonValidationErrors([$errorKey]);
+
+        $this->assertNull($profile->fresh()->shift_rules_json);
+    }
+
+    public function test_schedule_profile_update_accepts_well_formed_on_call_shifts(): void
+    {
+        [$user, $team] = $this->createUserWithRole('cfg_sched_admin', ['config.view', 'config.manage']);
+
+        $profile = TenantScheduleProfile::withoutGlobalScopes()->create([
+            'team_id' => $team->id,
+            'profile_code' => 'biz',
+            'timezone' => 'UTC',
+            'operating_hours_json' => [],
+            'is_active' => true,
+        ]);
+
+        // Lo que envía el editor de guardias: días completos en minúscula,
+        // horas H:i (un turno nocturno cruza la medianoche) y respaldo.
+        $rules = [
+            'on_call' => [
+                ['user_id' => $user->id, 'days' => ['monday', 'friday'], 'start' => '22:00', 'end' => '06:00'],
+                ['user_id' => $user->id, 'days' => ['Saturday'], 'note' => 'claves extra del editor avanzado'],
+                ['user_id' => $user->id],
+            ],
+            'fallback_on_call_user_id' => $user->id,
+        ];
+
+        $response = $this->actingAs($user)->putJson("/api/{$team->slug}/settings/schedule/{$profile->id}", [
+            'shift_rules' => $rules,
+        ])->assertOk();
+
+        // jsonb reordena las claves: se compara sin depender del orden.
+        $this->assertEquals($rules, $response->json('data.shift_rules_json'));
+        $this->assertEquals($rules, $profile->fresh()->shift_rules_json);
+
+        // Formato antiguo (lista de turnos sin persona, el del seeder de
+        // vitrina): no es `on_call`, se sigue aceptando tal cual.
+        $legacy = [['name' => 'Matutino', 'start' => '06:00', 'end' => '14:00']];
+
+        $response = $this->actingAs($user)->putJson("/api/{$team->slug}/settings/schedule/{$profile->id}", [
+            'shift_rules' => $legacy,
+        ])->assertOk();
+
+        $this->assertEquals($legacy, $response->json('data.shift_rules_json'));
     }
 
     public function test_viewer_can_read_but_not_update_or_create(): void

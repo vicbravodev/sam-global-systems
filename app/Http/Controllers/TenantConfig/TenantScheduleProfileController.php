@@ -28,12 +28,18 @@ class TenantScheduleProfileController extends Controller
     {
         $this->authorize('update', $scheduleProfile);
 
+        // `shift_rules` is free-form JSON (validated as null or array; only its
+        // `on_call` shape is enforced). Its nested rules make validated() keep
+        // just the validated keys, dropping extra shift keys and whole legacy
+        // lists the advanced editor promises to keep, so the input is stored.
+        $shiftRules = $request->input('shift_rules');
+
         $payload = array_filter([
             'profile_code' => $request->validated('profile_code'),
             'timezone' => $request->validated('timezone'),
             'operating_hours_json' => $request->validated('operating_hours'),
             'holidays_json' => $request->validated('holidays'),
-            'shift_rules_json' => $request->validated('shift_rules'),
+            'shift_rules_json' => $shiftRules,
             'after_hours_behavior_json' => $request->validated('after_hours_behavior'),
             'is_active' => $request->has('is_active') ? $request->boolean('is_active') : null,
         ], fn ($value) => $value !== null);

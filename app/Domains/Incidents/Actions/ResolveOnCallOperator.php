@@ -26,6 +26,12 @@ use Illuminate\Support\Carbon;
  * spanning midnight (start > end) matches when the time falls on either
  * side. Users that are no longer members of the team are skipped, so a
  * stale schedule can never assign an outsider.
+ *
+ * The resolution never throws: it runs synchronously inside the
+ * incident-creation transaction (panic included), so an exception here would
+ * roll the incident back. A malformed shift (see isMalformed()) is skipped by
+ * both passes and never wins; the API rejects such shifts on write
+ * (UpdateTenantScheduleProfileRequest), this guards rows stored before that.
  */
 class ResolveOnCallOperator
 {
@@ -79,9 +85,8 @@ class ResolveOnCallOperator
         $calc['shifts_count'] = count($shifts);
 
         // Pure pass (no queries): every shift that matches the schedule,
-        // whether or not its user is still a member. It must never throw
-        // (it runs inside the incident-creation transaction): a malformed
-        // shift is counted apart and never as matched.
+        // whether or not its user is still a member. A malformed shift is
+        // counted apart and never as matched.
         foreach ($shifts as $shift) {
             if (is_array($shift) && $this->isMalformed($shift)) {
                 $calc['malformed_shifts_count']++;
@@ -94,7 +99,14 @@ class ResolveOnCallOperator
             }
         }
 
+        // Winner pass: the first matching shift whose user is a member. It
+        // skips malformed shifts exactly like the counting pass, so one placed
+        // before the winner can neither throw nor win.
         foreach (array_values($shifts) as $index => $shift) {
+            if (is_array($shift) && $this->isMalformed($shift)) {
+                continue;
+            }
+
             if (! $this->isCandidate($shift, $localized)) {
                 continue;
             }
@@ -139,9 +151,8 @@ class ResolveOnCallOperator
      * only ones the winner loop evaluates) with a non-empty `days` holding an
      * array or object entry (`strtolower()` raises a TypeError on it). Any
      * other oddity (numeric `start`/`end`, scalar days) evaluates without
-     * throwing, so it is counted like the winner loop sees it. Only the
-     * counting pass uses it: the winner loop keeps evaluating shifts exactly
-     * as before.
+     * throwing, so it is evaluated normally. Both passes skip a malformed
+     * shift: it is counted in `malformed_shifts_count` and never wins.
      *
      * @param  array<mixed>  $shift
      */
