@@ -34,6 +34,7 @@ use Database\Seeders\NotificationMeterSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 /**
@@ -45,7 +46,7 @@ use Tests\TestCase;
  */
 class RetryAndFallbackTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsSystemLog, RefreshDatabase;
 
     private Team $team;
 
@@ -139,6 +140,18 @@ class RetryAndFallbackTest extends TestCase
 
         $this->assertSame(DeliveryStatus::Delivered, $fallbackDelivery->status);
         $this->assertSame('ops@example.com', $fallbackDelivery->payload_json['address']);
+
+        $context = $this->assertSystemLogged('notifications.fallback.chosen', fn (array $c) => $c['input']['failed_delivery_id'] === $failed->id
+            && $c['result']['delivery_id'] === $fallbackDelivery->id
+            && $c['result']['channel_type'] === 'email'
+            && $c['result']['channel_id'] === $fallback->id);
+        $this->assertContains('sms', $context['calc']['used_types']);
+        $this->assertSame(['channel_type' => 'email', 'outcome' => 'chosen'], end($context['calc']['walk']));
+        $this->assertSystemLogged('notifications.delivery.sent', fn (array $c) => $c['input']['delivery_id'] === $fallbackDelivery->id
+            && $c['input']['stage'] === 'fallback');
+        $this->assertSystemNotLogged('notifications.fallback.exhausted');
+        $this->assertStringNotContainsString('ops@example.com', json_encode($this->systemLogEntries()));
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_failed_delivery_event_schedules_retry_with_first_backoff_delay(): void
@@ -154,6 +167,13 @@ class RetryAndFallbackTest extends TestCase
             fn (RetryNotificationDeliveryJob $job) => $job->deliveryId === $delivery->id && $job->delay === 30,
         );
         Queue::assertNotPushed(FallbackNotificationChannelJob::class);
+
+        $context = $this->assertRetryScheduledMatchesPushedDelay($delivery);
+        $this->assertSame(0, $context['calc']['step']);
+        $this->assertSame(30, $context['result']['delay_seconds']);
+        $this->assertSame(2, $context['result']['next_attempt_number']);
+        $this->assertTrue($context['result']['job_requested']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_retry_delay_follows_backoff_schedule_for_later_attempts(): void
@@ -168,6 +188,10 @@ class RetryAndFallbackTest extends TestCase
             RetryNotificationDeliveryJob::class,
             fn (RetryNotificationDeliveryJob $job) => $job->deliveryId === $delivery->id && $job->delay === 120,
         );
+
+        $context = $this->assertRetryScheduledMatchesPushedDelay($delivery);
+        $this->assertSame(120, $context['result']['delay_seconds']);
+        $this->assertSame(5, $context['calc']['max_attempts']);
     }
 
     public function test_webhook_delivery_uses_webhook_backoff_delay(): void
@@ -182,6 +206,10 @@ class RetryAndFallbackTest extends TestCase
             RetryNotificationDeliveryJob::class,
             fn (RetryNotificationDeliveryJob $job) => $job->deliveryId === $delivery->id && $job->delay === 120,
         );
+
+        $context = $this->assertRetryScheduledMatchesPushedDelay($delivery);
+        $this->assertSame([30, 120, 600], $context['calc']['delays_seconds']);
+        $this->assertSame(3, $context['calc']['max_attempts']);
     }
 
     public function test_exhausted_retries_dispatch_fallback_job(): void
@@ -197,6 +225,14 @@ class RetryAndFallbackTest extends TestCase
             fn (FallbackNotificationChannelJob $job) => $job->failedDeliveryId === $delivery->id,
         );
         Queue::assertNotPushed(RetryNotificationDeliveryJob::class);
+
+        $this->assertSystemLogged('notifications.fallback.requested', fn (array $c) => $c['input']['delivery_id'] === $delivery->id
+            && $c['input']['channel_type'] === 'email'
+            && $c['calc']['trigger'] === 'retries_exhausted'
+            && $c['calc']['attempt_number'] === 5
+            && $c['calc']['max_attempts'] === 5
+            && $c['result']['job_requested'] === true);
+        $this->assertSystemNotLogged('notifications.retry.scheduled');
     }
 
     public function test_webhook_retries_exhaust_after_three_attempts(): void
@@ -225,6 +261,10 @@ class RetryAndFallbackTest extends TestCase
             FallbackNotificationChannelJob::class,
             fn (FallbackNotificationChannelJob $job) => $job->failedDeliveryId === $delivery->id,
         );
+
+        $this->assertSystemLogged('notifications.fallback.requested', fn (array $c) => $c['input']['delivery_id'] === $delivery->id
+            && $c['calc']['trigger'] === 'permanent_failure'
+            && $c['calc']['attempt_number'] === 1);
     }
 
     public function test_retry_job_never_resends_a_permanent_failure(): void
@@ -238,6 +278,11 @@ class RetryAndFallbackTest extends TestCase
 
         $this->assertSame([], $this->sent);
         $this->assertSame(1, $delivery->fresh()->attempt_number);
+
+        $this->assertSystemLogged('notifications.retry.skipped', fn (array $c) => $c['reason'] === 'permanent_failure'
+            && $c['input'] === ['delivery_id' => $delivery->id, 'stage' => 'retry_job']);
+        $this->assertSystemNotLogged('notifications.escalation_guard.blocked');
+        $this->assertSystemNotLogged('notifications.delivery.sent');
     }
 
     public function test_stale_failure_event_for_delivered_delivery_is_ignored(): void
@@ -258,6 +303,10 @@ class RetryAndFallbackTest extends TestCase
 
         Queue::assertNotPushed(RetryNotificationDeliveryJob::class);
         Queue::assertNotPushed(FallbackNotificationChannelJob::class);
+
+        $this->assertSystemLogged('notifications.retry.skipped', fn (array $c) => $c['reason'] === 'not_failed'
+            && $c['input'] === ['delivery_id' => $delivery->id, 'stage' => 'listener']);
+        $this->assertSame('debug', $this->systemLogEntries('notifications.retry.skipped')[0]['level']);
     }
 
     public function test_no_retry_or_fallback_once_the_incident_was_acknowledged(): void
@@ -276,6 +325,15 @@ class RetryAndFallbackTest extends TestCase
 
         Queue::assertNotPushed(RetryNotificationDeliveryJob::class);
         Queue::assertNotPushed(FallbackNotificationChannelJob::class);
+
+        $this->assertSystemLogged('notifications.escalation_guard.blocked', fn (array $c) => $c['reason'] === 'incident_handled'
+            && $c['input'] === ['delivery_id' => $delivery->id, 'notification_id' => $delivery->notification_id, 'stage' => 'listener']
+            && $c['calc']['blocked_reason'] === 'incident_handled'
+            && $c['calc']['incident_id'] === $incident->id
+            && $c['calc']['incident_handled_at_present'] === true
+            && $c['calc']['ttl_minutes'] === 30);
+        $this->assertSystemNotLogged('notifications.retry.scheduled');
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_delayed_retry_does_not_send_if_the_incident_got_closed_meanwhile(): void
@@ -293,6 +351,10 @@ class RetryAndFallbackTest extends TestCase
         $this->runRetry($delivery);
 
         $this->assertSame([], $this->sent);
+
+        $this->assertSystemLogged('notifications.escalation_guard.blocked', fn (array $c) => $c['reason'] === 'incident_handled'
+            && $c['input']['stage'] === 'retry_job'
+            && $c['calc']['incident_id'] === $incident->id);
     }
 
     public function test_notifications_created_after_the_acknowledgement_still_retry(): void
@@ -336,6 +398,12 @@ class RetryAndFallbackTest extends TestCase
         $this->fireFailureEvent($delivery);
         Queue::assertNotPushed(RetryNotificationDeliveryJob::class);
         Queue::assertNotPushed(FallbackNotificationChannelJob::class);
+
+        foreach (['retry_job', 'fallback_job', 'listener'] as $stage) {
+            $this->assertSystemLogged('notifications.escalation_guard.blocked', fn (array $c) => $c['reason'] === 'tenant_cannot_send'
+                && $c['calc']['blocked_reason'] === 'subscription_suspended'
+                && $c['input']['stage'] === $stage);
+        }
     }
 
     public function test_expired_notifications_are_not_escalated(): void
@@ -350,6 +418,9 @@ class RetryAndFallbackTest extends TestCase
 
         Queue::assertNotPushed(RetryNotificationDeliveryJob::class);
         Queue::assertNotPushed(FallbackNotificationChannelJob::class);
+
+        $context = $this->assertSystemLogged('notifications.escalation_guard.blocked', fn (array $c) => $c['reason'] === 'expired');
+        $this->assertGreaterThan($context['calc']['ttl_minutes'] * 60, $context['calc']['notification_age_seconds']);
     }
 
     public function test_failed_send_during_dispatch_schedules_retry(): void
@@ -483,6 +554,15 @@ class RetryAndFallbackTest extends TestCase
 
         $this->assertSame(0, NotificationDelivery::query()->where('channel_id', $emailB->id)->count());
         $this->assertSame(1, NotificationDelivery::query()->where('channel_id', $sms->id)->count());
+
+        $context = $this->assertSystemLogged('notifications.fallback.chosen', fn (array $c) => $c['result']['channel_id'] === $sms->id);
+        $this->assertSame([
+            ['channel_type' => 'email', 'outcome' => 'already_used'],
+            ['channel_type' => 'sms', 'outcome' => 'chosen'],
+        ], $context['calc']['walk']);
+        $this->assertSame(['email', 'sms'], $context['calc']['policy_fallback_types']);
+        $this->assertStringNotContainsString('5215512345678', json_encode($this->systemLogEntries()));
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_fallback_is_skipped_when_the_recipient_was_already_reached(): void
@@ -503,6 +583,11 @@ class RetryAndFallbackTest extends TestCase
         $this->runFallback($failed);
 
         $this->assertSame(0, NotificationDelivery::query()->where('channel_id', $email->id)->count());
+
+        $this->assertSystemLogged('notifications.escalation_guard.blocked', fn (array $c) => $c['reason'] === 'recipient_reached'
+            && $c['input']['stage'] === 'fallback_job'
+            && $c['calc']['reached_elsewhere'] === true);
+        $this->assertSystemNotLogged('notifications.fallback.chosen');
     }
 
     public function test_fallback_without_an_address_for_the_channel_is_recorded_as_skipped(): void
@@ -519,6 +604,33 @@ class RetryAndFallbackTest extends TestCase
         $skipped = NotificationDelivery::query()->where('channel_id', $sms->id)->sole();
         $this->assertSame(DeliveryStatus::Skipped, $skipped->status);
         $this->assertSame([], $this->sent);
+
+        $context = $this->assertSystemLogged('notifications.fallback.exhausted', fn (array $c) => $c['reason'] === 'no_fallback_channel'
+            && $c['input'] === ['failed_delivery_id' => $failed->id]);
+        $this->assertSame([['channel_type' => 'sms', 'outcome' => 'no_address']], $context['calc']['walk']);
+        $this->assertSame('warning', $this->systemLogEntries('notifications.fallback.exhausted')[0]['level']);
+        $this->assertSystemNotLogged('notifications.fallback.chosen');
+    }
+
+    public function test_fallback_without_any_policy_channel_is_recorded_as_exhausted(): void
+    {
+        $this->usePolicy(fallback: []);
+
+        $primary = $this->channel(ChannelType::Sms);
+        $this->channel(ChannelType::Email);
+        $failed = $this->failedDelivery($primary, attemptNumber: 5);
+
+        $this->bindCapturingDriver(DeliveryResult::success('ok'));
+        $this->runFallback($failed);
+
+        $this->assertSame([], $this->sent);
+        $this->assertSame(1, NotificationDelivery::query()->where('notification_id', $failed->notification_id)->count());
+
+        $this->assertSystemLogged('notifications.fallback.exhausted', fn (array $c) => $c['reason'] === 'no_fallback_channel'
+            && $c['calc']['policy_fallback_types'] === []
+            && $c['calc']['used_types'] === ['sms']
+            && $c['calc']['walk'] === []);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_fallback_to_sms_uses_the_recipient_phone(): void
@@ -535,6 +647,29 @@ class RetryAndFallbackTest extends TestCase
 
         $this->assertCount(1, $this->sent);
         $this->assertSame('+5215512345678', $this->sent[0]->address);
+    }
+
+    /**
+     * Recomputes the logged delay from its logged terms and checks it against
+     * the delay of the job actually pushed.
+     *
+     * @return array<string, mixed>
+     */
+    private function assertRetryScheduledMatchesPushedDelay(NotificationDelivery $delivery): array
+    {
+        $context = $this->assertSystemLogged('notifications.retry.scheduled', fn (array $c) => $c['input']['delivery_id'] === $delivery->id);
+
+        $delays = $context['calc']['delays_seconds'];
+        $step = max(0, min($context['calc']['attempt_number'], count($delays)) - 1);
+
+        $this->assertSame($step, $context['calc']['step']);
+        $this->assertSame($delays[$step], $context['result']['delay_seconds']);
+        Queue::assertPushed(
+            RetryNotificationDeliveryJob::class,
+            fn (RetryNotificationDeliveryJob $job) => $job->deliveryId === $delivery->id && $job->delay === $context['result']['delay_seconds'],
+        );
+
+        return $context;
     }
 
     private function channel(ChannelType $type): NotificationChannel

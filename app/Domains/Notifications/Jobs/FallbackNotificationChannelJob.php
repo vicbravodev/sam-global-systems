@@ -13,6 +13,7 @@ use App\Domains\Notifications\Models\NotificationDelivery;
 use App\Domains\Notifications\Support\ChannelAddress;
 use App\Domains\Notifications\Support\DeliveryEscalationGuard;
 use App\Support\JobFailureReporter;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -58,8 +59,11 @@ class FallbackNotificationChannelJob implements ShouldQueue
         AttemptDelivery $attemptDelivery,
     ): void {
         $primary = NotificationDelivery::withoutGlobalScopes()->find($this->failedDeliveryId);
+        $input = ['failed_delivery_id' => $this->failedDeliveryId];
 
         if ($primary === null) {
+            SystemLog::skipped('notifications.fallback.skipped', reason: 'relations_missing', input: $input);
+
             return;
         }
 
@@ -69,10 +73,20 @@ class FallbackNotificationChannelJob implements ShouldQueue
         $primary->load(['notification.team', 'recipient', 'channel']);
 
         if (! $primary->notification || ! $primary->notification->team || ! $primary->recipient || ! $primary->channel) {
+            SystemLog::skipped('notifications.fallback.skipped', reason: 'relations_missing', input: $input);
+
             return;
         }
 
-        if (DeliveryEscalationGuard::blockReason($primary) !== null) {
+        $guard = DeliveryEscalationGuard::explain($primary);
+
+        if ($guard['reason'] !== null) {
+            SystemLog::skipped('notifications.escalation_guard.blocked',
+                reason: DeliveryEscalationGuard::logReason($guard['reason']),
+                input: ['delivery_id' => $primary->id, 'notification_id' => $primary->notification_id, 'stage' => 'fallback_job'],
+                calc: [...$guard['calc'], 'blocked_reason' => $guard['reason']],
+            );
+
             return;
         }
 
@@ -87,6 +101,8 @@ class FallbackNotificationChannelJob implements ShouldQueue
             ->exists();
 
         if ($alreadyEscalated) {
+            SystemLog::skipped('notifications.fallback.skipped', reason: 'already_escalated', input: $input);
+
             return;
         }
 
@@ -94,8 +110,14 @@ class FallbackNotificationChannelJob implements ShouldQueue
         $policy = $policies->resolve($primary->notification->team);
         $usedTypes = $this->channelTypesAlreadyUsed($primary);
 
+        // Recorrido de la política para el log: un paso por tipo, sin
+        // direcciones ni el texto de `invalidReason`.
+        $walk = [];
+
         foreach ($policy->fallbackChannels as $type) {
             if (in_array($type, $usedTypes, true)) {
+                $walk[] = ['channel_type' => $type->value, 'outcome' => 'already_used'];
+
                 continue;
             }
 
@@ -106,6 +128,8 @@ class FallbackNotificationChannelJob implements ShouldQueue
                 ->first();
 
             if ($channel === null) {
+                $walk[] = ['channel_type' => $type->value, 'outcome' => 'no_usable_channel'];
+
                 continue;
             }
 
@@ -117,6 +141,12 @@ class FallbackNotificationChannelJob implements ShouldQueue
             $delivery = $this->createFallbackDelivery($primary, $channel, $invalid);
 
             if ($delivery === null || $invalid !== null) {
+                $walk[] = ['channel_type' => $type->value, 'outcome' => match (true) {
+                    $delivery === null => 'race_lost',
+                    $address === null || $address === '' => 'no_address',
+                    default => 'invalid_address',
+                }];
+
                 continue;
             }
 
@@ -130,8 +160,35 @@ class FallbackNotificationChannelJob implements ShouldQueue
                 usageEventKey: "notif_fallback_{$delivery->id}",
             );
 
+            $walk[] = ['channel_type' => $type->value, 'outcome' => 'chosen'];
+
+            SystemLog::ok('notifications.fallback.chosen', input: $input, calc: $this->walkCalc($policy->fallbackChannels, $usedTypes, $walk), result: [
+                'delivery_id' => $delivery->id,
+                'channel_type' => $type->value,
+                'channel_id' => $channel->id,
+            ]);
+
             return;
         }
+
+        // Antes el job terminaba sin rastro y el destinatario se quedaba sin
+        // aviso: ningún tipo de la política quedó disponible.
+        SystemLog::degraded('notifications.fallback.exhausted', reason: 'no_fallback_channel', input: $input, calc: $this->walkCalc($policy->fallbackChannels, $usedTypes, $walk));
+    }
+
+    /**
+     * @param  array<int, ChannelType>  $policyTypes
+     * @param  list<ChannelType>  $usedTypes
+     * @param  list<array{channel_type: string, outcome: string}>  $walk
+     * @return array<string, mixed>
+     */
+    private function walkCalc(array $policyTypes, array $usedTypes, array $walk): array
+    {
+        return [
+            'policy_fallback_types' => array_values(array_map(fn (ChannelType $t) => $t->value, $policyTypes)),
+            'used_types' => array_map(fn (ChannelType $t) => $t->value, $usedTypes),
+            'walk' => $walk,
+        ];
     }
 
     /**

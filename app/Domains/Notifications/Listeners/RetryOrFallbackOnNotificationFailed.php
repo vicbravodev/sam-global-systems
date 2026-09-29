@@ -8,6 +8,7 @@ use App\Domains\Notifications\Jobs\FallbackNotificationChannelJob;
 use App\Domains\Notifications\Jobs\RetryNotificationDeliveryJob;
 use App\Domains\Notifications\Models\NotificationDelivery;
 use App\Domains\Notifications\Support\DeliveryEscalationGuard;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 
 /**
@@ -36,20 +37,38 @@ class RetryOrFallbackOnNotificationFailed
             ->find($event->deliveryId);
 
         if ($delivery === null || $delivery->status !== DeliveryStatus::Failed) {
+            SystemLog::skipped('notifications.retry.skipped', reason: 'not_failed', input: ['delivery_id' => $event->deliveryId, 'stage' => 'listener'], debug: true);
+
             return;
         }
 
         // Trabaja dentro del tenant de la entrega. Ver §2.1.
         TenantContext::set($delivery->team_id);
 
-        if (DeliveryEscalationGuard::blockReason($delivery) !== null) {
+        $guard = DeliveryEscalationGuard::explain($delivery);
+
+        if ($guard['reason'] !== null) {
+            SystemLog::skipped('notifications.escalation_guard.blocked',
+                reason: DeliveryEscalationGuard::logReason($guard['reason']),
+                input: ['delivery_id' => $delivery->id, 'notification_id' => $delivery->notification_id, 'stage' => 'listener'],
+                calc: [...$guard['calc'], 'blocked_reason' => $guard['reason']],
+            );
+
             return;
         }
 
         $retry = new RetryNotificationDeliveryJob($delivery->id);
+        $maxAttempts = $retry->maxAttempts();
+        $input = ['delivery_id' => $delivery->id, 'channel_type' => $event->channelType];
 
-        if ($delivery->permanent_failure || $delivery->attempt_number >= $retry->maxAttempts()) {
+        if ($delivery->permanent_failure || $delivery->attempt_number >= $maxAttempts) {
             FallbackNotificationChannelJob::dispatch($delivery->id);
+
+            SystemLog::ok('notifications.fallback.requested', input: $input, calc: [
+                'trigger' => $delivery->permanent_failure ? 'permanent_failure' : 'retries_exhausted',
+                'attempt_number' => $delivery->attempt_number,
+                'max_attempts' => $maxAttempts,
+            ], result: ['job_requested' => true]);
 
             return;
         }
@@ -58,5 +77,16 @@ class RetryOrFallbackOnNotificationFailed
         $step = max(0, min($delivery->attempt_number, count($delays)) - 1);
 
         dispatch($retry)->delay($delays[$step]);
+
+        SystemLog::ok('notifications.retry.scheduled', input: $input, calc: [
+            'attempt_number' => $delivery->attempt_number,
+            'max_attempts' => $maxAttempts,
+            'delays_seconds' => $delays,
+            'step' => $step,
+        ], result: [
+            'delay_seconds' => $delays[$step],
+            'next_attempt_number' => $delivery->attempt_number + 1,
+            'job_requested' => true,
+        ]);
     }
 }

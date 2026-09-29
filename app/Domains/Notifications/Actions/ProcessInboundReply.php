@@ -12,6 +12,7 @@ use App\Domains\Incidents\Enums\IncidentCreatorType;
 use App\Domains\Incidents\Enums\ResolutionCode;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Notifications\Models\NotificationReplyToken;
+use App\Support\LoggableCode;
 use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Support\Facades\DB;
@@ -80,16 +81,30 @@ class ProcessInboundReply
             $incident = $token->incident()->first();
             $reference = $incident?->reference() ?? 'solicitado';
 
+            // Nunca el remitente, el cuerpo, el código ni la dirección del
+            // token: sólo ids y el canal.
+            $logInput = ['token_id' => $token->id, 'incident_id' => $token->incident_id, 'channel_type' => $token->channel_type->value];
+
             if ($token->isConsumed()) {
+                SystemLog::skipped('notifications.inbound_reply.ignored', reason: 'already_consumed', input: $logInput, result: [
+                    'consumed_action' => LoggableCode::guard($token->consumed_action),
+                ]);
+
                 return "Ya registramos tu respuesta para el incidente {$reference}.";
             }
 
             if ($token->isExpired()) {
+                SystemLog::skipped('notifications.inbound_reply.ignored', reason: 'token_expired', input: $logInput);
+
                 return "El código {$code} ha expirado. Gestiona el incidente {$reference} desde el portal.";
             }
 
             if ($incident === null || $incident->isTerminal()) {
                 $token->update(['consumed_at' => now(), 'consumed_action' => 'noop_terminal']);
+
+                DB::afterCommit(fn () => SystemLog::skipped('notifications.inbound_reply.ignored', reason: 'incident_terminal', input: $logInput, result: [
+                    'consumed_action' => 'noop_terminal',
+                ]));
 
                 return "El incidente {$reference} ya está cerrado.";
             }
@@ -121,6 +136,19 @@ class ProcessInboundReply
                 sourceType: 'twilio_inbound',
                 sourceReferenceId: (string) $token->id,
             );
+
+            $userLinked = $token->user_id !== null;
+
+            DB::afterCommit(fn () => SystemLog::ok('notifications.inbound_reply.applied', input: $logInput, calc: [
+                'keyword' => $keyword,
+                'user_linked' => $userLinked,
+            ], result: [
+                'action' => match ($keyword) {
+                    'SI' => 'acknowledge',
+                    'NO' => 'dismiss',
+                    'ESC' => 'escalate',
+                },
+            ]));
 
             return $reply;
         });
