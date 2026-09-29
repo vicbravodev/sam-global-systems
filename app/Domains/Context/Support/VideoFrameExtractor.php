@@ -2,9 +2,10 @@
 
 namespace App\Domains\Context\Support;
 
+use App\Support\RedactSensitiveLogData;
+use App\Support\SystemLog;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use Throwable;
@@ -83,11 +84,7 @@ class VideoFrameExtractor
                 ]);
 
                 if (! $result->successful() || ! File::exists($output) || File::size($output) === 0) {
-                    Log::info('VideoFrameExtractor: no frame at offset', [
-                        'offset_seconds' => $offset,
-                        'exit_code' => $result->exitCode(),
-                        'error' => Str::limit($result->errorOutput(), 300),
-                    ]);
+                    SystemLog::skipped('media.frames.offset_missing', reason: 'no_frame_at_offset', input: ['offset_seconds' => $offset, 'exit_code' => $result->exitCode(), 'stderr_excerpt' => Str::limit(RedactSensitiveLogData::sanitize($result->errorOutput()), 200)]);
 
                     continue;
                 }

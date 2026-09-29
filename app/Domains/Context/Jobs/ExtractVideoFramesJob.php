@@ -13,6 +13,8 @@ use App\Domains\Context\Models\EventMediaContext;
 use App\Domains\Context\Support\VideoFrameExtractor;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\Tenancy\Models\FileObject;
+use App\Support\JobFailureReporter;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -21,7 +23,6 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Log;
 
 /**
  * Saca fotogramas clave de un clip para que el modelo de visión (que sólo
@@ -91,10 +92,7 @@ class ExtractVideoFramesJob implements ShouldBeUnique, ShouldQueue
         }
 
         if (! $extractor->isAvailable()) {
-            Log::warning('ExtractVideoFramesJob: ffmpeg no disponible; el clip no llegará al modelo de visión', [
-                'media_context_id' => $clip->id,
-                'ffmpeg_binary' => $extractor->binary(),
-            ]);
+            SystemLog::degraded('media.frames.ffmpeg_unavailable', reason: 'ffmpeg_missing', input: ['media_context_id' => $clip->id, 'ffmpeg_binary' => $extractor->binary()]);
 
             return;
         }
@@ -123,11 +121,7 @@ class ExtractVideoFramesJob implements ShouldBeUnique, ShouldQueue
             $refreshSnapshot->execute($event->id);
         }
 
-        Log::info('ExtractVideoFramesJob processed clip', [
-            'media_context_id' => $clip->id,
-            'frames_extracted' => count($frames),
-            'frames_created' => $created,
-        ]);
+        SystemLog::ok('media.frames.extracted', input: ['media_context_id' => $clip->id], result: ['frames_extracted' => count($frames), 'frames_created' => $created]);
     }
 
     /**
@@ -238,9 +232,6 @@ class ExtractVideoFramesJob implements ShouldBeUnique, ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
-        Log::warning('ExtractVideoFramesJob failed', [
-            'media_context_id' => $this->mediaContextId,
-            'error' => $exception->getMessage(),
-        ]);
+        JobFailureReporter::report(static::class, $exception, ['media_context_id' => $this->mediaContextId]);
     }
 }

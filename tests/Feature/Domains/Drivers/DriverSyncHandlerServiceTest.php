@@ -10,11 +10,12 @@ use App\Domains\Integrations\Models\IntegrationProvider;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Log;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class DriverSyncHandlerServiceTest extends TestCase
 {
+    use AssertsSystemLog;
     use RefreshDatabase;
 
     public function test_the_real_driver_sync_handler_is_bound(): void
@@ -57,8 +58,6 @@ class DriverSyncHandlerServiceTest extends TestCase
 
     public function test_it_skips_and_logs_a_driver_whose_external_id_belongs_to_another_tenant(): void
     {
-        Log::spy();
-
         $provider = IntegrationProvider::factory()->samsara()->create();
         $ownerTeam = User::factory()->create()->currentTeam;
         $ownedDriver = Driver::factory()->create(['team_id' => $ownerTeam->id, 'full_name' => 'Owner Driver']);
@@ -81,6 +80,7 @@ class DriverSyncHandlerServiceTest extends TestCase
 
         $this->assertSame('Owner Driver', $ownedDriver->fresh()->full_name);
         $this->assertSame(0, Driver::withoutGlobalScopes()->where('team_id', $intruder->team_id)->count());
-        Log::shouldHaveReceived('warning')->once();
+        $this->assertCount(1, $this->systemLogEntries('drivers.sync.external_id_conflict'));
+        $this->assertSystemLogged('drivers.sync.external_id_conflict', fn (array $c) => $c['reason'] === 'owned_by_other_tenant');
     }
 }

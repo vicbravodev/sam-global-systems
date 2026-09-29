@@ -8,6 +8,8 @@ use App\Domains\Integrations\Contracts\ProviderAdapter;
 use App\Domains\Integrations\Exceptions\ProviderRateLimited;
 use App\Domains\Integrations\Exceptions\ProviderUnauthorized;
 use App\Domains\Integrations\Models\TenantIntegration;
+use App\Support\PipelineTrace;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Carbon\CarbonInterface;
 use Illuminate\Bus\Queueable;
@@ -17,7 +19,6 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 
 /**
  * Refill a gap the feed can no longer replay (its cursor expired or was
@@ -54,6 +55,10 @@ class BackfillVehicleStatsJob implements ShouldBeUnique, ShouldQueue
     public function handle(ProviderAdapter $providerAdapter, IngestVehicleStatsPage $ingest): void
     {
         TenantContext::set($this->integration->team_id);
+        PipelineTrace::beginOperation(
+            $this->integration->team_id,
+            $this->integration->relationLoaded('provider') ? $this->integration->provider?->code : null,
+        );
 
         $floor = $this->until->copy()->subHours((int) config('telematics.backfill_hours', 24));
         $from = $this->from->greaterThan($floor) ? $this->from : $floor;
@@ -86,15 +91,7 @@ class BackfillVehicleStatsJob implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        Log::channel('telematics')->info('telematics.backfill', [
-            'team_id' => $this->integration->team_id,
-            'integration_id' => $this->integration->id,
-            'feed' => $this->feed->value,
-            'from' => $from->toIso8601ZuluString(),
-            'until' => $this->until->toIso8601ZuluString(),
-            'pages' => $pages,
-            'stored' => $stored,
-        ]);
+        SystemLog::ok('telematics.backfill.completed', input: ['integration_id' => $this->integration->id, 'feed' => $this->feed->value, 'from' => $from->toIso8601ZuluString(), 'until' => $this->until->toIso8601ZuluString()], result: ['pages' => $pages, 'stored' => $stored], channel: 'telematics');
     }
 
     /**

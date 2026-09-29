@@ -3,7 +3,6 @@
 namespace App\Support;
 
 use Aws\Exception\AwsException;
-use Illuminate\Support\Facades\Log;
 use League\Flysystem\FilesystemException;
 use Throwable;
 
@@ -27,10 +26,7 @@ final class ObjectStorageFailure
      */
     public static function report(string $operation, Throwable $e, array $context = []): void
     {
-        Log::error('Object storage failure: '.$operation, array_merge([
-            'operation' => $operation,
-            'exception' => $e::class,
-            'message' => $e->getMessage(),
-        ], $context));
+        // Corre en rutas de fallo: SystemLog nunca lanza al escribir.
+        SystemLog::failed('storage.object.operation_failed', reason: 'storage_unavailable', input: ['operation' => $operation] + $context, error: $e);
     }
 }

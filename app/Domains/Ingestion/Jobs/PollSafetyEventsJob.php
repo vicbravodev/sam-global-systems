@@ -9,6 +9,8 @@ use App\Domains\Integrations\Exceptions\ProviderRequestFailedException;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Support\JobFailureReporter;
 use App\Support\PipelineTrace;
+use App\Support\RedactSensitiveLogData;
+use App\Support\SystemLog;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -16,7 +18,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 /**
  * Poll the provider's safety-event feed for a single integration and push
@@ -164,13 +166,7 @@ class PollSafetyEventsJob implements ShouldBeUnique, ShouldQueue
 
             $restartFrom = $this->restartFrom($feed);
 
-            Log::warning('Samsara rejected the safety-events cursor; restarting the feed', [
-                'integration_id' => $this->integration->id,
-                'team_id' => $this->integration->team_id,
-                'http_status' => $e->status,
-                'provider_message' => $e->providerMessage,
-                'restart_from' => $restartFrom,
-            ]);
+            SystemLog::degraded('ingestion.poll.cursor_rejected', reason: 'provider_rejected_cursor', input: ['integration_id' => $this->integration->id, 'http_status' => $e->status, 'provider_message' => Str::limit(RedactSensitiveLogData::sanitize((string) $e->providerMessage), 200), 'restart_from' => $restartFrom]);
 
             return $providerAdapter->fetchSafetyEvents($this->integration, null, $restartFrom);
         }

@@ -5,6 +5,7 @@ use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\SetTeamUrlDefaults;
 use App\Http\Middleware\TrustProxiesFromConfig;
+use App\Support\DeniedRequestLog;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -48,8 +49,21 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // Todo reporte de excepción lleva dónde ocurrió (nunca el payload).
+        // El usuario ya lo añade Laravel (userId). Jamás debe enmascarar la
+        // excepción original si resolver la ruta falla.
+        $exceptions->context(function (): array {
+            try {
+                return array_filter(['route_name' => request()?->route()?->getName()]);
+            } catch (Throwable) {
+                return [];
+            }
+        });
+
         $exceptions->respond(function (Response $response, Throwable $exception, Request $request) {
             $status = $response->getStatusCode();
+
+            DeniedRequestLog::record($exception, $request, $status);
 
             if (! in_array($status, [403, 404, 500, 503], true)
                 || $request->expectsJson()

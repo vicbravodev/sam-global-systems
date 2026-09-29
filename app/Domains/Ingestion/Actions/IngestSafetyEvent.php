@@ -13,8 +13,8 @@ use App\Domains\Tenancy\Models\UsageMeter;
 use App\Infrastructure\Storage\MediaDownloadException;
 use App\Infrastructure\Storage\SecureMediaDownloader;
 use App\Support\PipelineTrace;
+use App\Support\SystemLog;
 use Illuminate\Support\Arr;
-use Illuminate\Support\Facades\Log;
 
 class IngestSafetyEvent
 {
@@ -154,11 +154,7 @@ class IngestSafetyEvent
         try {
             $download = $this->downloader->download($url);
         } catch (MediaDownloadException $e) {
-            Log::warning('Safety event inline media download failed', [
-                'raw_event_id' => $rawEvent->id,
-                'url_key' => $metadata['source_url_key'] ?? null,
-                'error' => $e->getMessage(),
-            ]);
+            SystemLog::degraded('ingestion.media.inline_download_failed', reason: 'download_failed', input: ['raw_event_id' => $rawEvent->id, 'url_key' => $metadata['source_url_key'] ?? null], error: $e);
 
             return;
         }

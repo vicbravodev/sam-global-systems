@@ -5,13 +5,13 @@ namespace App\Domains\Automation\Jobs;
 use App\Domains\Automation\Actions\RetryFailedAction;
 use App\Domains\Automation\Enums\ActionExecutionStatus;
 use App\Domains\Automation\Models\ActionExecution;
+use App\Support\JobFailureReporter;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Log;
 
 class RetryActionExecutionJob implements ShouldQueue
 {
@@ -43,8 +43,6 @@ class RetryActionExecutionJob implements ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
-        Log::warning('RetryActionExecutionJob failed', [
-            'error' => $exception->getMessage(),
-        ]);
+        JobFailureReporter::report(static::class, $exception);
     }
 }

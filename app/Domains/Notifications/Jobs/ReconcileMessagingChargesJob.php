@@ -9,13 +9,13 @@ use App\Domains\Notifications\Channels\TwilioVoiceCaller;
 use App\Domains\Notifications\Enums\MessagingResourceType;
 use App\Domains\Notifications\Models\MessagingCharge;
 use App\Support\JobFailureReporter;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Log;
 use Twilio\Exceptions\TwilioException;
 
 /**
@@ -94,11 +94,7 @@ class ReconcileMessagingChargesJob implements ShouldQueue
                 try {
                     $this->reconcile($charge, $messenger, $caller, $applyStatus, $finalize);
                 } catch (\Throwable $e) {
-                    Log::warning('Messaging charge reconciliation failed', [
-                        'charge_id' => $charge->id,
-                        'provider_sid' => $charge->provider_sid,
-                        'exception' => $e->getMessage(),
-                    ]);
+                    SystemLog::degraded('billing.messaging_charge.reconcile_failed', reason: 'provider_error', input: ['charge_id' => $charge->id, 'provider_sid' => $charge->provider_sid], error: $e);
 
                     $this->scheduleNextCheck($charge);
                 }

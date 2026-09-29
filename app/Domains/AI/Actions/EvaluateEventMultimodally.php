@@ -21,10 +21,10 @@ use App\Domains\Context\Models\EventMediaContext;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
+use App\Support\SystemLog;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class EvaluateEventMultimodally
@@ -123,10 +123,7 @@ class EvaluateEventMultimodally
             $lock = Cache::lock(self::MEDIA_LOCK_PREFIX.$media->id, self::MEDIA_LOCK_SECONDS);
 
             if (! $lock->get()) {
-                Log::info('Media assessment skipped: already in progress in another job', [
-                    'evaluation_id' => $evaluation->id,
-                    'event_media_context_id' => $media->id,
-                ]);
+                SystemLog::skipped('ai.media.assessment_skipped', reason: 'in_progress', input: ['evaluation_id' => $evaluation->id, 'event_media_context_id' => $media->id]);
 
                 continue;
             }
@@ -142,21 +139,14 @@ class EvaluateEventMultimodally
                 }
 
                 if ($remainingSlots <= 0) {
-                    Log::info('Media assessment skipped: per-event image cap reached', [
-                        'evaluation_id' => $evaluation->id,
-                        'event_media_context_id' => $media->id,
-                        'max_images_per_event' => $this->maxImagesPerEvent(),
-                    ]);
+                    SystemLog::skipped('ai.media.assessment_skipped', reason: 'image_cap_reached', input: ['evaluation_id' => $evaluation->id, 'event_media_context_id' => $media->id], calc: ['max_images_per_event' => $this->maxImagesPerEvent()]);
 
                     continue;
                 }
 
                 // Misma cuota que el texto: un evento crítico siempre pasa.
                 if ($event !== null && $this->quota->blocks($event, $profile)) {
-                    Log::info('Media assessment skipped: tenant AI quota exceeded', [
-                        'evaluation_id' => $evaluation->id,
-                        'event_media_context_id' => $media->id,
-                    ]);
+                    SystemLog::skipped('ai.media.assessment_skipped', reason: 'quota_exceeded', input: ['evaluation_id' => $evaluation->id, 'event_media_context_id' => $media->id]);
 
                     continue;
                 }
@@ -167,11 +157,7 @@ class EvaluateEventMultimodally
                 try {
                     $output = $this->agent->assess($input);
                 } catch (MediaFileMissingException $exception) {
-                    Log::info('Media assessment skipped: file not on storage', [
-                        'evaluation_id' => $evaluation->id,
-                        'event_media_context_id' => $media->id,
-                        'error' => $exception->getMessage(),
-                    ]);
+                    SystemLog::skipped('ai.media.assessment_skipped', reason: 'file_missing', input: ['evaluation_id' => $evaluation->id, 'event_media_context_id' => $media->id], result: ['error_class' => $exception::class]);
 
                     continue;
                 } catch (MediaFileRejectedException $exception) {
@@ -184,23 +170,14 @@ class EvaluateEventMultimodally
                     continue;
                 } catch (Throwable $exception) {
                     if (! $finalAttempt && RetryableAIError::isRetryable($exception)) {
-                        Log::warning('MediaAssessmentAgent transient failure; will retry', [
-                            'evaluation_id' => $evaluation->id,
-                            'event_media_context_id' => $media->id,
-                            'error' => $exception->getMessage(),
-                        ]);
+                        SystemLog::degraded('ai.media.assessment_retry', reason: 'transient_failure', input: ['evaluation_id' => $evaluation->id, 'event_media_context_id' => $media->id], error: $exception);
 
                         $retryableFailure ??= $exception;
 
                         continue;
                     }
 
-                    Log::warning('MediaAssessmentAgent failed; recording unavailable assessment', [
-                        'evaluation_id' => $evaluation->id,
-                        'event_media_context_id' => $media->id,
-                        'error_class' => $exception::class,
-                        'error' => $exception->getMessage(),
-                    ]);
+                    SystemLog::degraded('ai.media.assessment_unavailable', reason: 'agent_error', input: ['evaluation_id' => $evaluation->id, 'event_media_context_id' => $media->id], error: $exception);
 
                     $assessment = DB::transaction(fn () => AIMediaAssessment::create([
                         'evaluation_id' => $evaluation->id,
@@ -324,11 +301,7 @@ class EvaluateEventMultimodally
         MediaAssessmentType $assessmentType,
         MediaFileRejectedException $exception,
     ): AIMediaAssessment {
-        Log::info('Media assessment rejected before model call', [
-            'evaluation_id' => $evaluation->id,
-            'event_media_context_id' => $media->id,
-            'reason' => $exception->reason,
-        ]);
+        SystemLog::skipped('ai.media.assessment_rejected', reason: 'rejected_before_model', input: ['evaluation_id' => $evaluation->id, 'event_media_context_id' => $media->id, 'rejection' => (string) $exception->reason]);
 
         return DB::transaction(fn () => AIMediaAssessment::create([
             'evaluation_id' => $evaluation->id,

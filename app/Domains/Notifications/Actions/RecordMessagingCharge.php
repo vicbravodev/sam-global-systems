@@ -6,8 +6,8 @@ use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Enums\MessagingChargeSource;
 use App\Domains\Notifications\Enums\MessagingResourceType;
 use App\Domains\Notifications\Models\MessagingCharge;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
-use Illuminate\Support\Facades\Log;
 
 /**
  * Registra el recurso Twilio recién aceptado para que el callback de estado
@@ -56,13 +56,7 @@ class RecordMessagingCharge
                 );
             });
         } catch (\Throwable $e) {
-            Log::warning('Failed to record messaging charge', [
-                'team_id' => $teamId,
-                'provider_sid' => $providerSid,
-                'source_type' => $sourceType->value,
-                'source_id' => $sourceId,
-                'exception' => $e->getMessage(),
-            ]);
+            SystemLog::degraded('billing.messaging_charge.record_failed', reason: 'record_failed', input: ['team_id' => $teamId, 'provider_sid' => $providerSid, 'source_type' => $sourceType->value, 'source_id' => $sourceId], error: $e);
 
             return null;
         }

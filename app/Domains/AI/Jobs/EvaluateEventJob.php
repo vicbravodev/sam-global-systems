@@ -6,6 +6,7 @@ use App\Domains\AI\Actions\EvaluateEventWithAI;
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\AI\Support\AIEvaluationGate;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Support\JobFailureReporter;
 use App\Support\PipelineTrace;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
@@ -14,7 +15,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Log;
 
 class EvaluateEventJob implements ShouldBeUnique, ShouldQueue
 {
@@ -72,9 +72,6 @@ class EvaluateEventJob implements ShouldBeUnique, ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
-        Log::warning('EvaluateEventJob failed', [
-            'normalized_event_id' => $this->normalizedEventId,
-            'error' => $exception->getMessage(),
-        ]);
+        JobFailureReporter::report(static::class, $exception, ['normalized_event_id' => $this->normalizedEventId]);
     }
 }

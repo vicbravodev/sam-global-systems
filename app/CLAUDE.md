@@ -35,3 +35,10 @@ Checklist por feature (todo lo aplicable):
 - APIs con Eloquent API Resources (salvo que la zona existente no las use). Enlaces con rutas con nombre y `route()`.
 - Artisan: `php artisan route:list --path=api`, `php artisan config:show clave`; tinker con comillas simples (`php artisan tinker --execute '...'`) y sólo si no hay test que lo cubra.
 - Antes de usar la API de un paquete, confirma su versión (`composer show <paquete>`); no la supongas.
+
+## Logging (narrativo y seguro)
+
+- Todo log pasa por `App\Support\SystemLog` (`ok`/`skipped`/`degraded`/`failed`/`measure`); nunca `Log::`, `logger()` ni `info()` (lo impide `LoggingConventionsTest`).
+- **Toda rama de decisión** (return temprano, skip, gate, fallback, dedupe, umbral) y **todo cálculo** registra su código `dominio.etapa.resultado` con `reason` (si no es `ok`), `input` y, en cálculos, `calc` con cada término y umbral — debe poder rehacerse a mano.
+- Excepciones como `error: $e` (SafeException), nunca `getMessage()`. Nunca teléfonos, emails, nombres, tokens, secretos, payloads, texto libre ni prompts.
+- Cada código nuevo: entrada en `docs/SAM/logging.md` y un test con `Tests\Concerns\AssertsSystemLog` (`assertSystemLogged` + `assertNoSensitiveDataLogged`).

@@ -5,6 +5,7 @@ namespace App\Domains\Context\Jobs;
 use App\Domains\Context\Actions\BuildEventContext;
 use App\Domains\Normalization\Enums\NormalizedEventStatus;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Support\JobFailureReporter;
 use App\Support\PipelineTrace;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
@@ -13,7 +14,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Log;
 
 class EnrichContextJob implements ShouldBeUnique, ShouldQueue
 {
@@ -64,9 +64,6 @@ class EnrichContextJob implements ShouldBeUnique, ShouldQueue
             $normalizedEvent->forceFill(['status' => NormalizedEventStatus::Failed])->save();
         }
 
-        Log::warning('EnrichContextJob failed', [
-            'normalized_event_id' => $this->normalizedEventId,
-            'error' => $exception->getMessage(),
-        ]);
+        JobFailureReporter::report(static::class, $exception, ['normalized_event_id' => $this->normalizedEventId]);
     }
 }

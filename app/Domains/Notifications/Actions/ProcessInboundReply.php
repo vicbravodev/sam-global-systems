@@ -12,9 +12,9 @@ use App\Domains\Incidents\Enums\IncidentCreatorType;
 use App\Domains\Incidents\Enums\ResolutionCode;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Notifications\Models\NotificationReplyToken;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 
 /**
  * Roadmap B9: maps an inbound SMS/WhatsApp reply ("SI-4F2A" / "NO-4F2A" /
@@ -39,7 +39,7 @@ class ProcessInboundReply
     public function execute(string $fromAddress, string $body): ?string
     {
         if (preg_match(self::KEYWORD_PATTERN, $body, $matches) !== 1) {
-            Log::info('Twilio inbound reply without recognizable keyword', ['from' => $fromAddress]);
+            SystemLog::skipped('notifications.inbound_reply.ignored', reason: 'no_keyword');
 
             return null;
         }
@@ -56,7 +56,7 @@ class ProcessInboundReply
                 ->first();
 
             if ($token === null) {
-                Log::info('Twilio inbound reply with unknown token', ['from' => $fromAddress, 'token' => $code]);
+                SystemLog::skipped('notifications.inbound_reply.ignored', reason: 'unknown_token');
 
                 return null;
             }
@@ -65,7 +65,7 @@ class ProcessInboundReply
             // itself names the tenant, and it only acts when the reply comes
             // from the exact address it was issued to.
             if ($this->normalizeAddress($token->address) !== $this->normalizeAddress($fromAddress)) {
-                Log::warning('Twilio inbound reply from unexpected sender', ['token_id' => $token->id]);
+                SystemLog::degraded('notifications.inbound_reply.rejected', reason: 'unexpected_sender', input: ['token_id' => $token->id]);
 
                 return null;
             }

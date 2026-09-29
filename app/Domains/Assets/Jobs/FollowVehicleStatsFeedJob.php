@@ -22,6 +22,7 @@ use App\Domains\Integrations\Exceptions\ProviderUnauthorized;
 use App\Domains\Integrations\Exceptions\ProviderUnavailable;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Support\PipelineTrace;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Carbon\CarbonInterface;
 use Illuminate\Bus\Queueable;
@@ -32,7 +33,6 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 
 /**
  * One cycle of one tenant's stats feed: follow the provider's cursor page by
@@ -148,18 +148,14 @@ class FollowVehicleStatsFeedJob implements ShouldBeUnique, ShouldQueue
             $this->detectAfterHoursMovement($result, $scheduleResolver, $raiseAfterHours);
         }
 
-        Log::channel('telematics')->info('telematics.cycle', [
-            'team_id' => $this->integration->team_id,
-            'integration_id' => $this->integration->id,
-            'feed' => $this->feed->value,
-            'duration_ms' => $cursor->last_cycle_json['duration_ms'],
-            'pages' => $pages,
-            'locations' => $result->locationsStored,
-            'readings' => $result->readingsStored,
-            'moved_assets' => count($result->positions),
-            'lag_s' => $cursor->lagSeconds(),
-            'error' => $failure?->getMessage(),
-        ]);
+        $cycleInput = ['integration_id' => $this->integration->id, 'feed' => $this->feed->value];
+        $cycleResult = ['pages' => $pages, 'locations' => $result->locationsStored, 'readings' => $result->readingsStored, 'moved_assets' => count($result->positions), 'lag_s' => $cursor->lagSeconds()];
+
+        if ($failure === null) {
+            SystemLog::ok('telematics.cycle.completed', input: $cycleInput, result: $cycleResult, durationMs: $cursor->last_cycle_json['duration_ms'], channel: 'telematics');
+        } else {
+            SystemLog::degraded('telematics.cycle.failed', reason: 'provider_error', input: $cycleInput, result: $cycleResult, error: $failure, durationMs: $cursor->last_cycle_json['duration_ms'], channel: 'telematics');
+        }
     }
 
     public function uniqueId(): string

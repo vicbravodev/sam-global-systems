@@ -5,6 +5,7 @@ namespace App\Domains\AI\Jobs;
 use App\Domains\AI\Actions\EvaluateEventMultimodally;
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\Context\Models\EventMediaContext;
+use App\Support\JobFailureReporter;
 use App\Support\PipelineTrace;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
@@ -12,7 +13,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Log;
 
 class EvaluateEventMediaJob implements ShouldQueue
 {
@@ -77,10 +77,6 @@ class EvaluateEventMediaJob implements ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
-        Log::warning('EvaluateEventMediaJob failed', [
-            'evaluation_id' => $this->evaluationId,
-            'media_context_ids' => $this->mediaContextIds,
-            'error' => $exception->getMessage(),
-        ]);
+        JobFailureReporter::report(static::class, $exception, ['evaluation_id' => $this->evaluationId, 'media_context_ids' => $this->mediaContextIds]);
     }
 }

@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\RedactLogChannel;
 use Illuminate\Log\Formatters\JsonFormatter;
 use Monolog\Handler\NullHandler;
 use Monolog\Handler\StreamHandler;
@@ -55,8 +56,9 @@ return [
 
         'stack' => [
             'driver' => 'stack',
-            'channels' => explode(',', (string) env('LOG_STACK', 'single')),
+            'channels' => explode(',', (string) env('LOG_STACK', 'single,json')),
             'ignore_exceptions' => false,
+            'tap' => [RedactLogChannel::class],
         ],
 
         'single' => [
@@ -64,6 +66,7 @@ return [
             'path' => storage_path('logs/laravel.log'),
             'level' => env('LOG_LEVEL', 'debug'),
             'replace_placeholders' => true,
+            'tap' => [RedactLogChannel::class],
         ],
 
         'daily' => [
@@ -72,30 +75,49 @@ return [
             'level' => env('LOG_LEVEL', 'debug'),
             'days' => env('LOG_DAILY_DAYS', 14),
             'replace_placeholders' => true,
+            'tap' => [RedactLogChannel::class],
         ],
 
-        // Una línea JSON por entrada, con todo el Context en `extra`
-        // (trace_id, team_id, ids de etapa: App\Support\PipelineTrace). Para
-        // seguir un evento: `grep '"trace_id":"<id>"' storage/logs/pipeline-*.json`
-        // o `jq 'select(.extra.trace_id == "<id>")'`. Se activa añadiéndolo al
-        // stack: LOG_STACK=single,json.
-        'json' => [
+        // Log narrativo del sistema (App\Support\SystemLog): una línea JSON por
+        // decisión, con el Context en `extra` (trace_id, team_id, ids de etapa).
+        // Seguir un evento: `jq 'select(.extra.trace_id == "<id>")' storage/logs/system-*.json`.
+        // Catálogo de códigos: docs/SAM/logging.md. Con LOG_JSON_STDERR=true va a
+        // stderr (para un agregador) en lugar de a archivo.
+        'json' => env('LOG_JSON_STDERR', false) ? [
+            'driver' => 'monolog',
+            'level' => env('LOG_JSON_LEVEL', env('LOG_LEVEL', 'debug')),
+            'handler' => StreamHandler::class,
+            'handler_with' => ['stream' => 'php://stderr'],
+            'formatter' => JsonFormatter::class,
+            'tap' => [RedactLogChannel::class],
+        ] : [
             'driver' => 'daily',
-            'path' => storage_path('logs/pipeline.json'),
+            'path' => storage_path('logs/system.json'),
             'level' => env('LOG_JSON_LEVEL', env('LOG_LEVEL', 'debug')),
             'days' => env('LOG_JSON_DAYS', 7),
             'formatter' => JsonFormatter::class,
+            'tap' => [RedactLogChannel::class],
         ],
 
-        // One structured line per telematics cycle and backfill (team, feed,
-        // duration, points, lag, error). Kept apart from laravel.log because
-        // it is high volume: 2 lines / 5 s / tenant.
+        // Telemática: alto volumen (resumen por ciclo cada 5 s por tenant), en
+        // su propio archivo, en JSON con el mismo esquema de SystemLog.
         'telematics' => [
             'driver' => 'daily',
-            'path' => storage_path('logs/telematics.log'),
+            'path' => storage_path('logs/telematics.json'),
             'level' => env('LOG_TELEMATICS_LEVEL', 'info'),
             'days' => env('LOG_TELEMATICS_DAYS', 7),
+            'formatter' => JsonFormatter::class,
+            'tap' => [RedactLogChannel::class],
+        ],
+
+        // Laravel lo trae por defecto; se declara aquí para redactar también este canal.
+        'monthly' => [
+            'driver' => 'monthly',
+            'path' => storage_path('logs/laravel.log'),
+            'level' => env('LOG_LEVEL', 'debug'),
+            'max_files' => 3,
             'replace_placeholders' => true,
+            'tap' => [RedactLogChannel::class],
         ],
 
         'slack' => [
@@ -105,6 +127,7 @@ return [
             'emoji' => env('LOG_SLACK_EMOJI', ':boom:'),
             'level' => env('LOG_LEVEL', 'critical'),
             'replace_placeholders' => true,
+            'tap' => [RedactLogChannel::class],
         ],
 
         'papertrail' => [
@@ -117,6 +140,7 @@ return [
                 'connectionString' => 'tls://'.env('PAPERTRAIL_URL').':'.env('PAPERTRAIL_PORT'),
             ],
             'processors' => [PsrLogMessageProcessor::class],
+            'tap' => [RedactLogChannel::class],
         ],
 
         'stderr' => [
@@ -128,6 +152,7 @@ return [
             ],
             'formatter' => env('LOG_STDERR_FORMATTER'),
             'processors' => [PsrLogMessageProcessor::class],
+            'tap' => [RedactLogChannel::class],
         ],
 
         'syslog' => [
@@ -135,21 +160,25 @@ return [
             'level' => env('LOG_LEVEL', 'debug'),
             'facility' => env('LOG_SYSLOG_FACILITY', LOG_USER),
             'replace_placeholders' => true,
+            'tap' => [RedactLogChannel::class],
         ],
 
         'errorlog' => [
             'driver' => 'errorlog',
             'level' => env('LOG_LEVEL', 'debug'),
             'replace_placeholders' => true,
+            'tap' => [RedactLogChannel::class],
         ],
 
         'null' => [
             'driver' => 'monolog',
             'handler' => NullHandler::class,
+            'tap' => [RedactLogChannel::class],
         ],
 
         'emergency' => [
             'path' => storage_path('logs/laravel.log'),
+            'tap' => [RedactLogChannel::class],
         ],
 
     ],

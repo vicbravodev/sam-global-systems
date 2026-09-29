@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Support\AutomaticSystemLog;
 use App\Support\PipelineTrace;
 use App\Support\TenantContext;
 use Carbon\CarbonImmutable;
@@ -46,6 +47,7 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->configureDefaults();
         $this->configurePipelineTrace();
+        AutomaticSystemLog::register();
     }
 
     /**

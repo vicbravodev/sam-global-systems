@@ -5,7 +5,7 @@ namespace App\Domains\Notifications\Support;
 use App\Domains\Notifications\Enums\NotificationStatus;
 use App\Domains\Notifications\Models\Notification;
 use App\Domains\Tenancy\Support\TenantCanSend;
-use Illuminate\Support\Facades\Log;
+use App\Support\SystemLog;
 
 /**
  * Corta una notificación de un tenant que no puede enviar (suscripción
@@ -34,11 +34,7 @@ final class CancelBlockedNotification
             'payload_json' => $payload,
         ]);
 
-        Log::info('notifications.cancelled_tenant_cannot_send', [
-            'notification_id' => $notification->id,
-            'team_id' => $notification->team_id,
-            'reason' => $reason,
-        ]);
+        SystemLog::skipped('notifications.notification.cancelled', reason: 'tenant_cannot_send', input: ['notification_id' => $notification->id, 'team_id' => $notification->team_id, 'blocked_reason' => $reason]);
 
         return true;
     }

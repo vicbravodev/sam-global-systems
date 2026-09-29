@@ -22,8 +22,8 @@ use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
 use App\Support\PipelineTrace;
+use App\Support\SystemLog;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class EvaluateEventWithAI
@@ -126,11 +126,7 @@ class EvaluateEventWithAI
         try {
             $result = $this->agent->evaluate($input);
         } catch (Throwable $exception) {
-            Log::warning('EventEvaluationAgent failed; falling back to rules_only', [
-                'normalized_event_id' => $event->id,
-                'error_class' => $exception::class,
-                'error' => $exception->getMessage(),
-            ]);
+            SystemLog::degraded('ai.evaluation.rules_only', reason: 'agent_error', input: ['normalized_event_id' => $event->id], error: $exception);
 
             return DB::transaction(function () use ($event, $version, $riskScore, $input, $exception, $fuseMedia) {
                 $fused = $this->applyFusion(

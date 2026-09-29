@@ -5,13 +5,13 @@ namespace App\Domains\Automation\Jobs;
 use App\Domains\Automation\Enums\ActionExecutionSourceType;
 use App\Domains\Automation\Models\AutomationWorkflow;
 use App\Domains\Automation\Services\RunAutomationWorkflow;
+use App\Support\JobFailureReporter;
 use App\Support\PipelineTrace;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Log;
 
 class RunAutomationWorkflowJob implements ShouldQueue
 {
@@ -54,9 +54,6 @@ class RunAutomationWorkflowJob implements ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
-        Log::warning('RunAutomationWorkflowJob failed', [
-            'automation_workflow_id' => $this->automationWorkflowId,
-            'error' => $exception->getMessage(),
-        ]);
+        JobFailureReporter::report(static::class, $exception, ['automation_workflow_id' => $this->automationWorkflowId]);
     }
 }
