@@ -595,7 +595,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         SystemLog::ok(
             'media.deferred.completed',
             input: $this->logInput($request),
-            result: ['available' => $availableCount, 'downloaded' => (int) $metadata['stills_downloaded']],
+            result: ['available' => $availableCount, 'downloaded' => $downloaded, 'stills_downloaded_total' => (int) $metadata['stills_downloaded']],
         );
     }
 

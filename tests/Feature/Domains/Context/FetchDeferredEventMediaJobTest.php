@@ -388,7 +388,51 @@ class FetchDeferredEventMediaJobTest extends TestCase
         $this->assertSystemLogged('media.deferred.stills_placed', fn (array $c) => $c['calc']['stills_requested'] === 2
             && $c['calc']['stills_rejected'] === 0
             && $c['calc']['next_poll_seconds'] === FetchDeferredEventMediaJob::POLL_DELAY_SECONDS);
-        $this->assertSystemLogged('media.deferred.completed', fn (array $c) => $c['result']['downloaded'] === 2);
+        $this->assertSystemLogged('media.deferred.completed', fn (array $c) => $c['result']['downloaded'] === 2
+            && $c['result']['available'] === 2
+            && $c['result']['stills_downloaded_total'] === 2);
+    }
+
+    public function test_still_completion_logs_per_poll_counts_and_the_cumulative_total(): void
+    {
+        $this->makeSamsaraIntegration();
+
+        $still = fn (string $name) => ['input' => 'dashcamDriverFacing', 'status' => 'available', 'urlInfo' => ['url' => "https://media.samsara.com/{$name}/cab.jpg"]];
+
+        Http::fake([
+            ...$this->fakeNoUploadedMedia(),
+            'api.samsara.com/cameras/media/retrieval*' => Http::sequence()
+                // Poll 1: still-1 ready, still-2 still pending.
+                ->push(['data' => ['media' => [$still('still-1')]]])
+                ->push(['data' => ['media' => [['input' => 'dashcamDriverFacing', 'status' => 'pending']]]])
+                // Poll 2: still-1 already stored, still-2 lands now.
+                ->push(['data' => ['media' => [$still('still-1')]]])
+                ->push(['data' => ['media' => [$still('still-2')]]]),
+            'media.samsara.com/*' => Http::response('still-bytes', 200, ['Content-Type' => 'image/jpeg']),
+        ]);
+        Queue::fake();
+
+        $request = $this->makeRequest(attributes: [
+            'request_type' => MediaRequestType::FetchSnapshot,
+            'status' => MediaRequestStatus::Sent,
+            'response_metadata_json' => ['still_retrievals' => [
+                ['retrieval_id' => 'still-1', 'index' => 0, 'offset_seconds' => -600],
+                ['retrieval_id' => 'still-2', 'index' => 1, 'offset_seconds' => 600],
+            ]],
+        ]);
+
+        $this->runJob($request);
+        $this->assertSame(MediaRequestStatus::Processing, $request->fresh()->status);
+        $this->assertSystemNotLogged('media.deferred.completed');
+
+        $this->runJob($request);
+        $this->assertSame(MediaRequestStatus::Completed, $request->fresh()->status);
+
+        $result = $this->assertSystemLogged('media.deferred.completed')['result'];
+        $this->assertSame(2, $result['available']);
+        $this->assertSame(1, $result['downloaded']);
+        $this->assertSame(2, $result['stills_downloaded_total']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_still_request_fails_when_provider_rejects_every_still(): void

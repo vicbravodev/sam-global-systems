@@ -202,7 +202,7 @@ Lo emite `App\Support\DeniedRequestLog` (outcome `degraded`); sólo la plantilla
 | `media.deferred.retrieval_placed` | ok | - | `event_media_request_id`, `normalized_event_id`, `calc.media_type`, `inputs`, `next_poll_seconds` |
 | `media.deferred.stills_placed` | ok | - | `event_media_request_id`, `normalized_event_id`, `calc.stills_requested`, `stills_rejected`, `next_poll_seconds` |
 | `media.deferred.polling` | ok | - | `event_media_request_id`, `normalized_event_id`, `calc.pending`, `available`, `failed_downloads`, `items`, `next_poll_seconds`, `result.requeue_reason` (`pending_at_provider`/`provider_unreachable`/`download_failed`) |
-| `media.deferred.completed` | ok | - | `event_media_request_id`, `normalized_event_id`, `result.available`, `result.downloaded` |
+| `media.deferred.completed` | ok | - | `event_media_request_id`, `normalized_event_id`, `result.available`, `result.downloaded` (de este sondeo), `result.stills_downloaded_total` (acumulado, solo stills) |
 | `media.deferred.sweep_polling` | ok | - | `event_media_request_id`, `normalized_event_id`, `calc.next_poll_seconds` |
 | `media.deferred.download_failed` | degraded | `download_failed` | `normalized_event_id`, `camera_input`, `error` |
 
