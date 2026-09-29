@@ -148,6 +148,23 @@ Lo emite `App\Support\DeniedRequestLog` (outcome `degraded`); sólo la plantilla
 | `webhook.event.rejected` | skipped | `invalid_signature` | `webhook_event_id`, `signature_mode` (`raw_header`/`legacy_body`), `event_type` (sólo si cumple `/^[A-Za-z0-9_.]{1,64}$/`; si no, `null`: viene de una petición sin autenticar), `event_type_valid` |
 | `webhook.event.ingested` | ok | | `webhook_event_id`, `event_type`, `signature_mode`, `provider_code`; `result.provider_code_fallback` |
 
+### Normalización (`normalization`)
+
+| Código | Outcome | Reason posibles | Campos clave |
+|---|---|---|---|
+| `normalization.type.mapped` | ok | | `input.provider_id`, `external_event_type`; calc `candidates`, `evaluated`, `rejected` (lista de `mapping_rule_id` + `failed_path`, sólo el path, nunca los valores); result `mapping_rule_id`, `event_type_code`, `priority` |
+| `normalization.type.unmapped` | skipped | `no_rule_for_type`, `conditions_not_met`, `no_provider` | `provider_id` o `raw_event_id`, `external_event_type`; calc `candidates`, `rejected` |
+| `normalization.severity.resolved` | ok | | `mapping_rule_id`, `event_type_code`; calc `severity_source` (`rule_override`/`type_default`/`medium_fallback`); result `severity_code` |
+| `normalization.internal.resolved` | ok | | `raw_event_id`, `event_type_code` (evento de monitor interno, sin proveedor ni regla) |
+| `normalization.asset.resolved` | ok / degraded | `cross_tenant_reference` | `raw_event_id`; calc `asset_path_used` (clave del payload o `null`), `reference_found`, `cross_tenant_rejected`; result `asset_id` (`null` si se rechazó; el id ajeno nunca se registra) |
+| `normalization.driver.resolved` | ok / degraded | `cross_tenant_reference` | igual, con `driver_path_used` y `driver_id` |
+| `normalization.asset.rejected` | degraded | `cross_tenant_internal_asset` | `raw_event_id`; nunca el id ajeno |
+| `normalization.event.discarded` | skipped | `asset_not_monitored` | `raw_event_id`, `asset_id`, `event_type_code`, `category_code`; calc `is_emergency=false` |
+| `normalization.event.emergency_unmonitored_passed` | ok | | `raw_event_id`, `asset_id`, `event_type_code`, `category_code`; calc `is_emergency=true`; result `normalized_event_id`, `billed_as_extra_asset_day` |
+| `normalization.event.normalized` | ok | | `raw_event_id`; result `normalized_event_id`, `route` (`mapped`/`internal`/`unmapped`), `event_type_code`, `category_code`, `severity_code`, `asset_id`, `driver_id`, `unmonitored_asset` |
+| `normalization.catalog.fallback_used` | degraded | `catalog_row_missing` | `expected_code` (`unmapped`/`operational`/`low`), `table` (`event_types`/`event_categories`/`event_severities`) |
+| `normalization.job.skipped` | skipped | `raw_event_missing`, `status_not_normalizable` | `raw_event_id`, `status` |
+
 ### Samsara (`samsara`)
 
 | Código | Outcome | Reason posibles | Campos clave |

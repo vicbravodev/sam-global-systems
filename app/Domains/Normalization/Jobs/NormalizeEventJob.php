@@ -7,6 +7,7 @@ use App\Domains\Ingestion\Models\RawEvent;
 use App\Domains\Normalization\Actions\NormalizeRawEvent;
 use App\Support\JobFailureReporter;
 use App\Support\PipelineTrace;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -34,6 +35,8 @@ class NormalizeEventJob implements ShouldQueue
         $rawEvent = RawEvent::withoutGlobalScopes()->find($this->rawEventId);
 
         if (! $rawEvent) {
+            SystemLog::skipped('normalization.job.skipped', reason: 'raw_event_missing', input: ['raw_event_id' => $this->rawEventId]);
+
             return;
         }
 
@@ -49,6 +52,12 @@ class NormalizeEventJob implements ShouldQueue
         ];
 
         if (! in_array($rawEvent->status, $allowedStatuses, true)) {
+            SystemLog::skipped(
+                'normalization.job.skipped',
+                reason: 'status_not_normalizable',
+                input: ['raw_event_id' => $rawEvent->id, 'status' => $rawEvent->status->value],
+            );
+
             return;
         }
 

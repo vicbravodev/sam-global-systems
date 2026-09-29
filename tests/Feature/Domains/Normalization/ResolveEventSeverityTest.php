@@ -8,10 +8,12 @@ use App\Domains\Normalization\Models\EventMappingRule;
 use App\Domains\Normalization\Models\EventSeverity;
 use App\Domains\Normalization\Models\EventType;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class ResolveEventSeverityTest extends TestCase
 {
+    use AssertsSystemLog;
     use RefreshDatabase;
 
     public function test_severity_falls_back_to_type_default(): void
@@ -37,6 +39,11 @@ class ResolveEventSeverityTest extends TestCase
             $resolved->id,
             'When mapping rule has no severity override, severity should fall back to the event type default_severity_id',
         );
+
+        $c = $this->assertSystemLogged('normalization.severity.resolved');
+        $this->assertSame('type_default', $c['calc']['severity_source']);
+        $this->assertSame($rule->id, $c['input']['mapping_rule_id']);
+        $this->assertSame('high', $c['result']['severity_code']);
     }
 
     public function test_severity_falls_back_to_medium_when_no_default(): void
@@ -62,6 +69,11 @@ class ResolveEventSeverityTest extends TestCase
             $resolved->code,
             'When neither mapping rule nor event type defines severity, the system should fall back to medium severity',
         );
+
+        $c = $this->assertSystemLogged('normalization.severity.resolved');
+        $this->assertSame('medium_fallback', $c['calc']['severity_source']);
+        $this->assertSame('medium', $c['result']['severity_code']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_severity_uses_rule_override_when_set(): void
@@ -88,5 +100,9 @@ class ResolveEventSeverityTest extends TestCase
             $resolved->id,
             'When mapping rule has a severity override, it should take precedence over event type default',
         );
+
+        $c = $this->assertSystemLogged('normalization.severity.resolved');
+        $this->assertSame('rule_override', $c['calc']['severity_source']);
+        $this->assertSame('critical', $c['result']['severity_code']);
     }
 }

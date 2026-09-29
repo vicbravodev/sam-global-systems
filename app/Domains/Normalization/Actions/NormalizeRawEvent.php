@@ -18,6 +18,7 @@ use App\Domains\Normalization\Models\EventSeverity;
 use App\Domains\Normalization\Models\EventType;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Support\PipelineTrace;
+use App\Support\SystemLog;
 use Illuminate\Support\Arr;
 
 class NormalizeRawEvent
@@ -56,7 +57,19 @@ class NormalizeRawEvent
             $internalType = $this->resolveInternalEventType($rawEvent, $payload);
 
             if ($internalType !== null) {
+                SystemLog::ok('normalization.internal.resolved', input: [
+                    'raw_event_id' => $rawEvent->id,
+                    'event_type_code' => $internalType->code,
+                ]);
+
                 return $this->createInternalNormalizedEvent($rawEvent, $internalType, $payload);
+            }
+
+            if (! $providerId) {
+                SystemLog::skipped('normalization.type.unmapped', reason: 'no_provider', input: [
+                    'raw_event_id' => $rawEvent->id,
+                    'external_event_type' => $externalEventType,
+                ]);
             }
 
             return $this->createUnmappedEvent($rawEvent, $externalEventType, $providerId);
@@ -95,6 +108,7 @@ class NormalizeRawEvent
         $assetId = $this->resolveInternalAssetId($rawEvent, $payload);
 
         if ($this->assetIsSwitchedOff($assetId)) {
+            $this->logDiscarded($rawEvent, $assetId, $eventType, $eventType->category);
             $this->discard($rawEvent);
 
             return null;
@@ -122,6 +136,8 @@ class NormalizeRawEvent
 
         PipelineTrace::add(['normalized_event_id' => $normalizedEvent->id]);
 
+        $this->logNormalized($rawEvent, $normalizedEvent, 'internal', $eventType, $eventType->category, $severity, false);
+
         EventNormalized::dispatch($normalizedEvent);
 
         return $normalizedEvent;
@@ -141,6 +157,12 @@ class NormalizeRawEvent
             ->whereKey($assetId)
             ->where('team_id', $rawEvent->team_id)
             ->exists();
+
+        if (! $belongs) {
+            SystemLog::degraded('normalization.asset.rejected', reason: 'cross_tenant_internal_asset', input: [
+                'raw_event_id' => $rawEvent->id,
+            ]);
+        }
 
         return $belongs ? $assetId : null;
     }
@@ -172,6 +194,8 @@ class NormalizeRawEvent
 
         PipelineTrace::add(['normalized_event_id' => $normalizedEvent->id]);
 
+        $this->logNormalized($rawEvent, $normalizedEvent, 'unmapped', null, null, null, false);
+
         EventUnmapped::dispatch($rawEvent, $externalEventType, $providerId ?? 0);
 
         return $normalizedEvent;
@@ -188,7 +212,7 @@ class NormalizeRawEvent
             ? $rule->mappedCategory
             : $eventType->category;
 
-        $assetId = $this->resolveAssetId($rawEvent->provider_id, $rawEvent->team_id, $payload);
+        $assetId = $this->resolveAssetId($rawEvent->provider_id, $rawEvent->team_id, $payload, $rawEvent->id);
 
         // Una emergencia (pánico, colisión, vuelco) SIEMPRE se atiende, esté o
         // no vigilada la unidad (decisión 2026-09-28): la prioridad es la
@@ -197,12 +221,13 @@ class NormalizeRawEvent
         $unmonitored = $this->assetIsSwitchedOff($assetId);
 
         if ($unmonitored && ! $this->isEmergency($eventType, $category)) {
+            $this->logDiscarded($rawEvent, $assetId, $eventType, $category);
             $this->discard($rawEvent);
 
             return null;
         }
 
-        $driverId = $this->resolveDriverId($rawEvent->provider_id, $rawEvent->team_id, $payload);
+        $driverId = $this->resolveDriverId($rawEvent->provider_id, $rawEvent->team_id, $payload, $rawEvent->id);
 
         $normalizedEvent = NormalizedEvent::query()->updateOrCreate(
             ['raw_event_id' => $rawEvent->id],
@@ -228,6 +253,22 @@ class NormalizeRawEvent
         $rawEvent->markAsProcessed();
 
         PipelineTrace::add(['normalized_event_id' => $normalizedEvent->id]);
+
+        if ($unmonitored) {
+            SystemLog::ok(
+                'normalization.event.emergency_unmonitored_passed',
+                input: [
+                    'raw_event_id' => $rawEvent->id,
+                    'asset_id' => $assetId,
+                    'event_type_code' => $eventType->code,
+                    'category_code' => $category?->code,
+                ],
+                calc: ['is_emergency' => true],
+                result: ['normalized_event_id' => $normalizedEvent->id, 'billed_as_extra_asset_day' => true],
+            );
+        }
+
+        $this->logNormalized($rawEvent, $normalizedEvent, 'mapped', $eventType, $category, $severity, $unmonitored);
 
         EventNormalized::dispatch($normalizedEvent);
 
@@ -270,6 +311,46 @@ class NormalizeRawEvent
             ->doesntExist();
     }
 
+    private function logDiscarded(RawEvent $rawEvent, ?int $assetId, EventType $eventType, ?EventCategory $category): void
+    {
+        SystemLog::skipped(
+            'normalization.event.discarded',
+            reason: 'asset_not_monitored',
+            input: [
+                'raw_event_id' => $rawEvent->id,
+                'asset_id' => $assetId,
+                'event_type_code' => $eventType->code,
+                'category_code' => $category?->code,
+            ],
+            calc: ['is_emergency' => false],
+        );
+    }
+
+    private function logNormalized(
+        RawEvent $rawEvent,
+        NormalizedEvent $normalizedEvent,
+        string $route,
+        ?EventType $eventType,
+        ?EventCategory $category,
+        ?EventSeverity $severity,
+        bool $unmonitored,
+    ): void {
+        SystemLog::ok(
+            'normalization.event.normalized',
+            input: ['raw_event_id' => $rawEvent->id],
+            result: [
+                'normalized_event_id' => $normalizedEvent->id,
+                'route' => $route,
+                'event_type_code' => $eventType?->code ?? $normalizedEvent->eventType?->code,
+                'category_code' => $category?->code ?? $normalizedEvent->eventCategory?->code,
+                'severity_code' => $severity?->code ?? $normalizedEvent->eventSeverity?->code,
+                'asset_id' => $normalizedEvent->asset_id,
+                'driver_id' => $normalizedEvent->driver_id,
+                'unmonitored_asset' => $unmonitored,
+            ],
+        );
+    }
+
     private function discard(RawEvent $rawEvent): void
     {
         $rawEvent->markAsStatus(RawEventStatus::Discarded);
@@ -284,39 +365,65 @@ class NormalizeRawEvent
      * 3. payload.vehicleId (AlertIncident alternative)
      * 4. payload.data.conditions.0.details.panicButton.vehicle.id (AlertIncident nested)
      */
-    private function resolveAssetId(?int $providerId, ?int $teamId, array $payload): ?int
+    private function resolveAssetId(?int $providerId, ?int $teamId, array $payload, int $rawEventId): ?int
     {
-        if (! $providerId || ! $teamId) {
-            return null;
+        $path = null;
+        $referenceFound = false;
+        $crossTenant = false;
+        $assetId = null;
+
+        if ($providerId && $teamId) {
+            foreach (['asset.id', 'vehicle.id', 'vehicleId', 'data.conditions.0.details.panicButton.vehicle.id'] as $candidate) {
+                // First non-null value wins (as `??`); a falsy one means "no id".
+                if (Arr::get($payload, $candidate) !== null) {
+                    $path = Arr::get($payload, $candidate) ? $candidate : null;
+                    break;
+                }
+            }
+
+            $reference = $path === null ? null : AssetExternalReference::query()
+                ->where('provider_id', $providerId)
+                ->where('external_id', (string) Arr::get($payload, $path))
+                ->first();
+
+            if ($reference !== null) {
+                $referenceFound = true;
+
+                // (provider_id, external_id) is unique platform-wide, so a payload id
+                // can point at another tenant's asset. Isolation must not depend on
+                // how the provider allocates its identifiers.
+                $belongs = Asset::query()
+                    ->whereKey($reference->asset_id)
+                    ->where('team_id', $teamId)
+                    ->exists();
+
+                $crossTenant = ! $belongs;
+                $assetId = $belongs ? $reference->asset_id : null;
+            }
         }
 
-        $externalId = Arr::get($payload, 'asset.id')
-            ?? Arr::get($payload, 'vehicle.id')
-            ?? Arr::get($payload, 'vehicleId')
-            ?? Arr::get($payload, 'data.conditions.0.details.panicButton.vehicle.id');
+        $this->logReference('asset', 'asset_path_used', $rawEventId, $path, $referenceFound, $crossTenant, $assetId);
 
-        if (! $externalId) {
-            return null;
+        return $assetId;
+    }
+
+    /**
+     * One line per resolution. The foreign id of a rejected reference is never
+     * logged: `cross_tenant_rejected` is only a flag.
+     */
+    private function logReference(string $kind, string $pathKey, int $rawEventId, ?string $path, bool $referenceFound, bool $crossTenant, ?int $resolvedId): void
+    {
+        $input = ['raw_event_id' => $rawEventId];
+        $calc = [$pathKey => $path, 'reference_found' => $referenceFound, 'cross_tenant_rejected' => $crossTenant];
+        $result = ["{$kind}_id" => $resolvedId];
+
+        if ($crossTenant) {
+            SystemLog::degraded("normalization.{$kind}.resolved", reason: 'cross_tenant_reference', input: $input, calc: $calc, result: $result);
+
+            return;
         }
 
-        $reference = AssetExternalReference::query()
-            ->where('provider_id', $providerId)
-            ->where('external_id', (string) $externalId)
-            ->first();
-
-        if ($reference === null) {
-            return null;
-        }
-
-        // (provider_id, external_id) is unique platform-wide, so a payload id
-        // can point at another tenant's asset. Isolation must not depend on
-        // how the provider allocates its identifiers.
-        $belongs = Asset::query()
-            ->whereKey($reference->asset_id)
-            ->where('team_id', $teamId)
-            ->exists();
-
-        return $belongs ? $reference->asset_id : null;
+        SystemLog::ok("normalization.{$kind}.resolved", input: $input, calc: $calc, result: $result);
     }
 
     /**
@@ -326,36 +433,45 @@ class NormalizeRawEvent
      * 1. payload.driver.id (both formats at root)
      * 2. payload.data.conditions.0.details.panicButton.driver.id (AlertIncident nested)
      */
-    private function resolveDriverId(?int $providerId, ?int $teamId, array $payload): ?int
+    private function resolveDriverId(?int $providerId, ?int $teamId, array $payload, int $rawEventId): ?int
     {
-        if (! $providerId || ! $teamId) {
-            return null;
+        $path = null;
+        $referenceFound = false;
+        $crossTenant = false;
+        $driverId = null;
+
+        if ($providerId && $teamId) {
+            foreach (['driver.id', 'data.conditions.0.details.panicButton.driver.id'] as $candidate) {
+                // First non-null value wins (as `??`); a falsy one means "no id".
+                if (Arr::get($payload, $candidate) !== null) {
+                    $path = Arr::get($payload, $candidate) ? $candidate : null;
+                    break;
+                }
+            }
+
+            $reference = $path === null ? null : DriverExternalReference::query()
+                ->where('provider_id', $providerId)
+                ->where('external_id', (string) Arr::get($payload, $path))
+                ->first();
+
+            if ($reference !== null) {
+                $referenceFound = true;
+
+                // Same platform-wide unique key as the asset references above: verify
+                // the driver belongs to the tenant that owns the event.
+                $belongs = Driver::query()
+                    ->whereKey($reference->driver_id)
+                    ->where('team_id', $teamId)
+                    ->exists();
+
+                $crossTenant = ! $belongs;
+                $driverId = $belongs ? $reference->driver_id : null;
+            }
         }
 
-        $externalId = Arr::get($payload, 'driver.id')
-            ?? Arr::get($payload, 'data.conditions.0.details.panicButton.driver.id');
+        $this->logReference('driver', 'driver_path_used', $rawEventId, $path, $referenceFound, $crossTenant, $driverId);
 
-        if (! $externalId) {
-            return null;
-        }
-
-        $reference = DriverExternalReference::query()
-            ->where('provider_id', $providerId)
-            ->where('external_id', (string) $externalId)
-            ->first();
-
-        if ($reference === null) {
-            return null;
-        }
-
-        // Same platform-wide unique key as the asset references above: verify
-        // the driver belongs to the tenant that owns the event.
-        $belongs = Driver::query()
-            ->whereKey($reference->driver_id)
-            ->where('team_id', $teamId)
-            ->exists();
-
-        return $belongs ? $reference->driver_id : null;
+        return $driverId;
     }
 
     /**
@@ -415,22 +531,43 @@ class NormalizeRawEvent
 
     private function getUnmappedEventTypeId(): int
     {
-        return EventType::where('code', 'unmapped')
-            ->value('id')
-            ?? EventType::query()->value('id');
+        $id = EventType::where('code', 'unmapped')->value('id');
+
+        if ($id === null) {
+            SystemLog::degraded('normalization.catalog.fallback_used', reason: 'catalog_row_missing', input: [
+                'expected_code' => 'unmapped',
+                'table' => 'event_types',
+            ]);
+        }
+
+        return $id ?? EventType::query()->value('id');
     }
 
     private function getUnmappedCategoryId(): int
     {
-        return EventCategory::where('code', 'operational')
-            ->value('id')
-            ?? EventCategory::query()->value('id');
+        $id = EventCategory::where('code', 'operational')->value('id');
+
+        if ($id === null) {
+            SystemLog::degraded('normalization.catalog.fallback_used', reason: 'catalog_row_missing', input: [
+                'expected_code' => 'operational',
+                'table' => 'event_categories',
+            ]);
+        }
+
+        return $id ?? EventCategory::query()->value('id');
     }
 
     private function getUnmappedSeverityId(): int
     {
-        return EventSeverity::where('code', 'low')
-            ->value('id')
-            ?? EventSeverity::query()->value('id');
+        $id = EventSeverity::where('code', 'low')->value('id');
+
+        if ($id === null) {
+            SystemLog::degraded('normalization.catalog.fallback_used', reason: 'catalog_row_missing', input: [
+                'expected_code' => 'low',
+                'table' => 'event_severities',
+            ]);
+        }
+
+        return $id ?? EventSeverity::query()->value('id');
     }
 }
