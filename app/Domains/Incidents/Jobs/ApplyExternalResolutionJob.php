@@ -7,6 +7,7 @@ use App\Domains\Incidents\Models\Incident;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Support\JobFailureReporter;
 use App\Support\PipelineTrace;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -33,7 +34,11 @@ class ApplyExternalResolutionJob implements ShouldQueue
     {
         $event = NormalizedEvent::withoutGlobalScopes()->find($this->normalizedEventId);
 
+        $input = ['normalized_event_id' => $this->normalizedEventId];
+
         if ($event === null || ($event->payload_normalized_json['is_resolved'] ?? null) !== true) {
+            SystemLog::skipped('incidents.external_resolution.matched', reason: 'not_resolved', input: $input);
+
             return;
         }
 
@@ -43,7 +48,28 @@ class ApplyExternalResolutionJob implements ShouldQueue
         // entrada no puede estar scopeado, todo lo que sigue sí. Ver §2.1.
         TenantContext::set($event->team_id);
 
-        foreach ($this->findOpenIncidents($event) as $incident) {
+        $match = $this->findOpenIncidents($event);
+
+        if ($match['incidents'] === []) {
+            SystemLog::skipped('incidents.external_resolution.matched', reason: 'no_open_incident', input: $input, calc: [
+                'strategy' => 'none',
+                'external_event_id_present' => $match['external_event_id_present'],
+                'window_minutes' => $match['window_minutes'],
+            ]);
+
+            return;
+        }
+
+        SystemLog::ok('incidents.external_resolution.matched',
+            input: $input,
+            calc: ['strategy' => $match['strategy'], 'window_minutes' => $match['window_minutes']],
+            result: [
+                'incident_ids' => array_map(fn (Incident $incident) => $incident->id, $match['incidents']),
+                'incidents_count' => count($match['incidents']),
+            ],
+        );
+
+        foreach ($match['incidents'] as $incident) {
             $applyExternalResolution->execute($incident, $event);
         }
     }
@@ -54,11 +80,12 @@ class ApplyExternalResolutionJob implements ShouldQueue
      * original panic). Fallback: open incidents for the same asset/driver inside
      * the incident dedup window, mirroring CreateIncidentFromEvent.
      *
-     * @return list<Incident>
+     * @return array{incidents: list<Incident>, strategy: 'external_event_id'|'asset_window'|'none', external_event_id_present: bool, window_minutes: ?int}
      */
     private function findOpenIncidents(NormalizedEvent $event): array
     {
         $externalEventId = $event->rawEvent()->withoutGlobalScopes()->value('external_event_id');
+        $externalEventIdPresent = $externalEventId !== null;
 
         if ($externalEventId !== null) {
             $incidents = Incident::query()
@@ -71,12 +98,17 @@ class ApplyExternalResolutionJob implements ShouldQueue
                 ->get();
 
             if ($incidents->isNotEmpty()) {
-                return $incidents->all();
+                return [
+                    'incidents' => $incidents->all(),
+                    'strategy' => 'external_event_id',
+                    'external_event_id_present' => true,
+                    'window_minutes' => null,
+                ];
             }
         }
 
         if ($event->asset_id === null && $event->driver_id === null) {
-            return [];
+            return ['incidents' => [], 'strategy' => 'none', 'external_event_id_present' => $externalEventIdPresent, 'window_minutes' => null];
         }
 
         $window = (int) config('incidents.duplicate_window_minutes', 30);
@@ -98,7 +130,12 @@ class ApplyExternalResolutionJob implements ShouldQueue
             ->limit(1)
             ->get();
 
-        return $fallback->all();
+        return [
+            'incidents' => $fallback->all(),
+            'strategy' => $fallback->isNotEmpty() ? 'asset_window' : 'none',
+            'external_event_id_present' => $externalEventIdPresent,
+            'window_minutes' => $window,
+        ];
     }
 
     public function failed(\Throwable $exception): void

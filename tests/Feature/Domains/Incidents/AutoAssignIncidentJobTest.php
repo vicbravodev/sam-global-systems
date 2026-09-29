@@ -13,11 +13,12 @@ use App\Domains\Incidents\Models\IncidentTimeline;
 use App\Models\User;
 use Database\Seeders\IncidentsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class AutoAssignIncidentJobTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsSystemLog, RefreshDatabase;
 
     protected function setUp(): void
     {
@@ -39,6 +40,14 @@ class AutoAssignIncidentJobTest extends TestCase
 
         $this->assertSame(AssigneeType::Queue, $assignment->assigned_to_type);
         $this->assertSame($incident->team_id, (int) $assignment->assigned_to_id);
+
+        $this->assertSystemLogged('incidents.assignment.resolved', fn (array $c) => $c['outcome'] === 'ok'
+            && $c['input'] === ['incident_id' => $incident->id, 'stage' => 'auto_assign_job']
+            && $c['calc']['source'] === 'default_queue'
+            && $c['result']['assignee_type'] === 'queue'
+            && $c['result']['assignment_id'] === $assignment->id
+            && $c['result']['role'] === 'default');
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_is_idempotent_when_incident_already_assigned(): void
@@ -60,6 +69,17 @@ class AutoAssignIncidentJobTest extends TestCase
             ->where('incident_id', $incident->id)
             ->where('entry_type', TimelineEntryType::Assigned->value)
             ->count());
+
+        $this->assertCount(1, array_filter(
+            $this->systemLogEntries('incidents.assignment.resolved'),
+            fn (array $e) => $e['context']['outcome'] === 'ok',
+        ));
+        $skipped = array_values(array_filter(
+            $this->systemLogEntries('incidents.assignment.resolved'),
+            fn (array $e) => ($e['context']['reason'] ?? null) === 'already_assigned'
+                && $e['context']['input']['stage'] === 'auto_assign_job',
+        ));
+        $this->assertCount(2, $skipped);
     }
 
     public function test_does_not_steal_an_assignment_an_operator_already_took(): void
@@ -84,5 +104,10 @@ class AutoAssignIncidentJobTest extends TestCase
 
         $this->assertSame(AssigneeType::User, $active->assigned_to_type);
         $this->assertSame($user->id, (int) $active->assigned_to_id);
+
+        $this->assertSystemLogged('incidents.assignment.resolved', fn (array $c) => $c['outcome'] === 'skipped'
+            && $c['reason'] === 'already_assigned'
+            && $c['input'] === ['incident_id' => $incident->id, 'stage' => 'auto_assign_job']);
+        $this->assertNoSensitiveDataLogged();
     }
 }

@@ -23,11 +23,12 @@ use App\Models\User;
 use Database\Seeders\IncidentsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class ApplyExternalResolutionTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsSystemLog, RefreshDatabase;
 
     protected function setUp(): void
     {
@@ -52,6 +53,16 @@ class ApplyExternalResolutionTest extends TestCase
             'incident_id' => $incident->id,
             'entry_type' => TimelineEntryType::ExternallyResolved->value,
         ]);
+
+        $c = $this->assertSystemLogged('incidents.external_resolution.applied', fn (array $c) => $c['outcome'] === 'ok');
+        $this->assertSame(['incident_id' => $incident->id, 'normalized_event_id' => $updateEvent->id], $c['input']);
+        $this->assertSame('payload', $c['calc']['resolved_at_source']);
+        $this->assertTrue($c['calc']['allow_close']);
+        $this->assertFalse($c['calc']['was_terminal']);
+        $this->assertSame('annotate', $c['calc']['mode']);
+        $this->assertFalse($c['result']['closed']);
+        $this->assertSame($fresh->external_resolved_at->toIso8601String(), $c['result']['external_resolved_at']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_closes_incident_when_tenant_opted_into_auto_close(): void
@@ -70,6 +81,11 @@ class ApplyExternalResolutionTest extends TestCase
             'incident_id' => $incident->id,
             'resolution_code' => ResolutionCode::ResolvedExternally->value,
         ]);
+
+        $this->assertSystemLogged('incidents.external_resolution.applied', fn (array $c) => $c['outcome'] === 'ok'
+            && $c['input']['incident_id'] === $incident->id
+            && $c['calc']['mode'] === 'close'
+            && $c['result']['closed'] === true);
     }
 
     public function test_is_idempotent_and_does_not_duplicate_timeline_entries(): void
@@ -87,6 +103,13 @@ class ApplyExternalResolutionTest extends TestCase
             ->count();
 
         $this->assertSame(1, $entries);
+
+        $this->assertCount(1, array_filter(
+            $this->systemLogEntries('incidents.external_resolution.applied'),
+            fn (array $e) => $e['context']['outcome'] === 'ok',
+        ));
+        $this->assertSystemLogged('incidents.external_resolution.applied', fn (array $c) => ($c['reason'] ?? null) === 'already_annotated'
+            && $c['input'] === ['incident_id' => $incident->id, 'normalized_event_id' => $updateEvent->id]);
     }
 
     public function test_event_arriving_already_resolved_creates_annotated_incident_and_never_closes(): void
@@ -117,6 +140,13 @@ class ApplyExternalResolutionTest extends TestCase
             'incident_id' => $incident->id,
             'entry_type' => TimelineEntryType::ExternallyResolved->value,
         ]);
+
+        $c = $this->assertSystemLogged('incidents.external_resolution.applied', fn (array $c) => $c['outcome'] === 'ok'
+            && $c['input']['incident_id'] === $incident->id);
+        $this->assertFalse($c['calc']['allow_close']);
+        $this->assertArrayHasKey('mode', $c['calc']);
+        $this->assertNull($c['calc']['mode']);
+        $this->assertFalse($c['result']['closed']);
     }
 
     public function test_listener_dispatches_job_only_for_resolved_events(): void
@@ -163,6 +193,33 @@ class ApplyExternalResolutionTest extends TestCase
 
         $this->assertNotNull($incident->fresh()->external_resolved_at);
         $this->assertNull($unrelated->fresh()->external_resolved_at);
+
+        $this->assertSystemLogged('incidents.external_resolution.matched', fn (array $c) => $c['outcome'] === 'ok'
+            && $c['input'] === ['normalized_event_id' => $updateEvent->id]
+            && $c['calc']['strategy'] === 'external_event_id'
+            && $c['result']['incident_ids'] === [$incident->id]
+            && $c['result']['incidents_count'] === 1);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_job_logs_when_no_open_incident_matches(): void
+    {
+        $team = $this->makeTeam();
+
+        $event = NormalizedEvent::factory()->create([
+            'team_id' => $team->id,
+            'asset_id' => null,
+            'driver_id' => null,
+            'payload_normalized_json' => ['is_resolved' => true],
+        ]);
+
+        (new ApplyExternalResolutionJob($event->id))->handle(app(ApplyExternalResolution::class));
+
+        $this->assertSystemLogged('incidents.external_resolution.matched', fn (array $c) => $c['outcome'] === 'skipped'
+            && $c['reason'] === 'no_open_incident'
+            && $c['calc']['strategy'] === 'none'
+            && $c['calc']['window_minutes'] === null);
+        $this->assertSystemNotLogged('incidents.external_resolution.applied');
     }
 
     public function test_tenant_isolation_setting_and_incidents_of_other_teams_are_untouched(): void

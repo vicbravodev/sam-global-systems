@@ -5,7 +5,9 @@ namespace App\Domains\Incidents\Listeners;
 use App\Domains\Decisions\Events\DecisionMade;
 use App\Domains\Incidents\Actions\ApplyReevaluationToIncident;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Toda decisión nueva sobre un evento que ya tiene incidente (típicamente una
@@ -34,6 +36,9 @@ class ApplyReevaluationOnDecisionMade
                 ->find($decision->normalized_event_id);
 
             if ($normalizedEvent === null) {
+                $decisionId = $decision->id;
+                DB::afterCommit(fn () => SystemLog::skipped('incidents.reevaluation.applied', reason: 'event_missing', input: ['decision_id' => $decisionId]));
+
                 return;
             }
 

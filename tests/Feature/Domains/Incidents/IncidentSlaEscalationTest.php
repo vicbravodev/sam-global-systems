@@ -88,6 +88,11 @@ class IncidentSlaEscalationTest extends TestCase
             'entry_type' => TimelineEntryType::SlaBreached->value,
         ]);
         Queue::assertNotPushed(CheckIncidentAcknowledgementJob::class);
+
+        $this->assertSystemLogged('incidents.ack_check.skipped', fn (array $c) => $c['reason'] === 'acknowledged'
+            && $c['input'] === ['incident_id' => $incident->id, 'level' => 0, 'attempt' => 1]);
+        $this->assertSystemNotLogged('incidents.ack_check.breached');
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_terminal_incident_stops_the_chain(): void
@@ -104,23 +109,34 @@ class IncidentSlaEscalationTest extends TestCase
             'incident_id' => $incident->id,
             'entry_type' => TimelineEntryType::SlaBreached->value,
         ]);
+
+        $this->assertSystemLogged('incidents.ack_check.skipped', fn (array $c) => $c['reason'] === 'terminal'
+            && $c['input']['incident_id'] === $incident->id);
     }
 
     public function test_early_delivery_never_escalates_before_the_sla(): void
     {
         Queue::fake();
 
+        $this->freezeSecond();
         $incident = $this->makeOpenIncident(['sla_due_at' => now()->addHour()]);
 
         $this->runWatchdog($incident);
 
         $this->assertSame(IncidentStatusCode::Open->value, $incident->fresh()->status->code);
         Queue::assertNotPushed(CheckIncidentAcknowledgementJob::class);
+
+        $c = $this->assertSystemLogged('incidents.ack_check.skipped', fn (array $c) => $c['reason'] === 'not_due_yet');
+        $this->assertGreaterThan(0, $c['calc']['seconds_until_due']);
+        $this->assertSame(3600, $c['calc']['seconds_until_due']);
+        $this->assertSame($incident->fresh()->sla_due_at->toIso8601String(), $c['calc']['sla_due_at']);
+        $this->assertSame(now()->toIso8601String(), $c['calc']['now_at']);
     }
 
     public function test_unacknowledged_breach_escalates_notifies_and_rearms(): void
     {
         Queue::fake();
+        $this->freezeSecond();
 
         $this->makeEscalationConfig([
             ['delay_minutes' => 0, 'contacts' => ['oncall@example.com']],
@@ -151,6 +167,39 @@ class IncidentSlaEscalationTest extends TestCase
             CheckIncidentAcknowledgementJob::class,
             fn (CheckIncidentAcknowledgementJob $job) => $job->incidentId === $incident->id && $job->level === 1,
         );
+
+        $input = ['incident_id' => $incident->id, 'level' => 0, 'attempt' => 1];
+
+        $this->assertSystemLogged('incidents.ack_check.breached', fn (array $c) => $c['input'] === $input
+            && $c['calc']['first_breach'] === true
+            && $c['calc']['status_before'] === 'open'
+            && $c['calc']['steps_count'] === 2
+            && $c['result']['escalated_now'] === true
+            && $c['result']['status_after'] === 'escalated');
+
+        $c = $this->assertSystemLogged('incidents.ack_check.rearmed', fn (array $c) => $c['input'] === $input
+            && $c['calc']['mode'] === 'next_level');
+        $this->assertSame(0, $c['calc']['current_offset_minutes']);
+        $this->assertSame(15, $c['calc']['next_offset_minutes']);
+        $this->assertSame(1, $c['calc']['step_attempts']);
+        $this->assertSame(1, $c['result']['next_level']);
+        $this->assertSame(1, $c['result']['next_attempt']);
+        $this->assertSame(
+            max(1, $c['calc']['next_offset_minutes'] - $c['calc']['current_offset_minutes']),
+            $c['result']['delay_minutes'],
+        );
+        Queue::assertPushed(
+            CheckIncidentAcknowledgementJob::class,
+            fn (CheckIncidentAcknowledgementJob $job) => $job->level === $c['result']['next_level']
+                && $job->attempt === $c['result']['next_attempt']
+                && Carbon::instance($job->delay)->equalTo(now()->addMinutes($c['result']['delay_minutes'])),
+        );
+
+        $json = json_encode($this->systemLogEntries());
+        $this->assertStringNotContainsString('oncall@example.com', $json);
+        $this->assertStringNotContainsString('boss@example.com', $json);
+        $this->assertStringNotContainsString((string) json_encode($incident->title), $json);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_step_channels_are_forced_on_the_notification(): void
@@ -176,6 +225,7 @@ class IncidentSlaEscalationTest extends TestCase
     public function test_step_attempts_retry_the_same_level_before_advancing(): void
     {
         Queue::fake();
+        $this->freezeSecond();
 
         $this->makeEscalationConfig([
             ['delay_minutes' => 0, 'contacts' => ['oncall@example.com'], 'attempts' => 2, 'retry_minutes' => 3],
@@ -196,7 +246,30 @@ class IncidentSlaEscalationTest extends TestCase
             fn (CheckIncidentAcknowledgementJob $job) => $job->level === 1,
         );
 
+        $c = $this->assertSystemLogged('incidents.ack_check.rearmed', fn (array $c) => $c['calc']['mode'] === 'retry_same_level');
+        $this->assertSame(['incident_id' => $incident->id, 'level' => 0, 'attempt' => 1], $c['input']);
+        $this->assertSame(2, $c['calc']['step_attempts']);
+        $this->assertSame(3, $c['calc']['retry_minutes']);
+        $this->assertSame(CheckIncidentAcknowledgementJob::DEFAULT_RETRY_MINUTES, $c['calc']['default_retry_minutes']);
+        $this->assertSame(0, $c['result']['next_level']);
+        $this->assertSame(2, $c['result']['next_attempt']);
+        $this->assertSame($c['calc']['retry_minutes'], $c['result']['delay_minutes']);
+        Queue::assertPushed(
+            CheckIncidentAcknowledgementJob::class,
+            fn (CheckIncidentAcknowledgementJob $job) => $job->level === 0
+                && $job->attempt === 2
+                && Carbon::instance($job->delay)->equalTo(now()->addMinutes($c['result']['delay_minutes'])),
+        );
+
         $this->runWatchdog($incident, level: 0, attempt: 2);
+
+        $this->assertSystemLogged('incidents.ack_check.breached', fn (array $c) => $c['input']['attempt'] === 2
+            && $c['calc']['first_breach'] === false
+            && $c['result']['escalated_now'] === false);
+        $this->assertSystemLogged('incidents.ack_check.rearmed', fn (array $c) => $c['input']['attempt'] === 2
+            && $c['calc']['mode'] === 'next_level'
+            && $c['result']['next_level'] === 1
+            && $c['result']['delay_minutes'] === 15);
 
         // The retry notified again with its own idempotency key…
         $this->assertNotNull(Notification::withoutGlobalScopes()
@@ -234,6 +307,12 @@ class IncidentSlaEscalationTest extends TestCase
         $this->assertSame('boss@example.com', $notification->payload_json['recipients'][0]['address']);
 
         Queue::assertNotPushed(CheckIncidentAcknowledgementJob::class);
+
+        $this->assertSystemLogged('incidents.ack_check.chain_exhausted', fn (array $c) => $c['reason'] === 'no_next_level'
+            && $c['input'] === ['incident_id' => $incident->id, 'level' => 1, 'attempt' => 1]
+            && $c['calc']['steps_count'] === 2
+            && $c['calc']['step_attempts'] === 1);
+        $this->assertSystemNotLogged('incidents.ack_check.rearmed');
     }
 
     public function test_acknowledging_after_first_breach_cancels_the_next_level(): void

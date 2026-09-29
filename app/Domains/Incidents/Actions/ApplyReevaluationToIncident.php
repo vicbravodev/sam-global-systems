@@ -13,6 +13,8 @@ use App\Domains\Incidents\Models\IncidentPriority;
 use App\Domains\Incidents\Models\IncidentTimeline;
 use App\Domains\Incidents\Support\IncidentUpdatedBroadcast;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Support\LoggableCode;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Support\Facades\DB;
 
@@ -29,6 +31,10 @@ use Illuminate\Support\Facades\DB;
  *
  * Idempotente por decisión: aplicar dos veces la misma decisión (o una más
  * vieja que la vigente) no hace nada.
+ *
+ * Corre dentro de EvaluateDecisionRules (vía el listener) o suelta (vía
+ * CreateIncidentJob): todas sus líneas van por DB::afterCommit. Nunca registra
+ * `decision_reason` ni el título de la línea de tiempo.
  */
 class ApplyReevaluationToIncident
 {
@@ -79,13 +85,25 @@ class ApplyReevaluationToIncident
     public function execute(Incident $incident, Decision $decision): bool
     {
         if ((int) $decision->team_id !== (int) $incident->team_id) {
+            // El incidente es de otro tenant: nunca su id.
+            $decisionId = $decision->id;
+            DB::afterCommit(fn () => SystemLog::skipped('incidents.reevaluation.applied',
+                reason: 'team_mismatch',
+                input: ['decision_id' => $decisionId],
+                calc: ['team_matches' => false],
+            ));
+
             return false;
         }
 
-        return TenantContext::for($incident->team_id, fn () => DB::transaction(function () use ($incident, $decision) {
+        $logInput = ['decision_id' => $decision->id, 'incident_id' => $incident->id];
+
+        return TenantContext::for($incident->team_id, fn () => DB::transaction(function () use ($incident, $decision, $logInput) {
             $incident = Incident::query()->whereKey($incident->id)->lockForUpdate()->first();
 
             if ($incident === null) {
+                DB::afterCommit(fn () => SystemLog::skipped('incidents.reevaluation.applied', reason: 'incident_missing', input: $logInput));
+
                 return false;
             }
 
@@ -97,6 +115,12 @@ class ApplyReevaluationToIncident
             $isRootEvent = (int) $incident->related_event_id === (int) $decision->normalized_event_id;
 
             if ($isRootEvent && $currentDecisionId !== null && $currentDecisionId >= (int) $decision->id) {
+                DB::afterCommit(fn () => SystemLog::skipped('incidents.reevaluation.applied',
+                    reason: 'decision_not_newer',
+                    input: $logInput,
+                    calc: ['current_decision_id' => $currentDecisionId, 'is_root_event' => true],
+                ));
+
                 return false;
             }
 
@@ -107,6 +131,8 @@ class ApplyReevaluationToIncident
                 ->exists();
 
             if ($alreadyApplied) {
+                DB::afterCommit(fn () => SystemLog::skipped('incidents.reevaluation.applied', reason: 'already_applied', input: $logInput));
+
                 return false;
             }
 
@@ -190,6 +216,34 @@ class ApplyReevaluationToIncident
             }
 
             broadcast(IncidentUpdatedBroadcast::fromModel($incident->fresh(['status', 'priority'])));
+
+            $decisionPriorityCode = $decision->priority_level?->value;
+            $appliedLine = [
+                'input' => [
+                    'incident_id' => $incident->id,
+                    'decision_id' => $decision->id,
+                    'decision_code' => LoggableCode::guard($decision->decision_code),
+                ],
+                'calc' => [
+                    'is_root_event' => $isRootEvent,
+                    'is_terminal' => $isTerminal,
+                    'previous_decision_id' => $currentDecisionId,
+                    'previous_priority_code' => $previousPriority?->code,
+                    'previous_level' => $previousPriority?->level,
+                    'decision_priority_level' => $decisionPriorityCode,
+                    'mapped_priority_code' => $newPriority?->code,
+                    'priority_alias_used' => $newPriority !== null && $newPriority->code !== $decisionPriorityCode,
+                    'mapped_level' => $newPriority?->level,
+                ],
+                'result' => [
+                    'priority_raised' => $raisePriority,
+                    'related_decision_moved' => $isRootEvent,
+                    'false_positive_notice' => ! $isTerminal && $classification === EventClassification::FalsePositive,
+                    'evaluation_version' => $version,
+                    'classification' => $classification?->value,
+                ],
+            ];
+            DB::afterCommit(fn () => SystemLog::ok('incidents.reevaluation.applied', ...$appliedLine));
 
             return true;
         }));

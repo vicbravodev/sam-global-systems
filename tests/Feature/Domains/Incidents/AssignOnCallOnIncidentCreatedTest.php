@@ -2,10 +2,12 @@
 
 namespace Tests\Feature\Domains\Incidents;
 
+use App\Domains\Incidents\Actions\CreateIncidentFromEvent;
 use App\Domains\Incidents\Events\IncidentCreated;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentAssignment;
 use App\Domains\Incidents\Models\IncidentPriority;
+use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\Notifications\Models\Notification;
 use App\Domains\TenantConfig\Models\TenantScheduleProfile;
 use App\Enums\TeamRole;
@@ -14,11 +16,14 @@ use App\Models\User;
 use Database\Seeders\IncidentsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Event;
+use RuntimeException;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class AssignOnCallOnIncidentCreatedTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsSystemLog, RefreshDatabase;
 
     private Team $team;
 
@@ -99,6 +104,33 @@ class AssignOnCallOnIncidentCreatedTest extends TestCase
         $this->assertTrue(Notification::withoutGlobalScopes()
             ->where('event_key', "incident_created:{$incident->id}")
             ->exists());
+
+        $c = $this->assertSystemLogged('incidents.assignment.resolved', fn (array $c) => $c['outcome'] === 'ok'
+            && $c['input']['incident_id'] === $incident->id
+            && $c['input']['stage'] === 'on_call_listener');
+        $this->assertSame('shift', $c['calc']['source']);
+        $this->assertSame(0, $c['calc']['matched_shift_index']);
+        $this->assertSame(1, $c['calc']['shifts_count']);
+        $this->assertSame(1, $c['calc']['shifts_matched_count']);
+        $this->assertSame(0, $c['calc']['non_member_skipped_count']);
+        $this->assertTrue($c['calc']['profile_present']);
+        $this->assertFalse($c['calc']['fallback_configured']);
+        $this->assertSame('user', $c['result']['assignee_type']);
+        $this->assertSame($this->operator->id, $c['result']['assignee_user_id']);
+        $this->assertSame($assignment->id, $c['result']['assignment_id']);
+        $this->assertSame('on_call', $c['result']['role']);
+
+        $this->assertSystemLogged('incidents.on_call.notified', fn (array $c) => $c['outcome'] === 'ok'
+            && $c['input']['incident_id'] === $incident->id
+            && $c['input']['assignee_user_id'] === $this->operator->id
+            && $c['result']['notification_id'] === $notification->id
+            && $c['result']['forced_channel_types'] === ['web']);
+
+        $json = json_encode($this->systemLogEntries());
+        $this->assertStringNotContainsString((string) json_encode($this->operator->email), $json);
+        $this->assertStringNotContainsString((string) json_encode($this->operator->name), $json);
+        $this->assertStringNotContainsString((string) json_encode($incident->title), $json);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_assigns_without_directed_notification_for_non_critical(): void
@@ -118,6 +150,13 @@ class AssignOnCallOnIncidentCreatedTest extends TestCase
                 ->where('event_key', "incident_oncall_assigned:{$incident->id}")
                 ->count(),
         );
+
+        $this->assertSystemLogged('incidents.assignment.resolved', fn (array $c) => $c['outcome'] === 'ok'
+            && $c['result']['assignee_user_id'] === $this->operator->id);
+        $this->assertSystemLogged('incidents.on_call.notified', fn (array $c) => $c['outcome'] === 'skipped'
+            && $c['reason'] === 'not_critical'
+            && $c['input']['incident_id'] === $incident->id
+            && $c['input']['assignee_user_id'] === $this->operator->id);
     }
 
     public function test_does_nothing_without_schedule_profile(): void
@@ -127,6 +166,12 @@ class AssignOnCallOnIncidentCreatedTest extends TestCase
         IncidentCreated::dispatch($incident);
 
         $this->assertSame(0, IncidentAssignment::query()->where('incident_id', $incident->id)->count());
+
+        $this->assertSystemLogged('incidents.assignment.resolved', fn (array $c) => $c['outcome'] === 'skipped'
+            && $c['reason'] === 'no_active_profile'
+            && $c['input']['incident_id'] === $incident->id
+            && $c['calc']['profile_present'] === false);
+        $this->assertSystemNotLogged('incidents.on_call.notified');
     }
 
     public function test_never_assigns_a_user_outside_the_team(): void
@@ -142,6 +187,17 @@ class AssignOnCallOnIncidentCreatedTest extends TestCase
         IncidentCreated::dispatch($incident);
 
         $this->assertSame(0, IncidentAssignment::query()->where('incident_id', $incident->id)->count());
+
+        $c = $this->assertSystemLogged('incidents.assignment.resolved', fn (array $c) => $c['outcome'] === 'skipped'
+            && $c['reason'] === 'no_eligible_member');
+        $this->assertSame(1, $c['calc']['shifts_matched_count']);
+        $this->assertSame(1, $c['calc']['non_member_skipped_count']);
+        $this->assertNull($c['calc']['matched_shift_index']);
+
+        // El id del usuario ajeno nunca aparece como valor de un *_user_id.
+        $json = (string) json_encode($this->systemLogEntries());
+        $this->assertDoesNotMatchRegularExpression('/"[a-z_]*user_id":'.$outsider->id.'\\b/', $json);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_respects_shift_windows_and_falls_back(): void
@@ -165,6 +221,14 @@ class AssignOnCallOnIncidentCreatedTest extends TestCase
             ->sole();
 
         $this->assertSame($fallback->id, (int) $assignment->assigned_to_id);
+
+        $c = $this->assertSystemLogged('incidents.assignment.resolved', fn (array $c) => $c['outcome'] === 'ok');
+        $this->assertSame('fallback', $c['calc']['source']);
+        $this->assertSame(0, $c['calc']['shifts_matched_count']);
+        $this->assertNull($c['calc']['matched_shift_index']);
+        $this->assertTrue($c['calc']['fallback_configured']);
+        $this->assertTrue($c['calc']['fallback_is_member']);
+        $this->assertSame($fallback->id, $c['result']['assignee_user_id']);
     }
 
     public function test_skips_incidents_that_already_have_an_assignment(): void
@@ -188,5 +252,33 @@ class AssignOnCallOnIncidentCreatedTest extends TestCase
             IncidentAssignment::query()->where('incident_id', $incident->id)->count(),
             'an existing assignment must not be replaced by the on-call auto-assigner',
         );
+
+        $this->assertSystemLogged('incidents.assignment.resolved', fn (array $c) => $c['outcome'] === 'skipped'
+            && $c['reason'] === 'already_assigned'
+            && $c['input'] === ['incident_id' => $incident->id, 'stage' => 'on_call_listener']);
+    }
+
+    public function test_a_rolled_back_creation_logs_no_assignment(): void
+    {
+        $this->makeScheduleProfile([
+            'on_call' => [['user_id' => $this->operator->id]],
+        ]);
+
+        Event::listen(IncidentCreated::class, fn () => throw new RuntimeException('boom'));
+
+        $event = NormalizedEvent::factory()->create(['team_id' => $this->team->id]);
+
+        try {
+            app(CreateIncidentFromEvent::class)->execute($event, ['priority_code' => 'critical']);
+            $this->fail('La creación debía lanzar.');
+        } catch (RuntimeException $e) {
+            $this->assertSame('boom', $e->getMessage());
+        }
+
+        $this->assertSame(0, Incident::withoutGlobalScopes()->count());
+        $this->assertSame(0, IncidentAssignment::query()->count());
+        $this->assertSystemNotLogged('incidents.assignment.resolved');
+        $this->assertSystemNotLogged('incidents.on_call.notified');
+        $this->assertSystemLogged('incidents.type.resolved');
     }
 }

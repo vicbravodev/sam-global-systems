@@ -7,6 +7,7 @@ use App\Domains\Incidents\Enums\AssigneeType;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentAssignment;
 use App\Support\PipelineTrace;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -31,8 +32,11 @@ class AutoAssignIncidentJob implements ShouldQueue
     public function handle(AssignIncident $assignIncident): void
     {
         $incident = Incident::withoutGlobalScopes()->find($this->incidentId);
+        $input = ['incident_id' => $this->incidentId, 'stage' => 'auto_assign_job'];
 
         if ($incident === null) {
+            SystemLog::skipped('incidents.assignment.resolved', reason: 'incident_missing', input: $input);
+
             return;
         }
 
@@ -51,16 +55,28 @@ class AutoAssignIncidentJob implements ShouldQueue
             ->exists();
 
         if ($alreadyAssigned) {
+            SystemLog::skipped('incidents.assignment.resolved', reason: 'already_assigned', input: $input);
+
             return;
         }
 
         // Default fallback assignment: route to the team's default queue.
         // Tenant-specific assignment rules will hook in via spec 16 (TenantConfig).
-        $assignIncident->execute(
+        $assignment = $assignIncident->execute(
             incident: $incident,
             assigneeType: AssigneeType::Queue,
             assigneeId: $incident->team_id,
             role: 'default',
+        );
+
+        SystemLog::ok('incidents.assignment.resolved',
+            input: $input,
+            calc: ['source' => 'default_queue'],
+            result: [
+                'assignee_type' => AssigneeType::Queue->value,
+                'assignment_id' => $assignment->id,
+                'role' => 'default',
+            ],
         );
     }
 }
