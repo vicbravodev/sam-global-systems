@@ -41,6 +41,7 @@ use App\Http\Controllers\Incidents\IncidentMediaRequestController;
 use App\Http\Controllers\Incidents\IncidentResolutionController;
 use App\Http\Controllers\Integrations\IntegrationController;
 use App\Http\Controllers\Integrations\IntegrationPageController;
+use App\Http\Controllers\Integrations\WebhookSecretController;
 use App\Http\Controllers\Normalization\EventsPageController;
 use App\Http\Controllers\Normalization\MappingRuleController;
 use App\Http\Controllers\Notifications\NotificationChannelController;
@@ -208,6 +209,7 @@ Route::prefix('{current_team}')
         Route::put('integrations/{integration}', [IntegrationController::class, 'update'])->name('integrations.update');
         Route::delete('integrations/{integration}', [IntegrationController::class, 'destroy'])->name('integrations.destroy');
         Route::post('integrations/{integration}/test', [IntegrationController::class, 'test'])->name('integrations.test');
+        Route::put('integrations/{integration}/webhook-secret', [WebhookSecretController::class, 'update'])->name('integrations.webhook-secret.update');
 
         Route::get('audit', [AuditPageController::class, 'show'])->name('audit.show');
 
