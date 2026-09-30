@@ -2,6 +2,7 @@ import { Link } from '@inertiajs/react';
 import {
     AlertTriangle,
     ArrowUpRight,
+    AudioLines,
     Camera,
     Container,
     ChevronRight,
@@ -687,6 +688,24 @@ function isVideo(item: MediaItem): boolean {
     );
 }
 
+function isAudio(item: MediaItem): boolean {
+    return (
+        item.mediaType === 'audio' ||
+        (item.mimeType?.startsWith('audio/') ?? false)
+    );
+}
+
+/**
+ * iOS Safari does not paint a `preload="metadata"` frame: a clip without a
+ * poster would show a black tile (no error fires), so it gets the icon.
+ */
+const PAINTS_VIDEO_FRAMES =
+    typeof navigator === 'undefined' ||
+    !(
+        /iP(hone|ad|od)/.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+    );
+
 function MediaCard({ block }: { block: MediaBlock }) {
     // By id, not by object: the stored answer may bring fresh item objects
     // (same card, same key) and the selection must survive that.
@@ -714,7 +733,17 @@ function MediaCard({ block }: { block: MediaBlock }) {
             />
             <div className="bg-black/90">
                 {active.url ? (
-                    isVideo(active) ? (
+                    isAudio(active) ? (
+                        <div className="grid aspect-video w-full place-items-center px-4">
+                            <audio
+                                key={active.id}
+                                src={active.url}
+                                controls
+                                preload="metadata"
+                                className="w-full"
+                            />
+                        </div>
+                    ) : isVideo(active) ? (
                         <video
                             key={active.id}
                             src={active.url}
@@ -742,7 +771,9 @@ function MediaCard({ block }: { block: MediaBlock }) {
                 )}
             </div>
             <div className="flex items-center gap-2 border-t border-border px-3 py-2 text-xs">
-                {isVideo(active) ? (
+                {isAudio(active) ? (
+                    <AudioLines className="size-3.5 text-fg-3" />
+                ) : isVideo(active) ? (
                     <Film className="size-3.5 text-fg-3" />
                 ) : (
                     <ImageIcon className="size-3.5 text-fg-3" />
@@ -793,28 +824,60 @@ function MediaCard({ block }: { block: MediaBlock }) {
     );
 }
 
+type ThumbStage = 'thumbnail' | 'frame' | 'image' | 'icon';
+
+/** Fallback chain of a carousel tile, best first; the icon always closes it. */
+function thumbStages(item: MediaItem): ThumbStage[] {
+    const stages: ThumbStage[] = [];
+
+    if (item.thumbnailUrl) {
+        stages.push('thumbnail');
+    }
+
+    if (item.url && isVideo(item) && PAINTS_VIDEO_FRAMES) {
+        stages.push('frame');
+    }
+
+    // Audio is never loaded as an image.
+    if (item.url && !isVideo(item) && !isAudio(item) && !item.thumbnailUrl) {
+        stages.push('image');
+    }
+
+    stages.push('icon');
+
+    return stages;
+}
+
 /**
- * Real thumbnail of a carousel item: the signed snapshot / clip thumbnail
- * when the server sends one, else the clip's own first frame (metadata
- * only, muted), else the type icon.
+ * Real thumbnail of a carousel item, staged: the signed snapshot / clip
+ * poster, else the clip's own frame (metadata only, muted; not on iOS),
+ * else the image itself, else the type icon. Each load error moves one
+ * stage down.
  */
 function MediaThumb({ item }: { item: MediaItem }) {
-    const [failed, setFailed] = useState(false);
+    const stages = thumbStages(item);
+    const [failures, setFailures] = useState(0);
+    const stage = stages[Math.min(failures, stages.length - 1)];
+    const next = () => setFailures((n) => n + 1);
 
-    if (item.thumbnailUrl && !failed) {
+    if (stage === 'thumbnail' || stage === 'image') {
         return (
             <img
-                src={item.thumbnailUrl}
+                key={stage}
+                src={
+                    (stage === 'thumbnail' ? item.thumbnailUrl : item.url) ??
+                    undefined
+                }
                 alt=""
                 loading="lazy"
                 decoding="async"
-                onError={() => setFailed(true)}
+                onError={next}
                 className="absolute inset-0 size-full object-cover"
             />
         );
     }
 
-    if (isVideo(item) && item.url && !failed) {
+    if (stage === 'frame' && item.url) {
         return (
             <video
                 // `#t` asks for a frame past the (often black) first one.
@@ -824,26 +887,15 @@ function MediaThumb({ item }: { item: MediaItem }) {
                 playsInline
                 tabIndex={-1}
                 aria-hidden
-                onError={() => setFailed(true)}
+                onError={next}
                 className="pointer-events-none absolute inset-0 size-full object-cover"
             />
         );
     }
 
-    if (!isVideo(item) && item.url && !failed) {
-        return (
-            <img
-                src={item.url}
-                alt=""
-                loading="lazy"
-                decoding="async"
-                onError={() => setFailed(true)}
-                className="absolute inset-0 size-full object-cover"
-            />
-        );
-    }
-
-    return isVideo(item) ? (
+    return isAudio(item) ? (
+        <AudioLines className="size-4" />
+    ) : isVideo(item) ? (
         <Film className="size-4" />
     ) : (
         <ImageIcon className="size-4" />
