@@ -58,7 +58,11 @@ class CopilotAgentTenantLeakTest extends TestCase
 
         $scope = CopilotTurnScope::fromTeam($team, app(AuthorizeAction::class)->resolvePermissions($user, $team), false);
         $collector = new CopilotTurnCollector;
-        $tools = app(CopilotToolbox::class)->for($scope, $collector);
+        $all = app(CopilotToolbox::class)->for($scope, $collector);
+        $this->assertCount(15, $all);
+
+        // suggest_followups reads no data; every other tool is a data tool.
+        $tools = array_values(array_filter($all, fn ($t) => $t instanceof SdkCopilotTool));
         $byName = collect($tools)->keyBy(fn (SdkCopilotTool $t) => $t->name());
 
         $this->assertCount(14, $tools);

@@ -6,8 +6,11 @@ use App\Contracts\AI\CopilotNarrator;
 use App\Domains\AI\Support\ModelPricing;
 use App\Domains\Copilot\Data\CopilotAnswer;
 use App\Domains\Copilot\Data\CopilotNarration;
+use App\Domains\Copilot\Data\CopilotTurnScope;
 use App\Domains\Copilot\Support\TemplateCopilotNarrator;
+use App\Infrastructure\AI\Middleware\CopilotStepGuard;
 use App\Support\SystemLog;
+use Carbon\CarbonImmutable;
 use Throwable;
 
 /**
@@ -33,7 +36,7 @@ class SdkCopilotNarrator implements CopilotNarrator
         ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
 
         try {
-            $response = (new CopilotAgent($history))->prompt($payload);
+            $response = $this->agent($history)->prompt($payload);
         } catch (Throwable $exception) {
             SystemLog::degraded('copilot.narration.fallback', reason: 'agent_error', error: $exception);
 
@@ -52,5 +55,18 @@ class SdkCopilotNarrator implements CopilotNarrator
             outputTokens: $output,
             costEstimate: $this->pricing->estimateCost($model, $input, $output),
         );
+    }
+
+    /**
+     * Tool-less construction: this legacy narrator only phrases facts it is
+     * handed (removed when the agent orchestrates the turn).
+     *
+     * @param  list<array{role: string, content: string}>  $history
+     */
+    private function agent(array $history): CopilotAgent
+    {
+        $scope = new CopilotTurnScope(0, '', [], false, (string) config('app.timezone'), CarbonImmutable::now());
+
+        return new CopilotAgent($scope, $history, [], new CopilotStepGuard((int) config('ai.copilot.max_turn_tokens', 60000)));
     }
 }

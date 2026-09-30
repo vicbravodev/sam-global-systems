@@ -6,6 +6,7 @@ use App\Domains\Copilot\Data\CopilotTurnScope;
 use App\Domains\Copilot\Tools\Sdk\CopilotToolDefinition;
 use App\Domains\Copilot\Tools\Sdk\DelegatingCopilotTool;
 use App\Domains\Copilot\Tools\Sdk\SdkCopilotTool;
+use App\Domains\Copilot\Tools\Sdk\SuggestFollowupsTool;
 use Illuminate\Contracts\Container\Container;
 
 /**
@@ -17,7 +18,7 @@ final class CopilotToolbox
     public function __construct(private readonly Container $container) {}
 
     /**
-     * @return list<SdkCopilotTool>
+     * @return list<SdkCopilotTool|SuggestFollowupsTool>
      */
     public function for(CopilotTurnScope $scope, CopilotTurnCollector $collector): array
     {
@@ -29,6 +30,8 @@ final class CopilotToolbox
             array_values(CopilotToolDefinition::all()),
         );
 
-        return array_values(array_filter($tools, fn (SdkCopilotTool $tool) => $scope->can($tool->permission())));
+        $allowed = array_values(array_filter($tools, fn (SdkCopilotTool $tool) => $scope->can($tool->permission())));
+
+        return [...$allowed, new SuggestFollowupsTool($collector)];
     }
 }

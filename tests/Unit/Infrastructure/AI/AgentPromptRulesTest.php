@@ -2,9 +2,12 @@
 
 namespace Tests\Unit\Infrastructure\AI;
 
+use App\Domains\Copilot\Data\CopilotTurnScope;
 use App\Infrastructure\AI\Agents\CopilotAgent;
 use App\Infrastructure\AI\Agents\EventClassifierAgent;
 use App\Infrastructure\AI\Agents\MediaInspectorAgent;
+use App\Infrastructure\AI\Middleware\CopilotStepGuard;
+use Carbon\CarbonImmutable;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -84,17 +87,22 @@ class AgentPromptRulesTest extends TestCase
     public static function copilotRules(): array
     {
         return [
-            'spanish output' => ['SIEMPRE en español de México'],
-            'grounded on facts only' => ['EXCLUSIVAMENTE los datos de "facts" y "highlights"'],
+            'spanish output' => ['Respondes en español de México'],
+            'grounded on tools only' => ['Todo dato sale de tus herramientas'],
             'never invent' => ['Nunca inventes'],
-            'cards already show detail' => ['no repitas listas completas'],
-            'permission denial' => ['falta de permisos'],
+            'cards already show detail' => ['no repitas listas'],
+            'permission denial' => ['falta de permiso'],
         ];
     }
 
     #[DataProvider('copilotRules')]
     public function test_copilot_prompt_keeps_rule(string $needle): void
     {
-        $this->assertStringContainsString($needle, (string) (new CopilotAgent)->instructions());
+        $this->assertStringContainsString($needle, (string) (new CopilotAgent(
+            new CopilotTurnScope(1, 'acme', [], false, 'America/Mexico_City', CarbonImmutable::now()),
+            [],
+            [],
+            new CopilotStepGuard(60000),
+        ))->instructions());
     }
 }

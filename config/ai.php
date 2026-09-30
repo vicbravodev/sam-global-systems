@@ -238,6 +238,11 @@ return [
     |
     */
 
+    'copilot' => [
+        // Turn-wide token budget (input + output across steps); beyond it the agent must answer without more tools.
+        'max_turn_tokens' => (int) env('COPILOT_MAX_TURN_TOKENS', 60000),
+    ],
+
     'quota' => [
         'monthly_token_limit' => (int) env('AI_QUOTA_MONTHLY_TOKEN_LIMIT', 5_000_000),
         'daily_call_limit' => (int) env('AI_QUOTA_DAILY_CALL_LIMIT', 2_000),
