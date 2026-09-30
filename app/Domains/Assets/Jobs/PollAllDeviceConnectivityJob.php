@@ -4,6 +4,7 @@ namespace App\Domains\Assets\Jobs;
 
 use App\Domains\Integrations\Enums\TenantIntegrationStatus;
 use App\Domains\Integrations\Models\TenantIntegration;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -28,16 +29,32 @@ class PollAllDeviceConnectivityJob implements ShouldQueue
 
     public function handle(): void
     {
+        $dispatched = 0;
+        $syncDisabled = 0;
+
         // Fan-out de plataforma: recorre todos los tenants a propósito, y
         // mete cada iteración en el contexto de SU tenant. Ver §2.1.
-        TenantContext::withoutTenant(fn () => TenantIntegration::query()
-            ->where('status', TenantIntegrationStatus::Active)
-            ->ofLiveTeam()
-            ->with('provider')
-            ->each(fn (TenantIntegration $integration) => TenantContext::for($integration->team_id, function () use ($integration): void {
-                if (($integration->config_json['sync']['enabled'] ?? true) !== false) {
-                    PollAssetConnectivityJob::dispatch($integration);
-                }
-            })));
+        TenantContext::withoutTenant(function () use (&$dispatched, &$syncDisabled): void {
+            TenantIntegration::query()
+                ->where('status', TenantIntegrationStatus::Active)
+                ->ofLiveTeam()
+                ->with('provider')
+                ->each(function (TenantIntegration $integration) use (&$dispatched, &$syncDisabled): void {
+                    TenantContext::for($integration->team_id, function () use ($integration, &$dispatched, &$syncDisabled): void {
+                        if (($integration->config_json['sync']['enabled'] ?? true) !== false) {
+                            PollAssetConnectivityJob::dispatch($integration);
+                            $dispatched++;
+                        } else {
+                            $syncDisabled++;
+                        }
+                    });
+                });
+        });
+
+        // Recorrido de plataforma: sólo conteos, nunca ids de un tenant.
+        SystemLog::ok('assets.connectivity.dispatched', result: [
+            'dispatched_count' => $dispatched,
+            'sync_disabled_count' => $syncDisabled,
+        ]);
     }
 }

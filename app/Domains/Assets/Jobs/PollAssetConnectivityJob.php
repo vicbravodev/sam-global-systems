@@ -5,6 +5,8 @@ namespace App\Domains\Assets\Jobs;
 use App\Domains\Assets\Actions\ResolveAssetsFromExternalIds;
 use App\Domains\Integrations\Contracts\ProviderAdapter;
 use App\Domains\Integrations\Models\TenantIntegration;
+use App\Support\SystemLog;
+use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -69,8 +71,14 @@ class PollAssetConnectivityJob implements ShouldBeUnique, ShouldQueue
             $this->integration->team_id,
         );
 
+        $withoutHeartbeat = 0;
+
         foreach ($assets as $externalId => $asset) {
             $reading = $readings[$externalId];
+
+            if (! isset($reading['last_connected_at'])) {
+                $withoutHeartbeat++;
+            }
 
             $asset->forceFill([
                 'device_last_connected_at' => isset($reading['last_connected_at'])
@@ -80,6 +88,17 @@ class PollAssetConnectivityJob implements ShouldBeUnique, ShouldQueue
                 'device_connectivity_polled_at' => $polledAt,
             ])->save();
         }
+
+        // Nunca el `health_status` crudo del proveedor: sólo conteos.
+        TenantContext::for($this->integration->team_id, fn () => SystemLog::ok('assets.connectivity.polled', input: [
+            'team_id' => (int) $this->integration->team_id,
+            'integration_id' => $this->integration->id,
+        ], result: [
+            'readings_reported_count' => count($readings),
+            'assets_matched_count' => count($assets),
+            'readings_unmatched_count' => count($readings) - count($assets),
+            'without_heartbeat_count' => $withoutHeartbeat,
+        ]));
     }
 
     public function failed(\Throwable $exception): void

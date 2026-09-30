@@ -16,11 +16,12 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Mockery;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class SyncIntegrationTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsSystemLog, RefreshDatabase;
 
     private function createIntegrationWithSyncJob(SyncType $syncType = SyncType::Full): array
     {
@@ -124,6 +125,50 @@ class SyncIntegrationTest extends TestCase
         Event::assertDispatched(IntegrationSyncCompleted::class, function ($event) use ($syncJob) {
             return $event->syncJobId === $syncJob->id && $event->recordsProcessed === 42;
         });
+
+        $completed = $this->systemLogEntries('assets.sync.completed');
+        $this->assertCount(1, $completed);
+        $context = $completed[0]['context'];
+        $this->assertSame('integration_sync', $context['input']['stage']);
+        $this->assertSame($integration->team_id, $context['input']['team_id']);
+        $this->assertSame($integration->id, $context['input']['integration_id']);
+        $this->assertSame(2, $context['result']['assets_reported_count']);
+        // The mocked handler returns null: it did not sync those assets.
+        $this->assertSame(2, $context['result']['not_handled_count']);
+        $this->assertSame(0, $context['result']['created_count']);
+        $this->assertSame(0, $context['result']['updated_count']);
+        $this->assertSame(0, $context['result']['conflict_count']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_the_asset_sync_summary_counts_each_handler_outcome(): void
+    {
+        Event::fake([IntegrationSyncCompleted::class]);
+
+        [, , $integration, $syncJob] = $this->createIntegrationWithSyncJob();
+
+        $mockAdapter = Mockery::mock(ProviderAdapter::class);
+        $mockAdapter->shouldReceive('sync')->once()->andReturn([
+            'assets' => [['external_id' => 'v1'], ['external_id' => 'v2'], ['external_id' => 'v3'], ['external_id' => 'v4']],
+            'drivers' => [],
+            'events' => [],
+            'records_processed' => 4,
+        ]);
+        $this->app->instance(ProviderAdapter::class, $mockAdapter);
+
+        $mockAssetSync = Mockery::mock(AssetSyncHandler::class);
+        $mockAssetSync->shouldReceive('syncFromIntegration')->times(4)->andReturn('created', 'updated', 'conflict', 'updated');
+        $this->app->instance(AssetSyncHandler::class, $mockAssetSync);
+
+        app(SyncIntegration::class)->execute($integration, $syncJob);
+
+        $context = $this->assertSystemLogged('assets.sync.completed');
+        $this->assertSame(4, $context['result']['assets_reported_count']);
+        $this->assertSame(1, $context['result']['created_count']);
+        $this->assertSame(2, $context['result']['updated_count']);
+        $this->assertSame(1, $context['result']['conflict_count']);
+        $this->assertSame(0, $context['result']['not_handled_count']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_it_marks_sync_as_failed_on_provider_error(): void

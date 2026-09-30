@@ -12,13 +12,18 @@ class AssetSyncHandlerService implements AssetSyncHandler
         private SyncAssetFromIntegration $syncAssetAction,
     ) {}
 
-    public function syncFromIntegration(int $teamId, int $integrationId, array $assetData): void
+    public function syncFromIntegration(int $teamId, int $integrationId, array $assetData): ?string
     {
         try {
-            $this->syncAssetAction->execute($teamId, $integrationId, $assetData);
-        } catch (AssetExternalReferenceConflictException) {
+            $asset = $this->syncAssetAction->execute($teamId, $integrationId, $assetData);
+
+            return $asset->wasRecentlyCreated ? 'created' : 'updated';
+        } catch (AssetExternalReferenceConflictException $e) {
             // The external id already belongs to another tenant's asset:
-            // skip it instead of writing over their data.
+            // skip it (and log it) instead of writing over their data.
+            $e->logSkipped();
+
+            return 'conflict';
         }
     }
 }

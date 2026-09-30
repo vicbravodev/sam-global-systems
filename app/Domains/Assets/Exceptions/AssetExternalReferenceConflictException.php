@@ -2,6 +2,9 @@
 
 namespace App\Domains\Assets\Exceptions;
 
+use App\Support\LoggableCode;
+use App\Support\SystemLog;
+use App\Support\TenantContext;
 use RuntimeException;
 
 /**
@@ -22,5 +25,20 @@ class AssetExternalReferenceConflictException extends RuntimeException
             "External id {$externalId} of provider {$providerId} already belongs to another tenant; "
                 ."refusing to claim it for team {$teamId}.",
         );
+    }
+
+    /**
+     * Log a skipped asset so a platform operator can see the collision (it
+     * usually means two tenants connected the same provider account). The
+     * `team_id` is the tenant that ASKED for the id; the owner is never
+     * looked up nor logged.
+     */
+    public function logSkipped(): void
+    {
+        TenantContext::for($this->teamId, fn () => SystemLog::skipped('assets.sync.external_id_conflict', reason: 'owned_by_other_tenant', input: [
+            'team_id' => $this->teamId,
+            'provider_id' => $this->providerId,
+            'external_id' => LoggableCode::guard($this->externalId),
+        ]));
     }
 }
