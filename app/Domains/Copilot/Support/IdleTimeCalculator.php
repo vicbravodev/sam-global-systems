@@ -35,17 +35,24 @@ final class IdleTimeCalculator
 
         $ids = $assets->keys()->all();
 
-        // State in force at `from`: newest reading before it, per asset.
-        $before = AssetTelemetrySnapshot::query()
+        // State in force at `from`: the reading with the greatest recorded_at
+        // before it, per asset (ids can be out of order after history backfills).
+        $latestBefore = AssetTelemetrySnapshot::query()
+            ->selectRaw('asset_id, max(recorded_at) as latest_at')
             ->whereIn('asset_id', $ids)
             ->where('telemetry_type', TelemetryType::Ignition)
-            ->whereIn('id', AssetTelemetrySnapshot::query()
-                ->selectRaw('max(id)')
-                ->whereIn('asset_id', $ids)
-                ->where('telemetry_type', TelemetryType::Ignition)
-                ->where('recorded_at', '<', $from)
-                ->groupBy('asset_id'))
-            ->get(['asset_id', 'data_json', 'recorded_at']);
+            ->where('recorded_at', '<', $from)
+            ->groupBy('asset_id');
+
+        $before = AssetTelemetrySnapshot::query()
+            ->joinSub($latestBefore, 'lb', fn ($join) => $join
+                ->on('lb.asset_id', '=', 'asset_telemetry_snapshots.asset_id')
+                ->on('lb.latest_at', '=', 'asset_telemetry_snapshots.recorded_at'))
+            ->where('asset_telemetry_snapshots.telemetry_type', TelemetryType::Ignition)
+            ->get(['asset_telemetry_snapshots.id', 'asset_telemetry_snapshots.asset_id', 'asset_telemetry_snapshots.data_json', 'asset_telemetry_snapshots.recorded_at'])
+            ->sortByDesc('id')
+            ->unique('asset_id')
+            ->values();
 
         $inside = AssetTelemetrySnapshot::query()
             ->whereIn('asset_id', $ids)
@@ -128,7 +135,7 @@ final class IdleTimeCalculator
         $onWindows = [];
 
         foreach ($series as $i => $reading) {
-            if ($this->state($reading) !== 'on') {
+            if (! in_array($this->state($reading), ['on', 'running'], true)) {
                 continue;
             }
 

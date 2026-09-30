@@ -135,6 +135,39 @@ class IdleTimeCalculatorTest extends TestCase
         $this->assertSame([], $result);
     }
 
+    public function test_carry_in_state_uses_recorded_at_not_insertion_order(): void
+    {
+        $now = $this->now;
+        [, $team] = $this->memberWithRole('supervisor');
+        $asset = $this->bareAsset($team->id);
+        // Newest before the window is Idle (inserted first); an older Off is
+        // backfilled later and gets a higher id.
+        $this->engine($asset, 'Idle', $now->subHours(9));
+        $this->engine($asset, 'Off', $now->subHours(12));
+        $this->engine($asset, 'Off', $now->subHours(6));
+
+        $summary = app(IdleTimeCalculator::class)->forAsset($asset, $now->subHours(8), $now->subHours(7));
+
+        $this->assertSame('engine_state', $summary->source);
+        $this->assertSame(1.0, $summary->hours);
+    }
+
+    public function test_running_ignition_state_counts_as_on_in_the_fallback(): void
+    {
+        $now = $this->now;
+        [, $team] = $this->memberWithRole('supervisor');
+        $asset = $this->bareAsset($team->id);
+        $this->engine($asset, 'running', $now->subHours(2));
+        $this->engine($asset, 'Off', $now->subHours(1));
+        $this->speed($asset, 0, $now->subMinutes(110));
+        $this->speed($asset, 0, $now->subMinutes(100));
+
+        $summary = app(IdleTimeCalculator::class)->forAsset($asset, $now->subHours(3), $now);
+
+        $this->assertSame('ignition_speed', $summary->source);
+        $this->assertSame(0.17, $summary->hours);
+    }
+
     public function test_engine_tool_reports_idle_hours(): void
     {
         $now = $this->now;
