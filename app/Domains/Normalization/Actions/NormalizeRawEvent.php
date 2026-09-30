@@ -8,6 +8,7 @@ use App\Domains\Drivers\Models\Driver;
 use App\Domains\Drivers\Models\DriverExternalReference;
 use App\Domains\Ingestion\Enums\RawEventStatus;
 use App\Domains\Ingestion\Models\RawEvent;
+use App\Domains\Normalization\Enums\AssetUnresolvedReason;
 use App\Domains\Normalization\Enums\NormalizedEventStatus;
 use App\Domains\Normalization\Events\EventNormalized;
 use App\Domains\Normalization\Events\EventUnmapped;
@@ -105,7 +106,7 @@ class NormalizeRawEvent
         array $payload,
     ): ?NormalizedEvent {
         $severity = $eventType->defaultSeverity ?? EventSeverity::query()->orderBy('level')->firstOrFail();
-        $assetId = $this->resolveInternalAssetId($rawEvent, $payload);
+        ['asset_id' => $assetId, 'unresolved_reason' => $unresolvedReason] = $this->resolveInternalAssetId($rawEvent, $payload);
 
         if ($this->assetIsSwitchedOff($assetId)) {
             // La ruta interna descarta incluso emergencias (comportamiento vigente).
@@ -128,7 +129,10 @@ class NormalizeRawEvent
                 'event_severity_id' => $severity->id,
                 'occurred_at' => $rawEvent->occurred_at ?? $rawEvent->received_at,
                 'processed_at' => now(),
-                'payload_normalized_json' => $this->buildNormalizedPayload($rawEvent, $eventType, $severity, $payload),
+                'payload_normalized_json' => [
+                    ...$this->buildNormalizedPayload($rawEvent, $eventType, $severity, $payload),
+                    ...self::unresolvedAssetMarker($unresolvedReason),
+                ],
                 'status' => NormalizedEventStatus::Normalized,
             ],
         );
@@ -149,8 +153,9 @@ class NormalizeRawEvent
      * event's tenant — a forged payload can never bind a foreign asset.
      *
      * @param  array<string, mixed>  $payload
+     * @return array{asset_id: int|null, unresolved_reason: AssetUnresolvedReason|null}
      */
-    private function resolveInternalAssetId(RawEvent $rawEvent, array $payload): ?int
+    private function resolveInternalAssetId(RawEvent $rawEvent, array $payload): array
     {
         $assetId = (int) Arr::get($payload, 'internal.asset_id');
 
@@ -159,19 +164,38 @@ class NormalizeRawEvent
             ->where('team_id', $rawEvent->team_id)
             ->exists();
 
-        if (! $belongs) {
-            $rejection = match ($this->classifyRejection(Asset::class, $assetId, $rawEvent->team_id)) {
-                'foreign' => 'cross_tenant_internal_asset',
-                'trashed' => 'internal_asset_trashed',
-                'missing' => 'internal_asset_missing',
-            };
-
-            SystemLog::degraded('normalization.asset.rejected', reason: $rejection, input: [
-                'raw_event_id' => $rawEvent->id,
-            ], calc: ['rejection' => $rejection]);
+        if ($belongs) {
+            return ['asset_id' => $assetId, 'unresolved_reason' => null];
         }
 
-        return $belongs ? $assetId : null;
+        $rejection = match ($this->classifyRejection(Asset::class, $assetId, $rawEvent->team_id)) {
+            'foreign' => 'cross_tenant_internal_asset',
+            'trashed' => 'internal_asset_trashed',
+            'missing' => 'internal_asset_missing',
+        };
+
+        SystemLog::degraded('normalization.asset.rejected', reason: $rejection, input: [
+            'raw_event_id' => $rawEvent->id,
+        ], calc: ['rejection' => $rejection]);
+
+        return [
+            'asset_id' => null,
+            'unresolved_reason' => $rejection === 'cross_tenant_internal_asset'
+                ? AssetUnresolvedReason::ForeignAssetRejected
+                : AssetUnresolvedReason::UnknownExternalId,
+        ];
+    }
+
+    /**
+     * Marca en el payload normalizado por qué el evento quedó sin unidad; el
+     * contexto la convierte en la señal `asset_unresolved`. Nunca guarda el
+     * id externo ni el activo ajeno, sólo la razón.
+     *
+     * @return array{asset_unresolved_reason?: string}
+     */
+    private static function unresolvedAssetMarker(?AssetUnresolvedReason $reason): array
+    {
+        return $reason === null ? [] : ['asset_unresolved_reason' => $reason->value];
     }
 
     private function createUnmappedEvent(
@@ -219,7 +243,7 @@ class NormalizeRawEvent
             ? $rule->mappedCategory
             : $eventType->category;
 
-        $assetId = $this->resolveAssetId($rawEvent->provider_id, $rawEvent->team_id, $payload, $rawEvent->id);
+        ['asset_id' => $assetId, 'unresolved_reason' => $unresolvedReason] = $this->resolveAssetId($rawEvent->provider_id, $rawEvent->team_id, $payload, $rawEvent->id);
 
         // Una emergencia (pánico, colisión, vuelco) SIEMPRE se atiende, esté o
         // no vigilada la unidad (decisión 2026-09-28): la prioridad es la
@@ -252,6 +276,7 @@ class NormalizeRawEvent
                 'payload_normalized_json' => [
                     ...$this->buildNormalizedPayload($rawEvent, $eventType, $severity, $payload),
                     ...($unmonitored ? ['unmonitored_asset' => true] : []),
+                    ...self::unresolvedAssetMarker($unresolvedReason),
                 ],
                 'status' => NormalizedEventStatus::Normalized,
             ],
@@ -391,8 +416,14 @@ class NormalizeRawEvent
      * 2. payload.vehicle.id (AlertIncident root)
      * 3. payload.vehicleId (AlertIncident alternative)
      * 4. payload.data.conditions.0.details.panicButton.vehicle.id (AlertIncident nested)
+     *
+     * With no asset it also says why (`AssetUnresolvedReason`): no id in the
+     * payload, an id the tenant does not know (or whose asset it deleted), or
+     * a reference owned by another tenant.
+     *
+     * @return array{asset_id: int|null, unresolved_reason: AssetUnresolvedReason|null}
      */
-    private function resolveAssetId(?int $providerId, ?int $teamId, array $payload, int $rawEventId): ?int
+    private function resolveAssetId(?int $providerId, ?int $teamId, array $payload, int $rawEventId): array
     {
         $path = null;
         $referenceFound = false;
@@ -431,7 +462,15 @@ class NormalizeRawEvent
 
         $this->logReference('asset', 'asset_path_used', $rawEventId, $path, $referenceFound, $rejection, $assetId);
 
-        return $assetId;
+        return [
+            'asset_id' => $assetId,
+            'unresolved_reason' => match (true) {
+                $assetId !== null => null,
+                $path === null => AssetUnresolvedReason::NoVehicleInPayload,
+                $rejection === 'cross_tenant_reference' => AssetUnresolvedReason::ForeignAssetRejected,
+                default => AssetUnresolvedReason::UnknownExternalId,
+            },
+        ];
     }
 
     /**
