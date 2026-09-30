@@ -2,6 +2,7 @@
 
 namespace App\Domains\Ingestion\Notifications;
 
+use App\Domains\Ingestion\Models\PipelineFailureAlert;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
@@ -15,8 +16,9 @@ use Illuminate\Notifications\Notification;
  * Dos audiencias:
  * - `platform` (super-admins): todo el detalle técnico, con la excepción ya
  *   saneada por SafeException (nunca payload crudo ni secretos).
- * - `tenant` (owners/admins del team, sólo emergencias): qué evento quedó sin
- *   procesar, sin detalles internos de SAM.
+ * - `tenant` (owners/admins del team, sólo emergencias o alertas del
+ *   proveedor sin clasificar): qué evento quedó sin procesar, sin detalles
+ *   internos de SAM.
  */
 class PipelineFailureNotification extends Notification
 {
@@ -27,7 +29,7 @@ class PipelineFailureNotification extends Notification
     public const string AUDIENCE_TENANT = 'tenant';
 
     /**
-     * @param  array{kind: string, stage: string, team_id: ?int, team_name: ?string, raw_event_id: ?int, normalized_event_id: ?int, event_type_code: ?string, is_emergency: bool, asset_id: ?int, asset_name: ?string, occurred_at: ?string, failed_at: string, error_class: ?string, error_message: ?string, reprocess_attempts: ?int}  $details
+     * @param  array{kind: string, stage: string, team_id: ?int, team_name: ?string, raw_event_id: ?int, normalized_event_id: ?int, event_type_code: ?string, external_event_type?: ?string, is_emergency: bool, asset_id: ?int, asset_name: ?string, occurred_at: ?string, failed_at: string, error_class: ?string, error_message: ?string, reprocess_attempts: ?int}  $details
      */
     public function __construct(
         public readonly string $audience,
@@ -45,15 +47,24 @@ class PipelineFailureNotification extends Notification
     public function toMail(object $notifiable): MailMessage
     {
         $d = $this->details;
-        $what = $d['is_emergency'] ? 'EMERGENCIA sin procesar' : 'Fallo del pipeline';
-        $type = $d['event_type_code'] ?? 'evento';
+        $unmappedAlert = $d['kind'] === PipelineFailureAlert::KIND_UNMAPPED_ALERT;
+        $what = match (true) {
+            $unmappedAlert => 'Alerta del proveedor sin clasificar',
+            $d['is_emergency'] => 'EMERGENCIA sin procesar',
+            default => 'Fallo del pipeline',
+        };
+        $type = $unmappedAlert
+            ? ($d['external_event_type'] ?? 'alerta')
+            : ($d['event_type_code'] ?? 'evento');
 
         $mail = (new MailMessage)
             ->error()
             ->subject("[SAM] {$what}: {$type}".($d['team_name'] !== null ? " · {$d['team_name']}" : ''))
-            ->line($d['is_emergency']
-                ? 'Un evento de emergencia no pudo procesarse automáticamente. Revísalo de inmediato en la plataforma y confirma con la unidad.'
-                : 'Un evento no pudo procesarse automáticamente.')
+            ->line(match (true) {
+                $unmappedAlert => 'Llegó una alerta del proveedor (posible emergencia, p. ej. un botón de pánico) que SAM no pudo clasificar, así que no se abrió incidente. Revísala de inmediato en la plataforma del proveedor y confirma con la unidad.',
+                $d['is_emergency'] => 'Un evento de emergencia no pudo procesarse automáticamente. Revísalo de inmediato en la plataforma y confirma con la unidad.',
+                default => 'Un evento no pudo procesarse automáticamente.',
+            })
             ->line('Tenant: '.($d['team_name'] ?? 'sin tenant resoluble'))
             ->line('Tipo: '.$type)
             ->line('Activo: '.($d['asset_name'] ?? ($d['asset_id'] !== null ? "#{$d['asset_id']}" : 'sin resolver')))

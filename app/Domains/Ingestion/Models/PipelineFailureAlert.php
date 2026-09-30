@@ -21,6 +21,9 @@ class PipelineFailureAlert extends Model
 
     public const string KIND_REPROCESS_EXHAUSTED = 'reprocess_exhausted';
 
+    /** Alerta del proveedor (posible emergencia) que ninguna regla reconoce. */
+    public const string KIND_UNMAPPED_ALERT = 'unmapped_alert';
+
     protected $fillable = [
         'team_id',
         'dedup_key',
