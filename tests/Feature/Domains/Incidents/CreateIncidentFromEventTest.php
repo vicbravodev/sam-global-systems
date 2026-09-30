@@ -113,7 +113,10 @@ class CreateIncidentFromEventTest extends TestCase
 
     public function test_a_rollback_logs_the_type_calculation_but_no_persisted_fact(): void
     {
-        Event::listen(IncidentCreated::class, fn () => throw new RuntimeException('boom'));
+        // Falla algo DENTRO de la transacción de la apertura (el vínculo del
+        // evento raíz): un listener de IncidentCreated ya no puede revertirla
+        // porque corre tras el commit (IncidentCreatedReactionsTest).
+        Event::listen('eloquent.created: '.IncidentEventLink::class, fn () => throw new RuntimeException('boom'));
 
         $user = User::factory()->create();
         $team = $user->currentTeam;

@@ -12,6 +12,7 @@ use App\Domains\Incidents\Jobs\PlaceVerificationCallJob;
 use App\Domains\Incidents\Listeners\StartCallVerificationOnIncidentCreated;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentCallVerification;
+use App\Domains\Incidents\Models\IncidentEventLink;
 use App\Domains\Incidents\Models\IncidentType;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\TenantConfig\Enums\SettingGroup;
@@ -241,7 +242,10 @@ class IncidentCallVerificationTest extends TestCase
         $this->seed(IncidentsSeeder::class);
         $this->enableVerification();
 
-        Event::listen(IncidentCreated::class, fn () => throw new RuntimeException('boom'));
+        // Falla algo DENTRO de la transacción de la apertura (el vínculo del
+        // evento raíz): un listener de IncidentCreated ya no puede revertirla
+        // porque corre tras el commit (IncidentCreatedReactionsTest).
+        Event::listen('eloquent.created: '.IncidentEventLink::class, fn () => throw new RuntimeException('boom'));
 
         $event = NormalizedEvent::factory()->create(['team_id' => $this->teamId]);
 

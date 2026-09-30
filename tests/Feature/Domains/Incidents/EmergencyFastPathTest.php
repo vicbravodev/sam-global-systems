@@ -3,23 +3,34 @@
 namespace Tests\Feature\Domains\Incidents;
 
 use App\Domains\Assets\Jobs\DetectOfflineAssetsJob;
+use App\Domains\Assets\Jobs\FreezeIncidentLocationTrailJob;
 use App\Domains\Assets\Models\Asset;
+use App\Domains\Automation\Jobs\RunAutomationWorkflowJob;
+use App\Domains\Incidents\Enums\TimelineEntryType;
 use App\Domains\Incidents\Events\IncidentCreated;
 use App\Domains\Incidents\Jobs\CreateIncidentJob;
 use App\Domains\Incidents\Jobs\OpenEmergencyIncidentJob;
+use App\Domains\Incidents\Jobs\PlaceVerificationCallJob;
+use App\Domains\Incidents\Jobs\RetryIncidentCreatedReactionJob;
 use App\Domains\Incidents\Listeners\OpenEmergencyIncidentOnEventNormalized;
 use App\Domains\Incidents\Models\Incident;
+use App\Domains\Incidents\Models\IncidentTimeline;
 use App\Domains\Ingestion\Models\RawEvent;
 use App\Domains\Normalization\Events\EventNormalized;
 use App\Domains\Normalization\Models\EventCategory;
 use App\Domains\Normalization\Models\EventType;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Domains\Notifications\Jobs\SendNotificationJob;
+use App\Domains\Notifications\Listeners\NotifyOnIncidentCreated;
 use App\Models\Team;
 use App\Models\User;
 use Database\Seeders\IncidentsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
+use Mockery\MockInterface;
+use RuntimeException;
 use Tests\Concerns\AssertsSystemLog;
 use Tests\Concerns\AssertsTenantIsolation;
 use Tests\TestCase;
@@ -168,5 +179,31 @@ class EmergencyFastPathTest extends TestCase
         $c = $this->assertSystemLogged('incidents.emergency.fast_path', fn (array $c) => ($c['reason'] ?? null) === 'offline_parked');
         $this->assertSame($parked->id, $c['input']['normalized_event_id']);
         $this->assertFalse($c['calc']['was_in_motion']);
+    }
+
+    public function test_a_failing_notification_never_loses_the_panic_nor_its_verification(): void
+    {
+        Bus::fake([SendNotificationJob::class, PlaceVerificationCallJob::class, RunAutomationWorkflowJob::class, FreezeIncidentLocationTrailJob::class]);
+        Queue::fake([RetryIncidentCreatedReactionJob::class]);
+        $this->partialMock(NotifyOnIncidentCreated::class, function (MockInterface $mock) {
+            $mock->shouldReceive('react')->once()->andThrow(new RuntimeException('twilio down'));
+        });
+        $event = $this->eventOfType('panic_button', 'emergency');
+
+        app()->call([new OpenEmergencyIncidentJob($event->id, $this->team->id), 'handle']);
+
+        $incident = Incident::withoutGlobalScopes()->with('priority')->sole();
+        $this->assertSame('critical', $incident->priority->code, 'El pánico sigue abierto aunque su aviso falle.');
+
+        // La verificación (sin teléfonos: escalada inmediata) corrió igual.
+        $this->assertTrue(IncidentTimeline::query()
+            ->where('incident_id', $incident->id)
+            ->where('entry_type', TimelineEntryType::VerificationCall)
+            ->exists());
+
+        $this->assertSystemLogged('incidents.created_reaction.failed', fn (array $c) => $c['input']['reaction'] === 'NotifyOnIncidentCreated'
+            && $c['result']['retry_queue'] === 'notifications');
+        Queue::assertPushedOn('notifications', RetryIncidentCreatedReactionJob::class);
+        $this->assertNoSensitiveDataLogged();
     }
 }

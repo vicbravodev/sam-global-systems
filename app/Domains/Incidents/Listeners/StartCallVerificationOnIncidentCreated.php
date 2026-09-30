@@ -6,6 +6,8 @@ use App\Contracts\TenantConfig\TenantConfigResolver;
 use App\Domains\Incidents\Actions\StartIncidentCallVerification;
 use App\Domains\Incidents\Enums\IncidentTypeCode;
 use App\Domains\Incidents\Events\IncidentCreated;
+use App\Domains\Incidents\Support\IncidentCreatedReaction;
+use App\Domains\Incidents\Support\IsolatesIncidentCreatedReaction;
 use App\Support\SystemLog;
 use Illuminate\Support\Facades\DB;
 
@@ -15,14 +17,21 @@ use Illuminate\Support\Facades\DB;
  * gets verified by phone. ON by default (decisión 2026-09-28: a panic is
  * always verified); a tenant may opt out with `voice.verification_enabled`.
  */
-class StartCallVerificationOnIncidentCreated
+class StartCallVerificationOnIncidentCreated implements IncidentCreatedReaction
 {
+    use IsolatesIncidentCreatedReaction;
+
     public function __construct(
         private readonly TenantConfigResolver $tenantConfig,
         private readonly StartIncidentCallVerification $startVerification,
     ) {}
 
-    public function handle(IncidentCreated $event): void
+    public function retryQueue(): string
+    {
+        return 'incidents';
+    }
+
+    public function react(IncidentCreated $event): void
     {
         $incident = $event->incident;
 

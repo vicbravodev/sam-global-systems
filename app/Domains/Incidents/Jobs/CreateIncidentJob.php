@@ -9,6 +9,7 @@ use App\Domains\Incidents\Actions\RequestIncidentReview;
 use App\Domains\Incidents\Enums\IncidentCreatorType;
 use App\Domains\Incidents\Enums\IncidentStatusCode;
 use App\Domains\Incidents\Models\Incident;
+use App\Domains\Ingestion\Actions\AlertPipelineFailure;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Support\JobFailureReporter;
 use App\Support\PipelineTrace;
@@ -142,5 +143,7 @@ class CreateIncidentJob implements ShouldBeUnique, ShouldQueue
         JobFailureReporter::report(static::class, $exception, [
             'normalized_event_id' => $this->normalizedEventId,
         ]);
+
+        app(AlertPipelineFailure::class)->forJobFailure(static::class, $exception, normalizedEventId: $this->normalizedEventId);
     }
 }

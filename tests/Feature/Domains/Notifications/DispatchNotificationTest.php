@@ -7,6 +7,7 @@ use App\Contracts\Notifications\NotificationDriver;
 use App\Domains\Incidents\Actions\CreateIncidentFromEvent;
 use App\Domains\Incidents\Events\IncidentCreated;
 use App\Domains\Incidents\Models\Incident;
+use App\Domains\Incidents\Models\IncidentEventLink;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\Notifications\Actions\DispatchNotification;
 use App\Domains\Notifications\Data\DeliveryResult;
@@ -252,7 +253,10 @@ class DispatchNotificationTest extends TestCase
         $this->seed(IncidentsSeeder::class);
         $teamId = User::factory()->create()->currentTeam->id;
 
-        Event::listen(IncidentCreated::class, fn () => throw new RuntimeException('boom'));
+        // Falla algo DENTRO de la transacción de la apertura (el vínculo del
+        // evento raíz): un listener de IncidentCreated ya no puede revertirla
+        // porque corre tras el commit (IncidentCreatedReactionsTest).
+        Event::listen('eloquent.created: '.IncidentEventLink::class, fn () => throw new RuntimeException('boom'));
 
         $event = NormalizedEvent::factory()->create(['team_id' => $teamId]);
 
