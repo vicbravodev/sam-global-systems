@@ -53,6 +53,7 @@ use App\Domains\Incidents\Models\IncidentType;
 use App\Domains\Ingestion\Models\EventDeduplicationKey;
 use App\Domains\Ingestion\Models\EventReceipt;
 use App\Domains\Ingestion\Models\EventSource;
+use App\Domains\Ingestion\Models\PipelineFailureAlert;
 use App\Domains\Ingestion\Models\RawEvent;
 use App\Domains\Ingestion\Models\RawEventAttachment;
 use App\Domains\Integrations\Models\IntegrationCredential;
@@ -72,6 +73,7 @@ use App\Models\Membership;
 use App\Models\Team;
 use App\Models\TeamInvitation;
 use App\Models\User;
+use App\Models\UserNotification;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -123,6 +125,8 @@ class TenantScopeConventionTest extends TestCase
         SystemTrace::class => 'Ídem AuditLog.',
         TraceLink::class => 'Ídem AuditLog.',
         EventSource::class => 'Una fuente sin team es de plataforma y no debe verse desde un tenant.',
+        PipelineFailureAlert::class => 'Alerta sin tenant resoluble (evento borrado) es sólo de plataforma y no debe verse desde un tenant.',
+        UserNotification::class => 'Aviso in-app de plataforma (team_id null) no debe verse desde un tenant; con tenant activo sólo los de ese tenant.',
         RawEvent::class => 'Un evento crudo sin team aún no está atribuido; no debe verse desde un tenant.',
     ];
 

@@ -5,6 +5,7 @@ namespace App\Domains\Incidents\Jobs;
 use App\Domains\Incidents\Actions\ApplyReevaluationToIncident;
 use App\Domains\Incidents\Actions\CreateIncidentFromEvent;
 use App\Domains\Incidents\Enums\IncidentPriorityCode;
+use App\Domains\Ingestion\Actions\AlertPipelineFailure;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Support\JobFailureReporter;
 use App\Support\PipelineTrace;
@@ -95,5 +96,7 @@ class OpenEmergencyIncidentJob implements ShouldBeUnique, ShouldQueue
             'normalized_event_id' => $this->normalizedEventId,
             'team_id' => $this->teamId,
         ]);
+
+        app(AlertPipelineFailure::class)->forJobFailure(static::class, $exception, normalizedEventId: $this->normalizedEventId, expectedTeamId: $this->teamId);
     }
 }

@@ -141,6 +141,15 @@ Lo emite `App\Support\DeniedRequestLog` (outcome `degraded`); sólo la plantilla
 | `ingestion.poll.cursor_restarted` | ok | | `integration_id`, `calc.restart_from`, `had_cursor`, `had_start_time`, `backfill_hours`, `restart_margin_minutes` |
 | `ingestion.poll.rate_limited` | degraded | `provider_rate_limited` | `integration_id`, `calc.retry_after_seconds`, `fallback_seconds`, `released_for_seconds` |
 | `ingestion.poll.cycle_completed` | ok | | `integration_id`, `calc.start_time`, `had_cursor`, `result.events`, `has_more`, `next_cursor_present` |
+| `ingestion.dedup.own_key` | ok | | `raw_event_id`, `dedup_source`; la clave ya era del propio evento (re-proceso), no es duplicado |
+| `ingestion.reprocess.dispatched` | ok | | `raw_event_id`, `previous_status`, `calc.is_emergency`, `reprocess_attempt`, `max_attempts`, `stuck_after_minutes` |
+| `ingestion.reprocess.skipped` | skipped | `no_longer_stuck` | `raw_event_id` |
+| `ingestion.reprocess.exhausted` | failed | `max_reprocess_attempts` | `raw_event_id`, `status`, `calc.reprocess_attempts`, `max_attempts`; dispara la alerta `reprocess_exhausted` |
+| `ingestion.reprocess_sweep.completed` | ok | | `calc` = umbrales de `config/pipeline.php`; `result.teams_count`, `candidates_count`, `dispatched_count`, `emergency_dispatched_count`, `deferred_count`, `exhausted_count` (sólo conteos) |
+| `ingestion.failure_alert.sent` | ok / degraded | `no_recipients`, `partial_delivery` (una audiencia falló y la otra salió; no se re-manda la que salió) | `kind` (`job_failed`/`reprocess_exhausted`), `stage`, `raw_event_id`, `normalized_event_id`, `team_id`, `calc.is_emergency`, `tenant_notified`, `tenant_skip_reason` (`not_emergency`/`no_tenant`/`no_tenant_admins`/`send_failed`), `platform_send_failed`, `result.platform_recipients`, `tenant_recipients` (sólo los entregados) |
+| `ingestion.failure_alert.skipped` | skipped | `already_alerted` | igual que `sent`; dedup por `pipeline_failure_alerts.dedup_key` |
+| `ingestion.failure_alert.team_mismatch` | degraded | `team_mismatch` | ids del evento; el team del job no es el del evento → sólo se avisa a plataforma |
+| `ingestion.failure_alert.failed` | failed | `exception`, `send_failed` | ids del evento, `error`; con `send_failed` además `audience` (`platform`/`tenant`): cada audiencia se envía por separado y el dedup sólo se libera si no salió ninguna |
 
 ### Webhooks (`webhook`)
 

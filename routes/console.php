@@ -12,6 +12,7 @@ use App\Domains\Assets\Jobs\PurgeOldAssetTelemetryJob;
 use App\Domains\Drivers\Jobs\RecalculateDriverRiskProfilesJob;
 use App\Domains\Ingestion\Jobs\PollSamsaraSafetyEventsJob;
 use App\Domains\Ingestion\Jobs\PruneDeduplicationKeysJob;
+use App\Domains\Ingestion\Jobs\ReprocessStuckRawEventsJob;
 use App\Domains\Integrations\Jobs\CheckIntegrationHealthJob;
 use App\Domains\Integrations\Jobs\SyncDueIntegrationsJob;
 use App\Domains\Notifications\Jobs\ReconcileMessagingChargesJob;
@@ -62,6 +63,11 @@ Schedule::job(new RecalculateDriverRiskProfilesJob)->dailyAt('04:30')->onOneServ
 // config_json.sync), so these ticks are the floor cadence, not the exact rate.
 Schedule::job(new SyncDueIntegrationsJob)->everyFifteenMinutes()->onOneServer();
 Schedule::job(new PollSamsaraSafetyEventsJob)->everyTwoMinutes()->onOneServer();
+
+// Red de seguridad del pipeline: re-despacha raw events fallidos o atascados
+// (emergencias primero) con tope de rescates por evento; al agotarlo alerta a
+// super-admins (y al tenant si es emergencia). Umbrales en config/pipeline.php.
+Schedule::job(new ReprocessStuckRawEventsJob)->everyFiveMinutes()->withoutOverlapping()->onOneServer();
 
 // Live fleet state: positions and diagnostics follow the provider's stats
 // feed with a cursor per tenant. This tick only decides which feeds are due

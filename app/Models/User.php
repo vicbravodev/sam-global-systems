@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
@@ -63,6 +64,18 @@ class User extends Authenticatable
     public function isSuperAdmin(): bool
     {
         return $this->global_role === 'super_admin';
+    }
+
+    /**
+     * Canal `database` de Laravel Notifications: la tabla `notifications` es
+     * del dominio Notifications (mensajería), así que las notificaciones in-app
+     * del usuario viven en `user_notifications`.
+     *
+     * @return MorphMany<UserNotification, $this>
+     */
+    public function notifications(): MorphMany
+    {
+        return $this->morphMany(UserNotification::class, 'notifiable')->latest();
     }
 
     /**
