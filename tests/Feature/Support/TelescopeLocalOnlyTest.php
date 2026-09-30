@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Support;
 
+use App\Providers\AppServiceProvider;
 use App\Providers\TelescopeServiceProvider;
 use App\Support\PipelineTrace;
 use Illuminate\Http\Request;
@@ -22,8 +23,31 @@ class TelescopeLocalOnlyTest extends TestCase
     {
         Telescope::auth(static fn (): bool => false);
         Context::flush();
+        AppServiceProvider::$redisExtensionLoaded = null;
 
         parent::tearDown();
+    }
+
+    public function test_telescope_is_skipped_when_the_redis_cache_needs_a_missing_extension(): void
+    {
+        config(['cache.default' => 'redis', 'database.redis.client' => 'phpredis']);
+
+        AppServiceProvider::$redisExtensionLoaded = static fn (): bool => false;
+        $this->assertFalse(AppServiceProvider::telescopeCacheIsReachable(), 'Sin la extensión (php del host), Telescope no debe cargarse.');
+
+        AppServiceProvider::$redisExtensionLoaded = static fn (): bool => true;
+        $this->assertTrue(AppServiceProvider::telescopeCacheIsReachable(), 'Con la extensión (Sail), Telescope se carga como siempre.');
+    }
+
+    public function test_telescope_is_unaffected_when_the_cache_is_not_phpredis(): void
+    {
+        AppServiceProvider::$redisExtensionLoaded = static fn (): bool => false;
+
+        config(['cache.default' => 'database']);
+        $this->assertTrue(AppServiceProvider::telescopeCacheIsReachable());
+
+        config(['cache.default' => 'redis', 'database.redis.client' => 'predis']);
+        $this->assertTrue(AppServiceProvider::telescopeCacheIsReachable());
     }
 
     public function test_telescope_is_not_loaded_outside_local(): void
