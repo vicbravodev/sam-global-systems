@@ -207,7 +207,7 @@ export default function CopilotIndex() {
                 <section className="flex min-h-0 min-w-0 flex-col">
                     <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border px-4 py-3 sm:px-6">
                         <div className="grid size-9 place-items-center rounded-md bg-ai-accent-bg text-ai-accent">
-                            <Sparkles className="size-[18px]" />
+                            <Sparkles className="size-4.5" />
                         </div>
                         <div className="min-w-0 flex-1">
                             <h1 className="text-sm font-semibold text-fg-1">
@@ -232,7 +232,7 @@ export default function CopilotIndex() {
                                     className="flex items-center gap-2"
                                 >
                                     {index > 0 && (
-                                        <span className="size-[3px] rounded-full bg-fg-3" />
+                                        <span className="size-0.75 rounded-full bg-fg-3" />
                                     )}
                                     {source}
                                 </span>

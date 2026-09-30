@@ -848,7 +848,7 @@ function BarsCard({ block }: { block: BarsBlock }) {
                         className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1"
                         title={`${item.label}: ${item.value}`}
                     >
-                        <span className="font-mono text-[9px] text-fg-3 tabular-nums">
+                        <span className="font-mono text-3xs text-fg-3 tabular-nums">
                             {item.value > 0 ? item.value : ''}
                         </span>
                         <div
@@ -868,7 +868,7 @@ function BarsCard({ block }: { block: BarsBlock }) {
                 {block.items.map((item, index) => (
                     <div
                         key={`${item.label}-l-${index}`}
-                        className="min-w-0 flex-1 truncate text-center font-mono text-[9px] text-fg-3"
+                        className="min-w-0 flex-1 truncate text-center font-mono text-3xs text-fg-3"
                     >
                         {item.label}
                     </div>
