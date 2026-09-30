@@ -2,6 +2,7 @@
 
 namespace App\Domains\Normalization\Jobs;
 
+use App\Domains\Ingestion\Actions\AlertPipelineFailure;
 use App\Domains\Ingestion\Enums\RawEventStatus;
 use App\Domains\Ingestion\Models\RawEvent;
 use App\Domains\Normalization\Actions\NormalizeRawEvent;
@@ -80,5 +81,7 @@ class NormalizeEventJob implements ShouldQueue
         }
 
         JobFailureReporter::report(static::class, $exception, ['raw_event_id' => $this->rawEventId]);
+
+        app(AlertPipelineFailure::class)->forJobFailure(static::class, $exception, rawEventId: $this->rawEventId);
     }
 }
