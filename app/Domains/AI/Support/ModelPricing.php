@@ -2,6 +2,8 @@
 
 namespace App\Domains\AI\Support;
 
+use Laravel\Ai\Responses\Data\TextUsage;
+
 /**
  * Estimates the USD cost of an inference from the token counts reported by
  * the provider and the per-model price table in `config('ai.pricing')`
@@ -30,7 +32,32 @@ final class ModelPricing
     }
 
     /**
-     * @return array{input?: float|int, output?: float|int}|null
+     * Cost of a full text usage: since laravel/ai 1.0 `inputTokens` includes
+     * cached tokens, so those are split out and billed at `cached_input`
+     * (default: a tenth of the input rate, OpenAI's cached discount).
+     */
+    public function estimateUsageCost(?string $model, TextUsage $usage): float
+    {
+        $entry = $this->resolveEntry($model);
+
+        if ($entry === null) {
+            return 0.0;
+        }
+
+        $input = (float) ($entry['input'] ?? 0.0);
+        $cached = (float) ($entry['cached_input'] ?? $input / 10);
+        $cachedTokens = (int) ($usage->cacheReadInputTokens ?? 0);
+
+        return round(
+            ($usage->uncachedInputTokens() / self::TOKENS_PER_PRICE_UNIT) * $input
+                + ($cachedTokens / self::TOKENS_PER_PRICE_UNIT) * $cached
+                + ($usage->outputTokens / self::TOKENS_PER_PRICE_UNIT) * (float) ($entry['output'] ?? 0.0),
+            6,
+        );
+    }
+
+    /**
+     * @return array{input?: float|int, output?: float|int, cached_input?: float|int}|null
      */
     private function resolveEntry(?string $model): ?array
     {

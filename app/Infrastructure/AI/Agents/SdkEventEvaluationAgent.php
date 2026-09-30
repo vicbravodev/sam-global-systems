@@ -57,10 +57,9 @@ class SdkEventEvaluationAgent implements EventEvaluationAgent
             inputTokens: (int) $response->usage->inputTokens,
             outputTokens: (int) $response->usage->outputTokens,
             latencyMs: $latencyMs,
-            costEstimate: $this->pricing->estimateCost(
+            costEstimate: $this->pricing->estimateUsageCost(
                 $response->meta?->model,
-                (int) $response->usage->inputTokens,
-                (int) $response->usage->outputTokens,
+                $response->usage,
             ),
         );
     }
