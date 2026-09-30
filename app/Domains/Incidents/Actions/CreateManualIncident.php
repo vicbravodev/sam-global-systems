@@ -86,8 +86,9 @@ class CreateManualIncident
 
             $fresh = $incident->fresh(['type', 'status', 'priority']);
 
+            // Efectos y socket, sólo tras el commit (ver CreateIncidentFromEvent).
             IncidentCreated::dispatch($fresh);
-            broadcast(IncidentCreatedBroadcast::fromModel($fresh));
+            DB::afterCommit(fn () => broadcast(IncidentCreatedBroadcast::fromModel($fresh)));
 
             return $fresh;
         });

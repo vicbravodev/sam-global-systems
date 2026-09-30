@@ -302,7 +302,7 @@ class CreateIncidentFromEvent
             PipelineTrace::add(['incident_id' => $fresh->id]);
 
             // Registrado antes de IncidentCreated: en el commit sale antes que
-            // las líneas de los listeners (también por afterCommit).
+            // las líneas de los listeners (que corren tras el commit).
             $createdLine = [
                 'input' => [
                     'normalized_event_id' => $event->id,
@@ -329,8 +329,11 @@ class CreateIncidentFromEvent
             ];
             DB::afterCommit(fn () => SystemLog::ok('incidents.incident.created', ...$createdLine));
 
+            // Efectos y socket, sólo tras el commit: IncidentCreated es
+            // ShouldDispatchAfterCommit y cada listener corre aislado (su
+            // fallo no revierte el incidente ni frena a los demás).
             IncidentCreated::dispatch($fresh);
-            broadcast(IncidentCreatedBroadcast::fromModel($fresh));
+            DB::afterCommit(fn () => broadcast(IncidentCreatedBroadcast::fromModel($fresh)));
 
             return $fresh;
         });
