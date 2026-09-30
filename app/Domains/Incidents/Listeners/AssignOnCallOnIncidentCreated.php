@@ -7,6 +7,8 @@ use App\Domains\Incidents\Actions\ResolveOnCallOperator;
 use App\Domains\Incidents\Enums\AssigneeType;
 use App\Domains\Incidents\Events\IncidentCreated;
 use App\Domains\Incidents\Models\Incident;
+use App\Domains\Incidents\Support\IncidentCreatedReaction;
+use App\Domains\Incidents\Support\IsolatesIncidentCreatedReaction;
 use App\Domains\Notifications\Actions\SendNotification;
 use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Enums\NotificationPriority;
@@ -27,19 +29,28 @@ use Illuminate\Support\Facades\DB;
  * through the team-wide `incident.created` notification, and a second SMS for
  * the same incident only costs money and trains people to ignore alerts.
  *
- * Runs inside CreateIncidentFromEvent's transaction: every log line goes
- * through DB::afterCommit, so a rolled-back creation never claims an
- * assignment.
+ * Runs after the incident commits, in its own transaction (see
+ * IsolatesIncidentCreatedReaction): every log line goes through
+ * DB::afterCommit, so an assignment that rolls back (and is retried) never
+ * claims itself. A retry is idempotent: an existing assignment is skipped
+ * and the directed notice dedups by event_key.
  */
-class AssignOnCallOnIncidentCreated
+class AssignOnCallOnIncidentCreated implements IncidentCreatedReaction
 {
+    use IsolatesIncidentCreatedReaction;
+
     public function __construct(
         private readonly ResolveOnCallOperator $resolveOnCallOperator,
         private readonly AssignIncident $assignIncident,
         private readonly SendNotification $sendNotification,
     ) {}
 
-    public function handle(IncidentCreated $event): void
+    public function retryQueue(): string
+    {
+        return 'incidents';
+    }
+
+    public function react(IncidentCreated $event): void
     {
         $incident = $event->incident;
 

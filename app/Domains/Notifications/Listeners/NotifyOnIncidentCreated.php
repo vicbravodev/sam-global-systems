@@ -6,6 +6,8 @@ use App\Contracts\TenantConfig\TenantConfigResolver;
 use App\Domains\Context\Models\EventContextSnapshot;
 use App\Domains\Incidents\Events\IncidentCreated;
 use App\Domains\Incidents\Models\Incident;
+use App\Domains\Incidents\Support\IncidentCreatedReaction;
+use App\Domains\Incidents\Support\IsolatesIncidentCreatedReaction;
 use App\Domains\Notifications\Actions\SendNotification;
 use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Enums\NotificationPriority;
@@ -16,8 +18,10 @@ use App\Support\LoggableCode;
 use App\Support\SystemLog;
 use Illuminate\Support\Facades\DB;
 
-class NotifyOnIncidentCreated
+class NotifyOnIncidentCreated implements IncidentCreatedReaction
 {
+    use IsolatesIncidentCreatedReaction;
+
     /**
      * Severidad mínima del incidente para salir por canales fuera de la app
      * (correo/SMS/WhatsApp/voz/push). Por debajo sólo hay aviso in-app.
@@ -39,7 +43,12 @@ class NotifyOnIncidentCreated
         private readonly TenantConfigResolver $tenantConfig,
     ) {}
 
-    public function handle(IncidentCreated $event): void
+    public function retryQueue(): string
+    {
+        return 'notifications';
+    }
+
+    public function react(IncidentCreated $event): void
     {
         $incident = $event->incident;
 
@@ -72,7 +81,8 @@ class NotifyOnIncidentCreated
         if (! $threshold['reaches']) {
             $payload['force_channels'] = [ChannelType::Web->value];
 
-            // Corre dentro de la transacción de la apertura del incidente.
+            // Corre en la transacción propia de este efecto (tras el commit
+            // del incidente): la línea sale sólo si el aviso se confirma.
             $skipInput = [
                 'incident_id' => $incident->id,
                 'setting_key' => self::SETTING_MIN_SEVERITY,
