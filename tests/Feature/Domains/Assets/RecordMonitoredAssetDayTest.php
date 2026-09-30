@@ -234,7 +234,13 @@ class RecordMonitoredAssetDayTest extends TestCase
         // Sin el meter del tracto-día, RecordUsageEvent lanza y el tenant falla.
         UsageMeter::query()->where('code', AssetDayPricing::METER_CODE)->delete();
 
-        $this->artisan('assets:record-usage-meters', ['--date' => '2026-09-10'])->run();
+        // Un tenant fallido hace fallar el comando (el scheduler lo ve) y sugiere
+        // el reintento; en consola sólo la clase, nunca el mensaje crudo.
+        $this->artisan('assets:record-usage-meters', ['--date' => '2026-09-10'])
+            ->expectsOutputToContain('cierre fallido (Illuminate\\Database\\Eloquent\\ModelNotFoundException)')
+            ->doesntExpectOutputToContain('No query results')
+            ->expectsOutputToContain('reintenta con --date=2026-09-10')
+            ->assertFailed();
 
         $failed = $this->assertSystemLogged('billing.daily_close.tenant_failed', fn (array $c) => ($c['reason'] ?? null) === 'exception');
         $this->assertSame(['team_id' => $this->team->id, 'local_date' => '2026-09-10'], $failed['input']);

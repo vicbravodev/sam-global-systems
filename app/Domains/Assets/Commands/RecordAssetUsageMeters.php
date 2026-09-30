@@ -48,10 +48,10 @@ class RecordAssetUsageMeters extends Command
             return self::FAILURE;
         }
 
-        $failures = 0;
         // Solo sumas de plataforma: ningún id de tenant sale de aquí. Es un
-        // objeto (no un array por referencia) porque la arrow fn de abajo
-        // captura por valor: `&$failures` dentro de ella apunta a una copia.
+        // objeto (no un escalar por referencia) porque la arrow fn de abajo
+        // captura por valor: un `&$contador` dentro de ella apuntaría a una
+        // copia y el código de salida nunca vería los fallos.
         $totals = new \ArrayObject([
             'teams_scanned_count' => 0,
             'teams_closed_count' => 0,
@@ -65,7 +65,7 @@ class RecordAssetUsageMeters extends Command
         // Comando de plataforma: recorre todos los tenants a propósito, y
         // cuenta los activos de cada uno dentro de su contexto. Ver §2.1. Un
         // tenant que falla no deja sin cierre a los que siguen.
-        TenantContext::withoutTenant(fn () => Team::query()->select('id')->chunkById(100, function ($teams) use ($recordUsage, $recordAssetDay, $date, &$failures, $totals) {
+        TenantContext::withoutTenant(fn () => Team::query()->select('id')->chunkById(100, function ($teams) use ($recordUsage, $recordAssetDay, $date, $totals) {
             foreach ($teams as $team) {
                 $totals['teams_scanned_count']++;
 
@@ -107,7 +107,6 @@ class RecordAssetUsageMeters extends Command
                         $totals['cameras_count'] += $cameras['attached_cameras_count'] + $cameras['standalone_cameras_count'];
                     });
                 } catch (\Throwable $e) {
-                    $failures++;
                     $totals['teams_failed_count']++;
                     TenantContext::for($team->id, fn () => SystemLog::failed(
                         'billing.daily_close.tenant_failed',
@@ -116,7 +115,8 @@ class RecordAssetUsageMeters extends Command
                         error: $e,
                     ));
                     report($e);
-                    $this->warn("Tenant {$team->id}: cierre fallido ({$e->getMessage()}).");
+                    // Sólo la clase: el mensaje puede traer bindings o datos del tenant.
+                    $this->warn("Tenant {$team->id}: cierre fallido (".$e::class.').');
                 }
             }
         }));
@@ -130,8 +130,8 @@ class RecordAssetUsageMeters extends Command
             SystemLog::ok('billing.daily_close.completed', input: $closeInput, result: $closeResult);
         }
 
-        if ($failures > 0) {
-            $this->error("Cierre {$date} con {$failures} tenant(s) fallido(s): reintenta con --date={$date}.");
+        if ($closeResult['teams_failed_count'] > 0) {
+            $this->error("Cierre {$date} con {$closeResult['teams_failed_count']} tenant(s) fallido(s): reintenta con --date={$date}.");
 
             return self::FAILURE;
         }
