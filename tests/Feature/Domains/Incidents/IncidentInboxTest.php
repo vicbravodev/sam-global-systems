@@ -240,6 +240,40 @@ class IncidentInboxTest extends TestCase
         );
     }
 
+    public function test_late_panic_sla_countdown_runs_from_when_sam_received_it(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+        $this->travelTo(now()->startOfSecond());
+
+        $critical = IncidentPriority::query()->firstOrCreate(
+            ['code' => 'critical'],
+            ['name' => 'Critical', 'level' => 4, 'sla_seconds' => 300, 'color' => '#DC2626'],
+        );
+
+        // Occurred two days ago, delivered one minute ago: the 5-min SLA was
+        // armed at arrival (CreateIncidentFromEvent) and has 4 min left.
+        Incident::factory()->create([
+            'team_id' => $team->id,
+            'incident_priority_id' => $critical->id,
+            'incident_status_id' => IncidentStatus::query()->where('code', 'open')->firstOrFail()->id,
+            'opened_at' => now()->subDays(2),
+            'created_at' => now()->subMinute(),
+            'sla_due_at' => now()->addMinutes(4),
+        ]);
+
+        $response = $this->actingAs($user)->get(
+            route('incidents.index', ['current_team' => $team->slug]),
+        );
+
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->component('incidents/index')
+                ->where('incidents.0.slaTotal', 300)
+                ->where('incidents.0.slaSeconds', 240),
+        );
+    }
+
     public function test_status_filter_lists_real_statuses_in_spanish_and_filters_by_canonical_code(): void
     {
         $user = User::factory()->create();

@@ -265,7 +265,7 @@ class IncidentInboxPresenter
         // from the watchdog. Only incidents predating this column, or with
         // no SLA at all, fall back to the catalog chain.
         if ($incident->sla_due_at !== null && $incident->opened_at !== null) {
-            return (int) $incident->opened_at->diffInSeconds($incident->sla_due_at);
+            return max(0, (int) $this->slaClockStart($incident)->diffInSeconds($incident->sla_due_at, false));
         }
 
         $seconds = $incident->priority?->sla_seconds
@@ -280,6 +280,10 @@ class IncidentInboxPresenter
             return 0;
         }
 
+        if ($incident->sla_due_at !== null) {
+            return (int) $now->diffInSeconds($incident->sla_due_at, false);
+        }
+
         $opened = $incident->opened_at;
 
         if ($opened === null) {
@@ -287,6 +291,20 @@ class IncidentInboxPresenter
         }
 
         return $this->slaTotal($incident) - (int) $opened->diffInSeconds($now);
+    }
+
+    /**
+     * The SLA runs from when SAM learned of the event, not from when it
+     * happened (CreateIncidentFromEvent: due = max(opened_at, now) + sla). A
+     * panic delivered hours late opens with `opened_at` in the past; measuring
+     * the total from there made a fresh 5-min SLA look 99 % consumed.
+     */
+    private function slaClockStart(Incident $incident): CarbonInterface
+    {
+        $opened = $incident->opened_at;
+        $created = $incident->created_at;
+
+        return $created !== null && $created->gt($opened) ? $created : $opened;
     }
 
     private function ageMin(Incident $incident, CarbonInterface $now): int
