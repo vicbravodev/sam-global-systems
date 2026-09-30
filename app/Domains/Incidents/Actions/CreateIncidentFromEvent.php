@@ -326,9 +326,10 @@ class CreateIncidentFromEvent
 
             // Efectos y socket, sólo tras el commit: IncidentCreated es
             // ShouldDispatchAfterCommit y cada listener corre aislado (su
-            // fallo no revierte el incidente ni frena a los demás).
-            IncidentCreated::dispatch($fresh);
+            // fallo no revierte el incidente ni frena a los demás). El socket
+            // se registra primero: la UI no espera a los efectos en línea.
             DB::afterCommit(fn () => broadcast(IncidentCreatedBroadcast::fromModel($fresh)));
+            IncidentCreated::dispatch($fresh);
 
             return $fresh;
         });
