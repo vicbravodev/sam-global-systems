@@ -14,7 +14,7 @@ import {
     Video,
     X,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import type {
     CopilotAssetOption,
@@ -34,6 +34,13 @@ const TEMPLATE_ICONS: Record<string, React.ElementType> = {
     truck: Truck,
     users: Users,
 };
+
+/**
+ * The send button turns into Stop under the pointer: a pointer click that
+ * lands this soon after the flip is the second half of a double-click on
+ * Enviar, not a stop. Keyboard activation and Esc stay immediate.
+ */
+const STOP_ARM_MS = 400;
 
 const STATUS_DOT: Record<string, string> = {
     active: 'bg-health-ok',
@@ -98,6 +105,37 @@ export function CopilotComposer({
     const [pendingTemplate, setPendingTemplate] =
         useState<CopilotTemplate | null>(null);
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+    /** When the button last became Stop (`performance.now()`). */
+    const busySinceRef = useRef(0);
+    /** The send/stop button had focus (it disables when the answer lands). */
+    const buttonFocusedRef = useRef(false);
+
+    useLayoutEffect(() => {
+        if (busy) {
+            busySinceRef.current = performance.now();
+
+            return;
+        }
+
+        // Stop was clicked (or focused) and now disables: keep the keyboard
+        // in the composer instead of dropping focus to <body>.
+        if (buttonFocusedRef.current) {
+            buttonFocusedRef.current = false;
+            textareaRef.current?.focus();
+        }
+    }, [busy]);
+
+    const stopFromButton = (e: React.MouseEvent) => {
+        // `detail` is 0 for keyboard activation (Enter/Space): immediate.
+        if (
+            e.detail > 0 &&
+            performance.now() - busySinceRef.current < STOP_ARM_MS
+        ) {
+            return;
+        }
+
+        onStop?.();
+    };
 
     // A suggestion card pre-fills the composer: adopt each new draft once
     // (render-time sync, see react.dev "adjusting state on prop change").
@@ -206,6 +244,7 @@ export function CopilotComposer({
             return;
         }
 
+        busySinceRef.current = performance.now();
         onSend(text, { assetId: asset?.id ?? null, intent });
         setText('');
         setIntent(null);
@@ -382,7 +421,13 @@ export function CopilotComposer({
                             the primary "busy / done" signal of the chat. */}
                         <button
                             type="button"
-                            onClick={busy ? onStop : submit}
+                            onClick={busy ? stopFromButton : submit}
+                            onFocus={() => {
+                                buttonFocusedRef.current = true;
+                            }}
+                            onBlur={() => {
+                                buttonFocusedRef.current = false;
+                            }}
                             disabled={busy ? !onStop : !canSend}
                             aria-label={busy ? 'Detener respuesta' : 'Enviar'}
                             title={busy ? 'Detener (Esc)' : undefined}
