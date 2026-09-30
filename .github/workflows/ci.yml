@@ -35,16 +35,12 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
-      - name: Get Composer cache dir
-        id: composer-cache
-        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
-
-      - name: Cache Composer packages
+      - name: Cache vendor
         uses: actions/cache@v4
         with:
-          path: ${{ steps.composer-cache.outputs.dir }}
-          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
-          restore-keys: ${{ runner.os }}-composer-
+          path: vendor
+          key: ${{ runner.os }}-php8.5-vendor-${{ hashFiles('composer.lock') }}
+          restore-keys: ${{ runner.os }}-php8.5-vendor-
 
       - name: Install PHP dependencies
         run: composer install --no-interaction --prefer-dist --no-progress
@@ -58,11 +54,18 @@ jobs:
       - name: Generate application key
         run: php artisan key:generate
 
-      - name: Build frontend (generates Wayfinder types via Vite plugin)
-        run: npm run build
+      - name: Generate Wayfinder types
+        run: php artisan wayfinder:generate --with-form
+
+      - name: Cache Pint
+        uses: actions/cache@v4
+        with:
+          path: .pint.cache
+          key: ${{ runner.os }}-pint-${{ hashFiles('composer.lock', 'pint.json') }}-${{ github.sha }}
+          restore-keys: ${{ runner.os }}-pint-${{ hashFiles('composer.lock', 'pint.json') }}-
 
       - name: Pint (PHP code style)
-        run: vendor/bin/pint --test
+        run: vendor/bin/pint --test --parallel --cache-file=.pint.cache
 
       - name: Prettier (frontend format)
         run: npm run format:check
@@ -95,16 +98,12 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
-      - name: Get Composer cache dir
-        id: composer-cache
-        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
-
-      - name: Cache Composer packages
+      - name: Cache vendor
         uses: actions/cache@v4
         with:
-          path: ${{ steps.composer-cache.outputs.dir }}
-          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
-          restore-keys: ${{ runner.os }}-composer-
+          path: vendor
+          key: ${{ runner.os }}-php8.5-vendor-${{ hashFiles('composer.lock') }}
+          restore-keys: ${{ runner.os }}-php8.5-vendor-
 
       - name: Install PHP dependencies
         run: composer install --no-interaction --prefer-dist --no-progress
@@ -121,8 +120,8 @@ jobs:
       - name: Build frontend (generates Wayfinder types + Vite manifest)
         run: npm run build
 
-      - name: Run PHPUnit with coverage
-        run: php artisan test --coverage-clover=coverage.xml --compact
+      - name: Run PHPUnit with coverage (parallel)
+        run: php artisan test --parallel --coverage-clover=coverage.xml --compact
 
       - name: Inline coverage annotations on changed files (PR only)
         if: github.event_name == 'pull_request'
