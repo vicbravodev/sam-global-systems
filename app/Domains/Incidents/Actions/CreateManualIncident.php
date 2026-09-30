@@ -13,7 +13,6 @@ use App\Domains\Incidents\Models\IncidentPriority;
 use App\Domains\Incidents\Models\IncidentStatus;
 use App\Domains\Incidents\Models\IncidentType;
 use App\Domains\Incidents\Support\IncidentCreatedBroadcast;
-use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -22,7 +21,7 @@ class CreateManualIncident
 {
     public function __construct(
         private readonly AppendTimelineEntry $appendTimelineEntry,
-        private readonly RecordUsageEvent $recordUsageEvent,
+        private readonly RecordIncidentWorkflowUsage $recordIncidentWorkflowUsage,
     ) {}
 
     /**
@@ -73,16 +72,11 @@ class CreateManualIncident
                 ],
             );
 
-            $this->recordUsageEvent->execute(
-                teamId: $teamId,
-                meterCode: 'incident_workflows',
-                quantity: 1,
-                eventKey: 'incident_workflows:'.$incident->id,
-                metadata: [
-                    'incident_id' => $incident->id,
-                    'source_type' => IncidentSourceType::Manual->value,
-                ],
-            );
+            // El cobro nunca tumba la apertura: savepoint propio y no fatal.
+            $this->recordIncidentWorkflowUsage->execute($incident, [
+                'incident_id' => $incident->id,
+                'source_type' => IncidentSourceType::Manual->value,
+            ]);
 
             $fresh = $incident->fresh(['type', 'status', 'priority']);
 

@@ -23,7 +23,6 @@ use App\Domains\Incidents\Models\IncidentType;
 use App\Domains\Incidents\Support\IncidentCreatedBroadcast;
 use App\Domains\Normalization\Models\EventType;
 use App\Domains\Normalization\Models\NormalizedEvent;
-use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Domains\TenantConfig\Actions\ResolveIncidentSla;
 use App\Support\LoggableCode;
 use App\Support\PipelineTrace;
@@ -49,7 +48,7 @@ class CreateIncidentFromEvent
         private readonly AppendTimelineEntry $appendTimelineEntry,
         private readonly LinkEventToIncident $linkEventToIncident,
         private readonly AddIncidentEvidence $addIncidentEvidence,
-        private readonly RecordUsageEvent $recordUsageEvent,
+        private readonly RecordIncidentWorkflowUsage $recordIncidentWorkflowUsage,
         private readonly ApplyExternalResolution $applyExternalResolution,
         private readonly ResolveIncidentSla $resolveIncidentSla,
     ) {}
@@ -285,17 +284,12 @@ class CreateIncidentFromEvent
                 $this->applyExternalResolution->execute($incident, $event, allowClose: false);
             }
 
-            $this->recordUsageEvent->execute(
-                teamId: $teamId,
-                meterCode: 'incident_workflows',
-                quantity: 1,
-                eventKey: 'incident_workflows:'.$incident->id,
-                metadata: [
-                    'incident_id' => $incident->id,
-                    'source_type' => $sourceType->value,
-                    'normalized_event_id' => $event->id,
-                ],
-            );
+            // El cobro nunca tumba la apertura: savepoint propio y no fatal.
+            $usageRecorded = $this->recordIncidentWorkflowUsage->execute($incident, [
+                'incident_id' => $incident->id,
+                'source_type' => $sourceType->value,
+                'normalized_event_id' => $event->id,
+            ]);
 
             $fresh = $incident->fresh(['type', 'status', 'priority']);
 
@@ -324,7 +318,8 @@ class CreateIncidentFromEvent
                     'status_code' => $fresh->status?->code,
                     'asset_id' => $fresh->asset_id,
                     'driver_id' => $fresh->driver_id,
-                    'usage_event_key' => 'incident_workflows:'.$fresh->id,
+                    'usage_event_key' => RecordIncidentWorkflowUsage::eventKey((int) $fresh->id),
+                    'usage_recorded' => $usageRecorded,
                 ],
             ];
             DB::afterCommit(fn () => SystemLog::ok('incidents.incident.created', ...$createdLine));

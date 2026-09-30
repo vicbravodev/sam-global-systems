@@ -23,6 +23,7 @@ use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\Notifications\Listeners\NotifyOnIncidentCreated;
 use App\Domains\Notifications\Models\Notification;
 use App\Domains\Tenancy\Models\UsageEvent;
+use App\Domains\Tenancy\Models\UsageMeter;
 use App\Domains\TenantConfig\Models\TenantScheduleProfile;
 use App\Enums\TeamRole;
 use App\Models\Team;
@@ -31,6 +32,7 @@ use App\Support\TenantContext;
 use Database\Seeders\IncidentsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
@@ -246,6 +248,39 @@ class IncidentCreatedReactionsTest extends TestCase
         $this->assertTrue(Incident::withoutGlobalScopes()->whereKey($incident->id)->exists());
         $this->assertCount(4, $ran);
         $this->assertSystemLogged('incidents.created_reaction.failed', fn (array $c) => $c['input']['reaction'] === 'NotifyOnIncidentCreated');
+    }
+
+    public function test_a_failing_usage_record_never_loses_the_incident(): void
+    {
+        Bus::fake();
+        UsageMeter::query()->where('code', 'incident_workflows')->delete();
+        Cache::forget('usage_meter:incident_workflows');
+
+        $incident = $this->openPanic($this->panicEvent());
+
+        $this->assertTrue(Incident::withoutGlobalScopes()->whereKey($incident->id)->exists());
+        $this->assertSame(0, UsageEvent::withoutGlobalScopes()->count());
+        $this->assertTrue(Notification::withoutGlobalScopes()->where('event_key', 'incident_created:'.$incident->id)->exists(), 'Los efectos corren aunque el cobro falle.');
+
+        $c = $this->assertSystemLogged('incidents.usage.record_failed');
+        $this->assertSame('failed', $c['outcome']);
+        $this->assertSame('exception', $c['reason']);
+        $this->assertSame($incident->id, $c['input']['incident_id']);
+        $this->assertSame('incident_workflows', $c['input']['meter_code']);
+        $this->assertSame('incident_workflows:'.$incident->id, $c['input']['event_key']);
+        $this->assertSystemLogged('incidents.incident.created', fn (array $c) => $c['result']['usage_recorded'] === false);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_the_usage_is_recorded_once_per_incident(): void
+    {
+        Bus::fake();
+
+        $incident = $this->openPanic($this->panicEvent());
+
+        $this->assertSame(1, UsageEvent::withoutGlobalScopes()->where('event_key', 'incident_workflows:'.$incident->id)->count());
+        $this->assertSystemLogged('incidents.incident.created', fn (array $c) => $c['result']['usage_recorded'] === true);
+        $this->assertSystemNotLogged('incidents.usage.record_failed');
     }
 
     public function test_a_retried_reaction_never_duplicates_its_effects(): void
