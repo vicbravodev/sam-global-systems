@@ -266,6 +266,8 @@ export interface TimelineItem {
 export interface TimelineBlock {
     type: 'timeline';
     items: TimelineItem[];
+    total?: number;
+    href?: string;
 }
 
 export interface NoticeBlock {

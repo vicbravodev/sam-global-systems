@@ -105,6 +105,32 @@ class AssetTimelineToolTest extends TestCase
         $this->assertTrue(CarbonImmutable::parse($items[0]['at'])->lt(CarbonImmutable::parse($items[39]['at'])));
     }
 
+    public function test_ui_block_is_capped_at_twelve_but_keeps_incidents_and_the_full_total(): void
+    {
+        NormalizedEvent::factory()->count(30)->sequence(fn ($s) => ['occurred_at' => $this->now->subMinutes(200 - $s->index)])
+            ->create(['team_id' => $this->team->id, 'asset_id' => $this->truck->id]);
+        // Oldest item of all: must survive the cap because incidents are preferred.
+        $incident = Incident::factory()->create([
+            'team_id' => $this->team->id,
+            'asset_id' => $this->truck->id,
+            'opened_at' => $this->now->subDays(2),
+        ]);
+
+        $out = $this->callTool($this->team, self::PERMISSIONS, 'asset_timeline', ['asset_code' => 'T555']);
+
+        $block = $this->toolBlock('timeline');
+        $this->assertCount(12, $block['items']);
+        $this->assertSame(31, $block['total']);
+        $this->assertStringContainsString("/assets/{$this->truck->id}", $block['href']);
+        $this->assertContains('incident', array_column($block['items'], 'kind'));
+        $this->assertStringContainsString("/incidents/{$incident->id}", collect($block['items'])->firstWhere('kind', 'incident')['href']);
+        $ats = array_map(fn ($i) => CarbonImmutable::parse($i['at'])->getTimestamp(), $block['items']);
+        $sorted = $ats;
+        sort($sorted);
+        $this->assertSame($sorted, $ats);
+        $this->assertCount(31, $out['facts']['items']);
+    }
+
     public function test_empty_timeline_returns_a_notice(): void
     {
         $out = $this->callTool($this->team, self::PERMISSIONS, 'asset_timeline', ['asset_code' => 'T555']);

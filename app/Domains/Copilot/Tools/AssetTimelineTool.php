@@ -9,6 +9,7 @@ use App\Domains\Copilot\Support\IdleTimeCalculator;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Collection;
 
 /**
  * What happened to one unit in the period, in order: its events, the
@@ -17,6 +18,9 @@ use Carbon\CarbonImmutable;
 final class AssetTimelineTool implements CopilotTool
 {
     public const MAX_ITEMS = 40;
+
+    /** Items the UI card shows; the model still reads up to MAX_ITEMS. */
+    public const BLOCK_ITEMS = 12;
 
     public const MIN_IDLE_MINUTES = 10;
 
@@ -99,7 +103,12 @@ final class AssetTimelineTool implements CopilotTool
         return new CopilotToolResult(
             tool: 'asset_timeline',
             label: 'Línea de tiempo de unidad',
-            blocks: [['type' => 'timeline', 'items' => $items->all()]],
+            blocks: [[
+                'type' => 'timeline',
+                'items' => $this->cardItems($items),
+                'total' => $items->count(),
+                'href' => CopilotPresenter::assetHref($context->teamSlug, (int) $asset->id),
+            ]],
             sources: $incidents->take(5)->map(fn (Incident $i) => [
                 'kind' => 'incident',
                 'id' => (int) $i->id,
@@ -118,5 +127,27 @@ final class AssetTimelineTool implements CopilotTool
             highlights: ["{$label} en {$period->label}: ".($counts['event'] ?? 0).' evento(s), '
                 .($counts['incident'] ?? 0).' incidente(s) y '.($counts['idle'] ?? 0).' tramo(s) de ralentí de '.self::MIN_IDLE_MINUTES.' min o más.'],
         );
+    }
+
+    /**
+     * At most BLOCK_ITEMS for the card: every incident and idle stretch first,
+     * then the most recent events to fill the rest, in chronological order.
+     *
+     * @param  Collection<int, array<string, mixed>>  $items  chronological
+     * @return list<array<string, mixed>>
+     */
+    private function cardItems(Collection $items): array
+    {
+        if ($items->count() <= self::BLOCK_ITEMS) {
+            return $items->values()->all();
+        }
+
+        $priority = $items->filter(fn (array $item) => $item['kind'] !== 'event');
+        $room = max(0, self::BLOCK_ITEMS - $priority->count());
+        $keep = $priority->keys()->take(-self::BLOCK_ITEMS)
+            ->concat($items->filter(fn (array $item) => $item['kind'] === 'event')->keys()->reverse()->take($room))
+            ->sort();
+
+        return $keep->map(fn (int $key) => $items[$key])->values()->all();
     }
 }
