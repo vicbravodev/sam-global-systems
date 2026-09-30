@@ -13,7 +13,9 @@ use App\Domains\Ingestion\Enums\EventSourceType;
 use App\Domains\Ingestion\Models\RawEvent;
 use App\Domains\Normalization\Models\EventType;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
+use Carbon\Carbon;
 use Carbon\CarbonInterface;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -88,55 +90,104 @@ class DetectOfflineAssetsJob implements ShouldQueue
         StoreRawEvent $storeRawEvent,
         QueueRawEventForProcessing $queueForProcessing,
     ): void {
-        $this->detectSilentAssets($tenantConfig, $storeRawEvent, $queueForProcessing);
-        $this->resolveRecoveredEpisodes();
+        $counts = $this->detectSilentAssets($tenantConfig, $storeRawEvent, $queueForProcessing);
+        $resolved = $this->resolveRecoveredEpisodes();
+
+        // Recorrido de plataforma: sólo conteos, nunca ids de un tenant. Los
+        // umbrales efectivos son por tenant y van en cada `assets.offline.raised`.
+        SystemLog::ok('assets.offline_sweep.completed', calc: [
+            'connectivity_freshness_minutes' => self::CONNECTIVITY_FRESHNESS_MINUTES,
+            'max_episode_age_hours' => self::MAX_EPISODE_AGE_HOURS,
+            'default_moving_threshold_minutes' => self::DEFAULT_OFFLINE_MINUTES,
+            'default_parked_threshold_minutes' => self::DEFAULT_PARKED_OFFLINE_MINUTES,
+        ], result: [
+            'scanned_count' => $counts['scanned'],
+            'raised_count' => $counts['raised'],
+            'already_raised_count' => $counts['already_raised'],
+            'within_threshold_count' => $counts['within_threshold'],
+            'disabled_count' => $counts['disabled'],
+            'in_motion_count' => $counts['in_motion'],
+            'resolved_count' => $resolved,
+        ]);
     }
 
+    /**
+     * @return array{scanned: int, raised: int, already_raised: int, within_threshold: int, disabled: int, in_motion: int}
+     */
     private function detectSilentAssets(
         TenantConfigResolver $tenantConfig,
         StoreRawEvent $storeRawEvent,
         QueueRawEventForProcessing $queueForProcessing,
-    ): void {
+    ): array {
+        $counts = ['scanned' => 0, 'raised' => 0, 'already_raised' => 0, 'within_threshold' => 0, 'disabled' => 0, 'in_motion' => 0];
+
         // Vigilancia de plataforma: recorre todos los tenants a propósito,
         // pero inspecciona cada activo dentro del contexto del suyo. Ver §2.1.
-        TenantContext::withoutTenant(fn () => Asset::query()
-            ->whereNotNull('team_id')
-            ->monitored()
-            ->whereNotIn('status', [AssetStatus::Inactive, AssetStatus::Maintenance])
-            ->where('device_connectivity_polled_at', '>=', now()->subMinutes(self::CONNECTIVITY_FRESHNESS_MINUTES))
-            ->where('device_last_connected_at', '>=', now()->subHours(self::MAX_EPISODE_AGE_HOURS))
-            ->where('device_last_connected_at', '<', now())
-            ->with('latestLocation')
-            ->chunkById(200, function ($assets) use ($tenantConfig, $storeRawEvent, $queueForProcessing) {
-                foreach ($assets as $asset) {
-                    TenantContext::for($asset->team_id, fn () => $this->inspectAsset($asset, $tenantConfig, $storeRawEvent, $queueForProcessing));
-                }
-            }));
+        TenantContext::withoutTenant(function () use ($tenantConfig, $storeRawEvent, $queueForProcessing, &$counts): void {
+            Asset::query()
+                ->whereNotNull('team_id')
+                ->monitored()
+                ->whereNotIn('status', [AssetStatus::Inactive, AssetStatus::Maintenance])
+                ->where('device_connectivity_polled_at', '>=', now()->subMinutes(self::CONNECTIVITY_FRESHNESS_MINUTES))
+                ->where('device_last_connected_at', '>=', now()->subHours(self::MAX_EPISODE_AGE_HOURS))
+                ->where('device_last_connected_at', '<', now())
+                ->with('latestLocation')
+                ->chunkById(200, function ($assets) use ($tenantConfig, $storeRawEvent, $queueForProcessing, &$counts) {
+                    foreach ($assets as $asset) {
+                        $wasInMotion = $this->wasInMotion($asset);
+                        $outcome = TenantContext::for($asset->team_id, fn () => $this->inspectAsset($asset, $wasInMotion, $tenantConfig, $storeRawEvent, $queueForProcessing));
+
+                        $counts['scanned']++;
+                        $counts[$outcome]++;
+
+                        if ($wasInMotion) {
+                            $counts['in_motion']++;
+                        }
+                    }
+                });
+        });
+
+        return $counts;
     }
 
+    /**
+     * Moving at the last fix taken around the moment the device dropped:
+     * going silent mid-trip smells like jamming or a yanked device. An old
+     * fix says nothing about the vehicle's state when it dropped. Criterio
+     * único de movimiento (MovementCriterion): una velocidad fantasma de
+     * 0.5 km/h de un tracto estacionado no baja el umbral.
+     */
+    private function wasInMotion(Asset $asset): bool
+    {
+        $location = $asset->latestLocation;
+
+        return $location?->speed !== null
+            && MovementCriterion::isMoving($asset, (float) $location->speed)
+            && $location->recorded_at !== null
+            && $location->recorded_at->gte($asset->device_last_connected_at->copy()->subMinutes(self::CONNECTIVITY_FRESHNESS_MINUTES));
+    }
+
+    /**
+     * @return 'raised'|'within_threshold'|'disabled'|'already_raised'
+     */
     private function inspectAsset(
         Asset $asset,
+        bool $wasInMotion,
         TenantConfigResolver $tenantConfig,
         StoreRawEvent $storeRawEvent,
         QueueRawEventForProcessing $queueForProcessing,
-    ): void {
+    ): string {
         $lastConnectedAt = $asset->device_last_connected_at;
         $location = $asset->latestLocation;
 
-        // Moving at the last fix taken around the moment the device dropped:
-        // going silent mid-trip smells like jamming or a yanked device. An
-        // old fix says nothing about the vehicle's state when it dropped.
-        // Criterio único de movimiento (MovementCriterion): una velocidad
-        // fantasma de 0.5 km/h de un tracto estacionado no baja el umbral.
-        $wasInMotion = $location?->speed !== null
-            && MovementCriterion::isMoving($asset, (float) $location->speed)
-            && $location->recorded_at !== null
-            && $location->recorded_at->gte($lastConnectedAt->copy()->subMinutes(self::CONNECTIVITY_FRESHNESS_MINUTES));
-
         $threshold = $this->thresholdMinutesFor($asset, $tenantConfig, $wasInMotion);
 
-        if ($threshold <= 0 || $lastConnectedAt->gt(now()->subMinutes($threshold))) {
-            return;
+        if ($threshold['minutes'] <= 0) {
+            return 'disabled';
+        }
+
+        if ($lastConnectedAt->gt(now()->subMinutes($threshold['minutes']))) {
+            return 'within_threshold';
         }
 
         $deduplicationKey = sprintf('offline:%d:%d', $asset->id, $lastConnectedAt->getTimestamp());
@@ -147,8 +198,15 @@ class DetectOfflineAssetsJob implements ShouldQueue
             ->exists();
 
         if ($alreadyRaised) {
-            return;
+            SystemLog::skipped('assets.offline.skipped', reason: 'already_raised', input: [
+                'team_id' => (int) $asset->team_id,
+                'asset_id' => $asset->id,
+            ], result: ['deduplication_key' => $deduplicationKey], debug: true);
+
+            return 'already_raised';
         }
+
+        $silentMinutes = (int) $lastConnectedAt->diffInMinutes(now());
 
         $rawEvent = $storeRawEvent->execute(
             payload: [
@@ -163,8 +221,8 @@ class DetectOfflineAssetsJob implements ShouldQueue
                 'last_connected_at' => $lastConnectedAt->toIso8601String(),
                 'device_health_status' => $asset->device_health_status,
                 'last_seen_at' => $asset->last_seen_at?->toIso8601String(),
-                'silent_minutes' => (int) $lastConnectedAt->diffInMinutes(now()),
-                'threshold_minutes' => $threshold,
+                'silent_minutes' => $silentMinutes,
+                'threshold_minutes' => $threshold['minutes'],
                 // Last known position so geofence context still works.
                 'location' => $location !== null && $location->latitude !== null ? [
                     'latitude' => (float) $location->latitude,
@@ -180,18 +238,51 @@ class DetectOfflineAssetsJob implements ShouldQueue
         );
 
         $queueForProcessing->execute($rawEvent);
+
+        // Nunca nombre, clave ni posición del activo: la edad del último fix
+        // (respecto de la última conexión) basta para explicar `was_in_motion`.
+        SystemLog::ok('assets.offline.raised', input: [
+            'team_id' => (int) $asset->team_id,
+            'asset_id' => $asset->id,
+        ], calc: [
+            'silent_minutes' => $silentMinutes,
+            'threshold_minutes' => $threshold['minutes'],
+            'threshold_source' => $threshold['source'],
+            'threshold_applied' => $threshold['applied'],
+            'in_motion_minutes' => $threshold['in_motion_minutes'],
+            'parked_minutes' => $threshold['parked_minutes'],
+            'was_in_motion' => $wasInMotion,
+            'location_age_s' => $location?->recorded_at !== null
+                ? (int) $location->recorded_at->diffInSeconds($lastConnectedAt)
+                : null,
+        ], result: [
+            'raw_event_id' => $rawEvent->id,
+            'job_requested' => true,
+        ]);
+
+        return 'raised';
     }
 
-    private function thresholdMinutesFor(Asset $asset, TenantConfigResolver $tenantConfig, bool $wasInMotion): int
+    /**
+     * @return array{minutes: int, source: 'asset_override'|'tenant_setting', in_motion_minutes: int, parked_minutes: ?int, applied: 'in_motion'|'parked'|'disabled'}
+     */
+    private function thresholdMinutesFor(Asset $asset, TenantConfigResolver $tenantConfig, bool $wasInMotion): array
     {
         $override = ($asset->metadata_json ?? [])['offline_alert_minutes'] ?? null;
+        $source = is_numeric($override) ? 'asset_override' : 'tenant_setting';
 
         $inMotion = is_numeric($override)
             ? (int) $override
             : (int) $tenantConfig->resolve((int) $asset->team_id, self::SETTING_KEY, self::DEFAULT_OFFLINE_MINUTES);
 
         if ($inMotion <= 0 || $wasInMotion) {
-            return $inMotion;
+            return [
+                'minutes' => $inMotion,
+                'source' => $source,
+                'in_motion_minutes' => $inMotion,
+                'parked_minutes' => null,
+                'applied' => $inMotion <= 0 ? 'disabled' : 'in_motion',
+            ];
         }
 
         $parked = (int) $tenantConfig->resolve(
@@ -201,7 +292,13 @@ class DetectOfflineAssetsJob implements ShouldQueue
         );
 
         // Parked grace never undercuts the in-motion threshold.
-        return $parked <= 0 ? 0 : max($parked, $inMotion);
+        return [
+            'minutes' => $parked <= 0 ? 0 : max($parked, $inMotion),
+            'source' => $source,
+            'in_motion_minutes' => $inMotion,
+            'parked_minutes' => $parked,
+            'applied' => $parked <= 0 ? 'disabled' : 'parked',
+        ];
     }
 
     /**
@@ -212,26 +309,29 @@ class DetectOfflineAssetsJob implements ShouldQueue
      * external-resolution flow annotates (or closes, per tenant setting) the
      * incident it opened.
      */
-    private function resolveRecoveredEpisodes(): void
+    private function resolveRecoveredEpisodes(): int
     {
         $eventTypeId = EventType::query()->where('code', self::EVENT_TYPE_CODE)->value('id');
 
         if ($eventTypeId === null) {
-            return;
+            return 0;
         }
+
+        $resolved = 0;
 
         NormalizedEvent::query()
             ->where('event_type_id', $eventTypeId)
             ->where('occurred_at', '>=', now()->subDays(7))
             ->whereNotNull('asset_id')
             ->with('asset')
-            ->chunkById(200, function ($events) {
+            ->chunkById(200, function ($events) use (&$resolved) {
                 foreach ($events as $event) {
                     if (($event->payload_normalized_json['is_resolved'] ?? null) === true) {
                         continue;
                     }
 
-                    $lastSeen = $this->lastProofOfLife($event->asset);
+                    $proofOfLife = $this->lastProofOfLife($event->asset);
+                    $lastSeen = $proofOfLife['at'] ?? null;
 
                     if ($lastSeen === null || $event->occurred_at === null || ! $lastSeen->gt($event->occurred_at)) {
                         continue;
@@ -244,18 +344,86 @@ class DetectOfflineAssetsJob implements ShouldQueue
                     $event->forceFill(['payload_normalized_json' => $payload])->save();
 
                     ApplyExternalResolutionJob::dispatch((int) $event->id);
+
+                    $resolved++;
+
+                    TenantContext::for($event->team_id, function () use ($event, $proofOfLife, $lastSeen): void {
+                        $silentSince = $this->episodeLastConnectedAt($event);
+
+                        // `silent_minutes`: del latido congelado del episodio a la prueba
+                        // de vida (null si el evento no lo guardó). `raised_to_recovery_minutes`:
+                        // del aviso (`occurred_at`) a la prueba de vida.
+                        SystemLog::ok('assets.offline.resolved', input: [
+                            'team_id' => (int) $event->team_id,
+                            'normalized_event_id' => $event->id,
+                            'asset_id' => $event->asset_id,
+                        ], calc: [
+                            'proof_of_life_source' => $proofOfLife['source'],
+                            'silent_minutes' => $silentSince !== null ? (int) $silentSince->diffInMinutes($lastSeen) : null,
+                            'raised_to_recovery_minutes' => (int) $event->occurred_at->diffInMinutes($lastSeen),
+                        ], result: ['job_requested' => true]);
+                    });
                 }
             });
+
+        return $resolved;
     }
 
-    private function lastProofOfLife(?Asset $asset): ?CarbonInterface
+    /**
+     * The frozen heartbeat the episode was raised for. Only the raw event's
+     * payload keeps it (internal normalization does not copy it), so it is
+     * read from there — within the episode's tenant, and only for episodes
+     * being resolved. Null for episodes raised before the connectivity feed.
+     */
+    private function episodeLastConnectedAt(NormalizedEvent $event): ?CarbonInterface
     {
-        $candidates = array_filter([$asset?->device_last_connected_at, $asset?->last_seen_at]);
-
-        if ($candidates === []) {
+        if ($event->raw_event_id === null) {
             return null;
         }
 
-        return array_reduce($candidates, fn (?CarbonInterface $carry, CarbonInterface $time) => $carry === null || $time->gt($carry) ? $time : $carry);
+        $payload = RawEvent::query()
+            ->where('team_id', $event->team_id)
+            ->whereKey($event->raw_event_id)
+            ->value('payload_json');
+
+        if (is_string($payload)) {
+            $payload = json_decode($payload, true);
+        }
+
+        $lastConnectedAt = is_array($payload) ? ($payload['last_connected_at'] ?? null) : null;
+
+        if (! is_string($lastConnectedAt) || $lastConnectedAt === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($lastConnectedAt);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * The newest proof of life and where it came from: the device heartbeat
+     * or a GPS fix (a tie keeps the heartbeat).
+     *
+     * @return array{at: CarbonInterface, source: 'heartbeat'|'gps_fix'}|null
+     */
+    private function lastProofOfLife(?Asset $asset): ?array
+    {
+        $candidates = array_filter([
+            'heartbeat' => $asset?->device_last_connected_at,
+            'gps_fix' => $asset?->last_seen_at,
+        ]);
+
+        $best = null;
+
+        foreach ($candidates as $source => $time) {
+            if ($best === null || $time->gt($best['at'])) {
+                $best = ['at' => $time, 'source' => $source];
+            }
+        }
+
+        return $best;
     }
 }

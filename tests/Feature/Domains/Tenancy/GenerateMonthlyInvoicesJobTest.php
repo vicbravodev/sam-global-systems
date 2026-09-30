@@ -17,11 +17,12 @@ use App\Models\Team;
 use Illuminate\Console\Scheduling\CallbackEvent;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class GenerateMonthlyInvoicesJobTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsSystemLog, RefreshDatabase;
 
     private Plan $plan;
 
@@ -103,6 +104,35 @@ class GenerateMonthlyInvoicesJobTest extends TestCase
         $this->assertEqualsWithDelta(720 * (450 / 30), $lines['monitored_asset_days']['amount'], 0.01);
         $this->assertEqualsWithDelta(720 * (450 / 30), (float) $invoice->subtotal, 0.01);
         $this->assertEqualsWithDelta(720 * (450 / 30) + 5.0, (float) $invoice->total, 0.01);
+
+        // Tope desde la tarifa del plan (sin términos ni feature del tenant),
+        // y el gauge del plan se cuenta como medidor omitido.
+        $limit = $this->assertSystemLogged('billing.asset_limit.resolved', fn (array $c) => $c['input']['team_id'] === $team->id);
+        $this->assertSame('plan_rate', $limit['calc']['source']);
+        $this->assertSame(250, $limit['calc']['included_quantity']);
+        $this->assertSame(250, $limit['result']['cap']);
+        $this->assertSame('plan_rate', $this->assertSystemLogged('billing.asset_day.calculated')['calc']['cap_source']);
+
+        $generated = $this->assertSystemLogged('billing.invoice.generated', fn (array $c) => $c['input']['team_id'] === $team->id);
+        $this->assertSame(1, $generated['calc']['plan_meters_billed_count']);
+        $this->assertSame(1, $generated['calc']['plan_meters_skipped_count']);
+        $this->assertSame($invoice->total, $generated['result']['total']);
+
+        $run = $this->assertSystemLogged('billing.invoice.run_dispatched');
+        $this->assertSame('2026-09-01', $run['calc']['period_start']);
+        $this->assertSame('2026-09-30', $run['calc']['period_end']);
+        $this->assertSame(1, $run['result']['chains_dispatched_count']);
+        $this->assertArrayNotHasKey('input', $run);
+
+        // El cierre recalcula el mes pasado: el excedente de mensajes no es un primer cruce.
+        $closing = $this->assertSystemLogged('billing.overage.computed', fn (array $c) => $c['input']['team_id'] === $team->id
+            && $c['input']['meter_code'] === 'messages');
+        $this->assertSame('2026-09-01', $closing['input']['period_start']);
+        $this->assertTrue($closing['calc']['closed_period']);
+        $this->assertFalse($closing['calc']['first_crossing']);
+        $this->assertSame(15, $closing['calc']['consumed']);
+        $this->assertSame(5, $closing['result']['overage']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_tenants_without_an_operational_subscription_are_skipped(): void
@@ -115,6 +145,8 @@ class GenerateMonthlyInvoicesJobTest extends TestCase
 
         $this->assertSame(1, InvoiceSnapshot::query()->where('team_id', $active->id)->count());
         $this->assertSame(0, InvoiceSnapshot::query()->whereIn('team_id', [$canceled->id, $suspended->id])->count());
+
+        $this->assertSame(1, $this->assertSystemLogged('billing.invoice.run_dispatched')['result']['chains_dispatched_count']);
     }
 
     public function test_each_invoice_only_contains_its_own_tenant_usage(): void
@@ -132,6 +164,39 @@ class GenerateMonthlyInvoicesJobTest extends TestCase
 
         $this->assertEquals(11, $consumed($teamA));
         $this->assertEquals(40, $consumed($teamB));
+
+        // Cada línea de la factura es de un solo tenant: la de A nunca lleva
+        // el id de B ni su consumo, y viceversa.
+        $invoiceCodes = ['billing.terms.resolved', 'billing.asset_limit.resolved', 'billing.tier.selected',
+            'billing.asset_day.calculated', 'billing.invoice_line.calculated', 'billing.invoice.generated'];
+        $entries = collect($this->systemLogEntries())->filter(fn (array $e) => in_array($e['code'], $invoiceCodes, true));
+        $this->assertNotEmpty($entries);
+
+        foreach ([[$teamA, $teamB], [$teamB, $teamA]] as [$own, $other]) {
+            $ownEntries = $entries->filter(fn (array $e) => $e['context']['input']['team_id'] === $own->id);
+            $this->assertCount(6, $ownEntries->pluck('code')->unique());
+
+            foreach ($ownEntries as $entry) {
+                array_walk_recursive($entry['context'], function ($value, $key) use ($other, $entry) {
+                    if (in_array($key, ['team_id', 'tenant_id'], true)) {
+                        $this->assertNotSame($other->id, $value, "[{$entry['code']}] lleva el team_id del otro tenant");
+                    }
+                });
+            }
+
+            $generated = $ownEntries->firstWhere('code', 'billing.invoice.generated')['context'];
+            $this->assertSame(
+                InvoiceSnapshot::query()->where('team_id', $own->id)->sole()->id,
+                $generated['result']['invoice_id'],
+            );
+        }
+
+        $messagesLine = fn (Team $team) => $entries->first(fn (array $e) => $e['code'] === 'billing.invoice_line.calculated'
+            && $e['context']['input']['team_id'] === $team->id
+            && $e['context']['calc']['meter_code'] === 'messages')['context']['calc']['consumed'];
+        $this->assertSame(11, $messagesLine($teamA));
+        $this->assertSame(40, $messagesLine($teamB));
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_single_invoice_uses_the_tenant_billing_terms_currency(): void
@@ -144,6 +209,15 @@ class GenerateMonthlyInvoicesJobTest extends TestCase
         $invoice = InvoiceSnapshot::query()->where('team_id', $team->id)->sole();
         $this->assertSame('usd', $invoice->currency);
         $this->assertSame('usd', collect($invoice->breakdown_json)->firstWhere('meter_code', '_terms')['terms']['currency']);
+
+        $generated = $this->assertSystemLogged('billing.invoice.generated', fn (array $c) => $c['input']['team_id'] === $team->id);
+        $this->assertSame('usd', $generated['calc']['currency']);
+        $this->assertSame($invoice->total, $generated['result']['total']);
+
+        $terms = $this->assertSystemLogged('billing.terms.resolved', fn (array $c) => $c['input']['team_id'] === $team->id);
+        $this->assertSame('tenant', $terms['calc']['sources']['currency']);
+        $this->assertSame('usd', $terms['calc']['values']['currency']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_it_is_scheduled_monthly_on_the_first(): void

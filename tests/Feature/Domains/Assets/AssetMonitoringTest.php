@@ -12,11 +12,17 @@ use App\Domains\Integrations\Models\IntegrationProvider;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Domains\Tenancy\Enums\FeatureSource;
 use App\Domains\Tenancy\Events\UsageLimitExceeded;
+use App\Domains\Tenancy\Models\Subscription;
 use App\Domains\Tenancy\Models\TenantFeature;
 use App\Models\Team;
 use App\Models\User;
+use App\Support\SystemLog;
+use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use RuntimeException;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\Concerns\AssertsTenantIsolation;
 use Tests\TestCase;
 
@@ -27,7 +33,7 @@ use Tests\TestCase;
  */
 class AssetMonitoringTest extends TestCase
 {
-    use AssertsTenantIsolation, RefreshDatabase;
+    use AssertsSystemLog, AssertsTenantIsolation, RefreshDatabase;
 
     /**
      * @return array{0: Team, 1: TenantIntegration}
@@ -124,6 +130,28 @@ class AssetMonitoringTest extends TestCase
 
         Event::assertDispatched(UsageLimitExceeded::class, fn (UsageLimitExceeded $e) => $e->teamId === $team->id
             && $e->meterCode === 'monitored_assets' && $e->consumed === 2 && $e->included === 1);
+
+        $changed = $this->assertSystemLogged('assets.monitoring.changed', fn (array $c) => $c['input']['asset_id'] === $extra->id);
+        $calc = $changed['calc'];
+        $this->assertSame($team->id, $changed['input']['team_id']);
+        $this->assertSame('pending', $calc['previous_state']);
+        $this->assertSame('monitored', $calc['new_state']);
+        $this->assertSame(1, $calc['assets_monitored_before']);
+        $this->assertSame(2, $calc['assets_monitored_after']);
+        $this->assertSame(1, $calc['cap']);
+        $this->assertTrue($calc['over_cap']);
+        $this->assertSame($calc['assets_monitored_after'] - $calc['cap'], $calc['overage_assets']);
+        $this->assertSame(1, $calc['overage_assets']);
+        $this->assertTrue($calc['tenant_billable']);
+        $this->assertFalse($calc['reason_present']);
+        $this->assertTrue($changed['result']['limit_event_dispatched']);
+
+        $limit = $this->assertSystemLogged('billing.asset_limit.resolved', fn (array $c) => $c['input']['stage'] === 'monitoring_toggle');
+        $this->assertSame('tenant_feature', $limit['calc']['source']);
+        $this->assertSame(1, $limit['calc']['feature_limit']);
+        $this->assertSame(1, $limit['result']['cap']);
+        $this->assertSame(['team_id' => $team->id, 'stage' => 'monitoring_toggle'], $limit['input']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_excluding_a_unit_takes_it_out_of_monitoring(): void
@@ -149,6 +177,168 @@ class AssetMonitoringTest extends TestCase
 
         $this->assertFalse($result['changed']);
         Event::assertNotDispatched(AssetMonitoringChanged::class);
+
+        $context = $this->assertSystemLogged('assets.monitoring.changed', fn (array $c) => ($c['reason'] ?? null) === 'same_state');
+        $this->assertSame(['team_id' => $team->id, 'asset_id' => $asset->id], $context['input']);
+        $this->assertSame(['state' => 'monitored'], $context['calc']);
+        $this->assertSame(1, count($this->systemLogEntries('assets.monitoring.changed')));
+        // A single toggle keeps its no-op at info.
+        $this->assertSame('info', $this->systemLogEntries('assets.monitoring.changed')[0]['level']);
+    }
+
+    public function test_a_batch_logs_its_same_state_units_at_debug(): void
+    {
+        [$team] = $this->setupTeam(assetLimit: null);
+        $already = Asset::factory()->count(2)->create(['team_id' => $team->id]);
+        $pending = Asset::factory()->pendingMonitoring()->create(['team_id' => $team->id]);
+
+        app(SetAssetMonitoring::class)->executeMany($team->id, [...$already, $pending], AssetMonitoringState::Monitored);
+
+        $sameState = array_values(array_filter($this->systemLogEntries('assets.monitoring.changed'), fn (array $e) => ($e['context']['reason'] ?? null) === 'same_state'));
+        $this->assertCount(2, $sameState);
+        foreach ($sameState as $entry) {
+            $this->assertSame('debug', $entry['level']);
+        }
+        // The real change stays at info.
+        $changed = $this->assertSystemLogged('assets.monitoring.changed', fn (array $c) => $c['outcome'] === 'ok');
+        $this->assertSame($pending->id, $changed['input']['asset_id']);
+        $this->assertSame(['info'], array_values(array_unique(array_map(
+            fn (array $e) => $e['level'],
+            array_filter($this->systemLogEntries('assets.monitoring.changed'), fn (array $e) => $e['context']['outcome'] === 'ok'),
+        ))));
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_switch_that_rolls_back_is_never_logged_as_changed(): void
+    {
+        [$team] = $this->setupTeam(assetLimit: null);
+        $asset = Asset::factory()->pendingMonitoring()->create(['team_id' => $team->id]);
+
+        try {
+            DB::transaction(function () use ($asset) {
+                app(SetAssetMonitoring::class)->execute($asset, AssetMonitoringState::Monitored, reason: 'Encendida a prueba');
+
+                throw new RuntimeException('boom');
+            });
+            $this->fail('The transaction should have thrown');
+        } catch (RuntimeException) {
+            // expected
+        }
+
+        $this->assertSame(AssetMonitoringState::Pending, $asset->fresh()->monitoring_state);
+        $this->assertSystemNotLogged('assets.monitoring.changed');
+        $this->assertSystemNotLogged('billing.usage.recorded');
+    }
+
+    public function test_switching_on_a_suspended_tenant_logs_the_block_once(): void
+    {
+        [$team] = $this->setupTeam(assetLimit: null);
+        Subscription::factory()->suspended()->create(['team_id' => $team->id]);
+        $assets = Asset::factory()->pendingMonitoring()->count(2)->create(['team_id' => $team->id]);
+
+        app(SetAssetMonitoring::class)->executeMany($team->id, $assets, AssetMonitoringState::Monitored);
+
+        $blocked = $this->systemLogEntries('billing.tenant.blocked');
+        $this->assertCount(1, $blocked);
+        $this->assertSame('subscription_suspended', $blocked[0]['context']['reason']);
+        $this->assertSame(['team_id' => $team->id, 'stage' => 'monitoring_toggle'], $blocked[0]['context']['input']);
+
+        $changed = $this->systemLogEntries('assets.monitoring.changed');
+        $this->assertCount(2, $changed);
+        foreach ($changed as $entry) {
+            $this->assertFalse($entry['context']['calc']['tenant_billable']);
+            $this->assertSame('tenant_not_billable', $entry['context']['calc']['asset_day_outcome']);
+        }
+        $this->assertSystemLogged('billing.monitored_day.skipped', fn (array $c) => ($c['reason'] ?? null) === 'tenant_not_billable'
+            && $c['calc']['blocked_reason'] === 'resolved_by_caller');
+    }
+
+    public function test_a_suspended_tenant_batch_that_switches_nothing_on_does_not_log_the_block(): void
+    {
+        [$team] = $this->setupTeam(assetLimit: null);
+        Subscription::factory()->suspended()->create(['team_id' => $team->id]);
+        $assets = Asset::factory()->count(2)->create(['team_id' => $team->id]);
+
+        $result = app(SetAssetMonitoring::class)->executeMany($team->id, $assets, AssetMonitoringState::Monitored);
+
+        $this->assertSame(0, $result['changed']);
+        $this->assertSystemNotLogged('billing.tenant.blocked');
+        $this->assertCount(2, $this->systemLogEntries('assets.monitoring.changed'));
+
+        app(SetAssetMonitoring::class)->execute($assets->first(), AssetMonitoringState::Monitored);
+
+        $this->assertSystemNotLogged('billing.tenant.blocked');
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_the_block_is_logged_when_the_first_unit_is_actually_switched_on(): void
+    {
+        [$team] = $this->setupTeam(assetLimit: null);
+        Subscription::factory()->suspended()->create(['team_id' => $team->id]);
+        $already = Asset::factory()->create(['team_id' => $team->id]);
+        $pending = Asset::factory()->pendingMonitoring()->count(2)->create(['team_id' => $team->id]);
+
+        app(SetAssetMonitoring::class)->executeMany($team->id, [$already, ...$pending], AssetMonitoringState::Monitored);
+
+        $codes = array_map(
+            fn (array $e) => $e['code'].'/'.($e['context']['reason'] ?? 'ok'),
+            array_values(array_filter($this->systemLogEntries(), fn (array $e) => in_array($e['code'], ['billing.tenant.blocked', 'assets.monitoring.changed'], true))),
+        );
+        // Once per call, and only once a unit is really switched on — never
+        // ahead of the unit that was already monitored.
+        $this->assertSame([
+            'assets.monitoring.changed/same_state',
+            'billing.tenant.blocked/subscription_suspended',
+            'assets.monitoring.changed/ok',
+            'assets.monitoring.changed/ok',
+        ], $codes);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_deferred_lines_are_emitted_inside_the_assets_tenant(): void
+    {
+        [$team] = $this->setupTeam(assetLimit: null);
+        $other = Team::factory()->create();
+        $asset = Asset::factory()->pendingMonitoring()->create(['team_id' => $team->id]);
+        $atEmission = [];
+        SystemLog::listen(function (array $entry) use (&$atEmission): void {
+            $atEmission[] = [
+                'code' => $entry['code'],
+                'input_team_id' => $entry['context']['input']['team_id'] ?? null,
+                'current_team_id' => TenantContext::id(),
+            ];
+        });
+
+        // The caller's transaction commits under ANOTHER tenant: the lines
+        // deferred to that commit must still carry the asset's own tenant.
+        TenantContext::for($other->id, fn () => DB::transaction(
+            fn () => app(SetAssetMonitoring::class)->execute($asset, AssetMonitoringState::Monitored),
+        ));
+
+        $deferred = array_values(array_filter($atEmission, fn (array $e) => in_array($e['code'], ['assets.monitoring.changed', 'billing.usage.recorded'], true)));
+        $this->assertSame(['assets.monitoring.changed', 'billing.usage.recorded'], collect($deferred)->pluck('code')->sort()->values()->all());
+        foreach ($deferred as $entry) {
+            $this->assertSame($team->id, $entry['input_team_id']);
+            $this->assertSame($entry['input_team_id'], $entry['current_team_id'], "[{$entry['code']}] se emitió en el contexto de otro tenant");
+        }
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_batch_skips_another_tenants_unit_without_naming_it(): void
+    {
+        [$team] = $this->setupTeam(assetLimit: null);
+        $other = Team::factory()->create();
+        $mine = Asset::factory()->pendingMonitoring()->create(['team_id' => $team->id]);
+        $foreign = Asset::factory()->pendingMonitoring()->create(['team_id' => $other->id]);
+
+        $result = app(SetAssetMonitoring::class)->executeMany($team->id, [$mine, $foreign], AssetMonitoringState::Monitored);
+
+        $this->assertSame(1, $result['changed']);
+        $skip = $this->assertSystemLogged('assets.monitoring.changed', fn (array $c) => ($c['reason'] ?? null) === 'other_tenant');
+        $this->assertSame(['team_id' => $team->id], $skip['input']);
+        $this->assertSame(['team_matches' => false], $skip['calc']);
+        $this->assertCount(1, $this->systemLogEntries('billing.asset_limit.resolved'));
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_switching_monitoring_never_touches_another_tenant(): void
@@ -175,5 +365,15 @@ class AssetMonitoringTest extends TestCase
         // monitored units must not push the actor over its cap of one.
         $this->assertSame(1, $result['monitored']);
         $this->assertFalse($result['over_cap']);
+
+        $json = json_encode($this->systemLogEntries());
+        $this->assertStringNotContainsString('"team_id":'.$victim->id.',', $json);
+        $this->assertStringNotContainsString('"team_id":'.$victim->id.'}', $json);
+        foreach (Asset::withoutGlobalScopes()->pluck('name') as $name) {
+            $this->assertStringNotContainsString(json_encode($name), $json);
+        }
+        $this->assertSystemLogged('assets.monitoring.changed', fn (array $c) => $c['input']['team_id'] === $actor->id
+            && $c['calc']['assets_monitored_before'] === 0 && $c['calc']['assets_monitored_after'] === 1);
+        $this->assertNoSensitiveDataLogged();
     }
 }

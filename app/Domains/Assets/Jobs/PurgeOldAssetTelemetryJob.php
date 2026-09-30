@@ -3,6 +3,7 @@
 namespace App\Domains\Assets\Jobs;
 
 use App\Domains\Assets\Models\AssetTelemetrySnapshot;
+use App\Support\SystemLog;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -35,8 +36,10 @@ class PurgeOldAssetTelemetryJob implements ShouldQueue
 
     public function handle(): int
     {
-        $cutoff = now()->subDays($this->retentionDays ?? self::RETENTION_DAYS);
+        $days = $this->retentionDays ?? self::RETENTION_DAYS;
+        $cutoff = now()->subDays($days);
         $deleted = 0;
+        $batches = 0;
 
         do {
             $removed = AssetTelemetrySnapshot::query()
@@ -45,7 +48,22 @@ class PurgeOldAssetTelemetryJob implements ShouldQueue
                 ->delete();
 
             $deleted += $removed;
+
+            if ($removed > 0) {
+                $batches++;
+            }
         } while ($removed > 0);
+
+        // Recorrido de plataforma: sólo conteos, sin tenant.
+        SystemLog::ok('assets.purge.completed', input: ['table' => 'asset_telemetry_snapshots'], calc: [
+            'retention_days' => $days,
+            'retention_source' => $this->retentionDays !== null ? 'argument' : 'constant',
+            'cutoff' => $cutoff->toIso8601String(),
+            'chunk_size' => self::CHUNK,
+        ], result: [
+            'removed_count' => $deleted,
+            'batches_count' => $batches,
+        ]);
 
         return $deleted;
     }

@@ -11,8 +11,11 @@ use App\Domains\Audit\Enums\AuditActorType;
 use App\Domains\Audit\Enums\AuditCategory;
 use App\Domains\Tenancy\Actions\ResolveAssetLimit;
 use App\Domains\Tenancy\Events\UsageLimitExceeded;
+use App\Domains\Tenancy\Support\TenantCanSend;
 use App\Models\User;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Enciende o apaga la vigilancia de un activo. Es la ÚNICA puerta por la que
@@ -37,11 +40,15 @@ class SetAssetMonitoring
     public function execute(Asset $asset, AssetMonitoringState $state, ?User $actor = null, ?string $reason = null): array
     {
         return TenantContext::for((int) $asset->team_id, function () use ($asset, $state, $actor, $reason) {
-            $cap = $this->resolveAssetLimit->execute((int) $asset->team_id);
-            $monitored = $this->monitoredCount((int) $asset->team_id);
-            $billable = RecordMonitoredAssetDay::tenantBillable((int) $asset->team_id);
+            $teamId = (int) $asset->team_id;
+            $limit = $this->resolveAssetLimit->explain($teamId);
+            $cap = $limit['cap'];
+            $this->logAssetLimit($teamId, $limit);
+            $monitored = $this->monitoredCount($teamId);
+            $blocked = TenantCanSend::blockedReason($teamId);
+            $blockedLogged = false;
 
-            return $this->apply($asset, $state, $actor, $reason, $cap, $monitored, $billable);
+            return $this->apply($asset, $state, $actor, $reason, $cap, $monitored, $blocked, $blockedLogged, batch: false);
         });
     }
 
@@ -58,9 +65,15 @@ class SetAssetMonitoring
     public function executeMany(int $teamId, iterable $assets, AssetMonitoringState $state, ?User $actor = null, ?string $reason = null): array
     {
         return TenantContext::for($teamId, function () use ($teamId, $assets, $state, $actor, $reason) {
-            $cap = $this->resolveAssetLimit->execute($teamId);
+            $limit = $this->resolveAssetLimit->explain($teamId);
+            $cap = $limit['cap'];
+            $this->logAssetLimit($teamId, $limit);
             $monitored = $this->monitoredCount($teamId);
-            $billable = RecordMonitoredAssetDay::tenantBillable($teamId);
+            $blocked = TenantCanSend::blockedReason($teamId);
+            // `billing.tenant.blocked` sale una vez por llamada, y sólo cuando
+            // una unidad se enciende de verdad (ver apply()).
+            $blockedLogged = false;
+
             $changed = 0;
             $last = null;
 
@@ -68,10 +81,13 @@ class SetAssetMonitoring
                 // Only this tenant's assets: callers already filter, this is
                 // the last line (§2.1).
                 if ((int) $asset->team_id !== $teamId) {
+                    // Nunca el id del activo ajeno ni su tenant.
+                    SystemLog::skipped('assets.monitoring.changed', reason: 'other_tenant', input: ['team_id' => $teamId], calc: ['team_matches' => false]);
+
                     continue;
                 }
 
-                $last = $this->apply($asset, $state, $actor, $reason, $cap, $monitored, $billable);
+                $last = $this->apply($asset, $state, $actor, $reason, $cap, $monitored, $blocked, $blockedLogged, batch: true);
                 $changed += $last['changed'] ? 1 : 0;
             }
 
@@ -87,13 +103,20 @@ class SetAssetMonitoring
 
     /**
      * @param  int  $monitored  the tenant's monitored count before this change; updated in place
+     * @param  string|null  $blocked  why the tenant accrues no asset-days (TenantCanSend), null when it does
+     * @param  bool  $blockedLogged  whether `billing.tenant.blocked` already went out in this call; updated in place
+     * @param  bool  $batch  part of executeMany(): its no-ops are routine, so they go to debug
      * @return array{asset: Asset, changed: bool, over_cap: bool, monitored: int, cap: int|null}
      */
-    private function apply(Asset $asset, AssetMonitoringState $state, ?User $actor, ?string $reason, ?int $cap, int &$monitored, bool $billable): array
+    private function apply(Asset $asset, AssetMonitoringState $state, ?User $actor, ?string $reason, ?int $cap, int &$monitored, ?string $blocked, bool &$blockedLogged, bool $batch): array
     {
+        $billable = $blocked === null;
         $previous = $asset->monitoring_state;
+        $monitoredBefore = $monitored;
 
         if ($previous === $state) {
+            SystemLog::skipped('assets.monitoring.changed', reason: 'same_state', input: ['team_id' => (int) $asset->team_id, 'asset_id' => $asset->id], calc: ['state' => $state->value], debug: $batch);
+
             return [
                 'asset' => $asset,
                 'changed' => false,
@@ -112,12 +135,20 @@ class SetAssetMonitoring
             $monitored--;
         }
 
+        $assetDayOutcome = null;
+
         if ($state === AssetMonitoringState::Monitored) {
             $monitored++;
 
+            // Sólo cuando una unidad se enciende de verdad, y una vez por llamada.
+            if ($blocked !== null && ! $blockedLogged) {
+                $this->logTenantBlocked((int) $asset->team_id, $blocked);
+                $blockedLogged = true;
+            }
+
             // Encender ES usar: el tracto-día de hoy queda registrado en este
             // momento, no hasta la muestra nocturna (decisión 2026-09-28).
-            $this->recordAssetDay->execute($asset, tenantBillable: $billable);
+            $assetDayOutcome = $this->recordAssetDay->outcome($asset, tenantBillable: $billable);
         }
 
         $overCap = $state === AssetMonitoringState::Monitored
@@ -172,6 +203,29 @@ class SetAssetMonitoring
             $state->value,
         ));
 
+        // Hecho persistido: solo si la transacción del llamador confirma. Nunca
+        // `$reason` (texto libre), el email del actor ni el nombre del activo.
+        $logInput = ['team_id' => (int) $asset->team_id, 'asset_id' => $asset->id, 'actor_user_id' => $actor?->id];
+        $logCalc = [
+            'previous_state' => $previous->value,
+            'new_state' => $state->value,
+            'assets_monitored_before' => $monitoredBefore,
+            'assets_monitored_after' => $monitored,
+            'cap' => $cap,
+            'over_cap' => $overCap,
+            'overage_assets' => $cap === null ? 0 : max(0, $monitored - $cap),
+            'tenant_billable' => $billable,
+            'asset_day_outcome' => $assetDayOutcome,
+            'reason_present' => $reason !== null && $reason !== '',
+        ];
+
+        DB::afterCommit(fn () => TenantContext::for($logInput['team_id'], fn () => SystemLog::ok(
+            'assets.monitoring.changed',
+            input: $logInput,
+            calc: $logCalc,
+            result: ['changed' => true, 'limit_event_dispatched' => $overCap],
+        )));
+
         return [
             'asset' => $asset,
             'changed' => true,
@@ -179,6 +233,29 @@ class SetAssetMonitoring
             'monitored' => $monitored,
             'cap' => $cap,
         ];
+    }
+
+    /**
+     * @param  array{cap: ?int, source: string, calc: array<string, mixed>}  $limit
+     */
+    private function logAssetLimit(int $teamId, array $limit): void
+    {
+        $input = ['team_id' => $teamId, 'stage' => 'monitoring_toggle'];
+        $calc = ['source' => $limit['source'], ...$limit['calc']];
+        $result = ['cap' => $limit['cap']];
+
+        if (($limit['calc']['none_reason'] ?? null) === 'meter_missing') {
+            SystemLog::degraded('billing.asset_limit.resolved', reason: 'meter_missing', input: $input, calc: $calc, result: $result);
+
+            return;
+        }
+
+        SystemLog::ok('billing.asset_limit.resolved', input: $input, calc: $calc, result: $result);
+    }
+
+    private function logTenantBlocked(int $teamId, string $blocked): void
+    {
+        SystemLog::skipped('billing.tenant.blocked', reason: $blocked, input: ['team_id' => $teamId, 'stage' => 'monitoring_toggle']);
     }
 
     private function monitoredCount(int $teamId): int

@@ -45,17 +45,20 @@ class IngestVehicleStatsPage
     public function execute(TenantIntegration $integration, VehicleStatsPage $page): VehicleStatsIngestResult
     {
         $externalIds = [];
+        $withoutId = 0;
 
         foreach ([...$page->locations, ...$page->readings] as $point) {
             $externalId = (string) ($point['external_id'] ?? '');
 
             if ($externalId !== '') {
                 $externalIds[$externalId] = true;
+            } else {
+                $withoutId++;
             }
         }
 
         if ($externalIds === []) {
-            return new VehicleStatsIngestResult;
+            return new VehicleStatsIngestResult(dropped: $this->counted(['no_external_id' => $withoutId]));
         }
 
         $assets = $this->resolveAssets->execute(
@@ -65,11 +68,22 @@ class IngestVehicleStatsPage
         );
 
         if ($assets === []) {
-            return new VehicleStatsIngestResult;
+            $points = count($page->locations) + count($page->readings);
+
+            return new VehicleStatsIngestResult(dropped: $this->counted([
+                'no_external_id' => $withoutId,
+                'no_monitored_asset' => $points - $withoutId,
+            ]));
         }
 
-        [$locationsStored, $positions, $newestLocation] = $this->storeLocations($assets, $page->locations);
-        [$readingsStored, $telemetry, $newestReading] = $this->storeReadings($assets, $page->readings);
+        [$locationsStored, $positions, $newestLocation, $locationsDropped] = $this->storeLocations($assets, $page->locations);
+        [$readingsStored, $telemetry, $newestReading, $readingsDropped] = $this->storeReadings($assets, $page->readings);
+
+        $dropped = $locationsDropped;
+
+        foreach ($readingsDropped as $reason => $count) {
+            $dropped[$reason] = ($dropped[$reason] ?? 0) + $count;
+        }
 
         $newest = $newestLocation;
 
@@ -83,18 +97,44 @@ class IngestVehicleStatsPage
             newestPointAt: $newest,
             positions: $positions,
             telemetry: $telemetry,
+            dropped: $dropped,
         );
+    }
+
+    /**
+     * Only the reasons that actually dropped something.
+     *
+     * @param  array<string, int>  $counts
+     * @return array<string, int>
+     */
+    private function counted(array $counts): array
+    {
+        return array_filter($counts, fn (int $count) => $count > 0);
+    }
+
+    /**
+     * Why a point could not be tied to a monitored asset of this tenant:
+     * `no_monitored_asset` covers a vehicle not synced yet, the tenant's own
+     * unmonitored unit and another tenant's vehicle alike, since only
+     * monitored assets of this tenant resolve.
+     *
+     * @param  array<string, mixed>  $point
+     */
+    private function unresolvedReason(array $point): string
+    {
+        return (string) ($point['external_id'] ?? '') === '' ? 'no_external_id' : 'no_monitored_asset';
     }
 
     /**
      * @param  array<string, Asset>  $assets
      * @param  list<array<string, mixed>>  $locations
-     * @return array{0: int, 1: array<int, array<string, mixed>>, 2: CarbonInterface|null}
+     * @return array{0: int, 1: array<int, array<string, mixed>>, 2: CarbonInterface|null, 3: array<string, int>}
      */
     private function storeLocations(array $assets, array $locations): array
     {
         $now = now();
         $rows = [];
+        $dropped = [];
         /** @var array<int, list<array<string, mixed>>> $pointsByAsset */
         $pointsByAsset = [];
         $newest = null;
@@ -102,7 +142,16 @@ class IngestVehicleStatsPage
         foreach ($locations as $location) {
             $asset = $assets[(string) ($location['external_id'] ?? '')] ?? null;
 
-            if ($asset === null || ! isset($location['latitude'], $location['longitude'])) {
+            if ($asset === null) {
+                $reason = $this->unresolvedReason($location);
+                $dropped[$reason] = ($dropped[$reason] ?? 0) + 1;
+
+                continue;
+            }
+
+            if (! isset($location['latitude'], $location['longitude'])) {
+                $dropped['missing_coordinates'] = ($dropped['missing_coordinates'] ?? 0) + 1;
+
                 continue;
             }
 
@@ -142,6 +191,9 @@ class IngestVehicleStatsPage
             $stored += DB::table('asset_location_snapshots')->insertOrIgnore($chunk);
         }
 
+        // Rows the unique index ignored: already stored by an earlier page.
+        $dropped['already_stored'] = count($rows) - $stored;
+
         $assetsById = [];
 
         foreach ($assets as $asset) {
@@ -158,7 +210,7 @@ class IngestVehicleStatsPage
             }
         }
 
-        return [$stored, $positions, $newest];
+        return [$stored, $positions, $newest, $this->counted($dropped)];
     }
 
     /**
@@ -253,18 +305,28 @@ class IngestVehicleStatsPage
     /**
      * @param  array<string, Asset>  $assets
      * @param  list<array<string, mixed>>  $readings
-     * @return array{0: int, 1: array<int, array<string, array<string, mixed>>>, 2: CarbonInterface|null}
+     * @return array{0: int, 1: array<int, array<string, array<string, mixed>>>, 2: CarbonInterface|null, 3: array<string, int>}
      */
     private function storeReadings(array $assets, array $readings): array
     {
         /** @var array<string, list<array<string, mixed>>> $runs keyed "assetId|type" */
         $runs = [];
+        $dropped = [];
 
         foreach ($readings as $reading) {
             $asset = $assets[(string) ($reading['external_id'] ?? '')] ?? null;
             $type = $reading['type'] ?? null;
 
-            if ($asset === null || ! $type instanceof TelemetryType || ! isset($reading['value'])) {
+            $reason = match (true) {
+                $asset === null => $this->unresolvedReason($reading),
+                ! $type instanceof TelemetryType => 'unsupported_type',
+                ! isset($reading['value']) => 'missing_value',
+                default => null,
+            };
+
+            if ($reason !== null) {
+                $dropped[$reason] = ($dropped[$reason] ?? 0) + 1;
+
                 continue;
             }
 
@@ -278,7 +340,7 @@ class IngestVehicleStatsPage
         }
 
         if ($runs === []) {
-            return [0, [], null];
+            return [0, [], null, $dropped];
         }
 
         $latest = $this->latestReadings(array_values(array_unique(array_map(
@@ -299,6 +361,8 @@ class IngestVehicleStatsPage
 
             foreach ($run as $reading) {
                 if (! RecordAssetTelemetry::isNewReading($previousValue, $previousAt, $reading['value'], $reading['at'])) {
+                    $dropped['unchanged_value'] = ($dropped['unchanged_value'] ?? 0) + 1;
+
                     continue;
                 }
 
@@ -333,7 +397,9 @@ class IngestVehicleStatsPage
             $stored += DB::table('asset_telemetry_snapshots')->insertOrIgnore($chunk);
         }
 
-        return [$stored, $telemetry, $newest];
+        $dropped['already_stored'] = count($rows) - $stored;
+
+        return [$stored, $telemetry, $newest, $this->counted($dropped)];
     }
 
     /**

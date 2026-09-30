@@ -6,9 +6,13 @@ use App\Domains\Tenancy\Enums\ResetPeriod;
 use App\Domains\Tenancy\Events\UsageRecorded;
 use App\Domains\Tenancy\Models\UsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
+use Carbon\CarbonImmutable;
 use DateTimeInterface;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 class RecordUsageEvent
 {
@@ -20,11 +24,40 @@ class RecordUsageEvent
         ?array $metadata = null,
         ?DateTimeInterface $occurredAt = null,
     ): void {
-        TenantContext::for($teamId, function () use ($teamId, $meterCode, $quantity, $eventKey, $metadata, $occurredAt) {
-            $meter = $this->resolveMeter($meterCode);
+        $this->record($teamId, $meterCode, $quantity, $eventKey, $metadata, $occurredAt);
+    }
+
+    /**
+     * Igual que `execute()`, pero dice si ESTE llamado insertó la fila
+     * (`insertOrIgnore > 0`) o si la `event_key` ya existía.
+     *
+     * @param  bool  $debug  sólo baja a `debug` la línea `billing.usage.duplicate_ignored` (llamadores para los que repetir es rutina, como el cierre diario)
+     */
+    public function record(
+        int $teamId,
+        string $meterCode,
+        int $quantity,
+        string $eventKey,
+        ?array $metadata = null,
+        ?DateTimeInterface $occurredAt = null,
+        bool $debug = false,
+    ): bool {
+        return TenantContext::for($teamId, function () use ($teamId, $meterCode, $quantity, $eventKey, $metadata, $occurredAt, $debug): bool {
+            // Nunca `$metadata` en el log: la `event_key` ya identifica el uso.
+            $logInput = ['team_id' => $teamId, 'meter_code' => $meterCode, 'event_key' => $eventKey];
+
+            try {
+                $meter = $this->resolveMeter($meterCode);
+            } catch (ModelNotFoundException $e) {
+                SystemLog::degraded('billing.meter.missing', reason: 'meter_missing', input: [...$logInput, 'stage' => 'record_usage']);
+
+                throw $e;
+            }
+
             $occurredAt = $occurredAt ?? now();
 
             $billingPeriodKey = $this->buildBillingPeriodKey($meter, $occurredAt);
+            $occurredAtIso = CarbonImmutable::instance($occurredAt)->toIso8601String();
 
             $inserted = UsageEvent::query()->insertOrIgnore([
                 'team_id' => $teamId,
@@ -40,7 +73,34 @@ class RecordUsageEvent
 
             if ($inserted > 0) {
                 UsageRecorded::dispatch($teamId, $meterCode, $quantity, $eventKey);
+
+                $resetPeriod = $meter->reset_period?->value;
+
+                // El commit puede ocurrir fuera de este TenantContext: la línea
+                // se emite dentro del tenant del uso, no en el del llamador.
+                DB::afterCommit(fn () => TenantContext::for($teamId, fn () => SystemLog::ok(
+                    'billing.usage.recorded',
+                    input: $logInput,
+                    calc: [
+                        'quantity' => $quantity,
+                        'reset_period' => $resetPeriod,
+                        'occurred_at' => $occurredAtIso,
+                        'billing_period_key' => $billingPeriodKey,
+                    ],
+                    result: ['recorded' => true],
+                )));
+            } else {
+                // Que este insert no escribió nada es cierto aunque la transacción revierta.
+                SystemLog::skipped(
+                    'billing.usage.duplicate_ignored',
+                    reason: 'event_key_exists',
+                    input: $logInput,
+                    calc: ['quantity' => $quantity, 'billing_period_key' => $billingPeriodKey],
+                    debug: $debug,
+                );
             }
+
+            return $inserted > 0;
         });
     }
 

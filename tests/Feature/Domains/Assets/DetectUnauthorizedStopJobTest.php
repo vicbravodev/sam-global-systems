@@ -17,6 +17,7 @@ use App\Domains\TenantConfig\Models\TenantSetting;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\Concerns\AssertsTenantIsolation;
 use Tests\TestCase;
 
@@ -26,7 +27,7 @@ use Tests\TestCase;
  */
 class DetectUnauthorizedStopJobTest extends TestCase
 {
-    use AssertsTenantIsolation, RefreshDatabase;
+    use AssertsSystemLog, AssertsTenantIsolation, RefreshDatabase;
 
     private int $teamId;
 
@@ -101,6 +102,40 @@ class DetectUnauthorizedStopJobTest extends TestCase
         $this->assertSame('suspicious_stop', $rawEvent->event_type_raw);
         $this->assertSame($asset->id, $rawEvent->payload_json['internal']['asset_id']);
         $this->assertGreaterThanOrEqual(29, $rawEvent->payload_json['stopped_minutes']);
+
+        $raised = $this->assertSystemLogged('assets.unauthorized_stop.raised');
+        $this->assertSame($this->teamId, $raised['input']['team_id']);
+        $this->assertSame($asset->id, $raised['input']['asset_id']);
+        $this->assertSame($rawEvent->payload_json['stopped_minutes'], $raised['calc']['stopped_minutes']);
+        $this->assertSame(DetectUnauthorizedStopJob::DEFAULT_STOP_MINUTES, $raised['calc']['stop_minutes']);
+        $this->assertGreaterThanOrEqual($raised['calc']['stop_minutes'], $raised['calc']['stopped_minutes']);
+        $this->assertSame($rawEvent->id, $raised['result']['raw_event_id']);
+        $this->assertTrue($raised['result']['job_requested']);
+
+        $sweep = $this->systemLogEntries('assets.unauthorized_stop_sweep.completed');
+        $this->assertCount(1, $sweep);
+        $this->assertSame('info', $sweep[0]['level']);
+        $context = $sweep[0]['context'];
+        $this->assertSame('ok', $context['outcome']);
+        $this->assertSame($this->teamId, $context['input']['team_id']);
+        $this->assertSame(DetectUnauthorizedStopJob::DEFAULT_STOP_MINUTES, $context['calc']['stop_minutes']);
+        $this->assertSame(DetectUnauthorizedStopJob::FRESHNESS_MINUTES, $context['calc']['freshness_minutes']);
+        $this->assertSame(DetectUnauthorizedStopJob::MAX_ANCHOR_HOURS, $context['calc']['max_anchor_hours']);
+        $this->assertSame(6, $context['calc']['realert_hours']);
+        $this->assertEquals(200, $context['calc']['realert_radius_m']);
+        $this->assertSame(1, $context['calc']['geofences_count']);
+        $this->assertSame(1, $context['result']['candidates_count']);
+        $this->assertSame(1, $context['result']['raised_count']);
+        $this->assertSame(0, $context['result']['inside_geofence_count']);
+        $this->assertSame(0, $context['result']['same_place_count']);
+        $this->assertSame(0, $context['result']['already_raised_count']);
+
+        // Never the unit's name, code or coordinates.
+        $json = json_encode($this->systemLogEntries());
+        $this->assertStringNotContainsString($asset->name, $json);
+        $this->assertStringNotContainsString('19.43', $json);
+        $this->assertStringNotContainsString('-99.13', $json);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_one_event_per_stop_episode(): void
@@ -130,6 +165,15 @@ class DetectUnauthorizedStopJobTest extends TestCase
         $this->runJob();
 
         $this->assertSame(0, RawEvent::withoutGlobalScopes()->count());
+
+        $sweep = $this->assertSystemLogged('assets.unauthorized_stop_sweep.completed');
+        $this->assertSame(1, $sweep['result']['candidates_count']);
+        $this->assertSame(1, $sweep['result']['inside_geofence_count']);
+        $this->assertSame(0, $sweep['result']['raised_count']);
+        // Nothing raised nor deduped: a routine sweep, at debug.
+        $this->assertSame('debug', $this->systemLogEntries('assets.unauthorized_stop_sweep.completed')[0]['level']);
+        $this->assertSystemNotLogged('assets.unauthorized_stop.raised');
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_short_stops_do_not_alert(): void
@@ -140,6 +184,17 @@ class DetectUnauthorizedStopJobTest extends TestCase
         $this->runJob();
 
         $this->assertSame(0, RawEvent::withoutGlobalScopes()->count());
+
+        // A sweep with no candidates still narrates itself, at debug.
+        $sweep = $this->systemLogEntries('assets.unauthorized_stop_sweep.completed');
+        $this->assertCount(1, $sweep);
+        $this->assertSame('debug', $sweep[0]['level']);
+        $this->assertSame('ok', $sweep[0]['context']['outcome']);
+        $this->assertSame(0, $sweep[0]['context']['result']['candidates_count']);
+        $this->assertSame(0, $sweep[0]['context']['result']['raised_count']);
+        // Geofences are not loaded without candidates.
+        $this->assertNull($sweep[0]['context']['calc']['geofences_count']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_tenants_without_geofences_never_alert(): void
@@ -167,6 +222,14 @@ class DetectUnauthorizedStopJobTest extends TestCase
         $this->runJob();
 
         $this->assertSame(0, RawEvent::withoutGlobalScopes()->count());
+
+        $sweep = $this->systemLogEntries('assets.unauthorized_stop_sweep.completed');
+        $this->assertCount(1, $sweep);
+        $this->assertSame('skipped', $sweep[0]['context']['outcome']);
+        $this->assertSame('disabled', $sweep[0]['context']['reason']);
+        $this->assertSame($this->teamId, $sweep[0]['context']['input']['team_id']);
+        $this->assertSame(0, $sweep[0]['context']['calc']['stop_minutes']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_moving_assets_never_alert(): void
@@ -255,6 +318,15 @@ class DetectUnauthorizedStopJobTest extends TestCase
         $this->assertSame(1, RawEvent::withoutGlobalScopes()->count());
         // Handled all the same, so the next sweeps skip it.
         $this->assertTrue($asset->fresh()->stop_alerted_for->equalTo(now()->subMinutes(15)->startOfSecond()));
+
+        $sweeps = $this->systemLogEntries('assets.unauthorized_stop_sweep.completed');
+        $this->assertCount(2, $sweeps);
+        $this->assertSame(1, $sweeps[1]['context']['result']['same_place_count']);
+        $this->assertSame(0, $sweeps[1]['context']['result']['raised_count']);
+        // A suppressed alert is a dedupe: the sweep stays visible at info.
+        $this->assertSame('info', $sweeps[1]['level']);
+        $this->assertCount(1, $this->systemLogEntries('assets.unauthorized_stop.raised'));
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_it_only_reads_and_writes_the_swept_tenant(): void
@@ -276,5 +348,14 @@ class DetectUnauthorizedStopJobTest extends TestCase
         $this->assertNoTenantLeak($this->teamId, fn () => $this->runJob());
 
         $this->assertSame(0, RawEvent::withoutGlobalScopes()->where('team_id', $otherTeamId)->count());
+
+        // Only the swept tenant is narrated; the other one never appears.
+        foreach ($this->systemLogEntries() as $entry) {
+            if (str_starts_with($entry['code'], 'assets.')) {
+                $this->assertSame($this->teamId, $entry['context']['input']['team_id']);
+            }
+        }
+        $this->assertCount(1, $this->systemLogEntries('assets.unauthorized_stop_sweep.completed'));
+        $this->assertNoSensitiveDataLogged();
     }
 }

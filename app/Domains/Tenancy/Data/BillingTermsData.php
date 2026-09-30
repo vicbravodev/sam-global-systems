@@ -30,18 +30,45 @@ final readonly class BillingTermsData
      */
     public function unitPriceFor(float $averageAssets): float
     {
+        return $this->explainUnitPriceFor($averageAssets)['unit_price'];
+    }
+
+    /**
+     * Mismo bucle que decide el precio, con el escalón que lo decidió (para
+     * el log narrativo de la factura y la estimación).
+     *
+     * @return array{unit_price: float, source: 'volume_tier'|'flat_unit_price', tier_assets: int, tier_index: ?int, tier_from: ?int, tier_to: ?int, tiers_count: int}
+     */
+    public function explainUnitPriceFor(float $averageAssets): array
+    {
         $assets = (int) ceil(max(0, $averageAssets));
 
-        foreach ($this->volumeTiers as $tier) {
+        foreach ($this->volumeTiers as $index => $tier) {
             $from = (int) ($tier['from'] ?? 0);
             $to = $tier['to'] ?? null;
 
             if ($assets >= $from && ($to === null || $assets <= (int) $to)) {
-                return (float) $tier['unit_price'];
+                return [
+                    'unit_price' => (float) $tier['unit_price'],
+                    'source' => 'volume_tier',
+                    'tier_assets' => $assets,
+                    'tier_index' => $index,
+                    'tier_from' => $from,
+                    'tier_to' => $to === null ? null : (int) $to,
+                    'tiers_count' => count($this->volumeTiers),
+                ];
             }
         }
 
-        return $this->unitPrice;
+        return [
+            'unit_price' => $this->unitPrice,
+            'source' => 'flat_unit_price',
+            'tier_assets' => $assets,
+            'tier_index' => null,
+            'tier_from' => null,
+            'tier_to' => null,
+            'tiers_count' => count($this->volumeTiers),
+        ];
     }
 
     /**

@@ -12,11 +12,12 @@ use App\Models\User;
 use Database\Seeders\AccessSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class AssetMonitoringEndpointTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsSystemLog, RefreshDatabase;
 
     protected function setUp(): void
     {
@@ -77,6 +78,17 @@ class AssetMonitoringEndpointTest extends TestCase
 
         $this->assertSame(2, Asset::withoutGlobalScopes()->where('team_id', $team->id)->monitored()->count());
         $this->assertSame(AssetMonitoringState::Pending, $foreign->fresh()->monitoring_state, 'A foreign id must be ignored');
+
+        // One cap resolution per request, not per unit.
+        $this->assertCount(1, $this->systemLogEntries('billing.asset_limit.resolved'));
+        $this->assertCount(2, array_filter(
+            $this->systemLogEntries('assets.monitoring.changed'),
+            fn (array $e) => $e['context']['outcome'] === 'ok' && $e['context']['input']['actor_user_id'] === $user->id,
+        ));
+        $json = json_encode($this->systemLogEntries());
+        $this->assertStringNotContainsString($user->email, $json);
+        $this->assertStringNotContainsString(json_encode($user->email), $json);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_bulk_counts_each_unit_against_the_cap_in_order(): void

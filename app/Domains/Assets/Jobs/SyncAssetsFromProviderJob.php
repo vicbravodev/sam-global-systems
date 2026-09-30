@@ -7,6 +7,8 @@ use App\Domains\Assets\Actions\SyncAssetFromIntegration;
 use App\Domains\Assets\Exceptions\AssetExternalReferenceConflictException;
 use App\Domains\Integrations\Contracts\ProviderAdapter;
 use App\Domains\Integrations\Models\TenantIntegration;
+use App\Support\SystemLog;
+use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -37,8 +39,10 @@ class SyncAssetsFromProviderJob implements ShouldQueue
     ): void {
         $result = $providerAdapter->sync($this->integration, 'assets');
         $discovered = 0;
+        $assets = $result['assets'] ?? [];
+        $counts = ['created' => 0, 'updated' => 0, 'conflict' => 0];
 
-        foreach ($result['assets'] ?? [] as $assetData) {
+        foreach ($assets as $assetData) {
             try {
                 $asset = $syncAsset->execute(
                     $this->integration->team_id,
@@ -49,10 +53,15 @@ class SyncAssetsFromProviderJob implements ShouldQueue
                 if ($asset->wasRecentlyCreated) {
                     $discovered++;
                 }
-            } catch (AssetExternalReferenceConflictException) {
+
+                $counts[$asset->wasRecentlyCreated ? 'created' : 'updated']++;
+            } catch (AssetExternalReferenceConflictException $e) {
                 // The provider handed us an external id another tenant already
                 // owns: skip that asset rather than touching their data, and
                 // keep syncing the rest of the batch.
+                $e->logSkipped();
+                $counts['conflict']++;
+
                 continue;
             }
         }
@@ -62,6 +71,19 @@ class SyncAssetsFromProviderJob implements ShouldQueue
         if ($discovered > 0) {
             $notifyPending->execute((int) $this->integration->team_id, $discovered);
         }
+
+        TenantContext::for($this->integration->team_id, fn () => SystemLog::ok('assets.sync.completed', input: [
+            'team_id' => (int) $this->integration->team_id,
+            'integration_id' => $this->integration->id,
+            'stage' => 'provider_job',
+        ], result: [
+            'assets_reported_count' => count($assets),
+            'created_count' => $counts['created'],
+            'updated_count' => $counts['updated'],
+            'conflict_count' => $counts['conflict'],
+            'not_handled_count' => 0,
+            'discovered_count' => $discovered,
+        ]));
     }
 
     public function failed(\Throwable $exception): void

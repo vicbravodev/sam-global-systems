@@ -18,9 +18,13 @@ use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\TenantConfig\Enums\SettingGroup;
 use App\Domains\TenantConfig\Enums\SettingValueType;
 use App\Domains\TenantConfig\Models\TenantSetting;
+use App\Models\Team;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Queue;
+use Tests\Concerns\AssertsSystemLog;
+use Tests\Concerns\AssertsTenantIsolation;
 use Tests\TestCase;
 
 /**
@@ -30,7 +34,7 @@ use Tests\TestCase;
  */
 class DetectOfflineAssetsJobTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsSystemLog, AssertsTenantIsolation, RefreshDatabase;
 
     private int $teamId;
 
@@ -108,6 +112,7 @@ class DetectOfflineAssetsJobTest extends TestCase
     public function test_device_dropping_mid_trip_raises_an_internal_event(): void
     {
         $asset = $this->moving($this->makeAsset(['device_last_connected_at' => now()->subMinutes(20)]));
+        AssetLocationSnapshot::query()->where('asset_id', $asset->id)->update(['latitude' => 19.4326, 'longitude' => -99.1332]);
 
         $this->runJob();
 
@@ -129,6 +134,41 @@ class DetectOfflineAssetsJobTest extends TestCase
             ProcessRawEventJob::class,
             fn (ProcessRawEventJob $job) => $job->rawEventId === $rawEvent->id,
         );
+
+        $raised = $this->assertSystemLogged('assets.offline.raised', fn (array $c) => $c['input']['asset_id'] === $asset->id);
+        $this->assertSame($this->teamId, $raised['input']['team_id']);
+        $this->assertTrue($raised['calc']['was_in_motion']);
+        $this->assertSame('in_motion', $raised['calc']['threshold_applied']);
+        $this->assertSame('tenant_setting', $raised['calc']['threshold_source']);
+        $this->assertSame(15, $raised['calc']['threshold_minutes']);
+        $this->assertSame(15, $raised['calc']['in_motion_minutes']);
+        $this->assertNull($raised['calc']['parked_minutes']);
+        $this->assertGreaterThanOrEqual($raised['calc']['threshold_minutes'], $raised['calc']['silent_minutes']);
+        $this->assertSame($rawEvent->payload_json['silent_minutes'], $raised['calc']['silent_minutes']);
+        // Last fix taken one minute before the device dropped.
+        $this->assertSame(60, $raised['calc']['location_age_s']);
+        $this->assertSame($rawEvent->id, $raised['result']['raw_event_id']);
+        $this->assertTrue($raised['result']['job_requested']);
+
+        $sweep = $this->assertSystemLogged('assets.offline_sweep.completed');
+        $this->assertSame(1, $sweep['result']['raised_count']);
+        $this->assertSame(1, $sweep['result']['scanned_count']);
+        $this->assertSame(1, $sweep['result']['in_motion_count']);
+        $this->assertSame(DetectOfflineAssetsJob::CONNECTIVITY_FRESHNESS_MINUTES, $sweep['calc']['connectivity_freshness_minutes']);
+        $this->assertSame(DetectOfflineAssetsJob::MAX_EPISODE_AGE_HOURS, $sweep['calc']['max_episode_age_hours']);
+        $this->assertSame(DetectOfflineAssetsJob::DEFAULT_OFFLINE_MINUTES, $sweep['calc']['default_moving_threshold_minutes']);
+        $this->assertSame(DetectOfflineAssetsJob::DEFAULT_PARKED_OFFLINE_MINUTES, $sweep['calc']['default_parked_threshold_minutes']);
+
+        // Never the unit's name, code or coordinates.
+        $json = json_encode($this->systemLogEntries());
+        $this->assertStringNotContainsString($asset->name, $json);
+        if ($asset->code !== null) {
+            $this->assertStringNotContainsString($asset->code, $json);
+        }
+        $this->assertStringNotContainsString('19.43', $json);
+        $this->assertStringNotContainsString('-99.13', $json);
+        $this->assertStringNotContainsString('"location"', $json);
+        $this->assertNoSensitiveDataLogged();
     }
 
     /**
@@ -166,6 +206,20 @@ class DetectOfflineAssetsJobTest extends TestCase
         $rawEvent = RawEvent::withoutGlobalScopes()->sole();
         $this->assertFalse($rawEvent->payload_json['was_in_motion']);
         $this->assertSame(DetectOfflineAssetsJob::DEFAULT_PARKED_OFFLINE_MINUTES, $rawEvent->payload_json['threshold_minutes']);
+
+        $raised = $this->assertSystemLogged('assets.offline.raised');
+        $this->assertFalse($raised['calc']['was_in_motion']);
+        $this->assertSame('parked', $raised['calc']['threshold_applied']);
+        // Recomputed from the logged terms: parked grace never undercuts the in-motion threshold.
+        $this->assertSame(
+            max($raised['calc']['parked_minutes'], $raised['calc']['in_motion_minutes']),
+            $raised['calc']['threshold_minutes'],
+        );
+        $this->assertSame($rawEvent->payload_json['threshold_minutes'], $raised['calc']['threshold_minutes']);
+        $this->assertGreaterThanOrEqual($raised['calc']['threshold_minutes'], $raised['calc']['silent_minutes']);
+        // No GPS fix on file.
+        $this->assertNull($raised['calc']['location_age_s']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_an_old_moving_fix_does_not_count_as_in_motion(): void
@@ -224,12 +278,29 @@ class DetectOfflineAssetsJobTest extends TestCase
 
     public function test_one_event_per_silence_episode_no_matter_how_many_ticks(): void
     {
-        $this->moving($this->makeAsset());
+        $asset = $this->moving($this->makeAsset());
 
         $this->runJob();
         $this->runJob();
 
         $this->assertSame(1, $this->rawCount());
+
+        $this->assertCount(1, $this->systemLogEntries('assets.offline.raised'));
+        $skipped = $this->systemLogEntries('assets.offline.skipped');
+        $this->assertCount(1, $skipped);
+        $this->assertSame('debug', $skipped[0]['level']);
+        $this->assertSame('already_raised', $skipped[0]['context']['reason']);
+        $this->assertSame($asset->id, $skipped[0]['context']['input']['asset_id']);
+        $this->assertSame($this->teamId, $skipped[0]['context']['input']['team_id']);
+        $this->assertSame(
+            RawEvent::withoutGlobalScopes()->sole()->deduplication_key,
+            $skipped[0]['context']['result']['deduplication_key'],
+        );
+
+        $sweeps = $this->systemLogEntries('assets.offline_sweep.completed');
+        $this->assertSame(1, $sweeps[1]['context']['result']['already_raised_count']);
+        $this->assertSame(0, $sweeps[1]['context']['result']['raised_count']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_a_new_silence_episode_raises_a_new_event(): void
@@ -318,6 +389,12 @@ class DetectOfflineAssetsJobTest extends TestCase
         $this->runJob();
 
         $this->assertSame(1, $this->rawCount());
+
+        $raised = $this->assertSystemLogged('assets.offline.raised');
+        $this->assertSame('asset_override', $raised['calc']['threshold_source']);
+        $this->assertSame(5, $raised['calc']['threshold_minutes']);
+        $this->assertSame(5, $raised['calc']['in_motion_minutes']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_zero_threshold_disables_the_watchdog(): void
@@ -330,6 +407,13 @@ class DetectOfflineAssetsJobTest extends TestCase
         $this->runJob();
 
         $this->assertSame(0, $this->rawCount());
+
+        $sweep = $this->assertSystemLogged('assets.offline_sweep.completed');
+        $this->assertSame(1, $sweep['result']['scanned_count']);
+        $this->assertSame(1, $sweep['result']['disabled_count']);
+        $this->assertSame(0, $sweep['result']['raised_count']);
+        $this->assertSystemNotLogged('assets.offline.raised');
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_inactive_and_maintenance_assets_are_ignored(): void
@@ -351,8 +435,20 @@ class DetectOfflineAssetsJobTest extends TestCase
             'device_last_connected_at' => now()->subMinute(),
         ]);
 
+        // The raise path persists the frozen heartbeat on the raw event: the
+        // device went silent 20 minutes before the watchdog raised the event.
+        $rawEvent = RawEvent::factory()->create([
+            'team_id' => $this->teamId,
+            'event_type_raw' => 'device_offline',
+            'payload_json' => [
+                'eventType' => 'device_offline',
+                'last_connected_at' => now()->subMinutes(80)->toIso8601String(),
+            ],
+        ]);
+
         $event = NormalizedEvent::factory()->create([
             'team_id' => $this->teamId,
+            'raw_event_id' => $rawEvent->id,
             'asset_id' => $asset->id,
             'event_type_id' => $type->id,
             'occurred_at' => now()->subHour(),
@@ -376,6 +472,34 @@ class DetectOfflineAssetsJobTest extends TestCase
         // Re-running never re-resolves the same episode.
         $this->runJob();
         Queue::assertPushed(ApplyExternalResolutionJob::class, 1);
+
+        $resolved = $this->systemLogEntries('assets.offline.resolved');
+        $this->assertCount(1, $resolved);
+        $context = $resolved[0]['context'];
+        $this->assertSame($this->teamId, $context['input']['team_id']);
+        $this->assertSame($event->id, $context['input']['normalized_event_id']);
+        $this->assertSame($asset->id, $context['input']['asset_id']);
+        $this->assertSame('heartbeat', $context['calc']['proof_of_life_source']);
+        $proofOfLife = $asset->fresh()->device_last_connected_at;
+        // Recomputed from persisted state: the real silence runs from the
+        // episode's frozen heartbeat to the proof of life…
+        $this->assertSame(
+            (int) Carbon::parse($rawEvent->fresh()->payload_json['last_connected_at'])->diffInMinutes($proofOfLife),
+            $context['calc']['silent_minutes'],
+        );
+        $this->assertGreaterThanOrEqual(78, $context['calc']['silent_minutes']);
+        // …and the span since the watchdog raised the event is logged apart.
+        $this->assertSame(
+            (int) $event->fresh()->occurred_at->diffInMinutes($proofOfLife),
+            $context['calc']['raised_to_recovery_minutes'],
+        );
+        $this->assertLessThan($context['calc']['silent_minutes'], $context['calc']['raised_to_recovery_minutes']);
+        $this->assertTrue($context['result']['job_requested']);
+
+        $sweeps = $this->systemLogEntries('assets.offline_sweep.completed');
+        $this->assertSame(1, $sweeps[0]['context']['result']['resolved_count']);
+        $this->assertSame(0, $sweeps[1]['context']['result']['resolved_count']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_episode_raised_before_the_connectivity_feed_resolves_on_a_new_gps_fix(): void
@@ -399,6 +523,61 @@ class DetectOfflineAssetsJobTest extends TestCase
         $this->runJob();
 
         $this->assertTrue($event->fresh()->payload_normalized_json['is_resolved']);
+
+        $resolved = $this->assertSystemLogged('assets.offline.resolved', fn (array $c) => $c['input']['normalized_event_id'] === $event->id);
+        $this->assertSame('gps_fix', $resolved['calc']['proof_of_life_source']);
+        $this->assertSame($asset->id, $resolved['input']['asset_id']);
+        // Pre-feed episode: its raw event carries no frozen heartbeat, so the
+        // real silence is unknown; only the span since the raise is logged.
+        $this->assertArrayNotHasKey('last_connected_at', RawEvent::withoutGlobalScopes()->findOrFail($event->raw_event_id)->payload_json);
+        $this->assertArrayHasKey('silent_minutes', $resolved['calc']);
+        $this->assertNull($resolved['calc']['silent_minutes']);
+        $this->assertSame(
+            (int) $event->fresh()->occurred_at->diffInMinutes($asset->fresh()->last_seen_at),
+            $resolved['calc']['raised_to_recovery_minutes'],
+        );
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_an_episode_never_reads_the_frozen_heartbeat_of_another_tenants_raw_event(): void
+    {
+        $type = $this->offlineType();
+
+        // Tenant A (this test's team) holds a raw event WITH a frozen heartbeat.
+        $foreignRaw = RawEvent::factory()->create([
+            'team_id' => $this->teamId,
+            'event_type_raw' => 'device_offline',
+            'payload_json' => [
+                'eventType' => 'device_offline',
+                'last_connected_at' => now()->subMinutes(80)->toIso8601String(),
+            ],
+        ]);
+
+        // Tenant B's episode points at tenant A's raw event (corrupt or
+        // forged link): the heartbeat must not cross over.
+        $tenantB = Team::factory()->create();
+        $asset = $this->makeAsset([
+            'team_id' => $tenantB->id,
+            'last_seen_at' => now()->subHours(3),
+            'device_last_connected_at' => now()->subMinute(),
+        ]);
+        $event = NormalizedEvent::factory()->create([
+            'team_id' => $tenantB->id,
+            'raw_event_id' => $foreignRaw->id,
+            'asset_id' => $asset->id,
+            'event_type_id' => $type->id,
+            'occurred_at' => now()->subHour(),
+            'payload_normalized_json' => ['event_type_code' => 'device_offline'],
+        ]);
+
+        $this->assertNoTenantLeak($tenantB, fn () => $this->runJob());
+
+        $this->assertTrue($event->fresh()->payload_normalized_json['is_resolved']);
+        $resolved = $this->assertSystemLogged('assets.offline.resolved', fn (array $c) => $c['input']['normalized_event_id'] === $event->id);
+        $this->assertSame($tenantB->id, $resolved['input']['team_id']);
+        $this->assertArrayHasKey('silent_minutes', $resolved['calc']);
+        $this->assertNull($resolved['calc']['silent_minutes']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_unrecovered_episode_is_not_resolved(): void
@@ -448,6 +627,22 @@ class DetectOfflineAssetsJobTest extends TestCase
         $rawEvent = RawEvent::withoutGlobalScopes()->sole();
         $this->assertSame($teamB->id, $rawEvent->team_id);
         $this->assertSame($assetB->id, $rawEvent->payload_json['internal']['asset_id']);
+
+        // Each per-asset line carries its own asset's tenant, and only it.
+        $raised = $this->systemLogEntries('assets.offline.raised');
+        $this->assertCount(1, $raised);
+        $this->assertSame($teamB->id, $raised[0]['context']['input']['team_id']);
+        $this->assertSame($assetB->id, $raised[0]['context']['input']['asset_id']);
+
+        // The platform summary carries counts only, never a tenant id.
+        $sweep = $this->systemLogEntries('assets.offline_sweep.completed');
+        $this->assertCount(1, $sweep);
+        $this->assertStringNotContainsString('team_id', json_encode($sweep[0]['context']));
+        $this->assertStringNotContainsString('asset_id', json_encode($sweep[0]['context']));
+        $this->assertSame(2, $sweep[0]['context']['result']['scanned_count']);
+        $this->assertSame(1, $sweep[0]['context']['result']['raised_count']);
+        $this->assertSame(1, $sweep[0]['context']['result']['within_threshold_count']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_a_phantom_speed_on_a_parked_unit_keeps_the_parked_threshold(): void

@@ -3,6 +3,7 @@
 namespace App\Domains\Assets\Jobs;
 
 use App\Domains\Assets\Models\AssetLocationSnapshot;
+use App\Support\SystemLog;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -35,8 +36,10 @@ class PurgeOldAssetLocationsJob implements ShouldQueue
 
     public function handle(): int
     {
-        $cutoff = now()->subDays($this->retentionDays ?? (int) config('telematics.retention.location_days', 30));
+        $days = $this->retentionDays ?? (int) config('telematics.retention.location_days', 30);
+        $cutoff = now()->subDays($days);
         $deleted = 0;
+        $batches = 0;
 
         do {
             $ids = AssetLocationSnapshot::query()
@@ -46,7 +49,22 @@ class PurgeOldAssetLocationsJob implements ShouldQueue
 
             $removed = $ids->isEmpty() ? 0 : AssetLocationSnapshot::query()->whereKey($ids->all())->delete();
             $deleted += $removed;
+
+            if ($removed > 0) {
+                $batches++;
+            }
         } while ($removed > 0);
+
+        // Recorrido de plataforma: sólo conteos, sin tenant.
+        SystemLog::ok('assets.purge.completed', input: ['table' => 'asset_location_snapshots'], calc: [
+            'retention_days' => $days,
+            'retention_source' => $this->retentionDays !== null ? 'argument' : 'config',
+            'cutoff' => $cutoff->toIso8601String(),
+            'chunk_size' => self::CHUNK,
+        ], result: [
+            'removed_count' => $deleted,
+            'batches_count' => $batches,
+        ]);
 
         return $deleted;
     }

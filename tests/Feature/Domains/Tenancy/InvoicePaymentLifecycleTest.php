@@ -11,6 +11,7 @@ use Database\Seeders\AccessSeeder;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use League\Flysystem\UnableToWriteFile;
 use Mockery;
@@ -70,6 +71,15 @@ class InvoicePaymentLifecycleTest extends TestCase
             'team_id' => $this->team->id,
             'category' => 'payment_receipt',
         ]);
+
+        $json = json_encode($this->systemLogEntries());
+        $this->assertStringNotContainsString('transferencia', $json);
+        $this->assertStringNotContainsString('SPEI 1234', $json);
+        $objectKey = DB::table('file_objects')->where('category', 'payment_receipt')->value('object_key');
+        $this->assertNotNull($objectKey);
+        $this->assertStringNotContainsString($objectKey, $json);
+        $this->assertStringNotContainsString(str_replace('/', '\\/', $objectKey), $json);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_receipt_is_rejected_on_paid_invoice(): void
@@ -168,6 +178,18 @@ class InvoicePaymentLifecycleTest extends TestCase
             ->where('team_id', $this->team->id)
             ->where('action', 'tenant.invoice_paid')
             ->count());
+
+        $changed = $this->assertSystemLogged('billing.invoice.status_changed');
+        $this->assertSame($this->team->id, $changed['input']['team_id']);
+        $this->assertSame($invoice->id, $changed['input']['invoice_id']);
+        $this->assertSame($admin->id, $changed['input']['actor_user_id']);
+        $this->assertSame('invoiced', $changed['calc']['from_status']);
+        $this->assertSame('paid', $changed['calc']['to_status']);
+        $this->assertFalse($changed['calc']['receipt_present']);
+        $json = json_encode($this->systemLogEntries());
+        $this->assertStringNotContainsString($admin->email, $json);
+        $this->assertStringNotContainsString(json_encode($this->team->name), $json);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_paid_invoice_cannot_be_voided(): void
@@ -185,6 +207,33 @@ class InvoicePaymentLifecycleTest extends TestCase
                 'invoice' => $invoice->id,
             ]),
         )->assertStatus(422);
+
+        $this->assertSystemNotLogged('billing.invoice.status_changed');
+    }
+
+    public function test_super_admin_voids_invoice_and_the_change_is_logged(): void
+    {
+        $admin = User::factory()->create(['global_role' => 'super_admin']);
+
+        $invoice = InvoiceSnapshot::factory()->create([
+            'team_id' => $this->team->id,
+            'status' => InvoiceStatus::Invoiced,
+        ]);
+
+        $this->actingAs($admin)->post(
+            route('admin.tenants.invoices.void', [
+                'team' => $this->team->slug,
+                'invoice' => $invoice->id,
+            ]),
+        )->assertRedirect();
+
+        $this->assertSame(InvoiceStatus::Void, $invoice->refresh()->status);
+
+        $changed = $this->assertSystemLogged('billing.invoice.status_changed');
+        $this->assertSame($invoice->id, $changed['input']['invoice_id']);
+        $this->assertSame('invoiced', $changed['calc']['from_status']);
+        $this->assertSame('void', $changed['calc']['to_status']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_void_invoice_cannot_be_marked_paid_nor_voided_again(): void

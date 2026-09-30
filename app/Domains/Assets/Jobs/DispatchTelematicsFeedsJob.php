@@ -6,6 +6,7 @@ use App\Domains\Assets\Enums\TelematicsFeed;
 use App\Domains\Assets\Models\TelematicsFeedCursor;
 use App\Domains\Integrations\Enums\TenantIntegrationStatus;
 use App\Domains\Integrations\Models\TenantIntegration;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -63,6 +64,8 @@ class DispatchTelematicsFeedsJob implements ShouldQueue
                 ->get();
 
             if ($integrations->isEmpty()) {
+                SystemLog::skipped('telematics.feeds.dispatched', reason: 'no_active_integrations', debug: true, channel: 'telematics');
+
                 return;
             }
 
@@ -72,22 +75,47 @@ class DispatchTelematicsFeedsJob implements ShouldQueue
                 ->get()
                 ->keyBy(fn (TelematicsFeedCursor $cursor) => $cursor->tenant_integration_id.'|'.$cursor->feed->value);
 
+            // Platform-wide sweep: counts only, never a tenant's ids.
+            $counts = ['feed_disabled' => 0, 'dispatched' => 0, 'not_due' => 0, 'paused' => 0];
+            $byFeed = [];
+
+            foreach (TelematicsFeed::cases() as $feed) {
+                $byFeed[$feed->value.'_count'] = 0;
+            }
+
             foreach ($integrations as $integration) {
-                TenantContext::for($integration->team_id, function () use ($integration, $cursors): void {
+                TenantContext::for($integration->team_id, function () use ($integration, $cursors, &$counts, &$byFeed): void {
                     if (! $this->feedEnabled($integration)) {
+                        $counts['feed_disabled']++;
+
                         return;
                     }
 
                     foreach (TelematicsFeed::cases() as $feed) {
                         $cursor = $cursors->get($integration->id.'|'.$feed->value);
+                        $notDue = $this->isDue($integration, $feed, $cursor);
 
-                        if ($this->isDue($integration, $feed, $cursor)) {
+                        if ($notDue === null) {
                             FollowVehicleStatsFeedJob::dispatch($integration, $feed)
                                 ->delay($this->jitter($integration, $feed));
+
+                            $counts['dispatched']++;
+                            $byFeed[$feed->value.'_count']++;
+                        } else {
+                            $counts[$notDue]++;
                         }
                     }
                 });
             }
+
+            SystemLog::ok('telematics.feeds.dispatched', calc: ['tick_seconds' => self::TICK_SECONDS], result: [
+                'integrations_count' => $integrations->count(),
+                'feed_disabled_count' => $counts['feed_disabled'],
+                'dispatched_count' => $counts['dispatched'],
+                'not_due_count' => $counts['not_due'],
+                'paused_count' => $counts['paused'],
+                'dispatched_count_by_feed' => $byFeed,
+            ], debug: $counts['dispatched'] === 0, channel: 'telematics');
         });
     }
 
@@ -99,19 +127,24 @@ class DispatchTelematicsFeedsJob implements ShouldQueue
             && ($sync['feed_enabled'] ?? true) !== false;
     }
 
-    private function isDue(TenantIntegration $integration, TelematicsFeed $feed, ?TelematicsFeedCursor $cursor): bool
+    /**
+     * Null when the feed is due; otherwise why not.
+     *
+     * @return 'paused'|'not_due'|null
+     */
+    private function isDue(TenantIntegration $integration, TelematicsFeed $feed, ?TelematicsFeedCursor $cursor): ?string
     {
         if ($cursor === null || $cursor->last_polled_at === null) {
-            return true;
+            return null;
         }
 
         if ($cursor->isPaused()) {
-            return false;
+            return 'paused';
         }
 
         $interval = $this->intervalSeconds($integration, $feed);
 
-        return $cursor->last_polled_at->lte(now()->subSeconds($interval - self::TICK_SECONDS));
+        return $cursor->last_polled_at->lte(now()->subSeconds($interval - self::TICK_SECONDS)) ? null : 'not_due';
     }
 
     /**

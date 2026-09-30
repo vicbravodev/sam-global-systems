@@ -12,11 +12,12 @@ use App\Models\Team;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class AdminBillingTermsTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsSystemLog, RefreshDatabase;
 
     private function superAdmin(): User
     {
@@ -115,8 +116,28 @@ class AdminBillingTermsTest extends TestCase
         $this->assertSame('finalized', $invoice->status->value);
         $this->assertDatabaseHas('audit_logs', ['team_id' => $team->id, 'action' => 'tenant.invoice_generated']);
 
+        $requested = $this->assertSystemLogged('billing.invoice.generation_requested');
+        $this->assertSame($team->id, $requested['input']['team_id']);
+        $this->assertSame($admin->id, $requested['input']['actor_user_id']);
+        $this->assertSame('2026-09-01', $requested['input']['period_start']);
+        $this->assertSame('2026-09-30', $requested['input']['period_end']);
+        $this->assertTrue($requested['result']['chain_requested']);
+        $this->assertSystemNotLogged('billing.invoice.already_exists');
+
         // Repetir no duplica.
         $this->actingAs($admin)->post(route('admin.tenants.invoices.generate', $team))->assertRedirect();
         $this->assertSame(1, InvoiceSnapshot::withoutGlobalScopes()->where('team_id', $team->id)->count());
+
+        $exists = $this->assertSystemLogged('billing.invoice.already_exists', fn (array $c) => $c['input']['stage'] === 'admin_request');
+        $this->assertSame('period_already_invoiced', $exists['reason']);
+        $this->assertSame($team->id, $exists['input']['team_id']);
+        $this->assertSame($admin->id, $exists['input']['actor_user_id']);
+        $this->assertSame('2026-09-01', $exists['input']['period_start']);
+        $this->assertCount(1, $this->systemLogEntries('billing.invoice.generation_requested'));
+
+        $json = json_encode($this->systemLogEntries());
+        $this->assertStringNotContainsString($admin->email, $json);
+        $this->assertStringNotContainsString(json_encode($team->name), $json);
+        $this->assertNoSensitiveDataLogged();
     }
 }

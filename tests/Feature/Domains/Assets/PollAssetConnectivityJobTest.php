@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Domains\Assets;
 
+use App\Domains\Assets\Jobs\PollAllDeviceConnectivityJob;
 use App\Domains\Assets\Jobs\PollAssetConnectivityJob;
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Assets\Models\AssetExternalReference;
@@ -11,12 +12,14 @@ use App\Domains\Integrations\Models\TenantIntegration;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\Concerns\AssertsTenantIsolation;
 use Tests\TestCase;
 
 class PollAssetConnectivityJobTest extends TestCase
 {
-    use AssertsTenantIsolation, RefreshDatabase;
+    use AssertsSystemLog, AssertsTenantIsolation, RefreshDatabase;
 
     private function makeSamsaraIntegration(): TenantIntegration
     {
@@ -94,6 +97,21 @@ class PollAssetConnectivityJobTest extends TestCase
         $this->assertSame('2026-09-28T00:17:20+00:00', $fresh->device_last_connected_at->toIso8601String());
         $this->assertSame('Connected', $fresh->device_health_status);
         $this->assertNotNull($fresh->device_connectivity_polled_at);
+
+        $polled = $this->assertSystemLogged('assets.connectivity.polled');
+        $this->assertSame($integration->team_id, $polled['input']['team_id']);
+        $this->assertSame($integration->id, $polled['input']['integration_id']);
+        $this->assertSame(2, $polled['result']['readings_reported_count']);
+        $this->assertSame(1, $polled['result']['assets_matched_count']);
+        $this->assertSame(1, $polled['result']['readings_unmatched_count']);
+        $this->assertSame(
+            $polled['result']['readings_reported_count'],
+            $polled['result']['assets_matched_count'] + $polled['result']['readings_unmatched_count'],
+        );
+        $this->assertSame(0, $polled['result']['without_heartbeat_count']);
+        // Never the provider's raw health status.
+        $this->assertStringNotContainsString('Connected', json_encode($this->systemLogEntries()));
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_the_telematics_gateway_represents_the_asset_over_its_dashcam(): void
@@ -143,6 +161,80 @@ class PollAssetConnectivityJobTest extends TestCase
         $this->assertNoTenantLeak($first->team_id, fn () => app()->call([new PollAssetConnectivityJob($first), 'handle']));
 
         $this->assertNotNull($firstAsset->fresh()->device_last_connected_at);
+
+        $polled = $this->systemLogEntries('assets.connectivity.polled');
+        $this->assertCount(1, $polled);
+        $this->assertSame($first->team_id, $polled[0]['context']['input']['team_id']);
+        $this->assertSame($first->id, $polled[0]['context']['input']['integration_id']);
+        $this->assertSame(1, $polled[0]['context']['result']['assets_matched_count']);
+        $this->assertSame(1, $polled[0]['context']['result']['readings_unmatched_count']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_reading_for_another_tenants_vehicle_matches_no_asset(): void
+    {
+        $first = $this->makeSamsaraIntegration();
+        $second = $this->makeSamsaraIntegration();
+        $othersAsset = $this->linkAsset($second, '999');
+
+        $this->fakeGateways([
+            ['serial' => 'B', 'model' => 'VG55NA', 'asset' => ['id' => '999'], 'connectionStatus' => ['healthStatus' => 'Connected']],
+        ]);
+
+        $this->assertNoTenantLeak($first->team_id, fn () => app()->call([new PollAssetConnectivityJob($first), 'handle']));
+
+        $this->assertNull($othersAsset->fresh()->device_connectivity_polled_at);
+
+        $polled = $this->assertSystemLogged('assets.connectivity.polled');
+        $this->assertSame(0, $polled['result']['assets_matched_count']);
+        $this->assertSame(1, $polled['result']['readings_unmatched_count']);
+        $this->assertSame(0, $polled['result']['without_heartbeat_count']);
+        $this->assertSame($first->team_id, $polled['input']['team_id']);
+        // Counts only: never the other tenant's asset.
+        $this->assertStringNotContainsString('asset_id', json_encode($polled));
+        foreach ($this->systemLogEntries() as $entry) {
+            $this->assertNotSame($second->team_id, $entry['context']['input']['team_id'] ?? null);
+        }
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_matched_reading_without_a_heartbeat_is_counted(): void
+    {
+        $integration = $this->makeSamsaraIntegration();
+        $this->linkAsset($integration, '100');
+
+        $this->fakeGateways([
+            ['serial' => 'A', 'model' => 'VG55NA', 'asset' => ['id' => '100'], 'connectionStatus' => ['healthStatus' => 'Unplugged']],
+        ]);
+
+        app()->call([new PollAssetConnectivityJob($integration), 'handle']);
+
+        $polled = $this->assertSystemLogged('assets.connectivity.polled');
+        $this->assertSame(1, $polled['result']['assets_matched_count']);
+        $this->assertSame(1, $polled['result']['without_heartbeat_count']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_the_fan_out_logs_counts_only(): void
+    {
+        Queue::fake();
+
+        $this->makeSamsaraIntegration();
+        $disabled = $this->makeSamsaraIntegration();
+        $disabled->forceFill(['config_json' => ['sync' => ['enabled' => false]]])->save();
+
+        (new PollAllDeviceConnectivityJob)->handle();
+
+        Queue::assertPushed(PollAssetConnectivityJob::class, 1);
+
+        $dispatched = $this->systemLogEntries('assets.connectivity.dispatched');
+        $this->assertCount(1, $dispatched);
+        $this->assertSame(1, $dispatched[0]['context']['result']['dispatched_count']);
+        $this->assertSame(1, $dispatched[0]['context']['result']['sync_disabled_count']);
+        // Platform fan-out: never a tenant or integration id.
+        $this->assertStringNotContainsString('team_id', json_encode($dispatched[0]['context']));
+        $this->assertStringNotContainsString('integration_id', json_encode($dispatched[0]['context']));
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_it_targets_the_sync_queue(): void

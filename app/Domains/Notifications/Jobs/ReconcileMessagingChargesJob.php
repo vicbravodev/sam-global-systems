@@ -9,6 +9,7 @@ use App\Domains\Notifications\Channels\TwilioVoiceCaller;
 use App\Domains\Notifications\Enums\MessagingResourceType;
 use App\Domains\Notifications\Models\MessagingCharge;
 use App\Support\JobFailureReporter;
+use App\Support\LoggableCode;
 use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
@@ -48,6 +49,16 @@ class ReconcileMessagingChargesJob implements ShouldQueue
     public const MAX_BACKOFF_MINUTES = 60;
 
     /**
+     * Ramas de {@see reconcile()}; el resumen del recorrido las cuenta.
+     *
+     * @var list<string>
+     */
+    public const BRANCHES = [
+        'not_found_at_provider', 'priced', 'free_status', 'estimated_after_hours',
+        'gave_up_priced', 'gave_up_estimated', 'rescheduled',
+    ];
+
+    /**
      * Twilio no cobra estos estados terminales.
      *
      * @var array<string, list<string>>
@@ -84,22 +95,57 @@ class ReconcileMessagingChargesJob implements ShouldQueue
             ->get());
 
         $deadline = microtime(true) + self::TIME_BUDGET_SECONDS;
+        $countByBranch = array_fill_keys(array_map(fn (string $branch) => "{$branch}_count", self::BRANCHES), 0);
+        $attempted = 0;
+        $failed = 0;
+        $budgetExhausted = false;
 
         foreach ($due as $charge) {
             if (microtime(true) >= $deadline) {
+                $budgetExhausted = true;
+
                 break;
             }
 
-            TenantContext::for($charge->team_id, function () use ($charge, $messenger, $caller, $applyStatus, $finalize) {
-                try {
-                    $this->reconcile($charge, $messenger, $caller, $applyStatus, $finalize);
-                } catch (\Throwable $e) {
-                    SystemLog::degraded('billing.messaging_charge.reconcile_failed', reason: 'provider_error', input: ['charge_id' => $charge->id, 'provider_sid' => $charge->provider_sid], error: $e);
+            $attempted++;
 
-                    $this->scheduleNextCheck($charge);
+            $branch = TenantContext::for($charge->team_id, function () use ($charge, $messenger, $caller, $applyStatus, $finalize): ?string {
+                try {
+                    return $this->reconcile($charge, $messenger, $caller, $applyStatus, $finalize);
+                } catch (\Throwable $e) {
+                    $nextCheck = $this->scheduleNextCheck($charge);
+
+                    SystemLog::degraded('billing.messaging_charge.reconcile_failed', reason: 'provider_error', input: [
+                        'team_id' => $charge->team_id,
+                        'charge_id' => $charge->id,
+                        'provider_sid' => LoggableCode::guard($charge->provider_sid),
+                        'error_class' => class_basename($e),
+                        // Sólo el código de un error de Twilio es un código de Twilio.
+                        'provider_error_code' => $e instanceof TwilioException ? $e->getCode() : null,
+                    ], calc: $nextCheck, error: $e);
+
+                    return null;
                 }
             });
+
+            if ($branch === null) {
+                $failed++;
+            } else {
+                $countByBranch["{$branch}_count"]++;
+            }
         }
+
+        // Fuera de todo tenant: sólo conteos, nunca ids.
+        SystemLog::ok('billing.messaging_reconcile.completed', calc: [
+            'batch_size' => self::BATCH_SIZE,
+            'time_budget_seconds' => self::TIME_BUDGET_SECONDS,
+        ], result: [
+            'charges_due_count' => $due->count(),
+            'charges_attempted_count' => $attempted,
+            'charges_failed_count' => $failed,
+            'budget_exhausted' => $budgetExhausted,
+            'charges_count_by_branch' => $countByBranch,
+        ], debug: $due->isEmpty());
     }
 
     private function reconcile(
@@ -108,7 +154,13 @@ class ReconcileMessagingChargesJob implements ShouldQueue
         TwilioVoiceCaller $caller,
         ApplyTwilioStatusUpdate $applyStatus,
         FinalizeMessagingCharge $finalize,
-    ): void {
+    ): string {
+        $input = [
+            'team_id' => $charge->team_id,
+            'charge_id' => $charge->id,
+            'resource_type' => $charge->resource_type->value,
+        ];
+
         try {
             $resource = $charge->resource_type === MessagingResourceType::Call
                 ? $caller->fetchCall($charge->provider_sid)
@@ -120,7 +172,12 @@ class ReconcileMessagingChargesJob implements ShouldQueue
                 $charge->forceFill(['status' => $charge->status ?? 'not_found'])->save();
                 $finalize->withoutCost($charge);
 
-                return;
+                SystemLog::ok('billing.messaging_charge.reconciled', input: $input, calc: [
+                    'branch' => 'not_found_at_provider',
+                    'provider_error_code' => 20404,
+                ]);
+
+                return 'not_found_at_provider';
             }
 
             throw $e;
@@ -146,47 +203,71 @@ class ReconcileMessagingChargesJob implements ShouldQueue
         $price = isset($resource->price) && is_numeric($resource->price) ? (string) $resource->price : null;
         $priceUnit = isset($resource->priceUnit) && is_string($resource->priceUnit) ? $resource->priceUnit : null;
         $age = $charge->created_at ?? now();
+        $terminal = ApplyTwilioStatusUpdate::isTerminal($charge->resource_type, $status);
+        $nextCheck = [];
 
-        if (ApplyTwilioStatusUpdate::isTerminal($charge->resource_type, $status)) {
+        if ($terminal) {
             if ($price !== null) {
                 $finalize->withProviderPrice($charge, $price, $priceUnit);
-
-                return;
-            }
-
-            if (in_array($status, self::FREE_STATUSES[$charge->resource_type->value], true)) {
+                $branch = 'priced';
+            } elseif (in_array($status, self::FREE_STATUSES[$charge->resource_type->value], true)) {
                 $finalize->withoutCost($charge);
-
-                return;
-            }
-
-            if ($age->lte(now()->subHours(self::ESTIMATE_AFTER_HOURS))) {
+                $branch = 'free_status';
+            } elseif ($age->lte(now()->subHours(self::ESTIMATE_AFTER_HOURS))) {
                 $finalize->withEstimate($charge);
-
-                return;
+                $branch = 'estimated_after_hours';
+            } else {
+                $nextCheck = $this->scheduleNextCheck($charge);
+                $branch = 'rescheduled';
             }
         } elseif ($age->lte(now()->subHours(self::GIVE_UP_AFTER_HOURS))) {
             // Some carriers never confirm past `sent`; Twilio still bills it.
-            $price !== null
-                ? $finalize->withProviderPrice($charge, $price, $priceUnit)
-                : $finalize->withEstimate($charge);
-
-            return;
+            if ($price !== null) {
+                $finalize->withProviderPrice($charge, $price, $priceUnit);
+                $branch = 'gave_up_priced';
+            } else {
+                $finalize->withEstimate($charge);
+                $branch = 'gave_up_estimated';
+            }
+        } else {
+            $nextCheck = $this->scheduleNextCheck($charge);
+            $branch = 'rescheduled';
         }
 
-        $this->scheduleNextCheck($charge);
+        SystemLog::ok('billing.messaging_charge.reconciled', input: $input, calc: [
+            'branch' => $branch,
+            'provider_status' => LoggableCode::guard($status),
+            'terminal' => $terminal,
+            'price_present' => $price !== null,
+            'age_hours' => (int) $age->diffInHours(now()),
+            'estimate_after_hours' => self::ESTIMATE_AFTER_HOURS,
+            'give_up_after_hours' => self::GIVE_UP_AFTER_HOURS,
+        ], result: $nextCheck, debug: $branch === 'rescheduled');
+
+        return $branch;
     }
 
-    private function scheduleNextCheck(MessagingCharge $charge): void
+    /**
+     * @return array{check_attempts: int, delay_minutes: int, next_check_at: string, formula: string}
+     */
+    private function scheduleNextCheck(MessagingCharge $charge): array
     {
         $attempts = $charge->check_attempts + 1;
         $delay = min(self::MAX_BACKOFF_MINUTES, 2 ** min($attempts, 6));
+        $nextCheckAt = now()->addMinutes($delay);
 
         $charge->forceFill([
             'check_attempts' => $attempts,
             'last_checked_at' => now(),
-            'next_check_at' => now()->addMinutes($delay),
+            'next_check_at' => $nextCheckAt,
         ])->save();
+
+        return [
+            'check_attempts' => $attempts,
+            'delay_minutes' => $delay,
+            'next_check_at' => $nextCheckAt->toIso8601String(),
+            'formula' => 'delay_minutes = min(60, 2 ** min(check_attempts, 6))',
+        ];
     }
 
     public function failed(\Throwable $exception): void

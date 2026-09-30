@@ -10,6 +10,7 @@ use App\Domains\Tenancy\Models\UsageMeter;
 use App\Domains\Tenancy\Support\AssetDayPricing;
 use App\Models\Team;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 /**
@@ -18,7 +19,7 @@ use Tests\TestCase;
  */
 class UnmonitoredEmergencyInvoiceLineTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsSystemLog, RefreshDatabase;
 
     private function counter(Team $team, string $code, int $consumed): void
     {
@@ -50,6 +51,35 @@ class UnmonitoredEmergencyInvoiceLineTest extends TestCase
         $this->assertNotNull($line);
         $this->assertSame(22.0, (float) $line['amount']);
         $this->assertSame(322.0, (float) $invoice->subtotal);
+
+        // El recargo parte de la tarifa diaria YA redondeada a 6 decimales.
+        $c = $this->assertSystemLogged(
+            'billing.invoice_line.calculated',
+            fn (array $c) => $c['calc']['billing_model'] === 'asset_day_surcharge',
+        );
+        $this->assertSame(10.0, $c['calc']['daily_rate']);
+        $this->assertSame(10.0, $c['calc']['surcharge_percent']);
+        $this->assertSame(2, $c['calc']['consumed']);
+        $this->assertTrue($c['calc']['counter_found']);
+        $this->assertSame('subtotal', $c['result']['counts_towards']);
+        $this->assertStringContainsString('round(daily_rate * (1 + surcharge_percent / 100), 6)', $c['calc']['formula']);
+
+        $recomputed = round($c['calc']['consumed'] * round($c['calc']['daily_rate'] * (1 + $c['calc']['surcharge_percent'] / 100), 6), 2);
+        $this->assertSame(22.0, $recomputed);
+        $this->assertSame($recomputed, $c['result']['amount']);
+        // breakdown_json devuelve 22 (int) al decodificar: se compara al centavo.
+        $this->assertSame(number_format($recomputed, 2, '.', ''), number_format($line['amount'], 2, '.', ''));
+
+        $generated = $this->assertSystemLogged('billing.invoice.generated');
+        $this->assertSame([300.0, 22.0], $generated['calc']['subtotal_terms']);
+        $this->assertSame(number_format(round(array_sum($generated['calc']['subtotal_terms']), 2), 2, '.', ''), $invoice->subtotal);
+        $this->assertSame('322.00', $generated['result']['subtotal']);
+
+        $sources = $this->assertSystemLogged('billing.terms.resolved')['calc']['sources'];
+        $this->assertSame('tenant', $sources['unit_price']);
+
+        $this->assertTrue($this->assertSystemLogged('billing.asset_day.calculated')['calc']['counter_found']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_no_emergency_line_without_emergencies(): void

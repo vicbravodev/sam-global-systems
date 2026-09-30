@@ -16,6 +16,7 @@ use App\Domains\Tenancy\Models\UsageMeter;
 use App\Models\Team;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 /**
@@ -26,7 +27,7 @@ use Tests\TestCase;
  */
 class AggregateUsageJobAggregationTypeTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsSystemLog, RefreshDatabase;
 
     private Team $team;
 
@@ -65,6 +66,14 @@ class AggregateUsageJobAggregationTypeTest extends TestCase
         $this->assertSame(241, $counter->consumed_value);
         $this->assertSame(0, $counter->overage_value);
         Event::assertNotDispatched(UsageLimitExceeded::class);
+
+        $computed = $this->assertSystemLogged('billing.overage.computed', fn (array $c) => $c['input']['meter_code'] === 'monitored_assets');
+        $this->assertSame('max', $computed['calc']['aggregation_type']);
+        $this->assertSame(241, $computed['calc']['consumed']);
+        $this->assertSame(250, $computed['calc']['included']);
+        $this->assertSame(0, $computed['result']['overage']);
+        $this->assertFalse($computed['calc']['first_crossing']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_sum_meter_counter_still_accumulates(): void
@@ -106,6 +115,16 @@ class AggregateUsageJobAggregationTypeTest extends TestCase
 
         Event::assertNotDispatched(UsageLimitExceeded::class);
         Event::assertNotDispatched(UsageUpdatedBroadcast::class);
+
+        // Cierre de un mes pasado: hay excedente, pero no es un primer cruce en vivo.
+        $computed = $this->assertSystemLogged('billing.overage.computed', fn (array $c) => $c['input']['meter_code'] === 'ai_calls');
+        $this->assertSame('2026-08-01', $computed['input']['period_start']);
+        $this->assertTrue($computed['calc']['closed_period']);
+        $this->assertSame(30, $computed['result']['overage']);
+        $this->assertFalse($computed['calc']['first_crossing']);
+        $this->assertFalse($computed['result']['limit_event_dispatched']);
+        $this->assertFalse($computed['result']['broadcast_dispatched']);
+        $this->assertTrue($this->assertSystemLogged('billing.aggregate.completed')['calc']['closed_period']);
     }
 
     private function meter(string $code, AggregationType $type, int $included): UsageMeter

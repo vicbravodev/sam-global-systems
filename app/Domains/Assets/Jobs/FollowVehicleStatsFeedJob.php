@@ -88,16 +88,28 @@ class FollowVehicleStatsFeedJob implements ShouldBeUnique, ShouldQueue
             ['team_id' => $this->integration->team_id],
         );
 
+        $cycleInput = ['integration_id' => $this->integration->id, 'feed' => $this->feed->value];
+
         if ($cursor->isPaused()) {
+            // Rare: the dispatcher already skips paused cursors.
+            SystemLog::skipped('telematics.cycle.paused', reason: 'paused', input: $cycleInput, calc: [
+                'paused_until' => $cursor->paused_until->toIso8601String(),
+                'remaining_s' => (int) now()->diffInSeconds($cursor->paused_until),
+                'consecutive_failures' => $cursor->consecutive_failures,
+            ], channel: 'telematics');
+
             return;
         }
 
         $startedAt = now();
+        $initialCursor = $cursor->end_cursor;
         $cursor->forceFill(['last_polled_at' => $startedAt])->save();
 
         $result = new VehicleStatsIngestResult;
         $pages = 0;
         $failure = null;
+        $failureInfo = null;
+        $lastHasNextPage = false;
         $maxPages = max(1, (int) config('telematics.max_pages_per_cycle', 20));
 
         try {
@@ -117,10 +129,13 @@ class FollowVehicleStatsFeedJob implements ShouldBeUnique, ShouldQueue
 
                 $result = $result->merge($pageResult);
                 $pages++;
+                $lastHasNextPage = $page->hasNextPage;
+
+                $this->logDroppedPoints($pageResult, $cycleInput, $pages);
             } while ($page->hasNextPage && $pages < $maxPages);
         } catch (ProviderRequestFailed $e) {
             $failure = $e;
-            $this->handleFailure($cursor, $e);
+            $failureInfo = $this->handleFailure($cursor, $e);
         }
 
         if ($failure === null) {
@@ -145,16 +160,64 @@ class FollowVehicleStatsFeedJob implements ShouldBeUnique, ShouldQueue
         $this->publish($result);
 
         if ($this->feed === TelematicsFeed::Motion && $result->positions !== []) {
-            $this->detectAfterHoursMovement($result, $scheduleResolver, $raiseAfterHours);
+            $this->detectAfterHoursMovement($result, $scheduleResolver, $raiseAfterHours, $cycleInput);
         }
 
-        $cycleInput = ['integration_id' => $this->integration->id, 'feed' => $this->feed->value];
-        $cycleResult = ['pages' => $pages, 'locations' => $result->locationsStored, 'readings' => $result->readingsStored, 'moved_assets' => count($result->positions), 'lag_s' => $cursor->lagSeconds()];
+        $droppedByReason = [];
+
+        foreach ($result->dropped as $reason => $count) {
+            if ($count > 0) {
+                $droppedByReason[$reason.'_count'] = $count;
+            }
+        }
+
+        $cycleCalc = [
+            'max_pages_per_cycle' => $maxPages,
+            'max_pages_hit' => $failure === null && $pages >= $maxPages && $lastHasNextPage,
+            'dropped_count_by_reason' => $droppedByReason,
+        ];
+        // A rejected cursor is dropped (reset to null), not moved forward: it
+        // never reads as progress.
+        $cursorReset = ($failureInfo['reason'] ?? null) === 'cursor_rejected';
+        $cycleResult = [
+            'pages' => $pages,
+            'locations' => $result->locationsStored,
+            'readings' => $result->readingsStored,
+            'moved_assets' => count($result->positions),
+            'lag_s' => $cursor->lagSeconds(),
+            'cursor_advanced' => ! $cursorReset && $cursor->end_cursor !== $initialCursor,
+            'cursor_reset' => $cursorReset,
+        ];
 
         if ($failure === null) {
-            SystemLog::ok('telematics.cycle.completed', input: $cycleInput, result: $cycleResult, durationMs: $cursor->last_cycle_json['duration_ms'], channel: 'telematics');
+            SystemLog::ok('telematics.cycle.completed', input: $cycleInput, calc: $cycleCalc, result: $cycleResult, durationMs: $cursor->last_cycle_json['duration_ms'], channel: 'telematics');
         } else {
-            SystemLog::degraded('telematics.cycle.failed', reason: 'provider_error', input: $cycleInput, result: $cycleResult, error: $failure, durationMs: $cursor->last_cycle_json['duration_ms'], channel: 'telematics');
+            SystemLog::degraded('telematics.cycle.failed', reason: $failureInfo['reason'], input: $cycleInput, calc: [...$cycleCalc, ...$failureInfo], result: $cycleResult, error: $failure, durationMs: $cursor->last_cycle_json['duration_ms'], channel: 'telematics');
+        }
+    }
+
+    /**
+     * One line per reason a page dropped points. Replays, unchanged readings
+     * and vehicles without a monitored asset of this tenant are routine every
+     * cycle, so they stay at debug; the rest point at bad provider data.
+     *
+     * @param  array{integration_id: int, feed: string}  $cycleInput
+     */
+    private function logDroppedPoints(VehicleStatsIngestResult $pageResult, array $cycleInput, int $page): void
+    {
+        foreach ($pageResult->dropped as $reason => $count) {
+            if ($count <= 0) {
+                continue;
+            }
+
+            SystemLog::skipped(
+                'telematics.points.dropped',
+                reason: $reason,
+                input: [...$cycleInput, 'page' => $page],
+                calc: ['dropped_count' => $count],
+                debug: in_array($reason, ['already_stored', 'unchanged_value', 'no_monitored_asset'], true),
+                channel: 'telematics',
+            );
         }
     }
 
@@ -163,7 +226,13 @@ class FollowVehicleStatsFeedJob implements ShouldBeUnique, ShouldQueue
         return "telematics-feed:{$this->integration->id}:{$this->feed->value}";
     }
 
-    private function handleFailure(TelematicsFeedCursor $cursor, ProviderRequestFailed $e): void
+    /**
+     * Pause, restart or open the circuit per failure class, and return the
+     * terms of that decision for the cycle line.
+     *
+     * @return array{reason: 'rate_limited'|'provider_unavailable'|'cursor_rejected'|'unauthorized'|'provider_error', failure_class: string, consecutive_failures: int, retry_after_s: ?float, pause_s: ?int, backoff_base_s: ?int, backoff_max_s: ?int, paused_until: ?string, backfill_requested: bool, circuit_opened: bool}
+     */
+    private function handleFailure(TelematicsFeedCursor $cursor, ProviderRequestFailed $e): array
     {
         $failures = $cursor->consecutive_failures + 1;
 
@@ -172,19 +241,45 @@ class FollowVehicleStatsFeedJob implements ShouldBeUnique, ShouldQueue
             'last_error' => $e->getMessage(),
         ]);
 
+        $pauseSeconds = match (true) {
+            // Whole seconds, rounded up: the column has no fractions, and
+            // truncating would resume before the provider allows.
+            $e instanceof ProviderRateLimited => (int) ceil(max(1.0, $e->retryAfterSeconds)),
+            $e instanceof ProviderUnavailable => $this->backoffSeconds($failures),
+            default => null,
+        };
+        $backfillRequested = false;
+
         match (true) {
-            $e instanceof ProviderRateLimited => $cursor->forceFill([
-                // Whole seconds, rounded up: the column has no fractions, and
-                // truncating would resume before the provider allows.
-                'paused_until' => now()->addSeconds((int) ceil(max(1.0, $e->retryAfterSeconds))),
-            ]),
+            $e instanceof ProviderRateLimited,
             $e instanceof ProviderUnavailable => $cursor->forceFill([
-                'paused_until' => now()->addSeconds($this->backoffSeconds($failures)),
+                'paused_until' => now()->addSeconds($pauseSeconds),
             ]),
-            $e instanceof ProviderCursorRejected => $this->restartFromHistory($cursor),
+            $e instanceof ProviderCursorRejected => $backfillRequested = $this->restartFromHistory($cursor),
             $e instanceof ProviderUnauthorized => $this->openCircuit($e),
             default => null,
         };
+
+        $unavailable = $e instanceof ProviderUnavailable;
+
+        return [
+            'reason' => match (true) {
+                $e instanceof ProviderRateLimited => 'rate_limited',
+                $e instanceof ProviderUnavailable => 'provider_unavailable',
+                $e instanceof ProviderCursorRejected => 'cursor_rejected',
+                $e instanceof ProviderUnauthorized => 'unauthorized',
+                default => 'provider_error',
+            },
+            'failure_class' => class_basename($e),
+            'consecutive_failures' => $cursor->consecutive_failures,
+            'retry_after_s' => $e instanceof ProviderRateLimited ? $e->retryAfterSeconds : null,
+            'pause_s' => $pauseSeconds,
+            'backoff_base_s' => $unavailable ? (int) config('telematics.backoff.base_seconds', 5) : null,
+            'backoff_max_s' => $unavailable ? (int) config('telematics.backoff.max_seconds', 300) : null,
+            'paused_until' => $pauseSeconds !== null ? $cursor->paused_until?->toIso8601String() : null,
+            'backfill_requested' => $backfillRequested,
+            'circuit_opened' => $e instanceof ProviderUnauthorized,
+        ];
     }
 
     /**
@@ -192,7 +287,7 @@ class FollowVehicleStatsFeedJob implements ShouldBeUnique, ShouldQueue
      * next cycle gets the last known state of every vehicle and a fresh
      * cursor — and refill the gap since the last point from history.
      */
-    private function restartFromHistory(TelematicsFeedCursor $cursor): void
+    private function restartFromHistory(TelematicsFeedCursor $cursor): bool
     {
         $lastDataAt = $cursor->last_data_at;
 
@@ -206,6 +301,8 @@ class FollowVehicleStatsFeedJob implements ShouldBeUnique, ShouldQueue
                 now(),
             );
         }
+
+        return $lastDataAt !== null;
     }
 
     /**
@@ -229,6 +326,14 @@ class FollowVehicleStatsFeedJob implements ShouldBeUnique, ShouldQueue
             (string) $this->integration->provider?->code,
             TenantIntegrationStatus::Error->value,
         );
+
+        // Default channel: a state change of the integration, rare, and it
+        // has to show in system.json. Never the provider's error text.
+        SystemLog::degraded('telematics.circuit.opened', reason: 'unauthorized', input: [
+            'team_id' => $this->integration->team_id,
+            'integration_id' => $this->integration->id,
+            'feed' => $this->feed->value,
+        ], result: ['integration_status' => TenantIntegrationStatus::Error->value]);
     }
 
     private function backoffSeconds(int $failures): int
@@ -262,15 +367,26 @@ class FollowVehicleStatsFeedJob implements ShouldBeUnique, ShouldQueue
      * Inline after-hours check over the assets whose newest point this cycle
      * is moving. The schedule is resolved once per cycle, and a tenant that
      * is open right now costs nothing more.
+     *
+     * @param  array{integration_id: int, feed: string}  $cycleInput
      */
     private function detectAfterHoursMovement(
         VehicleStatsIngestResult $result,
         TenantScheduleResolver $scheduleResolver,
         RaiseAfterHoursMovement $raiseAfterHours,
+        array $cycleInput,
     ): void {
         $schedule = $scheduleResolver->resolve($this->integration->team_id);
 
-        if (! $schedule->isPersisted || $schedule->withinOperatingHours) {
+        if (! $schedule->isPersisted) {
+            SystemLog::skipped('assets.after_hours.evaluated', reason: 'no_schedule_profile', input: $cycleInput, debug: true, channel: 'telematics');
+
+            return;
+        }
+
+        if ($schedule->withinOperatingHours) {
+            SystemLog::skipped('assets.after_hours.evaluated', reason: 'within_operating_hours', input: $cycleInput, debug: true, channel: 'telematics');
+
             return;
         }
 
@@ -281,6 +397,8 @@ class FollowVehicleStatsFeedJob implements ShouldBeUnique, ShouldQueue
         );
 
         if ($moving === []) {
+            SystemLog::skipped('assets.after_hours.evaluated', reason: 'no_moving_positions', input: $cycleInput, calc: ['positions_count' => count($result->positions)], debug: true, channel: 'telematics');
+
             return;
         }
 

@@ -14,11 +14,12 @@ use App\Domains\Integrations\Models\TenantIntegration;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class SyncAssetFromIntegrationTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsSystemLog, RefreshDatabase;
 
     private function createSetup(): array
     {
@@ -131,6 +132,19 @@ class SyncAssetFromIntegrationTest extends TestCase
             Asset::withoutGlobalScopes()->where('team_id', $team->id)->count(),
             'Only one asset record should exist after duplicate sync',
         );
+
+        $applied = $this->systemLogEntries('assets.sync.asset_applied');
+        $this->assertCount(2, $applied);
+        $this->assertSame('created', $applied[0]['context']['calc']['branch']);
+        $this->assertSame('updated', $applied[1]['context']['calc']['branch']);
+        $this->assertSame($firstAsset->id, $applied[1]['context']['input']['asset_id']);
+        $this->assertSame($team->id, $applied[1]['context']['input']['team_id']);
+        $this->assertSame($integration->id, $applied[1]['context']['input']['integration_id']);
+
+        $json = json_encode($this->systemLogEntries());
+        $this->assertStringNotContainsString('Original Name', $json);
+        $this->assertStringNotContainsString('Updated Name', $json);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_inventory_resync_does_not_bump_last_seen_at(): void

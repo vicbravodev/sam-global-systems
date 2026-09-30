@@ -11,10 +11,12 @@ use App\Domains\Tenancy\Jobs\GenerateInvoiceSnapshotJob;
 use App\Domains\Tenancy\Models\InvoiceSnapshot;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 /**
@@ -50,7 +52,19 @@ class TenantInvoiceController extends Controller
             ->whereDate('period_end', $end)
             ->exists());
 
+        $logInput = [
+            'team_id' => (int) $team->id,
+            'actor_user_id' => $request->user()?->id,
+            'period_start' => $start,
+            'period_end' => $end,
+        ];
+
         if ($existing) {
+            TenantContext::for($team->id, fn () => SystemLog::skipped('billing.invoice.already_exists',
+                reason: 'period_already_invoiced',
+                input: $logInput + ['stage' => 'admin_request'],
+            ));
+
             return back()->with('error', "Ya existe una factura para {$periodStart->format('Y-m')}.");
         }
 
@@ -58,6 +72,13 @@ class TenantInvoiceController extends Controller
             new AggregateUsageJob($team->id, $start),
             new GenerateInvoiceSnapshotJob($team->id, $start, $end),
         ])->onQueue('billing')->dispatch());
+
+        // Lo pedido, no lo que la cadena hará: la factura la narra
+        // GenerateInvoiceSnapshotJob (billing.invoice.generated / already_exists).
+        TenantContext::for($team->id, fn () => SystemLog::ok('billing.invoice.generation_requested',
+            input: $logInput,
+            result: ['chain_requested' => true],
+        ));
 
         $this->audit->execute(
             actorType: AuditActorType::User,
@@ -81,10 +102,14 @@ class TenantInvoiceController extends Controller
         abort_if($invoice->status === InvoiceStatus::Void, 422, 'Una factura anulada no se puede marcar como pagada.');
         abort_if($invoice->status === InvoiceStatus::Paid, 422, 'La factura ya está pagada.');
 
+        $from = $invoice->status->value;
+
         $invoice->forceFill([
             'status' => InvoiceStatus::Paid,
             'paid_at' => now(),
         ])->save();
+
+        $this->logStatusChange($request, $team, $invoice, $from);
 
         $this->record($request, $team, $invoice, 'tenant.invoice_paid',
             "Factura #{$invoice->id} del tenant {$team->name} marcada como pagada.");
@@ -99,7 +124,11 @@ class TenantInvoiceController extends Controller
         abort_if($invoice->status === InvoiceStatus::Paid, 422, 'Una factura pagada no se anula.');
         abort_if($invoice->status === InvoiceStatus::Void, 422, 'La factura ya está anulada.');
 
+        $from = $invoice->status->value;
+
         $invoice->forceFill(['status' => InvoiceStatus::Void])->save();
+
+        $this->logStatusChange($request, $team, $invoice, $from);
 
         $this->record($request, $team, $invoice, 'tenant.invoice_voided',
             "Factura #{$invoice->id} del tenant {$team->name} anulada.");
@@ -120,6 +149,29 @@ class TenantInvoiceController extends Controller
             $team->id,
             fn () => InvoiceSnapshot::query()->findOrFail($invoiceId),
         );
+    }
+
+    /**
+     * Hecho persistido: se registra tras el commit con los valores capturados
+     * al escribir. Nunca la nota de pago, el comprobante ni el nombre del tenant.
+     */
+    private function logStatusChange(Request $request, Team $team, InvoiceSnapshot $invoice, string $from): void
+    {
+        $input = [
+            'team_id' => (int) $team->id,
+            'invoice_id' => $invoice->id,
+            'actor_user_id' => $request->user()?->id,
+        ];
+        $calc = [
+            'from_status' => $from,
+            'to_status' => $invoice->status->value,
+            'receipt_present' => $invoice->payment_receipt_file_object_id !== null,
+        ];
+
+        DB::afterCommit(fn () => TenantContext::for($input['team_id'], fn () => SystemLog::ok('billing.invoice.status_changed',
+            input: $input,
+            calc: $calc,
+        )));
     }
 
     private function record(Request $request, Team $team, InvoiceSnapshot $invoice, string $action, string $summary): void

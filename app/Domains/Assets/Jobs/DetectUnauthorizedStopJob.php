@@ -13,6 +13,7 @@ use App\Domains\Ingestion\Actions\QueueRawEventForProcessing;
 use App\Domains\Ingestion\Actions\StoreRawEvent;
 use App\Domains\Ingestion\Enums\EventSourceType;
 use App\Domains\Ingestion\Models\RawEvent;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -98,6 +99,8 @@ class DetectUnauthorizedStopJob implements ShouldQueue
         $stopMinutes = (int) $tenantConfig->resolve($teamId, self::SETTING_KEY, self::DEFAULT_STOP_MINUTES);
 
         if ($stopMinutes <= 0) {
+            SystemLog::skipped('assets.unauthorized_stop_sweep.completed', reason: 'disabled', input: ['team_id' => $teamId], calc: ['stop_minutes' => $stopMinutes]);
+
             return;
         }
 
@@ -119,7 +122,12 @@ class DetectUnauthorizedStopJob implements ShouldQueue
                 ->orWhere('device_last_connected_at', '>=', $fresh))
             ->get();
 
+        $counts = ['inside_geofence' => 0, 'same_place' => 0, 'raised' => 0, 'already_raised' => 0];
+
         if ($candidates->isEmpty()) {
+            // Sin candidatos no se cargan las geocercas (`geofences_count` null).
+            $this->logSweep($teamId, $stopMinutes, null, $candidates->count(), $counts);
+
             return;
         }
 
@@ -128,21 +136,51 @@ class DetectUnauthorizedStopJob implements ShouldQueue
         $geofences = $resolveGeofences->activeGeofences($teamId);
 
         foreach ($candidates as $asset) {
-            $this->inspectAsset($asset, $teamId, $geofences, $resolveGeofences, $storeRawEvent, $queueForProcessing);
+            $counts[$this->inspectAsset($asset, $teamId, $stopMinutes, $geofences, $resolveGeofences, $storeRawEvent, $queueForProcessing)]++;
         }
+
+        $this->logSweep($teamId, $stopMinutes, $geofences->count(), $candidates->count(), $counts);
+    }
+
+    /**
+     * Resumen del barrido de un tenant (ya dentro de su contexto). En `debug`
+     * salvo que se haya levantado un aviso o se haya deduplicado uno
+     * (`already_raised` o `same_place`): lo normal en cada minuto.
+     *
+     * @param  array{inside_geofence: int, same_place: int, raised: int, already_raised: int}  $counts
+     */
+    private function logSweep(int $teamId, int $stopMinutes, ?int $geofencesCount, int $candidatesCount, array $counts): void
+    {
+        // Rutina (debug) salvo que algo se haya levantado o deduplicado (`same_place` suprime un aviso).
+        SystemLog::ok('assets.unauthorized_stop_sweep.completed', input: ['team_id' => $teamId], calc: [
+            'stop_minutes' => $stopMinutes,
+            'freshness_minutes' => self::FRESHNESS_MINUTES,
+            'max_anchor_hours' => self::MAX_ANCHOR_HOURS,
+            'realert_hours' => (int) config('telematics.stop_realert_hours', 6),
+            'realert_radius_m' => (float) config('telematics.stop_realert_radius_m', 200),
+            'geofences_count' => $geofencesCount,
+        ], result: [
+            'candidates_count' => $candidatesCount,
+            'inside_geofence_count' => $counts['inside_geofence'],
+            'same_place_count' => $counts['same_place'],
+            'raised_count' => $counts['raised'],
+            'already_raised_count' => $counts['already_raised'],
+        ], debug: $candidatesCount === 0 || ($counts['raised'] === 0 && $counts['already_raised'] === 0 && $counts['same_place'] === 0));
     }
 
     /**
      * @param  Collection<int, Geofence>  $geofences  the tenant's active geofences
+     * @return 'inside_geofence'|'same_place'|'raised'|'already_raised'
      */
     private function inspectAsset(
         Asset $asset,
         int $teamId,
+        int $stopMinutes,
         Collection $geofences,
         ResolveGeofenceContext $resolveGeofences,
         StoreRawEvent $storeRawEvent,
         QueueRawEventForProcessing $queueForProcessing,
-    ): void {
+    ): string {
         $insideKnownGeofence = collect($resolveGeofences->matchAgainst(
             $geofences,
             (float) $asset->last_latitude,
@@ -156,7 +194,7 @@ class DetectUnauthorizedStopJob implements ShouldQueue
         // Inside a known place: not suspicious, but checked again next minute
         // in case the unit is towed out while "stopped".
         if ($insideKnownGeofence) {
-            return;
+            return 'inside_geofence';
         }
 
         $anchor = $asset->last_moving_at;
@@ -166,7 +204,7 @@ class DetectUnauthorizedStopJob implements ShouldQueue
             // the operator knows. Handle the episode without a new alert.
             $asset->forceFill(['stop_alerted_for' => $anchor])->save();
 
-            return;
+            return 'same_place';
         }
 
         $deduplicationKey = sprintf('suspicious_stop:%d:%d', $asset->id, $anchor->getTimestamp());
@@ -175,6 +213,9 @@ class DetectUnauthorizedStopJob implements ShouldQueue
             ->where('team_id', $teamId)
             ->where('deduplication_key', $deduplicationKey)
             ->exists();
+
+        $rawEvent = null;
+        $stoppedMinutes = (int) $anchor->diffInMinutes(now());
 
         if (! $alreadyRaised) {
             $rawEvent = $storeRawEvent->execute(
@@ -187,7 +228,7 @@ class DetectUnauthorizedStopJob implements ShouldQueue
                     ],
                     'asset_name' => $asset->name,
                     'asset_code' => $asset->code,
-                    'stopped_minutes' => (int) $anchor->diffInMinutes(now()),
+                    'stopped_minutes' => $stoppedMinutes,
                     'last_moving_at' => $anchor->toIso8601String(),
                     'location' => [
                         'latitude' => (float) $asset->last_latitude,
@@ -211,6 +252,24 @@ class DetectUnauthorizedStopJob implements ShouldQueue
             'stop_alerted_latitude' => $asset->stop_latitude ?? $asset->last_latitude,
             'stop_alerted_longitude' => $asset->stop_longitude ?? $asset->last_longitude,
         ])->save();
+
+        if ($rawEvent === null) {
+            return 'already_raised';
+        }
+
+        // La distancia al último aviso no se registra: sale de coordenadas.
+        SystemLog::ok('assets.unauthorized_stop.raised', input: [
+            'team_id' => $teamId,
+            'asset_id' => $asset->id,
+        ], calc: [
+            'stopped_minutes' => $stoppedMinutes,
+            'stop_minutes' => $stopMinutes,
+        ], result: [
+            'raw_event_id' => $rawEvent->id,
+            'job_requested' => true,
+        ]);
+
+        return 'raised';
     }
 
     private function isSamePlaceAsLastAlert(Asset $asset): bool

@@ -4,6 +4,7 @@ namespace Tests\Feature\Domains\Normalization;
 
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Assets\Models\AssetExternalReference;
+use App\Domains\Incidents\Support\IncidentSupervisors;
 use App\Domains\Ingestion\Enums\RawEventStatus;
 use App\Domains\Ingestion\Models\RawEvent;
 use App\Domains\Integrations\Models\IntegrationProvider;
@@ -24,6 +25,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\Concerns\AssertsTenantIsolation;
 use Tests\TestCase;
 
@@ -34,7 +36,7 @@ use Tests\TestCase;
  */
 class UnmonitoredAssetEmergencyTest extends TestCase
 {
-    use AssertsTenantIsolation, RefreshDatabase;
+    use AssertsSystemLog, AssertsTenantIsolation, RefreshDatabase;
 
     private User $owner;
 
@@ -144,7 +146,7 @@ class UnmonitoredAssetEmergencyTest extends TestCase
     public function test_the_extra_day_is_charged_once_per_unit_and_day_and_the_admin_is_told(): void
     {
         Event::fake([EventNormalized::class]);
-        $asset = Asset::factory()->pendingMonitoring()->create(['team_id' => $this->teamId, 'name' => 'Tracto 12']);
+        $asset = Asset::factory()->pendingMonitoring()->create(['team_id' => $this->teamId, 'name' => 'Tracto 12', 'code' => 'PLACA-XYZ-99']);
 
         // Diez pulsaciones el mismo día = un solo recargo.
         foreach (range(1, 3) as $i) {
@@ -163,6 +165,74 @@ class UnmonitoredAssetEmergencyTest extends TestCase
         $this->assertSame($this->teamId, (int) $notice->team_id);
         $this->assertStringContainsString('Tracto 12', (string) $notice->subject);
         $this->assertStringContainsString('10%', (string) $notice->body_preview);
+
+        $localDate = AssetDayPricing::localDate($normalized->occurred_at ?? now());
+        $eventKey = "unmonitored_emergency:{$this->teamId}:{$asset->id}:{$localDate}";
+
+        $this->assertCount(1, $this->systemLogEntries('billing.emergency_surcharge.charged'));
+        $this->assertSystemLogged('billing.emergency_surcharge.charged', fn (array $c) => $c['input']['team_id'] === $this->teamId
+            && $c['input']['asset_id'] === $asset->id
+            && $c['calc']['local_date'] === $localDate
+            && $c['calc']['occurred_at_source'] === 'event'
+            && $c['calc']['surcharge_percent'] === 10.0
+            && $c['calc']['meter_code'] === AssetDayPricing::UNMONITORED_EMERGENCY_METER_CODE
+            && $c['result']['event_key'] === $eventKey
+            && $c['result']['recorded'] === true);
+        $this->assertCount(2, $this->systemLogEntries('billing.emergency_surcharge.skipped'));
+        $this->assertSystemLogged('billing.emergency_surcharge.skipped', fn (array $c) => $c['reason'] === 'already_charged_today'
+            && $c['input']['team_id'] === $this->teamId
+            && $c['input']['asset_id'] === $asset->id
+            && $c['calc']['local_date'] === $localDate
+            && $c['result']['event_key'] === $eventKey);
+        $this->assertSystemLogged('billing.emergency_surcharge.notified', fn (array $c) => $c['outcome'] === 'ok'
+            && $c['input']['team_id'] === $this->teamId
+            && $c['input']['asset_id'] === $asset->id
+            && $c['result']['notification_id'] === $notice->id
+            && $c['result']['recipients_count'] >= 1);
+        $notified = $this->systemLogEntries('billing.emergency_surcharge.notified');
+        $this->assertSame(['ok', 'skipped', 'skipped'], array_map(fn (array $e) => $e['context']['outcome'], $notified));
+        $this->assertCount(2, array_filter($notified, fn (array $e) => ($e['context']['reason'] ?? null) === 'already_notified'
+            && $e['context']['input']['team_id'] === $this->teamId
+            && $e['context']['input']['asset_id'] === $asset->id
+            && $e['context']['result']['notification_id'] === $notice->id));
+
+        $json = json_encode($this->systemLogEntries());
+        $this->assertStringNotContainsString('Tracto 12', $json);
+        $this->assertStringNotContainsString('PLACA-XYZ-99', $json);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_an_emergency_without_asset_is_skipped_and_said_so(): void
+    {
+        $asset = Asset::factory()->pendingMonitoring()->create(['team_id' => $this->teamId]);
+        Event::fake([EventNormalized::class, UnmonitoredAssetEmergencyReceived::class]);
+        $normalized = app(NormalizeRawEvent::class)->execute($this->rawEventFor($asset, 'PanicButton', $this->teamId));
+        $normalized->asset_id = null;
+
+        app(ChargeUnmonitoredEmergency::class)->handle(new UnmonitoredAssetEmergencyReceived($normalized));
+
+        $this->assertSystemLogged('billing.emergency_surcharge.skipped', fn (array $c) => $c['reason'] === 'no_asset'
+            && $c['input']['team_id'] === $this->teamId
+            && $c['input']['normalized_event_id'] === $normalized->id);
+        $this->assertSystemNotLogged('billing.emergency_surcharge.charged');
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_an_emergency_without_supervisors_is_charged_but_not_notified(): void
+    {
+        Event::fake([EventNormalized::class]);
+        $orphanTeam = Team::factory()->create();
+        $asset = Asset::factory()->pendingMonitoring()->create(['team_id' => $orphanTeam->id]);
+        $normalized = app(NormalizeRawEvent::class)->execute($this->rawEventFor($asset, 'PanicButton', $orphanTeam->id));
+        $this->assertSame([], IncidentSupervisors::recipients($orphanTeam->id));
+
+        app(ChargeUnmonitoredEmergency::class)->handle(new UnmonitoredAssetEmergencyReceived($normalized));
+
+        $this->assertSystemLogged('billing.emergency_surcharge.charged', fn (array $c) => $c['input']['team_id'] === $orphanTeam->id);
+        $this->assertSystemLogged('billing.emergency_surcharge.notified', fn (array $c) => $c['reason'] === 'no_supervisors'
+            && $c['input']['team_id'] === $orphanTeam->id
+            && $c['input']['asset_id'] === $asset->id);
+        $this->assertSame(0, Notification::withoutGlobalScopes()->where('notification_type', 'billing.unmonitored_emergency')->count());
     }
 
     public function test_the_surcharge_line_is_the_daily_rate_plus_ten_percent(): void
@@ -189,5 +259,15 @@ class UnmonitoredAssetEmergencyTest extends TestCase
         );
 
         $this->assertSame(0, UsageEvent::withoutGlobalScopes()->where('team_id', $other->id)->count());
+
+        $billing = array_filter($this->systemLogEntries(), fn (array $e) => str_starts_with($e['code'], 'billing.'));
+        $this->assertNotEmpty($billing);
+
+        foreach ($billing as $entry) {
+            $this->assertSame($this->teamId, $entry['context']['input']['team_id'] ?? null, "[{$entry['code']}] sin el team propio");
+            $this->assertNotSame($other->id, $entry['context']['input']['team_id'] ?? null);
+        }
+
+        $this->assertNoSensitiveDataLogged();
     }
 }

@@ -6,11 +6,12 @@ use App\Domains\Assets\Jobs\PurgeOldAssetTelemetryJob;
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Assets\Models\AssetTelemetrySnapshot;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class PurgeOldAssetTelemetryJobTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsSystemLog, RefreshDatabase;
 
     public function test_it_deletes_readings_past_the_retention_window_and_keeps_the_rest(): void
     {
@@ -36,6 +37,7 @@ class PurgeOldAssetTelemetryJobTest extends TestCase
 
     public function test_it_accepts_an_explicit_retention_window(): void
     {
+        $this->freezeTime();
         $asset = Asset::factory()->create();
 
         AssetTelemetrySnapshot::factory()->for($asset)->create(['recorded_at' => now()->subDays(10)]);
@@ -45,6 +47,16 @@ class PurgeOldAssetTelemetryJobTest extends TestCase
 
         $this->assertSame(1, $deleted);
         $this->assertSame(1, AssetTelemetrySnapshot::count());
+
+        $context = $this->assertSystemLogged('assets.purge.completed');
+        $this->assertSame('asset_telemetry_snapshots', $context['input']['table']);
+        $this->assertSame(7, $context['calc']['retention_days']);
+        $this->assertSame('argument', $context['calc']['retention_source']);
+        $this->assertSame(1000, $context['calc']['chunk_size']);
+        $this->assertSame(now()->subDays(7)->toIso8601String(), $context['calc']['cutoff']);
+        $this->assertSame($deleted, $context['result']['removed_count']);
+        $this->assertSame(1, $context['result']['batches_count']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_it_is_a_no_op_when_nothing_is_stale(): void
@@ -54,5 +66,12 @@ class PurgeOldAssetTelemetryJobTest extends TestCase
 
         $this->assertSame(0, (new PurgeOldAssetTelemetryJob)->handle());
         $this->assertSame(1, AssetTelemetrySnapshot::count());
+
+        $context = $this->assertSystemLogged('assets.purge.completed');
+        $this->assertSame(PurgeOldAssetTelemetryJob::RETENTION_DAYS, $context['calc']['retention_days']);
+        $this->assertSame('constant', $context['calc']['retention_source']);
+        $this->assertSame(0, $context['result']['removed_count']);
+        $this->assertSame(0, $context['result']['batches_count']);
+        $this->assertNoSensitiveDataLogged();
     }
 }

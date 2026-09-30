@@ -18,6 +18,7 @@ use Database\Seeders\NotificationMeterSeeder;
 use Database\Seeders\PlanSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 /**
@@ -27,7 +28,7 @@ use Tests\TestCase;
  */
 class CostPlusMessagingBillingTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsSystemLog, RefreshDatabase;
 
     public function test_plans_bill_messaging_cost_plus_thirty_percent(): void
     {
@@ -73,6 +74,33 @@ class CostPlusMessagingBillingTest extends TestCase
         $this->assertEqualsWithDelta(16.0494 * $fx, $line['overage_cost'], 0.01);
         $this->assertSame(config('billing.currency'), $snapshot->currency);
         $this->assertEqualsWithDelta(16.0494 * $fx, (float) $snapshot->total, 0.01);
+
+        $c = $this->assertSystemLogged(
+            'billing.invoice_line.calculated',
+            fn (array $c) => $c['calc']['billing_model'] === 'cost_plus',
+        );
+        $calc = $c['calc'];
+        $this->assertSame('plan_rate', $calc['markup_source']);
+        $this->assertSame(30.0, $calc['markup_percent']);
+        $this->assertSame($fx, $calc['fx_usd_rate']);
+        $this->assertSame('overage_total', $c['result']['counts_towards']);
+
+        // cost_plus: provider_cost → charged_usd → moneda del tenant → centavos.
+        $providerCost = round($calc['consumed'] / 1e6, 6);
+        $chargedUsd = round($providerCost * (1 + $calc['markup_percent'] / 100), 4);
+        $charged = $snapshot->currency === 'usd' ? round($chargedUsd, 4) : round($chargedUsd * $calc['fx_usd_rate'], 4);
+        $amount = round($charged, 2);
+
+        $this->assertSame($providerCost, $calc['provider_cost']);
+        $this->assertSame($chargedUsd, $calc['charged_usd']);
+        $this->assertSame($amount, $c['result']['amount']);
+        $this->assertSame(number_format($amount, 2, '.', ''), number_format($line['amount'], 2, '.', ''));
+
+        $generated = $this->assertSystemLogged('billing.invoice.generated');
+        $this->assertContains($amount, $generated['calc']['overage_terms']);
+        $this->assertSame(number_format(round(array_sum($generated['calc']['overage_terms']), 2), 2, '.', ''), $snapshot->overage_total);
+        $this->assertSame($snapshot->total, $generated['result']['total']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_billing_page_shows_messaging_as_money_not_micros(): void

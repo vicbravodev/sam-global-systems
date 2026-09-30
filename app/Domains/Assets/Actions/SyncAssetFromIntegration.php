@@ -9,6 +9,7 @@ use App\Domains\Assets\Models\Asset;
 use App\Domains\Assets\Models\AssetExternalReference;
 use App\Domains\Assets\Models\AssetType;
 use App\Domains\Integrations\Models\TenantIntegration;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 
 class SyncAssetFromIntegration
@@ -44,6 +45,17 @@ class SyncAssetFromIntegration
             }
 
             $this->reconcileDevices($asset, $providerId, $assetData);
+
+            // Una línea por activo (en debug): nunca nombre, clave, metadata
+            // ni external_type del activo.
+            SystemLog::ok('assets.sync.asset_applied', input: [
+                'team_id' => $teamId,
+                'asset_id' => $asset->id,
+                'integration_id' => $integrationId,
+            ], calc: [
+                'branch' => $existingAsset ? 'updated' : 'created',
+                'devices_reported' => array_key_exists('devices', $assetData) && is_array($assetData['devices']),
+            ], debug: true);
 
             return $asset;
         });

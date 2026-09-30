@@ -9,6 +9,8 @@ use App\Domains\Integrations\Contracts\ProviderAdapter;
 use App\Domains\Integrations\Events\IntegrationSyncCompleted;
 use App\Domains\Integrations\Models\IntegrationSyncJob;
 use App\Domains\Integrations\Models\TenantIntegration;
+use App\Support\SystemLog;
+use App\Support\TenantContext;
 
 class SyncIntegration
 {
@@ -57,13 +59,30 @@ class SyncIntegration
      */
     private function forwardAssets(TenantIntegration $integration, array $assets): void
     {
+        $counts = ['created' => 0, 'updated' => 0, 'conflict' => 0, 'not_handled' => 0];
+
         foreach ($assets as $assetData) {
-            $this->assetSyncHandler->syncFromIntegration(
+            $outcome = $this->assetSyncHandler->syncFromIntegration(
                 $integration->team_id,
                 $integration->id,
                 $assetData,
             );
+
+            // null (o un valor fuera del contrato): la implementación no sincronizó.
+            $counts[in_array($outcome, ['created', 'updated', 'conflict'], true) ? $outcome : 'not_handled']++;
         }
+
+        TenantContext::for($integration->team_id, fn () => SystemLog::ok('assets.sync.completed', input: [
+            'team_id' => (int) $integration->team_id,
+            'integration_id' => $integration->id,
+            'stage' => 'integration_sync',
+        ], result: [
+            'assets_reported_count' => count($assets),
+            'created_count' => $counts['created'],
+            'updated_count' => $counts['updated'],
+            'conflict_count' => $counts['conflict'],
+            'not_handled_count' => $counts['not_handled'],
+        ]));
     }
 
     /**

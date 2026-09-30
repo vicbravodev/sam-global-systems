@@ -13,6 +13,8 @@ use App\Domains\Tenancy\Models\UsageDailyAggregate;
 use App\Domains\Tenancy\Models\UsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
 use App\Models\Team;
+use App\Support\SystemLog;
+use App\Support\TenantContext;
 use Carbon\CarbonInterface;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -60,24 +62,54 @@ class AggregateUsageJob implements ShouldQueue
             // Scheduled run (no team): fan out one job per tenant, like the
             // monthly invoicing. One job for every tenant grows past its timeout
             // with the customer base, and a retry restarted everyone from zero.
-            $teamsQuery->select('teams.id')->chunkById(100, function ($teams) {
+            $dispatched = 0;
+
+            $teamsQuery->select('teams.id')->chunkById(100, function ($teams) use (&$dispatched) {
                 foreach ($teams as $team) {
                     self::dispatch((int) $team->id, $this->forMonth);
+                    $dispatched++;
                 }
             });
 
+            // Recorrido de plataforma: solo el conteo, nunca ids de tenants.
+            SystemLog::ok('billing.aggregate.fanned_out',
+                calc: ['for_month' => $this->forMonth, 'period_start' => $this->periodStart()->toDateString()],
+                result: ['jobs_dispatched_count' => $dispatched],
+            );
+
             return;
         }
 
-        $team = $teamsQuery->whereKey($this->teamId)->first();
+        $teamId = $this->teamId;
+        $team = $teamsQuery->whereKey($teamId)->first();
 
         if ($team === null) {
+            TenantContext::for($teamId, fn () => SystemLog::skipped('billing.aggregate.completed',
+                reason: 'no_operational_subscription',
+                input: ['team_id' => $teamId, 'period_start' => $this->periodStart()->toDateString()],
+            ));
+
             return;
         }
 
+        $totals = ['meters_count' => 0, 'meters_with_overage_count' => 0, 'daily_rows_upserted_count' => 0,
+            'limit_events_dispatched_count' => 0, 'broadcasts_dispatched_count' => 0];
+
         foreach (UsageMeter::all() as $meter) {
-            $this->aggregateForTeamMeter($team, $meter);
+            $outcome = $this->aggregateForTeamMeter($team, $meter);
+
+            $totals['meters_count']++;
+            $totals['meters_with_overage_count'] += $outcome['overage'] > 0 ? 1 : 0;
+            $totals['daily_rows_upserted_count'] += $outcome['daily_rows'];
+            $totals['limit_events_dispatched_count'] += $outcome['limit_event'] ? 1 : 0;
+            $totals['broadcasts_dispatched_count'] += $outcome['broadcast'] ? 1 : 0;
         }
+
+        TenantContext::for($team->id, fn () => SystemLog::ok('billing.aggregate.completed',
+            input: ['team_id' => $team->id, 'period_start' => $this->periodStart()->toDateString()],
+            calc: ['closed_period' => $this->isClosedPeriod()],
+            result: $totals,
+        ));
     }
 
     private function periodStart(): CarbonInterface
@@ -92,7 +124,10 @@ class AggregateUsageJob implements ShouldQueue
         return $this->periodStart()->lt(now()->startOfMonth());
     }
 
-    private function aggregateForTeamMeter(Team $team, UsageMeter $meter): void
+    /**
+     * @return array{daily_rows: int, overage: int, limit_event: bool, broadcast: bool}
+     */
+    private function aggregateForTeamMeter(Team $team, UsageMeter $meter): array
     {
         $periodStart = $this->periodStart();
         $periodEnd = $periodStart->copy()->endOfMonth();
@@ -127,7 +162,8 @@ class AggregateUsageJob implements ShouldQueue
             );
         }
 
-        $this->recalculateCounter($team, $meter, $periodStart, $periodEnd);
+        return ['daily_rows' => $dailyData->count()]
+            + $this->recalculateCounter($team, $meter, $periodStart, $periodEnd);
     }
 
     /**
@@ -150,7 +186,10 @@ class AggregateUsageJob implements ShouldQueue
         };
     }
 
-    private function recalculateCounter(Team $team, UsageMeter $meter, CarbonInterface $periodStart, CarbonInterface $periodEnd): void
+    /**
+     * @return array{overage: int, limit_event: bool, broadcast: bool}
+     */
+    private function recalculateCounter(Team $team, UsageMeter $meter, CarbonInterface $periodStart, CarbonInterface $periodEnd): array
     {
         $totalConsumed = $this->periodConsumption($team, $meter, $periodStart, $periodEnd);
 
@@ -164,6 +203,7 @@ class AggregateUsageJob implements ShouldQueue
             ->first();
 
         $includedValue = 0;
+        $billingRate = null;
         if ($subscription) {
             $billingRate = BillingRate::where('plan_id', $subscription->plan_id)
                 ->where('usage_meter_id', $meter->id)
@@ -201,20 +241,40 @@ class AggregateUsageJob implements ShouldQueue
 
         // Live alerts belong to the running month; closing a past period for
         // invoicing must not re-announce limits or push realtime updates.
-        if ($this->isClosedPeriod()) {
-            return;
+        $firstCrossing = ! $this->isClosedPeriod() && $overageValue > 0 && $previousOverage === 0;
+        $broadcast = false;
+
+        if (! $this->isClosedPeriod()) {
+            if ($firstCrossing) {
+                UsageLimitExceeded::dispatch(
+                    $team->id,
+                    $meter->code,
+                    (int) $totalConsumed,
+                    $includedValue,
+                );
+            }
+
+            $broadcast = $this->broadcastIfSignificantChange($team, $meter, $totalConsumed, $includedValue, $overageValue, $previousCounter, $periodStart, $periodEnd);
         }
 
-        if ($overageValue > 0 && $previousOverage === 0) {
-            UsageLimitExceeded::dispatch(
-                $team->id,
-                $meter->code,
-                (int) $totalConsumed,
-                $includedValue,
-            );
-        }
+        TenantContext::for($team->id, fn () => SystemLog::ok('billing.overage.computed',
+            input: ['team_id' => $team->id, 'meter_code' => $meter->code, 'period_start' => $periodStart->toDateString()],
+            calc: [
+                'aggregation_type' => $meter->aggregation_type->value,
+                'consumed' => $totalConsumed,
+                'included' => (int) $includedValue,
+                'included_source' => $subscription === null ? 'no_subscription' : ($billingRate === null ? 'no_plan_rate' : 'plan_rate'),
+                'previous_overage' => $previousOverage,
+                'previous_counter_found' => $previousCounter !== null,
+                'closed_period' => $this->isClosedPeriod(),
+                'first_crossing' => $firstCrossing,
+                'formula' => 'overage = max(0, consumed - included); first_crossing = !closed_period && overage > 0 && previous_overage == 0',
+            ],
+            result: ['overage' => $overageValue, 'limit_event_dispatched' => $firstCrossing, 'broadcast_dispatched' => $broadcast],
+            debug: $overageValue === 0 && ! $firstCrossing,
+        ));
 
-        $this->broadcastIfSignificantChange($team, $meter, $totalConsumed, $includedValue, $overageValue, $previousCounter, $periodStart, $periodEnd);
+        return ['overage' => $overageValue, 'limit_event' => $firstCrossing, 'broadcast' => $broadcast];
     }
 
     private function broadcastIfSignificantChange(
@@ -226,9 +286,9 @@ class AggregateUsageJob implements ShouldQueue
         ?TenantUsageCounter $previousCounter,
         CarbonInterface $periodStart,
         CarbonInterface $periodEnd,
-    ): void {
+    ): bool {
         if (! $previousCounter) {
-            return;
+            return false;
         }
 
         $previousConsumed = $previousCounter->consumed_value;
@@ -248,6 +308,10 @@ class AggregateUsageJob implements ShouldQueue
                 $periodStart->toDateString(),
                 $periodEnd->toDateString(),
             );
+
+            return true;
         }
+
+        return false;
     }
 }

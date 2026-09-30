@@ -60,16 +60,21 @@ class BackfillVehicleStatsJob implements ShouldBeUnique, ShouldQueue
             $this->integration->relationLoaded('provider') ? $this->integration->provider?->code : null,
         );
 
-        $floor = $this->until->copy()->subHours((int) config('telematics.backfill_hours', 24));
+        $backfillHours = (int) config('telematics.backfill_hours', 24);
+        $floor = $this->until->copy()->subHours($backfillHours);
         $from = $this->from->greaterThan($floor) ? $this->from : $floor;
+        $input = ['integration_id' => $this->integration->id, 'feed' => $this->feed->value, 'from' => $from->toIso8601ZuluString(), 'until' => $this->until->toIso8601ZuluString()];
 
         if ($from->greaterThanOrEqualTo($this->until)) {
+            SystemLog::skipped('telematics.backfill.completed', reason: 'empty_window', input: $input, calc: ['backfill_hours' => $backfillHours, 'floor' => $floor->toIso8601ZuluString()], channel: 'telematics');
+
             return;
         }
 
         $cursor = null;
         $pages = 0;
         $stored = 0;
+        $dropped = [];
 
         try {
             do {
@@ -78,20 +83,34 @@ class BackfillVehicleStatsJob implements ShouldBeUnique, ShouldQueue
 
                 $stored += $result->locationsStored + $result->readingsStored;
                 $cursor = $page->endCursor;
+
+                foreach ($result->dropped as $reason => $count) {
+                    $dropped[$reason.'_count'] = ($dropped[$reason.'_count'] ?? 0) + $count;
+                }
+
                 $pages++;
             } while ($page->hasNextPage && $cursor !== null && $pages < self::MAX_PAGES);
         } catch (ProviderRateLimited $e) {
             // Pages already stored stay stored; the retry re-reads the window
             // and the unique indexes skip what is there.
-            $this->release((int) ceil(max(1.0, $e->retryAfterSeconds)));
+            $releaseSeconds = (int) ceil(max(1.0, $e->retryAfterSeconds));
+            $this->release($releaseSeconds);
+
+            SystemLog::skipped('telematics.backfill.completed', reason: 'rate_limited', input: $input, calc: ['retry_after_s' => $e->retryAfterSeconds, 'release_s' => $releaseSeconds, 'pages_stored_before' => $pages], channel: 'telematics');
 
             return;
         } catch (ProviderUnauthorized) {
             // The live feed opens the circuit for this; nothing to backfill.
+            SystemLog::skipped('telematics.backfill.completed', reason: 'unauthorized', input: $input, calc: ['pages_stored_before' => $pages], channel: 'telematics');
+
             return;
         }
 
-        SystemLog::ok('telematics.backfill.completed', input: ['integration_id' => $this->integration->id, 'feed' => $this->feed->value, 'from' => $from->toIso8601ZuluString(), 'until' => $this->until->toIso8601ZuluString()], result: ['pages' => $pages, 'stored' => $stored], channel: 'telematics');
+        SystemLog::ok('telematics.backfill.completed', input: $input, calc: [
+            'max_pages' => self::MAX_PAGES,
+            'max_pages_hit' => $pages >= self::MAX_PAGES && $page->hasNextPage && $cursor !== null,
+            'window_capped' => $from->ne($this->from),
+        ], result: ['pages' => $pages, 'stored' => $stored, 'dropped_count_by_reason' => $dropped], channel: 'telematics');
     }
 
     /**

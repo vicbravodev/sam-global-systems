@@ -16,11 +16,12 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Notification;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class SyncAssetsFromProviderJobTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsSystemLog, RefreshDatabase;
 
     private function makeSamsaraIntegration(): TenantIntegration
     {
@@ -101,6 +102,30 @@ class SyncAssetsFromProviderJobTest extends TestCase
                 ->where('external_primary_id', 'v-2')
                 ->exists(),
         );
+
+        $conflict = $this->assertSystemLogged('assets.sync.external_id_conflict');
+        $this->assertSame('owned_by_other_tenant', $conflict['reason']);
+        $this->assertSame($intruder->team_id, $conflict['input']['team_id']);
+        $this->assertSame('v-1', $conflict['input']['external_id']);
+
+        $completed = $this->systemLogEntries('assets.sync.completed');
+        $this->assertCount(1, $completed);
+        $context = $completed[0]['context'];
+        $this->assertSame('provider_job', $context['input']['stage']);
+        $this->assertSame($intruder->team_id, $context['input']['team_id']);
+        $this->assertSame($intruder->id, $context['input']['integration_id']);
+        $this->assertSame(2, $context['result']['assets_reported_count']);
+        $this->assertSame(1, $context['result']['created_count']);
+        $this->assertSame(0, $context['result']['updated_count']);
+        $this->assertSame(1, $context['result']['conflict_count']);
+        $this->assertSame(1, $context['result']['discovered_count']);
+
+        foreach ($this->systemLogEntries() as $entry) {
+            $this->assertNotSame($owner->team_id, $entry['context']['input']['team_id'] ?? null);
+        }
+        $json = json_encode($this->systemLogEntries());
+        $this->assertStringNotContainsString('Truck', $json);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_discovered_units_land_as_pending_and_the_owner_is_told_once(): void

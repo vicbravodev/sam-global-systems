@@ -4,10 +4,13 @@ namespace Tests\Feature\Domains\Tenancy;
 
 use App\Domains\Tenancy\Data\BillingTermsData;
 use App\Domains\Tenancy\Support\AssetDayPricing;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class AssetDayPricingTest extends TestCase
 {
+    use AssertsSystemLog;
+
     private function terms(array $overrides = []): BillingTermsData
     {
         return new BillingTermsData(...array_merge([
@@ -73,6 +76,37 @@ class AssetDayPricingTest extends TestCase
         $this->assertSame(500.0, AssetDayPricing::assetDayLine($terms, 20 * 30, 30, null)['unit_price']);
         $this->assertSame(450.0, AssetDayPricing::assetDayLine($terms, 60 * 30, 30, null)['unit_price']);
         $this->assertSame(400.0, AssetDayPricing::assetDayLine($terms, 250 * 30, 30, null)['unit_price']);
+
+        // El escalón explicado es el mismo que decide el precio.
+        foreach ([[20.0, 0, 1, 25], [59.4, 1, 26, 100], [250.0, 2, 101, null]] as [$average, $index, $from, $to]) {
+            $explained = $terms->explainUnitPriceFor($average);
+
+            $this->assertSame('volume_tier', $explained['source']);
+            $this->assertSame($index, $explained['tier_index']);
+            $this->assertSame($from, $explained['tier_from']);
+            $this->assertSame($to, $explained['tier_to']);
+            $this->assertSame(3, $explained['tiers_count']);
+            $this->assertSame((int) ceil($average), $explained['tier_assets']);
+            $this->assertSame($terms->unitPriceFor($average), $explained['unit_price']);
+        }
+
+        $flat = $this->terms()->explainUnitPriceFor(42.5);
+        $this->assertSame('flat_unit_price', $flat['source']);
+        $this->assertNull($flat['tier_index']);
+        $this->assertSame(0, $flat['tiers_count']);
+        $this->assertSame(43, $flat['tier_assets']);
+        $this->assertSame(450.0, $flat['unit_price']);
+    }
+
+    public function test_the_loggable_line_drops_only_the_meter_name(): void
+    {
+        $line = AssetDayPricing::assetDayLine($this->terms(), 3000, 30, 100);
+        $loggable = AssetDayPricing::loggable($line);
+
+        $this->assertArrayNotHasKey('meter_name', $loggable);
+        unset($line['meter_name']);
+        $this->assertSame($line, $loggable);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_ai_fair_use_pools_evaluations_by_average_fleet(): void

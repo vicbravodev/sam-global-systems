@@ -12,11 +12,12 @@ use App\Domains\Integrations\Models\TenantIntegration;
 use App\Models\Team;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class DispatchTelematicsFeedsJobTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsSystemLog, RefreshDatabase;
 
     protected function setUp(): void
     {
@@ -69,6 +70,42 @@ class DispatchTelematicsFeedsJobTest extends TestCase
 
         $this->assertSame(["{$integration->id}:diagnostics", "{$integration->id}:motion"], $this->dispatched());
         Queue::assertPushedOn('telematics', FollowVehicleStatsFeedJob::class);
+
+        $context = $this->assertSystemLogged('telematics.feeds.dispatched', fn (array $c) => $c['outcome'] === 'ok');
+        $this->assertSame(count($this->dispatched()), $context['result']['dispatched_count']);
+        $this->assertSame(1, $context['result']['integrations_count']);
+        $this->assertSame(['motion_count' => 1, 'diagnostics_count' => 1], $context['result']['dispatched_count_by_feed']);
+        $this->assertSame(DispatchTelematicsFeedsJob::TICK_SECONDS, $context['calc']['tick_seconds']);
+
+        $entry = $this->systemLogEntries('telematics.feeds.dispatched')[0];
+        $this->assertSame('info', $entry['level']);
+        $this->assertSame('telematics', $entry['channel']);
+
+        // A platform-wide sweep: counts only, never a tenant's ids.
+        $json = (string) json_encode($this->systemLogEntries());
+        $this->assertStringNotContainsString('team_id', $json);
+        $this->assertStringNotContainsString('integration_id', $json);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_tick_without_active_integrations_is_a_debug_skip(): void
+    {
+        (new DispatchTelematicsFeedsJob)->handle();
+
+        $this->assertSystemLogged('telematics.feeds.dispatched', fn (array $c) => $c['reason'] === 'no_active_integrations');
+        $this->assertSame('debug', $this->systemLogEntries('telematics.feeds.dispatched')[0]['level']);
+    }
+
+    public function test_an_opted_out_feed_is_counted(): void
+    {
+        $this->integration(['config_json' => ['sync' => ['feed_enabled' => false]]]);
+
+        (new DispatchTelematicsFeedsJob)->handle();
+
+        $context = $this->assertSystemLogged('telematics.feeds.dispatched', fn (array $c) => $c['outcome'] === 'ok');
+        $this->assertSame(1, $context['result']['feed_disabled_count']);
+        $this->assertSame(0, $context['result']['dispatched_count']);
+        $this->assertSame('debug', $this->systemLogEntries('telematics.feeds.dispatched')[0]['level']);
     }
 
     public function test_only_active_samsara_integrations_with_a_catalog_are_followed(): void
@@ -100,6 +137,11 @@ class DispatchTelematicsFeedsJobTest extends TestCase
         // Motion (10 s): polled 6 s ago is due within the one-tick slack.
         // Diagnostics (30 s): polled 20 s ago is not.
         $this->assertSame(["{$integration->id}:motion"], $this->dispatched());
+
+        $context = $this->assertSystemLogged('telematics.feeds.dispatched', fn (array $c) => $c['outcome'] === 'ok');
+        $this->assertSame(1, $context['result']['not_due_count']);
+        $this->assertSame(0, $context['result']['paused_count']);
+        $this->assertSame(['motion_count' => 1, 'diagnostics_count' => 0], $context['result']['dispatched_count_by_feed']);
     }
 
     public function test_the_default_five_second_interval_does_not_drift_to_ten(): void
@@ -137,6 +179,13 @@ class DispatchTelematicsFeedsJobTest extends TestCase
 
         (new DispatchTelematicsFeedsJob)->handle();
         $this->assertSame([], $this->dispatched());
+
+        $context = $this->assertSystemLogged('telematics.feeds.dispatched', fn (array $c) => $c['outcome'] === 'ok');
+        $this->assertSame(1, $context['result']['paused_count']);
+        $this->assertSame(1, $context['result']['not_due_count']);
+        $this->assertSame(0, $context['result']['dispatched_count']);
+        // Nothing dispatched this tick: debug.
+        $this->assertSame('debug', $this->systemLogEntries('telematics.feeds.dispatched')[0]['level']);
 
         $this->travel(31)->seconds();
         (new DispatchTelematicsFeedsJob)->handle();

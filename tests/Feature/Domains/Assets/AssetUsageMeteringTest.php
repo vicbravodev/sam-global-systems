@@ -9,11 +9,12 @@ use App\Domains\Tenancy\Models\UsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class AssetUsageMeteringTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsSystemLog, RefreshDatabase;
 
     private function seedUsageMeters(): void
     {
@@ -80,6 +81,12 @@ class AssetUsageMeteringTest extends TestCase
             $usageEvent->quantity,
             'Monitored assets usage should count all non-inactive assets for the team',
         );
+
+        $closed = $this->assertSystemLogged('billing.daily_close.tenant_closed', fn (array $c) => $c['input']['team_id'] === $team->id);
+        $this->assertSame(2, $closed['calc']['assets_monitored_count']);
+        $this->assertSystemLogged('billing.daily_close.completed', fn (array $c) => ($c['outcome'] ?? null) === 'ok');
+        $this->assertStringNotContainsString('Active Vehicle', json_encode($this->systemLogEntries()));
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_it_records_active_cameras_meter_daily(): void
