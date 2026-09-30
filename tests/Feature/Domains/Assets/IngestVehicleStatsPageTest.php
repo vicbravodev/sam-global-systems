@@ -100,7 +100,7 @@ class IngestVehicleStatsPageTest extends TestCase
         $this->assertSame(1, $first->readingsStored);
         $this->assertEquals([
             'no_external_id' => 2,
-            'unknown_vehicle' => 2,
+            'no_monitored_asset' => 2,
             'missing_coordinates' => 1,
             'unsupported_type' => 1,
             'missing_value' => 1,
@@ -139,7 +139,7 @@ class IngestVehicleStatsPageTest extends TestCase
             null,
             false,
         ));
-        $this->assertEquals(['no_external_id' => 1, 'unknown_vehicle' => 2], array_filter($unknown->dropped));
+        $this->assertEquals(['no_external_id' => 1, 'no_monitored_asset' => 2], array_filter($unknown->dropped));
         $this->assertNoSensitiveDataLogged();
     }
 }

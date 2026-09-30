@@ -108,7 +108,7 @@ class BackfillVehicleStatsJob implements ShouldBeUnique, ShouldQueue
 
         SystemLog::ok('telematics.backfill.completed', input: $input, calc: [
             'max_pages' => self::MAX_PAGES,
-            'max_pages_hit' => $pages >= self::MAX_PAGES && $page->hasNextPage,
+            'max_pages_hit' => $pages >= self::MAX_PAGES && $page->hasNextPage && $cursor !== null,
             'window_capped' => $from->ne($this->from),
         ], result: ['pages' => $pages, 'stored' => $stored, 'dropped_count_by_reason' => $dropped], channel: 'telematics');
     }

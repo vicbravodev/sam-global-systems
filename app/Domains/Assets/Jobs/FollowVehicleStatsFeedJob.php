@@ -176,13 +176,17 @@ class FollowVehicleStatsFeedJob implements ShouldBeUnique, ShouldQueue
             'max_pages_hit' => $failure === null && $pages >= $maxPages && $lastHasNextPage,
             'dropped_count_by_reason' => $droppedByReason,
         ];
+        // A rejected cursor is dropped (reset to null), not moved forward: it
+        // never reads as progress.
+        $cursorReset = ($failureInfo['reason'] ?? null) === 'cursor_rejected';
         $cycleResult = [
             'pages' => $pages,
             'locations' => $result->locationsStored,
             'readings' => $result->readingsStored,
             'moved_assets' => count($result->positions),
             'lag_s' => $cursor->lagSeconds(),
-            'cursor_advanced' => $cursor->end_cursor !== $initialCursor,
+            'cursor_advanced' => ! $cursorReset && $cursor->end_cursor !== $initialCursor,
+            'cursor_reset' => $cursorReset,
         ];
 
         if ($failure === null) {
@@ -194,8 +198,8 @@ class FollowVehicleStatsFeedJob implements ShouldBeUnique, ShouldQueue
 
     /**
      * One line per reason a page dropped points. Replays, unchanged readings
-     * and vehicles not in the catalog yet are routine every cycle, so they
-     * stay at debug; the rest point at bad provider data.
+     * and vehicles without a monitored asset of this tenant are routine every
+     * cycle, so they stay at debug; the rest point at bad provider data.
      *
      * @param  array{integration_id: int, feed: string}  $cycleInput
      */
@@ -211,7 +215,7 @@ class FollowVehicleStatsFeedJob implements ShouldBeUnique, ShouldQueue
                 reason: $reason,
                 input: [...$cycleInput, 'page' => $page],
                 calc: ['dropped_count' => $count],
-                debug: in_array($reason, ['already_stored', 'unchanged_value', 'unknown_vehicle'], true),
+                debug: in_array($reason, ['already_stored', 'unchanged_value', 'no_monitored_asset'], true),
                 channel: 'telematics',
             );
         }

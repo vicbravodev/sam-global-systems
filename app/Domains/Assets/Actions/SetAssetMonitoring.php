@@ -46,13 +46,9 @@ class SetAssetMonitoring
             $this->logAssetLimit($teamId, $limit);
             $monitored = $this->monitoredCount($teamId);
             $blocked = TenantCanSend::blockedReason($teamId);
-            $billable = $blocked === null;
+            $blockedLogged = false;
 
-            if ($blocked !== null && $state === AssetMonitoringState::Monitored && $asset->monitoring_state !== $state) {
-                $this->logTenantBlocked($teamId, $blocked);
-            }
-
-            return $this->apply($asset, $state, $actor, $reason, $cap, $monitored, $billable);
+            return $this->apply($asset, $state, $actor, $reason, $cap, $monitored, $blocked, $blockedLogged);
         });
     }
 
@@ -74,11 +70,9 @@ class SetAssetMonitoring
             $this->logAssetLimit($teamId, $limit);
             $monitored = $this->monitoredCount($teamId);
             $blocked = TenantCanSend::blockedReason($teamId);
-            $billable = $blocked === null;
-
-            if ($blocked !== null && $state === AssetMonitoringState::Monitored) {
-                $this->logTenantBlocked($teamId, $blocked);
-            }
+            // `billing.tenant.blocked` sale una vez por llamada, y sólo cuando
+            // una unidad se enciende de verdad (ver apply()).
+            $blockedLogged = false;
 
             $changed = 0;
             $last = null;
@@ -93,7 +87,7 @@ class SetAssetMonitoring
                     continue;
                 }
 
-                $last = $this->apply($asset, $state, $actor, $reason, $cap, $monitored, $billable);
+                $last = $this->apply($asset, $state, $actor, $reason, $cap, $monitored, $blocked, $blockedLogged);
                 $changed += $last['changed'] ? 1 : 0;
             }
 
@@ -109,10 +103,13 @@ class SetAssetMonitoring
 
     /**
      * @param  int  $monitored  the tenant's monitored count before this change; updated in place
+     * @param  string|null  $blocked  why the tenant accrues no asset-days (TenantCanSend), null when it does
+     * @param  bool  $blockedLogged  whether `billing.tenant.blocked` already went out in this call; updated in place
      * @return array{asset: Asset, changed: bool, over_cap: bool, monitored: int, cap: int|null}
      */
-    private function apply(Asset $asset, AssetMonitoringState $state, ?User $actor, ?string $reason, ?int $cap, int &$monitored, bool $billable): array
+    private function apply(Asset $asset, AssetMonitoringState $state, ?User $actor, ?string $reason, ?int $cap, int &$monitored, ?string $blocked, bool &$blockedLogged): array
     {
+        $billable = $blocked === null;
         $previous = $asset->monitoring_state;
         $monitoredBefore = $monitored;
 
@@ -141,6 +138,12 @@ class SetAssetMonitoring
 
         if ($state === AssetMonitoringState::Monitored) {
             $monitored++;
+
+            // Sólo cuando una unidad se enciende de verdad, y una vez por llamada.
+            if ($blocked !== null && ! $blockedLogged) {
+                $this->logTenantBlocked((int) $asset->team_id, $blocked);
+                $blockedLogged = true;
+            }
 
             // Encender ES usar: el tracto-día de hoy queda registrado en este
             // momento, no hasta la muestra nocturna (decisión 2026-09-28).

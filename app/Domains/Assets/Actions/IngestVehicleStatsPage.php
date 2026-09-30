@@ -72,7 +72,7 @@ class IngestVehicleStatsPage
 
             return new VehicleStatsIngestResult(dropped: $this->counted([
                 'no_external_id' => $withoutId,
-                'unknown_vehicle' => $points - $withoutId,
+                'no_monitored_asset' => $points - $withoutId,
             ]));
         }
 
@@ -113,14 +113,16 @@ class IngestVehicleStatsPage
     }
 
     /**
-     * Why a point could not be tied to an asset of this tenant, or null when
-     * it was.
+     * Why a point could not be tied to a monitored asset of this tenant:
+     * `no_monitored_asset` covers a vehicle not synced yet, the tenant's own
+     * unmonitored unit and another tenant's vehicle alike, since only
+     * monitored assets of this tenant resolve.
      *
      * @param  array<string, mixed>  $point
      */
     private function unresolvedReason(array $point): string
     {
-        return (string) ($point['external_id'] ?? '') === '' ? 'no_external_id' : 'unknown_vehicle';
+        return (string) ($point['external_id'] ?? '') === '' ? 'no_external_id' : 'no_monitored_asset';
     }
 
     /**

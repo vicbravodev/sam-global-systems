@@ -163,12 +163,13 @@ class FollowVehicleStatsFeedJobTest extends TestCase
 
         $this->assertSystemLogged('telematics.cycle.completed', fn (array $c) => $c['calc']['max_pages_hit'] === false
             && $c['result']['cursor_advanced'] === true
+            && $c['result']['cursor_reset'] === false
             && $c['result']['locations'] === 3
             && $c['input'] === ['integration_id' => $integration->id, 'feed' => 'motion']);
         $this->assertSame('telematics', $this->systemLogEntries('telematics.cycle.completed')[0]['channel']);
 
         // The vehicle without an asset is dropped, at debug: normal every cycle.
-        $this->assertSystemLogged('telematics.points.dropped', fn (array $c) => $c['reason'] === 'unknown_vehicle' && $c['calc']['dropped_count'] === 1);
+        $this->assertSystemLogged('telematics.points.dropped', fn (array $c) => $c['reason'] === 'no_monitored_asset' && $c['calc']['dropped_count'] === 1);
         $dropped = $this->systemLogEntries('telematics.points.dropped')[0];
         $this->assertSame('debug', $dropped['level']);
         $this->assertSame('telematics', $dropped['channel']);
@@ -482,6 +483,12 @@ class FollowVehicleStatsFeedJobTest extends TestCase
             && $c['calc']['consecutive_failures'] === 0
             && $c['calc']['pause_s'] === null
             && $c['calc']['circuit_opened'] === false);
+
+        // The cursor was dropped, not moved forward: a reset never reads as progress.
+        $failed = $this->assertSystemLogged('telematics.cycle.failed');
+        $this->assertFalse($failed['result']['cursor_advanced']);
+        $this->assertTrue($failed['result']['cursor_reset']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_a_paused_cursor_logs_the_pause_and_calls_nobody(): void
@@ -533,8 +540,8 @@ class FollowVehicleStatsFeedJobTest extends TestCase
         $this->assertSame(1, AssetLocationSnapshot::query()->count());
 
         $byReason = collect($this->systemLogEntries('telematics.points.dropped'))->keyBy('context.reason');
-        $this->assertSame(['missing_coordinates', 'no_external_id', 'unknown_vehicle'], $byReason->keys()->sort()->values()->all());
-        $this->assertSame('debug', $byReason['unknown_vehicle']['level']);
+        $this->assertSame(['missing_coordinates', 'no_external_id', 'no_monitored_asset'], $byReason->keys()->sort()->values()->all());
+        $this->assertSame('debug', $byReason['no_monitored_asset']['level']);
         $this->assertSame('info', $byReason['missing_coordinates']['level']);
         $this->assertSame('info', $byReason['no_external_id']['level']);
 
@@ -549,8 +556,46 @@ class FollowVehicleStatsFeedJobTest extends TestCase
         $this->assertSame([
             'missing_coordinates_count' => 1,
             'no_external_id_count' => 1,
-            'unknown_vehicle_count' => 1,
+            'no_monitored_asset_count' => 1,
         ], $byReasonCount);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_points_of_an_own_unmonitored_asset_are_dropped_as_no_monitored_asset(): void
+    {
+        $integration = $this->integration();
+        $this->linkAsset($integration, '100');
+        $parked = Asset::factory()->pendingMonitoring()->create(['team_id' => $integration->team_id]);
+        AssetExternalReference::factory()->create([
+            'asset_id' => $parked->id,
+            'provider_id' => $integration->provider_id,
+            'external_id' => '200',
+        ]);
+        $at = now()->subSeconds(10)->toIso8601ZuluString();
+
+        $this->mock(ProviderAdapter::class)
+            ->shouldReceive('fetchVehicleStatsFeed')
+            ->once()
+            ->andReturn(new VehicleStatsPage(
+                locations: [
+                    ['external_id' => '100', 'latitude' => 19.43, 'longitude' => -99.13, 'speed' => 20.0, 'recorded_at' => $at],
+                    ['external_id' => '200', 'latitude' => 19.43, 'longitude' => -99.13, 'speed' => 20.0, 'recorded_at' => $at],
+                ],
+                readings: [],
+                endCursor: 'c1',
+                hasNextPage: false,
+            ));
+
+        $this->cycle($integration);
+
+        // The tenant's own truck exists but is not monitored: same reason as a
+        // vehicle never synced, since only monitored assets resolve.
+        $this->assertSame(0, AssetLocationSnapshot::query()->where('asset_id', $parked->id)->count());
+        $dropped = $this->assertSystemLogged('telematics.points.dropped', fn (array $c) => $c['reason'] === 'no_monitored_asset');
+        $this->assertSame(1, $dropped['calc']['dropped_count']);
+        $this->assertCount(1, $this->systemLogEntries('telematics.points.dropped'));
+        $cycle = $this->assertSystemLogged('telematics.cycle.completed');
+        $this->assertSame(['no_monitored_asset_count' => 1], $cycle['calc']['dropped_count_by_reason']);
         $this->assertNoSensitiveDataLogged();
     }
 
@@ -590,7 +635,7 @@ class FollowVehicleStatsFeedJobTest extends TestCase
         $this->assertNull($otherAsset->fresh()->last_location_at);
 
         // Their id resolves to nothing here: a dropped point, never their ids.
-        $this->assertSystemLogged('telematics.points.dropped', fn (array $c) => $c['reason'] === 'unknown_vehicle');
+        $this->assertSystemLogged('telematics.points.dropped', fn (array $c) => $c['reason'] === 'no_monitored_asset');
 
         foreach ($this->systemLogEntries() as $entry) {
             $this->assertNotSame($other->team_id, $entry['context']['input']['team_id'] ?? null);

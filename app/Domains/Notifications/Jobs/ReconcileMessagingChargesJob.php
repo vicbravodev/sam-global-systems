@@ -95,8 +95,8 @@ class ReconcileMessagingChargesJob implements ShouldQueue
             ->get());
 
         $deadline = microtime(true) + self::TIME_BUDGET_SECONDS;
-        $branchCounts = array_fill_keys(array_map(fn (string $branch) => "{$branch}_count", self::BRANCHES), 0);
-        $processed = 0;
+        $countByBranch = array_fill_keys(array_map(fn (string $branch) => "{$branch}_count", self::BRANCHES), 0);
+        $attempted = 0;
         $failed = 0;
         $budgetExhausted = false;
 
@@ -107,7 +107,7 @@ class ReconcileMessagingChargesJob implements ShouldQueue
                 break;
             }
 
-            $processed++;
+            $attempted++;
 
             $branch = TenantContext::for($charge->team_id, function () use ($charge, $messenger, $caller, $applyStatus, $finalize): ?string {
                 try {
@@ -120,7 +120,8 @@ class ReconcileMessagingChargesJob implements ShouldQueue
                         'charge_id' => $charge->id,
                         'provider_sid' => $charge->provider_sid,
                         'error_class' => class_basename($e),
-                        'provider_error_code' => $e->getCode(),
+                        // Sólo el código de un error de Twilio es un código de Twilio.
+                        'provider_error_code' => $e instanceof TwilioException ? $e->getCode() : null,
                     ], calc: $nextCheck, error: $e);
 
                     return null;
@@ -130,7 +131,7 @@ class ReconcileMessagingChargesJob implements ShouldQueue
             if ($branch === null) {
                 $failed++;
             } else {
-                $branchCounts["{$branch}_count"]++;
+                $countByBranch["{$branch}_count"]++;
             }
         }
 
@@ -140,10 +141,10 @@ class ReconcileMessagingChargesJob implements ShouldQueue
             'time_budget_seconds' => self::TIME_BUDGET_SECONDS,
         ], result: [
             'charges_due_count' => $due->count(),
-            'charges_processed_count' => $processed,
+            'charges_attempted_count' => $attempted,
             'charges_failed_count' => $failed,
             'budget_exhausted' => $budgetExhausted,
-            'branch_counts' => $branchCounts,
+            'charges_count_by_branch' => $countByBranch,
         ], debug: $due->isEmpty());
     }
 

@@ -13,7 +13,7 @@ final class VehicleStatsIngestResult
     /**
      * @param  array<int, array{asset_id: int, latitude: float, longitude: float, speed_kph: float|null, heading: int|null, recorded_at: string, moving: bool|null}>  $positions  current position per asset whose position moved forward
      * @param  array<int, array<string, array{value: float|string, unit: string|null, recorded_at: string}>>  $telemetry  newest changed reading per asset and type
-     * @param  array<string, int>  $dropped  points not stored, counted by reason (no_external_id, unknown_vehicle, missing_coordinates, unsupported_type, missing_value, unchanged_value, already_stored)
+     * @param  array<string, int>  $dropped  points not stored, counted by reason (no_external_id, no_monitored_asset, missing_coordinates, unsupported_type, missing_value, unchanged_value, already_stored)
      */
     public function __construct(
         public int $locationsStored = 0,

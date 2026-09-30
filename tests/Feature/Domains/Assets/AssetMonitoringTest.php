@@ -226,6 +226,48 @@ class AssetMonitoringTest extends TestCase
             && $c['calc']['blocked_reason'] === 'resolved_by_caller');
     }
 
+    public function test_a_suspended_tenant_batch_that_switches_nothing_on_does_not_log_the_block(): void
+    {
+        [$team] = $this->setupTeam(assetLimit: null);
+        Subscription::factory()->suspended()->create(['team_id' => $team->id]);
+        $assets = Asset::factory()->count(2)->create(['team_id' => $team->id]);
+
+        $result = app(SetAssetMonitoring::class)->executeMany($team->id, $assets, AssetMonitoringState::Monitored);
+
+        $this->assertSame(0, $result['changed']);
+        $this->assertSystemNotLogged('billing.tenant.blocked');
+        $this->assertCount(2, $this->systemLogEntries('assets.monitoring.changed'));
+
+        app(SetAssetMonitoring::class)->execute($assets->first(), AssetMonitoringState::Monitored);
+
+        $this->assertSystemNotLogged('billing.tenant.blocked');
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_the_block_is_logged_when_the_first_unit_is_actually_switched_on(): void
+    {
+        [$team] = $this->setupTeam(assetLimit: null);
+        Subscription::factory()->suspended()->create(['team_id' => $team->id]);
+        $already = Asset::factory()->create(['team_id' => $team->id]);
+        $pending = Asset::factory()->pendingMonitoring()->count(2)->create(['team_id' => $team->id]);
+
+        app(SetAssetMonitoring::class)->executeMany($team->id, [$already, ...$pending], AssetMonitoringState::Monitored);
+
+        $codes = array_map(
+            fn (array $e) => $e['code'].'/'.($e['context']['reason'] ?? 'ok'),
+            array_values(array_filter($this->systemLogEntries(), fn (array $e) => in_array($e['code'], ['billing.tenant.blocked', 'assets.monitoring.changed'], true))),
+        );
+        // Once per call, and only once a unit is really switched on — never
+        // ahead of the unit that was already monitored.
+        $this->assertSame([
+            'assets.monitoring.changed/same_state',
+            'billing.tenant.blocked/subscription_suspended',
+            'assets.monitoring.changed/ok',
+            'assets.monitoring.changed/ok',
+        ], $codes);
+        $this->assertNoSensitiveDataLogged();
+    }
+
     public function test_a_batch_skips_another_tenants_unit_without_naming_it(): void
     {
         [$team] = $this->setupTeam(assetLimit: null);

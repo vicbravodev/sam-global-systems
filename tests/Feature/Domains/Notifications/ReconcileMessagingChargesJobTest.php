@@ -59,6 +59,13 @@ class ReconcileMessagingChargesJobTest extends TestCase
      */
     private array $providerErrors = [];
 
+    /**
+     * SIDs whose fetch fails with an error that does not come from Twilio.
+     *
+     * @var array<string, int>
+     */
+    private array $localErrors = [];
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -67,9 +74,11 @@ class ReconcileMessagingChargesJobTest extends TestCase
         $this->team = Team::factory()->create();
 
         $messenger = Mockery::mock(TwilioMessenger::class);
-        $messenger->shouldReceive('fetchMessage')->andReturnUsing(fn (string $sid) => isset($this->providerErrors[$sid])
-            ? throw new RestException('boom', $this->providerErrors[$sid], 500)
-            : ($this->messages[$sid] ?? throw new RestException('not found', 20404, 404)));
+        $messenger->shouldReceive('fetchMessage')->andReturnUsing(fn (string $sid) => match (true) {
+            isset($this->providerErrors[$sid]) => throw new RestException('boom', $this->providerErrors[$sid], 500),
+            isset($this->localErrors[$sid]) => throw new \RuntimeException('local failure', $this->localErrors[$sid]),
+            default => $this->messages[$sid] ?? throw new RestException('not found', 20404, 404),
+        });
         $this->app->instance(TwilioMessenger::class, $messenger);
 
         $caller = Mockery::mock(TwilioVoiceCaller::class);
@@ -368,9 +377,29 @@ class ReconcileMessagingChargesJobTest extends TestCase
 
         $done = $this->assertSystemLogged('billing.messaging_reconcile.completed');
         $this->assertSame(1, $done['result']['charges_due_count']);
-        $this->assertSame(1, $done['result']['charges_processed_count']);
+        $this->assertSame(1, $done['result']['charges_attempted_count']);
+        $this->assertArrayNotHasKey('charges_processed_count', $done['result']);
         $this->assertSame(1, $done['result']['charges_failed_count']);
         $this->assertFalse($done['result']['budget_exhausted']);
+        $this->assertLogsAreClean();
+    }
+
+    public function test_a_non_twilio_error_is_not_reported_as_a_provider_error_code(): void
+    {
+        $this->queuedDelivery(ChannelType::Sms, 'SM_LOCAL');
+        $this->localErrors['SM_LOCAL'] = 42;
+
+        $this->runReconciler();
+
+        $charge = MessagingCharge::query()->where('provider_sid', 'SM_LOCAL')->sole();
+        $this->assertNull($charge->finalized_at);
+        $this->assertSame(1, $charge->check_attempts);
+
+        $c = $this->assertSystemLogged('billing.messaging_charge.reconcile_failed');
+        $this->assertSame('RuntimeException', $c['input']['error_class']);
+        // The code of a non-Twilio exception says nothing about Twilio.
+        $this->assertArrayHasKey('provider_error_code', $c['input']);
+        $this->assertNull($c['input']['provider_error_code']);
         $this->assertLogsAreClean();
     }
 
@@ -472,9 +501,10 @@ class ReconcileMessagingChargesJobTest extends TestCase
         $this->assertStringNotContainsString('charge_id', json_encode($done));
         $this->assertStringNotContainsString('SM_', json_encode($done));
         $this->assertSame(2, $done['result']['charges_due_count']);
-        $this->assertSame(2, $done['result']['charges_processed_count']);
+        $this->assertSame(2, $done['result']['charges_attempted_count']);
         $this->assertSame(0, $done['result']['charges_failed_count']);
-        $this->assertSame(2, $done['result']['branch_counts']['priced_count']);
+        $this->assertSame(2, $done['result']['charges_count_by_branch']['priced_count']);
+        $this->assertArrayNotHasKey('branch_counts', $done['result']);
         $this->assertSame(200, $done['calc']['batch_size']);
         $this->assertSame(180, $done['calc']['time_budget_seconds']);
         $this->assertLogsAreClean();

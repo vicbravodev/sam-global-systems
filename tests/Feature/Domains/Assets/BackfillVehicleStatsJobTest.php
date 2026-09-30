@@ -7,6 +7,8 @@ use App\Domains\Assets\Jobs\BackfillVehicleStatsJob;
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Assets\Models\AssetExternalReference;
 use App\Domains\Assets\Models\AssetLocationSnapshot;
+use App\Domains\Integrations\Contracts\ProviderAdapter;
+use App\Domains\Integrations\Data\VehicleStatsPage;
 use App\Domains\Integrations\Models\IntegrationCredential;
 use App\Domains\Integrations\Models\IntegrationProvider;
 use App\Domains\Integrations\Models\TenantIntegration;
@@ -74,6 +76,28 @@ class BackfillVehicleStatsJobTest extends TestCase
         $this->assertSame('telematics', $this->systemLogEntries('telematics.backfill.completed')[0]['channel']);
         $this->assertStringNotContainsString('19.4', (string) json_encode($this->systemLogEntries()));
         $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_the_page_cap_is_not_reported_as_hit_when_the_last_page_has_no_cursor(): void
+    {
+        $served = 0;
+        $this->mock(ProviderAdapter::class)
+            ->shouldReceive('fetchVehicleStatsHistory')
+            ->andReturnUsing(function () use (&$served) {
+                $served++;
+
+                // `hasNextPage` stays true, but the 500th page carries no
+                // cursor: there is nothing left the loop could fetch.
+                return new VehicleStatsPage(locations: [], readings: [], endCursor: $served < 500 ? "h{$served}" : null, hasNextPage: true);
+            });
+
+        app()->call([new BackfillVehicleStatsJob($this->integration(), TelematicsFeed::Motion, now()->subHour(), now()), 'handle']);
+
+        $this->assertSame(500, $served);
+        $context = $this->assertSystemLogged('telematics.backfill.completed', fn (array $c) => $c['outcome'] === 'ok');
+        $this->assertSame(500, $context['result']['pages']);
+        $this->assertSame(500, $context['calc']['max_pages']);
+        $this->assertFalse($context['calc']['max_pages_hit']);
     }
 
     public function test_the_window_is_capped_at_the_configured_hours(): void
