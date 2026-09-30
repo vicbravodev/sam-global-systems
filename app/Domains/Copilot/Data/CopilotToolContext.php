@@ -13,6 +13,7 @@ final readonly class CopilotToolContext
 {
     /**
      * @param  list<string>  $permissions
+     * @param  array<string, mixed>  $arguments  Validated arguments the agent passed to the tool (empty on the deterministic path).
      */
     public function __construct(
         public int $teamId,
@@ -22,6 +23,7 @@ final readonly class CopilotToolContext
         public ?Asset $asset = null,
         public ?AssetCategory $category = null,
         public bool $isSuperAdmin = false,
+        public array $arguments = [],
     ) {}
 
     public function can(string $permission): bool

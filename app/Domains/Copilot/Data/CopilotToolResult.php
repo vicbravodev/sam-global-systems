@@ -13,6 +13,7 @@ final readonly class CopilotToolResult
      * @param  list<array{kind: string, id: int, label: string, href: string}>  $sources
      * @param  array<string, mixed>  $facts
      * @param  list<string>  $highlights  Short Spanish sentences, already grounded on data.
+     * @param  bool  $denied  The user's role may not read what this tool covers.
      */
     public function __construct(
         public string $tool,
@@ -21,6 +22,7 @@ final readonly class CopilotToolResult
         public array $sources = [],
         public array $facts = [],
         public array $highlights = [],
+        public bool $denied = false,
     ) {}
 
     public static function denied(string $tool, string $label, string $what): self
@@ -34,6 +36,7 @@ final readonly class CopilotToolResult
                 'text' => "Tu rol no tiene permiso para consultar {$what}. Pídele acceso a un administrador del tenant.",
             ]],
             highlights: ["No tienes permiso para consultar {$what}."],
+            denied: true,
         );
     }
 }

@@ -259,6 +259,10 @@ Las líneas del listener síncrono `RequestPanicMediaOnContextBuilt` (`context.m
 | `ai.media.assessment_unavailable` | degraded | `agent_error` | `evaluation_id`, `event_media_context_id`, `error` |
 | `ai.usage.not_metered` | skipped / degraded | `no_conversation_link` (debug; calc `conversation_id_present`: caso normal de los wrappers propios, que miden por su cuenta), `zero_tokens` (debug; calc `direction`), `meter_missing` (degraded, hueco de cobro; calc `direction`, `meter_code`, `tokens`) | `team_id` (el del link), `invocation_id`; calc `direction` (`in` u `out`). Lo medido lo narra `billing.usage.recorded` / `billing.usage.duplicate_ignored` |
 | `copilot.narration.fallback` | degraded | `agent_error` | `error` |
+| `copilot.tool.ran` | ok | - | `team_id`, `tool`, `tool_call_id`, `asset_id` (null si la tool no es de una unidad), `period_days`; result `rows` (bloques de UI producidos), `truncated` (la salida al modelo pasó de 6 KB y se recortó con `"truncado": true`); `duration_ms`. Nunca la pregunta, `query` libre ni valores de argumentos |
+| `copilot.tool.denied` | skipped | `missing_permission` | `team_id`, `tool`, `tool_call_id`, `permission` (el permiso de módulo que faltó). La tool de dominio se negó aunque la caja la ofreció; queda en el collector con estado `denied` |
+| `copilot.tool.failed` | degraded | `tool_exception` | `team_id`, `tool`, `tool_call_id`, `duration_ms`, `error` (clase). Al modelo vuelve `{"error": "no pude consultar …"}`; el collector la registra con estado `error` |
+| `copilot.tool.invalid_args` | skipped | `validation_failed` (argumentos o periodo inválidos: fecha ilegible, `from` ≥ `to`, `to` en el futuro o rango > 90 días), `asset_not_found` (el `asset_code` no existe en la flota del tenant) | `team_id`, `tool`, `tool_call_id`, `fields` (sólo nombres de campo, nunca valores). No se lee ningún dato |
 
 ### Decisiones (`decisions`)
 

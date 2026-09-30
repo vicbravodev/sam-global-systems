@@ -29,6 +29,42 @@ final class AssetResolver
         return Asset::query()->where('team_id', $teamId)->whereKey($assetId)->first();
     }
 
+    /**
+     * The tenant's unit the agent named by code or name. An exact code match
+     * wins; otherwise codes and names are compared loosely ("T-555", "t 555"
+     * and "T555" are the same unit). Never looks outside `$teamId`.
+     */
+    public function resolveByCode(int $teamId, string $code): ?Asset
+    {
+        $key = CopilotText::key($code);
+
+        if ($key === '') {
+            return null;
+        }
+
+        $exact = Asset::query()
+            ->where('team_id', $teamId)
+            ->whereRaw('lower(code) = ?', [mb_strtolower(trim($code))])
+            ->orderBy('id')
+            ->first();
+
+        if ($exact !== null) {
+            return $exact;
+        }
+
+        $match = Asset::query()
+            ->where('team_id', $teamId)
+            ->select(['id', 'code', 'name'])
+            ->orderBy('id')
+            ->limit(self::SCAN_LIMIT)
+            ->get()
+            ->first(fn (Asset $asset) => CopilotText::key($asset->code) === $key || CopilotText::key($asset->name) === $key);
+
+        return $match === null
+            ? null
+            : Asset::query()->where('team_id', $teamId)->whereKey($match->id)->first();
+    }
+
     public function resolveFromPrompt(int $teamId, string $prompt): ?Asset
     {
         $normalized = CopilotText::normalize($prompt);
