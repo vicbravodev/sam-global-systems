@@ -47,7 +47,7 @@ class RunDeterministicCopilotTurn
             steps: 0,
             intent: $answer->intent,
             partial: false,
-            firstTokenMs: null,
+            firstTextMs: null,
         );
     }
 }

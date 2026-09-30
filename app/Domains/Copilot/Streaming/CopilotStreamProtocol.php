@@ -21,7 +21,7 @@ use Throwable;
  *   exhausted, which is before the base protocol yields `finish-step` and
  *   `finish`, so the stored message is always there by then;
  * - `tool-output-available` carries `{ok: true}` only: the facts go to the
- *   model, never to the browser;
+ *   model, never to the browser; `tool-output-error` a fixed Spanish text;
  * - a provider failure before the first text delta answers the turn
  *   deterministically in the same stream (`$fallback`); after it, the
  *   stored partial answer goes out and then the masked Spanish error;
@@ -31,6 +31,8 @@ use Throwable;
 final class CopilotStreamProtocol extends VercelDataProtocol
 {
     public const ERROR_TEXT = CopilotAnswerText::EMPTY;
+
+    public const TOOL_ERROR_TEXT = 'No pude consultar esos datos.';
 
     /**
      * @param  Closure(Throwable, bool): iterable<array<string, mixed>>  $fallback  receives the error and whether it must open the stream (`start`)
@@ -97,9 +99,11 @@ final class CopilotStreamProtocol extends VercelDataProtocol
                 yield from $this->closing();
             }
         } catch (Throwable $e) {
+            // After the first text, or once the turn started storing (a store
+            // that failed halfway must never fall back and store again).
             if ($this->state->textStarted || $this->state->persisted) {
-                // The partial answer was stored by the turn's catch(): send
-                // it, then let the base mask the error and terminate.
+                // A partial answer stored by the turn's catch() goes out
+                // first; then the base masks the error and terminates.
                 if ($this->state->messagePayload !== null) {
                     yield ['type' => 'data-copilot-message', 'data' => $this->state->messagePayload];
                 }
@@ -121,9 +125,12 @@ final class CopilotStreamProtocol extends VercelDataProtocol
     {
         $part = parent::toolResultPart($event);
 
-        return $part['type'] === 'tool-output-available'
-            ? ['type' => $part['type'], 'toolCallId' => $part['toolCallId'], 'output' => ['ok' => true]]
-            : $part;
+        return match ($part['type']) {
+            'tool-output-available' => ['type' => $part['type'], 'toolCallId' => $part['toolCallId'], 'output' => ['ok' => true]],
+            // The SDK fills errorText from the exception message: never sent.
+            'tool-output-error' => [...$part, 'errorText' => self::TOOL_ERROR_TEXT],
+            default => $part,
+        };
     }
 
     /**
@@ -146,7 +153,7 @@ final class CopilotStreamProtocol extends VercelDataProtocol
     {
         if (! $this->state->textStarted) {
             $this->state->textStarted = true;
-            $this->state->firstTokenMs = SystemLog::elapsedMs($this->startedAt);
+            $this->state->firstTextMs = SystemLog::elapsedMs($this->startedAt);
         }
 
         if ($newStep && $this->state->text !== '') {

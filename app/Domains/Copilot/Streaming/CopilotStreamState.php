@@ -16,7 +16,7 @@ final class CopilotStreamState
 {
     public bool $textStarted = false;
 
-    public ?int $firstTokenMs = null;
+    public ?int $firstTextMs = null;
 
     /**
      * Text deltas sent to the browser so far, steps separated by a blank line.
@@ -24,7 +24,8 @@ final class CopilotStreamState
     public string $text = '';
 
     /**
-     * The stored answer is final: nothing persists the turn again.
+     * The turn started storing its answer (set before storing): nothing
+     * stores it again nor falls back, even if that store failed halfway.
      */
     public bool $persisted = false;
 

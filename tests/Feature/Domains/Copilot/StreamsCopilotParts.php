@@ -11,17 +11,17 @@ use Illuminate\Testing\TestResponse;
 trait StreamsCopilotParts
 {
     /**
-     * The Accept header the browser sends: JSON first so a policy, 404 or
-     * validation error comes back as JSON before any stream opens.
+     * The Accept header the browser sends (spec §8); the route still answers
+     * throttle, policy, 404 and validation errors as JSON.
      */
-    protected const STREAM_ACCEPT = 'application/json, text/event-stream';
+    protected const STREAM_ACCEPT = 'text/event-stream';
 
     /**
      * @param  array<string, mixed>  $payload
      */
     protected function streamAs(mixed $user, string $teamSlug, array $payload): TestResponse
     {
-        return $this->actingAs($user)->postJson("/{$teamSlug}/copilot/stream", $payload, ['Accept' => self::STREAM_ACCEPT]);
+        return $this->actingAs($user)->post("/{$teamSlug}/copilot/stream", $payload, ['Accept' => self::STREAM_ACCEPT]);
     }
 
     /**

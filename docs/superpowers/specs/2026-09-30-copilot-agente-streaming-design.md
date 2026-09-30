@@ -152,7 +152,7 @@ Nunca se registra el texto de la pregunta ni de la respuesta, ni los argumentos 
 | Código | Outcome | Campos |
 |---|---|---|
 | `copilot.turn.started` | ok (debug) | `team_id`, `conversation_id`, `channel`, `mode` (`agent`/`deterministic`), `question_length`, `history_turns` |
-| `copilot.turn.completed` | ok | `team_id`, `message_id`, `mode`; calc `steps`, `tools` (nombres), `tool_count`, `blocks_count`, `followups_count`; result `model`, `input_tokens`, `cached_input_tokens`, `output_tokens`, `cost_estimate`, `latency_ms`, `first_token_ms` |
+| `copilot.turn.completed` | ok | `team_id`, `message_id`, `mode`; calc `steps`, `tools` (nombres), `tool_count`, `blocks_count`, `followups_count`; result `model`, `input_tokens`, `cached_input_tokens`, `output_tokens`, `cost_estimate`, `latency_ms`, `first_text_ms` |
 | `copilot.turn.fallback` | degraded | reason `no_provider_key` (skipped, debug) · `agent_error_before_output`; `error` (clase) |
 | `copilot.turn.failed` | failed | reason `agent_error_mid_stream` · `client_disconnected` (skipped); `message_id` (parcial), `error` |
 | `copilot.step.started` | ok (debug) | `step`, `tools_available` |

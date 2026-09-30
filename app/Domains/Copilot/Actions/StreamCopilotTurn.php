@@ -4,6 +4,7 @@ namespace App\Domains\Copilot\Actions;
 
 use App\Domains\Copilot\Data\CopilotTurn;
 use App\Domains\Copilot\Data\CopilotTurnOutcome;
+use App\Domains\Copilot\Enums\CopilotMessageRole;
 use App\Domains\Copilot\Models\CopilotConversation;
 use App\Domains\Copilot\Models\CopilotMessage;
 use App\Domains\Copilot\Queries\CopilotQuotaQuery;
@@ -86,7 +87,7 @@ class StreamCopilotTurn
                 steps: $response->steps->count(),
                 intent: $turn->collector->primaryIntent(),
                 partial: false,
-                firstTokenMs: $this->state->firstTokenMs,
+                firstTextMs: $this->state->firstTextMs,
             ));
         });
 
@@ -152,28 +153,59 @@ class StreamCopilotTurn
             steps: 0,
             intent: $turn->collector->primaryIntent(),
             partial: true,
-            firstTokenMs: $this->state->firstTokenMs,
+            firstTextMs: $this->state->firstTextMs,
         ));
     }
 
     /**
-     * Stores, meters and audits the answer (once) and keeps the payload of
-     * the `data-copilot-message` part.
+     * Stores, meters and audits the answer and keeps the payload of the
+     * `data-copilot-message` part. At most once per turn: `persisted` is set
+     * before storing, so a store that fails halfway (the answer committed,
+     * then metering or the audit threw) never falls back nor stores again.
      */
     private function store(CopilotTurn $turn, CopilotTurnOutcome $outcome): CopilotMessage
     {
-        return TenantContext::for($turn->team->id, function () use ($turn, $outcome): CopilotMessage {
-            $reply = $this->finish->execute($turn, $outcome);
-            $this->state->persisted = true;
+        $this->state->persisted = true;
 
-            $this->state->messagePayload = [
-                'answer' => CopilotMessagePresenter::message($reply),
-                'question' => CopilotMessagePresenter::message($turn->question),
-                'conversation' => CopilotMessagePresenter::conversation($turn->conversation->refresh()),
-                'quota' => $this->quota->forTeam($turn->team->id),
-            ];
+        try {
+            return TenantContext::for($turn->team->id, function () use ($turn, $outcome): CopilotMessage {
+                $reply = $this->finish->execute($turn, $outcome);
 
-            return $reply;
-        });
+                $this->state->messagePayload = [
+                    'answer' => CopilotMessagePresenter::message($reply),
+                    'question' => CopilotMessagePresenter::message($turn->question),
+                    'conversation' => CopilotMessagePresenter::conversation($turn->conversation->refresh()),
+                    'quota' => $this->quota->forTeam($turn->team->id),
+                ];
+
+                return $reply;
+            });
+        } catch (Throwable $e) {
+            SystemLog::failed('copilot.turn.failed', 'persist_failed', [
+                'team_id' => $turn->team->id,
+                'message_id' => $this->storedAnswerId($turn),
+                'mode' => $outcome->mode,
+                'partial' => $outcome->partial,
+            ], error: $e);
+
+            throw $e;
+        }
+    }
+
+    /**
+     * The answer a failed store may still have committed, if any.
+     */
+    private function storedAnswerId(CopilotTurn $turn): ?int
+    {
+        try {
+            return TenantContext::for($turn->team->id, fn (): ?int => CopilotMessage::query()
+                ->where('team_id', $turn->team->id)
+                ->where('copilot_conversation_id', $turn->conversation->id)
+                ->where('role', CopilotMessageRole::Assistant)
+                ->where('id', '>', $turn->question->id)
+                ->value('id'));
+        } catch (Throwable) {
+            return null;
+        }
     }
 }

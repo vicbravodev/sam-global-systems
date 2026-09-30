@@ -23,6 +23,6 @@ final readonly class CopilotTurnOutcome
         public int $steps,
         public CopilotIntent $intent,
         public bool $partial,
-        public ?int $firstTokenMs,
+        public ?int $firstTextMs,
     ) {}
 }

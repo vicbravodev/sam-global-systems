@@ -1478,7 +1478,7 @@ git commit -m "feat: copilot como agente multipaso con guardas por paso"
 - Produces:
   - `CopilotTurn { Team $team; User $user; CopilotConversation $conversation; CopilotMessage $question; array $history; ?int $previousAssetId; CopilotTurnScope $scope; CopilotTurnCollector $collector; array $hints; string $channel; int $startedAt (hrtime) }`
   - `PrepareCopilotTurn::execute(Team, User, array $permissions, string $content, ?CopilotConversation, array $hints, string $channel): CopilotTurn`
-  - `CopilotTurnOutcome { string $mode ('agent'|'deterministic'); string $text; ?string $model; TextUsage $usage; int $steps; CopilotIntent $intent; bool $partial; ?int $firstTokenMs }`
+  - `CopilotTurnOutcome { string $mode ('agent'|'deterministic'); string $text; ?string $model; TextUsage $usage; int $steps; CopilotIntent $intent; bool $partial; ?int $firstTextMs }`
   - `RunCopilotAgentTurn::agentFor(CopilotTurn): CopilotAgent` · `RunCopilotAgentTurn::execute(CopilotTurn): CopilotTurnOutcome` (prompt no-stream) · `RunCopilotAgentTurn::available(): bool`
   - `RunDeterministicCopilotTurn::execute(CopilotTurn): CopilotTurnOutcome` (llena el collector con los resultados de `AnswerCopilotQuestion`)
   - `FinishCopilotTurn::execute(CopilotTurn, CopilotTurnOutcome): CopilotMessage`
@@ -1631,7 +1631,7 @@ final class RunCopilotAgentTurn
             steps: count($response->steps ?? []),
             intent: $turn->collector->primaryIntent(),
             partial: false,
-            firstTokenMs: null,
+            firstTextMs: null,
         );
     }
 
@@ -1732,7 +1732,7 @@ public function execute(CopilotTurn $turn, CopilotTurnOutcome $outcome): Copilot
     SystemLog::ok('copilot.turn.completed',
         ['team_id' => $turn->team->id, 'message_id' => $reply->id, 'mode' => $outcome->mode, 'partial' => $outcome->partial],
         calc: ['steps' => $outcome->steps, 'tools' => array_column($turn->collector->tools(), 'tool'), 'tool_count' => count($turn->collector->tools()), 'blocks_count' => count($turn->collector->blocks()), 'followups_count' => count($turn->collector->followupList())],
-        result: ['model' => $outcome->model, 'input_tokens' => $outcome->usage->inputTokens, 'cached_input_tokens' => $outcome->usage->cacheReadInputTokens, 'output_tokens' => $outcome->usage->outputTokens, 'cost_estimate' => $cost, 'latency_ms' => $latencyMs, 'first_token_ms' => $outcome->firstTokenMs],
+        result: ['model' => $outcome->model, 'input_tokens' => $outcome->usage->inputTokens, 'cached_input_tokens' => $outcome->usage->cacheReadInputTokens, 'output_tokens' => $outcome->usage->outputTokens, 'cost_estimate' => $cost, 'latency_ms' => $latencyMs, 'first_text_ms' => $outcome->firstTextMs],
         durationMs: $latencyMs);
 
     return $reply;
@@ -1887,7 +1887,7 @@ final class CopilotStreamState
 {
     public bool $textStarted = false;
 
-    public ?int $firstTokenMs = null;
+    public ?int $firstTextMs = null;
 
     public ?array $messagePayload = null;
 
@@ -1948,7 +1948,7 @@ final class CopilotStreamProtocol extends VercelDataProtocol
 
                 if ($part['type'] === 'text-delta' && ! $this->state->textStarted) {
                     $this->state->textStarted = true;
-                    $this->state->firstTokenMs = SystemLog::elapsedMs($this->startedAt);
+                    $this->state->firstTextMs = SystemLog::elapsedMs($this->startedAt);
                 }
 
                 yield $part;
@@ -2081,7 +2081,7 @@ final class StreamCopilotTurn
 
         $stream->then(function (StreamedAgentResponse $response) use ($turn): void {
             TenantContext::for($turn->team->id, function () use ($turn, $response): void {
-                $reply = $this->finish->execute($turn, new CopilotTurnOutcome('agent', trim($response->text), $response->meta?->model, $response->usage, count($response->steps ?? []), $turn->collector->primaryIntent(), false, $this->state->firstTokenMs));
+                $reply = $this->finish->execute($turn, new CopilotTurnOutcome('agent', trim($response->text), $response->meta?->model, $response->usage, count($response->steps ?? []), $turn->collector->primaryIntent(), false, $this->state->firstTextMs));
                 $this->state->messagePayload = $this->payload($turn, $reply);
             });
         });
@@ -2126,7 +2126,7 @@ final class StreamCopilotTurn
 
     private function persistPartial(CopilotTurn $turn, string $text): CopilotMessage
     {
-        return $this->finish->execute($turn, new CopilotTurnOutcome('agent', $text, null, new TextUsage, 0, $turn->collector->primaryIntent(), true, $this->state->firstTokenMs));
+        return $this->finish->execute($turn, new CopilotTurnOutcome('agent', $text, null, new TextUsage, 0, $turn->collector->primaryIntent(), true, $this->state->firstTextMs));
     }
 
     /** @return array<string, mixed> */

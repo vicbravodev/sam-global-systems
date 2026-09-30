@@ -53,7 +53,7 @@ class RunCopilotAgentTurn
             steps: $response->steps->count(),
             intent: $turn->collector->primaryIntent(),
             partial: false,
-            firstTokenMs: null,
+            firstTextMs: null,
         );
     }
 

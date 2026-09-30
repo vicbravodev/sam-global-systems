@@ -2,8 +2,10 @@
 
 namespace Tests\Feature\Domains\Copilot;
 
+use App\Domains\Audit\Actions\RecordAuditEntry;
 use App\Domains\Copilot\Models\CopilotMessage;
 use App\Domains\Copilot\Streaming\CopilotStreamState;
+use App\Domains\Tenancy\Models\UsageEvent;
 use App\Infrastructure\AI\Agents\CopilotAgent;
 use Database\Seeders\AccessSeeder;
 use Database\Seeders\AIMeterSeeder;
@@ -14,6 +16,8 @@ use Laravel\Ai\Responses\Data\FinishReason;
 use Laravel\Ai\Responses\Data\Meta;
 use Laravel\Ai\Responses\Data\TextUsage;
 use Laravel\Ai\Responses\Data\ToolCall;
+use Mockery\MockInterface;
+use RuntimeException;
 use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
@@ -194,5 +198,70 @@ class CopilotFallbackTest extends TestCase
         $this->assertArrayNotHasKey('partial', $message->context_json);
         $this->assertSame(1, count($this->systemLogEntries('copilot.turn.completed')));
         $this->assertSystemNotLogged('copilot.turn.failed');
+    }
+
+    public function test_store_failing_after_commit_never_falls_back_nor_stores_twice(): void
+    {
+        [$user, $team] = $this->memberWithRole('supervisor');
+        $this->truckWithTelemetry($team);
+
+        // The answer commits and is metered; then the audit throws.
+        $this->mock(RecordAuditEntry::class, fn (MockInterface $mock) => $mock->shouldReceive('execute')->andThrow(new RuntimeException('audit down')));
+
+        // A tool step and an empty final step: no text ever reached the browser.
+        CopilotAgent::fake([new ToolCall('c1', 'asset_location', ['asset_code' => 'T555']), '']);
+
+        $question = '¿Dónde está T555, Juan?';
+        $parts = $this->parts($this->streamAs($user, $team->slug, ['content' => $question])->assertOk());
+        $types = $this->types($parts);
+
+        $this->assertNotContains('text-delta', $types);
+        $this->assertSame(['type' => 'error', 'errorText' => 'No pude completar la respuesta.'], end($parts));
+        $this->assertNotContains('data-copilot-message', $types);
+
+        $message = CopilotMessage::query()->where('role', 'assistant')->sole();
+        $this->assertSame('agent', $message->context_json['mode']);
+        $this->assertSame(1, UsageEvent::query()->where('event_key', 'like', 'copilot_queries:copilot:%')->count());
+        $this->assertSame(2, $message->conversation->refresh()->messages_count);
+
+        $this->assertSystemNotLogged('copilot.turn.fallback');
+        $this->assertSystemLogged('copilot.turn.failed', fn (array $c) => $c['outcome'] === 'failed'
+            && $c['reason'] === 'persist_failed'
+            && $c['input']['message_id'] === $message->id
+            && isset($c['error']));
+        $this->assertNoSensitiveDataLogged();
+        $this->assertQuestionNeverLogged($question);
+    }
+
+    public function test_store_failing_after_text_logs_persist_failed(): void
+    {
+        [$user, $team] = $this->memberWithRole('supervisor');
+        $this->truckWithTelemetry($team);
+        $this->mock(RecordAuditEntry::class, fn (MockInterface $mock) => $mock->shouldReceive('execute')->andThrow(new RuntimeException('audit down')));
+
+        CopilotAgent::fake(['La flota va bien.']);
+
+        $parts = $this->parts($this->streamAs($user, $team->slug, ['content' => '¿Cómo va la flota?'])->assertOk());
+
+        $this->assertSame(['type' => 'error', 'errorText' => 'No pude completar la respuesta.'], end($parts));
+        $this->assertSame(1, CopilotMessage::query()->where('role', 'assistant')->count());
+        $this->assertSystemLogged('copilot.turn.failed', fn (array $c) => $c['reason'] === 'persist_failed');
+        $this->assertSystemNotLogged('copilot.turn.fallback');
+    }
+
+    public function test_tool_error_text_never_reaches_the_browser(): void
+    {
+        [$user, $team] = $this->memberWithRole('supervisor');
+        $this->truckWithTelemetry($team);
+
+        // #[MaxSteps(6)]: the tool call of the last step is never run and
+        // comes back as a failed tool result with the SDK's own message.
+        CopilotAgent::fake(array_map(fn (int $i) => new ToolCall("c{$i}", 'fleet_overview', []), range(1, 6)));
+
+        $parts = $this->parts($this->streamAs($user, $team->slug, ['content' => '¿Cómo va la flota?'])->assertOk());
+
+        $errors = array_values(array_filter($parts, fn (array $p) => $p['type'] === 'tool-output-error'));
+        $this->assertNotEmpty($errors);
+        $this->assertSame(['No pude consultar esos datos.'], array_values(array_unique(array_column($errors, 'errorText'))));
     }
 }

@@ -118,7 +118,7 @@ class FinishCopilotTurn
                 'output_tokens' => $outcome->usage->outputTokens,
                 'cost_estimate' => $cost,
                 'latency_ms' => $latencyMs,
-                'first_token_ms' => $outcome->firstTokenMs,
+                'first_text_ms' => $outcome->firstTextMs,
             ],
             durationMs: $latencyMs,
         );

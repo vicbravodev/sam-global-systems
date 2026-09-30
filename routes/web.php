@@ -61,6 +61,7 @@ use App\Http\Controllers\TenantConfig\TenantNotificationPolicyController;
 use App\Http\Controllers\TenantConfig\TenantRuleOverrideController;
 use App\Http\Controllers\TenantConfig\TenantScheduleProfileController;
 use App\Http\Middleware\EnsureTeamMembership;
+use App\Http\Middleware\RendersErrorsAsJson;
 use Illuminate\Support\Facades\Route;
 
 Route::inertia('/', 'welcome')->name('home');
@@ -186,7 +187,7 @@ Route::prefix('{current_team}')
         Route::get('copilot/usage', [CopilotPageController::class, 'usage'])->name('copilot.usage');
         Route::get('copilot/catalog', CopilotCatalogController::class)->name('copilot.catalog');
         Route::post('copilot/messages', [CopilotMessageController::class, 'store'])->middleware('throttle:copilot')->name('copilot.messages.store');
-        Route::post('copilot/stream', CopilotStreamController::class)->middleware('throttle:copilot')->name('copilot.stream');
+        Route::post('copilot/stream', CopilotStreamController::class)->middleware([RendersErrorsAsJson::class, 'throttle:copilot'])->name('copilot.stream');
         Route::put('copilot/messages/{message}/feedback', [CopilotMessageController::class, 'feedback'])->name('copilot.messages.feedback');
         Route::get('copilot/conversations/{conversation}', [CopilotConversationController::class, 'show'])->name('copilot.conversations.show');
         Route::patch('copilot/conversations/{conversation}', [CopilotConversationController::class, 'update'])->name('copilot.conversations.update');

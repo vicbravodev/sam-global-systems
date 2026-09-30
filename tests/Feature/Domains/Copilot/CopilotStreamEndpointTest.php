@@ -95,7 +95,7 @@ class CopilotStreamEndpointTest extends TestCase
 
         $this->assertSystemLogged('copilot.turn.completed', fn (array $c) => $c['input']['mode'] === 'agent'
             && $c['input']['partial'] === false
-            && is_int($c['result']['first_token_ms'])
+            && is_int($c['result']['first_text_ms'])
             // A stream reports the model of its StreamStart: the agent's resolved model.
             && is_string($c['result']['model']));
         $this->assertSystemNotLogged('copilot.turn.fallback');
@@ -176,17 +176,20 @@ class CopilotStreamEndpointTest extends TestCase
     {
         [$user, $team] = $this->memberWithRole('viewer');
 
-        $this->streamAs($user, $team->slug, ['content' => '¿Dónde está T555?'])->assertForbidden();
+        $this->streamAs($user, $team->slug, ['content' => '¿Dónde está T555?'])
+            ->assertForbidden()
+            ->assertHeader('Content-Type', 'application/json');
 
         $this->assertSame(0, CopilotMessage::query()->count());
     }
 
-    public function test_invalid_payload_is_rejected_as_json(): void
+    public function test_invalid_payload_is_rejected_as_json_not_redirected(): void
     {
         [$user, $team] = $this->memberWithRole('supervisor');
 
         $this->streamAs($user, $team->slug, ['content' => ''])
             ->assertUnprocessable()
+            ->assertHeader('Content-Type', 'application/json')
             ->assertJsonValidationErrors('content');
     }
 
@@ -199,7 +202,9 @@ class CopilotStreamEndpointTest extends TestCase
             $this->streamAs($user, $team->slug, ['content' => ''])->assertUnprocessable();
         }
 
-        $this->streamAs($user, $team->slug, ['content' => '¿Dónde está T555?'])->assertTooManyRequests();
+        $this->streamAs($user, $team->slug, ['content' => '¿Dónde está T555?'])
+            ->assertTooManyRequests()
+            ->assertHeader('Content-Type', 'application/json');
     }
 
     public function test_deterministic_mode_streams_the_same_protocol(): void

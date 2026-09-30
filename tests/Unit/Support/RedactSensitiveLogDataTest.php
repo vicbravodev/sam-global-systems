@@ -140,14 +140,6 @@ class RedactSensitiveLogDataTest extends TestCase
         $this->assertSame(12345678901, $out['count']);
     }
 
-    public function test_durations_are_technical_even_with_a_sensitive_word(): void
-    {
-        $out = RedactSensitiveLogData::redact(['first_token_ms' => 412, 'token' => 'ABC123']);
-
-        $this->assertSame(412, $out['first_token_ms']);
-        $this->assertSame('[redacted]', $out['token']);
-    }
-
     public function test_redact_describes_throwables_safely(): void
     {
         $out = RedactSensitiveLogData::redact(['exception' => new RuntimeException('no se pudo llamar a +525512345678')]);
