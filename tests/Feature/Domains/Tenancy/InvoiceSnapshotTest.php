@@ -354,7 +354,7 @@ class InvoiceSnapshotTest extends TestCase
         $skipped = $this->assertSystemLogged('billing.invoice.already_exists');
         $this->assertSame('skipped', $skipped['outcome']);
         $this->assertSame('period_already_invoiced', $skipped['reason']);
-        $this->assertSame('invoice_job', $skipped['input']['stage']);
+        $this->assertSame('invoice', $skipped['input']['stage']);
         $this->assertSame($team->id, $skipped['input']['team_id']);
         $this->assertSame($periodStart, $skipped['input']['period_start']);
         $this->assertCount(1, $this->systemLogEntries('billing.invoice.generated'));

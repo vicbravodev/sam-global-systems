@@ -118,7 +118,7 @@ class ReconcileMessagingChargesJob implements ShouldQueue
                     SystemLog::degraded('billing.messaging_charge.reconcile_failed', reason: 'provider_error', input: [
                         'team_id' => $charge->team_id,
                         'charge_id' => $charge->id,
-                        'provider_sid' => $charge->provider_sid,
+                        'provider_sid' => LoggableCode::guard($charge->provider_sid),
                         'error_class' => class_basename($e),
                         // Sólo el código de un error de Twilio es un código de Twilio.
                         'provider_error_code' => $e instanceof TwilioException ? $e->getCode() : null,

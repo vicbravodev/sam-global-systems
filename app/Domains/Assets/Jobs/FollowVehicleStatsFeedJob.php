@@ -94,7 +94,7 @@ class FollowVehicleStatsFeedJob implements ShouldBeUnique, ShouldQueue
             // Rare: the dispatcher already skips paused cursors.
             SystemLog::skipped('telematics.cycle.paused', reason: 'paused', input: $cycleInput, calc: [
                 'paused_until' => $cursor->paused_until->toIso8601String(),
-                'seconds_remaining' => (int) now()->diffInSeconds($cursor->paused_until),
+                'remaining_s' => (int) now()->diffInSeconds($cursor->paused_until),
                 'consecutive_failures' => $cursor->consecutive_failures,
             ], channel: 'telematics');
 

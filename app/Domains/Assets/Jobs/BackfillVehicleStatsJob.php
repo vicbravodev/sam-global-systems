@@ -96,7 +96,7 @@ class BackfillVehicleStatsJob implements ShouldBeUnique, ShouldQueue
             $releaseSeconds = (int) ceil(max(1.0, $e->retryAfterSeconds));
             $this->release($releaseSeconds);
 
-            SystemLog::skipped('telematics.backfill.completed', reason: 'rate_limited', input: $input, calc: ['release_s' => $releaseSeconds, 'pages_stored_before' => $pages], channel: 'telematics');
+            SystemLog::skipped('telematics.backfill.completed', reason: 'rate_limited', input: $input, calc: ['retry_after_s' => $e->retryAfterSeconds, 'release_s' => $releaseSeconds, 'pages_stored_before' => $pages], channel: 'telematics');
 
             return;
         } catch (ProviderUnauthorized) {

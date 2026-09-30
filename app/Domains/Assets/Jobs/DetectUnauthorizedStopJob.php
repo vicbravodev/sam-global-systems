@@ -150,6 +150,7 @@ class DetectUnauthorizedStopJob implements ShouldQueue
      */
     private function logSweep(int $teamId, int $stopMinutes, ?int $geofencesCount, int $candidatesCount, array $counts): void
     {
+        // Rutina (debug) salvo que algo se haya levantado o deduplicado.
         SystemLog::ok('assets.unauthorized_stop_sweep.completed', input: ['team_id' => $teamId], calc: [
             'stop_minutes' => $stopMinutes,
             'freshness_minutes' => self::FRESHNESS_MINUTES,
@@ -163,7 +164,7 @@ class DetectUnauthorizedStopJob implements ShouldQueue
             'same_place_count' => $counts['same_place'],
             'raised_count' => $counts['raised'],
             'already_raised_count' => $counts['already_raised'],
-        ], debug: $candidatesCount === 0);
+        ], debug: $candidatesCount === 0 || ($counts['raised'] === 0 && $counts['already_raised'] === 0));
     }
 
     /**

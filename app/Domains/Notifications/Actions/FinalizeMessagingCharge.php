@@ -61,7 +61,7 @@ class FinalizeMessagingCharge
         $input = [
             'team_id' => $charge->team_id,
             'charge_id' => $charge->id,
-            'provider_sid' => $charge->provider_sid,
+            'provider_sid' => LoggableCode::guard($charge->provider_sid),
             'resource_type' => $charge->resource_type->value,
             'channel_type' => $charge->channel_type->value,
         ];

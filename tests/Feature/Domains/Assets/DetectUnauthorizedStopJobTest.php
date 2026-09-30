@@ -170,6 +170,8 @@ class DetectUnauthorizedStopJobTest extends TestCase
         $this->assertSame(1, $sweep['result']['candidates_count']);
         $this->assertSame(1, $sweep['result']['inside_geofence_count']);
         $this->assertSame(0, $sweep['result']['raised_count']);
+        // Nothing raised nor deduped: a routine sweep, at debug.
+        $this->assertSame('debug', $this->systemLogEntries('assets.unauthorized_stop_sweep.completed')[0]['level']);
         $this->assertSystemNotLogged('assets.unauthorized_stop.raised');
         $this->assertNoSensitiveDataLogged();
     }

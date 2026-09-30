@@ -123,7 +123,7 @@ class GenerateInvoiceSnapshotJob implements ShouldQueue
                 ->exists();
 
             if ($existingSnapshot) {
-                SystemLog::skipped('billing.invoice.already_exists', reason: 'period_already_invoiced', input: [...$logInput, 'stage' => 'invoice_job']);
+                SystemLog::skipped('billing.invoice.already_exists', reason: 'period_already_invoiced', input: [...$logInput, 'stage' => 'invoice']);
 
                 return;
             }

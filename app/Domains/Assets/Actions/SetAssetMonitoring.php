@@ -48,7 +48,7 @@ class SetAssetMonitoring
             $blocked = TenantCanSend::blockedReason($teamId);
             $blockedLogged = false;
 
-            return $this->apply($asset, $state, $actor, $reason, $cap, $monitored, $blocked, $blockedLogged);
+            return $this->apply($asset, $state, $actor, $reason, $cap, $monitored, $blocked, $blockedLogged, batch: false);
         });
     }
 
@@ -87,7 +87,7 @@ class SetAssetMonitoring
                     continue;
                 }
 
-                $last = $this->apply($asset, $state, $actor, $reason, $cap, $monitored, $blocked, $blockedLogged);
+                $last = $this->apply($asset, $state, $actor, $reason, $cap, $monitored, $blocked, $blockedLogged, batch: true);
                 $changed += $last['changed'] ? 1 : 0;
             }
 
@@ -105,16 +105,17 @@ class SetAssetMonitoring
      * @param  int  $monitored  the tenant's monitored count before this change; updated in place
      * @param  string|null  $blocked  why the tenant accrues no asset-days (TenantCanSend), null when it does
      * @param  bool  $blockedLogged  whether `billing.tenant.blocked` already went out in this call; updated in place
+     * @param  bool  $batch  part of executeMany(): its no-ops are routine, so they go to debug
      * @return array{asset: Asset, changed: bool, over_cap: bool, monitored: int, cap: int|null}
      */
-    private function apply(Asset $asset, AssetMonitoringState $state, ?User $actor, ?string $reason, ?int $cap, int &$monitored, ?string $blocked, bool &$blockedLogged): array
+    private function apply(Asset $asset, AssetMonitoringState $state, ?User $actor, ?string $reason, ?int $cap, int &$monitored, ?string $blocked, bool &$blockedLogged, bool $batch): array
     {
         $billable = $blocked === null;
         $previous = $asset->monitoring_state;
         $monitoredBefore = $monitored;
 
         if ($previous === $state) {
-            SystemLog::skipped('assets.monitoring.changed', reason: 'same_state', input: ['team_id' => (int) $asset->team_id, 'asset_id' => $asset->id], calc: ['state' => $state->value]);
+            SystemLog::skipped('assets.monitoring.changed', reason: 'same_state', input: ['team_id' => (int) $asset->team_id, 'asset_id' => $asset->id], calc: ['state' => $state->value], debug: $batch);
 
             return [
                 'asset' => $asset,

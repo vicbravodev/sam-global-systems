@@ -142,6 +142,7 @@ class BackfillVehicleStatsJobTest extends TestCase
 
         $this->assertSystemLogged('telematics.backfill.completed', fn (array $c) => $c['reason'] === 'rate_limited'
             && $c['calc']['release_s'] === 8
+            && $c['calc']['retry_after_s'] === 7.2
             && $c['calc']['pages_stored_before'] === 0);
     }
 

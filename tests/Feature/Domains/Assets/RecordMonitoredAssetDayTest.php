@@ -66,6 +66,11 @@ class RecordMonitoredAssetDayTest extends TestCase
         $this->assertSystemLogged('billing.usage.recorded', fn (array $c) => $c['input']['meter_code'] === 'monitored_asset_days'
             && $c['input']['event_key'] === $key);
 
+        // Fuera del cierre diario el duplicado sigue en info.
+        $duplicate = $this->systemLogEntries('billing.usage.duplicate_ignored');
+        $this->assertCount(1, $duplicate);
+        $this->assertSame('info', $duplicate[0]['level']);
+
         // El segundo encendido del día: ya cobrado, en info (no viene del cierre).
         $skipped = $this->systemLogEntries('billing.monitored_day.skipped');
         $this->assertCount(1, $skipped);
@@ -137,6 +142,16 @@ class RecordMonitoredAssetDayTest extends TestCase
         foreach ($skipped as $entry) {
             $this->assertSame('debug', $entry['level']);
             $this->assertSame('already_recorded', $entry['context']['reason']);
+        }
+        // The re-run's asset-day duplicates are routine for the daily close too.
+        $duplicates = array_values(array_filter(
+            $this->systemLogEntries('billing.usage.duplicate_ignored'),
+            fn (array $e) => $e['context']['input']['meter_code'] === AssetDayPricing::METER_CODE,
+        ));
+        $this->assertCount(2, $duplicates);
+        foreach ($duplicates as $entry) {
+            $this->assertSame('debug', $entry['level']);
+            $this->assertSame('event_key_exists', $entry['context']['reason']);
         }
         $this->assertNoSensitiveDataLogged();
     }

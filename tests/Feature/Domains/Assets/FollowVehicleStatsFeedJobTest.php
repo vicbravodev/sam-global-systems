@@ -387,7 +387,7 @@ class FollowVehicleStatsFeedJobTest extends TestCase
         $this->cycle($integration);
         Http::assertSentCount(1);
 
-        $this->assertSystemLogged('telematics.cycle.paused', fn (array $c) => $c['reason'] === 'paused' && $c['calc']['seconds_remaining'] === 3);
+        $this->assertSystemLogged('telematics.cycle.paused', fn (array $c) => $c['reason'] === 'paused' && $c['calc']['remaining_s'] === 3);
         $this->assertNoSensitiveDataLogged();
     }
 
@@ -507,7 +507,8 @@ class FollowVehicleStatsFeedJobTest extends TestCase
         Http::assertNothingSent();
         $context = $this->assertSystemLogged('telematics.cycle.paused', fn (array $c) => $c['reason'] === 'paused');
         $this->assertSame(['integration_id' => $integration->id, 'feed' => 'motion'], $context['input']);
-        $this->assertSame(40, $context['calc']['seconds_remaining']);
+        $this->assertSame(40, $context['calc']['remaining_s']);
+        $this->assertArrayNotHasKey('seconds_remaining', $context['calc']);
         $this->assertSame(3, $context['calc']['consecutive_failures']);
         $this->assertSame($this->cursor($integration)->paused_until->toIso8601String(), $context['calc']['paused_until']);
         $this->assertSame('telematics', $this->systemLogEntries('telematics.cycle.paused')[0]['channel']);

@@ -429,6 +429,30 @@ class ReconcileMessagingChargesJobTest extends TestCase
         $this->assertLogsAreClean();
     }
 
+    public function test_a_provider_sid_that_is_not_a_code_is_never_logged(): void
+    {
+        $charge = MessagingCharge::factory()->create([
+            'team_id' => $this->team->id,
+            'provider_sid' => 'SM bad/sid',
+            'next_check_at' => now()->subMinute(),
+        ]);
+        $this->providerErrors['SM bad/sid'] = 20500;
+
+        $this->runReconciler();
+
+        $failed = $this->assertSystemLogged('billing.messaging_charge.reconcile_failed');
+        $this->assertArrayHasKey('provider_sid', $failed['input']);
+        $this->assertNull($failed['input']['provider_sid']);
+
+        app(FinalizeMessagingCharge::class)->withoutCost($charge->fresh());
+
+        $finalized = $this->assertSystemLogged('billing.messaging_charge.finalized');
+        $this->assertArrayHasKey('provider_sid', $finalized['input']);
+        $this->assertNull($finalized['input']['provider_sid']);
+        $this->assertStringNotContainsString('bad/sid', (string) json_encode($this->systemLogEntries()));
+        $this->assertLogsAreClean();
+    }
+
     public function test_an_already_finalized_charge_is_skipped(): void
     {
         $charge = MessagingCharge::factory()->create([

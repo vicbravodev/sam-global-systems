@@ -182,6 +182,31 @@ class AssetMonitoringTest extends TestCase
         $this->assertSame(['team_id' => $team->id, 'asset_id' => $asset->id], $context['input']);
         $this->assertSame(['state' => 'monitored'], $context['calc']);
         $this->assertSame(1, count($this->systemLogEntries('assets.monitoring.changed')));
+        // A single toggle keeps its no-op at info.
+        $this->assertSame('info', $this->systemLogEntries('assets.monitoring.changed')[0]['level']);
+    }
+
+    public function test_a_batch_logs_its_same_state_units_at_debug(): void
+    {
+        [$team] = $this->setupTeam(assetLimit: null);
+        $already = Asset::factory()->count(2)->create(['team_id' => $team->id]);
+        $pending = Asset::factory()->pendingMonitoring()->create(['team_id' => $team->id]);
+
+        app(SetAssetMonitoring::class)->executeMany($team->id, [...$already, $pending], AssetMonitoringState::Monitored);
+
+        $sameState = array_values(array_filter($this->systemLogEntries('assets.monitoring.changed'), fn (array $e) => ($e['context']['reason'] ?? null) === 'same_state'));
+        $this->assertCount(2, $sameState);
+        foreach ($sameState as $entry) {
+            $this->assertSame('debug', $entry['level']);
+        }
+        // The real change stays at info.
+        $changed = $this->assertSystemLogged('assets.monitoring.changed', fn (array $c) => $c['outcome'] === 'ok');
+        $this->assertSame($pending->id, $changed['input']['asset_id']);
+        $this->assertSame(['info'], array_values(array_unique(array_map(
+            fn (array $e) => $e['level'],
+            array_filter($this->systemLogEntries('assets.monitoring.changed'), fn (array $e) => $e['context']['outcome'] === 'ok'),
+        ))));
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_a_switch_that_rolls_back_is_never_logged_as_changed(): void

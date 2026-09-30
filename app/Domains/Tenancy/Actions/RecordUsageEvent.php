@@ -30,6 +30,8 @@ class RecordUsageEvent
     /**
      * Igual que `execute()`, pero dice si ESTE llamado insertó la fila
      * (`insertOrIgnore > 0`) o si la `event_key` ya existía.
+     *
+     * @param  bool  $debug  sólo baja a `debug` la línea `billing.usage.duplicate_ignored` (llamadores para los que repetir es rutina, como el cierre diario)
      */
     public function record(
         int $teamId,
@@ -38,8 +40,9 @@ class RecordUsageEvent
         string $eventKey,
         ?array $metadata = null,
         ?DateTimeInterface $occurredAt = null,
+        bool $debug = false,
     ): bool {
-        return TenantContext::for($teamId, function () use ($teamId, $meterCode, $quantity, $eventKey, $metadata, $occurredAt): bool {
+        return TenantContext::for($teamId, function () use ($teamId, $meterCode, $quantity, $eventKey, $metadata, $occurredAt, $debug): bool {
             // Nunca `$metadata` en el log: la `event_key` ya identifica el uso.
             $logInput = ['team_id' => $teamId, 'meter_code' => $meterCode, 'event_key' => $eventKey];
 
@@ -93,6 +96,7 @@ class RecordUsageEvent
                     reason: 'event_key_exists',
                     input: $logInput,
                     calc: ['quantity' => $quantity, 'billing_period_key' => $billingPeriodKey],
+                    debug: $debug,
                 );
             }
 

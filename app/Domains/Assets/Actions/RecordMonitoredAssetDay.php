@@ -93,6 +93,7 @@ class RecordMonitoredAssetDay
                 eventKey: $eventKey,
                 metadata: ['asset_id' => $asset->id, 'local_date' => $localDate],
                 occurredAt: AssetDayPricing::localNoon($localDate),
+                debug: $fromDailyClose,
             );
 
             if ($inserted) {
