@@ -175,6 +175,16 @@ export function CopilotMessageView({
                     </div>
                 )}
 
+                {!message.streaming &&
+                    message.content === '' &&
+                    message.blocks.length === 0 && (
+                        <div className="text-xs text-fg-3">
+                            {message.partial
+                                ? 'Se detuvo la respuesta antes de generar contenido.'
+                                : 'No se generó una respuesta. Intenta de nuevo.'}
+                        </div>
+                    )}
+
                 {message.partial && !message.streaming && (
                     <div className="mt-1.5 text-2xs text-fg-3">
                         Respuesta incompleta

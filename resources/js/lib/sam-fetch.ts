@@ -70,7 +70,7 @@ export function postStream(
         signal,
         headers: {
             'Content-Type': 'application/json',
-            Accept: 'text/event-stream',
+            Accept: 'application/json, text/event-stream',
             'X-Requested-With': 'XMLHttpRequest',
             ...(token ? { 'X-XSRF-TOKEN': token } : {}),
         },

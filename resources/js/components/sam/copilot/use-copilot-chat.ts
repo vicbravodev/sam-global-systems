@@ -42,6 +42,50 @@ export function useCopilotChat({
 
     const base = `/${teamSlug}/copilot`;
 
+    /**
+     * A new thread whose stream ended without the final message never learned
+     * its conversation id. The catalog lists the user's conversations; the one
+     * that was just created is the newest with activity since the turn began
+     * (60 s of client/server clock skew tolerated).
+     */
+    const adoptConversation = useCallback(
+        async (since: number) => {
+            if (conversationId !== null) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${base}/catalog`, {
+                    credentials: 'same-origin',
+                    headers: { Accept: 'application/json' },
+                });
+
+                if (!response.ok) {
+                    return;
+                }
+
+                const data = (await response.json()) as {
+                    conversations?: CopilotConversation[];
+                };
+                const created = (data.conversations ?? [])
+                    .filter(
+                        (c) =>
+                            c.lastMessageAt !== null &&
+                            Date.parse(c.lastMessageAt) >= since - 60_000,
+                    )
+                    .sort((a, b) => b.id - a.id)[0];
+
+                if (created) {
+                    setConversationId(created.id);
+                    onConversationSaved?.(created);
+                }
+            } catch {
+                // Best effort: the next send simply starts a new thread.
+            }
+        },
+        [base, conversationId, onConversationSaved],
+    );
+
     const send = useCallback(
         async (content: string, hints: CopilotSendHints = {}) => {
             const text = content.trim();
@@ -77,14 +121,19 @@ export function useCopilotChat({
             abortRef.current = controller;
 
             const draftId = optimistic.id - 1;
+            const startedAt = Date.now();
+            let completed = false;
+            let rejected = false;
             const patch = (fn: (m: CopilotMessage) => CopilotMessage) =>
                 setMessages((current) =>
                     current.map((m) => (m.id === draftId ? fn(m) : m)),
                 );
-            const dropOptimistic = () =>
+            const dropOptimistic = () => {
+                rejected = true;
                 setMessages((current) =>
                     current.filter((m) => m.id !== optimistic.id),
                 );
+            };
 
             try {
                 const response = await postStream(
@@ -189,6 +238,7 @@ export function useCopilotChat({
                             break;
                         case 'data-copilot-message':
                             // Authoritative: replaces the optimistic question and the draft.
+                            completed = true;
                             setConversationId(part.data.conversation.id);
                             setMessages((current) => [
                                 ...current.filter(
@@ -221,22 +271,40 @@ export function useCopilotChat({
                     dropOptimistic();
                 }
             } finally {
-                // Anything still streaming ended without a final message (stop, drop).
-                patch((m) =>
-                    m.streaming
-                        ? {
-                              ...m,
-                              streaming: false,
-                              partial: true,
-                              activeTools: [],
-                          }
-                        : m,
-                );
+                if (!completed && !rejected) {
+                    // The stream ended without the final message (stop, drop,
+                    // server omitted it). The server stored the question, so it
+                    // stays visible; only the client-side flags are settled.
+                    setMessages((current) =>
+                        current.map((m) =>
+                            m.id === optimistic.id
+                                ? { ...m, pending: false }
+                                : m.id === draftId
+                                  ? {
+                                        ...m,
+                                        streaming: false,
+                                        partial: true,
+                                        activeTools: [],
+                                    }
+                                  : m,
+                        ),
+                    );
+                    void adoptConversation(startedAt);
+                }
+
                 setBusy(false);
                 abortRef.current = null;
             }
         },
-        [base, busy, channel, conversationId, onConversationSaved, onQuota],
+        [
+            adoptConversation,
+            base,
+            busy,
+            channel,
+            conversationId,
+            onConversationSaved,
+            onQuota,
+        ],
     );
 
     const stop = useCallback(() => abortRef.current?.abort(), []);

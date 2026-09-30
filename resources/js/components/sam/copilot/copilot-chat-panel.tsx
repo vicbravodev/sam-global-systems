@@ -79,13 +79,19 @@ export function CopilotChatPanel({
         [turnKey],
     );
 
+    // Follows streamed text and cards while an answer is being written.
+    const lastMessage = chat.messages[chat.messages.length - 1];
+    const streamTick = lastMessage?.streaming
+        ? lastMessage.content.length + lastMessage.blocks.length
+        : 0;
+
     useEffect(() => {
         const el = scrollRef.current;
 
         if (el) {
             el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
         }
-    }, [chat.messages.length, chat.busy]);
+    }, [chat.messages.length, chat.busy, streamTick]);
 
     const sampleAsset = asset ?? catalog.assets[0] ?? null;
 
