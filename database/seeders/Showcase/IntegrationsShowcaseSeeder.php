@@ -14,6 +14,7 @@ use App\Domains\Integrations\Models\IntegrationSyncJob;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Domains\Integrations\Models\WebhookEndpoint;
 use App\Domains\Integrations\Models\WebhookEvent;
+use Illuminate\Support\Str;
 
 /**
  * Integraciones con salud mixta: la conexión Samsara real del tenant (o una
@@ -120,7 +121,12 @@ class IntegrationsShowcaseSeeder extends ShowcaseStep
         WebhookEndpoint::query()->create([
             'tenant_integration_id' => $integration->id,
             'status' => $status,
+            // Sandbox de demo: una llave propia (el replay firma con ella) y
+            // salud por firma coherente con la última recepción.
+            'secret' => Str::random(64),
+            'secret_configured_at' => $this->ctx->now->subDays(30),
             'last_received_at' => $lastReceivedAt,
+            'last_valid_received_at' => $lastReceivedAt,
         ]);
         $this->ctx->count('webhook_endpoints');
     }

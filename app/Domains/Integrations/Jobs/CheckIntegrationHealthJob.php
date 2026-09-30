@@ -13,6 +13,7 @@ use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Enums\NotificationPriority;
 use App\Domains\Notifications\Enums\NotificationSourceType;
 use App\Domains\Notifications\Enums\NotificationTriggeredByType;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Carbon\CarbonInterface;
 use Illuminate\Bus\Queueable;
@@ -31,7 +32,11 @@ use Illuminate\Support\Carbon;
  * - la integración queda en `error` (token revocado, 401), o
  * - la integración está callada: ni feed de posiciones, ni webhooks, ni
  *   eventos en `telematics.integration_silence_minutes` teniendo unidades
- *   vigiladas.
+ *   vigiladas, o
+ * - su webhook está degradado: sin la Secret Key de Samsara (rechaza todo)
+ *   o rechazando firmas sin ningún válido después. Se evalúa aparte del feed
+ *   de posiciones: el feed vivo no prueba que los pánicos (que sólo llegan
+ *   por webhook) estén entrando.
  *
  * Sólo vigila integraciones que ya sincronizaron sus entidades principales
  * (`last_sync_at`): antes de eso no hay flota que proteger. Un aviso por
@@ -73,6 +78,8 @@ class CheckIntegrationHealthJob implements ShouldQueue
             return;
         }
 
+        $this->inspectWebhooks($integration, $sendNotification);
+
         if ($integration->status === TenantIntegrationStatus::Error) {
             $since = $integration->last_error_at ?? $integration->updated_at ?? now();
 
@@ -109,11 +116,73 @@ class CheckIntegrationHealthJob implements ShouldQueue
         );
     }
 
+    /**
+     * Salud de webhooks por firma (WebhookEndpoint::signatureHealth). Un aviso
+     * por episodio: el ancla es el último válido o la última configuración
+     * de la llave, lo que sea más reciente.
+     */
+    private function inspectWebhooks(TenantIntegration $integration, SendNotification $sendNotification): void
+    {
+        // webhook_endpoints no lleva team_id: el tenant lo acota la integración.
+        $endpoints = WebhookEndpoint::query()
+            ->where('tenant_integration_id', $integration->id)
+            ->where('status', 'active')
+            ->get();
+
+        foreach ($endpoints as $endpoint) {
+            $health = $endpoint->signatureHealth();
+
+            if (! in_array($health, [WebhookEndpoint::HEALTH_PENDING_SECRET, WebhookEndpoint::HEALTH_REJECTING], true)) {
+                continue;
+            }
+
+            SystemLog::degraded('integrations.health.webhook_degraded', reason: $health, input: [
+                'team_id' => (int) $integration->team_id,
+                'integration_id' => (int) $integration->id,
+                'webhook_endpoint_id' => (int) $endpoint->id,
+                'last_rejection_reason' => $endpoint->last_rejection_reason,
+            ], calc: [
+                'secret_configured' => $endpoint->hasSecret(),
+                'last_valid_received_at' => $endpoint->last_valid_received_at?->toIso8601String(),
+                'last_rejected_at' => $endpoint->last_rejected_at?->toIso8601String(),
+                'rejection_window_hours' => WebhookEndpoint::REJECTION_WINDOW_HOURS,
+            ]);
+
+            if ($health === WebhookEndpoint::HEALTH_PENDING_SECRET) {
+                $this->alert(
+                    $sendNotification,
+                    $integration,
+                    eventKey: sprintf('integration_webhook_secret:%d:%d', $integration->id, $endpoint->id),
+                    subject: "Falta la Secret Key del webhook de {$integration->name}",
+                    body: 'SAM rechaza todos los webhooks de este proveedor (incluidos los pánicos) hasta que copies '
+                        .'la Secret Key que generó al crear el webhook. Configúrala en Integraciones.',
+                );
+
+                continue;
+            }
+
+            $anchor = collect([$endpoint->last_valid_received_at, $endpoint->secret_configured_at, $endpoint->created_at])
+                ->filter()
+                ->sortDesc()
+                ->first();
+
+            $this->alert(
+                $sendNotification,
+                $integration,
+                eventKey: sprintf('integration_webhook_rejected:%d:%d:%d', $integration->id, $endpoint->id, $anchor?->getTimestamp() ?? 0),
+                subject: "SAM está rechazando los webhooks de {$integration->name}",
+                body: 'Los webhooks llegan con una firma que no coincide con la Secret Key guardada, así que no se '
+                    .'procesan (incluidos los pánicos). Revisa que la Secret Key en Integraciones sea la del webhook actual.',
+            );
+        }
+    }
+
     private function lastDataAt(TenantIntegration $integration): ?CarbonInterface
     {
+        // Sólo webhooks con firma válida: un rechazo no prueba que llegue nada útil.
         $webhook = WebhookEndpoint::query()
             ->where('tenant_integration_id', $integration->id)
-            ->max('last_received_at');
+            ->max('last_valid_received_at');
 
         // Sólo lo que manda el proveedor: los eventos internos (p. ej. el
         // propio "dejó de reportar") no prueban que la integración viva.

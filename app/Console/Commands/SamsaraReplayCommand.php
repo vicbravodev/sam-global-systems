@@ -87,6 +87,12 @@ class SamsaraReplayCommand extends Command
             return self::FAILURE;
         }
 
+        if (! $endpoint->hasSecret()) {
+            $this->error('The webhook endpoint has no Samsara Secret Key yet: every webhook would be rejected (secret_not_configured). Configure it in Integraciones first.');
+
+            return self::FAILURE;
+        }
+
         $this->info('Replaying '.count($events)." event(s) to endpoint {$endpoint->url} (team {$team->slug})...");
 
         $sent = 0;
@@ -113,7 +119,7 @@ class SamsaraReplayCommand extends Command
             // ("v1=<hmac>") and X-Samsara-Timestamp headers.
             $rawPayload = (string) json_encode($body);
             $timestamp = (string) now()->getTimestampMs();
-            $signature = 'v1='.hash_hmac('sha256', 'v1:'.$timestamp.':'.$rawPayload, $endpoint->secret);
+            $signature = 'v1='.hash_hmac('sha256', 'v1:'.$timestamp.':'.$rawPayload, (string) $endpoint->secret);
 
             $handleWebhook->execute(
                 $endpoint,

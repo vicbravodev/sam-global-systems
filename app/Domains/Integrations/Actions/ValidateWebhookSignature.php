@@ -18,10 +18,15 @@ class ValidateWebhookSignature
         ?string $timestamp = null,
         ?\DateTimeInterface $receivedAt = null,
     ): bool {
+        // Fail-closed: sin la Secret Key de Samsara no hay firma que aceptar.
+        if (! $endpoint->hasSecret()) {
+            return false;
+        }
+
         return $this->providerAdapter->validateWebhookSignature(
             $payload,
             $signature,
-            $endpoint->secret,
+            (string) $endpoint->secret,
             $timestamp,
             $receivedAt,
         );
