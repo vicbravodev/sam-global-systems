@@ -19,7 +19,14 @@ class MapExternalEventType
         ?array $payload = null,
     ): ?EventMappingRule {
         $candidates = EventMappingRule::query()
-            ->with('mappedEventType')
+            // Todo lo que la normalización lee de la regla ganadora: con varias
+            // candidatas Eloquent prohíbe el lazy loading fuera de producción.
+            ->with([
+                'mappedEventType.defaultSeverity',
+                'mappedEventType.category',
+                'mappedSeverity',
+                'mappedCategory',
+            ])
             ->active()
             ->where('provider_id', $providerId)
             ->where('external_event_type', $externalEventType)
