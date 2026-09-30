@@ -48,6 +48,10 @@ class CopilotToolPermissionsTest extends TestCase
         $this->assertNotContains('asset_activity', $names);
         $this->assertNotContains('asset_media', $names);
         $this->assertNotContains('driver_ranking', $names);
+        $this->assertContains('rank_assets', $names);
+        $this->assertContains('find_assets', $names);
+        $this->assertNotContains('search_events', $names);
+        $this->assertNotContains('asset_timeline', $names);
     }
 
     public function test_no_permissions_means_no_tools(): void
@@ -60,14 +64,14 @@ class CopilotToolPermissionsTest extends TestCase
         [$user, $team] = $this->memberWithRole('supervisor');
         $names = $this->toolNames($team, app(AuthorizeAction::class)->resolvePermissions($user, $team));
 
-        $this->assertCount(10, $names);
+        $this->assertCount(14, $names);
     }
 
     public function test_super_admin_gets_every_tool(): void
     {
         $names = $this->toolNames(Team::factory()->create(), [], true);
 
-        $this->assertCount(10, $names);
+        $this->assertCount(14, $names);
         $this->assertSame(array_unique($names), $names);
         $this->assertContains('open_incidents', $names);
         $this->assertContains('driver_ranking', $names);

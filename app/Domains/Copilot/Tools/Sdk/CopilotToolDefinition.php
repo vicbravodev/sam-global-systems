@@ -9,11 +9,15 @@ use App\Domains\Copilot\Tools\AssetFuelTool;
 use App\Domains\Copilot\Tools\AssetLocationTool;
 use App\Domains\Copilot\Tools\AssetMediaTool;
 use App\Domains\Copilot\Tools\AssetSummaryTool;
+use App\Domains\Copilot\Tools\AssetTimelineTool;
 use App\Domains\Copilot\Tools\CopilotTool;
 use App\Domains\Copilot\Tools\DriverRankingTool;
+use App\Domains\Copilot\Tools\FindAssetsTool;
 use App\Domains\Copilot\Tools\FleetOverviewTool;
 use App\Domains\Copilot\Tools\OpenIncidentsTool;
 use App\Domains\Copilot\Tools\PanicKpisTool;
+use App\Domains\Copilot\Tools\RankAssetsTool;
+use App\Domains\Copilot\Tools\SearchEventsTool;
 
 /**
  * Registry of the data tools the Copilot agent can call: the name and
@@ -57,6 +61,10 @@ final readonly class CopilotToolDefinition
             new self('open_incidents', 'Incidentes abiertos ahora, por severidad y SLA. asset_code opcional.', OpenIncidentsTool::class, 'incidents.view', CopilotIntent::OpenIncidents, false),
             new self('driver_ranking', 'Ranking de conductores por riesgo y fatiga.', DriverRankingTool::class, 'drivers.view', CopilotIntent::DriverRanking, false),
             new self('fleet_overview', 'Estado de toda la flota o una categoría: en ruta, detenidas, sin señal, en alerta, con mapa.', FleetOverviewTool::class, 'assets.view', CopilotIntent::FleetOverview, false),
+            new self('find_assets', 'Busca unidades por número económico o nombre cuando no estás seguro del código exacto.', FindAssetsTool::class, 'assets.view', CopilotIntent::General, false, FindAssetsSdkTool::class, 'Búsqueda de unidades'),
+            new self('rank_assets', 'Compara TODAS las unidades por una métrica en un periodo y marca las atípicas. Úsala para "cuál gastó más", "top", "peores", "comparar flota".', RankAssetsTool::class, 'assets.view', CopilotIntent::AssetRanking, false, RankAssetsSdkTool::class),
+            new self('search_events', 'Busca eventos de la flota en el periodo por tipo, severidad o unidad: conteos por tipo y severidad y los más recientes. asset_code opcional.', SearchEventsTool::class, 'incidents.view', CopilotIntent::EventSearch, false, SearchEventsSdkTool::class),
+            new self('asset_timeline', 'Línea de tiempo de una unidad en el periodo: eventos, incidentes y tramos de ralentí de 10 min o más, en orden cronológico. Requiere asset_code.', AssetTimelineTool::class, 'incidents.view', CopilotIntent::AssetTimeline, true),
         ])->keyBy('name')->all();
     }
 

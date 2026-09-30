@@ -18,11 +18,13 @@ use App\Domains\Copilot\Tools\AssetFuelTool;
 use App\Domains\Copilot\Tools\AssetLocationTool;
 use App\Domains\Copilot\Tools\AssetMediaTool;
 use App\Domains\Copilot\Tools\AssetSummaryTool;
+use App\Domains\Copilot\Tools\AssetTimelineTool;
 use App\Domains\Copilot\Tools\CopilotTool;
 use App\Domains\Copilot\Tools\DriverRankingTool;
 use App\Domains\Copilot\Tools\FleetOverviewTool;
 use App\Domains\Copilot\Tools\OpenIncidentsTool;
 use App\Domains\Copilot\Tools\PanicKpisTool;
+use App\Domains\Copilot\Tools\SearchEventsTool;
 use App\Support\TenantContext;
 use Illuminate\Contracts\Container\Container;
 
@@ -45,6 +47,10 @@ class AnswerCopilotQuestion
         'open_incidents' => [OpenIncidentsTool::class],
         'driver_ranking' => [DriverRankingTool::class],
         'fleet_overview' => [FleetOverviewTool::class],
+        // Ranking needs a metric only the agent picks; the deterministic path has nothing to run.
+        'asset_ranking' => [],
+        'event_search' => [SearchEventsTool::class],
+        'asset_timeline' => [AssetTimelineTool::class],
         'general' => [],
     ];
 

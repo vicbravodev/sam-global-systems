@@ -58,6 +58,14 @@ final class CopilotPresenter
         return "/{$teamSlug}/drivers/{$driverId}";
     }
 
+    /**
+     * Severity code the UI badge understands; unknown codes read as info.
+     */
+    public static function severity(?string $code): string
+    {
+        return in_array($code, ['critical', 'high', 'medium', 'low'], true) ? $code : 'info';
+    }
+
     public static function mapsUrl(float $latitude, float $longitude): string
     {
         return 'https://www.google.com/maps/search/?api=1&query='.$latitude.','.$longitude;

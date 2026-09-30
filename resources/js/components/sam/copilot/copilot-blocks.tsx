@@ -9,8 +9,10 @@ import {
     Film,
     Fuel,
     Gauge,
+    History,
     Image as ImageIcon,
     Info,
+    ListOrdered,
     MapPin,
     Navigation,
     Timer,
@@ -40,10 +42,13 @@ import type {
     MediaItem,
     MotionState,
     NoticeBlock,
+    RankingBlock,
     TelemetryBlock,
+    TimelineBlock,
+    TimelineItem,
     Tone,
 } from '@/types/copilot';
-import { timeAgo, timeOfDay } from './copilot-format';
+import { dayAndTime, timeAgo, timeOfDay } from './copilot-format';
 
 // maplibre-gl (~1 MB) only loads when an answer actually shows a map: this
 // module ships with the Copilot launcher on every Ops page.
@@ -168,6 +173,10 @@ function BlockSwitch({
             return <FleetMap block={block} compact={actions.compact} />;
         case 'asset_picker':
             return <AssetPicker block={block} actions={actions} />;
+        case 'ranking':
+            return <RankingTable block={block} />;
+        case 'timeline':
+            return <Timeline block={block} />;
         case 'notice':
             return <Notice block={block} />;
         default:
@@ -982,6 +991,170 @@ function DriverTable({ block }: { block: DriversBlock }) {
                     </tbody>
                 </table>
             </div>
+        </Card>
+    );
+}
+
+function formatValue(value: number): string {
+    return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
+function RankingTable({ block }: { block: RankingBlock }) {
+    const max = Math.max(1, ...block.items.map((i) => i.value));
+
+    return (
+        <Card>
+            <CardHead
+                icon={ListOrdered}
+                title={`Ranking de unidades · ${block.label}`}
+            />
+            <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                    <thead>
+                        <tr className="border-b border-border bg-surface-3 text-left text-3xs font-semibold tracking-caps text-fg-3 uppercase">
+                            <th className="px-3 py-1.5">#</th>
+                            <th className="px-2 py-1.5">Unidad</th>
+                            <th className="px-3 py-1.5 text-right">
+                                {block.unit}
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                        {block.items.map((item, index) => (
+                            <tr
+                                key={item.assetId}
+                                className="hover:bg-surface-2"
+                            >
+                                <td className="px-3 py-2 font-mono text-fg-3">
+                                    {index + 1}
+                                </td>
+                                <td className="px-2 py-2">
+                                    <span className="flex min-w-0 items-center gap-2">
+                                        <Link
+                                            href={item.href}
+                                            className="font-mono font-semibold text-fg-1 hover:underline"
+                                        >
+                                            {item.code ?? item.name}
+                                        </Link>
+                                        {item.code && (
+                                            <span className="truncate text-fg-3">
+                                                {item.name}
+                                            </span>
+                                        )}
+                                        {item.outlier && (
+                                            <span className="shrink-0 rounded-full border border-severity-high/40 bg-severity-high/8 px-1.5 py-px text-3xs font-medium text-severity-high">
+                                                atípica
+                                            </span>
+                                        )}
+                                    </span>
+                                </td>
+                                <td className="px-3 py-2">
+                                    <span className="flex items-center justify-end gap-2">
+                                        <span className="h-1 w-14 overflow-hidden rounded-full bg-surface-3">
+                                            <span
+                                                className={cn(
+                                                    'block h-full',
+                                                    item.outlier
+                                                        ? 'bg-severity-high'
+                                                        : 'bg-primary',
+                                                )}
+                                                style={{
+                                                    width: `${Math.min(100, (item.value / max) * 100)}%`,
+                                                }}
+                                            />
+                                        </span>
+                                        <span className="w-14 text-right font-mono font-semibold text-fg-1 tabular-nums">
+                                            {formatValue(item.value)}
+                                        </span>
+                                    </span>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                    <tfoot>
+                        <tr className="border-t border-border bg-surface-2 text-fg-2">
+                            <td className="px-3 py-1.5" />
+                            <td className="px-2 py-1.5 text-2xs">
+                                Promedio de flota
+                            </td>
+                            <td className="px-3 py-1.5 text-right font-mono text-2xs tabular-nums">
+                                {formatValue(block.average)} {block.unit}
+                            </td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </Card>
+    );
+}
+
+const TIMELINE_ICONS: Record<TimelineItem['kind'], React.ElementType> = {
+    event: Gauge,
+    incident: AlertTriangle,
+    idle: Timer,
+};
+
+function Timeline({ block }: { block: TimelineBlock }) {
+    return (
+        <Card>
+            <CardHead icon={History} title="Línea de tiempo" />
+            <ol className="divide-y divide-border">
+                {block.items.map((item, index) => {
+                    const Icon = TIMELINE_ICONS[item.kind];
+                    const body = (
+                        <>
+                            <Icon
+                                className={cn(
+                                    'size-3.5 shrink-0',
+                                    item.kind === 'incident'
+                                        ? 'text-severity-high'
+                                        : 'text-fg-3',
+                                )}
+                            />
+                            <span className="min-w-0">
+                                <span className="block truncate text-xs font-medium text-fg-1">
+                                    {item.label}
+                                    {item.kind === 'idle' &&
+                                        item.minutes !== undefined && (
+                                            <span className="font-normal text-fg-3">
+                                                {' '}
+                                                · {item.minutes} min
+                                            </span>
+                                        )}
+                                </span>
+                                <span className="block font-mono text-3xs text-fg-3">
+                                    {dayAndTime(item.at)}
+                                </span>
+                            </span>
+                            {item.severity ? (
+                                <SeverityBadge level={item.severity} />
+                            ) : (
+                                <span />
+                            )}
+                        </>
+                    );
+                    const rowClass =
+                        'grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 px-3 py-2';
+
+                    return (
+                        <li key={`${item.kind}-${item.at}-${index}`}>
+                            {item.href ? (
+                                <Link
+                                    href={item.href}
+                                    className={cn(
+                                        rowClass,
+                                        'hover:bg-surface-2',
+                                    )}
+                                >
+                                    {body}
+                                </Link>
+                            ) : (
+                                <div className={rowClass}>{body}</div>
+                            )}
+                        </li>
+                    );
+                })}
+            </ol>
         </Card>
     );
 }
