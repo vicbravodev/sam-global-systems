@@ -1215,6 +1215,17 @@ function Timeline({ block }: { block: TimelineBlock }) {
                     );
                 })}
             </ol>
+            {block.href &&
+                block.total !== undefined &&
+                block.total > block.items.length && (
+                    <Link
+                        href={block.href}
+                        className="flex items-center justify-center gap-1 border-t border-border bg-surface-2 px-3 py-2 text-2xs font-medium text-fg-2 hover:bg-surface-3 hover:text-fg-1"
+                    >
+                        Ver los {block.total} eventos
+                        <ArrowUpRight className="size-3" />
+                    </Link>
+                )}
         </Card>
     );
 }
