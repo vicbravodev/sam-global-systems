@@ -13,6 +13,8 @@ use App\Domains\Assets\Models\AssetLocationSnapshot;
 use App\Domains\Assets\Models\AssetTelemetrySnapshot;
 use App\Domains\Assets\Models\TelematicsFeedCursor;
 use App\Domains\Ingestion\Models\RawEvent;
+use App\Domains\Integrations\Contracts\ProviderAdapter;
+use App\Domains\Integrations\Data\VehicleStatsPage;
 use App\Domains\Integrations\Enums\TenantIntegrationStatus;
 use App\Domains\Integrations\Events\IntegrationStatusChanged;
 use App\Domains\Integrations\Models\IntegrationCredential;
@@ -26,12 +28,13 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\Concerns\AssertsTenantIsolation;
 use Tests\TestCase;
 
 class FollowVehicleStatsFeedJobTest extends TestCase
 {
-    use AssertsTenantIsolation, RefreshDatabase;
+    use AssertsSystemLog, AssertsTenantIsolation, RefreshDatabase;
 
     private const FEED_URL = 'api.samsara.com/fleet/vehicles/stats/feed*';
 
@@ -157,6 +160,23 @@ class FollowVehicleStatsFeedJobTest extends TestCase
         Event::assertDispatchedTimes(FleetPositionsUpdatedBroadcast::class, 1);
         Event::assertDispatched(FleetPositionsUpdatedBroadcast::class, fn (FleetPositionsUpdatedBroadcast $b) => $b->teamId === $integration->team_id
             && collect($b->positions)->pluck('asset_id')->sort()->values()->all() === collect([$truck->id, $van->id])->sort()->values()->all());
+
+        $this->assertSystemLogged('telematics.cycle.completed', fn (array $c) => $c['calc']['max_pages_hit'] === false
+            && $c['result']['cursor_advanced'] === true
+            && $c['result']['locations'] === 3
+            && $c['input'] === ['integration_id' => $integration->id, 'feed' => 'motion']);
+        $this->assertSame('telematics', $this->systemLogEntries('telematics.cycle.completed')[0]['channel']);
+
+        // The vehicle without an asset is dropped, at debug: normal every cycle.
+        $this->assertSystemLogged('telematics.points.dropped', fn (array $c) => $c['reason'] === 'unknown_vehicle' && $c['calc']['dropped_count'] === 1);
+        $dropped = $this->systemLogEntries('telematics.points.dropped')[0];
+        $this->assertSame('debug', $dropped['level']);
+        $this->assertSame('telematics', $dropped['channel']);
+
+        $json = (string) json_encode($this->systemLogEntries());
+        $this->assertStringNotContainsString('19.43', $json);
+        $this->assertStringNotContainsString('-99.13', $json);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_the_cursor_advances_and_is_sent_on_the_next_cycle(): void
@@ -196,6 +216,10 @@ class FollowVehicleStatsFeedJobTest extends TestCase
         $this->assertSame(3, $calls);
         $this->assertSame('cursor-3', $this->cursor($integration)->end_cursor);
         $this->assertSame(3, AssetLocationSnapshot::query()->count());
+
+        $context = $this->assertSystemLogged('telematics.cycle.completed', fn (array $c) => $c['calc']['max_pages_hit'] === true);
+        $this->assertSame(3, $context['calc']['max_pages_per_cycle']);
+        $this->assertSame($context['calc']['max_pages_per_cycle'], $context['result']['pages']);
     }
 
     public function test_replaying_a_window_stores_nothing_twice(): void
@@ -219,6 +243,16 @@ class FollowVehicleStatsFeedJobTest extends TestCase
 
         $this->assertSame(1, AssetLocationSnapshot::query()->where('asset_id', $asset->id)->count());
         $this->assertSame(1, AssetTelemetrySnapshot::query()->where('asset_id', $asset->id)->count());
+
+        // The replayed GPS point hits the unique index: one point ignored.
+        $this->assertSystemLogged('telematics.points.dropped', fn (array $c) => $c['reason'] === 'already_stored'
+            && $c['calc']['dropped_count'] === 1
+            && $c['input']['page'] === 1);
+        $entry = collect($this->systemLogEntries('telematics.points.dropped'))->firstWhere('context.reason', 'already_stored');
+        $this->assertSame('debug', $entry['level']);
+
+        $cycles = $this->systemLogEntries('telematics.cycle.completed');
+        $this->assertSame(1, end($cycles)['context']['calc']['dropped_count_by_reason']['already_stored_count']);
     }
 
     public function test_unchanged_readings_are_dropped_and_changed_ones_broadcast(): void
@@ -246,6 +280,9 @@ class FollowVehicleStatsFeedJobTest extends TestCase
         Event::assertDispatched(FleetTelemetryUpdatedBroadcast::class, fn (FleetTelemetryUpdatedBroadcast $b) => $b->assets[0]['asset_id'] === $asset->id
             && $b->assets[0]['readings']['fuel']['value'] === 53.0
             && $b->assets[0]['readings']['ignition']['value'] === 'On');
+
+        $this->assertSystemLogged('telematics.points.dropped', fn (array $c) => $c['reason'] === 'unchanged_value' && $c['calc']['dropped_count'] === 1);
+        $this->assertSame('debug', collect($this->systemLogEntries('telematics.points.dropped'))->firstWhere('context.reason', 'unchanged_value')['level']);
     }
 
     public function test_the_motion_state_tracks_moving_and_stopped_and_never_rewinds(): void
@@ -336,9 +373,21 @@ class FollowVehicleStatsFeedJobTest extends TestCase
         // Rounded up to whole seconds: never resume before the provider allows.
         $this->assertTrue($cursor->paused_until->equalTo(now()->addSeconds(3)));
 
+        $context = $this->assertSystemLogged('telematics.cycle.failed', fn (array $c) => $c['reason'] === 'rate_limited');
+        $this->assertSame(2.4, $context['calc']['retry_after_s']);
+        $this->assertSame((int) ceil(max(1.0, $context['calc']['retry_after_s'])), $context['calc']['pause_s']);
+        $this->assertSame($cursor->paused_until->toIso8601String(), $context['calc']['paused_until']);
+        $this->assertSame(1, $context['calc']['consecutive_failures']);
+        $this->assertSame('ProviderRateLimited', $context['calc']['failure_class']);
+        $this->assertFalse($context['result']['cursor_advanced']);
+        $this->assertSame('telematics', $this->systemLogEntries('telematics.cycle.failed')[0]['channel']);
+
         // While paused, a cycle does not even call the provider.
         $this->cycle($integration);
         Http::assertSentCount(1);
+
+        $this->assertSystemLogged('telematics.cycle.paused', fn (array $c) => $c['reason'] === 'paused' && $c['calc']['seconds_remaining'] === 3);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_server_errors_back_off_exponentially(): void
@@ -354,6 +403,23 @@ class FollowVehicleStatsFeedJobTest extends TestCase
         $this->cycle($integration);
         $this->assertTrue($this->cursor($integration)->paused_until->equalTo(now()->addSeconds(10)));
         $this->assertSame(2, $this->cursor($integration)->consecutive_failures);
+
+        $failures = $this->systemLogEntries('telematics.cycle.failed');
+        $this->assertCount(2, $failures);
+
+        foreach ($failures as $i => $entry) {
+            $calc = $entry['context']['calc'];
+
+            $this->assertSame('provider_unavailable', $entry['context']['reason']);
+            $this->assertSame($i + 1, $calc['consecutive_failures']);
+            $this->assertSame(
+                min($calc['backoff_max_s'], $calc['backoff_base_s'] * 2 ** min(16, $calc['consecutive_failures'] - 1)),
+                $calc['pause_s'],
+            );
+        }
+
+        $this->assertSame(10, end($failures)['context']['calc']['pause_s']);
+        $this->assertSame($this->cursor($integration)->paused_until->toIso8601String(), end($failures)['context']['calc']['paused_until']);
     }
 
     public function test_an_invalid_token_opens_the_circuit_for_that_tenant_only(): void
@@ -375,6 +441,20 @@ class FollowVehicleStatsFeedJobTest extends TestCase
 
         $this->assertSame(TenantIntegrationStatus::Active, $healthy->fresh()->status);
         $this->assertSame(1, AssetLocationSnapshot::query()->count());
+
+        $this->assertSystemLogged('telematics.circuit.opened', fn (array $c) => $c['reason'] === 'unauthorized'
+            && $c['input'] === ['team_id' => $broken->team_id, 'integration_id' => $broken->id, 'feed' => 'motion']
+            && $c['result']['integration_status'] === 'error');
+        $circuit = $this->systemLogEntries('telematics.circuit.opened');
+        $this->assertCount(1, $circuit);
+        $this->assertNull($circuit[0]['channel']);
+        $this->assertSame('warning', $circuit[0]['level']);
+
+        $this->assertSystemLogged('telematics.cycle.failed', fn (array $c) => $c['reason'] === 'unauthorized'
+            && $c['calc']['circuit_opened'] === true
+            && $c['input']['integration_id'] === $broken->id);
+        $this->assertSystemLogged('telematics.cycle.completed', fn (array $c) => $c['input']['integration_id'] === $healthy->id);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_a_rejected_cursor_restarts_the_feed_and_backfills_the_gap(): void
@@ -396,6 +476,82 @@ class FollowVehicleStatsFeedJobTest extends TestCase
         Queue::assertPushed(BackfillVehicleStatsJob::class, fn (BackfillVehicleStatsJob $job) => $job->integration->is($integration)
             && $job->feed === TelematicsFeed::Motion
             && $job->from->equalTo($lastDataAt));
+
+        $this->assertSystemLogged('telematics.cycle.failed', fn (array $c) => $c['reason'] === 'cursor_rejected'
+            && $c['calc']['backfill_requested'] === true
+            && $c['calc']['consecutive_failures'] === 0
+            && $c['calc']['pause_s'] === null
+            && $c['calc']['circuit_opened'] === false);
+    }
+
+    public function test_a_paused_cursor_logs_the_pause_and_calls_nobody(): void
+    {
+        $integration = $this->integration();
+        TelematicsFeedCursor::factory()->create([
+            'tenant_integration_id' => $integration->id,
+            'paused_until' => now()->addSeconds(40),
+            'consecutive_failures' => 3,
+        ]);
+
+        Http::fake();
+
+        $this->cycle($integration);
+
+        Http::assertNothingSent();
+        $context = $this->assertSystemLogged('telematics.cycle.paused', fn (array $c) => $c['reason'] === 'paused');
+        $this->assertSame(['integration_id' => $integration->id, 'feed' => 'motion'], $context['input']);
+        $this->assertSame(40, $context['calc']['seconds_remaining']);
+        $this->assertSame(3, $context['calc']['consecutive_failures']);
+        $this->assertSame($this->cursor($integration)->paused_until->toIso8601String(), $context['calc']['paused_until']);
+        $this->assertSame('telematics', $this->systemLogEntries('telematics.cycle.paused')[0]['channel']);
+        $this->assertSystemNotLogged('telematics.cycle.completed');
+    }
+
+    public function test_points_without_a_vehicle_or_coordinates_are_dropped_with_their_reason(): void
+    {
+        $integration = $this->integration();
+        $this->linkAsset($integration, '100');
+        $at = now()->subSeconds(10)->toIso8601ZuluString();
+
+        $this->mock(ProviderAdapter::class)
+            ->shouldReceive('fetchVehicleStatsFeed')
+            ->once()
+            ->andReturn(new VehicleStatsPage(
+                locations: [
+                    ['external_id' => '100', 'latitude' => 19.43, 'longitude' => -99.13, 'speed' => 20.0, 'recorded_at' => $at],
+                    ['external_id' => '100', 'latitude' => null, 'longitude' => -99.13, 'speed' => 20.0, 'recorded_at' => $at],
+                    ['external_id' => '999', 'latitude' => 19.43, 'longitude' => -99.13, 'speed' => 20.0, 'recorded_at' => $at],
+                    ['external_id' => '', 'latitude' => 19.43, 'longitude' => -99.13, 'speed' => 20.0, 'recorded_at' => $at],
+                ],
+                readings: [],
+                endCursor: 'c1',
+                hasNextPage: false,
+            ));
+
+        $this->cycle($integration);
+
+        $this->assertSame(1, AssetLocationSnapshot::query()->count());
+
+        $byReason = collect($this->systemLogEntries('telematics.points.dropped'))->keyBy('context.reason');
+        $this->assertSame(['missing_coordinates', 'no_external_id', 'unknown_vehicle'], $byReason->keys()->sort()->values()->all());
+        $this->assertSame('debug', $byReason['unknown_vehicle']['level']);
+        $this->assertSame('info', $byReason['missing_coordinates']['level']);
+        $this->assertSame('info', $byReason['no_external_id']['level']);
+
+        foreach ($byReason as $entry) {
+            $this->assertSame(1, $entry['context']['calc']['dropped_count']);
+            $this->assertSame('telematics', $entry['channel']);
+        }
+
+        $cycle = $this->assertSystemLogged('telematics.cycle.completed');
+        $byReasonCount = $cycle['calc']['dropped_count_by_reason'];
+        ksort($byReasonCount);
+        $this->assertSame([
+            'missing_coordinates_count' => 1,
+            'no_external_id_count' => 1,
+            'unknown_vehicle_count' => 1,
+        ], $byReasonCount);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_pages_committed_before_a_failure_are_kept_and_published(): void
@@ -432,6 +588,15 @@ class FollowVehicleStatsFeedJobTest extends TestCase
 
         $this->assertSame(0, AssetLocationSnapshot::query()->where('asset_id', $otherAsset->id)->count());
         $this->assertNull($otherAsset->fresh()->last_location_at);
+
+        // Their id resolves to nothing here: a dropped point, never their ids.
+        $this->assertSystemLogged('telematics.points.dropped', fn (array $c) => $c['reason'] === 'unknown_vehicle');
+
+        foreach ($this->systemLogEntries() as $entry) {
+            $this->assertNotSame($other->team_id, $entry['context']['input']['team_id'] ?? null);
+            $this->assertNotSame($other->id, $entry['context']['input']['integration_id'] ?? null);
+            $this->assertNotSame($otherAsset->id, $entry['context']['input']['asset_id'] ?? null);
+        }
     }
 
     public function test_moving_outside_operating_hours_raises_the_event_within_the_cycle(): void
@@ -450,6 +615,61 @@ class FollowVehicleStatsFeedJobTest extends TestCase
         $event = RawEvent::withoutGlobalScopes()->sole();
         $this->assertSame('after_hours_movement', $event->event_type_raw);
         $this->assertSame($asset->id, $event->payload_json['internal']['asset_id']);
+
+        $context = $this->assertSystemLogged('assets.after_hours.evaluated', fn (array $c) => $c['outcome'] === 'ok'
+            && $c['result']['raised'] === true
+            && $c['result']['raw_event_id'] === $event->id
+            && $c['result']['job_requested'] === true);
+        $this->assertSame(['team_id' => $integration->team_id, 'asset_id' => $asset->id], $context['input']);
+        $this->assertSame('telematics', $this->systemLogEntries('assets.after_hours.evaluated')[0]['channel']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_after_hours_detection_says_why_it_raised_nothing(): void
+    {
+        $integration = $this->integration();
+        $this->linkAsset($integration, '100');
+
+        Http::fake([self::FEED_URL => Http::sequence()
+            ->push($this->page([['id' => '100', 'gps' => [$this->gps(40, 30)]]], 'c1'))
+            ->push($this->page([['id' => '100', 'gps' => [$this->gps(40, 20)]]], 'c2'))]);
+
+        // No schedule profile: always operating.
+        $this->cycle($integration);
+        $this->assertSystemLogged('assets.after_hours.evaluated', fn (array $c) => $c['reason'] === 'no_schedule_profile'
+            && $c['input'] === ['integration_id' => $integration->id, 'feed' => 'motion']);
+
+        // Open right now (Wednesday 16:00 local).
+        TenantScheduleProfile::factory()->create(['team_id' => $integration->team_id, 'is_active' => true]);
+        $this->cycle($integration);
+        $this->assertSystemLogged('assets.after_hours.evaluated', fn (array $c) => $c['reason'] === 'within_operating_hours');
+
+        foreach ($this->systemLogEntries('assets.after_hours.evaluated') as $entry) {
+            $this->assertSame('debug', $entry['level']);
+            $this->assertSame('telematics', $entry['channel']);
+        }
+
+        $this->assertSame(0, RawEvent::withoutGlobalScopes()->count());
+    }
+
+    public function test_after_hours_detection_skips_a_cycle_without_moving_positions(): void
+    {
+        // Sunday 03:00 UTC: closed for the Mon–Fri schedule.
+        Carbon::setTestNow(Carbon::parse('2026-06-14 03:00:00', 'UTC'));
+
+        $integration = $this->integration();
+        $this->linkAsset($integration, '100');
+        TenantScheduleProfile::factory()->create(['team_id' => $integration->team_id, 'is_active' => true]);
+
+        // A stop: the unit is standing still.
+        Http::fake([self::FEED_URL => Http::response($this->page([['id' => '100', 'gps' => [$this->gps(0, 5)]]]))]);
+
+        $this->cycle($integration);
+
+        $this->assertSystemLogged('assets.after_hours.evaluated', fn (array $c) => $c['reason'] === 'no_moving_positions'
+            && $c['calc']['positions_count'] === 1);
+        $this->assertSame('debug', $this->systemLogEntries('assets.after_hours.evaluated')[0]['level']);
+        $this->assertSame(0, RawEvent::withoutGlobalScopes()->count());
     }
 
     public function test_the_diagnostics_feed_has_its_own_cursor(): void

@@ -13,6 +13,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Queue;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 /**
@@ -22,7 +23,7 @@ use Tests\TestCase;
  */
 class RaiseAfterHoursMovementTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsSystemLog, RefreshDatabase;
 
     private int $teamId;
 
@@ -104,6 +105,49 @@ class RaiseAfterHoursMovementTest extends TestCase
         $this->assertEquals(40.0, $rawEvent->payload_json['speed_kph']);
 
         Queue::assertPushed(ProcessRawEventJob::class);
+
+        $context = $this->assertSystemLogged('assets.after_hours.evaluated', fn (array $c) => $c['outcome'] === 'ok');
+        $calc = $context['calc'];
+        $this->assertSame(['team_id' => $this->teamId, 'asset_id' => $asset->id], $context['input']);
+        $this->assertSame(['raised' => true, 'raw_event_id' => $rawEvent->id, 'job_requested' => true], $context['result']);
+        $this->assertSame(40.0, $calc['speed_kph']);
+        $this->assertSame(5.0, $calc['moving_threshold_kph']);
+        $this->assertGreaterThanOrEqual($calc['moving_threshold_kph'], $calc['speed_kph']);
+        $this->assertTrue($calc['motion_state_moving']);
+        $this->assertSame(120, $calc['position_age_s']);
+        $this->assertSame(RaiseAfterHoursMovement::FRESHNESS_MINUTES * 60, $calc['freshness_s']);
+        $this->assertLessThanOrEqual($calc['freshness_s'], $calc['position_age_s']);
+        $this->assertNull($calc['last_alert_age_s']);
+        $this->assertSame(12 * 3600, $calc['cooldown_s']);
+        $this->assertSame('info', $this->systemLogEntries('assets.after_hours.evaluated')[0]['level']);
+        $this->assertSame('telematics', $this->systemLogEntries('assets.after_hours.evaluated')[0]['channel']);
+
+        // Neither the unit's name or plate, nor where it is, nor the schedule's zone.
+        $json = (string) json_encode($this->systemLogEntries());
+        $this->assertStringNotContainsString(json_encode($asset->name), $json);
+        if ($asset->code !== null && $asset->code !== '') {
+            $this->assertStringNotContainsString(json_encode($asset->code), $json);
+        }
+        $this->assertStringNotContainsString('19.43', $json);
+        $this->assertStringNotContainsString('-99.13', $json);
+        $this->assertStringNotContainsString('Mexico', $json);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_evaluate_and_execute_agree(): void
+    {
+        $this->makeSchedule();
+        $asset = $this->makeMovingAsset();
+        $schedule = app(TenantScheduleResolver::class)->resolve($asset->team_id);
+        $action = app(RaiseAfterHoursMovement::class);
+
+        $evaluation = $action->evaluate($asset, $schedule, 19.43, -99.13, 40.0, now()->subMinutes(2));
+        $this->assertTrue($evaluation['raised']);
+        $this->assertSame('raised', $evaluation['branch']);
+        $this->assertSame(RawEvent::withoutGlobalScopes()->sole()->id, $evaluation['raw_event_id']);
+
+        $this->assertFalse($action->execute($asset, $schedule, 19.43, -99.13, 40.0, now()->subMinutes(2)));
+        $this->assertSystemLogged('assets.after_hours.evaluated', fn (array $c) => ($c['reason'] ?? null) === 'cooldown_active');
     }
 
     public function test_one_event_per_asset_per_local_day(): void
@@ -115,6 +159,12 @@ class RaiseAfterHoursMovementTest extends TestCase
         $this->runJob();
 
         $this->assertSame(1, RawEvent::withoutGlobalScopes()->count());
+
+        $context = $this->assertSystemLogged('assets.after_hours.evaluated', fn (array $c) => ($c['reason'] ?? null) === 'cooldown_active');
+        $this->assertLessThan($context['calc']['cooldown_s'], $context['calc']['last_alert_age_s']);
+        $this->assertSame(0, $context['calc']['last_alert_age_s']);
+        $entry = collect($this->systemLogEntries('assets.after_hours.evaluated'))->firstWhere('context.reason', 'cooldown_active');
+        $this->assertSame('debug', $entry['level']);
     }
 
     public function test_without_a_schedule_profile_nothing_is_raised(): void
@@ -137,6 +187,9 @@ class RaiseAfterHoursMovementTest extends TestCase
         $this->runJob();
 
         $this->assertSame(0, RawEvent::withoutGlobalScopes()->count());
+
+        $this->assertSystemLogged('assets.after_hours.evaluated', fn (array $c) => ($c['reason'] ?? null) === 'within_operating_hours');
+        $this->assertSame('debug', $this->systemLogEntries('assets.after_hours.evaluated')[0]['level']);
     }
 
     public function test_slow_or_stale_positions_do_not_count_as_movement(): void
@@ -148,6 +201,18 @@ class RaiseAfterHoursMovementTest extends TestCase
         $this->runJob();
 
         $this->assertSame(0, RawEvent::withoutGlobalScopes()->count());
+
+        $slow = $this->assertSystemLogged('assets.after_hours.evaluated', fn (array $c) => ($c['reason'] ?? null) === 'not_moving');
+        $this->assertSame(2.0, $slow['calc']['speed_kph']);
+        $this->assertFalse($slow['calc']['speed_kph'] >= $slow['calc']['moving_threshold_kph']);
+
+        $stale = $this->assertSystemLogged('assets.after_hours.evaluated', fn (array $c) => ($c['reason'] ?? null) === 'stale_position');
+        $this->assertSame(7200, $stale['calc']['position_age_s']);
+        $this->assertGreaterThan($stale['calc']['freshness_s'], $stale['calc']['position_age_s']);
+
+        foreach ($this->systemLogEntries('assets.after_hours.evaluated') as $entry) {
+            $this->assertSame('debug', $entry['level']);
+        }
     }
 
     public function test_inactive_assets_are_ignored(): void
@@ -158,6 +223,10 @@ class RaiseAfterHoursMovementTest extends TestCase
         $this->runJob();
 
         $this->assertSame(0, RawEvent::withoutGlobalScopes()->count());
+
+        $context = $this->assertSystemLogged('assets.after_hours.evaluated', fn (array $c) => ($c['reason'] ?? null) === 'asset_inactive');
+        $this->assertSame('inactive', $context['calc']['asset_status']);
+        $this->assertSame('info', $this->systemLogEntries('assets.after_hours.evaluated')[0]['level']);
     }
 
     public function test_schedule_of_another_tenant_does_not_trigger_alerts_here(): void

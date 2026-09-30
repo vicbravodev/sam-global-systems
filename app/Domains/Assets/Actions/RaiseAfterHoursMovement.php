@@ -9,6 +9,8 @@ use App\Domains\Ingestion\Actions\QueueRawEventForProcessing;
 use App\Domains\Ingestion\Actions\StoreRawEvent;
 use App\Domains\Ingestion\Enums\EventSourceType;
 use App\Domains\TenantConfig\Data\ResolvedSchedule;
+use App\Support\LoggableCode;
+use App\Support\SystemLog;
 use Carbon\CarbonInterface;
 
 /**
@@ -54,29 +56,74 @@ class RaiseAfterHoursMovement
         ?float $speedKph,
         CarbonInterface $recordedAt,
     ): bool {
+        $evaluation = $this->evaluate($asset, $schedule, $latitude, $longitude, $speedKph, $recordedAt);
+
+        $this->log($asset, $evaluation);
+
+        return $evaluation['raised'];
+    }
+
+    /**
+     * Run the detector and say which branch decided it, with the terms it
+     * judged: speed against the moving threshold, the asset's motion state,
+     * the position's age against the freshness window and the last alert's
+     * age against the cooldown. Never the coordinates, the local time or the
+     * schedule's timezone.
+     *
+     * @return array{raised: bool, branch: 'outside_schedule_gate'|'asset_inactive'|'not_moving'|'stale_position'|'cooldown_active'|'raised', calc: array<string, mixed>, raw_event_id: ?int}
+     */
+    public function evaluate(
+        Asset $asset,
+        ResolvedSchedule $schedule,
+        float $latitude,
+        float $longitude,
+        ?float $speedKph,
+        CarbonInterface $recordedAt,
+    ): array {
+        $cooldownHours = (int) config('telematics.after_hours_cooldown_hours', 12);
+
+        $calc = [
+            'speed_kph' => $speedKph,
+            'moving_threshold_kph' => MovementCriterion::speedThresholdKph(),
+            'motion_state_moving' => MovementCriterion::assetIsMoving($asset),
+            'position_age_s' => (int) $recordedAt->diffInSeconds(now()),
+            'freshness_s' => self::FRESHNESS_MINUTES * 60,
+            'cooldown_s' => $cooldownHours * 3600,
+            'last_alert_age_s' => $asset->after_hours_alerted_at !== null
+                ? (int) $asset->after_hours_alerted_at->diffInSeconds(now())
+                : null,
+            'schedule_profile_code' => LoggableCode::guard($schedule->profileCode),
+        ];
+
+        $outcome = fn (string $branch, array $extra = [], ?int $rawEventId = null): array => [
+            'raised' => $branch === 'raised',
+            'branch' => $branch,
+            'calc' => [...$calc, ...$extra],
+            'raw_event_id' => $rawEventId,
+        ];
+
         if (! $schedule->isPersisted || $schedule->withinOperatingHours) {
-            return false;
+            return $outcome('outside_schedule_gate');
         }
 
         if (in_array($asset->status, [AssetStatus::Inactive, AssetStatus::Maintenance], true)) {
-            return false;
+            return $outcome('asset_inactive', ['asset_status' => $asset->status->value]);
         }
 
         // Criterio único de movimiento: velocidad Y estado (un pico de GPS de
         // un tracto estacionado en el patio no es "movimiento fuera de horario").
-        if (
-            ! MovementCriterion::isMoving($asset, $speedKph)
-            || $recordedAt->lt(now()->subMinutes(self::FRESHNESS_MINUTES))
-        ) {
-            return false;
+        if (! MovementCriterion::isMoving($asset, $speedKph)) {
+            return $outcome('not_moving');
+        }
+
+        if ($recordedAt->lt(now()->subMinutes(self::FRESHNESS_MINUTES))) {
+            return $outcome('stale_position');
         }
 
         // One alert per unit per closed stretch: a night of driving crosses
         // local midnight, and a per-day key alerted it twice.
-        $cooldownHours = (int) config('telematics.after_hours_cooldown_hours', 12);
-
         if ($asset->after_hours_alerted_at !== null && $asset->after_hours_alerted_at->gt(now()->subHours($cooldownHours))) {
-            return false;
+            return $outcome('cooldown_active');
         }
 
         $deduplicationKey = sprintf('after_hours:%d:%d', $asset->id, now()->getTimestamp());
@@ -110,6 +157,37 @@ class RaiseAfterHoursMovement
 
         $asset->forceFill(['after_hours_alerted_at' => now()])->save();
 
-        return true;
+        return $outcome('raised', rawEventId: $rawEvent->id);
+    }
+
+    /**
+     * @param  array{raised: bool, branch: string, calc: array<string, mixed>, raw_event_id: ?int}  $evaluation
+     */
+    private function log(Asset $asset, array $evaluation): void
+    {
+        $input = ['team_id' => (int) $asset->team_id, 'asset_id' => $asset->id];
+
+        if ($evaluation['raised']) {
+            SystemLog::ok('assets.after_hours.evaluated', input: $input, calc: $evaluation['calc'], result: [
+                'raised' => true,
+                'raw_event_id' => $evaluation['raw_event_id'],
+                'job_requested' => true,
+            ], channel: 'telematics');
+
+            return;
+        }
+
+        // The schedule gate repeats the feed's own check; an inactive unit is
+        // the only branch worth reading at info.
+        $reason = $evaluation['branch'] === 'outside_schedule_gate' ? 'within_operating_hours' : $evaluation['branch'];
+
+        SystemLog::skipped(
+            'assets.after_hours.evaluated',
+            reason: $reason,
+            input: $input,
+            calc: $evaluation['calc'],
+            debug: $reason !== 'asset_inactive',
+            channel: 'telematics',
+        );
     }
 }

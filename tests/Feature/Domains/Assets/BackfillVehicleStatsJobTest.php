@@ -15,11 +15,12 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Facades\Http;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class BackfillVehicleStatsJobTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsSystemLog, RefreshDatabase;
 
     private function integration(): TenantIntegration
     {
@@ -64,6 +65,15 @@ class BackfillVehicleStatsJobTest extends TestCase
         // La línea `telematics.backfill.completed` sale atribuida al tenant.
         $this->assertSame($integration->team_id, Context::get('team_id'));
         $this->assertNotNull(Context::get('trace_id'));
+
+        $context = $this->assertSystemLogged('telematics.backfill.completed', fn (array $c) => $c['outcome'] === 'ok');
+        $this->assertSame(['pages' => 2, 'stored' => 3, 'dropped_count_by_reason' => []], $context['result']);
+        $this->assertSame(500, $context['calc']['max_pages']);
+        $this->assertFalse($context['calc']['max_pages_hit']);
+        $this->assertFalse($context['calc']['window_capped']);
+        $this->assertSame('telematics', $this->systemLogEntries('telematics.backfill.completed')[0]['channel']);
+        $this->assertStringNotContainsString('19.4', (string) json_encode($this->systemLogEntries()));
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_the_window_is_capped_at_the_configured_hours(): void
@@ -76,5 +86,48 @@ class BackfillVehicleStatsJobTest extends TestCase
         app()->call([new BackfillVehicleStatsJob($this->integration(), TelematicsFeed::Motion, $until->subDays(10), $until), 'handle']);
 
         Http::assertSent(fn (Request $request) => $request['startTime'] === $until->subHours(24)->utc()->toIso8601ZuluString());
+
+        $this->assertSystemLogged('telematics.backfill.completed', fn (array $c) => $c['outcome'] === 'ok'
+            && $c['calc']['window_capped'] === true
+            && $c['input']['from'] === $until->subHours(24)->utc()->toIso8601ZuluString());
+    }
+
+    public function test_an_empty_window_is_skipped_without_calling_the_provider(): void
+    {
+        config(['telematics.backfill_hours' => 24]);
+        Http::fake();
+
+        $until = now()->startOfSecond();
+        $integration = $this->integration();
+
+        app()->call([new BackfillVehicleStatsJob($integration, TelematicsFeed::Motion, $until->addMinute(), $until), 'handle']);
+
+        Http::assertNothingSent();
+        $context = $this->assertSystemLogged('telematics.backfill.completed', fn (array $c) => $c['reason'] === 'empty_window');
+        $this->assertSame($integration->id, $context['input']['integration_id']);
+        $this->assertSame(24, $context['calc']['backfill_hours']);
+        $this->assertSame($until->subHours(24)->toIso8601ZuluString(), $context['calc']['floor']);
+        $this->assertSame('telematics', $this->systemLogEntries('telematics.backfill.completed')[0]['channel']);
+    }
+
+    public function test_a_rate_limit_releases_the_job_and_says_so(): void
+    {
+        Http::fake(['api.samsara.com/*' => Http::response(['message' => 'slow down'], 429, ['Retry-After' => '7.2'])]);
+
+        app()->call([new BackfillVehicleStatsJob($this->integration(), TelematicsFeed::Motion, now()->subHour(), now()), 'handle']);
+
+        $this->assertSystemLogged('telematics.backfill.completed', fn (array $c) => $c['reason'] === 'rate_limited'
+            && $c['calc']['release_s'] === 8
+            && $c['calc']['pages_stored_before'] === 0);
+    }
+
+    public function test_an_invalid_token_ends_the_backfill_and_says_so(): void
+    {
+        Http::fake(['api.samsara.com/*' => Http::response(['message' => 'unauthorized'], 401)]);
+
+        app()->call([new BackfillVehicleStatsJob($this->integration(), TelematicsFeed::Motion, now()->subHour(), now()), 'handle']);
+
+        $this->assertSystemLogged('telematics.backfill.completed', fn (array $c) => $c['reason'] === 'unauthorized');
+        $this->assertNoSensitiveDataLogged();
     }
 }

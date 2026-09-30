@@ -512,6 +512,20 @@ Los importes del log son los mismos `float` de `breakdown_json`; `subtotal`, `ov
 | Código | Outcome | Reason posibles | Campos clave |
 |---|---|---|---|
 | `assets.monitoring.changed` | ok / skipped | `same_state` (el activo ya estaba en ese estado; `team_id`, `asset_id`, calc `state`), `other_tenant` (lote con un activo de otro tenant: solo el `team_id` propio y calc `team_matches=false`, sin `asset_id`) | `team_id`, `asset_id`, `actor_user_id`; calc `previous_state`, `new_state`, `assets_monitored_before` (del tenant, antes del cambio), `assets_monitored_after`, `cap`, `over_cap`, `overage_assets` (`cap === null ? 0 : max(0, assets_monitored_after - cap)`), `tenant_billable`, `asset_day_outcome` (el de `RecordMonitoredAssetDay::outcome` al encender; null al apagar), `reason_present`; result `changed=true`, `limit_event_dispatched` (= `over_cap`: se despachó `UsageLimitExceeded`). El ok va por `DB::afterCommit`: una transacción que revierte no lo emite. Cada llamada (`execute` o `executeMany`) emite además una `billing.asset_limit.resolved` con `stage = monitoring_toggle`. Nunca el motivo libre, el email del actor ni el nombre del activo (la auditoría los guarda) |
+| `assets.after_hours.evaluated` | ok / skipped | ver tabla de branches abajo | canal `telematics`. Desde el feed (sin activo aún): `integration_id`, `feed`. Desde `RaiseAfterHoursMovement`: `team_id`, `asset_id`; calc `speed_kph`, `moving_threshold_kph`, `motion_state_moving` (estado de movimiento de la ingesta, `MovementCriterion::assetIsMoving`), `position_age_s`, `freshness_s` (`FRESHNESS_MINUTES * 60`), `cooldown_s`, `last_alert_age_s` (null si nunca alertó), `schedule_profile_code` (vía `LoggableCode`); ok: result `raised=true`, `raw_event_id`, `job_requested=true`. Nunca coordenadas, nombre o placa del activo, zona horaria ni hora local |
+
+Branches de `assets.after_hours.evaluated` (el resultado de `execute()` es `evaluate()['raised']`):
+
+| Reason / branch | Nivel | Cuándo |
+|---|---|---|
+| `no_schedule_profile` | debug | el feed: el tenant no tiene perfil de horario activo (siempre operando) |
+| `within_operating_hours` | debug | el feed: el horario está abierto; o la guarda de horario de la acción (`outside_schedule_gate`, redundante con el feed) |
+| `no_moving_positions` | debug | el feed: ninguna posición del ciclo va en movimiento; calc `positions_count` |
+| `asset_inactive` | info | el activo está `inactive` o `maintenance`; calc `asset_status` |
+| `not_moving` | debug | `speed_kph < moving_threshold_kph` o `motion_state_moving = false` |
+| `stale_position` | debug | `position_age_s > freshness_s` |
+| `cooldown_active` | debug | `last_alert_age_s < cooldown_s` |
+| ok (`raised`) | info | evento interno `after_hours_movement` guardado y encolado |
 
 ### Conductores (`drivers`)
 
@@ -523,6 +537,32 @@ Los importes del log son los mismos `float` de `breakdown_json`; `subtotal`, `ov
 
 | Código | Outcome | Reason posibles | Campos clave |
 |---|---|---|---|
-| `telematics.cycle.completed` | ok | — | `integration_id`, `feed`; result `pages`, `locations`, `readings`, `moved_assets`, `lag_s`; `duration_ms` |
-| `telematics.cycle.failed` | degraded | `provider_error` | igual, más `error` |
-| `telematics.backfill.completed` | ok | — | `integration_id`, `feed`, `from`, `until`; result `pages`, `stored` |
+| `telematics.cycle.completed` | ok | — | `integration_id`, `feed`; calc `max_pages_per_cycle`, `max_pages_hit` (sin fallo, `pages >= max_pages_per_cycle` y la última página tenía `hasNextPage`: el resto espera al siguiente ciclo), `dropped_count_by_reason` (`{motivo}_count`, suma del ciclo); result `pages`, `locations`, `readings`, `moved_assets`, `lag_s`, `cursor_advanced` (el `end_cursor` cambió); `duration_ms` |
+| `telematics.cycle.failed` | degraded | `rate_limited`, `provider_unavailable`, `cursor_rejected`, `unauthorized`, `provider_error` (tabla abajo) | igual, más calc `reason`, `failure_class`, `consecutive_failures`, `retry_after_s`, `pause_s`, `backoff_base_s`, `backoff_max_s`, `paused_until`, `backfill_requested`, `circuit_opened`, y `error`. Nunca `last_error` del cursor |
+| `telematics.cycle.paused` | skipped | `paused` | `integration_id`, `feed`; calc `paused_until`, `seconds_remaining`, `consecutive_failures`. Raro: el despachador ya salta los cursores en pausa |
+| `telematics.circuit.opened` | degraded | `unauthorized` | **canal por defecto** (`system.json`): `team_id`, `integration_id`, `feed`; result `integration_status=error`. Nunca `last_error_message` |
+| `telematics.points.dropped` | skipped | tabla de motivos abajo | `integration_id`, `feed`, `page`; calc `dropped_count`. Una línea por motivo con conteo > 0 en cada página |
+| `telematics.feeds.dispatched` | ok / skipped | `no_active_integrations` (debug) | recorrido de plataforma, sin ids: calc `tick_seconds`; result `integrations_count`, `feed_disabled_count`, `dispatched_count`, `not_due_count`, `paused_count`, `dispatched_count_by_feed` (`{feed}_count`). En `debug` si `dispatched_count = 0` |
+| `telematics.backfill.completed` | ok / skipped | `empty_window` (`from >= until`; calc `backfill_hours`, `floor`), `rate_limited` (calc `release_s`, `pages_stored_before`: el job se libera y reintenta), `unauthorized` (el feed abre el circuito) | `integration_id`, `feed`, `from`, `until`; ok: calc `max_pages`, `max_pages_hit`, `window_capped` (la ventana pedida se recortó a `telematics.backfill_hours`); result `pages`, `stored`, `dropped_count_by_reason` |
+
+Reasons de `telematics.cycle.failed` y su pausa (`pause_s` / `paused_until` persistido en el cursor):
+
+| Reason | Pausa |
+|---|---|
+| `rate_limited` | Retry-After: `pause_s = ceil(max(1, retry_after_s))` |
+| `provider_unavailable` | backoff exponencial: `pause_s = min(backoff_max_s, backoff_base_s * 2 ** min(16, consecutive_failures - 1))` |
+| `cursor_rejected` | sin pausa: reinicio sin cursor + backfill (`backfill_requested` si había `last_data_at`); `consecutive_failures = 0` |
+| `unauthorized` | sin pausa: circuito abierto (`circuit_opened`, integración en `error`, ver `telematics.circuit.opened`) |
+| `provider_error` | sin pausa: fallo sin clase propia |
+
+Motivos de `telematics.points.dropped`:
+
+| Reason | Nivel | Qué se descartó |
+|---|---|---|
+| `already_stored` | debug | filas que el `insertOrIgnore` ignoró por índice único (reenvío, solapamiento con backfill) |
+| `unchanged_value` | debug | lecturas que no cambian respecto a la última guardada (`RecordAssetTelemetry::isNewReading`) |
+| `unknown_vehicle` | debug | puntos de un vehículo sin activo en este tenant (aún no sincronizado) |
+| `no_external_id` | info | puntos sin `external_id` |
+| `missing_coordinates` | info | ubicaciones sin latitud o longitud |
+| `unsupported_type` | info | lecturas de un tipo que SAM no guarda |
+| `missing_value` | info | lecturas sin valor |
