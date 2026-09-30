@@ -3,6 +3,7 @@
 namespace App\Domains\Copilot\Tools;
 
 use App\Contracts\ObjectStorage;
+use App\Domains\Context\Enums\MediaType;
 use App\Domains\Context\Models\EventMediaContext;
 use App\Domains\Copilot\Data\CopilotToolContext;
 use App\Domains\Copilot\Data\CopilotToolResult;
@@ -64,13 +65,15 @@ final class AssetMediaTool implements CopilotTool
         $items = $media->map(function (EventMediaContext $item) use ($context): array {
             $event = $item->normalizedEvent;
 
+            $url = $this->resolveUrl($item);
+
             return [
                 'id' => (int) $item->id,
                 'mediaType' => $item->media_type?->value,
                 'role' => $item->media_role?->value,
                 'roleLabel' => $item->media_role ? (self::ROLE_LABELS[$item->media_role->value] ?? $item->media_role->value) : null,
-                'url' => $this->resolveUrl($item),
-                'thumbnailUrl' => $item->thumbnail_url,
+                'url' => $url,
+                'thumbnailUrl' => $this->resolveThumbnail($item, $url),
                 'mimeType' => $item->mime_type,
                 'durationSeconds' => $item->duration_seconds,
                 'capturedAt' => $item->captured_at?->toIso8601String(),
@@ -119,6 +122,21 @@ final class AssetMediaTool implements CopilotTool
                     .', '.CopilotPresenter::describeAge($latest['capturedAt']).'.',
             ],
         );
+    }
+
+    /**
+     * Images are their own thumbnail (same signed URL). Video only gets one
+     * when the provider gave a real http(s) poster; never a storage path.
+     */
+    private function resolveThumbnail(EventMediaContext $media, ?string $url): ?string
+    {
+        if (in_array($media->media_type, [MediaType::Image, MediaType::Snapshot], true)) {
+            return $url;
+        }
+
+        $thumbnail = $media->thumbnail_url;
+
+        return is_string($thumbnail) && preg_match('#^https?://#i', $thumbnail) === 1 ? $thumbnail : null;
     }
 
     private function resolveUrl(EventMediaContext $media): ?string
