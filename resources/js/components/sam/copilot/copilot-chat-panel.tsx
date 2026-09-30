@@ -60,14 +60,21 @@ function prefersReducedMotion(): boolean {
     );
 }
 
-/** Settled answers only: a live draft never unpins the composer's unit. */
+/**
+ * Settled answers only: a live draft never unpins the composer's unit, and
+ * neither does a stopped/cut answer that resolved no unit.
+ */
 function lastSettledAnswer(
     messages: CopilotMessage[],
 ): CopilotMessage | undefined {
     for (let i = messages.length - 1; i >= 0; i--) {
         const m = messages[i];
 
-        if (m.role === 'assistant' && !m.streaming) {
+        if (
+            m.role === 'assistant' &&
+            !m.streaming &&
+            !(m.partial && !m.context?.resolved)
+        ) {
             return m;
         }
     }
