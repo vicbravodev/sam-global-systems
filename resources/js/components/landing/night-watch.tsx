@@ -99,6 +99,15 @@ const EVENTS: NightEvent[] = [
         outcome: 'Estaba en zona sin cobertura. Reconectó a los 22 min.',
     },
     {
+        at: 228,
+        road: 'r40',
+        along: 0.3,
+        kind: 'watch',
+        title: 'Botón de pánico, T-214',
+        outcome:
+            'Las cámaras no mostraron amenazas y el operador confirmó por llamada que fue un error.',
+    },
+    {
         at: 290,
         road: 'r54',
         along: 0.55,
