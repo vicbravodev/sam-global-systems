@@ -100,7 +100,7 @@ class ProcessWebhookEventJob implements ShouldQueue
 
             $this->webhookEvent->markAsProcessed();
 
-            // event_type puede venir de la query string, fuera del HMAC.
+            // event_type se resolvió antes de validar la firma (ResolveWebhookEventType) y puede venir de la query string, fuera del HMAC.
             $eventType = LoggableCode::guard($this->webhookEvent->event_type);
 
             SystemLog::ok('webhook.event.ingested', input: [
