@@ -180,55 +180,87 @@ class AlertPipelineFailure
             'reprocess_attempts' => $reprocessAttempts,
         ];
 
-        try {
-            if ($superAdmins->isNotEmpty()) {
-                TenantContext::withoutTenant(fn () => Notification::sendNow(
-                    $superAdmins,
-                    new PipelineFailureNotification(PipelineFailureNotification::AUDIENCE_PLATFORM, $details),
-                ));
-            }
+        // Cada audiencia por separado: si falla el correo a plataforma, el
+        // tenant recibe igual el aviso de su emergencia (y al revés).
+        $platformSent = $this->deliver(PipelineFailureNotification::AUDIENCE_PLATFORM, $superAdmins, null, $details, $input);
+        $tenantSent = $this->deliver(PipelineFailureNotification::AUDIENCE_TENANT, $tenantUsers, $teamId, $details, $input);
 
-            if ($tenantUsers->isNotEmpty()) {
-                TenantContext::for($teamId, fn () => Notification::sendNow(
-                    $tenantUsers,
-                    new PipelineFailureNotification(PipelineFailureNotification::AUDIENCE_TENANT, $details),
-                ));
-            }
-        } catch (Throwable $e) {
-            // Se libera la reclamación: un fallo posterior del mismo evento
-            // (otro rescate, otra etapa) podrá volver a intentar el aviso.
+        $attempted = ($superAdmins->isNotEmpty() ? 1 : 0) + ($tenantUsers->isNotEmpty() ? 1 : 0);
+        $delivered = ($platformSent ? 1 : 0) + ($tenantSent ? 1 : 0);
+
+        if ($attempted > 0 && $delivered === 0) {
+            // No salió nada: se libera la reclamación para que un fallo
+            // posterior del mismo evento (otro rescate) vuelva a intentarlo.
+            // Si salió alguna audiencia se conserva: nunca se re-manda la que
+            // ya llegó (la que falló queda registrada en su `failed`).
             TenantContext::withoutTenant(fn () => PipelineFailureAlert::query()->where('dedup_key', $dedupKey)->delete());
-
-            SystemLog::failed('ingestion.failure_alert.failed', reason: 'send_failed', input: $input, error: $e);
 
             return;
         }
 
+        $platformRecipients = $platformSent ? $superAdmins->count() : 0;
+        $tenantRecipients = $tenantSent ? $tenantUsers->count() : 0;
+
         TenantContext::withoutTenant(fn () => PipelineFailureAlert::query()->where('dedup_key', $dedupKey)->update([
-            'platform_recipients' => $superAdmins->count(),
-            'tenant_recipients' => $tenantUsers->count(),
+            'platform_recipients' => $platformRecipients,
+            'tenant_recipients' => $tenantRecipients,
             'notified_at' => $now,
         ]));
 
         $calc = [
             'is_emergency' => $isEmergency,
-            'tenant_notified' => $tenantUsers->isNotEmpty(),
+            'tenant_notified' => $tenantSent,
             'tenant_skip_reason' => match (true) {
-                $tenantUsers->isNotEmpty() => null,
+                $tenantSent => null,
+                $tenantUsers->isNotEmpty() => 'send_failed',
                 ! $isEmergency => 'not_emergency',
                 $teamId === null => 'no_tenant',
                 default => 'no_tenant_admins',
             },
+            'platform_send_failed' => $superAdmins->isNotEmpty() && ! $platformSent,
         ];
-        $result = ['platform_recipients' => $superAdmins->count(), 'tenant_recipients' => $tenantUsers->count()];
+        $result = ['platform_recipients' => $platformRecipients, 'tenant_recipients' => $tenantRecipients];
 
-        if ($superAdmins->isEmpty() && $tenantUsers->isEmpty()) {
+        if ($delivered === 0) {
             SystemLog::degraded('ingestion.failure_alert.sent', reason: 'no_recipients', input: $input, calc: $calc, result: $result);
 
             return;
         }
 
+        if ($delivered < $attempted) {
+            SystemLog::degraded('ingestion.failure_alert.sent', reason: 'partial_delivery', input: $input, calc: $calc, result: $result);
+
+            return;
+        }
+
         SystemLog::ok('ingestion.failure_alert.sent', input: $input, calc: $calc, result: $result);
+    }
+
+    /**
+     * Envía una audiencia; nunca lanza. Plataforma sin tenant activo, tenant
+     * dentro del suyo.
+     *
+     * @param  Collection<int, User>  $recipients
+     * @param  array<string, mixed>  $details
+     * @param  array<string, mixed>  $input
+     */
+    private function deliver(string $audience, Collection $recipients, ?int $teamId, array $details, array $input): bool
+    {
+        if ($recipients->isEmpty()) {
+            return false;
+        }
+
+        $send = fn () => Notification::sendNow($recipients, new PipelineFailureNotification($audience, $details));
+
+        try {
+            $teamId === null ? TenantContext::withoutTenant($send) : TenantContext::for($teamId, $send);
+        } catch (Throwable $e) {
+            SystemLog::failed('ingestion.failure_alert.failed', reason: 'send_failed', input: [...$input, 'audience' => $audience], error: $e);
+
+            return false;
+        }
+
+        return true;
     }
 
     /**

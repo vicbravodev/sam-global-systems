@@ -19,6 +19,9 @@ use App\Models\User;
 use App\Models\UserNotification;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Notifications\Events\NotificationSending;
+use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
 use RuntimeException;
 use Tests\Concerns\AssertsSystemLog;
@@ -226,14 +229,80 @@ class PipelineFailureAlertTest extends TestCase
 
         $rows = TenantContext::withoutTenant(fn () => UserNotification::query()->get());
         $this->assertCount(3, $rows);
-        $this->assertSame([$this->teamA->id], $rows->pluck('team_id')->map(fn ($id) => (int) $id)->unique()->values()->all());
         $this->assertEqualsCanonicalizing(
             [$this->superAdmin->id, $this->ownerA->id, $this->adminA->id],
             $rows->pluck('notifiable_id')->map(fn ($id) => (int) $id)->all(),
         );
 
+        // Los avisos del tenant quedan en su tenant; el de plataforma, en ninguno.
+        $tenantRows = $rows->where('data.audience', PipelineFailureNotification::AUDIENCE_TENANT);
+        $this->assertCount(2, $tenantRows);
+        $this->assertSame([$this->teamA->id], $tenantRows->pluck('team_id')->map(fn ($id) => (int) $id)->unique()->values()->all());
+        $this->assertNull($rows->firstWhere('notifiable_id', $this->superAdmin->id)->team_id);
+
         // Desde el tenant B no se ve ningún aviso del A.
         $this->assertSame(0, TenantContext::for($this->teamB->id, fn () => UserNotification::query()->count()));
         $this->assertSame(1, TenantContext::for($this->teamA->id, fn () => $this->ownerA->notifications()->count()));
+    }
+
+    public function test_a_super_admin_who_is_also_a_member_never_sees_the_technical_alert_inside_that_tenant(): void
+    {
+        $this->teamA->members()->attach($this->superAdmin, ['role' => TeamRole::Member->value]);
+        $event = $this->normalizedEvent($this->teamA);
+
+        (new OpenEmergencyIncidentJob($event->id, $this->teamA->id))->failed(new RuntimeException('SQLSTATE internal detail'));
+
+        $this->assertSame(0, TenantContext::for($this->teamA->id, fn () => $this->superAdmin->notifications()->count()));
+
+        $platform = TenantContext::withoutTenant(fn () => $this->superAdmin->notifications()->sole());
+        $this->assertNull($platform->team_id);
+        $this->assertSame(PipelineFailureNotification::AUDIENCE_PLATFORM, $platform->data['audience']);
+    }
+
+    public function test_a_failing_platform_delivery_does_not_stop_the_tenant_alert_nor_repeat_it(): void
+    {
+        Event::listen(NotificationSending::class, function (NotificationSending $sending): void {
+            if ($sending->notifiable instanceof User && $sending->notifiable->is($this->superAdmin)) {
+                throw new RuntimeException('smtp down');
+            }
+        });
+        Mail::fake();
+        $event = $this->normalizedEvent($this->teamA);
+
+        (new OpenEmergencyIncidentJob($event->id, $this->teamA->id))->failed(new RuntimeException('boom'));
+
+        $tenantRows = TenantContext::for($this->teamA->id, fn () => UserNotification::query()->get());
+        $this->assertEqualsCanonicalizing(
+            [$this->ownerA->id, $this->adminA->id],
+            $tenantRows->pluck('notifiable_id')->map(fn ($id) => (int) $id)->all(),
+        );
+
+        $alert = PipelineFailureAlert::withoutGlobalScopes()->sole();
+        $this->assertSame(0, $alert->platform_recipients);
+        $this->assertSame(2, $alert->tenant_recipients);
+
+        $this->assertSystemLogged('ingestion.failure_alert.failed', fn (array $c) => $c['reason'] === 'send_failed' && $c['input']['audience'] === 'platform');
+        $c = $this->assertSystemLogged('ingestion.failure_alert.sent');
+        $this->assertSame('partial_delivery', $c['reason']);
+        $this->assertTrue($c['calc']['platform_send_failed']);
+
+        // Un segundo fallo del mismo evento no repite el aviso que ya salió.
+        (new OpenEmergencyIncidentJob($event->id, $this->teamA->id))->failed(new RuntimeException('boom again'));
+
+        $this->assertSame(2, TenantContext::for($this->teamA->id, fn () => UserNotification::query()->count()));
+        $this->assertSystemLogged('ingestion.failure_alert.skipped');
+    }
+
+    public function test_when_nothing_is_delivered_the_claim_is_released_for_a_later_retry(): void
+    {
+        Event::listen(NotificationSending::class, function (): void {
+            throw new RuntimeException('smtp down');
+        });
+        $event = $this->normalizedEvent($this->teamA);
+
+        (new OpenEmergencyIncidentJob($event->id, $this->teamA->id))->failed(new RuntimeException('boom'));
+
+        $this->assertSame(0, PipelineFailureAlert::withoutGlobalScopes()->count());
+        $this->assertSystemNotLogged('ingestion.failure_alert.sent');
     }
 }
