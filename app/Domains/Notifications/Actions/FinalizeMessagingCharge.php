@@ -67,7 +67,7 @@ class FinalizeMessagingCharge
         ];
 
         if ($charge->finalized_at !== null) {
-            SystemLog::skipped('billing.messaging_charge.finalized', reason: 'already_finalized', input: $input);
+            TenantContext::for($charge->team_id, fn () => SystemLog::skipped('billing.messaging_charge.finalized', reason: 'already_finalized', input: $input));
 
             return;
         }
@@ -83,7 +83,7 @@ class FinalizeMessagingCharge
             ])->save();
 
             if ($priceMicros <= 0) {
-                DB::afterCommit(fn () => SystemLog::ok('billing.messaging_charge.finalized', input: $input, calc: $calc, result: ['metered' => false, 'meter_skipped_reason' => 'zero_cost']));
+                DB::afterCommit(fn () => TenantContext::for($input['team_id'], fn () => SystemLog::ok('billing.messaging_charge.finalized', input: $input, calc: $calc, result: ['metered' => false, 'meter_skipped_reason' => 'zero_cost'])));
 
                 return;
             }
@@ -107,14 +107,14 @@ class FinalizeMessagingCharge
             if ($metered) {
                 $charge->forceFill(['metered_at' => now()])->save();
 
-                DB::afterCommit(fn () => SystemLog::ok('billing.messaging_charge.finalized', input: $input, calc: $calc, result: ['metered' => true, 'meter_code' => self::METER_CODE, 'event_key' => $eventKey]));
+                DB::afterCommit(fn () => TenantContext::for($input['team_id'], fn () => SystemLog::ok('billing.messaging_charge.finalized', input: $input, calc: $calc, result: ['metered' => true, 'meter_code' => self::METER_CODE, 'event_key' => $eventKey])));
 
                 return;
             }
 
             // Queda finalizado sin uso (el reconciliador ya no lo toma); la
             // causa la registra `billing.messaging_usage.not_metered`.
-            DB::afterCommit(fn () => SystemLog::degraded('billing.messaging_charge.finalized', reason: 'not_metered', input: $input, calc: $calc, result: ['metered' => false, 'finalized' => true]));
+            DB::afterCommit(fn () => TenantContext::for($input['team_id'], fn () => SystemLog::degraded('billing.messaging_charge.finalized', reason: 'not_metered', input: $input, calc: $calc, result: ['metered' => false, 'finalized' => true])));
         });
     }
 

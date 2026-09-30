@@ -73,7 +73,9 @@ class RecordUsageEvent
 
                 $resetPeriod = $meter->reset_period?->value;
 
-                DB::afterCommit(fn () => SystemLog::ok(
+                // El commit puede ocurrir fuera de este TenantContext: la línea
+                // se emite dentro del tenant del uso, no en el del llamador.
+                DB::afterCommit(fn () => TenantContext::for($teamId, fn () => SystemLog::ok(
                     'billing.usage.recorded',
                     input: $logInput,
                     calc: [
@@ -83,7 +85,7 @@ class RecordUsageEvent
                         'billing_period_key' => $billingPeriodKey,
                     ],
                     result: ['recorded' => true],
-                ));
+                )));
             } else {
                 // Que este insert no escribió nada es cierto aunque la transacción revierta.
                 SystemLog::skipped(

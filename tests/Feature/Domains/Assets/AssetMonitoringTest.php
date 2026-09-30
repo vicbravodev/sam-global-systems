@@ -16,6 +16,8 @@ use App\Domains\Tenancy\Models\Subscription;
 use App\Domains\Tenancy\Models\TenantFeature;
 use App\Models\Team;
 use App\Models\User;
+use App\Support\SystemLog;
+use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
@@ -265,6 +267,35 @@ class AssetMonitoringTest extends TestCase
             'assets.monitoring.changed/ok',
             'assets.monitoring.changed/ok',
         ], $codes);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_deferred_lines_are_emitted_inside_the_assets_tenant(): void
+    {
+        [$team] = $this->setupTeam(assetLimit: null);
+        $other = Team::factory()->create();
+        $asset = Asset::factory()->pendingMonitoring()->create(['team_id' => $team->id]);
+        $atEmission = [];
+        SystemLog::listen(function (array $entry) use (&$atEmission): void {
+            $atEmission[] = [
+                'code' => $entry['code'],
+                'input_team_id' => $entry['context']['input']['team_id'] ?? null,
+                'current_team_id' => TenantContext::id(),
+            ];
+        });
+
+        // The caller's transaction commits under ANOTHER tenant: the lines
+        // deferred to that commit must still carry the asset's own tenant.
+        TenantContext::for($other->id, fn () => DB::transaction(
+            fn () => app(SetAssetMonitoring::class)->execute($asset, AssetMonitoringState::Monitored),
+        ));
+
+        $deferred = array_values(array_filter($atEmission, fn (array $e) => in_array($e['code'], ['assets.monitoring.changed', 'billing.usage.recorded'], true)));
+        $this->assertSame(['assets.monitoring.changed', 'billing.usage.recorded'], collect($deferred)->pluck('code')->sort()->values()->all());
+        foreach ($deferred as $entry) {
+            $this->assertSame($team->id, $entry['input_team_id']);
+            $this->assertSame($entry['input_team_id'], $entry['current_team_id'], "[{$entry['code']}] se emitió en el contexto de otro tenant");
+        }
         $this->assertNoSensitiveDataLogged();
     }
 

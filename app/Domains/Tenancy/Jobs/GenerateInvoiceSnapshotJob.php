@@ -336,11 +336,11 @@ class GenerateInvoiceSnapshotJob implements ShouldQueue
                 'status' => $snapshot->status->value,
             ];
 
-            DB::afterCommit(fn () => SystemLog::ok('billing.invoice.generated',
+            DB::afterCommit(fn () => TenantContext::for($this->teamId, fn () => SystemLog::ok('billing.invoice.generated',
                 input: $generatedInput,
                 calc: $generatedCalc,
                 result: $generatedResult,
-            ));
+            )));
         });
     }
 

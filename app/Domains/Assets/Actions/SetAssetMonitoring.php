@@ -218,12 +218,12 @@ class SetAssetMonitoring
             'reason_present' => $reason !== null && $reason !== '',
         ];
 
-        DB::afterCommit(fn () => SystemLog::ok(
+        DB::afterCommit(fn () => TenantContext::for($logInput['team_id'], fn () => SystemLog::ok(
             'assets.monitoring.changed',
             input: $logInput,
             calc: $logCalc,
             result: ['changed' => true, 'limit_event_dispatched' => $overCap],
-        ));
+        )));
 
         return [
             'asset' => $asset,

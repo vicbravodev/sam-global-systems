@@ -18,11 +18,13 @@ use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\TenantConfig\Enums\SettingGroup;
 use App\Domains\TenantConfig\Enums\SettingValueType;
 use App\Domains\TenantConfig\Models\TenantSetting;
+use App\Models\Team;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Queue;
 use Tests\Concerns\AssertsSystemLog;
+use Tests\Concerns\AssertsTenantIsolation;
 use Tests\TestCase;
 
 /**
@@ -32,7 +34,7 @@ use Tests\TestCase;
  */
 class DetectOfflineAssetsJobTest extends TestCase
 {
-    use AssertsSystemLog, RefreshDatabase;
+    use AssertsSystemLog, AssertsTenantIsolation, RefreshDatabase;
 
     private int $teamId;
 
@@ -534,6 +536,47 @@ class DetectOfflineAssetsJobTest extends TestCase
             (int) $event->fresh()->occurred_at->diffInMinutes($asset->fresh()->last_seen_at),
             $resolved['calc']['raised_to_recovery_minutes'],
         );
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_an_episode_never_reads_the_frozen_heartbeat_of_another_tenants_raw_event(): void
+    {
+        $type = $this->offlineType();
+
+        // Tenant A (this test's team) holds a raw event WITH a frozen heartbeat.
+        $foreignRaw = RawEvent::factory()->create([
+            'team_id' => $this->teamId,
+            'event_type_raw' => 'device_offline',
+            'payload_json' => [
+                'eventType' => 'device_offline',
+                'last_connected_at' => now()->subMinutes(80)->toIso8601String(),
+            ],
+        ]);
+
+        // Tenant B's episode points at tenant A's raw event (corrupt or
+        // forged link): the heartbeat must not cross over.
+        $tenantB = Team::factory()->create();
+        $asset = $this->makeAsset([
+            'team_id' => $tenantB->id,
+            'last_seen_at' => now()->subHours(3),
+            'device_last_connected_at' => now()->subMinute(),
+        ]);
+        $event = NormalizedEvent::factory()->create([
+            'team_id' => $tenantB->id,
+            'raw_event_id' => $foreignRaw->id,
+            'asset_id' => $asset->id,
+            'event_type_id' => $type->id,
+            'occurred_at' => now()->subHour(),
+            'payload_normalized_json' => ['event_type_code' => 'device_offline'],
+        ]);
+
+        $this->assertNoTenantLeak($tenantB, fn () => $this->runJob());
+
+        $this->assertTrue($event->fresh()->payload_normalized_json['is_resolved']);
+        $resolved = $this->assertSystemLogged('assets.offline.resolved', fn (array $c) => $c['input']['normalized_event_id'] === $event->id);
+        $this->assertSame($tenantB->id, $resolved['input']['team_id']);
+        $this->assertArrayHasKey('silent_minutes', $resolved['calc']);
+        $this->assertNull($resolved['calc']['silent_minutes']);
         $this->assertNoSensitiveDataLogged();
     }
 
