@@ -6,6 +6,7 @@ use App\Support\AutomaticSystemLog;
 use App\Support\PipelineTrace;
 use App\Support\TenantContext;
 use Carbon\CarbonImmutable;
+use Closure;
 use Illuminate\Console\Events\ScheduledTaskStarting;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Date;
@@ -36,8 +37,36 @@ class AppServiceProvider extends ServiceProvider
             return;
         }
 
+        if (! self::telescopeCacheIsReachable()) {
+            return;
+        }
+
         $this->app->register(\Laravel\Telescope\TelescopeServiceProvider::class);
         $this->app->register(TelescopeServiceProvider::class);
+    }
+
+    /**
+     * Resolver de la extensión `redis`, reemplazable en tests.
+     *
+     * @var (Closure(): bool)|null
+     */
+    public static ?Closure $redisExtensionLoaded = null;
+
+    /**
+     * Telescope lee de la caché su pausa de grabación al arrancar. Si la caché
+     * es Redis vía phpredis y este PHP no trae la extensión (el `php` del host
+     * que usan `npm run build`/Wayfinder fuera de Sail), cargarlo tumbaría
+     * cualquier comando artisan: se omite. Dentro de Sail no cambia nada.
+     */
+    public static function telescopeCacheIsReachable(): bool
+    {
+        $store = (string) config('cache.default');
+
+        if (config("cache.stores.{$store}.driver") !== 'redis' || config('database.redis.client') !== 'phpredis') {
+            return true;
+        }
+
+        return (self::$redisExtensionLoaded ?? static fn (): bool => extension_loaded('redis'))();
     }
 
     /**
