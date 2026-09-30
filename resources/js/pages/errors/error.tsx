@@ -1,5 +1,5 @@
 import { Head, Link } from '@inertiajs/react';
-import AppLogoIcon from '@/components/app-logo-icon';
+import AppLogo from '@/components/app-logo';
 import { Button } from '@/components/ui/button';
 
 interface ErrorPageProps {
@@ -35,7 +35,7 @@ export default function ErrorPage({ status }: ErrorPageProps) {
         <div className="grid min-h-dvh place-items-center bg-background p-6">
             <Head title={title} />
             <div className="flex w-full max-w-md flex-col items-center text-center">
-                <AppLogoIcon className="size-10 text-primary" />
+                <AppLogo className="h-24" />
                 <div className="mt-6 font-mono text-[13px] font-semibold tracking-[0.2em] text-fg-3">
                     ERROR {status}
                 </div>

@@ -20,6 +20,7 @@ import {
     Receipt,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import AppLogoIcon from '@/components/app-logo-icon';
 import {
     Tooltip,
     TooltipContent,
@@ -132,13 +133,6 @@ export function OpsSidebar({ navBadges, mobile = false }: OpsSidebarProps) {
     const isSuperAdmin = page.props.auth?.user?.global_role === 'super_admin';
     const copilotEnabled = Boolean(page.props.copilot?.enabled);
     const nav = page.props.nav;
-
-    const logoInitials = teamName
-        .split(' ')
-        .slice(0, 2)
-        .map((w) => w[0])
-        .join('')
-        .toUpperCase();
 
     const dashboardHref = currentTeam ? dashboard(currentTeam.slug).url : '/';
 
@@ -331,11 +325,7 @@ export function OpsSidebar({ navBadges, mobile = false }: OpsSidebarProps) {
         >
             {/* Tenant block */}
             <div className="flex min-h-14 items-center gap-2.5 border-b border-sidebar-border px-3 py-3">
-                <div className="grid size-8 shrink-0 place-items-center rounded-md bg-primary">
-                    <span className="text-2xs font-bold tracking-caps text-white">
-                        {logoInitials}
-                    </span>
-                </div>
+                <AppLogoIcon className="size-8" />
                 {!collapsed && (
                     <>
                         <div className="min-w-0 flex-1">

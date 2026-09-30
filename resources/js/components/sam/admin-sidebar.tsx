@@ -7,10 +7,10 @@ import {
     FileClock,
     LogOut,
     Radio,
-    Shield,
     UsersRound,
 } from 'lucide-react';
 import { useState } from 'react';
+import AppLogoIcon from '@/components/app-logo-icon';
 import {
     Tooltip,
     TooltipContent,
@@ -162,9 +162,7 @@ export function AdminSidebar({
         >
             {/* Operator block */}
             <div className="flex min-h-14 items-center gap-2.5 border-b border-sidebar-border px-3 py-3">
-                <div className="grid size-8 shrink-0 place-items-center rounded-md bg-primary">
-                    <Shield className="size-4 text-white" />
-                </div>
+                <AppLogoIcon className="size-8" />
                 {!collapsed && (
                     <>
                         <div className="min-w-0 flex-1">

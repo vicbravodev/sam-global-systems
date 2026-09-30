@@ -145,7 +145,7 @@ export default function Welcome() {
                             className="flex items-center gap-2.5"
                             aria-label="SAM, inicio"
                         >
-                            <AppLogoIcon className="size-7 text-primary" />
+                            <AppLogoIcon className="size-8" />
                             <span className="text-md font-semibold tracking-tight">
                                 SAM
                             </span>
@@ -457,7 +457,7 @@ export default function Welcome() {
                         <div className="grid gap-10 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
                             <div>
                                 <div className="flex items-center gap-2.5">
-                                    <AppLogoIcon className="size-7 text-primary" />
+                                    <AppLogoIcon className="size-8" />
                                     <span className="text-md font-semibold tracking-tight">
                                         SAM
                                     </span>
