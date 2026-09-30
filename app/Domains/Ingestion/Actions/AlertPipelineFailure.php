@@ -14,6 +14,7 @@ use App\Models\Membership;
 use App\Models\Team;
 use App\Models\User;
 use App\Support\JobFailureReporter;
+use App\Support\LoggableCode;
 use App\Support\SafeException;
 use App\Support\SystemLog;
 use App\Support\TenantContext;
@@ -23,8 +24,10 @@ use Throwable;
 
 /**
  * Alerta humana cuando el camino crítico del pipeline se rinde: un job agotó
- * sus reintentos (`failed()`), o el barrido de atascados agotó sus rescates.
- * En un producto de seguridad, un pánico perdido en silencio es el peor fallo.
+ * sus reintentos (`failed()`), el barrido de atascados agotó sus rescates, o
+ * una alerta del proveedor (posible pánico) no encajó en ninguna regla de
+ * mapeo y quedó `unmapped` sin incidente. En un producto de seguridad, un
+ * pánico perdido en silencio es el peor fallo.
  *
  * - Destinatarios: siempre los super-admins de plataforma; además los
  *   owners/admins del team del evento cuando es una emergencia. Nunca otro
@@ -86,6 +89,28 @@ class AlertPipelineFailure
     }
 
     /**
+     * Una alerta del proveedor (tipo en `pipeline.unmapped_alert_types`) se
+     * normalizó como `unmapped`: no abrirá incidente. Se trata como posible
+     * emergencia (avisar de más antes que perder un pánico malformado), así
+     * que también llega a owners/admins del tenant del evento. Una por raw
+     * event: el dedup_key lleva el raw event.
+     */
+    public function forUnmappedAlert(RawEvent $rawEvent, string $externalEventType): void
+    {
+        $this->guarded(fn () => $this->alert(
+            kind: PipelineFailureAlert::KIND_UNMAPPED_ALERT,
+            stage: 'normalization.unmapped_alert',
+            rawEventId: (int) $rawEvent->id,
+            normalizedEventId: null,
+            expectedTeamId: $rawEvent->team_id !== null ? (int) $rawEvent->team_id : null,
+            forceEmergency: true,
+            error: null,
+            reprocessAttempts: null,
+            externalEventType: LoggableCode::guard($externalEventType),
+        ), ['raw_event_id' => (int) $rawEvent->id]);
+    }
+
+    /**
      * @param  \Closure(): void  $callback
      * @param  array<string, mixed>  $input
      */
@@ -107,6 +132,7 @@ class AlertPipelineFailure
         bool $forceEmergency,
         ?Throwable $error,
         ?int $reprocessAttempts,
+        ?string $externalEventType = null,
     ): void {
         $subject = $this->resolveSubject($rawEventId, $normalizedEventId);
         $teamId = $subject['team_id'];
@@ -170,6 +196,7 @@ class AlertPipelineFailure
             'raw_event_id' => $subject['raw_event_id'],
             'normalized_event_id' => $subject['normalized_event_id'],
             'event_type_code' => $subject['event_type_code'],
+            'external_event_type' => $externalEventType,
             'is_emergency' => $isEmergency,
             'asset_id' => $subject['asset_id'],
             'asset_name' => $this->assetName($teamId, $subject['asset_id']),
