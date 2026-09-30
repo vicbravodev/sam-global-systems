@@ -117,6 +117,12 @@ export interface MediaItem {
     availability: string | null;
     eventType: string | null;
     eventHref: string | null;
+    /** Incidente abierto por el evento de esta media (INC-00051). */
+    incident?: string | null;
+    incidentHref?: string | null;
+    /** Veredicto de la IA de visión sobre el archivo (o sus frames). */
+    aiVerdict?: string | null;
+    aiSummary?: string | null;
 }
 
 export interface MediaBlock {
