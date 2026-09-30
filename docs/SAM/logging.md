@@ -457,7 +457,10 @@ Selección de canales vacía (`notifications.channels.selected` skipped): antes 
 | `billing.emergency_surcharge.charged` | ok | - | `team_id`, `asset_id`, `normalized_event_id`; calc `local_date`, `occurred_at_source` (`event` o `now`), `surcharge_percent`, `meter_code`; result `event_key`, `recorded=true` (sale de `RecordUsageEvent::record`). El importe no se registra aquí: la tarifa diaria se conoce al cerrar la factura (`billing.invoice_line.calculated` con `billing_model = asset_day_surcharge`). Nunca nombre ni placa del activo |
 | `billing.emergency_surcharge.skipped` | skipped | `no_asset` (`team_id`, `normalized_event_id`), `already_charged_today` (calc `local_date`, result `event_key`) | `team_id`, `asset_id`, `normalized_event_id` |
 | `billing.emergency_surcharge.notified` | ok / skipped | `no_supervisors` (skipped), `already_notified` (skipped: `SendNotification` deduplicó por `event_key` y devolvió la fila existente, no se envió nada; result `notification_id`) | `team_id`, `asset_id`; result `notification_id`, `recipients_count` (solo ok, aviso recién creado). Nunca asunto ni cuerpo del aviso |
-| `billing.messaging_charge.reconcile_failed` | degraded | `provider_error` | `charge_id`, `provider_sid`, `error` |
+| `billing.messaging_charge.finalized` | ok / skipped / degraded | `already_finalized` (skipped: el cargo ya tenía `finalized_at`; solo `input`), `not_metered` (degraded: el cargo quedó finalizado pero la medición falló; result `metered=false`, `finalized=true`: el reconciliador ya no lo toma; la causa la registra `billing.messaging_usage.not_metered`) | `team_id`, `charge_id`, `provider_sid`, `resource_type`, `channel_type`; calc según `price_source` (tabla abajo) + `price_micros` (= `messaging_charges.price_micros`), `estimated`; result ok `metered=true`, `meter_code` (`messaging_cost_micros`), `event_key` (`twilio_charge:{sid}`), o `metered=false`, `meter_skipped_reason=zero_cost` (costo 0: sin uso). Por `DB::afterCommit` dentro del `TenantContext` del cargo. El costo se fija aquí en micro-USD; margen y FX se aplican en la factura (`billing.invoice_line.calculated`, `cost_plus`) |
+| `billing.messaging_charge.reconciled` | ok | - | `team_id`, `charge_id`, `resource_type`; calc `branch` (tabla abajo), `provider_status` (vía `LoggableCode`), `terminal`, `price_present`, `age_hours` (desde `created_at`), `estimate_after_hours` (24), `give_up_after_hours` (72); en `not_found_at_provider` solo `branch` y `provider_error_code` (20404). result = el reintento (`check_attempts`, `delay_minutes`, `next_check_at` = `messaging_charges.next_check_at`, `formula` = `delay_minutes = min(60, 2 ** min(check_attempts, 6))`) solo en `rescheduled`. En `debug` cuando `branch = rescheduled`. Dentro del `TenantContext` del cargo |
+| `billing.messaging_charge.reconcile_failed` | degraded | `provider_error` | `team_id`, `charge_id`, `provider_sid`, `error_class` (`class_basename`), `provider_error_code` (`getCode()` de la excepción: el código numérico de Twilio), `error`; calc = el reintento programado (`check_attempts`, `delay_minutes`, `next_check_at`, `formula`, como `reconciled` en `rescheduled`) |
+| `billing.messaging_reconcile.completed` | ok | - | corrida de plataforma cada 5 min, fuera de todo tenant: calc `batch_size` (200), `time_budget_seconds` (180); result `charges_due_count` (los tomados, ≤ `batch_size`), `charges_processed_count` (los intentados antes de agotar el presupuesto, fallidos incluidos), `charges_failed_count` (→ `reconcile_failed`), `budget_exhausted`, `branch_counts` (`{branch}_count` de cada rama, 0 incluidos; suman `processed - failed`). Solo conteos, sin `team_id` ni ids. En `debug` cuando `charges_due_count = 0` |
 | `billing.messaging_charge.record_failed` | degraded | `record_failed` | `team_id`, `provider_sid`, `source_type`, `source_id`, `error` |
 | `billing.messaging_usage.not_metered` | degraded | `record_failed` | `team_id`, `meter_code`, `event_key`, `error` |
 | `billing.monitored_day.skipped` | skipped | `not_monitored` (calc `monitoring_state`), `inactive` (calc `asset_status`), `tenant_not_billable` (calc `blocked_reason`: el de `TenantCanSend` o `resolved_by_caller` cuando el llamador ya lo resolvió y narró con `billing.tenant.blocked`), `legacy_sample_exists` (calc `legacy_event_key`: el día ya se cobró con la foto nocturna por tenant), `already_recorded` (result `event_key`: la fila del día ya existía) | `team_id`, `asset_id`, `local_date`. Un tracto-día NO cobrado, siempre con motivo; el cobrado lo narra `billing.usage.recorded` (meter `monitored_asset_days`). En `debug` cuando lo pide el cierre diario (`already_recorded`, `not_monitored`, `inactive`); al encender la vigilancia va en info. Nunca nombre ni placa del activo |
@@ -483,6 +486,26 @@ Fórmula de `billing.invoice_line.calculated` por `billing_model`:
 | medidores del plan (`billing_model` de la tarifa) | `overage = max(0, consumed - included); amount = round(overage * overage_unit_price, 2)` |
 
 Los importes del log son los mismos `float` de `breakdown_json`; `subtotal`, `overage_total` y `total` son el decimal persistido. `daily_rate` se muestra redondeada a 6 decimales, pero `amount` usa `unit_price / days_in_period` sin redondear; la línea de emergencias sí parte de la redondeada. `total` suma el subtotal SIN redondear (`Σ subtotal_terms`) al `overage_total` ya redondeado, como hace el código.
+
+`calc` de `billing.messaging_charge.finalized` por `price_source` (micro-USD; `price_micros` es el entero persistido):
+
+| `price_source` | Campos | `formula` |
+|---|---|---|
+| `provider` | `provider_price` (el string de Twilio, p.ej. `"-0.00790"`), `price_unit` (vía `LoggableCode`; el guardado, `USD` si Twilio no lo mandó) | `price_micros = round(abs(provider_price) * 1e6)` |
+| `estimate` | `estimate_unit` (`voice_minute`, `whatsapp_message`, `sms_segment`), `unit_price_usd` (`services.twilio.estimated_prices`), `units`, `duration_seconds` (llamadas) o `segments` (SMS) | `units = max(1, ceil(duration_seconds / 60))` / `units = 1` / `units = max(1, segments)`; `price_micros = round(unit_price_usd * units * 1e6)` |
+| `free` | - (`price_micros = 0`) | - |
+
+`branch` de `billing.messaging_charge.reconciled`:
+
+| `branch` | Significado |
+|---|---|
+| `not_found_at_provider` | Twilio respondió 20404: se cierra sin costo |
+| `priced` | terminal con precio: se cierra con el precio real |
+| `free_status` | terminal que Twilio no cobra (`failed`, `canceled`; en llamadas también `busy`, `no-answer`): se cierra sin costo |
+| `estimated_after_hours` | terminal sin precio tras 24 h: se cierra con el estimado |
+| `gave_up_priced` | no terminal tras 72 h con precio: se cierra con el precio real |
+| `gave_up_estimated` | no terminal tras 72 h sin precio: se cierra con el estimado |
+| `rescheduled` | aún no se puede cerrar: se programa otra revisión (`debug`) |
 
 ### Activos (`assets`)
 
