@@ -10,7 +10,9 @@ use App\Domains\Assets\Models\Asset;
 use App\Domains\Assets\Models\AssetDevice;
 use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Domains\Tenancy\Support\AssetDayPricing;
+use App\Domains\Tenancy\Support\TenantCanSend;
 use App\Models\Team;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Builder;
@@ -38,34 +40,95 @@ class RecordAssetUsageMeters extends Command
         $date = $this->resolveDate();
 
         if ($date === null) {
+            // Nunca el valor recibido: basta saber que vino una opción inválida.
+            SystemLog::failed('billing.daily_close.completed', reason: 'invalid_date', input: ['date_option_present' => true]);
+
             $this->error('La fecha debe tener formato Y-m-d.');
 
             return self::FAILURE;
         }
 
         $failures = 0;
+        // Solo sumas de plataforma: ningún id de tenant sale de aquí. Es un
+        // objeto (no un array por referencia) porque la arrow fn de abajo
+        // captura por valor: `&$failures` dentro de ella apunta a una copia.
+        $totals = new \ArrayObject([
+            'teams_scanned_count' => 0,
+            'teams_closed_count' => 0,
+            'teams_blocked_count' => 0,
+            'asset_days_recorded_count' => 0,
+            'asset_days_already_recorded_count' => 0,
+            'cameras_count' => 0,
+            'teams_failed_count' => 0,
+        ]);
 
         // Comando de plataforma: recorre todos los tenants a propósito, y
         // cuenta los activos de cada uno dentro de su contexto. Ver §2.1. Un
         // tenant que falla no deja sin cierre a los que siguen.
-        TenantContext::withoutTenant(fn () => Team::query()->select('id')->chunkById(100, function ($teams) use ($recordUsage, $recordAssetDay, $date, &$failures) {
+        TenantContext::withoutTenant(fn () => Team::query()->select('id')->chunkById(100, function ($teams) use ($recordUsage, $recordAssetDay, $date, &$failures, $totals) {
             foreach ($teams as $team) {
+                $totals['teams_scanned_count']++;
+
                 try {
-                    TenantContext::for($team->id, function () use ($team, $recordUsage, $recordAssetDay, $date) {
-                        if (! RecordMonitoredAssetDay::tenantBillable((int) $team->id)) {
+                    TenantContext::for($team->id, function () use ($team, $recordUsage, $recordAssetDay, $date, $totals) {
+                        if (($blocked = TenantCanSend::blockedReason((int) $team->id)) !== null) {
+                            SystemLog::skipped('billing.tenant.blocked', reason: $blocked, input: ['team_id' => $team->id, 'stage' => 'daily_close', 'local_date' => $date]);
+                            $totals['teams_blocked_count']++;
+
                             return;
                         }
 
-                        $this->recordMonitoredAssets($team, $recordUsage, $recordAssetDay, $date);
-                        $this->recordActiveCameras($team, $recordUsage, $date);
+                        $assets = $this->recordMonitoredAssets($team, $recordUsage, $recordAssetDay, $date);
+                        $cameras = $this->recordActiveCameras($team, $recordUsage, $date);
+
+                        $recorded = $assets['outcome_counts']['recorded'] ?? 0;
+                        $alreadyRecorded = $assets['outcome_counts']['already_recorded'] ?? 0;
+
+                        SystemLog::ok(
+                            'billing.daily_close.tenant_closed',
+                            input: ['team_id' => $team->id, 'local_date' => $date],
+                            calc: [
+                                'assets_monitored_count' => $assets['assets_monitored_count'],
+                                'recorded_count' => $recorded,
+                                'already_recorded_count' => $alreadyRecorded,
+                                'legacy_sample_exists_count' => $assets['outcome_counts']['legacy_sample_exists'] ?? 0,
+                                'attached_cameras_count' => $cameras['attached_cameras_count'],
+                                'standalone_cameras_count' => $cameras['standalone_cameras_count'],
+                            ],
+                            result: [
+                                'monitored_assets_gauge_recorded' => $assets['gauge_recorded'],
+                                'active_cameras_recorded' => $cameras['recorded'],
+                            ],
+                        );
+
+                        $totals['teams_closed_count']++;
+                        $totals['asset_days_recorded_count'] += $recorded;
+                        $totals['asset_days_already_recorded_count'] += $alreadyRecorded;
+                        $totals['cameras_count'] += $cameras['attached_cameras_count'] + $cameras['standalone_cameras_count'];
                     });
                 } catch (\Throwable $e) {
                     $failures++;
+                    $totals['teams_failed_count']++;
+                    TenantContext::for($team->id, fn () => SystemLog::failed(
+                        'billing.daily_close.tenant_failed',
+                        reason: 'exception',
+                        input: ['team_id' => $team->id, 'local_date' => $date],
+                        error: $e,
+                    ));
                     report($e);
                     $this->warn("Tenant {$team->id}: cierre fallido ({$e->getMessage()}).");
                 }
             }
         }));
+
+        $closeInput = ['local_date' => $date, 'date_source' => $this->option('date') ? 'option' : 'today'];
+        $closeResult = $totals->getArrayCopy();
+
+        if ($closeResult['teams_failed_count'] > 0) {
+            SystemLog::degraded('billing.daily_close.completed', reason: 'tenant_failures', input: $closeInput, result: $closeResult);
+        } else {
+            SystemLog::ok('billing.daily_close.completed', input: $closeInput, result: $closeResult);
+        }
 
         if ($failures > 0) {
             $this->error("Cierre {$date} con {$failures} tenant(s) fallido(s): reintenta con --date={$date}.");
@@ -95,24 +158,29 @@ class RecordAssetUsageMeters extends Command
      * El cierre del día registra un tracto-día por cada unidad vigilada
      * (idempotente: la que ya se cobró al encenderse hoy no se duplica) y el
      * gauge `monitored_assets` (pico del mes, informa el tope).
+     *
+     * @return array{assets_monitored_count: int, outcome_counts: array<string, int>, gauge_recorded: bool}
      */
-    private function recordMonitoredAssets(Team $team, RecordUsageEvent $recordUsage, RecordMonitoredAssetDay $recordAssetDay, string $date): void
+    private function recordMonitoredAssets(Team $team, RecordUsageEvent $recordUsage, RecordMonitoredAssetDay $recordAssetDay, string $date): array
     {
         $count = 0;
+        $outcomeCounts = [];
+        $gaugeRecorded = false;
 
         Asset::query()
             ->where('team_id', $team->id)
             ->monitored()
             ->where('status', '!=', AssetStatus::Inactive)
-            ->chunkById(200, function ($assets) use ($recordAssetDay, $date, &$count) {
+            ->chunkById(200, function ($assets) use ($recordAssetDay, $date, &$count, &$outcomeCounts) {
                 foreach ($assets as $asset) {
-                    $recordAssetDay->execute($asset, $date, tenantBillable: true);
+                    $outcome = $recordAssetDay->outcome($asset, $date, tenantBillable: true, fromDailyClose: true);
+                    $outcomeCounts[$outcome] = ($outcomeCounts[$outcome] ?? 0) + 1;
                     $count++;
                 }
             });
 
         if ($count > 0) {
-            $recordUsage->execute(
+            $gaugeRecorded = $recordUsage->record(
                 teamId: $team->id,
                 meterCode: 'monitored_assets',
                 quantity: $count,
@@ -120,9 +188,14 @@ class RecordAssetUsageMeters extends Command
                 occurredAt: AssetDayPricing::localNoon($date),
             );
         }
+
+        return ['assets_monitored_count' => $count, 'outcome_counts' => $outcomeCounts, 'gauge_recorded' => $gaugeRecorded];
     }
 
-    private function recordActiveCameras(Team $team, RecordUsageEvent $recordUsage, string $date): void
+    /**
+     * @return array{attached_cameras_count: int, standalone_cameras_count: int, recorded: bool}
+     */
+    private function recordActiveCameras(Team $team, RecordUsageEvent $recordUsage, string $date): array
     {
         $attachedCameras = AssetDevice::query()
             ->whereIn('device_type', self::CAMERA_DEVICE_TYPES)
@@ -147,9 +220,10 @@ class RecordAssetUsageMeters extends Command
             ->count();
 
         $count = $attachedCameras + $cameraAssets;
+        $recorded = false;
 
         if ($count > 0) {
-            $recordUsage->execute(
+            $recorded = $recordUsage->record(
                 teamId: $team->id,
                 meterCode: 'active_cameras',
                 quantity: $count,
@@ -157,5 +231,7 @@ class RecordAssetUsageMeters extends Command
                 occurredAt: AssetDayPricing::localNoon($date),
             );
         }
+
+        return ['attached_cameras_count' => $attachedCameras, 'standalone_cameras_count' => $cameraAssets, 'recorded' => $recorded];
     }
 }

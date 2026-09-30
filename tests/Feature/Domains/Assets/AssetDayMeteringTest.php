@@ -9,6 +9,7 @@ use App\Domains\Tenancy\Models\UsageMeter;
 use App\Models\User;
 use Database\Seeders\AssetMeterSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 /**
@@ -17,7 +18,7 @@ use Tests\TestCase;
  */
 class AssetDayMeteringTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsSystemLog, RefreshDatabase;
 
     public function test_only_monitored_units_count_and_asset_days_are_recorded(): void
     {
@@ -41,6 +42,14 @@ class AssetDayMeteringTest extends TestCase
         $this->assertSame(3, $quantity('monitored_assets'));
         $this->assertSame(3, $quantity('monitored_asset_days'));
         $this->assertSame('sum', UsageMeter::where('code', 'monitored_asset_days')->sole()->aggregation_type->value);
+
+        $closed = $this->assertSystemLogged('billing.daily_close.tenant_closed', fn (array $c) => $c['input']['team_id'] === $team->id);
+        $this->assertSame(3, $closed['calc']['assets_monitored_count']);
+        $this->assertSame(3, $closed['calc']['recorded_count']);
+        $this->assertSame(0, $closed['calc']['already_recorded_count']);
+        $this->assertSame($quantity('monitored_asset_days'), $closed['calc']['recorded_count'] + $closed['calc']['already_recorded_count']);
+        $this->assertTrue($closed['result']['monitored_assets_gauge_recorded']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     /**

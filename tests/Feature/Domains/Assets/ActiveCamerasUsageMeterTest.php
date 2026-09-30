@@ -10,6 +10,7 @@ use App\Domains\Tenancy\Models\UsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
 use App\Models\Team;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 /**
@@ -19,7 +20,7 @@ use Tests\TestCase;
  */
 class ActiveCamerasUsageMeterTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsSystemLog, RefreshDatabase;
 
     private UsageMeter $meter;
 
@@ -73,6 +74,14 @@ class ActiveCamerasUsageMeterTest extends TestCase
         $this->artisan('assets:record-usage-meters')->assertSuccessful();
 
         $this->assertSame(2, $this->recordedCameras($team));
+
+        $closed = $this->assertSystemLogged('billing.daily_close.tenant_closed', fn (array $c) => $c['input']['team_id'] === $team->id);
+        $this->assertSame(1, $closed['calc']['attached_cameras_count']);
+        $this->assertSame(1, $closed['calc']['standalone_cameras_count']);
+        $this->assertSame($this->recordedCameras($team), $closed['calc']['attached_cameras_count'] + $closed['calc']['standalone_cameras_count']);
+        $this->assertTrue($closed['result']['active_cameras_recorded']);
+        $this->assertSystemLogged('billing.daily_close.completed', fn (array $c) => $c['result']['cameras_count'] === 2);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_cameras_of_another_tenant_are_never_counted(): void

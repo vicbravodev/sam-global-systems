@@ -9,6 +9,7 @@ use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Domains\Tenancy\Models\UsageEvent;
 use App\Domains\Tenancy\Support\AssetDayPricing;
 use App\Domains\Tenancy\Support\TenantCanSend;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 
 /**
@@ -33,34 +34,74 @@ class RecordMonitoredAssetDay
      */
     public function execute(Asset $asset, ?string $localDate = null, ?bool $tenantBillable = null): bool
     {
+        return in_array($this->outcome($asset, $localDate, $tenantBillable), ['recorded', 'already_recorded'], true);
+    }
+
+    /**
+     * Igual que `execute()`, pero dice qué pasó con el tracto-día y lo narra:
+     * `recorded` (lo cuenta `billing.usage.recorded`), `already_recorded`,
+     * `not_monitored`, `inactive`, `tenant_not_billable` o
+     * `legacy_sample_exists`.
+     *
+     * @param  bool  $fromDailyClose  lo pide el cierre diario: sus saltos normales van a debug
+     * @return 'recorded'|'already_recorded'|'not_monitored'|'inactive'|'tenant_not_billable'|'legacy_sample_exists'
+     */
+    public function outcome(Asset $asset, ?string $localDate = null, ?bool $tenantBillable = null, bool $fromDailyClose = false): string
+    {
         $teamId = (int) $asset->team_id;
         $localDate ??= AssetDayPricing::localDate(now());
 
-        if (! $asset->isMonitored() || $asset->status === AssetStatus::Inactive) {
-            return false;
-        }
+        return TenantContext::for($teamId, function () use ($asset, $teamId, $localDate, $tenantBillable, $fromDailyClose): string {
+            $input = ['team_id' => $teamId, 'asset_id' => $asset->id, 'local_date' => $localDate];
 
-        $tenantBillable ??= self::tenantBillable($teamId);
+            if (! $asset->isMonitored()) {
+                SystemLog::skipped('billing.monitored_day.skipped', reason: 'not_monitored', input: $input, calc: ['monitoring_state' => $asset->monitoring_state->value], debug: $fromDailyClose);
 
-        if (! $tenantBillable) {
-            return false;
-        }
-
-        return TenantContext::for($teamId, function () use ($asset, $teamId, $localDate) {
-            if ($this->legacySampleExists($teamId, $localDate)) {
-                return false;
+                return 'not_monitored';
             }
 
-            $this->recordUsage->execute(
+            if ($asset->status === AssetStatus::Inactive) {
+                SystemLog::skipped('billing.monitored_day.skipped', reason: 'inactive', input: $input, calc: ['asset_status' => $asset->status->value], debug: $fromDailyClose);
+
+                return 'inactive';
+            }
+
+            $blocked = $tenantBillable === null
+                ? TenantCanSend::blockedReason($teamId)
+                : ($tenantBillable ? null : 'resolved_by_caller');
+
+            if ($blocked !== null) {
+                SystemLog::skipped('billing.monitored_day.skipped', reason: 'tenant_not_billable', input: $input, calc: ['blocked_reason' => $blocked]);
+
+                return 'tenant_not_billable';
+            }
+
+            $legacyEventKey = self::legacyEventKey($teamId, $localDate);
+
+            if ($this->legacySampleExists($teamId, $legacyEventKey)) {
+                SystemLog::skipped('billing.monitored_day.skipped', reason: 'legacy_sample_exists', input: $input, calc: ['legacy_event_key' => $legacyEventKey]);
+
+                return 'legacy_sample_exists';
+            }
+
+            $eventKey = self::eventKey($teamId, (int) $asset->id, $localDate);
+
+            $inserted = $this->recordUsage->record(
                 teamId: $teamId,
                 meterCode: AssetDayPricing::METER_CODE,
                 quantity: 1,
-                eventKey: self::eventKey($teamId, (int) $asset->id, $localDate),
+                eventKey: $eventKey,
                 metadata: ['asset_id' => $asset->id, 'local_date' => $localDate],
                 occurredAt: AssetDayPricing::localNoon($localDate),
             );
 
-            return true;
+            if ($inserted) {
+                return 'recorded';
+            }
+
+            SystemLog::skipped('billing.monitored_day.skipped', reason: 'already_recorded', input: $input, result: ['event_key' => $eventKey], debug: $fromDailyClose);
+
+            return 'already_recorded';
         });
     }
 
@@ -82,11 +123,16 @@ class RecordMonitoredAssetDay
      * total del día): si ese día ya se cobró con el modelo anterior, no se
      * vuelve a cobrar unidad por unidad.
      */
-    private function legacySampleExists(int $teamId, string $localDate): bool
+    private function legacySampleExists(int $teamId, string $legacyEventKey): bool
     {
         return UsageEvent::query()
             ->where('team_id', $teamId)
-            ->where('event_key', RecordAssetUsageMeters::ASSET_DAYS_METER.":{$teamId}:{$localDate}")
+            ->where('event_key', $legacyEventKey)
             ->exists();
+    }
+
+    private static function legacyEventKey(int $teamId, string $localDate): string
+    {
+        return RecordAssetUsageMeters::ASSET_DAYS_METER.":{$teamId}:{$localDate}";
     }
 }
