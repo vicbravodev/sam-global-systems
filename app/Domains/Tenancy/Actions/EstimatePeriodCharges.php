@@ -48,6 +48,7 @@ class EstimatePeriodCharges
 
             [$assetDays, $daysRecorded, $todaySampled] = $this->assetDaysSoFar($teamId, $periodStart, $today, $missingMeters);
             $monitoredNow = Asset::query()->where('team_id', $teamId)->monitored()->count();
+            $overCap = $cap !== null && $monitoredNow > $cap;
             $daysElapsed = (int) $periodStart->diffInDays($today) + 1;
             // Sólo se proyectan los días que aún pueden muestrearse: hoy si la
             // muestra nocturna no ha corrido y los que faltan del mes. Un día
@@ -121,7 +122,7 @@ class EstimatePeriodCharges
                     'currency' => $terms->currency,
                     'total_to_date' => $totalToDate,
                     'total_projected' => $totalProjected,
-                    'over_cap' => $cap !== null && $monitoredNow > $cap,
+                    'over_cap' => $overCap,
                 ],
             );
 
@@ -137,7 +138,7 @@ class EstimatePeriodCharges
                 'dailyRate' => $toDate['daily_rate'],
                 'monitoredNow' => $monitoredNow,
                 'cap' => $cap,
-                'overCap' => $cap !== null && $monitoredNow > $cap,
+                'overCap' => $overCap,
                 'assetDays' => $assetDays,
                 'assetDaysExtra' => $toDate['overage'],
                 'projectedAssetDays' => $projectedAssetDays,
@@ -168,10 +169,8 @@ class EstimatePeriodCharges
     }
 
     /**
-     * @return array{0: int, 1: int, 2: bool} tracto-días acumulados, días con muestra y si hoy ya tiene muestra
-     */
-    /**
      * @param  list<string>  $missingMeters
+     * @return array{0: int, 1: int, 2: bool} tracto-días acumulados, días con muestra y si hoy ya tiene muestra
      */
     private function assetDaysSoFar(int $teamId, CarbonImmutable $periodStart, CarbonImmutable $today, array &$missingMeters): array
     {

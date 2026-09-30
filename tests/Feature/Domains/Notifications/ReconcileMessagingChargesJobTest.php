@@ -97,6 +97,7 @@ class ReconcileMessagingChargesJobTest extends TestCase
         $this->assertSame(DeliveryStatus::Delivered, $fresh->status);
         $this->assertSame(NotificationStatus::Sent, $fresh->notification->status);
         $this->assertSame('poll', MessagingCharge::query()->where('provider_sid', 'SM_LOST')->sole()->events_json[0]['source']);
+        $this->assertLogsAreClean();
     }
 
     public function test_real_price_is_metered_once(): void
@@ -302,6 +303,7 @@ class ReconcileMessagingChargesJobTest extends TestCase
         $this->assertSame(42, $answered->fresh()->call_duration_seconds);
         $this->assertSame(DeliveryStatus::Delivered, $answered->fresh()->status);
         $this->assertCount(1, $this->costEvents());
+        $this->assertLogsAreClean();
     }
 
     public function test_charges_are_not_polled_before_they_are_due(): void
@@ -313,6 +315,7 @@ class ReconcileMessagingChargesJobTest extends TestCase
         $this->runReconciler();
 
         $this->assertNull(MessagingCharge::query()->where('provider_sid', 'SM_FRESH')->value('finalized_at'));
+        $this->assertLogsAreClean();
     }
 
     public function test_otp_and_verification_charges_are_priced_too(): void
@@ -333,6 +336,7 @@ class ReconcileMessagingChargesJobTest extends TestCase
         $this->runReconciler();
 
         $this->assertSame(21_900, (int) $this->costEvents()->sum('quantity'));
+        $this->assertLogsAreClean();
     }
 
     public function test_unknown_sid_at_twilio_is_closed_without_cost(): void

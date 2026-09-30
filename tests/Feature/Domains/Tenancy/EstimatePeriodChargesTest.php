@@ -7,6 +7,7 @@ use App\Domains\Tenancy\Actions\EstimatePeriodCharges;
 use App\Domains\Tenancy\Models\TenantBillingTerms;
 use App\Domains\Tenancy\Models\UsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
+use App\Domains\Tenancy\Support\CostPlusPricing;
 use App\Models\Team;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -138,6 +139,24 @@ class EstimatePeriodChargesTest extends TestCase
             $this->assertSame('estimate', $entry['context']['input']['stage']);
             $this->assertSame($team->id, $entry['context']['input']['team_id']);
         }
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_missing_messaging_meter_is_logged_by_its_unit(): void
+    {
+        $team = Team::factory()->create();
+        TenantBillingTerms::factory()->create(['team_id' => $team->id, 'unit_price' => 300]);
+        UsageMeter::query()->where('unit', CostPlusPricing::MICRO_UNIT)->delete();
+
+        $estimate = app(EstimatePeriodCharges::class)->execute($team->id, CarbonImmutable::parse('2026-09-03'));
+
+        // Read as 0, and said so: no messaging meter at all is named by its unit.
+        $this->assertEquals(0, $estimate['messagingToDate']);
+        $missing = $this->assertSystemLogged('billing.meter.missing', fn (array $c) => ($c['input']['meter_unit'] ?? null) === CostPlusPricing::MICRO_UNIT);
+        $this->assertSame('degraded', $missing['outcome']);
+        $this->assertSame('meter_missing', $missing['reason']);
+        $this->assertSame(['team_id' => $team->id, 'meter_unit' => 'usd_micros', 'stage' => 'estimate'], $missing['input']);
+        $this->assertArrayNotHasKey('meter_code', $missing['input']);
         $this->assertNoSensitiveDataLogged();
     }
 
