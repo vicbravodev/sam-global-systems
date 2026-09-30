@@ -8,7 +8,7 @@ import {
     Sparkles,
     Trash2,
 } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CopilotChatPanel } from '@/components/sam/copilot/copilot-chat-panel';
 import { timeAgo } from '@/components/sam/copilot/copilot-format';
 import { useCopilotChat } from '@/components/sam/copilot/use-copilot-chat';
@@ -98,7 +98,11 @@ export default function CopilotIndex() {
         );
     };
 
-    const catalog: CopilotCatalog = { ...props, conversations, quota };
+    // Stable between stream frames: the panel memoizes on it.
+    const catalog: CopilotCatalog = useMemo(
+        () => ({ ...props, conversations, quota }),
+        [props, conversations, quota],
+    );
     const engineLabel =
         props.engine.mode === 'llm'
             ? `IA generativa · ${props.engine.model ?? 'modelo configurado'}`
