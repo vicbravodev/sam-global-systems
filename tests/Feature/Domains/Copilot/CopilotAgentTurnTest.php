@@ -83,6 +83,8 @@ class CopilotAgentTurnTest extends TestCase
             && $c['calc']['followups_count'] === 2
             && $c['calc']['steps'] >= 1
             && $c['result']['model'] === 'gpt-test');
+        // The step guard narrates every step under the turn's tenant.
+        $this->assertSystemLogged('copilot.step.started', fn (array $c) => $c['input']['team_id'] === $team->id);
         $this->assertNoSensitiveDataLogged();
         $this->assertQuestionNeverLogged($question);
     }

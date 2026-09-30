@@ -37,7 +37,10 @@ class RunCopilotAgentTurn
             $turn->scope,
             $turn->history,
             $this->toolbox->for($turn->scope, $turn->collector),
-            new CopilotStepGuard((int) config('ai.copilot.max_turn_tokens', 60000)),
+            new CopilotStepGuard(
+                teamId: $turn->scope->teamId,
+                maxTurnTokens: (int) config('ai.copilot.max_turn_tokens', 60000),
+            ),
         );
     }
 

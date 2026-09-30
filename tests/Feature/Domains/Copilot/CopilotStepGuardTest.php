@@ -53,7 +53,7 @@ class CopilotStepGuardTest extends TestCase
         $seen = null;
         $expected = $this->stepResult();
 
-        $returned = (new CopilotStepGuard(60000))->handle($this->pendingStep(5, true), function (PendingStep $s) use (&$seen, $expected) {
+        $returned = (new CopilotStepGuard(teamId: 7, maxTurnTokens: 60000))->handle($this->pendingStep(5, true), function (PendingStep $s) use (&$seen, $expected) {
             $seen = $s;
 
             return $expected;
@@ -62,6 +62,7 @@ class CopilotStepGuardTest extends TestCase
         $this->assertSame($expected, $returned);
         $this->assertSame(ToolChoice::none, $seen->options->toolChoice->mode);
         $this->assertSystemLogged('copilot.step.budget_reached', fn ($c) => $c['reason'] === 'max_steps'
+            && $c['input']['team_id'] === 7
             && $c['input']['step'] === 5
             && $c['calc']['tokens_so_far'] === 0
             && $c['calc']['max_turn_tokens'] === 60000);
@@ -72,7 +73,7 @@ class CopilotStepGuardTest extends TestCase
     {
         $seen = null;
 
-        (new CopilotStepGuard(60000))->handle(
+        (new CopilotStepGuard(teamId: 7, maxTurnTokens: 60000))->handle(
             $this->pendingStep(3, false, new TextUsage(inputTokens: 70000, outputTokens: 0)),
             function (PendingStep $s) use (&$seen) {
                 $seen = $s;
@@ -83,6 +84,7 @@ class CopilotStepGuardTest extends TestCase
 
         $this->assertSame(ToolChoice::none, $seen->options->toolChoice->mode);
         $this->assertSystemLogged('copilot.step.budget_reached', fn ($c) => $c['reason'] === 'max_turn_tokens'
+            && $c['input']['team_id'] === 7
             && $c['input']['step'] === 3
             && $c['calc']['tokens_so_far'] === 70000
             && $c['calc']['max_turn_tokens'] === 60000);
@@ -94,7 +96,7 @@ class CopilotStepGuardTest extends TestCase
         $seen = null;
         $step = $this->pendingStep(2, false, tools: [new SuggestFollowupsTool(new CopilotTurnCollector)]);
 
-        (new CopilotStepGuard(60000))->handle($step, function (PendingStep $s) use (&$seen) {
+        (new CopilotStepGuard(teamId: 7, maxTurnTokens: 60000))->handle($step, function (PendingStep $s) use (&$seen) {
             $seen = $s;
 
             return $this->stepResult();
@@ -102,7 +104,7 @@ class CopilotStepGuardTest extends TestCase
 
         $this->assertSame($step, $seen);
         $this->assertNull($seen->options);
-        $this->assertSystemLogged('copilot.step.started', fn ($c) => $c['input']['step'] === 2 && $c['input']['tools_available'] === 1);
+        $this->assertSystemLogged('copilot.step.started', fn ($c) => $c['input']['team_id'] === 7 && $c['input']['step'] === 2 && $c['input']['tools_available'] === 1);
         $this->assertNoSensitiveDataLogged();
     }
 
@@ -110,7 +112,7 @@ class CopilotStepGuardTest extends TestCase
     {
         $scope = new CopilotTurnScope(1, 'acme', [], false, 'America/Mexico_City', CarbonImmutable::parse('2026-09-30 12:00:00', 'UTC'));
         $tool = new SuggestFollowupsTool(new CopilotTurnCollector);
-        $guard = new CopilotStepGuard(60000);
+        $guard = new CopilotStepGuard(teamId: 7, maxTurnTokens: 60000);
         $agent = new CopilotAgent($scope, [['role' => 'user', 'content' => 'hola']], [$tool], $guard);
 
         $instructions = (string) $agent->instructions();

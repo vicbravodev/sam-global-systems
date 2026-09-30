@@ -102,7 +102,7 @@ class AgentPromptRulesTest extends TestCase
             new CopilotTurnScope(1, 'acme', [], false, 'America/Mexico_City', CarbonImmutable::now()),
             [],
             [],
-            new CopilotStepGuard(60000),
+            new CopilotStepGuard(teamId: 1, maxTurnTokens: 60000),
         ))->instructions());
     }
 }

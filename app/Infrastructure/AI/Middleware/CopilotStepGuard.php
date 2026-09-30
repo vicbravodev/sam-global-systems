@@ -14,7 +14,10 @@ use Laravel\Ai\ToolChoice;
  */
 final class CopilotStepGuard
 {
-    public function __construct(private readonly int $maxTurnTokens) {}
+    public function __construct(
+        private readonly int $teamId,
+        private readonly int $maxTurnTokens,
+    ) {}
 
     public function handle(PendingStep $step, Closure $next): mixed
     {
@@ -30,14 +33,14 @@ final class CopilotStepGuard
             SystemLog::skipped(
                 'copilot.step.budget_reached',
                 $reason,
-                ['step' => $step->number],
+                ['team_id' => $this->teamId, 'step' => $step->number],
                 calc: ['tokens_so_far' => $tokens, 'max_turn_tokens' => $this->maxTurnTokens],
             );
 
             return $next($step->withToolChoice(ToolChoice::none));
         }
 
-        SystemLog::ok('copilot.step.started', ['step' => $step->number, 'tools_available' => count($step->tools)], debug: true);
+        SystemLog::ok('copilot.step.started', ['team_id' => $this->teamId, 'step' => $step->number, 'tools_available' => count($step->tools)], debug: true);
 
         return $next($step);
     }
