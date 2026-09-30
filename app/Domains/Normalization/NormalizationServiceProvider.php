@@ -4,6 +4,8 @@ namespace App\Domains\Normalization;
 
 use App\Contracts\Normalization\NormalizedEventStatsQuery;
 use App\Domains\Ingestion\Events\RawEventProcessed;
+use App\Domains\Normalization\Events\EventUnmapped;
+use App\Domains\Normalization\Listeners\AlertOnUnmappedProviderAlert;
 use App\Domains\Normalization\Listeners\NormalizeOnRawEventProcessed;
 use App\Domains\Normalization\Models\EventMappingRule;
 use App\Domains\Normalization\Models\NormalizedEvent;
@@ -27,5 +29,6 @@ class NormalizationServiceProvider extends ServiceProvider
         Gate::policy(EventMappingRule::class, EventMappingRulePolicy::class);
 
         Event::listen(RawEventProcessed::class, NormalizeOnRawEventProcessed::class);
+        Event::listen(EventUnmapped::class, AlertOnUnmappedProviderAlert::class);
     }
 }

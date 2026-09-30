@@ -30,4 +30,24 @@ return [
         'batch_size' => (int) env('PIPELINE_REPROCESS_BATCH_SIZE', 100),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Alertas del proveedor sin clasificar
+    |--------------------------------------------------------------------------
+    |
+    | Tipos externos que el proveedor usa para alertas (y emergencias: el
+    | botón de pánico de Samsara llega como `AlertIncident`). Si uno de estos
+    | se normaliza como `unmapped` (payload sin `data.conditions`, o
+    | condiciones que ninguna regla reconoce) no abre incidente: puede ser un
+    | pánico malformado. Se avisa a plataforma y a owners/admins del tenant
+    | del evento (AlertPipelineFailure, tipo `unmapped_alert`), una vez por
+    | raw event. Lista separada por comas en el env.
+    |
+    */
+
+    'unmapped_alert_types' => array_values(array_filter(array_map(
+        'trim',
+        explode(',', (string) env('PIPELINE_UNMAPPED_ALERT_TYPES', 'AlertIncident')),
+    ))),
+
 ];
