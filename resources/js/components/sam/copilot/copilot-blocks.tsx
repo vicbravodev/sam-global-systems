@@ -49,6 +49,7 @@ import type {
     Tone,
 } from '@/types/copilot';
 import { dayAndTime, timeAgo, timeOfDay } from './copilot-format';
+import { blockKey } from './copilot-turn';
 
 // maplibre-gl (~1 MB) only loads when an answer actually shows a map: this
 // module ships with the Copilot launcher on every Ops page.
@@ -116,8 +117,9 @@ function toneClass(tone: Tone): string {
 const NO_PENDING: { toolCallId: string; tool: string }[] = [];
 
 /**
- * The cards of one answer, append-only in arrival order. Keys are the index
- * (the stored answer keeps the streamed order), so a card mounts once: on a
+ * The cards of one answer, append-only in arrival order. Keys are each
+ * card's client identity (`blockKey`, kept across the stored answer and a
+ * fallback set), so a card mounts once even if it moves: on a
  * live answer it rises in individually, and a tool still running holds a
  * placeholder of roughly the card's height where its card will land.
  */
@@ -140,7 +142,7 @@ export const CopilotBlocks = memo(function CopilotBlocks({
         <div className="mt-3 flex flex-col gap-2.5">
             {blocks.map((block, index) => (
                 <div
-                    key={`${block.type}-${index}`}
+                    key={blockKey(block, index)}
                     className={live ? 'sam-copilot-rise' : undefined}
                 >
                     <BlockSwitch block={block} actions={actions} />

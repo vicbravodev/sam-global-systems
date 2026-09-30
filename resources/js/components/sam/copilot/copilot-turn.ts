@@ -15,6 +15,35 @@ import { appendTextDelta, toolStatusLabel } from './copilot-stream';
 /** The agent's hidden tool: it only feeds the follow-up chips. */
 export const HIDDEN_TOOL = 'suggest_followups';
 
+/**
+ * `tool` of the one `data-copilot-blocks` part a deterministic answer sends.
+ * After an agent failure it is the COMPLETE card set of the turn (the agent
+ * cards already shown are abandoned server-side), so it replaces them.
+ */
+export const DETERMINISTIC_TOOL = 'deterministic';
+
+/**
+ * Client identity of each card, assigned when it arrives
+ * (`toolCallId:index`) and carried over to the stored copy. It is the React
+ * key, so a card keeps its element (map, video) even if it moves.
+ */
+const blockKeys = new WeakMap<CopilotBlock, string>();
+
+/** React key of a card: its client identity, or the index for history. */
+export function blockKey(block: CopilotBlock, index: number): string {
+    return blockKeys.get(block) ?? `${block.type}-${index}`;
+}
+
+function tagBlocks(blocks: CopilotBlock[], prefix: string): CopilotBlock[] {
+    blocks.forEach((block, index) => {
+        if (!blockKeys.has(block)) {
+            blockKeys.set(block, `${prefix}:${index}`);
+        }
+    });
+
+    return blocks;
+}
+
 let keySeq = 0;
 
 export function nextTurnKey(): string {
@@ -118,7 +147,9 @@ export function reduceDraft(
     switch (part.type) {
         case 'tool-input-available': {
             if (part.toolName === HIDDEN_TOOL) {
-                return { lastTextId, draft: { ...draft, phase: 'finishing' } };
+                return draft.phase === 'finishing' && draft === state.draft
+                    ? state
+                    : { lastTextId, draft: { ...draft, phase: 'finishing' } };
             }
 
             return {
@@ -154,7 +185,7 @@ export function reduceDraft(
             const active = draft.activeTools ?? [];
 
             if (!active.some((t) => t.toolCallId === part.toolCallId)) {
-                return { lastTextId, draft };
+                return draft === state.draft ? state : { lastTextId, draft };
             }
 
             const remaining = active.filter(
@@ -181,17 +212,35 @@ export function reduceDraft(
                 },
             };
         }
-        case 'data-copilot-blocks':
+        case 'data-copilot-blocks': {
+            const incoming = tagBlocks(part.data.blocks, part.data.toolCallId);
+
+            if (part.data.tool === DETERMINISTIC_TOOL) {
+                // Fallback answer: its set replaces the abandoned agent
+                // cards (matching ones keep their element) and its tools.
+                return {
+                    lastTextId,
+                    draft: {
+                        ...draft,
+                        blocks: reconcileBlocks(draft.blocks, incoming),
+                        activeTools: [],
+                        pendingCards: [],
+                        toolCount: 0,
+                    },
+                };
+            }
+
             return {
                 lastTextId,
                 draft: {
                     ...draft,
-                    blocks: [...draft.blocks, ...part.data.blocks],
+                    blocks: [...draft.blocks, ...incoming],
                     pendingCards: (draft.pendingCards ?? []).filter(
                         (p) => p.toolCallId !== part.data.toolCallId,
                     ),
                 },
             };
+        }
         case 'text-start':
             return draft.phase === 'writing'
                 ? { lastTextId, draft }
@@ -213,7 +262,9 @@ export function reduceDraft(
         case 'text-end':
             // No more text in this step: suggestions + storing come next,
             // unless the agent opens another step with tools.
-            return { lastTextId, draft: { ...draft, phase: 'finishing' } };
+            return draft.phase === 'finishing' && draft === state.draft
+                ? state
+                : { lastTextId, draft: { ...draft, phase: 'finishing' } };
         case 'data-copilot-followups':
             return {
                 lastTextId,
@@ -229,34 +280,71 @@ function sameBlock(a: CopilotBlock, b: CopilotBlock): boolean {
 }
 
 /**
- * Keeps the block objects already on screen when the stored answer brings
- * the same card (same index, same content): memoized cards, maps and videos
- * see the same props and do not re-run. A changed card is replaced at its
- * index (same React key, so it updates without remounting); extra cards
- * are appended.
+ * Maps a new card list (the stored answer, or a fallback set) onto the cards
+ * already on screen, by identity instead of index:
+ * 1. a card with the same content anywhere keeps the object on screen
+ *    (memoized cards, maps and videos see identical props);
+ * 2. a changed card takes over the identity (React key) of the first unused
+ *    on-screen card of the same type, so it updates in place, not remounts;
+ * 3. anything else is new and gets its own identity.
+ * On-screen cards left unmatched are dropped. Returns `previous` itself
+ * when nothing changed.
  */
 export function reconcileBlocks(
     previous: CopilotBlock[],
     next: CopilotBlock[],
 ): CopilotBlock[] {
     if (previous.length === 0) {
-        return next;
+        return tagBlocks(next, 'stored');
     }
 
-    let changed = previous.length !== next.length;
-    const merged = next.map((block, index) => {
-        const old = previous[index];
+    const used = new Set<number>();
+    const exact = next.map((block) => {
+        const at = previous.findIndex(
+            (old, i) =>
+                !used.has(i) &&
+                old.type === block.type &&
+                sameBlock(old, block),
+        );
 
-        if (old && old.type === block.type && sameBlock(old, block)) {
-            return old;
+        if (at === -1) {
+            return null;
         }
 
-        changed = true;
+        used.add(at);
+
+        return previous[at];
+    });
+
+    const merged = next.map((block, index) => {
+        const kept = exact[index];
+
+        if (kept) {
+            return kept;
+        }
+
+        const at = previous.findIndex(
+            (old, i) => !used.has(i) && old.type === block.type,
+        );
+        const inherited = at === -1 ? undefined : blockKeys.get(previous[at]);
+
+        if (at !== -1) {
+            used.add(at);
+        }
+
+        blockKeys.set(
+            block,
+            inherited ?? blockKeys.get(block) ?? `stored:${index}`,
+        );
 
         return block;
     });
 
-    return changed ? merged : previous;
+    const unchanged =
+        merged.length === previous.length &&
+        merged.every((block, i) => block === previous[i]);
+
+    return unchanged ? previous : merged;
 }
 
 function elapsedSince(
@@ -313,18 +401,18 @@ export function replaceByKey(
     messages: CopilotMessage[],
     next: CopilotMessage,
 ): CopilotMessage[] {
-    let found = false;
-    const updated = messages.map((m) => {
-        if (m.clientKey !== undefined && m.clientKey === next.clientKey) {
-            found = true;
+    const at = messages.findIndex(
+        (m) => m.clientKey !== undefined && m.clientKey === next.clientKey,
+    );
 
-            return next;
-        }
+    if (at === -1 || messages[at] === next) {
+        return messages;
+    }
 
-        return m;
-    });
+    const updated = messages.slice();
+    updated[at] = next;
 
-    return found ? updated : messages;
+    return updated;
 }
 
 /**
