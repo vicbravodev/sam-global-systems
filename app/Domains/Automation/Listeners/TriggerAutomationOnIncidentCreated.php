@@ -6,14 +6,23 @@ use App\Domains\Automation\Enums\ActionExecutionSourceType;
 use App\Domains\Automation\Enums\WorkflowTriggerType;
 use App\Domains\Automation\Services\TriggerEscalationWorkflow;
 use App\Domains\Incidents\Events\IncidentCreated;
+use App\Domains\Incidents\Support\IncidentCreatedReaction;
+use App\Domains\Incidents\Support\IsolatesIncidentCreatedReaction;
 
-class TriggerAutomationOnIncidentCreated
+class TriggerAutomationOnIncidentCreated implements IncidentCreatedReaction
 {
+    use IsolatesIncidentCreatedReaction;
+
     public function __construct(
         private TriggerEscalationWorkflow $triggerEscalationWorkflow,
     ) {}
 
-    public function handle(IncidentCreated $event): void
+    public function retryQueue(): string
+    {
+        return 'automation';
+    }
+
+    public function react(IncidentCreated $event): void
     {
         $incident = $event->incident;
 
