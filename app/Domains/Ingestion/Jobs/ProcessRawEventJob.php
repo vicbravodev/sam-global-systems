@@ -2,6 +2,7 @@
 
 namespace App\Domains\Ingestion\Jobs;
 
+use App\Domains\Ingestion\Actions\AlertPipelineFailure;
 use App\Domains\Ingestion\Actions\DetectDuplicateEvent;
 use App\Domains\Ingestion\Events\RawEventFailed;
 use App\Domains\Ingestion\Events\RawEventProcessed;
@@ -74,5 +75,7 @@ class ProcessRawEventJob implements ShouldQueue
                 RawEventFailed::dispatch($rawEvent, $exception->getMessage());
             });
         }
+
+        app(AlertPipelineFailure::class)->forJobFailure(static::class, $exception, rawEventId: $this->rawEventId);
     }
 }
