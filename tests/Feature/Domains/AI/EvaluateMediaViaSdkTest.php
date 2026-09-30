@@ -15,7 +15,7 @@ use Illuminate\JsonSchema\JsonSchemaTypeFactory;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Ai\Contracts\HasStructuredOutput;
 use Laravel\Ai\Responses\Data\Meta;
-use Laravel\Ai\Responses\Data\Usage;
+use Laravel\Ai\Responses\Data\TextUsage;
 use Laravel\Ai\Responses\TextResponse;
 use Tests\TestCase;
 
@@ -50,7 +50,7 @@ class EvaluateMediaViaSdkTest extends TestCase
                     'summary_text' => 'Dashcam still shows the vehicle stopped on the shoulder.',
                     'extracted_signals' => ['vehicle_stopped' => true],
                 ], JSON_THROW_ON_ERROR),
-                new Usage(promptTokens: 500_000, completionTokens: 250_000),
+                new TextUsage(inputTokens: 500_000, outputTokens: 250_000),
                 new Meta(provider: 'openai', model: 'gpt-test'),
             ),
         ]);
@@ -77,7 +77,7 @@ class EvaluateMediaViaSdkTest extends TestCase
                     'result' => 'inconclusive',
                     'confidence_score' => 0.3,
                 ], JSON_THROW_ON_ERROR),
-                new Usage(promptTokens: 120, completionTokens: 40),
+                new TextUsage(inputTokens: 120, outputTokens: 40),
                 new Meta(provider: 'openai', model: 'gpt-unpriced'),
             ),
         ]);
@@ -129,7 +129,7 @@ class EvaluateMediaViaSdkTest extends TestCase
                     'summary_text' => 'Se observa al conductor en la cabina.',
                     'extracted_signals' => [],
                 ], JSON_THROW_ON_ERROR),
-                new Usage(promptTokens: 100, completionTokens: 50),
+                new TextUsage(inputTokens: 100, outputTokens: 50),
                 new Meta(provider: 'openai', model: 'gpt-test'),
             ),
         ]);

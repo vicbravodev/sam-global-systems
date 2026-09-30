@@ -29,7 +29,7 @@ class AgentConversationSchemaTest extends TestCase
         );
     }
 
-    public function test_agent_conversation_messages_carries_participant_and_approval_columns(): void
+    public function test_agent_conversation_messages_carries_participant_and_step_columns(): void
     {
         $this->assertTrue(
             Schema::hasColumn('agent_conversation_messages', 'participant_type'),
@@ -42,8 +42,20 @@ class AgentConversationSchemaTest extends TestCase
         );
 
         $this->assertTrue(
-            Schema::hasColumn('agent_conversation_messages', 'approval_state'),
-            'v0.10 added approval_state to messages for human-in-the-loop approvals',
+            Schema::hasColumn('agent_conversation_messages', 'steps'),
+            'laravel/ai 1.0 stores each assistant turn as steps',
         );
+
+        $this->assertTrue(
+            Schema::hasColumn('agent_conversation_messages', 'status'),
+            'laravel/ai 1.0 replaced approval_state with a message status',
+        );
+
+        foreach (['tool_calls', 'tool_results', 'approval_state'] as $column) {
+            $this->assertFalse(
+                Schema::hasColumn('agent_conversation_messages', $column),
+                "laravel/ai 1.0 no longer writes {$column}; a leftover NOT NULL column would break inserts",
+            );
+        }
     }
 }

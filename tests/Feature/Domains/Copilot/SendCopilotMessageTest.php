@@ -20,7 +20,7 @@ use Database\Seeders\AccessSeeder;
 use Database\Seeders\AIMeterSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Ai\Responses\Data\Meta;
-use Laravel\Ai\Responses\Data\Usage;
+use Laravel\Ai\Responses\Data\TextUsage;
 use Laravel\Ai\Responses\TextResponse;
 use Tests\TestCase;
 
@@ -243,7 +243,7 @@ class SendCopilotMessageTest extends TestCase
         CopilotAgent::fake([
             new TextResponse(
                 'La unidad **T555** va en ruta por Insurgentes Sur a 72 km/h.',
-                new Usage(promptTokens: 1200, completionTokens: 300),
+                new TextUsage(inputTokens: 1200, outputTokens: 300),
                 new Meta(provider: 'openai', model: 'gpt-test'),
             ),
         ]);

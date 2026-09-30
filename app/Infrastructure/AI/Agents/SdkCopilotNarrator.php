@@ -41,8 +41,8 @@ class SdkCopilotNarrator implements CopilotNarrator
         }
 
         $model = $response->meta?->model;
-        $input = (int) $response->usage->promptTokens;
-        $output = (int) $response->usage->completionTokens;
+        $input = (int) $response->usage->inputTokens;
+        $output = (int) $response->usage->outputTokens;
         $text = trim($response->text);
 
         return new CopilotNarration(

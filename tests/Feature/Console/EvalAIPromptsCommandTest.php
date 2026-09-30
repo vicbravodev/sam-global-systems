@@ -13,7 +13,7 @@ use App\Models\Team;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
 use Laravel\Ai\Responses\Data\Meta;
-use Laravel\Ai\Responses\Data\Usage;
+use Laravel\Ai\Responses\Data\TextUsage;
 use Laravel\Ai\Responses\TextResponse;
 use Tests\TestCase;
 
@@ -144,7 +144,7 @@ class EvalAIPromptsCommandTest extends TestCase
                     'reasoning_steps' => ['Velocidad sostenida muy por encima del límite.'],
                     'key_factors' => ['speed_kph' => 128],
                 ], JSON_THROW_ON_ERROR),
-                new Usage(promptTokens: 900, completionTokens: 80),
+                new TextUsage(inputTokens: 900, outputTokens: 80),
                 new Meta(provider: 'openai', model: 'gpt-test'),
             ),
         ]);

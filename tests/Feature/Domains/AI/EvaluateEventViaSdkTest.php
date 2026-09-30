@@ -13,7 +13,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\JsonSchema\JsonSchemaTypeFactory;
 use Laravel\Ai\Contracts\HasStructuredOutput;
 use Laravel\Ai\Responses\Data\Meta;
-use Laravel\Ai\Responses\Data\Usage;
+use Laravel\Ai\Responses\Data\TextUsage;
 use Laravel\Ai\Responses\TextResponse;
 use Tests\TestCase;
 
@@ -36,7 +36,7 @@ class EvaluateEventViaSdkTest extends TestCase
                     'reasoning_steps' => ['severity_high', 'recent_event_count_low'],
                     'key_factors' => ['severity' => 'high'],
                 ], JSON_THROW_ON_ERROR),
-                new Usage(promptTokens: 320, completionTokens: 95),
+                new TextUsage(inputTokens: 320, outputTokens: 95),
                 new Meta(provider: 'openai', model: 'gpt-test'),
             ),
         ]);
@@ -83,7 +83,7 @@ class EvaluateEventViaSdkTest extends TestCase
                     'reasoning_steps' => [],
                     'key_factors' => [],
                 ], JSON_THROW_ON_ERROR),
-                new Usage(promptTokens: 500_000, completionTokens: 250_000),
+                new TextUsage(inputTokens: 500_000, outputTokens: 250_000),
                 new Meta(provider: 'openai', model: 'gpt-test'),
             ),
         ]);
@@ -117,7 +117,7 @@ class EvaluateEventViaSdkTest extends TestCase
                     'classification' => 'unclear',
                     'confidence_score' => 0.4,
                 ], JSON_THROW_ON_ERROR),
-                new Usage(promptTokens: 320, completionTokens: 95),
+                new TextUsage(inputTokens: 320, outputTokens: 95),
                 new Meta(provider: 'openai', model: 'gpt-unpriced'),
             ),
         ]);

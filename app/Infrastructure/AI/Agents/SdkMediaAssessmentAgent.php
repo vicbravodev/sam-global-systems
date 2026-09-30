@@ -55,13 +55,13 @@ class SdkMediaAssessmentAgent implements MediaAssessmentAgent
             summaryText: (string) ($structured['summary_text'] ?? ''),
             extractedSignals: $this->normalizeSignals($structured['extracted_signals'] ?? []),
             modelUsed: 'laravel-ai-sdk:'.($response->meta?->model ?? 'media-inspector'),
-            inputTokens: (int) $response->usage->promptTokens,
-            outputTokens: (int) $response->usage->completionTokens,
+            inputTokens: (int) $response->usage->inputTokens,
+            outputTokens: (int) $response->usage->outputTokens,
             latencyMs: $latencyMs,
             costEstimate: $this->pricing->estimateCost(
                 $response->meta?->model,
-                (int) $response->usage->promptTokens,
-                (int) $response->usage->completionTokens,
+                (int) $response->usage->inputTokens,
+                (int) $response->usage->outputTokens,
             ),
         );
     }
