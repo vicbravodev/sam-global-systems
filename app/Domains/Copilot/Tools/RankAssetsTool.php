@@ -10,12 +10,12 @@ use App\Domains\Copilot\Data\CopilotToolContext;
 use App\Domains\Copilot\Data\CopilotToolResult;
 use App\Domains\Copilot\Data\IdleSummary;
 use App\Domains\Copilot\Support\CopilotPresenter;
-use App\Domains\Copilot\Support\FuelConsumption;
 use App\Domains\Copilot\Support\IdleTimeCalculator;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Normalization\Models\EventType;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
 /**
@@ -166,22 +166,31 @@ final class RankAssetsTool implements CopilotTool
     }
 
     /**
-     * Snapshots carry no team_id: isolation comes from the tenant's asset ids.
+     * Percentage points of tank consumed per unit, aggregated in SQL: the sum
+     * of every drop between consecutive readings (same rule as
+     * FuelConsumption: a rise is a refuel and adds nothing). Snapshots carry
+     * no team_id: isolation comes from the tenant's asset ids.
      *
      * @param  Collection<int, int>  $ids
      * @return Collection<int, float> asset_id → % of tank consumed
      */
     private function fuel(Collection $ids, CopilotPeriod $period): Collection
     {
-        return AssetTelemetrySnapshot::query()
+        $reading = $this->numericValue();
+
+        $series = AssetTelemetrySnapshot::query()
+            ->toBase()
+            ->selectRaw("asset_id, {$reading} as reading, lag({$reading}) over (partition by asset_id order by recorded_at, id) as previous")
             ->whereIn('asset_id', $ids)
-            ->where('telemetry_type', TelemetryType::Fuel)
-            ->whereBetween('recorded_at', [$period->from, $period->to])
-            ->orderBy('recorded_at')
-            ->orderBy('id')
-            ->get(['asset_id', 'data_json', 'recorded_at'])
+            ->where('telemetry_type', TelemetryType::Fuel->value)
+            ->whereBetween('recorded_at', [$period->from, $period->to]);
+
+        return DB::query()
+            ->fromSub($series, 'fuel_series')
+            ->selectRaw('asset_id, sum(case when previous > reading then previous - reading else 0 end) as consumed')
             ->groupBy('asset_id')
-            ->map(fn (Collection $series) => FuelConsumption::fromSeries($series)['consumed']);
+            ->pluck('consumed', 'asset_id')
+            ->map(fn ($consumed) => round((float) $consumed, 1));
     }
 
     /**
@@ -190,17 +199,28 @@ final class RankAssetsTool implements CopilotTool
      */
     private function distance(Collection $ids, CopilotPeriod $period): Collection
     {
-        return AssetTelemetrySnapshot::query()
-            ->whereIn('asset_id', $ids)
-            ->where('telemetry_type', TelemetryType::Odometer)
-            ->whereBetween('recorded_at', [$period->from, $period->to])
-            ->get(['asset_id', 'data_json'])
-            ->groupBy('asset_id')
-            ->map(function (Collection $series): float {
-                $readings = $series->map(fn (AssetTelemetrySnapshot $r) => (float) ($r->data_json['value'] ?? 0));
+        $reading = $this->numericValue();
 
-                return max(0.0, (float) $readings->max() - (float) $readings->min());
-            });
+        return AssetTelemetrySnapshot::query()
+            ->toBase()
+            ->selectRaw("asset_id, max({$reading}) - min({$reading}) as delta")
+            ->whereIn('asset_id', $ids)
+            ->where('telemetry_type', TelemetryType::Odometer->value)
+            ->whereBetween('recorded_at', [$period->from, $period->to])
+            ->groupBy('asset_id')
+            ->pluck('delta', 'asset_id')
+            ->map(fn ($delta) => max(0.0, (float) $delta));
+    }
+
+    /**
+     * `data_json->value` as a number, in the connection's own JSON syntax
+     * (json_extract on SQLite, ->> on PostgreSQL).
+     */
+    private function numericValue(): string
+    {
+        $column = AssetTelemetrySnapshot::query()->getQuery()->getGrammar()->wrap('data_json->value');
+
+        return "cast({$column} as double precision)";
     }
 
     /**

@@ -5,8 +5,10 @@ namespace Tests\Feature\Domains\Copilot;
 use App\Domains\Assets\Enums\AssetCategory;
 use App\Domains\Assets\Enums\TelemetryType;
 use App\Domains\Assets\Models\Asset;
+use App\Domains\Assets\Models\AssetLocationSnapshot;
 use App\Domains\Assets\Models\AssetTelemetrySnapshot;
 use App\Domains\Assets\Models\AssetType;
+use App\Domains\Copilot\Tools\RankAssetsTool;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Normalization\Models\EventType;
 use App\Domains\Normalization\Models\NormalizedEvent;
@@ -305,5 +307,65 @@ class RankAssetsToolTest extends TestCase
 
         $this->assertSame('T30', $out['facts']['items'][0]['code']);
         $this->assertLessThan(10, $queries);
+    }
+
+    public function test_every_metric_runs_a_bounded_number_of_queries_over_many_units(): void
+    {
+        $panic = EventType::factory()->create(['code' => 'panic_button']);
+
+        foreach (range(1, 30) as $i) {
+            $asset = $this->unit("T{$i}");
+            $this->reading($asset, TelemetryType::Odometer, 100.0, $this->now->subDays(2));
+            $this->reading($asset, TelemetryType::Odometer, 100.0 + $i, $this->now->subDay());
+            $this->reading($asset, TelemetryType::Fuel, 90.0, $this->now->subDays(2));
+            $this->reading($asset, TelemetryType::Fuel, 90.0 - $i, $this->now->subDay());
+            // Provider without an Idle state: ignition On + GPS stopped (fallback).
+            $this->reading($asset, TelemetryType::Ignition, 'On', $this->now->subHours(3));
+            $this->reading($asset, TelemetryType::Ignition, 'Off', $this->now->subHours(2));
+            foreach ([170, 160, 150 - $i] as $minutesAgo) {
+                AssetLocationSnapshot::factory()->create(['asset_id' => $asset->id, 'speed' => 0, 'recorded_at' => $this->now->subMinutes($minutesAgo)]);
+            }
+            Incident::factory()->count($i % 3)->create(['team_id' => $this->team->id, 'asset_id' => $asset->id, 'opened_at' => $this->now->subDay()]);
+            NormalizedEvent::factory()->count($i % 2)->create(['team_id' => $this->team->id, 'asset_id' => $asset->id, 'event_type_id' => $panic->id, 'occurred_at' => $this->now->subDay()]);
+        }
+
+        foreach (array_keys(RankAssetsTool::METRICS) as $metric) {
+            DB::flushQueryLog();
+            DB::enableQueryLog();
+            $out = $this->callTool($this->team, self::ALL, 'rank_assets', ['metric' => $metric]);
+            $log = DB::getQueryLog();
+            DB::disableQueryLog();
+
+            $this->assertNotSame([], $out['facts']['items'], $metric);
+            $this->assertLessThan(10, count($log), "{$metric} corrió ".count($log).' consultas.');
+
+            // Fuel and distance are aggregated per unit in SQL: no raw series reaches PHP.
+            if (in_array($metric, ['fuel_used_pct', 'distance_km'], true)) {
+                foreach ($log as $query) {
+                    if (str_contains($query['query'], 'asset_telemetry_snapshots')) {
+                        $this->assertStringContainsStringIgnoringCase('group by', $query['query'], $metric);
+                    }
+                }
+            }
+        }
+    }
+
+    public function test_sql_aggregates_match_the_series_calculation(): void
+    {
+        $a = $this->unit('TA');
+        // Same series as FuelConsumption: 80 → 60 → 95 (refuel) → 85 → 50 (sudden drop) = 20 + 10 + 35.
+        foreach ([[5, 80], [4, 60], [3, 95], [2, 85], [1, 50]] as [$days, $v]) {
+            $this->reading($a, TelemetryType::Fuel, $v, $this->now->subDays($days));
+        }
+        // Odometer readings stored out of order still give max − min.
+        foreach ([[1, 1300.5], [5, 1000.0], [3, 1100.0]] as [$days, $v]) {
+            $this->reading($a, TelemetryType::Odometer, $v, $this->now->subDays($days));
+        }
+
+        $fuel = $this->callTool($this->team, self::ALL, 'rank_assets', ['metric' => 'fuel_used_pct']);
+        $distance = $this->callTool($this->team, self::ALL, 'rank_assets', ['metric' => 'distance_km']);
+
+        $this->assertSame(65.0, (float) $fuel['facts']['items'][0]['value']);
+        $this->assertSame(300.5, (float) $distance['facts']['items'][0]['value']);
     }
 }

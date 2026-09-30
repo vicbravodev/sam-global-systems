@@ -13,6 +13,7 @@ use App\Domains\Copilot\Tools\AssetEngineTool;
 use Carbon\CarbonImmutable;
 use Database\Seeders\AccessSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class IdleTimeCalculatorTest extends TestCase
@@ -188,5 +189,62 @@ class IdleTimeCalculatorTest extends TestCase
 
         $this->assertSame(2.0, $result->facts['idle_hours']);
         $this->assertSame('engine_state', $result->facts['idle_source']);
+    }
+
+    public function test_asset_with_idle_readings_in_its_history_never_uses_the_gps_fallback(): void
+    {
+        $now = $this->now;
+        [, $team] = $this->memberWithRole('supervisor');
+        $asset = $this->bareAsset($team->id);
+        // The provider reports Idle (weeks ago), so an On window is driving, not idling.
+        $this->engine($asset, 'Idle', $now->subDays(20));
+        $this->engine($asset, 'Off', $now->subDays(20)->addHour());
+        $this->engine($asset, 'On', $now->subHours(2));
+        $this->engine($asset, 'Off', $now->subHours(1));
+        $this->speed($asset, 0, $now->subMinutes(110));
+        $this->speed($asset, 0, $now->subMinutes(100));
+
+        $summary = app(IdleTimeCalculator::class)->forAsset($asset, $now->subHours(3), $now);
+
+        $this->assertSame('none', $summary->source);
+        $this->assertSame(0.0, $summary->hours);
+    }
+
+    public function test_fallback_reads_gps_points_of_many_assets_in_one_pass(): void
+    {
+        $now = $this->now;
+        [, $team] = $this->memberWithRole('supervisor');
+        $ids = [];
+
+        foreach (range(1, 20) as $i) {
+            $asset = $this->bareAsset($team->id);
+            $ids[] = $asset->id;
+            // Two On windows each: stops of 10 and 20 minutes.
+            $this->engine($asset, 'On', $now->subHours(4));
+            $this->engine($asset, 'Off', $now->subHours(3));
+            $this->engine($asset, 'On', $now->subHours(2));
+            $this->engine($asset, 'Off', $now->subHours(1));
+            $this->speed($asset, 0, $now->subMinutes(230));
+            $this->speed($asset, 0, $now->subMinutes(220));
+            $this->speed($asset, 0, $now->subMinutes(110));
+            $this->speed($asset, 0, $now->subMinutes(90));
+            // Stopped, but ignition Off: never idle.
+            $this->speed($asset, 0, $now->subMinutes(170));
+            $this->speed($asset, 0, $now->subMinutes(130));
+        }
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $result = app(IdleTimeCalculator::class)->forAssets($team->id, $ids, $now->subHours(5), $now);
+        $queries = count(DB::getQueryLog());
+        DB::disableQueryLog();
+
+        $this->assertCount(20, $result);
+        foreach ($result as $summary) {
+            $this->assertSame('ignition_speed', $summary->source);
+            $this->assertSame(0.5, $summary->hours);
+            $this->assertCount(2, $summary->segments);
+        }
+        $this->assertLessThan(8, $queries);
     }
 }

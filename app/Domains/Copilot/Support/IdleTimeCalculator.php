@@ -19,6 +19,9 @@ final class IdleTimeCalculator
 
     public const SILENT_AFTER_MINUTES = 30;
 
+    /** GPS points fetched per round trip by the fallback. */
+    private const POINTS_CHUNK = 2000;
+
     /**
      * @param  list<int>  $assetIds
      * @return array<int, IdleSummary> keyed by asset id (only this team's assets)
@@ -62,17 +65,34 @@ final class IdleTimeCalculator
             ->get(['asset_id', 'data_json', 'recorded_at']);
 
         $readings = $before->concat($inside)->groupBy('asset_id');
+        $engineStateIds = $this->assetsReportingIdle($ids);
         $summaries = [];
+        $fallbackWindows = [];
 
         foreach ($assets as $id => $asset) {
             $series = $readings->get($id, collect())->sortBy('recorded_at')->values();
             $end = $this->effectiveEnd($asset->last_seen_at, $to);
-            $summaries[$id] = $series->contains(fn ($r) => $this->state($r) === 'idle')
-                ? $this->fromEngineStates($series, $from, $end)
-                : $this->fromIgnitionAndSpeed((int) $id, $series, $from, $end);
+
+            if (isset($engineStateIds[$id])) {
+                $summaries[$id] = $this->fromEngineStates($series, $from, $end);
+
+                continue;
+            }
+
+            $windows = $this->onWindows($series, $from, $end);
+
+            if ($windows === []) {
+                $summaries[$id] = new IdleSummary(0.0, 'none', []);
+
+                continue;
+            }
+
+            $fallbackWindows[(int) $id] = $windows;
         }
 
-        return $summaries;
+        $fallback = $this->fromIgnitionAndSpeed($fallbackWindows, $from, $to);
+
+        return $assets->keys()->mapWithKeys(fn ($id) => [$id => $summaries[$id] ?? $fallback[$id]])->all();
     }
 
     public function forAsset(Asset $asset, CarbonImmutable $from, CarbonImmutable $to): IdleSummary
@@ -125,14 +145,39 @@ final class IdleTimeCalculator
     }
 
     /**
-     * Providers without an Idle state: ignition On while GPS says stopped
-     * (< STOPPED_SPEED_KPH) for at least MIN_STOP_MINUTES.
+     * Assets whose provider reports an Idle engine state at all (any time in
+     * the retained history): their On windows are driving, never idling, so
+     * they never use the GPS fallback. One grouped query for every id.
+     *
+     * @param  list<int>  $ids
+     * @return array<int, true>
+     */
+    private function assetsReportingIdle(array $ids): array
+    {
+        $value = AssetTelemetrySnapshot::query()->getQuery()->getGrammar()->wrap('data_json->value');
+
+        return AssetTelemetrySnapshot::query()
+            ->toBase()
+            ->select('asset_id')
+            ->whereIn('asset_id', $ids)
+            ->where('telemetry_type', TelemetryType::Ignition->value)
+            ->whereRaw("lower({$value}) = ?", ['idle'])
+            ->groupBy('asset_id')
+            ->pluck('asset_id')
+            ->mapWithKeys(fn ($id) => [(int) $id => true])
+            ->all();
+    }
+
+    /**
+     * Ignition On (or running) windows of one asset, clipped to [from, end],
+     * in chronological order.
      *
      * @param  Collection<int, AssetTelemetrySnapshot>  $series
+     * @return list<array{0: CarbonImmutable, 1: CarbonImmutable}>
      */
-    private function fromIgnitionAndSpeed(int $assetId, Collection $series, CarbonImmutable $from, CarbonImmutable $end): IdleSummary
+    private function onWindows(Collection $series, CarbonImmutable $from, CarbonImmutable $end): array
     {
-        $onWindows = [];
+        $windows = [];
 
         foreach ($series as $i => $reading) {
             if (! in_array($this->state($reading), ['on', 'running'], true)) {
@@ -140,50 +185,88 @@ final class IdleTimeCalculator
             }
 
             $next = $series->get($i + 1);
-            $onWindows[] = [
+            $windows[] = [
                 CarbonImmutable::parse($reading->recorded_at)->max($from),
                 ($next ? CarbonImmutable::parse($next->recorded_at) : $end)->min($end),
             ];
         }
 
-        if ($onWindows === []) {
-            return new IdleSummary(0.0, 'none', []);
+        return $windows;
+    }
+
+    /**
+     * Providers without an Idle state: ignition On while GPS says stopped
+     * (< STOPPED_SPEED_KPH) for at least MIN_STOP_MINUTES. The GPS points of
+     * every fallback asset are streamed by one ordered query (bounded memory)
+     * and walked once, advancing through each asset's On windows.
+     *
+     * @param  array<int, list<array{0: CarbonImmutable, 1: CarbonImmutable}>>  $windowsByAsset
+     * @return array<int, IdleSummary>
+     */
+    private function fromIgnitionAndSpeed(array $windowsByAsset, CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        if ($windowsByAsset === []) {
+            return [];
         }
 
+        $segments = array_fill_keys(array_keys($windowsByAsset), []);
+        $current = null;
+        $window = 0;
+        $runStart = null;
+        $runEnd = null;
+
         $points = AssetLocationSnapshot::query()
-            ->where('asset_id', $assetId)
-            ->whereBetween('recorded_at', [$from, $end])
+            ->whereIn('asset_id', array_keys($windowsByAsset))
+            ->whereBetween('recorded_at', [$from, $to])
+            ->orderBy('asset_id')
             ->orderBy('recorded_at')
-            ->get(['speed', 'recorded_at']);
+            ->orderBy('id')
+            ->select(['id', 'asset_id', 'speed', 'recorded_at'])
+            ->lazy(self::POINTS_CHUNK);
 
-        $segments = [];
+        foreach ($points as $point) {
+            $assetId = (int) $point->asset_id;
 
-        foreach ($onWindows as [$windowStart, $windowEnd]) {
-            $runStart = null;
-            $runEnd = null;
-
-            foreach ($points as $point) {
-                $at = CarbonImmutable::parse($point->recorded_at);
-
-                if ($at->lt($windowStart) || $at->gt($windowEnd)) {
-                    continue;
+            if ($assetId !== $current) {
+                if ($current !== null) {
+                    $this->closeRun($segments[$current], $runStart, $runEnd);
                 }
 
-                if ((float) $point->speed < self::STOPPED_SPEED_KPH) {
-                    $runStart ??= $at;
-                    $runEnd = $at;
-
-                    continue;
-                }
-
-                $this->closeRun($segments, $runStart, $runEnd);
+                $current = $assetId;
+                $window = 0;
                 $runStart = $runEnd = null;
             }
 
-            $this->closeRun($segments, $runStart, $runEnd);
+            $windows = $windowsByAsset[$assetId];
+            $at = CarbonImmutable::parse($point->recorded_at);
+
+            // Past the current On window: its run ends there.
+            while ($window < count($windows) && $at->gt($windows[$window][1])) {
+                $this->closeRun($segments[$assetId], $runStart, $runEnd);
+                $runStart = $runEnd = null;
+                $window++;
+            }
+
+            if ($window >= count($windows) || $at->lt($windows[$window][0])) {
+                continue;
+            }
+
+            if ((float) $point->speed < self::STOPPED_SPEED_KPH) {
+                $runStart ??= $at;
+                $runEnd = $at;
+
+                continue;
+            }
+
+            $this->closeRun($segments[$assetId], $runStart, $runEnd);
+            $runStart = $runEnd = null;
         }
 
-        return $this->summary($segments, 'ignition_speed');
+        if ($current !== null) {
+            $this->closeRun($segments[$current], $runStart, $runEnd);
+        }
+
+        return array_map(fn (array $assetSegments) => $this->summary($assetSegments, 'ignition_speed'), $segments);
     }
 
     /** @param list<array{from: string, to: string, minutes: int}> $segments */
