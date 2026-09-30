@@ -41,7 +41,9 @@
         <meta property="og:title" content="{{ config('app.name') }} — Monitorista virtual para flotas">
         <meta property="og:description" content="SAM investiga cada alerta de tu flota, descarta el ruido y escala lo real: media, IA y verificación por voz en un solo protocolo.">
         <meta property="og:type" content="website">
-        <meta property="og:image" content="{{ url('/apple-touch-icon.png') }}">
+        <meta property="og:image" content="{{ url('/og-image.jpg') }}">
+        <meta property="og:image:width" content="1200">
+        <meta property="og:image:height" content="634">
         <meta name="description" content="SAM investiga cada alerta de tu flota, descarta el ruido y escala lo real.">
 
         {{-- Fuentes self-hosted (F1.6): variables Geist/Geist Mono, subset latin --}}

@@ -9,34 +9,32 @@ type BrandImageProps = Omit<
 };
 
 /**
- * Emblema original de SAM (la "S" de circuito con los camiones), sacado del
- * landing oficial. El original es azul marino + teal sobre claro; en tema
- * oscuro se usa una variante con los tonos oscuros aclarados para que no se
- * pierdan contra el fondo. El tema es por clase (`.dark`), no por
- * `prefers-color-scheme`, así que se alternan dos <img>.
+ * Logo completo de SAM (emblema + "SAM" + "Sistema Automatizado de
+ * Monitoreo"), el del landing oficial. Para espacios con aire: login,
+ * pantallas de error, portada. En barras y botones va `AppLogoIcon`.
  */
-export default function AppLogoIcon({
+export default function AppLogo({
     className,
-    alt = 'SAM',
+    alt = 'SAM — Sistema Automatizado de Monitoreo',
     ...props
 }: BrandImageProps) {
     return (
         <>
             <img
-                src="/images/brand/sam-emblem.png"
+                src="/images/brand/sam-logo.png"
                 alt={alt}
                 draggable={false}
                 {...props}
-                className={cn('shrink-0 object-contain dark:hidden', className)}
+                className={cn('w-auto object-contain dark:hidden', className)}
             />
             <img
-                src="/images/brand/sam-emblem-dark.png"
+                src="/images/brand/sam-logo-dark.png"
                 alt=""
                 aria-hidden="true"
                 draggable={false}
                 {...props}
                 className={cn(
-                    'hidden shrink-0 object-contain dark:block',
+                    'hidden w-auto object-contain dark:block',
                     className,
                 )}
             />
