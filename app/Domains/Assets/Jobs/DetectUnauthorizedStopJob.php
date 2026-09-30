@@ -144,13 +144,14 @@ class DetectUnauthorizedStopJob implements ShouldQueue
 
     /**
      * Resumen del barrido de un tenant (ya dentro de su contexto). En `debug`
-     * cuando no hubo candidatos: es lo normal en cada minuto.
+     * salvo que se haya levantado un aviso o se haya deduplicado uno
+     * (`already_raised` o `same_place`): lo normal en cada minuto.
      *
      * @param  array{inside_geofence: int, same_place: int, raised: int, already_raised: int}  $counts
      */
     private function logSweep(int $teamId, int $stopMinutes, ?int $geofencesCount, int $candidatesCount, array $counts): void
     {
-        // Rutina (debug) salvo que algo se haya levantado o deduplicado.
+        // Rutina (debug) salvo que algo se haya levantado o deduplicado (`same_place` suprime un aviso).
         SystemLog::ok('assets.unauthorized_stop_sweep.completed', input: ['team_id' => $teamId], calc: [
             'stop_minutes' => $stopMinutes,
             'freshness_minutes' => self::FRESHNESS_MINUTES,
@@ -164,7 +165,7 @@ class DetectUnauthorizedStopJob implements ShouldQueue
             'same_place_count' => $counts['same_place'],
             'raised_count' => $counts['raised'],
             'already_raised_count' => $counts['already_raised'],
-        ], debug: $candidatesCount === 0 || ($counts['raised'] === 0 && $counts['already_raised'] === 0));
+        ], debug: $candidatesCount === 0 || ($counts['raised'] === 0 && $counts['already_raised'] === 0 && $counts['same_place'] === 0));
     }
 
     /**

@@ -323,6 +323,8 @@ class DetectUnauthorizedStopJobTest extends TestCase
         $this->assertCount(2, $sweeps);
         $this->assertSame(1, $sweeps[1]['context']['result']['same_place_count']);
         $this->assertSame(0, $sweeps[1]['context']['result']['raised_count']);
+        // A suppressed alert is a dedupe: the sweep stays visible at info.
+        $this->assertSame('info', $sweeps[1]['level']);
         $this->assertCount(1, $this->systemLogEntries('assets.unauthorized_stop.raised'));
         $this->assertNoSensitiveDataLogged();
     }
