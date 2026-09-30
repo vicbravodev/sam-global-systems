@@ -141,6 +141,9 @@ export function useCopilotChat({
                     ...optimistic,
                     id: draftId,
                     role: 'assistant',
+                    // Never echo the question while the answer is thinking.
+                    content: '',
+                    context: null,
                     pending: false,
                     streaming: true,
                     activeTools: [],
