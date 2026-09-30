@@ -8,6 +8,7 @@ import {
     MapPin,
     Search,
     Siren,
+    Square,
     Truck,
     Users,
     Video,
@@ -69,6 +70,8 @@ interface Props {
     asset: CopilotAssetOption | null;
     onAssetChange: (asset: CopilotAssetOption | null) => void;
     onSend: (content: string, hints: CopilotSendHints) => void;
+    /** Stops the answer being streamed (the send button turns into it). */
+    onStop?: () => void;
     /** Lets parents (suggestion cards) pre-fill the textarea. */
     draft?: {
         text: string;
@@ -86,6 +89,7 @@ export function CopilotComposer({
     asset,
     onAssetChange,
     onSend,
+    onStop,
     draft,
 }: Props) {
     const [text, setText] = useState('');
@@ -316,6 +320,13 @@ export function CopilotComposer({
                                 submit();
                             }
 
+                            // Esc stops a live answer (and keeps the bubble open).
+                            if (e.key === 'Escape' && busy && onStop) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                onStop();
+                            }
+
                             if (e.key === 'Tab' && suggestions.length > 0) {
                                 e.preventDefault();
                                 applySuggestion(suggestions[0]);
@@ -328,7 +339,7 @@ export function CopilotComposer({
                                 : 'Pregunta por una unidad (T555), ubicación, combustible, pánicos… Usa @ para mencionar una unidad'
                         }
                         aria-label="Pregunta para SAM Copilot"
-                        className="min-h-[40px] w-full resize-none border-none bg-transparent px-3 pt-2.5 pb-1 text-sm text-fg-1 outline-none placeholder:text-fg-3"
+                        className="min-h-10 w-full resize-none border-none bg-transparent px-3 pt-2.5 pb-1 text-lg text-fg-1 outline-none placeholder:text-fg-3 sm:text-sm"
                     />
                     <div className="flex items-center gap-1.5 px-2 pb-2">
                         {asset ? (
@@ -367,19 +378,33 @@ export function CopilotComposer({
                                 ⏎ enviar · ⇧⏎ línea · Tab autocompleta
                             </span>
                         )}
+                        {/* One control for both states: send ↔ stop. It is
+                            the primary "busy / done" signal of the chat. */}
                         <button
                             type="button"
-                            onClick={submit}
-                            disabled={!canSend}
-                            aria-label="Enviar"
+                            onClick={busy ? onStop : submit}
+                            disabled={busy ? !onStop : !canSend}
+                            aria-label={busy ? 'Detener respuesta' : 'Enviar'}
+                            title={busy ? 'Detener (Esc)' : undefined}
                             className={cn(
-                                'grid size-8 shrink-0 place-items-center rounded-md transition-colors',
-                                canSend
-                                    ? 'cursor-pointer bg-primary text-primary-foreground hover:bg-primary/90'
-                                    : 'bg-surface-3 text-fg-3',
+                                'grid size-8 shrink-0 place-items-center rounded-md transition-[transform,background-color,color] duration-(--motion-fast) ease-(--ease-out)',
+                                busy
+                                    ? 'cursor-pointer bg-fg-1 text-background hover:bg-fg-2 active:scale-97'
+                                    : canSend
+                                      ? 'cursor-pointer bg-primary text-primary-foreground hover:bg-primary/90 active:scale-97'
+                                      : 'bg-surface-3 text-fg-3',
                             )}
                         >
-                            <ArrowUp className="size-4" />
+                            <span
+                                key={busy ? 'stop' : 'send'}
+                                className="sam-copilot-fade grid place-items-center"
+                            >
+                                {busy ? (
+                                    <Square className="size-3 fill-current" />
+                                ) : (
+                                    <ArrowUp className="size-4" />
+                                )}
+                            </span>
                         </button>
                     </div>
                 </div>
@@ -429,18 +454,9 @@ function AssetPickerPopover({
                 onClose();
             }
         };
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') {
-                onClose();
-            }
-        };
         document.addEventListener('mousedown', onDown);
-        document.addEventListener('keydown', onKey);
 
-        return () => {
-            document.removeEventListener('mousedown', onDown);
-            document.removeEventListener('keydown', onKey);
-        };
+        return () => document.removeEventListener('mousedown', onDown);
     }, [onClose]);
 
     const filtered = useMemo(() => {
@@ -462,6 +478,15 @@ function AssetPickerPopover({
     return (
         <div
             ref={ref}
+            // Esc closes only the picker: handled here (React bubbling) and
+            // stopped, so the bubble's own Esc never sees it.
+            onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onClose();
+                }
+            }}
             className="absolute inset-x-0 bottom-full z-30 mb-1.5 flex max-h-80 flex-col overflow-hidden rounded-lg border border-border-strong bg-surface-1 shadow-xl motion-safe:animate-[sam-copilot-in_var(--motion-fast)_var(--ease-out)_both]"
         >
             <div className="flex items-center gap-2 border-b border-border px-3 py-2">
@@ -490,7 +515,7 @@ function AssetPickerPopover({
                         }
                     }}
                     placeholder="Buscar por número económico o nombre…"
-                    className="h-7 flex-1 border-none bg-transparent text-xs text-fg-1 outline-none placeholder:text-fg-3"
+                    className="h-7 flex-1 border-none bg-transparent text-lg text-fg-1 outline-none placeholder:text-fg-3 sm:text-xs"
                 />
                 {hasTrailers && (
                     <div className="flex gap-0.5 rounded-md bg-surface-2 p-0.5">
