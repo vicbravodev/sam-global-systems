@@ -272,6 +272,8 @@ Las líneas del listener síncrono `RequestPanicMediaOnContextBuilt` (`context.m
 | `copilot.tool.denied` | skipped | `missing_permission` | `team_id`, `tool`, `tool_call_id`, `permission` (el permiso de módulo que faltó). La tool de dominio se negó aunque la caja la ofreció; queda en el collector con estado `denied` |
 | `copilot.tool.failed` | degraded | `tool_exception` | `team_id`, `tool`, `tool_call_id`, `duration_ms`, `error` (clase). Al modelo vuelve `{"error": "no pude consultar …"}`; el collector la registra con estado `error` |
 | `copilot.tool.invalid_args` | skipped | `validation_failed` (argumentos o periodo inválidos: fecha ilegible, `from` ≥ `to`, `to` en el futuro o rango > 90 días), `asset_not_found` (el `asset_code` no existe en la flota del tenant) | `team_id`, `tool`, `tool_call_id`, `fields` (sólo nombres de campo, nunca valores). No se lee ningún dato |
+| `copilot.media.sign_failed` | degraded | `signing_failed` | `team_id`, `event_media_context_id`, `error` (clase). No se pudo firmar la URL temporal de un archivo de nuestro storage para una tarjeta de media (tool `asset_media` o historial reabierto); el ítem sale con `url` null y la tarjeta muestra "Archivo no disponible". Nunca la ruta ni la URL |
+| `copilot.media.refresh_skipped` | skipped | `media_not_found` | `team_id`, `message_id`; calc `requested_count` (ids de media en las tarjetas del mensaje), `missing_count` (ítems cuyo registro ya no existe en el tenant). Al reabrir una conversación las URLs guardadas se vuelven a resolver desde la media del tenant; un ítem sin registro sale con `url`/`thumbnailUrl` null (nunca se sirve la URL guardada) |
 
 ### Decisiones (`decisions`)
 

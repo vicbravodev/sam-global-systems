@@ -2,13 +2,11 @@
 
 namespace App\Domains\Copilot\Tools;
 
-use App\Contracts\ObjectStorage;
-use App\Domains\Context\Enums\MediaType;
 use App\Domains\Context\Models\EventMediaContext;
 use App\Domains\Copilot\Data\CopilotToolContext;
 use App\Domains\Copilot\Data\CopilotToolResult;
+use App\Domains\Copilot\Support\CopilotMediaUrls;
 use App\Domains\Copilot\Support\CopilotPresenter;
-use Throwable;
 
 /**
  * Latest camera media (video clips, snapshots) captured for a unit.
@@ -30,7 +28,7 @@ final class AssetMediaTool implements CopilotTool
         'cabin_audio' => 'Audio de cabina',
     ];
 
-    public function __construct(private readonly ObjectStorage $storage) {}
+    public function __construct(private readonly CopilotMediaUrls $urls) {}
 
     public function run(CopilotToolContext $context): CopilotToolResult
     {
@@ -65,7 +63,7 @@ final class AssetMediaTool implements CopilotTool
         $items = $media->map(function (EventMediaContext $item) use ($context): array {
             $event = $item->normalizedEvent;
 
-            $url = $this->resolveUrl($item);
+            $url = $this->urls->url($item);
 
             return [
                 'id' => (int) $item->id,
@@ -73,7 +71,7 @@ final class AssetMediaTool implements CopilotTool
                 'role' => $item->media_role?->value,
                 'roleLabel' => $item->media_role ? (self::ROLE_LABELS[$item->media_role->value] ?? $item->media_role->value) : null,
                 'url' => $url,
-                'thumbnailUrl' => $this->resolveThumbnail($item, $url),
+                'thumbnailUrl' => $this->urls->thumbnail($item, $url),
                 'mimeType' => $item->mime_type,
                 'durationSeconds' => $item->duration_seconds,
                 'capturedAt' => $item->captured_at?->toIso8601String(),
@@ -122,37 +120,5 @@ final class AssetMediaTool implements CopilotTool
                     .', '.CopilotPresenter::describeAge($latest['capturedAt']).'.',
             ],
         );
-    }
-
-    /**
-     * Images are their own thumbnail (same signed URL). Video only gets one
-     * when the provider gave a real http(s) poster; never a storage path.
-     */
-    private function resolveThumbnail(EventMediaContext $media, ?string $url): ?string
-    {
-        if (in_array($media->media_type, [MediaType::Image, MediaType::Snapshot], true)) {
-            return $url;
-        }
-
-        $thumbnail = $media->thumbnail_url;
-
-        return is_string($thumbnail) && preg_match('#^https?://#i', $thumbnail) === 1 ? $thumbnail : null;
-    }
-
-    private function resolveUrl(EventMediaContext $media): ?string
-    {
-        if ($media->media_url !== null) {
-            return $media->media_url;
-        }
-
-        if ($media->storage_path === null) {
-            return null;
-        }
-
-        try {
-            return $this->storage->temporaryUrl($media->storage_path, now()->addMinutes(30));
-        } catch (Throwable) {
-            return null;
-        }
     }
 }

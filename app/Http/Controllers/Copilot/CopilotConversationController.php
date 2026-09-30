@@ -24,7 +24,7 @@ class CopilotConversationController extends Controller
 
         return response()->json([
             'conversation' => CopilotMessagePresenter::conversation($conversation),
-            'messages' => $messages->map(fn (CopilotMessage $m) => CopilotMessagePresenter::message($m))->all(),
+            'messages' => $messages->map(fn (CopilotMessage $m) => CopilotMessagePresenter::stored($m))->all(),
         ]);
     }
 
