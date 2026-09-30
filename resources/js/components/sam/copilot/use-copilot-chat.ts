@@ -70,6 +70,7 @@ export function useCopilotChat({
                 tools: [],
                 sources: [],
                 context: null,
+                followups: [],
                 usage: null,
                 feedback: null,
                 createdAt: new Date().toISOString(),

@@ -2,7 +2,6 @@
 
 namespace Tests\Feature\Domains\Copilot;
 
-use App\Contracts\AI\CopilotNarrator;
 use App\Domains\Access\Actions\SyncRolePermissions;
 use App\Domains\Access\Models\Role;
 use App\Domains\Audit\Models\AuditLog;
@@ -15,12 +14,12 @@ use App\Domains\Normalization\Models\EventType;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\Tenancy\Models\UsageEvent;
 use App\Infrastructure\AI\Agents\CopilotAgent;
-use App\Infrastructure\AI\Agents\SdkCopilotNarrator;
 use Database\Seeders\AccessSeeder;
 use Database\Seeders\AIMeterSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Ai\Responses\Data\Meta;
 use Laravel\Ai\Responses\Data\TextUsage;
+use Laravel\Ai\Responses\Data\ToolCall;
 use Laravel\Ai\Responses\TextResponse;
 use Tests\TestCase;
 
@@ -235,12 +234,15 @@ class SendCopilotMessageTest extends TestCase
         $this->assertSame(1, $response->json('quota.used'));
     }
 
-    public function test_llm_narration_records_tokens_cost_and_usage(): void
+    public function test_agent_turn_records_tokens_cost_and_usage(): void
     {
-        config(['ai.pricing' => ['gpt-test' => ['input' => 1.0, 'output' => 4.0]]]);
-        $this->app->instance(CopilotNarrator::class, $this->app->make(SdkCopilotNarrator::class));
+        config([
+            'ai.providers.openai.key' => 'test-key',
+            'ai.pricing' => ['gpt-test' => ['input' => 1.0, 'output' => 4.0]],
+        ]);
 
         CopilotAgent::fake([
+            new ToolCall('c1', 'asset_location', ['asset_code' => 'T555']),
             new TextResponse(
                 'La unidad **T555** va en ruta por Insurgentes Sur a 72 km/h.',
                 new TextUsage(inputTokens: 1200, outputTokens: 300),
@@ -257,7 +259,8 @@ class SendCopilotMessageTest extends TestCase
             ->assertJsonPath('answer.content', 'La unidad **T555** va en ruta por Insurgentes Sur a 72 km/h.')
             ->assertJsonPath('answer.usage.inputTokens', 1200)
             ->assertJsonPath('answer.usage.outputTokens', 300)
-            ->assertJsonPath('answer.usage.model', 'gpt-test');
+            ->assertJsonPath('answer.usage.model', 'gpt-test')
+            ->assertJsonPath('answer.tools.0.tool', 'asset_location');
 
         $this->assertEqualsWithDelta(0.0024, $response->json('answer.usage.cost'), 0.000001);
 

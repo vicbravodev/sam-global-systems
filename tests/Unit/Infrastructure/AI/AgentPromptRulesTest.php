@@ -87,11 +87,11 @@ class AgentPromptRulesTest extends TestCase
     public static function copilotRules(): array
     {
         return [
-            'spanish output' => ['Respondes en español de México'],
+            'spanish output' => ['Respondes SIEMPRE en español de México'],
             'grounded on tools only' => ['Todo dato sale de tus herramientas'],
             'never invent' => ['Nunca inventes'],
             'cards already show detail' => ['no repitas listas'],
-            'permission denial' => ['falta de permiso'],
+            'permission denial' => ['falta de permisos'],
         ];
     }
 

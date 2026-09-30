@@ -307,6 +307,14 @@ export interface CopilotUsage {
     latencyMs: number;
 }
 
+/** One tool the turn ran; status/durationMs are absent on answers stored before the agent. */
+export interface CopilotToolTrace {
+    tool: string;
+    label: string;
+    status?: 'ok' | 'denied' | 'error';
+    durationMs?: number;
+}
+
 export interface CopilotMessage {
     id: number;
     role: 'user' | 'assistant';
@@ -314,13 +322,21 @@ export interface CopilotMessage {
     intent: CopilotIntent | null;
     intentLabel: string | null;
     blocks: CopilotBlock[];
-    tools: { tool: string; label: string }[];
+    tools: CopilotToolTrace[];
     sources: CopilotSource[];
     context: {
         asset_id?: number;
         intent?: string;
-        resolved?: { asset_id: number | null; asset_code: string | null };
+        resolved?: { asset_id: number | null; asset_code?: string | null };
+        facts_digest?: string;
+        followups?: string[];
+        mode?: 'agent' | 'deterministic';
+        partial?: boolean;
     } | null;
+    /** Follow-up questions the agent suggested (empty for user turns). */
+    followups: string[];
+    /** The answer was cut short (provider failure or client disconnect mid-stream). */
+    partial?: boolean;
     usage: CopilotUsage | null;
     feedback: -1 | 1 | null;
     createdAt: string | null;
