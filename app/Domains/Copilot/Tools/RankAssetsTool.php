@@ -34,6 +34,9 @@ final class RankAssetsTool implements CopilotTool
         'panics' => ['label' => 'Pánicos', 'unit' => 'pánicos', 'permission' => 'incidents.view'],
     ];
 
+    /** Metrics where a unit without rows had zero of them (not "no data"). */
+    private const COUNT_METRICS = ['incidents', 'events', 'panics'];
+
     private const MAX_ASSETS = 2000;
 
     private const PANIC_CODE = 'panic_button';
@@ -70,24 +73,38 @@ final class RankAssetsTool implements CopilotTool
             'panics' => $this->countEvents($context, $ids, self::PANIC_CODE),
         };
 
-        $values = $values->only($ids->all())->map(fn ($v) => (float) $v)->filter(fn (float $v) => $v > 0);
+        $values = $values->only($ids->all())->map(fn ($v) => (float) $v);
+        $ascending = ($context->arguments['order'] ?? 'desc') === 'asc';
 
-        if ($values->isEmpty()) {
-            $text = "No hay datos de {$meta['label']} en {$period->label}.";
+        if (in_array($metric, self::COUNT_METRICS, true)) {
+            // A unit without rows had zero of them: it belongs in the ranking.
+            $values = $ids->mapWithKeys(fn (int $id) => [$id => (float) $values->get($id, 0.0)]);
+            $withoutData = 0;
+            $emptyText = "Ninguna unidad registró {$meta['label']} en {$period->label}.";
+            $isEmpty = $values->sum() <= 0;
+        } else {
+            // Telemetry: 0 means no readings, not "the least"; those units are left out.
+            $values = $values->filter(fn (float $v) => $v > 0);
+            $withoutData = $ids->count() - $values->count();
+            $emptyText = "No hay datos de {$meta['label']} en {$period->label}.";
+            $isEmpty = $values->isEmpty();
+        }
 
+        if ($isEmpty) {
             return new CopilotToolResult(
                 tool: 'rank_assets',
                 label: 'Ranking de unidades',
-                blocks: [['type' => 'notice', 'tone' => 'info', 'text' => $text]],
+                blocks: [['type' => 'notice', 'tone' => 'info', 'text' => $emptyText]],
                 facts: ['metric' => $metric, 'unit' => $meta['unit'], 'period' => $period->label, 'items' => [], 'average' => null],
-                highlights: [$text],
+                highlights: [$emptyText],
             );
         }
 
         $avg = (float) $values->avg();
         $std = sqrt((float) $values->map(fn (float $v) => ($v - $avg) ** 2)->avg());
         $limit = (int) ($context->arguments['limit'] ?? 5);
-        $sorted = ($context->arguments['order'] ?? 'desc') === 'asc' ? $values->sort() : $values->sortDesc();
+        // Descending lists never show units at zero; they still weigh on the average.
+        $sorted = $ascending ? $values->sort() : $values->sortDesc()->filter(fn (float $v) => $v > 0);
 
         $items = $sorted->take($limit)->map(function (float $value, int $id) use ($assets, $avg, $std, $context): array {
             $asset = $assets->get($id);
@@ -107,11 +124,15 @@ final class RankAssetsTool implements CopilotTool
         $topName = $top['code'] ?? $top['name'];
         $outliers = array_values(array_filter($items, fn (array $i) => $i['outlier']));
 
-        $highlights = ["{$topName} ".(($context->arguments['order'] ?? 'desc') === 'asc' ? 'tiene el menor valor de' : 'encabeza')
+        $highlights = ["{$topName} ".($ascending ? 'tiene el menor valor de' : 'encabeza')
             ." {$meta['label']} con {$top['value']} {$meta['unit']} (promedio de flota {$average} {$meta['unit']}, {$period->label})."];
 
         if ($outliers !== []) {
             $highlights[] = 'Atípicas: '.implode(', ', array_map(fn (array $i) => $i['code'] ?? $i['name'], $outliers)).'.';
+        }
+
+        if ($withoutData > 0) {
+            $highlights[] = "{$withoutData} unidad(es) sin datos de {$meta['label']} en el periodo quedaron fuera del ranking.";
         }
 
         return new CopilotToolResult(
@@ -138,6 +159,7 @@ final class RankAssetsTool implements CopilotTool
                 'items' => $items,
                 'average' => $average,
                 'units_with_data' => $values->count(),
+                'units_without_data' => $withoutData,
             ],
             highlights: $highlights,
         );

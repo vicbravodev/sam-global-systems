@@ -157,6 +157,68 @@ class RankAssetsToolTest extends TestCase
         $this->assertSame([3, 1], array_map('intval', array_column($out['facts']['items'], 'value')));
     }
 
+    public function test_ascending_incidents_ranks_a_unit_with_zero_first(): void
+    {
+        $busy = $this->unit('TA');
+        $quiet = $this->unit('TB');
+        $calm = $this->unit('TC');
+        Incident::factory()->count(3)->create(['team_id' => $this->team->id, 'asset_id' => $busy->id, 'opened_at' => $this->now->subDays(2)]);
+        Incident::factory()->create(['team_id' => $this->team->id, 'asset_id' => $calm->id, 'opened_at' => $this->now->subDay()]);
+        // Another tenant's unit never fills the ranking with its zero.
+        $this->unit('X900', team: Team::factory()->create());
+
+        $out = $this->callTool($this->team, self::ALL, 'rank_assets', ['metric' => 'incidents', 'order' => 'asc']);
+
+        $this->assertSame(['TB', 'TC', 'TA'], array_column($out['facts']['items'], 'code'));
+        $this->assertSame([0, 1, 3], array_map('intval', array_column($out['facts']['items'], 'value')));
+        $this->assertSame($quiet->id, $out['facts']['items'][0]['assetId']);
+        $this->assertEqualsWithDelta(1.33, $out['facts']['average'], 0.01);
+        $this->assertSame(3, $out['facts']['units_with_data']);
+        $this->assertStringStartsWith('TB tiene el menor valor de Incidentes con 0', $out['highlights'][0]);
+    }
+
+    public function test_descending_counts_do_not_list_units_at_zero(): void
+    {
+        $a = $this->unit('TA');
+        $this->unit('TB');
+        Incident::factory()->count(2)->create(['team_id' => $this->team->id, 'asset_id' => $a->id, 'opened_at' => $this->now->subDay()]);
+
+        $out = $this->callTool($this->team, self::ALL, 'rank_assets', ['metric' => 'incidents']);
+
+        $this->assertSame(['TA'], array_column($out['facts']['items'], 'code'));
+        // The unit at zero still weighs on the fleet average.
+        $this->assertSame(1.0, (float) $out['facts']['average']);
+    }
+
+    public function test_counts_all_zero_return_notice(): void
+    {
+        $this->unit('TA');
+
+        $out = $this->callTool($this->team, self::ALL, 'rank_assets', ['metric' => 'incidents', 'order' => 'asc']);
+
+        $this->assertSame([], $out['facts']['items']);
+        $this->assertStringStartsWith('Ninguna unidad registró Incidentes', $this->toolBlock('notice')['text']);
+    }
+
+    public function test_telemetry_metric_reports_units_without_data(): void
+    {
+        $a = $this->unit('TA');
+        $b = $this->unit('TB');
+        $this->unit('TC');
+        $this->reading($a, TelemetryType::Odometer, 1000.0, $this->now->subDays(3));
+        $this->reading($a, TelemetryType::Odometer, 1100.0, $this->now->subDay());
+        $this->reading($b, TelemetryType::Odometer, 500.0, $this->now->subDays(3));
+        $this->reading($b, TelemetryType::Odometer, 540.0, $this->now->subDay());
+
+        $out = $this->callTool($this->team, self::ALL, 'rank_assets', ['metric' => 'distance_km', 'order' => 'asc']);
+
+        // TC has no odometer readings: it is left out, not ranked as the lowest.
+        $this->assertSame(['TB', 'TA'], array_column($out['facts']['items'], 'code'));
+        $this->assertSame(2, $out['facts']['units_with_data']);
+        $this->assertSame(1, $out['facts']['units_without_data']);
+        $this->assertStringContainsString('1 unidad(es) sin datos', implode(' ', $out['highlights']));
+    }
+
     public function test_ranks_events_and_panics_by_type_code(): void
     {
         $a = $this->unit('TA');
