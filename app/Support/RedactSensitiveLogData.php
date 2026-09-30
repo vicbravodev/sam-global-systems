@@ -38,13 +38,14 @@ final class RedactSensitiveLogData implements ProcessorInterface
 
     /**
      * Último segmento que convierte la clave en metadato técnico aunque
-     * contenga una palabra sensible (`raw_event_id`, `token_id`, `signature_mode`).
+     * contenga una palabra sensible (`raw_event_id`, `token_id`, `signature_mode`,
+     * `first_token_ms`: una duración nunca es un dato sensible).
      *
      * @var list<string>
      */
     private const array TECHNICAL_SUFFIXES = [
         'id', 'ids', 'count', 'type', 'status', 'class', 'mode', 'variant',
-        'present', 'length', 'bytes', 'source', 'strategy', 'key',
+        'present', 'length', 'bytes', 'source', 'strategy', 'key', 'ms',
     ];
 
     /**

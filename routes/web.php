@@ -27,6 +27,7 @@ use App\Http\Controllers\Copilot\CopilotCatalogController;
 use App\Http\Controllers\Copilot\CopilotConversationController;
 use App\Http\Controllers\Copilot\CopilotMessageController;
 use App\Http\Controllers\Copilot\CopilotPageController;
+use App\Http\Controllers\Copilot\CopilotStreamController;
 use App\Http\Controllers\Dashboard\DashboardController;
 use App\Http\Controllers\Decisions\DecisionRuleController;
 use App\Http\Controllers\Decisions\RulesPageController;
@@ -185,6 +186,7 @@ Route::prefix('{current_team}')
         Route::get('copilot/usage', [CopilotPageController::class, 'usage'])->name('copilot.usage');
         Route::get('copilot/catalog', CopilotCatalogController::class)->name('copilot.catalog');
         Route::post('copilot/messages', [CopilotMessageController::class, 'store'])->middleware('throttle:copilot')->name('copilot.messages.store');
+        Route::post('copilot/stream', CopilotStreamController::class)->middleware('throttle:copilot')->name('copilot.stream');
         Route::put('copilot/messages/{message}/feedback', [CopilotMessageController::class, 'feedback'])->name('copilot.messages.feedback');
         Route::get('copilot/conversations/{conversation}', [CopilotConversationController::class, 'show'])->name('copilot.conversations.show');
         Route::patch('copilot/conversations/{conversation}', [CopilotConversationController::class, 'update'])->name('copilot.conversations.update');
