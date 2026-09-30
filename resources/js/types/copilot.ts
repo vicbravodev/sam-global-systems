@@ -342,6 +342,10 @@ export interface CopilotMessage {
     createdAt: string | null;
     /** Client-only: optimistic question not yet confirmed by the server. */
     pending?: boolean;
+    /** Client-only: the answer is still being streamed. */
+    streaming?: boolean;
+    /** Client-only: tools currently running for a streaming answer. */
+    activeTools?: { toolCallId: string; label: string }[];
 }
 
 export interface CopilotConversation {

@@ -54,6 +54,31 @@ export function postJson(
 }
 
 /**
+ * POST a JSON body and keep the response open as a server-sent event
+ * stream (Copilot). Same CSRF handling as postJson.
+ */
+export function postStream(
+    url: string,
+    body?: Record<string, unknown>,
+    signal?: AbortSignal,
+): Promise<Response> {
+    const token = readCookie('XSRF-TOKEN');
+
+    return fetch(url, {
+        method: 'POST',
+        credentials: 'same-origin',
+        signal,
+        headers: {
+            'Content-Type': 'application/json',
+            Accept: 'text/event-stream',
+            'X-Requested-With': 'XMLHttpRequest',
+            ...(token ? { 'X-XSRF-TOKEN': token } : {}),
+        },
+        body: JSON.stringify(body ?? {}),
+    });
+}
+
+/**
  * PUT a JSON body to a session-authenticated route.
  */
 export function putJson(

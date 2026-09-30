@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import {
     deleteJson,
     patchJson,
-    postJson,
+    postStream,
     putJson,
     readErrorMessage,
 } from '@/lib/sam-fetch';
@@ -13,13 +13,7 @@ import type {
     CopilotQuota,
     CopilotSendHints,
 } from '@/types/copilot';
-
-interface SendResponse {
-    conversation: CopilotConversation;
-    question: CopilotMessage;
-    answer: CopilotMessage;
-    quota: CopilotQuota;
-}
+import { readCopilotStream, toolStatusLabel } from './copilot-stream';
 
 interface Options {
     teamSlug: string;
@@ -82,9 +76,19 @@ export function useCopilotChat({
             const controller = new AbortController();
             abortRef.current = controller;
 
+            const draftId = optimistic.id - 1;
+            const patch = (fn: (m: CopilotMessage) => CopilotMessage) =>
+                setMessages((current) =>
+                    current.map((m) => (m.id === draftId ? fn(m) : m)),
+                );
+            const dropOptimistic = () =>
+                setMessages((current) =>
+                    current.filter((m) => m.id !== optimistic.id),
+                );
+
             try {
-                const response = await postJson(
-                    `${base}/messages`,
+                const response = await postStream(
+                    `${base}/stream`,
                     {
                         content: text,
                         conversation_id: conversationId,
@@ -94,49 +98,148 @@ export function useCopilotChat({
                     },
                     controller.signal,
                 );
+                const isStream = (
+                    response.headers.get('content-type') ?? ''
+                ).includes('text/event-stream');
+                const sessionLost =
+                    response.redirected ||
+                    response.status === 401 ||
+                    response.status === 419;
 
-                if (!response.ok) {
-                    const message =
-                        response.status === 429
-                            ? 'Demasiadas consultas seguidas. Espera unos segundos y vuelve a intentar.'
-                            : response.status === 403
-                              ? 'Tu rol no tiene acceso a SAM Copilot o el módulo está desactivado para tu empresa.'
-                              : ((await readErrorMessage(response)) ??
-                                'No pude responder. Intenta de nuevo.');
+                if (
+                    sessionLost ||
+                    !response.ok ||
+                    !response.body ||
+                    !isStream
+                ) {
+                    const message = sessionLost
+                        ? 'Tu sesión expiró. Recarga la página e inténtalo de nuevo.'
+                        : response.status === 429
+                          ? 'Demasiadas consultas seguidas. Espera unos segundos y vuelve a intentar.'
+                          : response.status === 403
+                            ? 'Tu rol no tiene acceso a SAM Copilot o el módulo está desactivado para tu empresa.'
+                            : !response.ok
+                              ? ((await readErrorMessage(response)) ??
+                                'No pude responder. Intenta de nuevo.')
+                              : 'Tu sesión expiró. Recarga la página e inténtalo de nuevo.';
                     setError(message);
-                    setMessages((current) =>
-                        current.filter((m) => m.id !== optimistic.id),
-                    );
+                    dropOptimistic();
 
                     return;
                 }
 
-                const data = (await response.json()) as SendResponse;
+                const draft: CopilotMessage = {
+                    ...optimistic,
+                    id: draftId,
+                    role: 'assistant',
+                    pending: false,
+                    streaming: true,
+                    activeTools: [],
+                    followups: [],
+                };
+                setMessages((current) => [...current, draft]);
 
-                setConversationId(data.conversation.id);
-                setMessages((current) => [
-                    ...current.filter((m) => m.id !== optimistic.id),
-                    data.question,
-                    data.answer,
-                ]);
-                onConversationSaved?.(data.conversation);
-                onQuota?.(data.quota);
+                for await (const part of readCopilotStream(response.body)) {
+                    switch (part.type) {
+                        case 'tool-input-available':
+                            if (part.toolName === 'suggest_followups') {
+                                break;
+                            }
+
+                            patch((m) => ({
+                                ...m,
+                                activeTools: [
+                                    ...(m.activeTools ?? []),
+                                    {
+                                        toolCallId: part.toolCallId,
+                                        label: toolStatusLabel(
+                                            part.toolName,
+                                            part.input ?? {},
+                                        ),
+                                    },
+                                ],
+                            }));
+                            break;
+                        case 'tool-output-available':
+                        case 'tool-output-error':
+                            patch((m) => ({
+                                ...m,
+                                activeTools: (m.activeTools ?? []).filter(
+                                    (t) => t.toolCallId !== part.toolCallId,
+                                ),
+                            }));
+                            break;
+                        case 'data-copilot-blocks':
+                            patch((m) => ({
+                                ...m,
+                                blocks: [...m.blocks, ...part.data.blocks],
+                            }));
+                            break;
+                        case 'text-delta':
+                            patch((m) => ({
+                                ...m,
+                                content: m.content + part.delta,
+                            }));
+                            break;
+                        case 'data-copilot-followups':
+                            patch((m) => ({
+                                ...m,
+                                followups: part.data.questions,
+                            }));
+                            break;
+                        case 'data-copilot-message':
+                            // Authoritative: replaces the optimistic question and the draft.
+                            setConversationId(part.data.conversation.id);
+                            setMessages((current) => [
+                                ...current.filter(
+                                    (m) =>
+                                        m.id !== optimistic.id &&
+                                        m.id !== draftId,
+                                ),
+                                part.data.question,
+                                part.data.answer,
+                            ]);
+                            onConversationSaved?.(part.data.conversation);
+                            onQuota?.(part.data.quota);
+                            break;
+                        case 'error':
+                            setError(part.errorText);
+                            patch((m) => ({
+                                ...m,
+                                streaming: false,
+                                partial: m.content !== '',
+                                activeTools: [],
+                            }));
+                            break;
+                    }
+                }
             } catch (caught) {
                 if ((caught as Error).name !== 'AbortError') {
                     setError(
                         'Sin conexión con SAM. Revisa tu red e intenta de nuevo.',
                     );
-                    setMessages((current) =>
-                        current.filter((m) => m.id !== optimistic.id),
-                    );
+                    dropOptimistic();
                 }
             } finally {
+                // Anything still streaming ended without a final message (stop, drop).
+                patch((m) =>
+                    m.streaming
+                        ? {
+                              ...m,
+                              streaming: false,
+                              partial: true,
+                              activeTools: [],
+                          }
+                        : m,
+                );
                 setBusy(false);
                 abortRef.current = null;
             }
         },
         [base, busy, channel, conversationId, onConversationSaved, onQuota],
     );
+
+    const stop = useCallback(() => abortRef.current?.abort(), []);
 
     const load = useCallback(
         async (id: number) => {
@@ -227,6 +330,7 @@ export function useCopilotChat({
         error,
         lastHints,
         send,
+        stop,
         load,
         reset,
         rate,
