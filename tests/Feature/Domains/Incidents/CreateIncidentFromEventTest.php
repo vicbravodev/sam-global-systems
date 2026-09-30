@@ -385,6 +385,18 @@ class CreateIncidentFromEventTest extends TestCase
         $this->assertFalse($c['calc']['backfill_adjusted']);
     }
 
+    public function test_title_names_the_unit_the_way_operators_search_it(): void
+    {
+        $team = User::factory()->create()->currentTeam;
+        $asset = Asset::factory()->create(['team_id' => $team->id, 'name' => 'T-879 JC 27BF7U']);
+        $event = NormalizedEvent::factory()->create(['team_id' => $team->id, 'asset_id' => $asset->id]);
+
+        $incident = app(CreateIncidentFromEvent::class)->execute($event, ['priority_code' => 'critical']);
+
+        $this->assertStringEndsWith(' — T-879 JC 27BF7U', $incident->title);
+        $this->assertStringNotContainsString('activo #', $incident->title);
+    }
+
     public function test_priority_without_sla_logs_the_skip_and_arms_no_watchdog(): void
     {
         $user = User::factory()->create();

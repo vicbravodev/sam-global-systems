@@ -4,6 +4,7 @@ namespace App\Domains\Incidents\Actions;
 
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\Assets\Jobs\DetectOfflineAssetsJob;
+use App\Domains\Assets\Models\Asset;
 use App\Domains\Context\Models\EventContextSnapshot;
 use App\Domains\Incidents\Enums\EventRelationType;
 use App\Domains\Incidents\Enums\EvidenceSourceType;
@@ -698,9 +699,15 @@ class CreateIncidentFromEvent
 
         $label = $eventType?->name ?: $typeName;
 
-        $assetSegment = $event->asset_id !== null ? " — activo #{$event->asset_id}" : '';
+        if ($event->asset_id === null) {
+            return $label;
+        }
 
-        return $label.$assetSegment;
+        // The unit's name is what operators say, search and type into the
+        // inbox ("T-879"); the internal id is only a fallback.
+        $assetName = trim((string) Asset::query()->whereKey($event->asset_id)->value('name'));
+
+        return $label.' — '.($assetName !== '' ? $assetName : "activo #{$event->asset_id}");
     }
 
     private function buildSummary(NormalizedEvent $event): string
