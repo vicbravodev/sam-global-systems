@@ -51,8 +51,17 @@
     --text-2xl--line-height: var(--line-tight);
     --text-3xl: 36px;
     --text-3xl--line-height: var(--line-tight);
+    /* Display sizes — marketing surfaces only (landing). The product UI stops
+       at 3xl. */
+    --text-4xl: 46px;
+    --text-4xl--line-height: 1.06;
+    --text-5xl: 64px;
+    --text-5xl--line-height: 1;
+    --text-6xl: 88px;
+    --text-6xl--line-height: 1;
 
     /* Tracking */
+    --tracking-display: -0.032em;
     --tracking-tight: -0.01em;
     --tracking-normal: 0;
     --tracking-label: 0.02em;
@@ -576,6 +585,62 @@
     40% {
         opacity: 1;
         transform: translateY(-2px);
+    }
+}
+
+/* -------------------- Landing (pages/welcome, components/landing) -------------------- */
+/* Every animation here is decorative-to-explanatory and collapses to its end
+   state under prefers-reduced-motion. */
+@keyframes sam-row-in {
+    from {
+        opacity: 0;
+        transform: translateY(-6px);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+.sam-row-in {
+    animation: sam-row-in 480ms var(--ease-out) both;
+}
+
+@keyframes sam-marquee {
+    to {
+        transform: translateX(-50%);
+    }
+}
+.sam-marquee {
+    animation: sam-marquee 48s linear infinite;
+}
+.sam-marquee-wrap:hover .sam-marquee {
+    animation-play-state: paused;
+}
+
+/* Pipeline rail draws itself as the steps scroll through the viewport. */
+@keyframes sam-draw {
+    from {
+        transform: scaleY(0);
+    }
+    to {
+        transform: scaleY(1);
+    }
+}
+@supports (animation-timeline: view()) {
+    @media (prefers-reduced-motion: no-preference) {
+        .sam-draw {
+            transform-origin: top;
+            animation: sam-draw linear both;
+            animation-timeline: view();
+            animation-range: entry 30% cover 70%;
+        }
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sam-row-in,
+    .sam-marquee {
+        animation: none;
     }
 }
 
