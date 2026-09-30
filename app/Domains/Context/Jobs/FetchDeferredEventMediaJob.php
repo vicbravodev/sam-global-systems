@@ -83,6 +83,15 @@ class FetchDeferredEventMediaJob implements ShouldQueue
     public const array UPLOADED_TRIGGER_REASONS = ['panicButton', 'safetyEvent'];
 
     /**
+     * An uploaded item belongs to the event only when its capture instant is
+     * this close to `occurred_at`. The dashcam starts the panic clip ~10 s
+     * before the press, while the listing window spans half an hour: without
+     * this match two presses of the same unit minutes apart (or a harsh-brake
+     * upload before the panic) would all land on every event of the window.
+     */
+    public const int UPLOADED_MATCH_SECONDS = 60;
+
+    /**
      * Capture window around the event timestamp, per side (system default):
      * 10s per side → 20s clip. Samsara caps high-res retrieval duration and
      * longer clips burn the org's monthly media quota.
@@ -641,9 +650,16 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         $downloaded = 0;
         $alreadyStored = 0;
         $availableCount = 0;
+        $outOfWindow = 0;
 
         foreach ($items as $item) {
             if ($item['status'] !== 'available' || ! is_string($item['url'] ?? null) || $item['url'] === '') {
+                continue;
+            }
+
+            if (! $this->capturedNearEvent($item, $occurredAt)) {
+                $outOfWindow++;
+
                 continue;
             }
 
@@ -673,8 +689,10 @@ class FetchDeferredEventMediaJob implements ShouldQueue
             input: $this->logInput($request),
             calc: [
                 'window_seconds' => $windowSeconds,
+                'match_seconds' => self::UPLOADED_MATCH_SECONDS,
                 'items_found' => count($items),
                 'available' => $availableCount,
+                'out_of_window' => $outOfWindow,
             ],
             result: ['downloaded' => $downloaded, 'already_stored' => $alreadyStored],
         );
@@ -694,10 +712,23 @@ class FetchDeferredEventMediaJob implements ShouldQueue
     }
 
     /**
-     * Close a request whose retrieval path delivered nothing: when the event
-     * already holds auto-uploaded evidence the request completes (the alert IS
-     * backed by media), otherwise it fails/expires as before.
+     * Whether an uploaded item was captured around this event (see
+     * {@see UPLOADED_MATCH_SECONDS}). Items without a capture instant cannot
+     * be told apart, so they keep the old window-wide behaviour.
+     *
+     * @param  array{start_time?: string|null}  $item
      */
+    private function capturedNearEvent(array $item, Carbon $occurredAt): bool
+    {
+        $startTime = $item['start_time'] ?? null;
+
+        if (! is_string($startTime) || $startTime === '') {
+            return true;
+        }
+
+        return abs(Carbon::parse($startTime)->diffInSeconds($occurredAt, false)) <= self::UPLOADED_MATCH_SECONDS;
+    }
+
     /**
      * Keep a request alive as a sweep-only poll: no retrieval will ever be
      * placed (either the request is explicitly sweep-only, or the asset reports
@@ -757,6 +788,10 @@ class FetchDeferredEventMediaJob implements ShouldQueue
     }
 
     /**
+     * Close a request whose retrieval path delivered nothing: when the event
+     * already holds auto-uploaded evidence the request completes (the alert IS
+     * backed by media), otherwise it fails/expires as before.
+     *
      * @param  array<string, mixed>  $calc
      */
     private function closeWithoutNewMedia(
