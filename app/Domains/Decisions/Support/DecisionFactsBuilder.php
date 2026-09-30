@@ -50,6 +50,10 @@ class DecisionFactsBuilder
             'outside_operating_hours' => (bool) (($context?->signals_json ?? [])['outside_operating_hours'] ?? false),
             // Anti-theft (Roadmap V2-C3).
             'gps_lost_in_motion' => (bool) (($context?->signals_json ?? [])['gps_lost_in_motion'] ?? false),
+            // Unidad desconocida: el evento no se ligó a una unidad del tenant
+            // (vehículo sin sincronizar, sin vehículo o id ajeno rechazado).
+            'asset_unresolved' => (bool) (($context?->signals_json ?? [])['asset_unresolved'] ?? false),
+            'asset_unresolved_reason' => self::stringOrNull(($context?->signals_json ?? [])['asset_unresolved_reason'] ?? null),
             'media_assessment' => $this->resolveMediaAssessment($eval),
             // Structured vision facts extracted per-media by the multimodal
             // inspector (Roadmap V2-A1): aggregated across every assessment of
@@ -194,6 +198,11 @@ class DecisionFactsBuilder
         }
 
         return $current === true || $candidate;
+    }
+
+    private static function stringOrNull(mixed $value): ?string
+    {
+        return is_string($value) && $value !== '' ? $value : null;
     }
 
     private function resolveEventTypeCode(?int $eventTypeId): ?string

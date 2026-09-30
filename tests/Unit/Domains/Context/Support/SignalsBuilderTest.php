@@ -371,4 +371,30 @@ class SignalsBuilderTest extends TestCase
             'recent_history' => ['nearby_safety_events_count' => 3],
         ])['nearby_safety_activity']);
     }
+
+    public function test_asset_unresolved_signal_and_reason(): void
+    {
+        // Sin datos del evento no se afirma nada.
+        $none = SignalsBuilder::build([]);
+        $this->assertFalse($none['asset_unresolved']);
+        $this->assertNull($none['asset_unresolved_reason']);
+
+        $resolved = SignalsBuilder::build(['event' => ['asset_resolved' => true, 'asset_unresolved_reason' => 'unknown_external_id']]);
+        $this->assertFalse($resolved['asset_unresolved']);
+        $this->assertNull($resolved['asset_unresolved_reason']);
+
+        foreach (['unknown_external_id', 'no_vehicle_in_payload', 'foreign_asset_rejected'] as $reason) {
+            $signals = SignalsBuilder::build(['event' => ['asset_resolved' => false, 'asset_unresolved_reason' => $reason]]);
+            $this->assertTrue($signals['asset_unresolved']);
+            $this->assertSame($reason, $signals['asset_unresolved_reason']);
+        }
+
+        // Evento sin marca (legado o no mapeado): unidad desconocida sin motivo.
+        $legacy = SignalsBuilder::build(['event' => ['asset_resolved' => false]]);
+        $this->assertTrue($legacy['asset_unresolved']);
+        $this->assertNull($legacy['asset_unresolved_reason']);
+
+        // Un motivo desconocido nunca viaja tal cual.
+        $this->assertNull(SignalsBuilder::build(['event' => ['asset_resolved' => false, 'asset_unresolved_reason' => 'ext-123']])['asset_unresolved_reason']);
+    }
 }

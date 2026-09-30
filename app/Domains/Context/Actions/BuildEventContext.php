@@ -103,6 +103,8 @@ class BuildEventContext
                 'media' => [],
                 'event' => [
                     'is_resolved' => $normalizedEvent->payload_normalized_json['is_resolved'] ?? null,
+                    'asset_resolved' => $normalizedEvent->asset_id !== null,
+                    'asset_unresolved_reason' => $normalizedEvent->payload_normalized_json['asset_unresolved_reason'] ?? null,
                 ],
                 'outside_operating_hours' => $schedule->isPersisted && ! $schedule->withinOperatingHours,
             ]);
@@ -178,6 +180,8 @@ class BuildEventContext
                 'schedule_persisted' => $schedule->isPersisted,
                 'within_operating_hours' => $schedule->withinOperatingHours,
                 'has_driver' => $driverSnapshot !== null,
+                'asset_resolved' => $normalizedEvent->asset_id !== null,
+                'asset_unresolved_reason' => $signals['asset_unresolved_reason'],
             ], 'result' => [
                 'snapshot_id' => $snapshot->id,
                 'context_version' => $nextVersion,
