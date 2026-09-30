@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Integrations;
 
 use App\Domains\Integrations\Actions\HandleWebhook;
+use App\Domains\Integrations\Actions\ResolveWebhookEventType;
 use App\Domains\Integrations\Models\WebhookEndpoint;
 use App\Http\Controllers\Controller;
 use App\Support\TenantContext;
@@ -11,7 +12,7 @@ use Illuminate\Http\Request;
 
 class WebhookController extends Controller
 {
-    public function handle(Request $request, string $endpoint_url, HandleWebhook $handleWebhook): JsonResponse
+    public function handle(Request $request, string $endpoint_url, HandleWebhook $handleWebhook, ResolveWebhookEventType $resolveEventType): JsonResponse
     {
         // Un tenant dado de baja (soft-delete) deja de recibir webhooks: su
         // endpoint responde como si no existiera.
@@ -25,7 +26,13 @@ class WebhookController extends Controller
         // ingesta viaje ya dentro del tenant correcto. Ver §2.1.
         TenantContext::set($endpoint->tenantIntegration?->team_id);
 
-        $eventType = $request->input('event_type', 'unknown');
+        // Informativo y sin autenticar hasta validar la firma: nunca decide
+        // tenant ni nada de seguridad (ver ResolveWebhookEventType).
+        $eventType = $resolveEventType->execute(
+            $request->isJson() ? $request->json('eventType') : $request->request->get('eventType'),
+            $request->input('event_type'),
+            (int) $endpoint->id,
+        );
         $payload = $request->all();
 
         // Capture the exact raw body bytes and Samsara's signature headers. The
