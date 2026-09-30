@@ -6,6 +6,7 @@ use App\Domains\AI\Enums\EvaluationPriority;
 use App\Domains\AI\Enums\EventClassification;
 use App\Domains\AI\Enums\MediaAssessmentResult;
 use App\Domains\Incidents\Enums\CallVerificationOutcome;
+use App\Domains\Normalization\Enums\AssetUnresolvedReason;
 use App\Domains\Normalization\Models\EventType;
 use App\Support\Conditions\ConditionField;
 
@@ -123,6 +124,17 @@ class DecisionConditionCatalog
                 type: 'boolean',
             ),
             new ConditionField(
+                key: 'asset_unresolved',
+                label: 'Unidad desconocida (sin vehículo del tenant)',
+                type: 'boolean',
+            ),
+            new ConditionField(
+                key: 'asset_unresolved_reason',
+                label: 'Motivo de unidad desconocida',
+                type: 'enum',
+                options: self::assetUnresolvedReasonOptions(),
+            ),
+            new ConditionField(
                 key: 'nearby_safety_events_count',
                 label: 'Safety events alrededor del evento',
                 type: 'number',
@@ -183,6 +195,17 @@ class DecisionConditionCatalog
         ];
 
         return self::optionsFromLabels(MediaAssessmentResult::cases(), $labels);
+    }
+
+    /**
+     * @return array<int, array{value: string, label: string}>
+     */
+    private static function assetUnresolvedReasonOptions(): array
+    {
+        return array_map(
+            fn (AssetUnresolvedReason $reason) => ['value' => $reason->value, 'label' => $reason->label()],
+            AssetUnresolvedReason::cases(),
+        );
     }
 
     /**
