@@ -8,7 +8,11 @@ use App\Domains\Assets\Models\Asset;
 use App\Domains\Assets\Models\AssetLocationSnapshot;
 use App\Domains\Assets\Models\AssetTelemetrySnapshot;
 use App\Domains\Assets\Models\AssetType;
+use App\Domains\Copilot\Data\CopilotTurnScope;
+use App\Domains\Copilot\Support\CopilotToolbox;
+use App\Domains\Copilot\Support\CopilotTurnCollector;
 use App\Domains\Copilot\Tools\RankAssetsTool;
+use App\Domains\Copilot\Tools\Sdk\SdkCopilotTool;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Normalization\Models\EventType;
 use App\Domains\Normalization\Models\NormalizedEvent;
@@ -16,7 +20,9 @@ use App\Models\Team;
 use Carbon\CarbonImmutable;
 use Database\Seeders\AccessSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\JsonSchema\JsonSchemaTypeFactory;
 use Illuminate\Support\Facades\DB;
+use Laravel\Ai\ObjectSchema;
 use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
@@ -367,5 +373,26 @@ class RankAssetsToolTest extends TestCase
 
         $this->assertSame(65.0, (float) $fuel['facts']['items'][0]['value']);
         $this->assertSame(300.5, (float) $distance['facts']['items'][0]['value']);
+    }
+
+    public function test_rank_assets_takes_no_asset_code(): void
+    {
+        $a = $this->unit('TA');
+        Incident::factory()->create(['team_id' => $this->team->id, 'asset_id' => $a->id, 'opened_at' => $this->now->subDay()]);
+
+        $scope = CopilotTurnScope::fromTeam($this->team, self::ALL, false);
+        $tool = collect(app(CopilotToolbox::class)->for($scope, new CopilotTurnCollector))
+            ->first(fn ($t) => $t instanceof SdkCopilotTool && $t->name() === 'rank_assets');
+        $schema = (new ObjectSchema($tool->schema(new JsonSchemaTypeFactory)))->toSchema();
+
+        $this->assertArrayNotHasKey('asset_code', $schema['properties']);
+        $this->assertArrayHasKey('from', $schema['properties']);
+        $this->assertArrayHasKey('metric', $schema['properties']);
+
+        // A code sent anyway is neither validated nor resolved.
+        $out = $this->callTool($this->team, self::ALL, 'rank_assets', ['metric' => 'incidents', 'asset_code' => 'NO-EXISTE']);
+
+        $this->assertArrayNotHasKey('error', $out);
+        $this->assertSame(['TA'], array_column($out['facts']['items'], 'code'));
     }
 }

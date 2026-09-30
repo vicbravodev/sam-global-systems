@@ -6,6 +6,18 @@ use Illuminate\Contracts\JsonSchema\JsonSchema;
 
 final class FindAssetsSdkTool extends ArgumentedCopilotTool
 {
+    /** Searches the whole fleet: a unit code is the answer, not an input. */
+    protected function acceptsAssetCode(): bool
+    {
+        return false;
+    }
+
+    /** A unit search has no time window. */
+    protected function acceptsPeriod(): bool
+    {
+        return false;
+    }
+
     protected function extraSchema(JsonSchema $schema): array
     {
         return [

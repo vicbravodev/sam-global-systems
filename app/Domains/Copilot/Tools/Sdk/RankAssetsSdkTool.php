@@ -8,6 +8,12 @@ use Illuminate\Validation\Rule;
 
 final class RankAssetsSdkTool extends ArgumentedCopilotTool
 {
+    /** Ranks the whole fleet: narrowing to one unit makes no ranking. */
+    protected function acceptsAssetCode(): bool
+    {
+        return false;
+    }
+
     protected function extraSchema(JsonSchema $schema): array
     {
         return [

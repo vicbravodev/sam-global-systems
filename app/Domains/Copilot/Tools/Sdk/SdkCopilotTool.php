@@ -78,7 +78,8 @@ abstract class SdkCopilotTool implements Tool
         $log = ['team_id' => $this->scope->teamId, 'tool' => $this->name(), 'tool_call_id' => $callId];
 
         try {
-            $args = $request->validate($this->rules() + $this->periodRules());
+            // Only declared keys survive validation: an argument the tool does not take is dropped, never read.
+            $args = $request->validate($this->rules() + ($this->acceptsPeriod() ? $this->periodRules() : []));
             $args['__period'] = $this->period($args);
         } catch (ValidationException $e) {
             SystemLog::skipped('copilot.tool.invalid_args', 'validation_failed', [...$log, 'fields' => array_keys($e->errors())]);
@@ -134,6 +135,16 @@ abstract class SdkCopilotTool implements Tool
     public function label(): string
     {
         return (CopilotToolDefinition::all()[$this->name()] ?? null)?->displayLabel() ?? $this->name();
+    }
+
+    /**
+     * Whether the tool reads a time window (`from`/`to`). Tools that do not
+     * (e.g. a unit search) neither declare nor validate them and run on the
+     * default window.
+     */
+    protected function acceptsPeriod(): bool
+    {
+        return true;
     }
 
     /**

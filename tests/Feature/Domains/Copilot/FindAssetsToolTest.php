@@ -5,9 +5,15 @@ namespace Tests\Feature\Domains\Copilot;
 use App\Domains\Assets\Enums\AssetCategory;
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Assets\Models\AssetType;
+use App\Domains\Copilot\Data\CopilotTurnScope;
+use App\Domains\Copilot\Support\CopilotToolbox;
+use App\Domains\Copilot\Support\CopilotTurnCollector;
+use App\Domains\Copilot\Tools\Sdk\SdkCopilotTool;
 use App\Models\Team;
 use Database\Seeders\AccessSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\JsonSchema\JsonSchemaTypeFactory;
+use Laravel\Ai\ObjectSchema;
 use Tests\Concerns\AssertsSystemLog;
 use Tests\Concerns\AssertsTenantIsolation;
 use Tests\TestCase;
@@ -129,5 +135,29 @@ class FindAssetsToolTest extends TestCase
 
         $this->assertSame(['T555'], array_column($out['facts']['items'], 'code'));
         $this->assertStringNotContainsString('T556', json_encode($out));
+    }
+
+    public function test_schema_has_no_asset_code_nor_period(): void
+    {
+        $scope = CopilotTurnScope::fromTeam($this->team, ['assets.view'], false);
+        $tool = collect(app(CopilotToolbox::class)->for($scope, new CopilotTurnCollector))
+            ->first(fn ($t) => $t instanceof SdkCopilotTool && $t->name() === 'find_assets');
+
+        $schema = (new ObjectSchema($tool->schema(new JsonSchemaTypeFactory)))->toSchema();
+
+        $this->assertEqualsCanonicalizing(['query', 'category', 'limit'], array_keys($schema['properties']));
+        $this->assertSame(['query'], $schema['required']);
+    }
+
+    public function test_a_guessed_asset_code_or_period_is_ignored(): void
+    {
+        $this->unit('T555', 'Kenworth T680');
+
+        $out = $this->find(['query' => 't555', 'asset_code' => 'NO-EXISTE', 'from' => 'ayer', 'to' => 'hoy']);
+
+        $this->assertArrayNotHasKey('error', $out);
+        $this->assertSame(['T555'], array_column($out['facts']['items'], 'code'));
+        $this->assertSystemNotLogged('copilot.tool.invalid_args');
+        $this->assertSystemLogged('copilot.tool.ran', fn ($c) => $c['input']['tool'] === 'find_assets' && $c['input']['asset_id'] === null);
     }
 }

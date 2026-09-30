@@ -72,7 +72,14 @@ class CopilotAgentTenantLeakTest extends TestCase
             foreach ($tools as $tool) {
                 $out = json_decode((string) $tool->handle(new Request(['asset_code' => 'T777', 'query' => 'T777', 'metric' => 'idle_hours'], 'c')), true);
 
-                $this->assertSame('unidad no encontrada', $out['error'], $tool->name());
+                if (in_array($tool->name(), ['find_assets', 'rank_assets'], true)) {
+                    // Fleet-wide tools take no asset_code: they ignore it and still see only tenant A.
+                    $this->assertArrayNotHasKey('error', $out, $tool->name());
+                    $this->assertStringNotContainsString('T777', json_encode($out), $tool->name());
+                } else {
+                    $this->assertSame('unidad no encontrada', $out['error'], $tool->name());
+                }
+
                 $this->assertStringNotContainsString('T777', json_encode($out['facts'] ?? []));
             }
 

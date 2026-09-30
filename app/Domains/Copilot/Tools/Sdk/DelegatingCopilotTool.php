@@ -51,18 +51,28 @@ class DelegatingCopilotTool extends SdkCopilotTool
     }
 
     /**
+     * Whether the tool can be narrowed to one unit by `asset_code`. Tools that
+     * search or rank the whole fleet opt out, so a guessed code is never
+     * validated nor resolved (it would answer "unidad no encontrada").
+     */
+    protected function acceptsAssetCode(): bool
+    {
+        return true;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function schema(JsonSchema $schema): array
     {
-        return [
-            'asset_code' => $this->definition->needsAsset
+        return array_filter([
+            'asset_code' => ! $this->acceptsAssetCode() ? null : ($this->definition->needsAsset
                 ? $schema->string()->description('Número económico o nombre de la unidad, p. ej. T555.')->required()
-                : $schema->string()->description('Opcional: limitar a una unidad.'),
-            'from' => $schema->string()->description('Inicio ISO-8601 con zona horaria. Omite para últimos 7 días.'),
-            'to' => $schema->string()->description('Fin ISO-8601 con zona horaria. Omite para ahora.'),
+                : $schema->string()->description('Opcional: limitar a una unidad.')),
+            'from' => $this->acceptsPeriod() ? $schema->string()->description('Inicio ISO-8601 con zona horaria. Omite para últimos 7 días.') : null,
+            'to' => $this->acceptsPeriod() ? $schema->string()->description('Fin ISO-8601 con zona horaria. Omite para ahora.') : null,
             'category' => $schema->string()->enum(array_column(AssetCategory::cases(), 'value'))->description('Opcional: categoría de unidad.'),
-        ];
+        ], fn ($type) => $type !== null);
     }
 
     /**
@@ -70,10 +80,10 @@ class DelegatingCopilotTool extends SdkCopilotTool
      */
     protected function rules(): array
     {
-        return [
-            'asset_code' => [$this->definition->needsAsset ? 'required' : 'nullable', 'string', 'max:40'],
+        return array_filter([
+            'asset_code' => $this->acceptsAssetCode() ? [$this->definition->needsAsset ? 'required' : 'nullable', 'string', 'max:40'] : null,
             'category' => ['nullable', Rule::enum(AssetCategory::class)],
-        ];
+        ], fn ($rules) => $rules !== null);
     }
 
     /**
@@ -83,7 +93,7 @@ class DelegatingCopilotTool extends SdkCopilotTool
     {
         $asset = null;
 
-        if (! empty($args['asset_code'])) {
+        if ($this->acceptsAssetCode() && ! empty($args['asset_code'])) {
             $asset = $this->assets->resolveByCode($this->scope->teamId, (string) $args['asset_code']) ?? throw new CopilotAssetNotFound;
         }
 
