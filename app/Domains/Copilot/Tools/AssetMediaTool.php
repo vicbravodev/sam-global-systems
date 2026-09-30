@@ -8,8 +8,10 @@ use App\Domains\Context\Models\EventMediaContext;
 use App\Domains\Context\Support\EventMediaGallery;
 use App\Domains\Copilot\Data\CopilotToolContext;
 use App\Domains\Copilot\Data\CopilotToolResult;
+use App\Domains\Copilot\Support\CopilotMediaUrls;
 use App\Domains\Copilot\Support\CopilotPresenter;
 use App\Domains\Incidents\Models\Incident;
+use Illuminate\Support\Collection;
 
 /**
  * Latest camera media (video clips, snapshots) captured for a unit.
@@ -31,7 +33,10 @@ final class AssetMediaTool implements CopilotTool
         'cabin_audio' => 'Audio de cabina',
     ];
 
-    public function __construct(private readonly EventMediaGallery $gallery) {}
+    public function __construct(
+        private readonly EventMediaGallery $gallery,
+        private readonly CopilotMediaUrls $urls,
+    ) {}
 
     public function run(CopilotToolContext $context): CopilotToolResult
     {
@@ -75,20 +80,28 @@ final class AssetMediaTool implements CopilotTool
             ->get(['id', 'number', 'related_event_id'])
             ->keyBy('related_event_id');
 
-        $items = array_map(function (array $entry) use ($context, $verdicts, $incidents): array {
+        $rowsById = $rows->keyBy('id');
+
+        $items = array_map(function (array $entry) use ($context, $verdicts, $incidents, $rowsById): array {
             /** @var EventMediaContext $item */
             $item = $entry['media'];
             $event = $item->normalizedEvent;
             $verdict = $verdicts[(int) $item->id] ?? null;
             $incident = $incidents->get($item->normalized_event_id);
 
+            $url = $this->urls->url($item);
+            [$thumbnailUrl, $thumbnailMediaId] = $this->resolveThumbnail($item, $url, $entry['frameIds'], $rowsById);
+
             return [
                 'id' => (int) $item->id,
                 'mediaType' => $item->media_type?->value,
                 'role' => $item->media_role?->value,
                 'roleLabel' => $this->cameraLabel($item),
-                'url' => $entry['url'],
-                'thumbnailUrl' => $entry['thumbnailUrl'] ?? (EventMediaGallery::isVideo($item) ? null : $entry['url']),
+                'url' => $url,
+                'thumbnailUrl' => $thumbnailUrl,
+                // The frame row the clip's poster comes from, so a reopened
+                // conversation can re-sign it ({@see CopilotMediaUrls::refreshBlocks}).
+                'thumbnailMediaId' => $thumbnailMediaId,
                 'mimeType' => $item->mime_type,
                 'durationSeconds' => $item->duration_seconds,
                 'capturedAt' => $item->captured_at?->toIso8601String(),
@@ -158,6 +171,29 @@ final class AssetMediaTool implements CopilotTool
                 $latest['aiSummary'] ? 'Lo que la IA vio: '.$latest['aiSummary'] : null,
             ])),
         );
+    }
+
+    /**
+     * Images are their own thumbnail and clips keep a real http(s) poster
+     * ({@see CopilotMediaUrls::thumbnail}); a clip without one falls back to
+     * the first frame cut out of it. Never a storage path.
+     *
+     * @param  list<int>  $frameIds
+     * @param  Collection<int, EventMediaContext>  $rowsById
+     * @return array{0: string|null, 1: int|null}
+     */
+    private function resolveThumbnail(EventMediaContext $item, ?string $url, array $frameIds, Collection $rowsById): array
+    {
+        $thumbnail = $this->urls->thumbnail($item, $url);
+
+        if ($thumbnail !== null || $frameIds === []) {
+            return [$thumbnail, null];
+        }
+
+        $frame = $rowsById->get($frameIds[0]);
+        $frameUrl = $frame instanceof EventMediaContext ? $this->urls->url($frame) : null;
+
+        return $frameUrl !== null ? [$frameUrl, (int) $frame->id] : [null, null];
     }
 
     /**

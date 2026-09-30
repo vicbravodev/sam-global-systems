@@ -8,6 +8,25 @@ use App\Domains\Copilot\Models\CopilotMessage;
 final class CopilotMessagePresenter
 {
     /**
+     * A message read back from history: media card URLs are re-resolved for
+     * the message's tenant (stored signed URLs expire after 30 minutes).
+     * The live stream keeps `message()` so a playing clip is not reloaded.
+     *
+     * @return array<string, mixed>
+     */
+    public static function stored(CopilotMessage $message): array
+    {
+        $presented = self::message($message);
+
+        if ($presented['blocks'] !== []) {
+            $presented['blocks'] = app(CopilotMediaUrls::class)
+                ->refreshBlocks($presented['blocks'], (int) $message->team_id, (int) $message->id);
+        }
+
+        return $presented;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public static function message(CopilotMessage $message): array

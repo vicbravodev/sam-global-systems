@@ -2,6 +2,7 @@ import { Link } from '@inertiajs/react';
 import {
     AlertTriangle,
     ArrowUpRight,
+    AudioLines,
     Camera,
     Container,
     ChevronRight,
@@ -19,7 +20,7 @@ import {
     Truck,
     User,
 } from 'lucide-react';
-import { lazy, Suspense, useMemo, useState } from 'react';
+import { lazy, memo, Suspense, useMemo, useState } from 'react';
 import { SparkArea } from '@/components/sam/charts';
 import { SeverityBadge } from '@/components/sam/severity-badge';
 import { cn } from '@/lib/utils';
@@ -49,6 +50,7 @@ import type {
     Tone,
 } from '@/types/copilot';
 import { dayAndTime, timeAgo, timeOfDay } from './copilot-format';
+import { blockKey } from './copilot-turn';
 
 // maplibre-gl (~1 MB) only loads when an answer actually shows a map: this
 // module ships with the Copilot launcher on every Ops page.
@@ -113,14 +115,27 @@ function toneClass(tone: Tone): string {
     return tone ? (TONE_CLASSES[tone] ?? '') : '';
 }
 
-export function CopilotBlocks({
+const NO_PENDING: { toolCallId: string; tool: string }[] = [];
+
+/**
+ * The cards of one answer, append-only in arrival order. Keys are each
+ * card's client identity (`blockKey`, kept across the stored answer and a
+ * fallback set), so a card mounts once even if it moves: on a
+ * live answer it rises in individually, and a tool still running holds a
+ * placeholder of roughly the card's height where its card will land.
+ */
+export const CopilotBlocks = memo(function CopilotBlocks({
     blocks,
     actions,
+    live = false,
+    pending = NO_PENDING,
 }: {
     blocks: CopilotBlock[];
     actions: BlockActions;
+    live?: boolean;
+    pending?: { toolCallId: string; tool: string }[];
 }) {
-    if (blocks.length === 0) {
+    if (blocks.length === 0 && pending.length === 0) {
         return null;
     }
 
@@ -128,18 +143,62 @@ export function CopilotBlocks({
         <div className="mt-3 flex flex-col gap-2.5">
             {blocks.map((block, index) => (
                 <div
-                    key={`${block.type}-${index}`}
-                    className="motion-safe:animate-[sam-copilot-in_var(--motion-normal)_var(--ease-out)_both]"
-                    style={{ animationDelay: `${index * 60}ms` }}
+                    key={blockKey(block, index)}
+                    className={live ? 'sam-copilot-rise' : undefined}
                 >
                     <BlockSwitch block={block} actions={actions} />
                 </div>
             ))}
+            {pending.map((placeholder) => (
+                <CardPlaceholder
+                    key={placeholder.toolCallId}
+                    tool={placeholder.tool}
+                    compact={actions.compact}
+                />
+            ))}
+        </div>
+    );
+});
+
+/** Skeleton sized like the card the running tool usually returns. */
+function CardPlaceholder({
+    tool,
+    compact,
+}: {
+    tool: string;
+    compact?: boolean;
+}) {
+    const body =
+        tool === 'asset_location' ? (
+            <div
+                className="w-full bg-surface-2"
+                style={{ height: (compact ? 160 : 220) + 80 }}
+            />
+        ) : tool === 'asset_media' ? (
+            <div className="aspect-video w-full bg-surface-2" />
+        ) : tool === 'fleet_overview' ? (
+            <div
+                className="w-full bg-surface-2"
+                style={{ height: compact ? 170 : 240 }}
+            />
+        ) : (
+            <div className="h-16 w-full bg-surface-2" />
+        );
+
+    return (
+        <div
+            aria-hidden
+            className="sam-copilot-fade overflow-hidden rounded-lg border border-border bg-surface-1"
+        >
+            <div className="flex h-8 items-center gap-2 border-b border-border bg-surface-2 px-3">
+                <span className="h-2 w-24 rounded-full bg-surface-3 motion-safe:animate-pulse" />
+            </div>
+            <div className="motion-safe:animate-pulse">{body}</div>
         </div>
     );
 }
 
-function BlockSwitch({
+const BlockSwitch = memo(function BlockSwitch({
     block,
     actions,
 }: {
@@ -182,7 +241,7 @@ function BlockSwitch({
         default:
             return null;
     }
-}
+});
 
 // ---------- shared pieces ----------
 
@@ -629,8 +688,36 @@ function isVideo(item: MediaItem): boolean {
     );
 }
 
+function isAudio(item: MediaItem): boolean {
+    return (
+        item.mediaType === 'audio' ||
+        (item.mimeType?.startsWith('audio/') ?? false)
+    );
+}
+
+/**
+ * iOS Safari does not paint a `preload="metadata"` frame: a clip without a
+ * poster would show a black tile (no error fires), so it gets the icon.
+ */
+const PAINTS_VIDEO_FRAMES =
+    typeof navigator === 'undefined' ||
+    !(
+        /iP(hone|ad|od)/.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+    );
+
 function MediaCard({ block }: { block: MediaBlock }) {
-    const [active, setActive] = useState<MediaItem>(block.items[0]);
+    // By id, not by object: the stored answer may bring fresh item objects
+    // (same card, same key) and the selection must survive that.
+    const [activeId, setActiveId] = useState<number | null>(
+        block.items[0]?.id ?? null,
+    );
+    const active =
+        block.items.find((item) => item.id === activeId) ?? block.items[0];
+
+    if (!active) {
+        return null;
+    }
 
     return (
         <Card>
@@ -646,12 +733,23 @@ function MediaCard({ block }: { block: MediaBlock }) {
             />
             <div className="bg-black/90">
                 {active.url ? (
-                    isVideo(active) ? (
+                    isAudio(active) ? (
+                        <div className="grid aspect-video w-full place-items-center px-4">
+                            <audio
+                                key={active.id}
+                                src={active.url}
+                                controls
+                                preload="metadata"
+                                className="w-full"
+                            />
+                        </div>
+                    ) : isVideo(active) ? (
                         <video
                             key={active.id}
                             src={active.url}
                             poster={active.thumbnailUrl ?? undefined}
                             controls
+                            playsInline
                             preload="metadata"
                             className="aspect-video w-full"
                         />
@@ -660,6 +758,7 @@ function MediaCard({ block }: { block: MediaBlock }) {
                             key={active.id}
                             src={active.url}
                             alt={active.eventType ?? 'Snapshot de cámara'}
+                            decoding="async"
                             className="aspect-video w-full object-contain"
                         />
                     )
@@ -672,7 +771,9 @@ function MediaCard({ block }: { block: MediaBlock }) {
                 )}
             </div>
             <div className="flex items-center gap-2 border-t border-border px-3 py-2 text-xs">
-                {isVideo(active) ? (
+                {isAudio(active) ? (
+                    <AudioLines className="size-3.5 text-fg-3" />
+                ) : isVideo(active) ? (
                     <Film className="size-3.5 text-fg-3" />
                 ) : (
                     <ImageIcon className="size-3.5 text-fg-3" />
@@ -718,27 +819,18 @@ function MediaCard({ block }: { block: MediaBlock }) {
                         <button
                             key={item.id}
                             type="button"
-                            onClick={() => setActive(item)}
+                            onClick={() => setActiveId(item.id)}
+                            aria-pressed={item.id === active.id}
                             className={cn(
-                                'relative grid h-12 w-20 shrink-0 cursor-pointer place-items-center overflow-hidden rounded-sm border bg-surface-3 text-fg-3',
+                                'relative grid aspect-video w-20 shrink-0 cursor-pointer place-items-center overflow-hidden rounded-sm border bg-surface-3 text-fg-3 transition-transform duration-(--motion-fast) ease-(--ease-out) active:scale-97',
                                 item.id === active.id
                                     ? 'border-primary ring-2 ring-primary/30'
                                     : 'border-border hover:border-border-strong',
                             )}
                             aria-label={`Ver ${item.eventType ?? 'media'}`}
                         >
-                            {item.thumbnailUrl ? (
-                                <img
-                                    src={item.thumbnailUrl}
-                                    alt=""
-                                    className="absolute inset-0 h-full w-full object-cover"
-                                />
-                            ) : isVideo(item) ? (
-                                <Film className="size-4" />
-                            ) : (
-                                <ImageIcon className="size-4" />
-                            )}
-                            <span className="absolute right-0.5 bottom-0.5 rounded-sm bg-black/70 px-1 font-mono text-[9px] text-white">
+                            <MediaThumb item={item} />
+                            <span className="absolute right-0.5 bottom-0.5 rounded-sm bg-black/70 px-1 font-mono text-3xs text-white">
                                 {timeOfDay(item.capturedAt)}
                             </span>
                         </button>
@@ -746,6 +838,84 @@ function MediaCard({ block }: { block: MediaBlock }) {
                 </div>
             )}
         </Card>
+    );
+}
+
+type ThumbStage = 'thumbnail' | 'frame' | 'image' | 'icon';
+
+/** Fallback chain of a carousel tile, best first; the icon always closes it. */
+function thumbStages(item: MediaItem): ThumbStage[] {
+    const stages: ThumbStage[] = [];
+
+    if (item.thumbnailUrl) {
+        stages.push('thumbnail');
+    }
+
+    if (item.url && isVideo(item) && PAINTS_VIDEO_FRAMES) {
+        stages.push('frame');
+    }
+
+    // Audio is never loaded as an image.
+    if (item.url && !isVideo(item) && !isAudio(item) && !item.thumbnailUrl) {
+        stages.push('image');
+    }
+
+    stages.push('icon');
+
+    return stages;
+}
+
+/**
+ * Real thumbnail of a carousel item, staged: the signed snapshot / clip
+ * poster, else the clip's own frame (metadata only, muted; not on iOS),
+ * else the image itself, else the type icon. Each load error moves one
+ * stage down.
+ */
+function MediaThumb({ item }: { item: MediaItem }) {
+    const stages = thumbStages(item);
+    const [failures, setFailures] = useState(0);
+    const stage = stages[Math.min(failures, stages.length - 1)];
+    const next = () => setFailures((n) => n + 1);
+
+    if (stage === 'thumbnail' || stage === 'image') {
+        return (
+            <img
+                key={stage}
+                src={
+                    (stage === 'thumbnail' ? item.thumbnailUrl : item.url) ??
+                    undefined
+                }
+                alt=""
+                loading="lazy"
+                decoding="async"
+                onError={next}
+                className="absolute inset-0 size-full object-cover"
+            />
+        );
+    }
+
+    if (stage === 'frame' && item.url) {
+        return (
+            <video
+                // `#t` asks for a frame past the (often black) first one.
+                src={`${item.url}#t=0.5`}
+                preload="metadata"
+                muted
+                playsInline
+                tabIndex={-1}
+                aria-hidden
+                onError={next}
+                className="pointer-events-none absolute inset-0 size-full object-cover"
+            />
+        );
+    }
+
+    return isAudio(item) ? (
+        <AudioLines className="size-4" />
+    ) : isVideo(item) ? (
+        <Film className="size-4" />
+    ) : (
+        <ImageIcon className="size-4" />
     );
 }
 
@@ -805,7 +975,7 @@ function BarsCard({ block }: { block: BarsBlock }) {
                         className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1"
                         title={`${item.label}: ${item.value}`}
                     >
-                        <span className="font-mono text-[9px] text-fg-3 tabular-nums">
+                        <span className="font-mono text-3xs text-fg-3 tabular-nums">
                             {item.value > 0 ? item.value : ''}
                         </span>
                         <div
@@ -825,7 +995,7 @@ function BarsCard({ block }: { block: BarsBlock }) {
                 {block.items.map((item, index) => (
                     <div
                         key={`${item.label}-l-${index}`}
-                        className="min-w-0 flex-1 truncate text-center font-mono text-[9px] text-fg-3"
+                        className="min-w-0 flex-1 truncate text-center font-mono text-3xs text-fg-3"
                     >
                         {item.label}
                     </div>
@@ -1172,6 +1342,17 @@ function Timeline({ block }: { block: TimelineBlock }) {
                     );
                 })}
             </ol>
+            {block.href &&
+                block.total !== undefined &&
+                block.total > block.items.length && (
+                    <Link
+                        href={block.href}
+                        className="flex items-center justify-center gap-1 border-t border-border bg-surface-2 px-3 py-2 text-2xs font-medium text-fg-2 hover:bg-surface-3 hover:text-fg-1"
+                    >
+                        Ver los {block.total} eventos
+                        <ArrowUpRight className="size-3" />
+                    </Link>
+                )}
         </Card>
     );
 }
