@@ -1,10 +1,23 @@
 import { Head, Link, usePage } from '@inertiajs/react';
-import { BellRing, Ear, PhoneCall, ScanSearch } from 'lucide-react';
+import {
+    BellRing,
+    Ear,
+    FileBarChart,
+    Gauge,
+    Map as MapIcon,
+    PhoneCall,
+    Plug,
+    ScanSearch,
+    ShieldCheck,
+} from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
 import type { ReactNode } from 'react';
 import { AlertPhone } from '@/components/landing/alert-phone';
+import { CabinVision } from '@/components/landing/cabin-vision';
 import { CopilotDemo } from '@/components/landing/copilot-demo';
+import { MonitorInbox } from '@/components/landing/monitor-inbox';
 import { NightWatch } from '@/components/landing/night-watch';
+import { TheftGuard } from '@/components/landing/theft-guard';
 import { cn } from '@/lib/utils';
 import { dashboard, login } from '@/routes';
 
@@ -16,8 +29,43 @@ const EASE = [0.16, 1, 0.3, 1] as const;
 const NAV_LINKS = [
     { href: '#copiloto', label: 'Copiloto' },
     { href: '#guardia', label: 'Guardia nocturna' },
-    { href: '#como-decide', label: 'Cómo decide' },
+    { href: '#equipo', label: 'Tu equipo' },
+    { href: '#camaras', label: 'Cámaras' },
     { href: '#avisos', label: 'Avisos' },
+];
+
+/* Lo que viene incluido y no necesita demo interactiva. */
+const READY = [
+    {
+        icon: Plug,
+        title: 'Conecta tu Samsara en minutos',
+        body: 'Tus unidades y conductores se dan de alta solos, y SAM te avisa si la conexión deja de recibir.',
+    },
+    {
+        icon: ShieldCheck,
+        title: 'Protocolo listo de fábrica',
+        body: 'Pánico, escalación en tres niveles y tiempos de respuesta ya configurados. Ajústalos cuando quieras.',
+    },
+    {
+        icon: MapIcon,
+        title: 'Toda tu flota en un mapa en vivo',
+        body: 'Cada unidad con su rumbo y su estado, y el caso abierto a un clic.',
+    },
+    {
+        icon: Gauge,
+        title: 'Riesgo de cada conductor, día a día',
+        body: 'Una calificación de 0 a 100 y un aviso cuando alguien empieza a manejar peor, antes del accidente.',
+    },
+    {
+        icon: FileBarChart,
+        title: 'Reportes para dirección',
+        body: 'Operación diaria, cumplimiento de tiempos de respuesta y riesgo por unidad, en PDF o Excel.',
+    },
+    {
+        icon: BellRing,
+        title: 'Alertas imposibles de ignorar',
+        body: 'Una emergencia en pantalla suena, parpadea y no se va hasta que alguien la atiende.',
+    },
 ];
 
 const STEPS = [
@@ -124,6 +172,91 @@ export default function Welcome() {
                             <div className="mt-14">
                                 <NightWatch />
                             </div>
+
+                            <div
+                                id="antirrobo"
+                                className="mt-28 scroll-mt-24 border-t border-white/10 pt-20"
+                            >
+                                <h2 className="max-w-2xl text-3xl font-semibold tracking-display text-balance sm:text-4xl">
+                                    Y si una unidad se comporta raro, SAM lo
+                                    nota.
+                                </h2>
+                                <p className="mt-5 max-w-xl text-lg leading-relaxed text-night-muted">
+                                    No espera a que alguien reporte un robo.
+                                    Vigila las señales que lo anticipan y,
+                                    cuando la unidad vuelve a la normalidad,
+                                    cierra el caso solo.
+                                </p>
+                                <div className="mt-14">
+                                    <TheftGuard />
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    {/* ---------- El monitorista: casos, no alertas ---------- */}
+                    <section id="equipo" className="scroll-mt-16">
+                        <div className="mx-auto max-w-7xl px-5 py-24 sm:px-8 lg:py-32">
+                            <div className="max-w-3xl">
+                                <h2 className="text-3xl font-semibold tracking-display text-balance sm:text-4xl lg:text-5xl">
+                                    Tu equipo atiende casos, no alertas.
+                                </h2>
+                                <p className="mt-6 max-w-xl text-lg leading-relaxed text-brand-ink-2">
+                                    SAM hace la primera revisión y le entrega a
+                                    tu monitorista solo lo que importa: ordenado
+                                    por urgencia, con el tiempo de respuesta
+                                    corriendo y la evidencia ya reunida.
+                                    Pruébalo: toma el caso del pánico.
+                                </p>
+                            </div>
+                            <div className="mt-14">
+                                <MonitorInbox />
+                            </div>
+                            <ul className="mt-12 grid gap-x-12 gap-y-6 text-base leading-relaxed text-brand-ink-2 md:grid-cols-3">
+                                <li>
+                                    <span className="font-semibold text-brand-ink">
+                                        Nadie trabaja el mismo caso dos veces.
+                                    </span>{' '}
+                                    Quien lo toma se lo queda y los demás lo
+                                    ven.
+                                </li>
+                                <li>
+                                    <span className="font-semibold text-brand-ink">
+                                        Los tiempos de respuesta los pones tú.
+                                    </span>{' '}
+                                    Por prioridad, y SAM escala si se vencen.
+                                </li>
+                                <li>
+                                    <span className="font-semibold text-brand-ink">
+                                        Tu criterio mejora a SAM.
+                                    </span>{' '}
+                                    Cuando tu equipo corrige un veredicto, la IA
+                                    lo toma en cuenta.
+                                </li>
+                            </ul>
+                        </div>
+                    </section>
+
+                    {/* ---------- Visión: SAM mira las cámaras ---------- */}
+                    <section
+                        id="camaras"
+                        className="scroll-mt-16 border-y border-brand-line bg-white"
+                    >
+                        <div className="mx-auto max-w-7xl px-5 py-24 sm:px-8 lg:py-32">
+                            <div className="max-w-3xl">
+                                <h2 className="text-3xl font-semibold tracking-display text-balance sm:text-4xl lg:text-5xl">
+                                    SAM revisa las cámaras antes que tú.
+                                </h2>
+                                <p className="mt-6 max-w-xl text-lg leading-relaxed text-brand-ink-2">
+                                    Pide las fotos y el video de los segundos
+                                    alrededor de cada evento, mira dentro y
+                                    fuera de la cabina y te lo resume en una
+                                    frase.
+                                </p>
+                            </div>
+                            <div className="mt-14">
+                                <CabinVision />
+                            </div>
                         </div>
                     </section>
 
@@ -168,21 +301,63 @@ export default function Welcome() {
                                     Te avisa por donde sí vas a contestar.
                                 </h2>
                                 <dl className="mt-12 grid max-w-lg gap-8">
-                                    <Notice title="Una emergencia te llama por teléfono.">
-                                        A cualquier hora, aunque tengas el
-                                        teléfono en silencio para todo lo demás.
+                                    <Notice title="Primero confirma con el operador.">
+                                        SAM le llama y él marca 1 si la
+                                        emergencia es real o 2 si fue un error.
+                                        Si nadie contesta, escala.
                                     </Notice>
-                                    <Notice title="Lo importante te llega por WhatsApp.">
-                                        Con qué pasó, dónde está la unidad y lo
-                                        que SAM ya verificó.
+                                    <Notice title="Una emergencia te llama por teléfono.">
+                                        A cualquier hora, y lo importante te
+                                        llega por WhatsApp con lo que SAM ya
+                                        verificó.
+                                    </Notice>
+                                    <Notice title="Respondes sin abrir nada.">
+                                        Contesta el mensaje con SI, NO o ESC
+                                        para confirmar, descartar o escalar.
                                     </Notice>
                                     <Notice title="Si un canal falla, usa el siguiente.">
-                                        Llamada, WhatsApp o SMS, para que el
-                                        aviso siempre llegue.
+                                        Llamada, WhatsApp o SMS, y confirma que
+                                        el aviso de verdad llegó.
                                     </Notice>
                                 </dl>
                             </div>
                             <AlertPhone />
+                        </div>
+                    </section>
+
+                    {/* ---------- Incluido desde el primer día ---------- */}
+                    <section className="border-t border-brand-line">
+                        <div className="mx-auto grid max-w-7xl grid-cols-1 gap-14 px-5 py-24 sm:px-8 lg:grid-cols-[0.8fr_1.2fr] lg:gap-20 lg:py-32">
+                            <h2 className="max-w-md text-3xl font-semibold tracking-display text-balance sm:text-4xl">
+                                Todo lo demás viene incluido desde el primer
+                                día.
+                            </h2>
+                            <ul className="grid gap-x-12 gap-y-10 sm:grid-cols-2">
+                                {READY.map((item, i) => (
+                                    <motion.li
+                                        key={item.title}
+                                        initial={{ opacity: 0, y: 10 }}
+                                        whileInView={{ opacity: 1, y: 0 }}
+                                        viewport={{ once: true, amount: 0.6 }}
+                                        transition={{
+                                            duration: 0.5,
+                                            delay: (i % 2) * 0.08,
+                                            ease: EASE,
+                                        }}
+                                    >
+                                        <item.icon
+                                            className="size-5 text-brand-teal"
+                                            strokeWidth={1.75}
+                                        />
+                                        <h3 className="mt-3 text-lg font-semibold tracking-tight">
+                                            {item.title}
+                                        </h3>
+                                        <p className="mt-1.5 text-base leading-relaxed text-brand-ink-2">
+                                            {item.body}
+                                        </p>
+                                    </motion.li>
+                                ))}
+                            </ul>
                         </div>
                     </section>
 
