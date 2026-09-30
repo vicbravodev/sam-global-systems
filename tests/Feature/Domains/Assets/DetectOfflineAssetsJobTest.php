@@ -20,6 +20,7 @@ use App\Domains\TenantConfig\Enums\SettingValueType;
 use App\Domains\TenantConfig\Models\TenantSetting;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Queue;
 use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
@@ -432,8 +433,20 @@ class DetectOfflineAssetsJobTest extends TestCase
             'device_last_connected_at' => now()->subMinute(),
         ]);
 
+        // The raise path persists the frozen heartbeat on the raw event: the
+        // device went silent 20 minutes before the watchdog raised the event.
+        $rawEvent = RawEvent::factory()->create([
+            'team_id' => $this->teamId,
+            'event_type_raw' => 'device_offline',
+            'payload_json' => [
+                'eventType' => 'device_offline',
+                'last_connected_at' => now()->subMinutes(80)->toIso8601String(),
+            ],
+        ]);
+
         $event = NormalizedEvent::factory()->create([
             'team_id' => $this->teamId,
+            'raw_event_id' => $rawEvent->id,
             'asset_id' => $asset->id,
             'event_type_id' => $type->id,
             'occurred_at' => now()->subHour(),
@@ -465,11 +478,20 @@ class DetectOfflineAssetsJobTest extends TestCase
         $this->assertSame($event->id, $context['input']['normalized_event_id']);
         $this->assertSame($asset->id, $context['input']['asset_id']);
         $this->assertSame('heartbeat', $context['calc']['proof_of_life_source']);
-        // Recomputed: minutes from the episode's event to the proof of life.
+        $proofOfLife = $asset->fresh()->device_last_connected_at;
+        // Recomputed from persisted state: the real silence runs from the
+        // episode's frozen heartbeat to the proof of life…
         $this->assertSame(
-            (int) $event->fresh()->occurred_at->diffInMinutes($asset->fresh()->device_last_connected_at),
+            (int) Carbon::parse($rawEvent->fresh()->payload_json['last_connected_at'])->diffInMinutes($proofOfLife),
             $context['calc']['silent_minutes'],
         );
+        $this->assertGreaterThanOrEqual(78, $context['calc']['silent_minutes']);
+        // …and the span since the watchdog raised the event is logged apart.
+        $this->assertSame(
+            (int) $event->fresh()->occurred_at->diffInMinutes($proofOfLife),
+            $context['calc']['raised_to_recovery_minutes'],
+        );
+        $this->assertLessThan($context['calc']['silent_minutes'], $context['calc']['raised_to_recovery_minutes']);
         $this->assertTrue($context['result']['job_requested']);
 
         $sweeps = $this->systemLogEntries('assets.offline_sweep.completed');
@@ -503,6 +525,15 @@ class DetectOfflineAssetsJobTest extends TestCase
         $resolved = $this->assertSystemLogged('assets.offline.resolved', fn (array $c) => $c['input']['normalized_event_id'] === $event->id);
         $this->assertSame('gps_fix', $resolved['calc']['proof_of_life_source']);
         $this->assertSame($asset->id, $resolved['input']['asset_id']);
+        // Pre-feed episode: its raw event carries no frozen heartbeat, so the
+        // real silence is unknown; only the span since the raise is logged.
+        $this->assertArrayNotHasKey('last_connected_at', RawEvent::withoutGlobalScopes()->findOrFail($event->raw_event_id)->payload_json);
+        $this->assertArrayHasKey('silent_minutes', $resolved['calc']);
+        $this->assertNull($resolved['calc']['silent_minutes']);
+        $this->assertSame(
+            (int) $event->fresh()->occurred_at->diffInMinutes($asset->fresh()->last_seen_at),
+            $resolved['calc']['raised_to_recovery_minutes'],
+        );
         $this->assertNoSensitiveDataLogged();
     }
 

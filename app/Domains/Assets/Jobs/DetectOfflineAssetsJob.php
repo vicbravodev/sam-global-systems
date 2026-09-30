@@ -15,6 +15,7 @@ use App\Domains\Normalization\Models\EventType;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Support\SystemLog;
 use App\Support\TenantContext;
+use Carbon\Carbon;
 use Carbon\CarbonInterface;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -346,19 +347,60 @@ class DetectOfflineAssetsJob implements ShouldQueue
 
                     $resolved++;
 
-                    // `silent_minutes`: del evento del episodio a la prueba de vida.
-                    TenantContext::for($event->team_id, fn () => SystemLog::ok('assets.offline.resolved', input: [
-                        'team_id' => (int) $event->team_id,
-                        'normalized_event_id' => $event->id,
-                        'asset_id' => $event->asset_id,
-                    ], calc: [
-                        'proof_of_life_source' => $proofOfLife['source'],
-                        'silent_minutes' => (int) $event->occurred_at->diffInMinutes($lastSeen),
-                    ], result: ['job_requested' => true]));
+                    TenantContext::for($event->team_id, function () use ($event, $proofOfLife, $lastSeen): void {
+                        $silentSince = $this->episodeLastConnectedAt($event);
+
+                        // `silent_minutes`: del latido congelado del episodio a la prueba
+                        // de vida (null si el evento no lo guardó). `raised_to_recovery_minutes`:
+                        // del aviso (`occurred_at`) a la prueba de vida.
+                        SystemLog::ok('assets.offline.resolved', input: [
+                            'team_id' => (int) $event->team_id,
+                            'normalized_event_id' => $event->id,
+                            'asset_id' => $event->asset_id,
+                        ], calc: [
+                            'proof_of_life_source' => $proofOfLife['source'],
+                            'silent_minutes' => $silentSince !== null ? (int) $silentSince->diffInMinutes($lastSeen) : null,
+                            'raised_to_recovery_minutes' => (int) $event->occurred_at->diffInMinutes($lastSeen),
+                        ], result: ['job_requested' => true]);
+                    });
                 }
             });
 
         return $resolved;
+    }
+
+    /**
+     * The frozen heartbeat the episode was raised for. Only the raw event's
+     * payload keeps it (internal normalization does not copy it), so it is
+     * read from there — within the episode's tenant, and only for episodes
+     * being resolved. Null for episodes raised before the connectivity feed.
+     */
+    private function episodeLastConnectedAt(NormalizedEvent $event): ?CarbonInterface
+    {
+        if ($event->raw_event_id === null) {
+            return null;
+        }
+
+        $payload = RawEvent::query()
+            ->where('team_id', $event->team_id)
+            ->whereKey($event->raw_event_id)
+            ->value('payload_json');
+
+        if (is_string($payload)) {
+            $payload = json_decode($payload, true);
+        }
+
+        $lastConnectedAt = is_array($payload) ? ($payload['last_connected_at'] ?? null) : null;
+
+        if (! is_string($lastConnectedAt) || $lastConnectedAt === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($lastConnectedAt);
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /**
