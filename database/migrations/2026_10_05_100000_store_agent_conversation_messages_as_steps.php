@@ -1,33 +1,34 @@
 <?php
 
-use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Laravel\Ai\Migrations\AiMigration;
 
 /**
  * Laravel AI 1.0 stores each assistant turn as `steps` (one per model round
  * trip, each tool result on the call that produced it) and replaces
  * `approval_state` with a `status` column. Backfill follows the package's
- * 1.0 upgrade guide; `participant_index` now includes the agent.
+ * 1.0 upgrade guide; `participant_index` now includes the agent. Runs on
+ * `ai.conversations.connection`, like the package's own migrations.
  */
-return new class extends Migration
+return new class extends AiMigration
 {
     public function up(): void
     {
-        if (! Schema::hasTable('agent_conversation_messages')) {
+        if (! Schema::connection($this->getConnection())->hasTable('agent_conversation_messages')) {
             return;
         }
 
-        Schema::table('agent_conversation_messages', function (Blueprint $table) {
+        Schema::connection($this->getConnection())->table('agent_conversation_messages', function (Blueprint $table) {
             $table->longText('steps')->nullable();
             $table->string('status', 25)->default('completed');
         });
 
-        DB::table('agent_conversation_messages')->where('role', 'user')->update(['steps' => '[]']);
+        DB::connection($this->getConnection())->table('agent_conversation_messages')->where('role', 'user')->update(['steps' => '[]']);
 
-        DB::table('agent_conversation_messages')
+        DB::connection($this->getConnection())->table('agent_conversation_messages')
             ->select('conversation_id')
             ->distinct()
             ->orderBy('conversation_id')
@@ -37,7 +38,7 @@ return new class extends Migration
                 }
             });
 
-        Schema::table('agent_conversation_messages', function (Blueprint $table) {
+        Schema::connection($this->getConnection())->table('agent_conversation_messages', function (Blueprint $table) {
             $table->longText('steps')->nullable(false)->change();
             $table->dropColumn(['tool_calls', 'tool_results', 'approval_state']);
             $table->dropIndex('participant_index');
@@ -47,11 +48,11 @@ return new class extends Migration
 
     public function down(): void
     {
-        if (! Schema::hasTable('agent_conversation_messages')) {
+        if (! Schema::connection($this->getConnection())->hasTable('agent_conversation_messages')) {
             return;
         }
 
-        Schema::table('agent_conversation_messages', function (Blueprint $table) {
+        Schema::connection($this->getConnection())->table('agent_conversation_messages', function (Blueprint $table) {
             $table->dropIndex('participant_index');
             $table->index(['participant_type', 'participant_id'], 'participant_index');
             $table->text('tool_calls')->default('[]');
@@ -66,7 +67,7 @@ return new class extends Migration
      */
     private function backfill(string $conversationId): void
     {
-        $rows = DB::table('agent_conversation_messages')
+        $rows = DB::connection($this->getConnection())->table('agent_conversation_messages')
             ->where('conversation_id', $conversationId)
             ->where('role', 'assistant')
             ->orderBy('id')
@@ -99,7 +100,7 @@ return new class extends Migration
 
             unset($meta['provider_steps'], $meta['provider_content_blocks'], $meta['reasoning']);
 
-            DB::table('agent_conversation_messages')->where('id', $row->id)->update([
+            DB::connection($this->getConnection())->table('agent_conversation_messages')->where('id', $row->id)->update([
                 'steps' => json_encode($steps),
                 'meta' => json_encode($meta),
             ]);
