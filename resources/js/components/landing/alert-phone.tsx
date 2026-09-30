@@ -84,18 +84,22 @@ export function AlertPhone() {
                             <MapPin className="size-3.5" strokeWidth={2} />
                             Ubicación y video incluidos en el caso
                         </p>
+                        <p className="mt-2 border-t border-brand-line pt-2 text-brand-ink-2">
+                            Responde <b>SI</b> para confirmar, <b>NO</b> si es
+                            falsa alarma o <b>ESC</b> para escalar.
+                        </p>
                         <p className="mt-2 text-right text-2xs text-brand-ink-3">
                             02:15
                         </p>
                     </motion.div>
 
-                    <motion.div {...enter(1.15)} className="mr-6 grid gap-1.5">
-                        <span className="rounded-xl bg-white py-2.5 text-center text-sm font-medium text-brand-teal shadow-sm">
-                            Ver el caso
-                        </span>
-                        <span className="flex items-center justify-center gap-1.5 rounded-xl bg-white py-2.5 text-center text-sm font-medium text-brand-teal shadow-sm">
-                            <Phone className="size-3.5" strokeWidth={2} />
-                            Llamar al operador
+                    <motion.div
+                        {...enter(1.5)}
+                        className="ml-auto w-fit rounded-2xl rounded-tr-md bg-brand-reply px-4 py-2 text-sm font-semibold text-brand-ink"
+                    >
+                        SI
+                        <span className="ml-3 text-2xs font-normal text-brand-ink-3">
+                            02:16
                         </span>
                     </motion.div>
                 </div>
