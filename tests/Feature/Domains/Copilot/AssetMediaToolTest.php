@@ -124,10 +124,18 @@ class AssetMediaToolTest extends TestCase
         $this->panicWithFootage();
         $other = User::factory()->create()->currentTeam;
         $otherEvent = NormalizedEvent::factory()->create(['team_id' => $other->id]);
-        EventMediaContext::factory()->create(['team_id' => $other->id, 'normalized_event_id' => $otherEvent->id, 'asset_id' => $this->asset->id]);
+        $foreignMedia = EventMediaContext::factory()->create(['team_id' => $other->id, 'normalized_event_id' => $otherEvent->id, 'asset_id' => $this->asset->id, 'captured_at' => now()]);
+        Incident::factory()->open()->create(['team_id' => $other->id, 'related_event_id' => $otherEvent->id]);
+        AIMediaAssessment::factory()->create([
+            'evaluation_id' => AIEventEvaluation::factory()->create(['team_id' => $other->id, 'normalized_event_id' => $otherEvent->id])->id,
+            'event_media_context_id' => $foreignMedia->id,
+            'summary_text' => 'Lo que vio la IA en otra empresa.',
+        ]);
 
         $result = $this->assertNoTenantLeak($this->team, fn () => app(AssetMediaTool::class)->run($this->context()));
 
         $this->assertSame(2, $result->facts['media_count']);
+        $this->assertNotContains($foreignMedia->id, array_column($result->blocks[0]['items'], 'id'));
+        $this->assertStringNotContainsString('otra empresa', json_encode($result->facts));
     }
 }

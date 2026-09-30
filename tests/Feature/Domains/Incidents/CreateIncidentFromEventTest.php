@@ -27,6 +27,7 @@ use App\Domains\Tenancy\Models\UsageEvent;
 use App\Domains\TenantConfig\Models\TenantIncidentSla;
 use App\Models\Team;
 use App\Models\User;
+use App\Support\TenantContext;
 use Database\Seeders\IncidentsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -451,6 +452,19 @@ class CreateIncidentFromEventTest extends TestCase
 
         $this->assertStringEndsWith(' — T-879 JC 27BF7U', $incident->title);
         $this->assertStringNotContainsString('activo #', $incident->title);
+    }
+
+    public function test_title_never_carries_another_tenant_unit_name(): void
+    {
+        $team = User::factory()->create()->currentTeam;
+        $foreign = Asset::factory()->create(['team_id' => User::factory()->create()->currentTeam->id, 'name' => 'UNIDAD AJENA']);
+        // Corrupt row: an event pointing at another team's asset.
+        $event = NormalizedEvent::factory()->create(['team_id' => $team->id, 'asset_id' => $foreign->id]);
+
+        $incident = TenantContext::for($team->id, fn () => app(CreateIncidentFromEvent::class)->execute($event, ['priority_code' => 'critical']));
+
+        $this->assertStringNotContainsString('UNIDAD AJENA', $incident->title);
+        $this->assertStringEndsWith(" — activo #{$foreign->id}", $incident->title);
     }
 
     public function test_priority_without_sla_logs_the_skip_and_arms_no_watchdog(): void
