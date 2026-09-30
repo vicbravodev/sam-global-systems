@@ -86,9 +86,9 @@ Tools nuevas (`app/Domains/Copilot/Tools/`):
 | Tool | Argumentos | Qué devuelve | Permiso |
 |---|---|---|---|
 | `find_assets` | `query`, `category?`, `limit≤10` | unidades que coinciden (código, nombre, categoría, último visto) | `assets.view` |
-| `rank_assets` | `metric` ∈ {`fuel_used_pct`, `distance_km`, `idle_hours`, `incidents`, `events`, `panics`}, `from`, `to`, `category?`, `event_type?`, `order` (desc/asc), `limit≤10` | ranking, promedio de flota y `outlier: true` (> promedio + 1.5·desv. estándar) | `assets.view` (+ `incidents.view` para `incidents`/`panics`) |
-| `search_events` | `from`, `to`, `asset_code?`, `event_type?`, `severity?`, `limit≤25` | conteo por tipo y severidad + lista de eventos recientes | `assets.view` |
-| `asset_timeline` | `asset_code`, `from`, `to` | eventos (y los incidentes solo con `incidents.view`) de la unidad en orden cronológico | `assets.view` |
+| `rank_assets` | `metric` ∈ {`fuel_used_pct`, `distance_km`, `idle_hours`, `incidents`, `events`, `panics`}, `from`, `to`, `category?`, `event_type?`, `order` (desc/asc), `limit≤10` | ranking, promedio de flota y `outlier: true` (> promedio + 1.5·desv. estándar) | `assets.view` (+ `incidents.view` para `incidents`/`events`/`panics`) |
+| `search_events` | `from`, `to`, `asset_code?`, `event_type?`, `severity?`, `limit≤25` | conteo por tipo y severidad + lista de eventos recientes | `incidents.view` |
+| `asset_timeline` | `asset_code`, `from`, `to` | eventos, incidentes y tramos de ralentí de la unidad en orden cronológico | `incidents.view` |
 | `suggest_followups` | `questions: string[2..3]` (≤ 80 caracteres cada una) | nada útil al modelo; guarda los followups en el collector | ninguno |
 
 Datos reales disponibles (verificado): el combustible es **% de tanque** (`TelemetryType::Fuel`, `unit` normalmente `%`); se consume sumando las caídas y excluyendo recargas, con la misma lógica que `AssetFuelTool`, que se extrae a un helper compartido. Los km salen del delta del odómetro. **Ralentí (`idle_hours`)** se calcula con la telemetría de motor, en el helper compartido `IdleTimeCalculator`:
@@ -98,7 +98,7 @@ Datos reales disponibles (verificado): el combustible es **% de tanque** (`Telem
   - La respuesta indica la fuente (`engine_state` o `ignition_speed`) para que el modelo la pueda aclarar.
   - Tarea de verificación en el plan: confirmar en la DB de dev que llegan lecturas `Idle` (`asset_telemetry_snapshots` con `telemetry_type = 'ignition'`).
   - `asset_engine` y `asset_timeline` también reportan los tramos de ralentí del rango (≥ 10 min en la línea de tiempo).
-  - Retención de telemetría: 90 días (`PurgeOldAssetTelemetryJob`), igual que el rango máximo de las tools. Permisos verificados en las tools actuales: `assets.view`, `incidents.view`, `drivers.view`, `context.view` (media). No existe `events.view`: los eventos se leen con `assets.view`, igual que `AssetActivityTool`.
+  - Retención de telemetría: 90 días (`PurgeOldAssetTelemetryJob`), igual que el rango máximo de las tools. Permisos verificados en las tools actuales: `assets.view`, `incidents.view`, `drivers.view`, `context.view` (media). No existe `events.view`: los eventos se leen con `incidents.view`, igual que `AssetActivityTool`.
 
 ### 3. `CopilotTurnCollector`
 
