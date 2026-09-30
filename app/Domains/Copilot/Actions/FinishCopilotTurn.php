@@ -10,6 +10,7 @@ use App\Domains\Copilot\Data\CopilotTurn;
 use App\Domains\Copilot\Data\CopilotTurnOutcome;
 use App\Domains\Copilot\Enums\CopilotMessageRole;
 use App\Domains\Copilot\Models\CopilotMessage;
+use App\Domains\Copilot\Support\CopilotAnswerText;
 use App\Support\SystemLog;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -22,8 +23,6 @@ use Illuminate\Support\Str;
  */
 class FinishCopilotTurn
 {
-    private const EMPTY_ANSWER = 'No pude completar la respuesta.';
-
     public function __construct(
         private readonly ModelPricing $pricing,
         private readonly RecordCopilotUsage $recordUsage,
@@ -45,7 +44,7 @@ class FinishCopilotTurn
                 'copilot_conversation_id' => $turn->conversation->id,
                 'user_id' => null,
                 'role' => CopilotMessageRole::Assistant,
-                'content' => $outcome->text !== '' ? $outcome->text : self::EMPTY_ANSWER,
+                'content' => $outcome->text !== '' ? $outcome->text : CopilotAnswerText::EMPTY,
                 'intent' => $outcome->intent,
                 'channel' => $turn->channel,
                 'context_json' => array_filter([

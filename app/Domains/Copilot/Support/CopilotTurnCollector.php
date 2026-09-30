@@ -101,6 +101,20 @@ final class CopilotTurnCollector
     }
 
     /**
+     * Grounded sentences of every tool that answered (ok or denied), in the
+     * order they ran: the text of last resort when the model wrote none.
+     *
+     * @return list<string>
+     */
+    public function highlights(): array
+    {
+        return array_values(array_merge([], ...array_map(
+            fn (array $e) => $e['result']->highlights,
+            array_filter($this->entries, fn (array $e) => $e['status'] !== 'error'),
+        )));
+    }
+
+    /**
      * Compact memory of what was looked up, fed back as history next turn.
      */
     public function factsDigest(): string

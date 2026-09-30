@@ -9,6 +9,8 @@ use Database\Seeders\AccessSeeder;
 use Database\Seeders\AIMeterSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Ai\Exceptions\ProviderOverloadedException;
+use Laravel\Ai\Gateway\StepResponse;
+use Laravel\Ai\Responses\Data\FinishReason;
 use Laravel\Ai\Responses\Data\Meta;
 use Laravel\Ai\Responses\Data\TextUsage;
 use Laravel\Ai\Responses\Data\ToolCall;
@@ -133,6 +135,99 @@ class CopilotAgentTurnTest extends TestCase
         $this->assertSystemLogged('copilot.turn.completed', fn (array $c) => $c['input']['mode'] === 'deterministic');
         $this->assertNoSensitiveDataLogged();
         $this->assertQuestionNeverLogged($question);
+    }
+
+    public function test_answer_given_alongside_suggest_followups_survives_an_empty_final_step(): void
+    {
+        [$user, $team] = $this->memberWithRole('supervisor');
+        $this->truckWithTelemetry($team, 'T555');
+
+        StepFakeTextGateway::fake(CopilotAgent::class, [
+            new ToolCall('call_1', 'asset_location', ['asset_code' => 'T555']),
+            // The model answers and calls suggest_followups in the same step…
+            new StepResponse(
+                'La **T555** va por Insurgentes Sur.',
+                [new ToolCall('call_2', 'suggest_followups', ['questions' => ['¿Y su combustible?', '¿Quién la maneja?']])],
+                FinishReason::ToolCalls,
+                new TextUsage(inputTokens: 400, outputTokens: 40),
+                new Meta('openai', 'gpt-test'),
+            ),
+            // …and the step after the tool result comes back empty.
+            new TextResponse('', new TextUsage(inputTokens: 450, outputTokens: 1), new Meta('openai', 'gpt-test')),
+        ]);
+
+        $answer = $this->actingAs($user)
+            ->postJson("/{$team->slug}/copilot/messages", ['content' => '¿Dónde está T555?'])
+            ->assertCreated()
+            ->json('answer');
+
+        $this->assertSame('La **T555** va por Insurgentes Sur.', $answer['content']);
+        $this->assertSame(['¿Y su combustible?', '¿Quién la maneja?'], $answer['followups']);
+        $this->assertSame(850, $answer['usage']['inputTokens']);
+    }
+
+    public function test_texts_of_every_step_are_joined(): void
+    {
+        [$user, $team] = $this->memberWithRole('supervisor');
+        $this->truckWithTelemetry($team, 'T555');
+
+        StepFakeTextGateway::fake(CopilotAgent::class, [
+            new StepResponse('Busco la unidad.', [new ToolCall('call_1', 'asset_location', ['asset_code' => 'T555'])], FinishReason::ToolCalls, new TextUsage, new Meta('openai', 'gpt-test')),
+            new TextResponse('Está en Insurgentes Sur.', new TextUsage, new Meta('openai', 'gpt-test')),
+        ]);
+
+        $this->actingAs($user)
+            ->postJson("/{$team->slug}/copilot/messages", ['content' => '¿Dónde está T555?'])
+            ->assertCreated()
+            ->assertJsonPath('answer.content', "Busco la unidad.\n\nEstá en Insurgentes Sur.");
+    }
+
+    public function test_steps_without_text_fall_back_to_the_tool_highlights(): void
+    {
+        [$user, $team] = $this->memberWithRole('supervisor');
+        $this->truckWithTelemetry($team, 'T555');
+
+        CopilotAgent::fake([
+            new ToolCall('call_1', 'asset_location', ['asset_code' => 'T555']),
+            new TextResponse('', new TextUsage(inputTokens: 300, outputTokens: 1), new Meta('openai', 'gpt-test')),
+        ]);
+
+        $content = $this->actingAs($user)
+            ->postJson("/{$team->slug}/copilot/messages", ['content' => '¿Dónde está T555?'])
+            ->assertCreated()
+            ->json('answer.content');
+
+        $this->assertNotSame('No pude completar la respuesta.', $content);
+        $this->assertStringContainsString('Última posición de T555', $content);
+        $this->assertStringContainsString('Av. Insurgentes Sur, CDMX', $content);
+    }
+
+    public function test_fallback_discards_what_the_agent_collected_before_failing(): void
+    {
+        [$user, $team] = $this->memberWithRole('supervisor');
+        $this->truckWithTelemetry($team, 'T555');
+        $this->truckWithTelemetry($team, 'T600');
+
+        $calls = 0;
+        CopilotAgent::fake(function () use (&$calls) {
+            return $calls++ === 0
+                ? new ToolCall('call_1', 'rank_assets', ['metric' => 'fuel_used_pct'])
+                : throw new ProviderOverloadedException('down');
+        });
+
+        $answer = $this->actingAs($user)
+            ->postJson("/{$team->slug}/copilot/messages", ['content' => '¿Dónde está T555?'])
+            ->assertCreated()
+            ->json('answer');
+
+        $this->assertSame(2, $calls, 'the agent ran rank_assets before failing');
+        $this->assertSame(['asset_location'], array_column($answer['tools'], 'tool'));
+        $this->assertNotContains('ranking', array_column($answer['blocks'], 'type'));
+        $this->assertSame(CopilotIntent::AssetLocation->value, $answer['intent']);
+        $message = CopilotMessage::query()->findOrFail($answer['id']);
+        $this->assertSame(['asset_location'], array_column($message->tools_json, 'tool'));
+        $this->assertStringNotContainsString('rank_assets', (string) ($message->context_json['facts_digest'] ?? ''));
+        $this->assertSystemLogged('copilot.turn.fallback', fn (array $c) => $c['reason'] === 'agent_error_before_output');
     }
 
     public function test_without_provider_key_uses_deterministic_mode(): void

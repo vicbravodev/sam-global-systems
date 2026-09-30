@@ -6,6 +6,7 @@ use App\Domains\Assets\Models\Asset;
 use App\Domains\Copilot\Data\CopilotTurn;
 use App\Domains\Copilot\Data\CopilotTurnOutcome;
 use App\Domains\Copilot\Enums\CopilotIntent;
+use App\Domains\Copilot\Support\CopilotAnswerText;
 use App\Domains\Copilot\Support\CopilotToolbox;
 use App\Infrastructure\AI\Agents\CopilotAgent;
 use App\Infrastructure\AI\Middleware\CopilotStepGuard;
@@ -46,7 +47,7 @@ class RunCopilotAgentTurn
 
         return new CopilotTurnOutcome(
             mode: 'agent',
-            text: trim($response->text),
+            text: CopilotAnswerText::compose($response->steps->pluck('text'), $turn->collector),
             model: $response->meta->model,
             usage: $response->usage,
             steps: $response->steps->count(),
