@@ -128,7 +128,7 @@ class WebhookControllerTest extends TestCase
         $this->assertNoSensitiveDataLogged();
     }
 
-    public function test_the_received_line_nulls_an_event_type_that_is_not_a_code(): void
+    public function test_an_event_type_that_is_not_a_code_is_neither_stored_nor_logged(): void
     {
         Queue::fake();
         Event::fake([WebhookReceived::class]);
@@ -137,9 +137,15 @@ class WebhookControllerTest extends TestCase
 
         $this->postJson("/api/webhooks/{$endpoint->url}", ['event_type' => "x\ninjected"])->assertStatus(202);
 
+        // Desde que el controlador resuelve el tipo, un valor que no parece
+        // código nunca llega a `webhook_events` ni al log: queda `unknown`.
+        $this->assertSame('unknown', WebhookEvent::withoutGlobalScopes()->sole()->event_type);
+
+        $resolved = $this->assertSystemLogged('webhook.event_type.resolved');
+        $this->assertSame('not_a_code', $resolved['reason']);
+
         $c = $this->assertSystemLogged('webhook.event.received');
-        $this->assertNull($c['input']['event_type']);
-        $this->assertFalse($c['input']['event_type_valid']);
+        $this->assertSame('unknown', $c['input']['event_type']);
         $this->assertFalse($c['calc']['has_signature_header']);
         $this->assertFalse($c['calc']['has_timestamp_header']);
         $this->assertStringNotContainsString('injected', json_encode($this->systemLogEntries()));
@@ -162,6 +168,81 @@ class WebhookControllerTest extends TestCase
             'team_id' => $endpoint->tenantIntegration->team_id,
             'event_type' => 'unknown',
         ]);
+    }
+
+    public function test_a_real_samsara_webhook_without_query_param_stores_the_body_event_type(): void
+    {
+        Queue::fake();
+        Event::fake([WebhookReceived::class]);
+
+        $endpoint = $this->createActiveEndpoint('ctrl-'.bin2hex(random_bytes(6)));
+
+        // Forma real de Samsara: el tipo viaja en el cuerpo como `eventType`,
+        // sin `?event_type=` en la URL.
+        $this->postJson("/api/webhooks/{$endpoint->url}", [
+            'eventId' => 'evt-123',
+            'eventType' => 'AlertIncident',
+            'data' => ['conditions' => [['description' => 'Panic Button']]],
+        ])->assertStatus(202);
+
+        $this->assertDatabaseHas('webhook_events', [
+            'team_id' => $endpoint->tenantIntegration->team_id,
+            'event_type' => 'AlertIncident',
+        ]);
+        Event::assertDispatched(WebhookReceived::class, fn (WebhookReceived $e) => $e->eventType === 'AlertIncident');
+
+        $c = $this->assertSystemLogged('webhook.event_type.resolved');
+        $this->assertSame('ok', $c['outcome']);
+        $this->assertSame('body_eventType', $c['calc']['source']);
+        $this->assertSame('AlertIncident', $c['result']['event_type']);
+    }
+
+    public function test_the_body_event_type_wins_over_the_legacy_event_type_field(): void
+    {
+        Queue::fake();
+        Event::fake([WebhookReceived::class]);
+
+        $endpoint = $this->createActiveEndpoint('ctrl-'.bin2hex(random_bytes(6)));
+
+        $this->postJson("/api/webhooks/{$endpoint->url}?event_type=vehicle.updated", [
+            'eventType' => 'AlertIncident',
+        ])->assertStatus(202);
+
+        $this->assertSame('AlertIncident', WebhookEvent::withoutGlobalScopes()->sole()->event_type);
+    }
+
+    public function test_a_non_code_body_event_type_is_never_stored_as_is(): void
+    {
+        Queue::fake();
+        Event::fake([WebhookReceived::class]);
+
+        $endpoint = $this->createActiveEndpoint('ctrl-'.bin2hex(random_bytes(6)));
+
+        $this->postJson("/api/webhooks/{$endpoint->url}", [
+            'eventType' => "Alert\n<script>injected</script>",
+        ])->assertStatus(202);
+
+        $this->assertSame('unknown', WebhookEvent::withoutGlobalScopes()->sole()->event_type);
+
+        $c = $this->assertSystemLogged('webhook.event_type.resolved');
+        $this->assertSame('degraded', $c['outcome']);
+        $this->assertSame('not_a_code', $c['reason']);
+        $this->assertStringNotContainsString('injected', json_encode($this->systemLogEntries()));
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_non_code_body_event_type_falls_back_to_a_valid_event_type_field(): void
+    {
+        Queue::fake();
+        Event::fake([WebhookReceived::class]);
+
+        $endpoint = $this->createActiveEndpoint('ctrl-'.bin2hex(random_bytes(6)));
+
+        $this->postJson("/api/webhooks/{$endpoint->url}?event_type=vehicle.updated", [
+            'eventType' => ['not' => 'a string'],
+        ])->assertStatus(202);
+
+        $this->assertSame('vehicle.updated', WebhookEvent::withoutGlobalScopes()->sole()->event_type);
     }
 
     public function test_it_returns_404_when_endpoint_url_is_unknown(): void

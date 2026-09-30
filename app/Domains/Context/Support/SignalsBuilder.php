@@ -5,6 +5,7 @@ namespace App\Domains\Context\Support;
 use App\Domains\Context\Enums\GeofenceCategory;
 use App\Domains\Context\Enums\GeofenceMatchType;
 use App\Domains\Context\Enums\IncidentRelationType;
+use App\Domains\Normalization\Enums\AssetUnresolvedReason;
 
 class SignalsBuilder
 {
@@ -25,9 +26,10 @@ class SignalsBuilder
      * @var array<string, mixed> $telemetry  Telemetry snapshot (speed, gps accuracy).
      * @var array<int, array<string, mixed>> $media  Media contexts (deferred, expect empty in PR #1).
      * @var bool|null $outside_operating_hours  Optional precomputed flag.
-     *                }
+     * @var array{is_resolved?: bool|null, asset_resolved?: bool|null, asset_unresolved_reason?: string|null} $event  Event facts; `asset_resolved` false = the event has no unit of this tenant.
+     *                                                                                                        }
      *
-     * @return array<string, bool>
+     * @return array<string, bool|string|null> Boolean flags plus `asset_unresolved_reason` (an `AssetUnresolvedReason` value or null).
      */
     public static function build(array $context): array
     {
@@ -69,7 +71,37 @@ class SignalsBuilder
             // was moving smells like jamming or a yanked device — different
             // from plain weak GPS on a parked unit.
             'gps_lost_in_motion' => self::gpsLostInMotion($telemetry),
+            // Unidad desconocida: el evento no pudo ligarse a una unidad del
+            // tenant. No degrada una emergencia; apunta a un posible error de
+            // configuración (vehículo sin sincronizar, id ajeno rechazado).
+            'asset_unresolved' => self::assetUnresolved($event),
+            'asset_unresolved_reason' => self::assetUnresolvedReason($event),
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $event
+     */
+    private static function assetUnresolved(array $event): bool
+    {
+        return ($event['asset_resolved'] ?? null) === false;
+    }
+
+    /**
+     * Only a known reason travels; anything else (legacy events, unmapped
+     * events that never tried to resolve a unit) stays null.
+     *
+     * @param  array<string, mixed>  $event
+     */
+    private static function assetUnresolvedReason(array $event): ?string
+    {
+        if (! self::assetUnresolved($event)) {
+            return null;
+        }
+
+        $reason = $event['asset_unresolved_reason'] ?? null;
+
+        return is_string($reason) ? AssetUnresolvedReason::tryFrom($reason)?->value : null;
     }
 
     /**

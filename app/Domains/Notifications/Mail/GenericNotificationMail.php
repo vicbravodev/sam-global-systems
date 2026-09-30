@@ -24,9 +24,12 @@ class GenericNotificationMail extends Mailable
 
     public function content(): Content
     {
+        // `Content` no tiene `textString`: el texto plano sale de una vista
+        // que imprime el cuerpo tal cual (sin escapar, no es HTML).
         return new Content(
+            text: 'mail.generic-notification-text',
+            with: ['bodyText' => $this->bodyText],
             htmlString: nl2br(e($this->bodyText)),
-            textString: $this->bodyText,
         );
     }
 }

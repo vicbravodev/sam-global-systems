@@ -1,126 +1,109 @@
 import { Head, Link, usePage } from '@inertiajs/react';
 import {
-    Activity,
-    ArrowRight,
-    Camera,
-    Check,
-    Eye,
-    Inbox,
-    MapPin,
-    MessageSquare,
+    BellRing,
+    Ear,
+    FileBarChart,
+    Gauge,
+    Map as MapIcon,
     PhoneCall,
-    Radio,
-    Search,
+    Plug,
+    ScanSearch,
     ShieldCheck,
 } from 'lucide-react';
+import { motion, useReducedMotion } from 'motion/react';
 import type { ReactNode } from 'react';
-import AppLogoIcon from '@/components/app-logo-icon';
-import { SeverityBadge } from '@/components/sam/severity-badge';
-import { StatusPill } from '@/components/sam/status-pill';
-import { Button } from '@/components/ui/button';
-import { useReveal } from '@/hooks/use-reveal';
+import { AlertPhone } from '@/components/landing/alert-phone';
+import { CabinVision } from '@/components/landing/cabin-vision';
+import { CopilotDemo } from '@/components/landing/copilot-demo';
+import { MonitorInbox } from '@/components/landing/monitor-inbox';
+import { NightWatch } from '@/components/landing/night-watch';
+import { TheftGuard } from '@/components/landing/theft-guard';
 import { cn } from '@/lib/utils';
 import { dashboard, login } from '@/routes';
 
 const CONTACT_EMAIL = 'contacto@samglobaltechnologies.com';
+const CONTACT_PHONE = '+52 81 1765 8890';
 const DEMO_HREF = `mailto:${CONTACT_EMAIL}?subject=Solicitud%20de%20demo%20SAM`;
-
-/* Scroll-reveal wrapper. Subtle fade + lift; collapses to static under
-   prefers-reduced-motion (handled inside useReveal). */
-function Reveal({
-    children,
-    delay = 0,
-    className,
-}: {
-    children: ReactNode;
-    delay?: number;
-    className?: string;
-}) {
-    const { ref, visible } = useReveal<HTMLDivElement>();
-
-    return (
-        <div
-            ref={ref}
-            style={{ transitionDelay: `${delay}ms` }}
-            className={cn(
-                'transition-all duration-700 ease-(--ease-out) motion-reduce:translate-y-0 motion-reduce:opacity-100 motion-reduce:transition-none',
-                visible
-                    ? 'translate-y-0 opacity-100'
-                    : 'translate-y-3 opacity-0',
-                className,
-            )}
-        >
-            {children}
-        </div>
-    );
-}
+const EASE = [0.16, 1, 0.3, 1] as const;
 
 const NAV_LINKS = [
-    { href: '#problema', label: 'El problema' },
-    { href: '#caracteristicas', label: 'Características' },
-    { href: '#como-funciona', label: 'Cómo funciona' },
-    { href: '#casos', label: 'Casos' },
-    { href: '#resultados', label: 'Resultados' },
+    { href: '#copiloto', label: 'Copiloto' },
+    { href: '#guardia', label: 'Guardia nocturna' },
+    { href: '#equipo', label: 'Tu equipo' },
+    { href: '#camaras', label: 'Cámaras' },
+    { href: '#avisos', label: 'Avisos' },
 ];
 
-const PROBLEMS = [
+/* Lo que viene incluido y no necesita demo interactiva. */
+const READY = [
     {
-        title: 'Fatiga de alertas',
-        body: 'Cientos de notificaciones al día diluyen lo que de verdad importa.',
+        icon: Plug,
+        title: 'Conecta tu Samsara en minutos',
+        body: 'Tus unidades y conductores se dan de alta solos, y SAM te avisa si la conexión deja de recibir.',
     },
     {
-        title: 'Respuestas lentas',
-        body: 'Revisar cada aviso a mano cuesta minutos en situaciones urgentes.',
+        icon: ShieldCheck,
+        title: 'Protocolo listo de fábrica',
+        body: 'Pánico, escalación en tres niveles y tiempos de respuesta ya configurados. Ajústalos cuando quieras.',
     },
     {
-        title: 'Criterio desigual',
-        body: 'La evaluación cambia según quién esté de turno esa noche.',
+        icon: MapIcon,
+        title: 'Toda tu flota en un mapa en vivo',
+        body: 'Cada unidad con su rumbo y su estado, y el caso abierto a un clic.',
     },
     {
-        title: 'Emergencias enterradas',
-        body: 'Un evento crítico se pierde bajo el volumen de avisos menores.',
+        icon: Gauge,
+        title: 'Riesgo de cada conductor, día a día',
+        body: 'Una calificación de 0 a 100 y un aviso cuando alguien empieza a manejar peor, antes del accidente.',
     },
     {
-        title: 'Costo que no escala',
-        body: 'Un equipo de monitoreo 24/7 es caro y difícil de crecer.',
+        icon: FileBarChart,
+        title: 'Reportes para dirección',
+        body: 'Operación diaria, cumplimiento de tiempos de respuesta y riesgo por unidad, en PDF o Excel.',
+    },
+    {
+        icon: BellRing,
+        title: 'Alertas imposibles de ignorar',
+        body: 'Una emergencia en pantalla suena, parpadea y no se va hasta que alguien la atiende.',
     },
 ];
 
 const STEPS = [
     {
-        icon: Radio,
-        title: 'Recibe',
-        body: 'Conecta tus dispositivos Samsara y SAM escucha cada evento.',
+        icon: Ear,
+        title: 'Escucha',
+        body: 'Recibe cada evento de tus unidades en el momento en que pasa.',
     },
     {
-        icon: Search,
+        icon: ScanSearch,
         title: 'Investiga',
-        body: 'Revisa ubicación, historial del conductor y cámaras en segundos.',
-    },
-    {
-        icon: Activity,
-        title: 'Resume',
-        body: 'Arma un resumen claro de qué está pasando y qué tan grave es.',
+        body: 'Revisa ubicación, video de las cámaras y el historial del conductor.',
     },
     {
         icon: PhoneCall,
-        title: 'Verifica',
-        body: 'Confirma por voz con el operador antes de escalar nada.',
+        title: 'Confirma',
+        body: 'Si hace falta, llama al operador antes de molestar a nadie más.',
     },
     {
-        icon: ShieldCheck,
-        title: 'Decide',
-        body: 'Notifica solo cuando hace falta. Lo demás queda documentado.',
+        icon: BellRing,
+        title: 'Avisa',
+        body: 'Solo a la persona correcta, con el caso ya armado. Lo demás queda registrado.',
     },
 ];
 
-const SEGMENTS = [
-    'Transporte de carga',
-    'Logística y última milla',
-    'Seguridad patrimonial',
-    'Flotas de pasajeros',
-    'Renta de equipo pesado',
-    'Operaciones 24/7',
+const QUESTIONS = [
+    '¿Qué pasó anoche?',
+    '¿Qué unidad gastó más diésel esta semana y por qué?',
+    '¿Hay alguna unidad sin señal ahora mismo?',
+    '¿Qué incidentes siguen abiertos?',
+    '¿Qué conductores acumulan más excesos de velocidad este mes?',
+    '¿Cuántas horas estuvo detenida la T-555 el martes?',
+    'Compárame la T-555 con la T-600',
+    '¿Cuántos kilómetros hizo la flota esta semana?',
+    '¿Qué paradas no programadas hubo hoy?',
+    '¿Cuántos pánicos tuvimos este mes y cómo se resolvieron?',
+    '¿Qué ruta hizo la T-118 ayer en la noche?',
+    '¿Qué unidad tuvo más incidentes esta semana?',
 ];
 
 export default function Welcome() {
@@ -129,390 +112,310 @@ export default function Welcome() {
 
     return (
         <>
-            <Head title="SAM · Monitoreo inteligente para flotas">
+            <Head title="SAM · Tu flota vigilada día y noche">
                 <meta
                     name="description"
-                    content="SAM investiga cada alerta de tu flota, revisa cámara y ubicación, y verifica antes de escalar. Solo las emergencias reales llegan a tu equipo."
+                    content="SAM vigila tus unidades día y noche, investiga cada alerta y te responde en español con los datos de tu operación. Solo te llama cuando de verdad importa."
                 />
             </Head>
 
-            <div className="min-h-dvh scroll-smooth bg-background text-fg-1 antialiased">
-                {/* ---------- Nav ---------- */}
-                <header className="sticky top-0 z-40 border-b border-border/70 bg-background/80 backdrop-blur-md">
-                    <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 sm:px-8">
-                        <a
-                            href="#top"
-                            className="flex items-center gap-2.5"
-                            aria-label="SAM, inicio"
-                        >
-                            <AppLogoIcon className="size-8" />
-                            <span className="text-md font-semibold tracking-tight">
-                                SAM
-                            </span>
-                        </a>
-                        <nav className="hidden items-center gap-7 lg:flex">
-                            {NAV_LINKS.map((link) => (
-                                <a
-                                    key={link.href}
-                                    href={link.href}
-                                    className="text-sm text-fg-2 transition-colors hover:text-fg-1"
-                                >
-                                    {link.label}
-                                </a>
-                            ))}
-                        </nav>
-                        <div className="flex items-center gap-2">
-                            {auth.user ? (
-                                <Button asChild size="sm">
-                                    <Link href={dashboardUrl}>Ir al panel</Link>
-                                </Button>
-                            ) : (
-                                <>
-                                    <Button
-                                        asChild
-                                        size="sm"
-                                        variant="ghost"
-                                        className="hidden sm:inline-flex"
+            <div className="theme-light min-h-dvh scroll-smooth bg-brand-paper text-brand-ink antialiased [color-scheme:light]">
+                <Header
+                    authed={Boolean(auth.user)}
+                    dashboardUrl={dashboardUrl}
+                />
+
+                <main>
+                    {/* ---------- Hero: el Copiloto en vivo ---------- */}
+                    <section
+                        id="copiloto"
+                        className="relative scroll-mt-16 overflow-hidden"
+                    >
+                        <div
+                            aria-hidden="true"
+                            className="pointer-events-none absolute top-0 right-0 h-full w-[60%] bg-[radial-gradient(60%_55%_at_60%_45%,var(--color-brand-mist),transparent)]"
+                        />
+                        <div className="relative mx-auto grid max-w-7xl grid-cols-1 items-center gap-12 px-5 pt-12 pb-20 sm:px-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-16 lg:pt-16 lg:pb-28">
+                            <HeroCopy authed={Boolean(auth.user)} />
+                            <motion.div
+                                className="min-w-0"
+                                initial={{ opacity: 0, y: 24 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{
+                                    duration: 0.9,
+                                    delay: 0.25,
+                                    ease: EASE,
+                                }}
+                            >
+                                <CopilotDemo />
+                            </motion.div>
+                        </div>
+                    </section>
+
+                    {/* ---------- Guardia nocturna ---------- */}
+                    <section
+                        id="guardia"
+                        className="scroll-mt-16 bg-brand-night text-white"
+                    >
+                        <div className="mx-auto max-w-7xl px-5 py-24 sm:px-8 lg:py-32">
+                            <div className="max-w-2xl">
+                                <h2 className="text-3xl font-semibold tracking-display text-balance sm:text-4xl lg:text-5xl">
+                                    Mientras duermes, SAM hace la guardia.
+                                </h2>
+                                <p className="mt-6 max-w-xl text-lg leading-relaxed text-night-muted">
+                                    Una noche de ejemplo de una flota de 48
+                                    unidades: 147 eventos revisados y una sola
+                                    llamada, la que importaba. Arrastra la barra
+                                    para recorrerla.
+                                </p>
+                            </div>
+                            <div className="mt-14">
+                                <NightWatch />
+                            </div>
+
+                            <div
+                                id="antirrobo"
+                                className="mt-28 scroll-mt-24 border-t border-white/10 pt-20"
+                            >
+                                <h2 className="max-w-2xl text-3xl font-semibold tracking-display text-balance sm:text-4xl">
+                                    Y si una unidad se comporta raro, SAM lo
+                                    nota.
+                                </h2>
+                                <p className="mt-5 max-w-xl text-lg leading-relaxed text-night-muted">
+                                    No espera a que alguien reporte un robo.
+                                    Vigila las señales que lo anticipan y,
+                                    cuando la unidad vuelve a la normalidad,
+                                    cierra el caso solo.
+                                </p>
+                                <div className="mt-14">
+                                    <TheftGuard />
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    {/* ---------- El monitorista: casos, no alertas ---------- */}
+                    <section id="equipo" className="scroll-mt-16">
+                        <div className="mx-auto max-w-7xl px-5 py-24 sm:px-8 lg:py-32">
+                            <div className="max-w-3xl">
+                                <h2 className="text-3xl font-semibold tracking-display text-balance sm:text-4xl lg:text-5xl">
+                                    Tu equipo atiende casos, no alertas.
+                                </h2>
+                                <p className="mt-6 max-w-xl text-lg leading-relaxed text-brand-ink-2">
+                                    SAM hace la primera revisión y le entrega a
+                                    tu monitorista solo lo que importa: ordenado
+                                    por urgencia, con el tiempo de respuesta
+                                    corriendo y la evidencia ya reunida.
+                                    Pruébalo: toma el caso del pánico.
+                                </p>
+                            </div>
+                            <div className="mt-14">
+                                <MonitorInbox />
+                            </div>
+                            <ul className="mt-12 grid gap-x-12 gap-y-6 text-base leading-relaxed text-brand-ink-2 md:grid-cols-3">
+                                <li>
+                                    <span className="font-semibold text-brand-ink">
+                                        Nadie trabaja el mismo caso dos veces.
+                                    </span>{' '}
+                                    Quien lo toma se lo queda y los demás lo
+                                    ven.
+                                </li>
+                                <li>
+                                    <span className="font-semibold text-brand-ink">
+                                        Los tiempos de respuesta los pones tú.
+                                    </span>{' '}
+                                    Por prioridad, y SAM escala si se vencen.
+                                </li>
+                                <li>
+                                    <span className="font-semibold text-brand-ink">
+                                        Tu criterio mejora a SAM.
+                                    </span>{' '}
+                                    Cuando tu equipo corrige un veredicto, la IA
+                                    lo toma en cuenta.
+                                </li>
+                            </ul>
+                        </div>
+                    </section>
+
+                    {/* ---------- Visión: SAM mira las cámaras ---------- */}
+                    <section
+                        id="camaras"
+                        className="scroll-mt-16 border-y border-brand-line bg-white"
+                    >
+                        <div className="mx-auto max-w-7xl px-5 py-24 sm:px-8 lg:py-32">
+                            <div className="max-w-3xl">
+                                <h2 className="text-3xl font-semibold tracking-display text-balance sm:text-4xl lg:text-5xl">
+                                    SAM revisa las cámaras antes que tú.
+                                </h2>
+                                <p className="mt-6 max-w-xl text-lg leading-relaxed text-brand-ink-2">
+                                    Pide las fotos y el video de los segundos
+                                    alrededor de cada evento, mira dentro y
+                                    fuera de la cabina y te lo resume en una
+                                    frase.
+                                </p>
+                            </div>
+                            <div className="mt-14">
+                                <CabinVision />
+                            </div>
+                        </div>
+                    </section>
+
+                    {/* ---------- Cómo decide ---------- */}
+                    <section id="como-decide" className="scroll-mt-16">
+                        <div className="mx-auto max-w-7xl px-5 py-24 sm:px-8 lg:py-32">
+                            <h2 className="max-w-3xl text-3xl font-semibold tracking-display text-balance sm:text-4xl lg:text-5xl">
+                                Revisa cada alerta como lo haría tu mejor
+                                monitorista.
+                            </h2>
+                            <DecisionPath />
+                            <p className="mt-16 max-w-2xl border-l-2 border-brand-alert pl-5 text-lg leading-relaxed text-brand-ink-2">
+                                Un botón de pánico, un choque o una volcadura no
+                                esperan a nadie:{' '}
+                                <span className="font-semibold text-brand-ink">
+                                    se abren como emergencia en el mismo momento
+                                </span>
+                                , mientras SAM sigue reuniendo la evidencia.
+                            </p>
+                        </div>
+                    </section>
+
+                    {/* ---------- Qué le puedes preguntar ---------- */}
+                    <section className="overflow-hidden border-y border-brand-line bg-white py-24 lg:py-28">
+                        <div className="mx-auto max-w-7xl px-5 sm:px-8">
+                            <h2 className="max-w-3xl text-3xl font-semibold tracking-display text-balance sm:text-4xl">
+                                Pregúntale lo que le preguntarías a tu equipo.
+                            </h2>
+                            <p className="mt-5 max-w-xl text-lg leading-relaxed text-brand-ink-2">
+                                Responde con los datos de tu flota, en español y
+                                en segundos. Si algo no lo sabe, te lo dice.
+                            </p>
+                        </div>
+                        <QuestionDrift />
+                    </section>
+
+                    {/* ---------- Avisos ---------- */}
+                    <section id="avisos" className="scroll-mt-16">
+                        <div className="mx-auto grid max-w-7xl grid-cols-1 items-center gap-16 px-5 py-24 sm:px-8 lg:grid-cols-[1fr_0.8fr] lg:py-32">
+                            <div>
+                                <h2 className="max-w-xl text-3xl font-semibold tracking-display text-balance sm:text-4xl lg:text-5xl">
+                                    Te avisa por donde sí vas a contestar.
+                                </h2>
+                                <dl className="mt-12 grid max-w-lg gap-8">
+                                    <Notice title="Primero confirma con el operador.">
+                                        SAM le llama y él marca 1 si la
+                                        emergencia es real o 2 si fue un error.
+                                        Si nadie contesta, escala.
+                                    </Notice>
+                                    <Notice title="Una emergencia te llama por teléfono.">
+                                        A cualquier hora, y lo importante te
+                                        llega por WhatsApp con lo que SAM ya
+                                        verificó.
+                                    </Notice>
+                                    <Notice title="Respondes sin abrir nada.">
+                                        Contesta el mensaje con SI, NO o ESC
+                                        para confirmar, descartar o escalar.
+                                    </Notice>
+                                    <Notice title="Si un canal falla, usa el siguiente.">
+                                        Llamada, WhatsApp o SMS, y confirma que
+                                        el aviso de verdad llegó.
+                                    </Notice>
+                                </dl>
+                            </div>
+                            <AlertPhone />
+                        </div>
+                    </section>
+
+                    {/* ---------- Incluido desde el primer día ---------- */}
+                    <section className="border-t border-brand-line">
+                        <div className="mx-auto grid max-w-7xl grid-cols-1 gap-14 px-5 py-24 sm:px-8 lg:grid-cols-[0.8fr_1.2fr] lg:gap-20 lg:py-32">
+                            <h2 className="max-w-md text-3xl font-semibold tracking-display text-balance sm:text-4xl">
+                                Todo lo demás viene incluido desde el primer
+                                día.
+                            </h2>
+                            <ul className="grid gap-x-12 gap-y-10 sm:grid-cols-2">
+                                {READY.map((item, i) => (
+                                    <motion.li
+                                        key={item.title}
+                                        initial={{ opacity: 0, y: 10 }}
+                                        whileInView={{ opacity: 1, y: 0 }}
+                                        viewport={{ once: true, amount: 0.6 }}
+                                        transition={{
+                                            duration: 0.5,
+                                            delay: (i % 2) * 0.08,
+                                            ease: EASE,
+                                        }}
                                     >
-                                        <Link href={login()}>
-                                            Iniciar sesión
-                                        </Link>
-                                    </Button>
-                                    <Button asChild size="sm">
-                                        <a href={DEMO_HREF}>Solicitar demo</a>
-                                    </Button>
-                                </>
-                            )}
-                        </div>
-                    </div>
-                </header>
-
-                <main id="top">
-                    {/* ---------- Hero ---------- */}
-                    <section className="relative overflow-hidden">
-                        <HeroBackdrop />
-                        <div className="mx-auto grid max-w-6xl gap-12 px-5 pt-16 pb-20 sm:px-8 lg:grid-cols-[1.15fr_0.85fr] lg:items-center lg:gap-12 lg:pt-24 lg:pb-28">
-                            <div className="relative">
-                                <p className="font-mono text-2xs font-semibold tracking-caps text-primary uppercase">
-                                    Monitorista virtual para flotas
-                                </p>
-                                <h1 className="mt-5 text-3xl font-semibold tracking-tight text-balance text-pretty sm:text-[2.5rem] sm:leading-[1.1] lg:text-[2.75rem]">
-                                    Cada alerta investigada.
-                                    <br />
-                                    Solo lo real llega a ti.
-                                </h1>
-                                <p className="mt-5 max-w-md text-md leading-relaxed text-fg-2">
-                                    SAM recibe cada alerta de tu flota, revisa
-                                    cámara y ubicación, y verifica antes de
-                                    escalar. El ruido queda documentado.
-                                </p>
-                                <div className="mt-8 flex flex-wrap items-center gap-3">
-                                    <Button asChild size="lg">
-                                        <a href={DEMO_HREF}>
-                                            Solicitar demo
-                                            <ArrowRight strokeWidth={1.75} />
-                                        </a>
-                                    </Button>
-                                    <Button asChild size="lg" variant="outline">
-                                        <a href="#como-funciona">
-                                            Ver cómo funciona
-                                        </a>
-                                    </Button>
-                                </div>
-                                <p className="mt-6 flex items-center gap-2 text-xs text-fg-3">
-                                    <span
-                                        className="size-1.5 rounded-full bg-health-ok"
-                                        aria-hidden="true"
-                                    />
-                                    Compatible con dispositivos Samsara
-                                </p>
-                            </div>
-
-                            <Reveal delay={120}>
-                                <TriageVignette />
-                            </Reveal>
-                        </div>
-                    </section>
-
-                    {/* ---------- Problema ---------- */}
-                    <section
-                        id="problema"
-                        className="scroll-mt-20 border-t border-border bg-surface-3"
-                    >
-                        <div className="mx-auto max-w-6xl px-5 py-20 sm:px-8 lg:py-28">
-                            <Reveal>
-                                <h2 className="max-w-2xl text-2xl font-semibold tracking-tight text-balance sm:text-3xl">
-                                    Tu equipo no puede revisar todo con la misma
-                                    atención
-                                </h2>
-                            </Reveal>
-                            <div className="mt-12 grid gap-12 lg:grid-cols-[1fr_0.85fr] lg:items-center lg:gap-16">
-                                <Reveal>
-                                    <ul className="divide-y divide-border border-t border-border">
-                                        {PROBLEMS.map((p) => (
-                                            <li
-                                                key={p.title}
-                                                className="flex gap-4 py-4"
-                                            >
-                                                <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-border-strong" />
-                                                <div>
-                                                    <h3 className="text-base font-medium text-fg-1">
-                                                        {p.title}
-                                                    </h3>
-                                                    <p className="mt-0.5 text-sm leading-relaxed text-fg-3">
-                                                        {p.body}
-                                                    </p>
-                                                </div>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </Reveal>
-                                <Reveal delay={120}>
-                                    <NoiseVsSignal />
-                                </Reveal>
-                            </div>
-                        </div>
-                    </section>
-
-                    {/* ---------- Características (bento) ---------- */}
-                    <section
-                        id="caracteristicas"
-                        className="scroll-mt-20 border-t border-border"
-                    >
-                        <div className="mx-auto max-w-6xl px-5 py-20 sm:px-8 lg:py-28">
-                            <Reveal>
-                                <h2 className="max-w-2xl text-2xl font-semibold tracking-tight text-balance sm:text-3xl">
-                                    Todo lo que necesitas para proteger tu flota
-                                </h2>
-                                <p className="mt-3 max-w-lg text-md leading-relaxed text-fg-2">
-                                    Una capa de criterio sobre tus dispositivos,
-                                    despierta solo cuando algo lo amerita.
-                                </p>
-                            </Reveal>
-                            <Reveal delay={100}>
-                                <FeatureBento />
-                            </Reveal>
-                        </div>
-                    </section>
-
-                    {/* ---------- Cómo funciona (pipeline) ---------- */}
-                    <section
-                        id="como-funciona"
-                        className="scroll-mt-20 border-t border-border bg-surface-3"
-                    >
-                        <div className="mx-auto max-w-6xl px-5 py-20 sm:px-8 lg:py-28">
-                            <Reveal>
-                                <p className="font-mono text-2xs font-semibold tracking-caps text-primary uppercase">
-                                    Cómo funciona
-                                </p>
-                                <h2 className="mt-4 max-w-2xl text-2xl font-semibold tracking-tight text-balance sm:text-3xl">
-                                    Simple. Automático. Verificado.
-                                </h2>
-                            </Reveal>
-                            <div className="mt-14 grid gap-px overflow-hidden rounded-xl border border-border bg-border md:grid-cols-5">
-                                {STEPS.map((step, i) => {
-                                    const StepIcon = step.icon;
-
-                                    return (
-                                        <Reveal
-                                            key={step.title}
-                                            delay={i * 70}
-                                            className="bg-surface-1"
-                                        >
-                                            <div className="flex h-full flex-col gap-3 p-6">
-                                                <div className="flex items-center justify-between">
-                                                    <span className="flex size-9 items-center justify-center rounded-md bg-primary/12 text-primary">
-                                                        <StepIcon
-                                                            className="size-4.5"
-                                                            strokeWidth={1.75}
-                                                        />
-                                                    </span>
-                                                    <span className="font-mono text-2xs text-fg-disabled">
-                                                        0{i + 1}
-                                                    </span>
-                                                </div>
-                                                <h3 className="text-base font-semibold text-fg-1">
-                                                    {step.title}
-                                                </h3>
-                                                <p className="text-sm leading-relaxed text-fg-3">
-                                                    {step.body}
-                                                </p>
-                                            </div>
-                                        </Reveal>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    </section>
-
-                    {/* ---------- Casos / ejemplos reales ---------- */}
-                    <section
-                        id="casos"
-                        className="scroll-mt-20 border-t border-border"
-                    >
-                        <div className="mx-auto max-w-6xl px-5 py-20 sm:px-8 lg:py-28">
-                            <Reveal>
-                                <h2 className="max-w-2xl text-2xl font-semibold tracking-tight text-balance sm:text-3xl">
-                                    Así responde SAM en cada situación
-                                </h2>
-                            </Reveal>
-                            <div className="mt-12 grid gap-5 md:grid-cols-3">
-                                {CASES.map((c, i) => (
-                                    <Reveal key={c.title} delay={i * 90}>
-                                        <CaseCard {...c} />
-                                    </Reveal>
-                                ))}
-                            </div>
-                        </div>
-                    </section>
-
-                    {/* ---------- Resultados / antes y después ---------- */}
-                    <section
-                        id="resultados"
-                        className="scroll-mt-20 border-t border-border bg-surface-3"
-                    >
-                        <div className="mx-auto max-w-6xl px-5 py-20 sm:px-8 lg:py-28">
-                            <div className="grid gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:items-center lg:gap-16">
-                                <Reveal>
-                                    <div>
-                                        <div className="text-[3.5rem] leading-none font-semibold tracking-tight text-primary tabular-nums">
-                                            80%
-                                        </div>
-                                        <p className="mt-3 max-w-xs text-md leading-relaxed text-fg-2">
-                                            menos falsas alarmas llegando a tu
-                                            equipo desde el primer día.
+                                        <item.icon
+                                            className="size-5 text-brand-teal"
+                                            strokeWidth={1.75}
+                                        />
+                                        <h3 className="mt-3 text-lg font-semibold tracking-tight">
+                                            {item.title}
+                                        </h3>
+                                        <p className="mt-1.5 text-base leading-relaxed text-brand-ink-2">
+                                            {item.body}
                                         </p>
-                                    </div>
-                                </Reveal>
-                                <Reveal delay={120}>
-                                    <BeforeAfter />
-                                </Reveal>
-                            </div>
+                                    </motion.li>
+                                ))}
+                            </ul>
                         </div>
                     </section>
 
-                    {/* ---------- Para quién ---------- */}
-                    <section className="border-t border-border">
-                        <div className="mx-auto max-w-6xl px-5 py-20 sm:px-8 lg:py-24">
-                            <Reveal>
-                                <div className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
-                                    <h2 className="text-2xl font-semibold tracking-tight text-balance sm:text-3xl">
-                                        Pensado para quien no puede permitirse
-                                        perder una emergencia
-                                    </h2>
-                                    <div className="flex flex-wrap gap-2.5">
-                                        {SEGMENTS.map((s) => (
-                                            <span
-                                                key={s}
-                                                className="rounded-full border border-border bg-surface-1 px-3.5 py-2 text-sm text-fg-2"
-                                            >
-                                                {s}
-                                            </span>
-                                        ))}
-                                    </div>
-                                </div>
-                            </Reveal>
-                        </div>
-                    </section>
-
-                    {/* ---------- CTA final ---------- */}
-                    <section className="border-t border-border bg-surface-3">
-                        <div className="mx-auto max-w-6xl px-5 py-24 sm:px-8 lg:py-32">
-                            <Reveal className="mx-auto max-w-2xl text-center">
-                                <h2 className="text-2xl font-semibold tracking-tight text-balance sm:text-3xl">
-                                    ¿Listo para proteger tu flota de verdad?
-                                </h2>
-                                <p className="mx-auto mt-4 max-w-md text-md leading-relaxed text-fg-2">
-                                    Te mostramos SAM con las alertas de tu
-                                    propia operación en una llamada de 30
-                                    minutos.
+                    {/* ---------- CTA ---------- */}
+                    <section className="bg-brand-mist">
+                        <div className="mx-auto max-w-7xl px-5 py-24 sm:px-8 lg:py-32">
+                            <h2 className="max-w-4xl text-4xl font-semibold tracking-poster text-balance lg:text-6xl">
+                                Tu próxima emergencia no debería depender de
+                                quién esté despierto.
+                            </h2>
+                            <div className="mt-12 flex flex-col gap-8 sm:flex-row sm:items-center sm:gap-12">
+                                <PrimaryButton href={DEMO_HREF} large>
+                                    Pedir una demo
+                                </PrimaryButton>
+                                <p className="max-w-sm text-base leading-relaxed text-brand-ink-2">
+                                    Te la mostramos con las alertas de tu propia
+                                    operación, en una llamada de 30 minutos.
                                 </p>
-                                <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-                                    <Button asChild size="lg">
-                                        <a href={DEMO_HREF}>
-                                            Solicitar demo
-                                            <ArrowRight strokeWidth={1.75} />
-                                        </a>
-                                    </Button>
-                                    {!auth.user && (
-                                        <Button
-                                            asChild
-                                            size="lg"
-                                            variant="outline"
-                                        >
-                                            <Link href={login()}>
-                                                Iniciar sesión
-                                            </Link>
-                                        </Button>
-                                    )}
-                                </div>
-                            </Reveal>
+                            </div>
                         </div>
                     </section>
                 </main>
 
-                {/* ---------- Footer ---------- */}
-                <footer className="border-t border-border">
-                    <div className="mx-auto max-w-6xl px-5 py-14 sm:px-8">
-                        <div className="grid gap-10 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
-                            <div>
-                                <div className="flex items-center gap-2.5">
-                                    <AppLogoIcon className="size-8" />
-                                    <span className="text-md font-semibold tracking-tight">
-                                        SAM
-                                    </span>
-                                </div>
-                                <p className="mt-4 max-w-xs text-sm leading-relaxed text-fg-3">
-                                    Sistema Automatizado de Monitoreo. Monitoreo
-                                    inteligente para tu flota.
-                                </p>
-                            </div>
-                            <FooterCol
-                                title="Producto"
-                                links={[
-                                    {
-                                        label: 'Características',
-                                        href: '#caracteristicas',
-                                    },
-                                    {
-                                        label: 'Cómo funciona',
-                                        href: '#como-funciona',
-                                    },
-                                    { label: 'Casos', href: '#casos' },
-                                    {
-                                        label: 'Resultados',
-                                        href: '#resultados',
-                                    },
-                                ]}
+                <footer className="bg-brand-paper">
+                    <div className="mx-auto flex max-w-7xl flex-col gap-6 px-5 py-10 text-sm text-brand-ink-3 sm:px-8 md:flex-row md:items-center md:justify-between">
+                        <div className="flex items-center gap-3">
+                            <img
+                                src="/images/brand/sam-emblem.png"
+                                alt=""
+                                className="size-7"
                             />
-                            <FooterCol
-                                title="Contacto"
-                                links={[
-                                    {
-                                        label: CONTACT_EMAIL,
-                                        href: `mailto:${CONTACT_EMAIL}`,
-                                    },
-                                    {
-                                        label: '+52 81 1765 8890',
-                                        href: 'tel:+528117658890',
-                                    },
-                                    { label: 'Nuevo León, México' },
-                                ]}
-                            />
-                            <FooterCol
-                                title="Acceso"
-                                links={[
-                                    { label: 'Iniciar sesión', href: '/login' },
-                                    {
-                                        label: 'Solicitar demo',
-                                        href: DEMO_HREF,
-                                    },
-                                ]}
-                            />
+                            <span>
+                                <span className="font-semibold text-brand-ink">
+                                    SAM
+                                </span>
+                                , Sistema Automatizado de Monitoreo. Nuevo León,
+                                México.
+                            </span>
                         </div>
-                        <div className="mt-12 border-t border-border pt-6 text-xs text-fg-disabled">
-                            © 2026 SAM, Sistema Automatizado de Monitoreo. Todos
-                            los derechos reservados.
+                        <div className="flex flex-wrap gap-x-6 gap-y-2">
+                            <a
+                                href={`mailto:${CONTACT_EMAIL}`}
+                                className="hover:text-brand-ink"
+                            >
+                                {CONTACT_EMAIL}
+                            </a>
+                            <a
+                                href="tel:+528117658890"
+                                className="hover:text-brand-ink"
+                            >
+                                {CONTACT_PHONE}
+                            </a>
+                            <Link
+                                href={login()}
+                                className="hover:text-brand-ink"
+                            >
+                                Entrar
+                            </Link>
                         </div>
                     </div>
                 </footer>
@@ -521,365 +424,249 @@ export default function Welcome() {
     );
 }
 
-/* ============================ Sub-components ============================ */
+/* ============================ Piezas ============================ */
 
-function HeroBackdrop() {
-    return (
-        <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-0 overflow-hidden"
-        >
-            <div className="absolute -top-40 left-1/2 size-[42rem] -translate-x-1/4 rounded-full bg-primary/10 blur-[120px]" />
-            <div
-                className="absolute inset-0 [background-image:linear-gradient(var(--border-strong)_1px,transparent_1px),linear-gradient(90deg,var(--border-strong)_1px,transparent_1px)] [background-size:64px_64px] opacity-[0.04]"
-                style={{
-                    maskImage:
-                        'radial-gradient(ellipse 80% 60% at 50% 0%, black, transparent)',
-                    WebkitMaskImage:
-                        'radial-gradient(ellipse 80% 60% at 50% 0%, black, transparent)',
-                }}
-            />
-        </div>
-    );
-}
-
-/* Real component vignette built from the actual SAM design system (StatusPill,
-   SeverityBadge). Not a faked screenshot, the genuine UI language. */
-function TriageVignette() {
-    return (
-        <div className="rounded-xl border border-border bg-surface-1 shadow-lg">
-            <div className="flex items-center justify-between border-b border-border px-4 py-3">
-                <div className="flex items-center gap-2 text-2xs font-medium tracking-label text-fg-3 uppercase">
-                    <Inbox className="size-3.5" strokeWidth={1.75} />
-                    Bandeja de incidentes
-                </div>
-                <span className="flex items-center gap-1.5 text-2xs text-fg-3">
-                    <span className="size-1.5 rounded-full bg-health-ok" />
-                    En vivo
-                </span>
-            </div>
-            <div className="divide-y divide-border">
-                <div className="bg-severity-critical-bg/40 px-4 py-3.5">
-                    <div className="flex items-center justify-between gap-3">
-                        <span className="text-sm font-semibold text-fg-1">
-                            Botón de pánico · Unidad 14
-                        </span>
-                        <SeverityBadge level="critical" />
-                    </div>
-                    <p className="mt-1.5 text-xs leading-relaxed text-fg-2">
-                        Conductor activó pánico en Av. Constitución. Video y
-                        ubicación confirmados. Llamando al operador.
-                    </p>
-                    <div className="mt-2.5 flex items-center gap-2">
-                        <StatusPill state="escalated" />
-                        <span className="flex items-center gap-1 text-2xs text-fg-3">
-                            <PhoneCall className="size-3" strokeWidth={1.75} />
-                            Llamada en curso
-                        </span>
-                    </div>
-                </div>
-                <div className="px-4 py-3.5 opacity-80">
-                    <div className="flex items-center justify-between gap-3">
-                        <span className="text-sm font-medium text-fg-2">
-                            Frenado brusco · Unidad 07
-                        </span>
-                        <SeverityBadge level="low" />
-                    </div>
-                    <div className="mt-2.5 flex items-center gap-2">
-                        <StatusPill state="discarded" />
-                        <span className="text-2xs text-fg-3">
-                            Sin riesgo. Documentado.
-                        </span>
-                    </div>
-                </div>
-                <div className="px-4 py-3.5 opacity-70">
-                    <div className="flex items-center justify-between gap-3">
-                        <span className="text-sm font-medium text-fg-2">
-                            Posible colisión · Unidad 22
-                        </span>
-                        <SeverityBadge level="medium" />
-                    </div>
-                    <div className="mt-2.5 flex items-center gap-2">
-                        <StatusPill state="in-progress" />
-                        <span className="text-2xs text-fg-3">
-                            Vigilando hasta confirmar.
-                        </span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-/* Signal-vs-noise illustration: most events are noise (muted), a few are real
-   (severity-colored). Communicates the core value prop visually. */
-function NoiseVsSignal() {
-    const REAL = new Set([23, 47, 71]);
-    const dots = Array.from({ length: 96 }, (_, i) => i);
-
-    return (
-        <div className="rounded-xl border border-border bg-surface-1 p-6">
-            <div className="grid grid-cols-12 gap-2.5">
-                {dots.map((i) => {
-                    const real = REAL.has(i);
-
-                    return (
-                        <span
-                            key={i}
-                            className={cn(
-                                'aspect-square rounded-full',
-                                real
-                                    ? 'bg-severity-critical'
-                                    : 'bg-border-strong/40',
-                            )}
-                        />
-                    );
-                })}
-            </div>
-            <div className="mt-5 flex items-center justify-between text-xs">
-                <span className="flex items-center gap-1.5 text-fg-3">
-                    <span className="size-2 rounded-full bg-border-strong/40" />
-                    Ruido filtrado
-                </span>
-                <span className="flex items-center gap-1.5 font-medium text-fg-1">
-                    <span className="size-2 rounded-full bg-severity-critical" />
-                    Emergencias reales
-                </span>
-            </div>
-        </div>
-    );
-}
-
-function FeatureBento() {
-    return (
-        <div className="mt-12 grid gap-px overflow-hidden rounded-xl border border-border bg-border md:grid-cols-3 md:grid-rows-2">
-            {/* Large lead cell */}
-            <div className="bg-surface-1 p-7 md:col-span-2 md:row-span-1">
-                <FeatureIcon icon={Search} />
-                <h3 className="mt-4 text-lg font-semibold text-fg-1">
-                    Investiga cada alerta por ti
-                </h3>
-                <p className="mt-2 max-w-md text-sm leading-relaxed text-fg-3">
-                    Cruza ubicación, historial del conductor y cámaras a bordo
-                    en segundos para entender qué pasó antes de molestarte.
-                </p>
-                <div className="mt-5 flex flex-wrap gap-2">
-                    <MiniChip icon={MapPin} label="Ubicación" />
-                    <MiniChip icon={Camera} label="Dashcam" />
-                    <MiniChip icon={Activity} label="Historial" />
-                </div>
-            </div>
-            {/* Multichannel */}
-            <div className="bg-surface-1 p-7">
-                <FeatureIcon icon={PhoneCall} />
-                <h3 className="mt-4 text-base font-semibold text-fg-1">
-                    Notificación multicanal
-                </h3>
-                <p className="mt-2 text-sm leading-relaxed text-fg-3">
-                    Llamada para emergencias, WhatsApp para lo importante, SMS
-                    de respaldo.
-                </p>
-                <div className="mt-4 flex gap-2 text-fg-2">
-                    <PhoneCall className="size-4" strokeWidth={1.75} />
-                    <MessageSquare className="size-4" strokeWidth={1.75} />
-                    <Radio className="size-4" strokeWidth={1.75} />
-                </div>
-            </div>
-            {/* Inbox with real status pills */}
-            <div className="bg-surface-1 p-7">
-                <FeatureIcon icon={Inbox} />
-                <h3 className="mt-4 text-base font-semibold text-fg-1">
-                    Bandeja por prioridad
-                </h3>
-                <p className="mt-2 text-sm leading-relaxed text-fg-3">
-                    Cada incidente clasificado por estado, listo para actuar.
-                </p>
-                <div className="mt-4 flex flex-wrap gap-1.5">
-                    <StatusPill state="escalated" />
-                    <StatusPill state="in-progress" />
-                    <StatusPill state="resolved" />
-                </div>
-            </div>
-            {/* Natural language */}
-            <div className="bg-surface-1 p-7">
-                <FeatureIcon icon={MessageSquare} />
-                <h3 className="mt-4 text-base font-semibold text-fg-1">
-                    Pregunta en lenguaje natural
-                </h3>
-                <p className="mt-2 text-sm leading-relaxed text-fg-3">
-                    "¿Dónde está la unidad 12?" y SAM responde al instante.
-                </p>
-            </div>
-            {/* Continuous watch */}
-            <div className="bg-surface-1 p-7">
-                <FeatureIcon icon={Eye} />
-                <h3 className="mt-4 text-base font-semibold text-fg-1">
-                    Vigilancia continua
-                </h3>
-                <p className="mt-2 text-sm leading-relaxed text-fg-3">
-                    Si algo no está claro, SAM sigue mirando hasta resolverlo.
-                </p>
-            </div>
-        </div>
-    );
-}
-
-function FeatureIcon({ icon: I }: { icon: typeof Search }) {
-    return (
-        <span className="flex size-10 items-center justify-center rounded-lg bg-primary/12 text-primary">
-            <I className="size-5" strokeWidth={1.75} />
-        </span>
-    );
-}
-
-function MiniChip({ icon: I, label }: { icon: typeof MapPin; label: string }) {
-    return (
-        <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface-2 px-2.5 py-1 text-2xs font-medium text-fg-2">
-            <I className="size-3.5" strokeWidth={1.75} />
-            {label}
-        </span>
-    );
-}
-
-const CASES = [
-    {
-        title: 'Botón de pánico',
-        severity: 'critical' as const,
-        status: 'escalated' as const,
-        body: 'Verifica ubicación y video, confirma con el operador y escala con una llamada en segundos.',
-        outcome: 'Llamada inmediata',
-        icon: PhoneCall,
-    },
-    {
-        title: 'Frenado brusco repetido',
-        severity: 'low' as const,
-        status: 'discarded' as const,
-        body: 'Revisa el contexto, concluye que no hay riesgo y lo descarta dejando el registro documentado.',
-        outcome: 'Sin interrumpir al turno',
-        icon: Check,
-    },
-    {
-        title: 'Posible colisión sin confirmar',
-        severity: 'medium' as const,
-        status: 'in-progress' as const,
-        body: 'Cuando la evidencia no es clara, SAM mantiene el caso abierto y sigue vigilando hasta confirmar.',
-        outcome: 'Seguimiento activo',
-        icon: Eye,
-    },
-];
-
-function CaseCard({
-    title,
-    severity,
-    status,
-    body,
-    outcome,
-    icon: I,
-}: (typeof CASES)[number]) {
-    return (
-        <div className="flex h-full flex-col rounded-xl border border-border bg-surface-1 p-6 transition-colors hover:border-border-strong">
-            <div className="flex items-center justify-between">
-                <SeverityBadge level={severity} />
-                <StatusPill state={status} />
-            </div>
-            <h3 className="mt-4 text-base font-semibold text-fg-1">{title}</h3>
-            <p className="mt-2 flex-1 text-sm leading-relaxed text-fg-3">
-                {body}
-            </p>
-            <div className="mt-5 flex items-center gap-2 border-t border-border pt-4 text-sm font-medium text-fg-2">
-                <I className="size-4 text-primary" strokeWidth={1.75} />
-                {outcome}
-            </div>
-        </div>
-    );
-}
-
-const BEFORE = [
-    'Cientos de avisos sin filtrar cada día',
-    'El turno decide qué revisar y qué ignorar',
-    'Emergencias que se descubren tarde',
-    'Equipo de monitoreo creciendo en costo',
-];
-
-const AFTER = [
-    'Solo las alertas que de verdad importan',
-    'Criterio consistente las 24 horas',
-    'Emergencias verificadas y escaladas al instante',
-    'El ruido descartado queda documentado',
-];
-
-function BeforeAfter() {
-    return (
-        <div className="grid gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-2">
-            <div className="bg-surface-1 p-6">
-                <h3 className="text-2xs font-semibold tracking-caps text-fg-3 uppercase">
-                    Sin SAM
-                </h3>
-                <ul className="mt-4 space-y-3">
-                    {BEFORE.map((b) => (
-                        <li
-                            key={b}
-                            className="flex gap-2.5 text-sm leading-relaxed text-fg-3"
-                        >
-                            <span className="mt-2 size-1.5 shrink-0 rounded-full bg-border-strong" />
-                            {b}
-                        </li>
-                    ))}
-                </ul>
-            </div>
-            <div className="bg-surface-1 p-6">
-                <h3 className="text-2xs font-semibold tracking-caps text-primary uppercase">
-                    Con SAM
-                </h3>
-                <ul className="mt-4 space-y-3">
-                    {AFTER.map((a) => (
-                        <li
-                            key={a}
-                            className="flex gap-2.5 text-sm leading-relaxed text-fg-1"
-                        >
-                            <Check
-                                className="mt-0.5 size-4 shrink-0 text-health-ok"
-                                strokeWidth={2}
-                            />
-                            {a}
-                        </li>
-                    ))}
-                </ul>
-            </div>
-        </div>
-    );
-}
-
-function FooterCol({
-    title,
-    links,
+function Header({
+    authed,
+    dashboardUrl,
 }: {
-    title: string;
-    links: { label: string; href?: string }[];
+    authed: boolean;
+    dashboardUrl: ReturnType<typeof dashboard> | string;
 }) {
     return (
-        <div>
-            <h3 className="text-2xs font-semibold tracking-caps text-fg-3 uppercase">
-                {title}
-            </h3>
-            <ul className="mt-4 space-y-2.5">
-                {links.map((link) => (
-                    <li key={link.label}>
-                        {link.href ? (
-                            <a
-                                href={link.href}
-                                className="text-sm text-fg-2 transition-colors hover:text-fg-1"
+        <header className="sticky top-0 z-40 border-b border-brand-line/70 bg-brand-paper/80 backdrop-blur-md">
+            <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 sm:px-8">
+                <a
+                    href="#copiloto"
+                    className="flex items-center gap-2.5"
+                    aria-label="SAM, inicio"
+                >
+                    <img
+                        src="/images/brand/sam-emblem.png"
+                        alt=""
+                        className="size-8"
+                    />
+                    <span className="text-lg font-semibold tracking-tight">
+                        SAM
+                    </span>
+                </a>
+                <nav className="hidden items-center gap-8 lg:flex">
+                    {NAV_LINKS.map((link) => (
+                        <a
+                            key={link.href}
+                            href={link.href}
+                            className="text-base text-brand-ink-2 transition-colors hover:text-brand-ink"
+                        >
+                            {link.label}
+                        </a>
+                    ))}
+                </nav>
+                <div className="flex items-center gap-5">
+                    {authed ? (
+                        <PrimaryButton href={dashboardUrl} inertia>
+                            Ir al panel
+                        </PrimaryButton>
+                    ) : (
+                        <>
+                            <Link
+                                href={login()}
+                                className="hidden text-base text-brand-ink-2 hover:text-brand-ink sm:inline"
                             >
-                                {link.label}
-                            </a>
-                        ) : (
-                            <span className="text-sm text-fg-3">
-                                {link.label}
-                            </span>
-                        )}
-                    </li>
+                                Entrar
+                            </Link>
+                            <PrimaryButton href={DEMO_HREF}>
+                                Pedir una demo
+                            </PrimaryButton>
+                        </>
+                    )}
+                </div>
+            </div>
+        </header>
+    );
+}
+
+function HeroCopy({ authed }: { authed: boolean }) {
+    const reduce = useReducedMotion();
+    const lines = ['Pregúntale', 'a tu flota.'];
+
+    return (
+        <div className="min-w-0">
+            <h1 className="text-5xl font-semibold tracking-poster sm:text-6xl">
+                {lines.map((line, i) => (
+                    <span key={line} className="block overflow-hidden pb-2">
+                        <motion.span
+                            className="block"
+                            initial={reduce ? false : { y: '105%' }}
+                            animate={{ y: 0 }}
+                            transition={{
+                                duration: 0.9,
+                                delay: 0.05 + i * 0.1,
+                                ease: EASE,
+                            }}
+                        >
+                            {line}
+                        </motion.span>
+                    </span>
                 ))}
-            </ul>
+            </h1>
+            <motion.p
+                className="mt-6 max-w-md text-lg leading-relaxed text-brand-ink-2"
+                initial={reduce ? false : { opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.7, delay: 0.3, ease: EASE }}
+            >
+                SAM vigila tus unidades día y noche, investiga cada alerta y te
+                responde con los datos reales de tu operación.
+            </motion.p>
+            <motion.div
+                className="mt-10 flex flex-wrap items-center gap-6"
+                initial={reduce ? false : { opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.7, delay: 0.4, ease: EASE }}
+            >
+                {!authed && (
+                    <PrimaryButton href={DEMO_HREF} large>
+                        Pedir una demo
+                    </PrimaryButton>
+                )}
+                <a
+                    href="#guardia"
+                    className="text-md font-medium text-brand-petrol underline decoration-brand-teal/40 underline-offset-4 transition-colors hover:decoration-brand-teal"
+                >
+                    Ver una noche con SAM
+                </a>
+            </motion.div>
+        </div>
+    );
+}
+
+function PrimaryButton({
+    href,
+    children,
+    large,
+    inertia,
+}: {
+    href: ReturnType<typeof dashboard> | string;
+    children: ReactNode;
+    large?: boolean;
+    inertia?: boolean;
+}) {
+    const className = cn(
+        'inline-flex items-center justify-center rounded-full bg-brand-teal font-medium whitespace-nowrap text-white shadow-[0_8px_20px_-8px_rgba(0,128,159,0.6)] transition-[background-color,transform] duration-200 hover:bg-brand-petrol focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-teal active:scale-[0.97]',
+        large ? 'h-12 px-7 text-md' : 'h-10 px-5 text-base',
+    );
+
+    return inertia ? (
+        <Link href={href} className={className}>
+            {children}
+        </Link>
+    ) : (
+        <a
+            href={typeof href === 'string' ? href : href.url}
+            className={className}
+        >
+            {children}
+        </a>
+    );
+}
+
+/* Los cuatro pasos son una secuencia real, así que van numerados y unidos por
+   una ruta que se dibuja al entrar en pantalla. */
+function DecisionPath() {
+    const reduce = useReducedMotion();
+
+    return (
+        <div className="relative mt-16">
+            <svg
+                aria-hidden="true"
+                viewBox="0 0 1000 40"
+                preserveAspectRatio="none"
+                className="absolute top-6 left-[12.5%] hidden h-10 w-[75%] -translate-y-1/2 lg:block"
+            >
+                <motion.path
+                    d="M0,20 C120,4 210,36 333,20 S546,4 666,20 S880,36 1000,20"
+                    fill="none"
+                    stroke="var(--color-brand-teal)"
+                    strokeWidth={2}
+                    strokeDasharray="1 0"
+                    vectorEffect="non-scaling-stroke"
+                    initial={reduce ? false : { pathLength: 0 }}
+                    whileInView={{ pathLength: 1 }}
+                    viewport={{ once: true, amount: 0.6 }}
+                    transition={{ duration: 1.6, ease: EASE }}
+                />
+            </svg>
+            <ol className="relative grid gap-12 sm:grid-cols-2 lg:grid-cols-4 lg:gap-8">
+                {STEPS.map((step, i) => (
+                    <motion.li
+                        key={step.title}
+                        className="lg:text-center"
+                        initial={reduce ? false : { opacity: 0, y: 16 }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                        viewport={{ once: true, amount: 0.6 }}
+                        transition={{
+                            duration: 0.6,
+                            delay: 0.15 + i * 0.28,
+                            ease: EASE,
+                        }}
+                    >
+                        <span className="relative inline-grid size-12 place-items-center rounded-full border border-brand-line bg-white text-brand-teal shadow-sm">
+                            <step.icon className="size-5" strokeWidth={1.75} />
+                            <span className="absolute -top-1 -right-1 grid size-5 place-items-center rounded-full bg-brand-ink text-2xs font-semibold text-white">
+                                {i + 1}
+                            </span>
+                        </span>
+                        <h3 className="mt-5 text-xl font-semibold tracking-tight">
+                            {step.title}
+                        </h3>
+                        <p className="mt-2 text-base leading-relaxed text-brand-ink-2 lg:mx-auto lg:max-w-[16rem]">
+                            {step.body}
+                        </p>
+                    </motion.li>
+                ))}
+            </ol>
+        </div>
+    );
+}
+
+/* Única marquesina de la página: dos filas en sentidos opuestos, para dar
+   la sensación de amplitud sin pedir atención a cada pregunta. */
+function QuestionDrift() {
+    const half = Math.ceil(QUESTIONS.length / 2);
+    const rows = [QUESTIONS.slice(0, half), QUESTIONS.slice(half)];
+
+    return (
+        <div className="sam-marquee-wrap mt-14 space-y-3 [mask-image:linear-gradient(to_right,transparent,black_6%,black_94%,transparent)]">
+            {rows.map((row, r) => (
+                <ul
+                    key={r}
+                    className={cn(
+                        'sam-marquee flex w-max gap-3 motion-reduce:w-auto motion-reduce:flex-wrap motion-reduce:px-5',
+                        r === 1 && '[animation-direction:reverse]',
+                    )}
+                >
+                    {[...row, ...row].map((q, i) => (
+                        <li
+                            key={`${q}-${i}`}
+                            aria-hidden={i >= row.length}
+                            className="rounded-full border border-brand-line bg-brand-paper px-5 py-3 text-md whitespace-nowrap text-brand-ink-2 motion-reduce:[&:nth-child(n+7)]:hidden"
+                        >
+                            {q}
+                        </li>
+                    ))}
+                </ul>
+            ))}
+        </div>
+    );
+}
+
+function Notice({ title, children }: { title: string; children: ReactNode }) {
+    return (
+        <div>
+            <dt className="text-lg font-semibold">{title}</dt>
+            <dd className="mt-1.5 text-base leading-relaxed text-brand-ink-2">
+                {children}
+            </dd>
         </div>
     );
 }

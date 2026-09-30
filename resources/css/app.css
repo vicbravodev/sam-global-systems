@@ -51,8 +51,18 @@
     --text-2xl--line-height: var(--line-tight);
     --text-3xl: 36px;
     --text-3xl--line-height: var(--line-tight);
+    /* Display sizes — marketing surfaces only (landing). The product UI stops
+       at 3xl. */
+    --text-4xl: 46px;
+    --text-4xl--line-height: 1.06;
+    --text-5xl: 64px;
+    --text-5xl--line-height: 1;
+    --text-6xl: 88px;
+    --text-6xl--line-height: 1;
 
     /* Tracking */
+    --tracking-display: -0.032em;
+    --tracking-poster: -0.045em;
     --tracking-tight: -0.01em;
     --tracking-normal: 0;
     --tracking-label: 0.02em;
@@ -61,6 +71,31 @@
     /* Motion — strong curves; built-in CSS easings are too weak */
     --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
     --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+    /* Commercial brand palette (samglobaltechnologies.com + logo). Landing
+       only; the product UI keeps its operational palette. */
+    --color-brand-ink: #031826;
+    --color-brand-ink-2: #3a5464;
+    --color-brand-ink-3: #5f7485;
+    --color-brand-petrol: #005e7d;
+    --color-brand-teal: #00809f;
+    --color-brand-aqua: #24b6a1;
+    --color-brand-mist: #e4f2f6;
+    --color-brand-paper: #f5f9fa;
+    --color-brand-line: #d3e2e8;
+    --color-brand-night: #04141f;
+    --color-brand-alert: #d10011;
+    --color-brand-high: #e0701a;
+    --color-brand-high-ink: #b4530b;
+    --color-brand-medium: #d9a404;
+    --color-brand-medium-ink: #8a6700;
+    --color-brand-reply: #d6f3ec;
+    --color-night-surface: #061c2a;
+    --color-night-fg: #dbe8ee;
+    --color-night-muted: #a3bfcc;
+    --color-night-faint: #7fa3b3;
+    --color-night-alert: #ff5b63;
+    --color-night-alert-soft: #ffd0d3;
 
     /* shadcn surface mappings */
     --color-background: var(--background);
@@ -170,7 +205,11 @@
 }
 
 /* -------------------- Root tokens (LIGHT) -------------------- */
-:root {
+/* `.theme-light` re-declares the light tokens on a subtree, so a surface that
+   is always light (the public landing) renders DS components in light even
+   when <html> carries `.dark`. */
+:root,
+.theme-light {
     /* Base surfaces (OKLCH, neutral grays — warm-leaning by 2°) */
     --background: oklch(0.985 0.002 260);
     --foreground: oklch(0.145 0.005 260);
@@ -576,6 +615,27 @@
     40% {
         opacity: 1;
         transform: translateY(-2px);
+    }
+}
+
+/* -------------------- Landing (pages/welcome, components/landing) -------------------- */
+/* Every animation here is decorative-to-explanatory and collapses to its end
+   state under prefers-reduced-motion. */
+@keyframes sam-marquee {
+    to {
+        transform: translateX(-50%);
+    }
+}
+.sam-marquee {
+    animation: sam-marquee 48s linear infinite;
+}
+.sam-marquee-wrap:hover .sam-marquee {
+    animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sam-marquee {
+        animation: none;
     }
 }
 

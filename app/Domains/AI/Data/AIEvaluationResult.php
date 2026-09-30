@@ -12,6 +12,7 @@ final readonly class AIEvaluationResult
     /**
      * @param  array<int, string>  $reasoningSteps
      * @param  array<string, mixed>  $keyFactors
+     * @param  string|null  $recommendedAction  Acción concreta en español que el agente propone al operador; null si no la dio.
      */
     public function __construct(
         public EventClassification $classification,
@@ -25,6 +26,7 @@ final readonly class AIEvaluationResult
         public int $outputTokens,
         public int $latencyMs,
         public float $costEstimate,
+        public ?string $recommendedAction = null,
     ) {}
 
     public function totalTokens(): int

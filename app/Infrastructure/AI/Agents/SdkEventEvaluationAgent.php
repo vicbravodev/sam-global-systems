@@ -61,6 +61,7 @@ class SdkEventEvaluationAgent implements EventEvaluationAgent
                 $response->meta?->model,
                 $response->usage,
             ),
+            recommendedAction: is_string($structured['recommended_action'] ?? null) ? $structured['recommended_action'] : null,
         );
     }
 

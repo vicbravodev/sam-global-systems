@@ -46,6 +46,8 @@ class RefreshContextMediaSnapshot
                 // Re-read from the prior signals so an async media refresh
                 // never flips the resolution flag computed at build time.
                 'is_resolved' => ($snapshot->signals_json['external_resolved'] ?? false) === true ? true : null,
+                'asset_resolved' => ($snapshot->signals_json['asset_unresolved'] ?? false) !== true,
+                'asset_unresolved_reason' => $snapshot->signals_json['asset_unresolved_reason'] ?? null,
             ],
         ]);
 

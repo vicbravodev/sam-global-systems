@@ -37,17 +37,30 @@ prose, no Markdown, no explanation outside the JSON) with this shape:
     "risk_score_delta": number between -1 and 1,
     "explanation_summary": string (one sentence, IN SPANISH),
     "reasoning_steps": array of short strings (IN SPANISH),
-    "key_factors": array of {"name": string, "value": string}
+    "key_factors": array of {"name": string, "value": string},
+    "recommended_action": string (one imperative sentence, IN SPANISH)
 }
 
 LANGUAGE — MANDATORY: every human-readable text you produce
 (`explanation_summary` and every item of `reasoning_steps`) MUST be written in
-natural Spanish (español de México), never English. Be concrete about what
+natural Spanish (español de México), never English (this includes
+`recommended_action`). Be concrete about what
 actually happened, citing the telemetry you were given instead of generic
 labels — e.g. "Exceso de velocidad: 119 km/h en zona de 110 km/h, sin
 evidencia contradictoria" rather than "Speeding violation". The `classification`
 enum values and the `name` of each key factor stay exactly as machine
 identifiers (snake_case, English); only the free-text fields are translated.
+
+RECOMMENDED ACTION — MANDATORY: `recommended_action` is the ONE concrete
+next step the monitoring operator should take now, as a single imperative
+sentence in Spanish (max ~200 characters), coherent with your classification
+and the event's risk. Name who to contact and what to do, citing the context
+when useful — e.g. "Llamar al operador y despachar apoyo a la última ubicación
+conocida" for a real panic, "Verificar con el operador la manipulación de la
+cámara y revisar la ubicación de la unidad" for tampering, "Descartar como
+falsa alarma y documentar el motivo" for a false positive, "Esperar el video y
+revisarlo antes de decidir" for pending evidence. Never leave it empty and
+never answer with a generic label such as "revisar" alone.
 
 INPUT FIELDS — what each block of the JSON means:
 - `normalized_event`: `type_code` / `type_name` (what the provider reported),
@@ -70,7 +83,8 @@ INPUT FIELDS — what each block of the JSON means:
   `flags`). A high priority_score or risk_level is strong prior evidence.
 - `context_signals`: boolean signals (external_resolved, parked_at_base,
   is_in_sensitive_geofence, outside_operating_hours, harsh_driving_near_event,
-  video_pending, no_media_available, gps_lost_in_motion, …).
+  video_pending, no_media_available, gps_lost_in_motion, asset_unresolved, …)
+  plus `asset_unresolved_reason` (string or null, see UNKNOWN UNIT below).
 - `recent_history`: counts of recent events around the event window.
 - `recent_history.operator_feedback` (only on re-evaluations): human input
   on this event — `operator_verdicts` (a monitoring operator marked a previous
@@ -120,6 +134,20 @@ true (media actually pending), and it is never the final state for a critical
 event — for a critical event with pending media choose "real_event" or
 "unclear" and mention the pending media in `reasoning_steps`. Duplicates are
 handled upstream: use "duplicate" only when the payload explicitly shows it.
+
+UNKNOWN UNIT: `context_signals.asset_unresolved` = true means the event could
+not be linked to any unit of this tenant, so `asset` is empty. The reason is in
+`context_signals.asset_unresolved_reason`: "unknown_external_id" (the provider
+sent a vehicle id this tenant has not registered — e.g. a unit not synced yet),
+"no_vehicle_in_payload" (the provider sent no vehicle at all) or
+"foreign_asset_rejected" (the id belongs to another account and was rejected
+for isolation — never speculate about that other account). An unknown unit is
+NOT benign evidence: it never downgrades an emergency — a panic from an
+unknown unit is still presumed real, keep "real_event" or "unclear" and do not
+lower confidence or risk because of it. Always mention it in
+`reasoning_steps` as a possible configuration error (unidad sin registrar o
+mal vinculada) and say the operator should check the unit's setup in the
+integration.
 
 CONFIDENCE CALIBRATION: `confidence_score` is how sure you are of the
 classification, not how severe the event is. Use 0.9+ only when several
@@ -186,6 +214,7 @@ INSTRUCTIONS;
                 'name' => $schema->string()->required(),
                 'value' => $schema->string()->required(),
             ]))->required(),
+            'recommended_action' => $schema->string()->description('Una oración imperativa en español: la siguiente acción concreta del operador de monitoreo.')->required(),
         ];
     }
 }
