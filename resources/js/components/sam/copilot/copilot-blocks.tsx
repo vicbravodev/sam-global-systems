@@ -630,7 +630,17 @@ function isVideo(item: MediaItem): boolean {
 }
 
 function MediaCard({ block }: { block: MediaBlock }) {
-    const [active, setActive] = useState<MediaItem>(block.items[0]);
+    // By id, not by object: the stored answer may bring fresh item objects
+    // (same card, same key) and the selection must survive that.
+    const [activeId, setActiveId] = useState<number | null>(
+        block.items[0]?.id ?? null,
+    );
+    const active =
+        block.items.find((item) => item.id === activeId) ?? block.items[0];
+
+    if (!active) {
+        return null;
+    }
 
     return (
         <Card>
@@ -652,6 +662,7 @@ function MediaCard({ block }: { block: MediaBlock }) {
                             src={active.url}
                             poster={active.thumbnailUrl ?? undefined}
                             controls
+                            playsInline
                             preload="metadata"
                             className="aspect-video w-full"
                         />
@@ -660,6 +671,7 @@ function MediaCard({ block }: { block: MediaBlock }) {
                             key={active.id}
                             src={active.url}
                             alt={active.eventType ?? 'Snapshot de cámara'}
+                            decoding="async"
                             className="aspect-video w-full object-contain"
                         />
                     )
@@ -701,27 +713,18 @@ function MediaCard({ block }: { block: MediaBlock }) {
                         <button
                             key={item.id}
                             type="button"
-                            onClick={() => setActive(item)}
+                            onClick={() => setActiveId(item.id)}
+                            aria-pressed={item.id === active.id}
                             className={cn(
-                                'relative grid h-12 w-20 shrink-0 cursor-pointer place-items-center overflow-hidden rounded-sm border bg-surface-3 text-fg-3',
+                                'relative grid aspect-video w-20 shrink-0 cursor-pointer place-items-center overflow-hidden rounded-sm border bg-surface-3 text-fg-3 transition-transform duration-(--motion-fast) ease-(--ease-out) active:scale-97',
                                 item.id === active.id
                                     ? 'border-primary ring-2 ring-primary/30'
                                     : 'border-border hover:border-border-strong',
                             )}
                             aria-label={`Ver ${item.eventType ?? 'media'}`}
                         >
-                            {item.thumbnailUrl ? (
-                                <img
-                                    src={item.thumbnailUrl}
-                                    alt=""
-                                    className="absolute inset-0 h-full w-full object-cover"
-                                />
-                            ) : isVideo(item) ? (
-                                <Film className="size-4" />
-                            ) : (
-                                <ImageIcon className="size-4" />
-                            )}
-                            <span className="absolute right-0.5 bottom-0.5 rounded-sm bg-black/70 px-1 font-mono text-[9px] text-white">
+                            <MediaThumb item={item} />
+                            <span className="absolute right-0.5 bottom-0.5 rounded-sm bg-black/70 px-1 font-mono text-3xs text-white">
                                 {timeOfDay(item.capturedAt)}
                             </span>
                         </button>
@@ -729,6 +732,63 @@ function MediaCard({ block }: { block: MediaBlock }) {
                 </div>
             )}
         </Card>
+    );
+}
+
+/**
+ * Real thumbnail of a carousel item: the signed snapshot / clip thumbnail
+ * when the server sends one, else the clip's own first frame (metadata
+ * only, muted), else the type icon.
+ */
+function MediaThumb({ item }: { item: MediaItem }) {
+    const [failed, setFailed] = useState(false);
+
+    if (item.thumbnailUrl && !failed) {
+        return (
+            <img
+                src={item.thumbnailUrl}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                onError={() => setFailed(true)}
+                className="absolute inset-0 size-full object-cover"
+            />
+        );
+    }
+
+    if (isVideo(item) && item.url && !failed) {
+        return (
+            <video
+                // `#t` asks for a frame past the (often black) first one.
+                src={`${item.url}#t=0.5`}
+                preload="metadata"
+                muted
+                playsInline
+                tabIndex={-1}
+                aria-hidden
+                onError={() => setFailed(true)}
+                className="pointer-events-none absolute inset-0 size-full object-cover"
+            />
+        );
+    }
+
+    if (!isVideo(item) && item.url && !failed) {
+        return (
+            <img
+                src={item.url}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                onError={() => setFailed(true)}
+                className="absolute inset-0 size-full object-cover"
+            />
+        );
+    }
+
+    return isVideo(item) ? (
+        <Film className="size-4" />
+    ) : (
+        <ImageIcon className="size-4" />
     );
 }
 
