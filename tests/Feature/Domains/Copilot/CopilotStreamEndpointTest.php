@@ -5,9 +5,12 @@ namespace Tests\Feature\Domains\Copilot;
 use App\Domains\Copilot\Models\CopilotConversation;
 use App\Domains\Copilot\Models\CopilotMessage;
 use App\Infrastructure\AI\Agents\CopilotAgent;
+use App\Support\TenantContext;
 use Database\Seeders\AccessSeeder;
 use Database\Seeders\AIMeterSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Context;
 use Laravel\Ai\Gateway\StepResponse;
 use Laravel\Ai\Responses\Data\FinishReason;
 use Laravel\Ai\Responses\Data\Meta;
@@ -108,6 +111,40 @@ class CopilotStreamEndpointTest extends TestCase
         $this->assertSystemNotLogged('copilot.turn.failed');
         $this->assertNoSensitiveDataLogged();
         $this->assertQuestionNeverLogged($question);
+    }
+
+    public function test_stream_consumed_outside_any_tenant_context_stores_the_answer_under_the_team(): void
+    {
+        [$user, $team] = $this->memberWithRole('supervisor');
+        [, $other] = $this->memberWithRole('supervisor');
+        $this->truckWithTelemetry($team);
+        $this->truckWithTelemetry($other, 'T777');
+
+        CopilotAgent::fake([
+            new ToolCall('c1', 'asset_location', ['asset_code' => 'T555']),
+            new TextResponse('T555 va en ruta.', new TextUsage(inputTokens: 10, outputTokens: 5), new Meta('openai', 'gpt-test')),
+        ]);
+
+        $response = $this->streamAs($user, $team->slug, ['content' => '¿Dónde está T555?']);
+
+        // The body runs after the controller returned (TestResponse reads it lazily, like
+        // php-fpm sending it): drop the tenant the middleware set and the session user, so
+        // the stream can only rely on its own TenantContext::for(team) wrappers.
+        Context::flush();
+        Auth::forgetGuards();
+        $this->assertNull(TenantContext::id());
+
+        $parts = $this->parts($response);
+
+        $answerId = $this->firstPart($parts, 'data-copilot-message')['data']['answer']['id'];
+        $answer = CopilotMessage::withoutGlobalScopes()->findOrFail($answerId);
+        $this->assertSame($team->id, $answer->team_id);
+        $this->assertSame($team->id, CopilotConversation::withoutGlobalScopes()->findOrFail($answer->copilot_conversation_id)->team_id);
+        $this->assertSame(0, CopilotMessage::withoutGlobalScopes()->where('team_id', $other->id)->count());
+        $this->assertStringNotContainsString('T777', $response->streamedContent());
+
+        // The stream leaves no tenant behind for whatever the worker runs next.
+        $this->assertNull(TenantContext::id());
     }
 
     public function test_persisted_answer_joins_the_text_of_every_step(): void
