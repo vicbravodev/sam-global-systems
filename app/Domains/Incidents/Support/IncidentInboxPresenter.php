@@ -417,7 +417,7 @@ class IncidentInboxPresenter
     {
         $type = match ($entry->entry_type) {
             TimelineEntryType::Created, TimelineEntryType::Escalated => 'critical',
-            TimelineEntryType::SlaBreached => 'sla',
+            TimelineEntryType::SlaBreached, TimelineEntryType::LateArrival => 'sla',
             TimelineEntryType::MediaAssessed => 'media',
             TimelineEntryType::Resolved,
             TimelineEntryType::ExternallyResolved,
@@ -491,6 +491,8 @@ class IncidentInboxPresenter
             TimelineEntryType::EventLinked => 'Evento vinculado',
             TimelineEntryType::MediaAssessed => 'Media evaluada',
             TimelineEntryType::VerificationCall => 'Llamada de verificación',
+            // El writer (CreateIncidentFromEvent) ya guarda el título en español.
+            TimelineEntryType::LateArrival => (string) ($entry->title ?? 'Evento recibido con retraso'),
             default => null,
         };
 
