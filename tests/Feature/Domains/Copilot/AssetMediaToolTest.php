@@ -114,6 +114,8 @@ class AssetMediaToolTest extends TestCase
 
         $this->assertSame(2, $result->facts['assessed_count']);
         $this->assertContains('Unidad detenida dentro de un taller techado.', array_column($result->facts['items'], 'ai_saw'));
+        // The model gets the Spanish verdict, never the enum code.
+        $this->assertEqualsCanonicalizing(['Contradice el evento', 'No concluyente'], array_column($result->facts['items'], 'ai_verdict'));
         $this->assertCount(1, $result->sources);
     }
 

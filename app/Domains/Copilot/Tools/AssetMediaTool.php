@@ -98,6 +98,7 @@ final class AssetMediaTool implements CopilotTool
                 'incident' => $incident?->reference(),
                 'incidentHref' => $incident ? CopilotPresenter::incidentHref($context->teamSlug, (int) $incident->id) : null,
                 'aiVerdict' => $verdict?->result?->value,
+                'aiVerdictLabel' => $verdict?->result?->label(),
                 'aiSummary' => $verdict?->summary_text,
             ];
         }, $entries);
@@ -144,7 +145,7 @@ final class AssetMediaTool implements CopilotTool
                     'captured_at' => $item['capturedAt'],
                     'event' => $item['eventType'],
                     'incident' => $item['incident'],
-                    'ai_verdict' => $item['aiVerdict'],
+                    'ai_verdict' => $item['aiVerdictLabel'],
                     'ai_saw' => $item['aiSummary'],
                 ], $items),
                 'assessed_count' => count(array_filter($items, fn (array $item): bool => $item['aiVerdict'] !== null)),
