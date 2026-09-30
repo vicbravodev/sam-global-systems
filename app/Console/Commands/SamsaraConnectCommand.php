@@ -23,7 +23,7 @@ class SamsaraConnectCommand extends Command
 {
     protected $signature = 'samsara:connect
         {token : Samsara API token}
-        {--team= : Team id (defaults to the first team)}
+        {--team= : Team id (required: a tenant is never guessed)}
         {--name=Samsara : Display name for the integration}
         {--webhook : Also create a webhook endpoint and print its URL}
         {--secret= : Samsara-generated webhook Signing Secret to store for HMAC verification}';
@@ -32,10 +32,19 @@ class SamsaraConnectCommand extends Command
 
     public function handle(TestIntegrationConnection $testConnection): int
     {
-        $team = $this->resolveTeam();
+        $teamId = $this->option('team');
+
+        // Escribe credenciales de un tenant: nunca adivinar cuál.
+        if ($teamId === null || $teamId === '') {
+            $this->error('The --team option is required (team id). Refusing to guess a tenant.');
+
+            return self::FAILURE;
+        }
+
+        $team = Team::query()->find($teamId);
 
         if (! $team) {
-            $this->error('No team found. Create a team/user first (e.g. php artisan migrate:fresh --seed).');
+            $this->error("Team #{$teamId} not found.");
 
             return self::FAILURE;
         }
@@ -86,7 +95,7 @@ class SamsaraConnectCommand extends Command
             // via the API/dashboard), so the real signing secret must be copied
             // back into SAM. Use --secret=... once the webhook exists in Samsara.
             if ($secret = $this->option('secret')) {
-                $endpoint->update(['secret' => (string) $secret]);
+                $endpoint->forceFill(['secret' => (string) $secret, 'secret_configured_at' => now()])->save();
             }
 
             $url = route('webhooks.handle', ['endpoint_url' => $endpoint->url]);
@@ -99,8 +108,8 @@ class SamsaraConnectCommand extends Command
             $this->line('     it in SAM: re-run with --webhook --secret="<samsara-secret-key>".');
 
             if (! $this->option('secret')) {
-                $this->warn('  No --secret provided yet: HMAC verification will fail until the real');
-                $this->warn('  Samsara Secret Key is stored. SAM verifies X-Samsara-Signature');
+                $this->warn('  No --secret provided yet: every webhook is rejected (secret_not_configured)');
+                $this->warn('  until the real Samsara Secret Key is stored. SAM verifies X-Samsara-Signature');
                 $this->warn('  (v1=<hmac>) + X-Samsara-Timestamp on every event.');
             } else {
                 $this->info('  ✓ Stored Samsara Secret Key for HMAC verification.');
@@ -108,16 +117,5 @@ class SamsaraConnectCommand extends Command
         }
 
         return $result['success'] ? self::SUCCESS : self::FAILURE;
-    }
-
-    private function resolveTeam(): ?Team
-    {
-        $teamId = $this->option('team');
-
-        if ($teamId) {
-            return Team::find($teamId);
-        }
-
-        return Team::query()->orderBy('id')->first();
     }
 }
