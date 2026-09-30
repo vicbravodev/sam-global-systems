@@ -197,6 +197,7 @@ Lo emite `App\Support\DeniedRequestLog` (outcome `degraded`); sólo la plantilla
 | `context.media.auto_request_skipped` | skipped | `normalized_event_missing`, `not_critical`, `setting_disabled` | `snapshot_id` o `normalized_event_id`; `severity_code`; `setting_key` |
 | `context.media.request_reused` | skipped | `request_in_flight` | `normalized_event_id`, `request_type`, `sweep_only`; result `event_media_request_id`, `status` |
 | `context.media.requested` | ok | | `normalized_event_id`, `request_type`, `sweep_only`; calc `expires_in_hours`; result `event_media_request_id` |
+| `context.media.url_unavailable` | degraded | `signing_failed` | `event_media_context_id`, `normalized_event_id`, `error`. La galería (detalle, panel de la bandeja, Copilot) no pudo firmar la URL temporal del archivo en storage: esa media se muestra sin vista previa |
 | `context.usage.not_metered` | degraded | `meter_missing` | `meter_code`, `event_media_request_id`; hueco de facturación |
 | `context.usage.recorded` | ok | | `meter_code`, `event_media_request_id` |
 

@@ -187,6 +187,84 @@ class IncidentDetailPageTest extends TestCase
         $response->assertJsonPath('mediaSummary.assessed', 0);
     }
 
+    /**
+     * A panic lands a photo and a clip per camera; the vision pipeline cuts
+     * frames out of the clip. People must see 1 photo + 1 clip (with the first
+     * frame as the clip's preview), not "3 imágenes" and a blank clip box.
+     *
+     * @return array{0: Incident, 1: EventMediaContext, 2: EventMediaContext, 3: EventMediaContext}
+     */
+    private function makePanicMediaSet(): array
+    {
+        [$incident, $event] = $this->makeIncidentWithEvent();
+
+        $media = fn (array $attributes): EventMediaContext => EventMediaContext::factory()->create([
+            'team_id' => $this->team->id,
+            'normalized_event_id' => $event->id,
+            ...$attributes,
+        ]);
+
+        $clip = $media(['media_type' => 'clip', 'mime_type' => 'video/mp4', 'media_url' => 'https://media.example.test/road.mp4']);
+        $photo = $media(['media_type' => 'snapshot', 'mime_type' => 'image/jpeg', 'media_url' => 'https://media.example.test/road.jpg']);
+        $media([
+            'media_type' => 'snapshot',
+            'media_url' => 'https://media.example.test/road-frame-1.jpg',
+            'metadata_json' => ['source' => 'video_frame', 'parent_media_context_id' => $clip->id, 'offset_seconds' => 15],
+        ]);
+        $firstFrame = $media([
+            'media_type' => 'snapshot',
+            'media_url' => 'https://media.example.test/road-frame-0.jpg',
+            'metadata_json' => ['source' => 'video_frame', 'parent_media_context_id' => $clip->id, 'offset_seconds' => 3],
+        ]);
+
+        return [$incident, $photo, $clip, $firstFrame];
+    }
+
+    public function test_clip_frames_fold_under_their_clip_and_give_it_a_preview(): void
+    {
+        [$incident, $photo, $clip, $firstFrame] = $this->makePanicMediaSet();
+
+        $response = $this->actingAs($this->user)->get(
+            route('incidents.show', ['current_team' => $this->team->slug, 'incident' => $incident->id]),
+        );
+
+        $response->assertOk();
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->component('incidents/show')
+                ->has('media', 2)
+                // Photos first: they load instantly.
+                ->has('media.0', fn (Assert $item) => $item
+                    ->where('id', $photo->id)
+                    ->where('frameIds', [])
+                    ->etc())
+                ->has('media.1', fn (Assert $item) => $item
+                    ->where('id', $clip->id)
+                    ->where('thumbnailUrl', 'https://media.example.test/road-frame-0.jpg')
+                    ->where('frameIds', fn ($ids) => collect($ids)->first() === $firstFrame->id && count($ids) === 2)
+                    ->etc())
+                ->where('incident.mediaSummary.total', 2)
+                ->where('incident.mediaSummary.images', 1)
+                ->where('incident.mediaSummary.clips', 1),
+        );
+    }
+
+    public function test_inbox_panel_thumbnails_never_point_an_img_at_a_video(): void
+    {
+        [$incident, $photo, $clip] = $this->makePanicMediaSet();
+
+        $response = $this->actingAs($this->user)->getJson(
+            route('incidents.show', ['current_team' => $this->team->slug, 'incident' => $incident->id]),
+        );
+
+        $response->assertOk();
+        $response->assertJsonPath('mediaSummary.total', 2);
+        $response->assertJsonPath('mediaSummary.thumbnails', [
+            ['id' => $photo->id, 'url' => 'https://media.example.test/road.jpg', 'mediaType' => 'snapshot'],
+            ['id' => $clip->id, 'url' => 'https://media.example.test/road-frame-0.jpg', 'mediaType' => 'clip'],
+        ]);
+    }
+
     public function test_timeline_entries_are_presented_in_spanish_with_entry_type(): void
     {
         [$incident] = $this->makeIncidentWithEvent();
