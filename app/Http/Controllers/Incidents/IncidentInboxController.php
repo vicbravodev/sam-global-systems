@@ -76,7 +76,7 @@ class IncidentInboxController extends Controller
                 'aiEvaluation',
             ]);
 
-        $this->applyFilters($query, $filters);
+        $this->applyFilters($query, $filters, (int) $current_team->id);
 
         /** @var EloquentCollection<int, Incident> $incidents */
         $incidents = $query
@@ -148,7 +148,7 @@ class IncidentInboxController extends Controller
      * @param  Builder<Incident>  $query
      * @param  array{q: string|null, severity: string|null, status: string|null, provider: string|null, shift: string|null}  $filters
      */
-    private function applyFilters(Builder $query, array $filters): void
+    private function applyFilters(Builder $query, array $filters, int $teamId): void
     {
         if ($filters['q'] !== null && $filters['q'] !== '') {
             // LOWER(...) LIKE keeps the search case-insensitive on both
@@ -163,6 +163,11 @@ class IncidentInboxController extends Controller
             $query->where(fn (Builder $q) => $q
                 ->whereRaw('LOWER(title) LIKE ?', [$term])
                 ->orWhereRaw('LOWER(summary) LIKE ?', [$term])
+                // The unit is what operators type ("T-879"); titles only carry
+                // its name since the unit-name fix, so search the asset too.
+                ->orWhereHas('asset', fn (Builder $asset) => $asset
+                    ->where('team_id', $teamId)
+                    ->whereRaw('LOWER(name) LIKE ?', [$term]))
                 ->when($number !== null, fn (Builder $inner) => $inner->orWhere('number', $number)));
         }
 

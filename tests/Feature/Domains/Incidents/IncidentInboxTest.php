@@ -5,6 +5,7 @@ namespace Tests\Feature\Domains\Incidents;
 use App\Domains\AI\Enums\EvaluationPriority;
 use App\Domains\AI\Enums\EventClassification;
 use App\Domains\AI\Models\AIEventEvaluation;
+use App\Domains\Assets\Models\Asset;
 use App\Domains\Context\Models\EventContextSnapshot;
 use App\Domains\Incidents\Actions\ClaimIncident;
 use App\Domains\Incidents\Enums\AssigneeType;
@@ -271,6 +272,32 @@ class IncidentInboxTest extends TestCase
                 ->component('incidents/index')
                 ->where('incidents.0.slaTotal', 300)
                 ->where('incidents.0.slaSeconds', 240),
+        );
+    }
+
+    public function test_search_finds_incidents_by_the_unit_name_but_never_another_tenant_unit(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+        $other = User::factory()->create()->currentTeam;
+
+        $truck = Asset::factory()->create(['team_id' => $team->id, 'name' => 'T-879 JC 27BF7U']);
+        $foreignTruck = Asset::factory()->create(['team_id' => $other->id, 'name' => 'T-879 OTRA']);
+
+        // Titled before the unit-name fix: only the asset carries the name.
+        $mine = Incident::factory()->create(['team_id' => $team->id, 'asset_id' => $truck->id, 'title' => 'Botón de pánico — activo #127']);
+        Incident::factory()->create(['team_id' => $team->id, 'title' => 'Exceso de velocidad']);
+        Incident::factory()->create(['team_id' => $other->id, 'asset_id' => $foreignTruck->id, 'title' => 'Botón de pánico']);
+
+        $response = $this->actingAs($user)->get(
+            route('incidents.index', ['current_team' => $team->slug, 'q' => 't-879']),
+        );
+
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->component('incidents/index')
+                ->has('incidents', 1)
+                ->where('incidents.0.incidentId', $mine->id),
         );
     }
 
