@@ -26,6 +26,8 @@ import {
     settleInterrupted,
 } from './copilot-turn';
 
+export type TurnOutcome = 'done' | 'partial' | 'error';
+
 interface Options {
     teamSlug: string;
     channel: CopilotChannel;
@@ -55,7 +57,14 @@ export function useCopilotChat({
     const [busy, setBusy] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [canRetry, setCanRetry] = useState(false);
+    /**
+     * How "Reintentar" recovers: re-send a question the server never took,
+     * or reload a thread whose question it already stored (a re-send would
+     * duplicate it).
+     */
+    const [retryMode, setRetryMode] = useState<'send' | 'reload' | null>(null);
+    /** How the last turn ended, for the screen-reader announcement. */
+    const [outcome, setOutcome] = useState<TurnOutcome | null>(null);
     const [lastHints, setLastHints] = useState<CopilotSendHints>({});
     /** Bumps on reset/load: a new thread (scopes pinned-unit overrides). */
     const [thread, setThread] = useState(0);
@@ -103,7 +112,8 @@ export function useCopilotChat({
             lastRequestRef.current = { content: text, hints };
 
             setError(null);
-            setCanRetry(false);
+            setRetryMode(null);
+            setOutcome(null);
             setBusy(true);
             setLastHints(hints);
 
@@ -152,7 +162,8 @@ export function useCopilotChat({
                 rejected = true;
                 cancelFrame();
                 setError(message);
-                setCanRetry(true);
+                setRetryMode('send');
+                setOutcome('error');
                 setMessages((current) => dropTurn(current, turn));
             };
 
@@ -225,6 +236,7 @@ export function useCopilotChat({
                             );
                             state = { ...state, draft: answer };
                             setConversationId(part.data.conversation.id);
+                            setOutcome(answer.partial ? 'partial' : 'done');
                             setMessages((current) =>
                                 mergeStoredTurn(
                                     current,
@@ -252,6 +264,15 @@ export function useCopilotChat({
                                     ),
                                 };
                                 commit();
+                                setOutcome('partial');
+                                // The question was stored: settle it too.
+                                setMessages((current) =>
+                                    current.map((m) =>
+                                        m.clientKey === questionKey
+                                            ? { ...m, pending: false }
+                                            : m,
+                                    ),
+                                );
                             }
 
                             break;
@@ -275,8 +296,14 @@ export function useCopilotChat({
                         'Sin conexión con SAM. Revisa tu red e intenta de nuevo.';
 
                     if (received) {
+                        // The server already stored the question: reload
+                        // the thread rather than posting it twice.
                         setError(offline);
-                        setCanRetry(true);
+                        setRetryMode(
+                            conversationRef.current !== null
+                                ? 'reload'
+                                : 'send',
+                        );
                     } else {
                         reject(offline);
                     }
@@ -300,6 +327,7 @@ export function useCopilotChat({
                                     : m,
                             ),
                         );
+                        setOutcome('partial');
                     }
 
                     setBusy(false);
@@ -316,15 +344,6 @@ export function useCopilotChat({
 
     const stop = useCallback(() => abortRef.current?.abort(), []);
 
-    /** Re-sends the last question (after a request or network failure). */
-    const retry = useCallback(() => {
-        const last = lastRequestRef.current;
-
-        if (last) {
-            void send(last.content, last.hints);
-        }
-    }, [send]);
-
     const load = useCallback(
         async (id: number) => {
             abandonTurn();
@@ -334,9 +353,10 @@ export function useCopilotChat({
 
             setThread((t) => t + 1);
             setMessages([]);
+            setOutcome(null);
             setLoading(true);
             setError(null);
-            setCanRetry(false);
+            setRetryMode(null);
 
             try {
                 const response = await fetch(`${base}/conversations/${id}`, {
@@ -344,6 +364,11 @@ export function useCopilotChat({
                     headers: { Accept: 'application/json' },
                     signal: controller.signal,
                 });
+
+                // A newer load/reset owns the thread: this reply is stale.
+                if (loadAbortRef.current !== controller) {
+                    return;
+                }
 
                 if (!response.ok) {
                     setError('No encontré esa conversación.');
@@ -376,6 +401,26 @@ export function useCopilotChat({
         [abandonTurn, base, setConversationId],
     );
 
+    /**
+     * Recovers from the last failure: re-sends a question the server never
+     * received, or reloads the thread when it already stored it.
+     */
+    const retry = useCallback(() => {
+        const conversation = conversationRef.current;
+
+        if (retryMode === 'reload' && conversation !== null) {
+            void load(conversation);
+
+            return;
+        }
+
+        const last = lastRequestRef.current;
+
+        if (last) {
+            void send(last.content, last.hints);
+        }
+    }, [load, retryMode, send]);
+
     const reset = useCallback(() => {
         abandonTurn();
         loadAbortRef.current?.abort();
@@ -383,14 +428,15 @@ export function useCopilotChat({
         setThread((t) => t + 1);
         setConversationId(null);
         setMessages([]);
+        setOutcome(null);
         setError(null);
-        setCanRetry(false);
+        setRetryMode(null);
         setLoading(false);
     }, [abandonTurn, setConversationId]);
 
     const dismissError = useCallback(() => {
         setError(null);
-        setCanRetry(false);
+        setRetryMode(null);
     }, []);
 
     const rate = useCallback(
@@ -441,7 +487,9 @@ export function useCopilotChat({
         busy,
         loading,
         error,
-        canRetry,
+        canRetry: retryMode !== null,
+        retryMode,
+        outcome,
         lastHints,
         thread,
         send,

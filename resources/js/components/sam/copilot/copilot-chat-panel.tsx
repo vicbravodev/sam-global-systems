@@ -290,17 +290,16 @@ export function CopilotChatPanel({
     const quota = catalog.quota;
     const firstName = userName.split(' ')[0] ?? userName;
     const userInitials = initials(userName);
-    const lastMessage = chat.messages[chat.messages.length - 1];
-
     // Screen readers hear transitions, never tokens.
     const announcement = chat.busy
         ? 'SAM Copilot está respondiendo…'
-        : lastMessage?.role === 'assistant' &&
-            lastMessage.clientKey !== undefined
-          ? lastMessage.partial
-              ? 'Respuesta incompleta'
-              : 'Respuesta lista'
-          : '';
+        : chat.outcome === 'done'
+          ? 'Respuesta lista'
+          : chat.outcome === 'partial'
+            ? 'Respuesta incompleta'
+            : chat.outcome === 'error'
+              ? `No se pudo responder. ${chat.error ?? ''}`.trim()
+              : '';
 
     return (
         <div className="flex min-h-0 flex-1 flex-col">
@@ -432,7 +431,9 @@ export function CopilotChatPanel({
                                     className="inline-flex cursor-pointer items-center gap-1 rounded-sm font-medium text-fg-1 underline-offset-2 hover:underline"
                                 >
                                     <RotateCcw className="size-3" />
-                                    Reintentar
+                                    {chat.retryMode === 'reload'
+                                        ? 'Recargar conversación'
+                                        : 'Reintentar'}
                                 </button>
                             )}
                             <button
