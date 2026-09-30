@@ -58,6 +58,7 @@
         "laravel-vite-plugin": "^3.0.0",
         "lucide-react": "^0.475.0",
         "maplibre-gl": "^5.24.0",
+        "motion": "^13.4.6",
         "pusher-js": "^8.5.0",
         "react": "^19.2.0",
         "react-dom": "^19.2.0",
