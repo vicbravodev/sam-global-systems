@@ -27,6 +27,7 @@ use App\Domains\Tenancy\Models\UsageEvent;
 use App\Domains\TenantConfig\Models\TenantIncidentSla;
 use App\Models\Team;
 use App\Models\User;
+use App\Support\TenantContext;
 use Database\Seeders\IncidentsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -183,6 +184,62 @@ class CreateIncidentFromEventTest extends TestCase
         ]);
 
         $this->assertSame(1, Incident::withoutGlobalScopes()->where('team_id', $team->id)->count());
+    }
+
+    /**
+     * Real case (T-77, 2026-09-30): a panic that happened two days ago was
+     * delivered late while a newer panic incident of the same unit was open.
+     * It must open its own incident, not become a supporting event of a
+     * different emergency.
+     */
+    public function test_late_delivered_event_never_attaches_to_a_newer_incident_of_the_unit(): void
+    {
+        $team = User::factory()->create()->currentTeam;
+        $asset = $this->makeAsset($team);
+
+        $newer = app(CreateIncidentFromEvent::class)->execute(NormalizedEvent::factory()->create([
+            'team_id' => $team->id,
+            'asset_id' => $asset->id,
+            'occurred_at' => now()->subHour(),
+        ]), ['incident_type_code' => 'collision']);
+
+        $lateEvent = NormalizedEvent::factory()->create([
+            'team_id' => $team->id,
+            'asset_id' => $asset->id,
+            'occurred_at' => now()->subDays(2),
+        ]);
+
+        $late = app(CreateIncidentFromEvent::class)->execute($lateEvent, ['incident_type_code' => 'collision']);
+
+        $this->assertNotSame($newer->id, $late->id);
+        $this->assertSame($lateEvent->id, $late->related_event_id);
+        $this->assertFalse(IncidentEventLink::query()->where('incident_id', $newer->id)->where('normalized_event_id', $lateEvent->id)->exists());
+        $this->assertCount(2, $this->systemLogEntries('incidents.incident.created'));
+        $this->assertCount(0, $this->systemLogEntries('incidents.dedup.linked'));
+    }
+
+    public function test_an_earlier_event_within_the_window_still_joins_the_open_incident(): void
+    {
+        $team = User::factory()->create()->currentTeam;
+        $asset = $this->makeAsset($team);
+
+        $open = app(CreateIncidentFromEvent::class)->execute(NormalizedEvent::factory()->create([
+            'team_id' => $team->id,
+            'asset_id' => $asset->id,
+            'occurred_at' => now(),
+        ]), ['incident_type_code' => 'collision']);
+
+        // Out-of-order but close: 10 min before the incident opened.
+        $earlier = NormalizedEvent::factory()->create([
+            'team_id' => $team->id,
+            'asset_id' => $asset->id,
+            'occurred_at' => now()->subMinutes(10),
+        ]);
+
+        $this->assertSame($open->id, app(CreateIncidentFromEvent::class)->execute($earlier, ['incident_type_code' => 'collision'])->id);
+        $this->assertSystemLogged('incidents.dedup.linked', fn (array $c) => $c['input']['normalized_event_id'] === $earlier->id
+            && $c['calc']['match_basis'] === 'opened_in_window'
+            && $c['calc']['window_end'] === $earlier->occurred_at->copy()->addMinutes(30)->toIso8601String());
     }
 
     public function test_records_incident_workflows_usage_event(): void
@@ -383,6 +440,31 @@ class CreateIncidentFromEventTest extends TestCase
         $this->assertSame('opened_at', $c['calc']['base_source']);
         $this->assertSame(0, $c['calc']['late_by_seconds']);
         $this->assertFalse($c['calc']['backfill_adjusted']);
+    }
+
+    public function test_title_names_the_unit_the_way_operators_search_it(): void
+    {
+        $team = User::factory()->create()->currentTeam;
+        $asset = Asset::factory()->create(['team_id' => $team->id, 'name' => 'T-879 JC 27BF7U']);
+        $event = NormalizedEvent::factory()->create(['team_id' => $team->id, 'asset_id' => $asset->id]);
+
+        $incident = app(CreateIncidentFromEvent::class)->execute($event, ['priority_code' => 'critical']);
+
+        $this->assertStringEndsWith(' — T-879 JC 27BF7U', $incident->title);
+        $this->assertStringNotContainsString('activo #', $incident->title);
+    }
+
+    public function test_title_never_carries_another_tenant_unit_name(): void
+    {
+        $team = User::factory()->create()->currentTeam;
+        $foreign = Asset::factory()->create(['team_id' => User::factory()->create()->currentTeam->id, 'name' => 'UNIDAD AJENA']);
+        // Corrupt row: an event pointing at another team's asset.
+        $event = NormalizedEvent::factory()->create(['team_id' => $team->id, 'asset_id' => $foreign->id]);
+
+        $incident = TenantContext::for($team->id, fn () => app(CreateIncidentFromEvent::class)->execute($event, ['priority_code' => 'critical']));
+
+        $this->assertStringNotContainsString('UNIDAD AJENA', $incident->title);
+        $this->assertStringEndsWith(" — activo #{$foreign->id}", $incident->title);
     }
 
     public function test_priority_without_sla_logs_the_skip_and_arms_no_watchdog(): void

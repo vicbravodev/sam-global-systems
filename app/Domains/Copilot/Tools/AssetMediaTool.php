@@ -2,12 +2,14 @@
 
 namespace App\Domains\Copilot\Tools;
 
-use App\Contracts\ObjectStorage;
+use App\Domains\AI\Models\AIMediaAssessment;
+use App\Domains\AI\Support\MediaFileVerdicts;
 use App\Domains\Context\Models\EventMediaContext;
+use App\Domains\Context\Support\EventMediaGallery;
 use App\Domains\Copilot\Data\CopilotToolContext;
 use App\Domains\Copilot\Data\CopilotToolResult;
 use App\Domains\Copilot\Support\CopilotPresenter;
-use Throwable;
+use App\Domains\Incidents\Models\Incident;
 
 /**
  * Latest camera media (video clips, snapshots) captured for a unit.
@@ -29,7 +31,7 @@ final class AssetMediaTool implements CopilotTool
         'cabin_audio' => 'Audio de cabina',
     ];
 
-    public function __construct(private readonly ObjectStorage $storage) {}
+    public function __construct(private readonly EventMediaGallery $gallery) {}
 
     public function run(CopilotToolContext $context): CopilotToolResult
     {
@@ -42,14 +44,19 @@ final class AssetMediaTool implements CopilotTool
 
         $label = CopilotPresenter::assetLabel($asset);
 
-        $media = EventMediaContext::query()
+        // Frames cut out of a clip are rows too; read enough to fold them
+        // under their clip and still return LIMIT real files.
+        $rows = EventMediaContext::query()
             ->where('team_id', $context->teamId)
             ->where('asset_id', $asset->id)
             ->with('normalizedEvent.eventType')
             ->orderByDesc('captured_at')
             ->orderByDesc('id')
-            ->limit(self::LIMIT)
+            ->limit(self::LIMIT * 8)
             ->get();
+
+        $entries = array_slice($this->gallery->entries($rows), 0, self::LIMIT);
+        $media = collect($entries)->map(fn (array $entry): EventMediaContext => $entry['media']);
 
         if ($media->isEmpty()) {
             return new CopilotToolResult(
@@ -61,24 +68,40 @@ final class AssetMediaTool implements CopilotTool
             );
         }
 
-        $items = $media->map(function (EventMediaContext $item) use ($context): array {
+        $verdicts = $this->latestVerdicts($entries);
+        $incidents = Incident::query()
+            ->where('team_id', $context->teamId)
+            ->whereIn('related_event_id', $media->pluck('normalized_event_id')->unique()->all())
+            ->get(['id', 'number', 'related_event_id'])
+            ->keyBy('related_event_id');
+
+        $items = array_map(function (array $entry) use ($context, $verdicts, $incidents): array {
+            /** @var EventMediaContext $item */
+            $item = $entry['media'];
             $event = $item->normalizedEvent;
+            $verdict = $verdicts[(int) $item->id] ?? null;
+            $incident = $incidents->get($item->normalized_event_id);
 
             return [
                 'id' => (int) $item->id,
                 'mediaType' => $item->media_type?->value,
                 'role' => $item->media_role?->value,
-                'roleLabel' => $item->media_role ? (self::ROLE_LABELS[$item->media_role->value] ?? $item->media_role->value) : null,
-                'url' => $this->resolveUrl($item),
-                'thumbnailUrl' => $item->thumbnail_url,
+                'roleLabel' => $this->cameraLabel($item),
+                'url' => $entry['url'],
+                'thumbnailUrl' => $entry['thumbnailUrl'] ?? (EventMediaGallery::isVideo($item) ? null : $entry['url']),
                 'mimeType' => $item->mime_type,
                 'durationSeconds' => $item->duration_seconds,
                 'capturedAt' => $item->captured_at?->toIso8601String(),
                 'availability' => $item->availability_status?->value,
                 'eventType' => $event?->eventType?->name,
                 'eventHref' => $event ? CopilotPresenter::eventHref($context->teamSlug, (int) $event->id) : null,
+                'incident' => $incident?->reference(),
+                'incidentHref' => $incident ? CopilotPresenter::incidentHref($context->teamSlug, (int) $incident->id) : null,
+                'aiVerdict' => $verdict?->result?->value,
+                'aiVerdictLabel' => $verdict?->result?->label(),
+                'aiSummary' => $verdict?->summary_text,
             ];
-        })->all();
+        }, $entries);
 
         $latest = $items[0];
         $kind = in_array($latest['mediaType'], ['video', 'clip'], true) ? 'un video' : 'una imagen';
@@ -95,6 +118,7 @@ final class AssetMediaTool implements CopilotTool
             ]],
             sources: $media
                 ->filter(fn (EventMediaContext $m) => $m->normalizedEvent !== null)
+                ->unique('normalized_event_id')
                 ->map(fn (EventMediaContext $m) => [
                     'kind' => 'event',
                     'id' => (int) $m->normalized_event_id,
@@ -111,30 +135,61 @@ final class AssetMediaTool implements CopilotTool
                     'camera' => $latest['roleLabel'],
                     'captured_at' => $latest['capturedAt'],
                     'event' => $latest['eventType'],
+                    'incident' => $latest['incident'],
                 ],
+                // What the vision model saw in each file: the only way the
+                // agent can describe footage it cannot open itself.
+                'items' => array_map(fn (array $item): array => [
+                    'type' => $item['mediaType'],
+                    'camera' => $item['roleLabel'],
+                    'captured_at' => $item['capturedAt'],
+                    'event' => $item['eventType'],
+                    'incident' => $item['incident'],
+                    'ai_verdict' => $item['aiVerdictLabel'],
+                    'ai_saw' => $item['aiSummary'],
+                ], $items),
+                'assessed_count' => count(array_filter($items, fn (array $item): bool => $item['aiVerdict'] !== null)),
             ],
-            highlights: [
+            highlights: array_values(array_filter([
                 "La media más reciente de {$label} es {$kind}"
                     .($latest['eventType'] ? " del evento «{$latest['eventType']}»" : '')
+                    .($latest['incident'] ? " ({$latest['incident']})" : '')
                     .', '.CopilotPresenter::describeAge($latest['capturedAt']).'.',
-            ],
+                $latest['aiSummary'] ? 'Lo que la IA vio: '.$latest['aiSummary'] : null,
+            ])),
         );
     }
 
-    private function resolveUrl(EventMediaContext $media): ?string
+    /**
+     * @param  list<array{media: EventMediaContext, url: string|null, thumbnailUrl: string|null, frameIds: list<int>}>  $entries
+     * @return array<int, AIMediaAssessment>
+     */
+    private function latestVerdicts(array $entries): array
     {
-        if ($media->media_url !== null) {
-            return $media->media_url;
+        $files = [];
+
+        foreach ($entries as $entry) {
+            $files[(int) $entry['media']->id] = [(int) $entry['media']->id, ...$entry['frameIds']];
         }
 
-        if ($media->storage_path === null) {
-            return null;
-        }
+        return MediaFileVerdicts::forFiles(
+            AIMediaAssessment::query()->whereIn('event_media_context_id', array_merge(...array_values($files)))->get(),
+            $files,
+        );
+    }
 
-        try {
-            return $this->storage->temporaryUrl($media->storage_path, now()->addMinutes(30));
-        } catch (Throwable) {
-            return null;
-        }
+    /**
+     * Uploaded panic/safety footage keeps the camera in `metadata_json.input`;
+     * the media role only says "primary evidence".
+     */
+    private function cameraLabel(EventMediaContext $media): ?string
+    {
+        $input = is_array($media->metadata_json) ? ($media->metadata_json['input'] ?? null) : null;
+
+        return match ($input) {
+            'dashcamRoadFacing' => self::ROLE_LABELS['road_facing'],
+            'dashcamDriverFacing' => self::ROLE_LABELS['driver_facing'],
+            default => $media->media_role ? (self::ROLE_LABELS[$media->media_role->value] ?? $media->media_role->value) : null,
+        };
     }
 }

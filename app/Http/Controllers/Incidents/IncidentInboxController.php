@@ -2,14 +2,15 @@
 
 namespace App\Http\Controllers\Incidents;
 
-use App\Contracts\ObjectStorage;
 use App\Domains\Access\Actions\AuthorizeAction;
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\AI\Models\AIMediaAssessment;
+use App\Domains\AI\Support\MediaFileVerdicts;
 use App\Domains\Context\Enums\IncidentRelationType;
 use App\Domains\Context\Models\EventMediaContext;
 use App\Domains\Context\Models\EventMediaRequest;
 use App\Domains\Context\Models\EventRelatedIncidentLink;
+use App\Domains\Context\Support\EventMediaGallery;
 use App\Domains\Context\Support\MediaRetrievalWindow;
 use App\Domains\Incidents\Enums\AssigneeType;
 use App\Domains\Incidents\Enums\TimelineActorType;
@@ -76,7 +77,7 @@ class IncidentInboxController extends Controller
                 'aiEvaluation',
             ]);
 
-        $this->applyFilters($query, $filters);
+        $this->applyFilters($query, $filters, (int) $current_team->id);
 
         /** @var EloquentCollection<int, Incident> $incidents */
         $incidents = $query
@@ -148,7 +149,7 @@ class IncidentInboxController extends Controller
      * @param  Builder<Incident>  $query
      * @param  array{q: string|null, severity: string|null, status: string|null, provider: string|null, shift: string|null}  $filters
      */
-    private function applyFilters(Builder $query, array $filters): void
+    private function applyFilters(Builder $query, array $filters, int $teamId): void
     {
         if ($filters['q'] !== null && $filters['q'] !== '') {
             // LOWER(...) LIKE keeps the search case-insensitive on both
@@ -163,6 +164,11 @@ class IncidentInboxController extends Controller
             $query->where(fn (Builder $q) => $q
                 ->whereRaw('LOWER(title) LIKE ?', [$term])
                 ->orWhereRaw('LOWER(summary) LIKE ?', [$term])
+                // The unit is what operators type ("T-879"); titles only carry
+                // its name since the unit-name fix, so search the asset too.
+                ->orWhereHas('asset', fn (Builder $asset) => $asset
+                    ->where('team_id', $teamId)
+                    ->whereRaw('LOWER(name) LIKE ?', [$term]))
                 ->when($number !== null, fn (Builder $inner) => $inner->orWhere('number', $number)));
         }
 
@@ -372,39 +378,31 @@ class IncidentInboxController extends Controller
             ->where('normalized_event_id', $incident->related_event_id)
             ->select('id');
 
-        // Un veredicto por media: la evaluación más reciente gana.
-        $verdicts = AIMediaAssessment::query()
-            ->whereIn('evaluation_id', $evaluationIds)
-            ->orderByDesc('assessed_at')
-            ->get(['event_media_context_id', 'result'])
-            ->unique('event_media_context_id');
+        // Una entrada por archivo real: los frames extraídos se pliegan bajo su
+        // clip y le dan miniatura (un mp4 no se previsualiza en un <img>).
+        $entries = $this->galleryOrder(app(EventMediaGallery::class)->entries($media));
+
+        // Un veredicto por archivo (el de un clip sale de sus frames): el
+        // resumen nunca dice "8 de 4 medias evaluadas".
+        $verdicts = collect(MediaFileVerdicts::forFiles(
+            AIMediaAssessment::query()->whereIn('evaluation_id', $evaluationIds)->get(),
+            collect($entries)->mapWithKeys(fn (array $entry): array => [
+                (int) $entry['media']->id => [(int) $entry['media']->id, ...$entry['frameIds']],
+            ])->all(),
+        ));
 
         $countFor = fn (string $result): int => $verdicts
             ->filter(fn (AIMediaAssessment $assessment) => $assessment->result?->value === $result)
             ->count();
 
-        $storage = app(ObjectStorage::class);
-
-        $thumbnails = $media
-            ->filter(fn (EventMediaContext $item) => in_array($item->media_type?->value, ['image', 'snapshot'], true))
+        $thumbnails = collect($entries)
+            ->map(fn (array $entry): array => [
+                'id' => (int) $entry['media']->id,
+                'url' => $entry['thumbnailUrl'] ?? (EventMediaGallery::isVideo($entry['media']) ? null : $entry['url']),
+                'mediaType' => $entry['media']->media_type?->value,
+            ])
+            ->filter(fn (array $thumbnail): bool => $thumbnail['url'] !== null)
             ->take(4)
-            ->map(function (EventMediaContext $item) use ($storage): array {
-                $url = $item->thumbnail_url ?? $item->media_url;
-
-                if ($url === null && $item->storage_path !== null) {
-                    try {
-                        $url = $storage->temporaryUrl($item->storage_path, now()->addMinutes(30));
-                    } catch (\Throwable) {
-                        $url = null;
-                    }
-                }
-
-                return [
-                    'id' => (int) $item->id,
-                    'url' => $url,
-                    'mediaType' => $item->media_type?->value,
-                ];
-            })
             ->values()
             ->all();
 
@@ -414,13 +412,9 @@ class IncidentInboxController extends Controller
             ->exists();
 
         return [
-            'total' => $media->count(),
-            'images' => $media
-                ->filter(fn (EventMediaContext $item) => in_array($item->media_type?->value, ['image', 'snapshot'], true))
-                ->count(),
-            'clips' => $media
-                ->filter(fn (EventMediaContext $item) => in_array($item->media_type?->value, ['video', 'clip'], true))
-                ->count(),
+            'total' => count($entries),
+            'images' => collect($entries)->reject(fn (array $entry): bool => EventMediaGallery::isVideo($entry['media']))->count(),
+            'clips' => collect($entries)->filter(fn (array $entry): bool => EventMediaGallery::isVideo($entry['media']))->count(),
             'assessed' => $verdicts->count(),
             'confirms' => $countFor('confirms_event'),
             'contradicts' => $countFor('contradicts_event'),
@@ -443,36 +437,39 @@ class IncidentInboxController extends Controller
             return [];
         }
 
-        $storage = app(ObjectStorage::class);
-
-        return EventMediaContext::query()
+        $media = EventMediaContext::query()
             ->where('normalized_event_id', $incident->related_event_id)
             ->orderByDesc('id')
-            ->get()
-            ->map(function (EventMediaContext $media) use ($storage): array {
-                $url = $media->media_url;
+            ->get();
 
-                if ($url === null && $media->storage_path !== null) {
-                    try {
-                        $url = $storage->temporaryUrl($media->storage_path, now()->addMinutes(30));
-                    } catch (\Throwable) {
-                        $url = null;
-                    }
-                }
+        return array_map(fn (array $entry): array => [
+            'id' => (int) $entry['media']->id,
+            'mediaType' => $entry['media']->media_type?->value,
+            'mimeType' => $entry['media']->mime_type,
+            'url' => $entry['url'],
+            'thumbnailUrl' => $entry['thumbnailUrl'],
+            // Frames que la IA evaluó por este clip: su veredicto es el del clip.
+            'frameIds' => $entry['frameIds'],
+            'durationSeconds' => $entry['media']->duration_seconds !== null ? (int) $entry['media']->duration_seconds : null,
+            'sizeBytes' => $entry['media']->size_bytes !== null ? (int) $entry['media']->size_bytes : null,
+            'capturedAt' => $entry['media']->captured_at?->toIso8601String(),
+            'availabilityStatus' => $entry['media']->availability_status?->value,
+        ], $this->galleryOrder(app(EventMediaGallery::class)->entries($media)));
+    }
 
-                return [
-                    'id' => (int) $media->id,
-                    'mediaType' => $media->media_type?->value,
-                    'mimeType' => $media->mime_type,
-                    'url' => $url,
-                    'thumbnailUrl' => $media->thumbnail_url,
-                    'durationSeconds' => $media->duration_seconds !== null ? (int) $media->duration_seconds : null,
-                    'sizeBytes' => $media->size_bytes !== null ? (int) $media->size_bytes : null,
-                    'capturedAt' => $media->captured_at?->toIso8601String(),
-                    'availabilityStatus' => $media->availability_status?->value,
-                ];
-            })
-            ->all();
+    /**
+     * Fotos antes que clips y, dentro de cada grupo, en orden de captura: el
+     * operador ve primero lo que carga al instante.
+     *
+     * @param  list<array{media: EventMediaContext, url: string|null, thumbnailUrl: string|null, frameIds: list<int>}>  $entries
+     * @return list<array{media: EventMediaContext, url: string|null, thumbnailUrl: string|null, frameIds: list<int>}>
+     */
+    private function galleryOrder(array $entries): array
+    {
+        usort($entries, fn (array $a, array $b): int => [EventMediaGallery::isVideo($a['media']), (int) $a['media']->id]
+            <=> [EventMediaGallery::isVideo($b['media']), (int) $b['media']->id]);
+
+        return $entries;
     }
 
     /**

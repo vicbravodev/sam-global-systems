@@ -686,15 +686,32 @@ function MediaCard({ block }: { block: MediaBlock }) {
                 <span className="text-3xs text-fg-3">
                     {timeAgo(active.capturedAt)}
                 </span>
-                {active.eventHref && (
+                {active.incident && active.incidentHref ? (
                     <Link
-                        href={active.eventHref}
-                        className="inline-flex items-center gap-1 text-2xs font-medium text-fg-3 hover:text-fg-1"
+                        href={active.incidentHref}
+                        className="inline-flex items-center gap-1 font-mono text-2xs font-medium text-fg-3 hover:text-fg-1"
                     >
-                        Evento <ArrowUpRight className="size-3" />
+                        {active.incident} <ArrowUpRight className="size-3" />
                     </Link>
+                ) : (
+                    active.eventHref && (
+                        <Link
+                            href={active.eventHref}
+                            className="inline-flex items-center gap-1 text-2xs font-medium text-fg-3 hover:text-fg-1"
+                        >
+                            Evento <ArrowUpRight className="size-3" />
+                        </Link>
+                    )
                 )}
             </div>
+            {active.aiSummary && (
+                <p className="border-t border-border px-3 py-2 text-2xs text-fg-2">
+                    <span className="font-semibold text-fg-1">
+                        Qué vio la IA:{' '}
+                    </span>
+                    {active.aiSummary}
+                </p>
+            )}
             {block.items.length > 1 && (
                 <div className="flex gap-1.5 overflow-x-auto border-t border-border bg-surface-2 p-2">
                     {block.items.map((item) => (
