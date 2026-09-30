@@ -27,6 +27,7 @@ use App\Domains\TenantConfig\Actions\ResolveIncidentSla;
 use App\Support\LoggableCode;
 use App\Support\PipelineTrace;
 use App\Support\SystemLog;
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
@@ -51,6 +52,7 @@ class CreateIncidentFromEvent
         private readonly RecordIncidentWorkflowUsage $recordIncidentWorkflowUsage,
         private readonly ApplyExternalResolution $applyExternalResolution,
         private readonly ResolveIncidentSla $resolveIncidentSla,
+        private readonly AssessIncidentLateArrival $assessIncidentLateArrival,
     ) {}
 
     /**
@@ -260,6 +262,8 @@ class CreateIncidentFromEvent
                 occurredAt: $incident->opened_at,
             );
 
+            $this->flagLateArrival($incident, $event, $now);
+
             $rootLink = $this->linkEventToIncident->execute(
                 $incident,
                 $event,
@@ -333,6 +337,59 @@ class CreateIncidentFromEvent
 
             return $fresh;
         });
+    }
+
+    /**
+     * Un evento que se abre tarde (rescate, webhook atrasado, cursor viejo)
+     * deja el retraso en `metadata_json.late_arrival` y una entrada explícita
+     * en la línea de tiempo; NotifyOnIncidentCreated lo lleva a los avisos.
+     * Nunca cambia prioridad, SLA ni canales: un pánico tardío sigue siendo
+     * emergencia.
+     */
+    private function flagLateArrival(Incident $incident, NormalizedEvent $event, CarbonInterface $now): void
+    {
+        $assessment = $this->assessIncidentLateArrival->assess($event, $now);
+        $input = ['incident_id' => $incident->id, 'normalized_event_id' => $event->id];
+        $calc = $assessment['calc'];
+
+        if (! $assessment['late']) {
+            if ($assessment['reason'] === 'within_threshold') {
+                DB::afterCommit(fn () => SystemLog::ok('incidents.late_arrival.assessed', input: $input, calc: $calc, result: ['late' => false], debug: true));
+            } else {
+                $reason = (string) $assessment['reason'];
+                DB::afterCommit(fn () => SystemLog::skipped('incidents.late_arrival.assessed', reason: $reason, input: $input, calc: $calc, result: ['late' => false]));
+            }
+
+            return;
+        }
+
+        $notice = $assessment['notice'];
+
+        $incident->forceFill([
+            'metadata_json' => array_merge($incident->metadata_json ?? [], ['late_arrival' => $notice]),
+        ])->save();
+
+        $entry = $this->appendTimelineEntry->execute(
+            incident: $incident,
+            entryType: TimelineEntryType::LateArrival,
+            actorType: TimelineActorType::System,
+            title: $notice['timeline_title'],
+            description: $notice['timeline_description'],
+            payload: [
+                'normalized_event_id' => $event->id,
+                'delay_seconds' => $notice['delay_seconds'],
+                'receive_delay_seconds' => $notice['receive_delay_seconds'],
+                'cause' => $notice['cause'],
+                'rescued' => $notice['rescued'],
+                'reprocess_attempts' => $notice['reprocess_attempts'],
+                'timezone' => $notice['timezone'],
+            ],
+            occurredAt: $now,
+        );
+
+        $result = ['late' => true, 'timeline_entry_id' => $entry->id, 'metadata_key' => 'late_arrival'];
+
+        DB::afterCommit(fn () => SystemLog::degraded('incidents.late_arrival.assessed', reason: 'late_arrival', input: $input, calc: $calc, result: $result));
     }
 
     /**

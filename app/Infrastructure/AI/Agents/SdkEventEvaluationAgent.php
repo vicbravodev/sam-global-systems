@@ -62,6 +62,7 @@ class SdkEventEvaluationAgent implements EventEvaluationAgent
                 (int) $response->usage->promptTokens,
                 (int) $response->usage->completionTokens,
             ),
+            recommendedAction: is_string($structured['recommended_action'] ?? null) ? $structured['recommended_action'] : null,
         );
     }
 

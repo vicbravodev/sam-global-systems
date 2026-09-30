@@ -234,7 +234,7 @@ class EvaluateEventViaSdkTest extends TestCase
         $schema = $agent->schema(new JsonSchemaTypeFactory);
 
         $this->assertSame(
-            ['classification', 'confidence_score', 'risk_score_delta', 'explanation_summary', 'reasoning_steps', 'key_factors'],
+            ['classification', 'confidence_score', 'risk_score_delta', 'explanation_summary', 'reasoning_steps', 'key_factors', 'recommended_action'],
             array_keys($schema),
         );
     }

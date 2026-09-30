@@ -34,6 +34,8 @@ class RenderNotificationContent
             ? $this->render($template->body_template, $variables)
             : ($notification->body_preview ?? '');
 
+        [$subject, $body] = $this->withLateNotice($channelType, $subject, $body, $variables);
+
         return new RenderedNotification(
             channelType: $channelType,
             address: $addressOverride ?? $recipient->address,
@@ -42,6 +44,36 @@ class RenderNotificationContent
             variables: $variables,
             recipientName: $recipient->name,
         );
+    }
+
+    /**
+     * Un evento que llegó/se procesó tarde lleva `late_notice` en el payload
+     * (NotifyOnIncidentCreated). Se antepone al cuerpo en todos los canales
+     * —también con plantillas del tenant, que no lo conocen— y se suma al
+     * asunto; la voz lee la versión hablada (sin emoji) y no la repite en el
+     * asunto, que también se lee en voz alta.
+     *
+     * @param  array<string, mixed>  $variables
+     * @return array{0: string|null, 1: string}
+     */
+    private function withLateNotice(ChannelType $channelType, ?string $subject, string $body, array $variables): array
+    {
+        $notice = $variables['late_notice'] ?? null;
+
+        if (! is_string($notice) || $notice === '') {
+            return [$subject, $body];
+        }
+
+        if ($channelType === ChannelType::Voice) {
+            $spoken = $variables['late_notice_spoken'] ?? null;
+            $spoken = is_string($spoken) && $spoken !== '' ? $spoken : $notice;
+
+            return [$subject, trim($spoken.' '.$body)];
+        }
+
+        $subject = $subject !== null && $subject !== '' ? "{$subject} · {$notice}" : $notice;
+
+        return [$subject, $body !== '' ? "{$notice}\n\n{$body}" : $notice];
     }
 
     private function resolveTemplate(Notification $notification, ChannelType $channelType): ?NotificationTemplate
