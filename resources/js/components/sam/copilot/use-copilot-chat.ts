@@ -13,7 +13,11 @@ import type {
     CopilotQuota,
     CopilotSendHints,
 } from '@/types/copilot';
-import { readCopilotStream, toolStatusLabel } from './copilot-stream';
+import {
+    appendTextDelta,
+    readCopilotStream,
+    toolStatusLabel,
+} from './copilot-stream';
 
 interface Options {
     teamSlug: string;
@@ -145,6 +149,9 @@ export function useCopilotChat({
                 draftCreated = true;
                 setMessages((current) => [...current, draft]);
 
+                // Part id of the last text-delta: a new id is a new agent step.
+                let lastTextId: string | null = null;
+
                 for await (const part of readCopilotStream(response.body)) {
                     switch (part.type) {
                         case 'tool-input-available':
@@ -181,12 +188,20 @@ export function useCopilotChat({
                                 blocks: [...m.blocks, ...part.data.blocks],
                             }));
                             break;
-                        case 'text-delta':
+                        case 'text-delta': {
+                            const previousTextId = lastTextId;
+                            lastTextId = part.id;
                             patch((m) => ({
                                 ...m,
-                                content: m.content + part.delta,
+                                content: appendTextDelta(
+                                    m.content,
+                                    previousTextId,
+                                    part.id,
+                                    part.delta,
+                                ).content,
                             }));
                             break;
+                        }
                         case 'data-copilot-conversation':
                             // Early, before any model work: the thread survives a stop.
                             setConversationId(part.data.id);

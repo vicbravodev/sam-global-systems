@@ -74,6 +74,23 @@ function parsePart(payload: string): CopilotStreamPart | null {
  * part per `data:` line, frames separated by a blank line, `[DONE]` last.
  * Part types the UI does not use (start, finish, text-start...) are dropped.
  */
+/**
+ * Appends a `text-delta` to the draft answer. Each agent step streams its
+ * text under a new part `id`; a new id starts a new paragraph so the steps
+ * never run together ("…la unidad.Está en ruta.").
+ */
+export function appendTextDelta(
+    content: string,
+    lastId: string | null,
+    id: string,
+    delta: string,
+): { content: string; lastId: string } {
+    const separator =
+        lastId !== null && lastId !== id && content !== '' ? '\n\n' : '';
+
+    return { content: content + separator + delta, lastId: id };
+}
+
 export async function* readCopilotStream(
     body: ReadableStream<Uint8Array>,
 ): AsyncGenerator<CopilotStreamPart> {
