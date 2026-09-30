@@ -72,6 +72,8 @@ class NotifyOnIncidentCreated implements IncidentCreatedReaction
             'has_media' => $this->hasMedia($context),
         ];
 
+        $payload += $this->lateNotice($incident);
+
         $notificationType = $this->resolveNotificationType($incident);
 
         // Un incidente por debajo del umbral del tenant (por defecto: low)
@@ -107,6 +109,42 @@ class NotifyOnIncidentCreated implements IncidentCreatedReaction
             subject: 'Nuevo incidente creado',
             bodyPreview: 'Se ha reportado un nuevo incidente en tu equipo.',
         );
+    }
+
+    /**
+     * Un incidente abierto tarde (ver AssessIncidentLateArrival) avisa en
+     * todos los canales cuánto hace que ocurrió: RenderNotificationContent
+     * antepone `late_notice` al asunto/cuerpo y `late_notice_spoken` a la voz.
+     * No toca prioridad ni canales.
+     *
+     * @return array<string, mixed>
+     */
+    private function lateNotice(Incident $incident): array
+    {
+        $notice = $incident->metadata_json['late_arrival'] ?? null;
+        $input = ['incident_id' => $incident->id];
+
+        if (! is_array($notice) || ! is_string($notice['text'] ?? null)) {
+            DB::afterCommit(fn () => SystemLog::skipped('notifications.late_notice.attached', reason: 'not_late', input: $input, debug: true));
+
+            return [];
+        }
+
+        $calc = [
+            'delay_seconds' => $notice['delay_seconds'] ?? null,
+            'threshold_minutes' => $notice['threshold_minutes'] ?? null,
+            'rescued' => $notice['rescued'] ?? null,
+            'timezone' => LoggableCode::guard(is_string($notice['timezone'] ?? null) ? $notice['timezone'] : null),
+        ];
+
+        DB::afterCommit(fn () => SystemLog::ok('notifications.late_notice.attached', input: $input, calc: $calc, result: ['notice_attached' => true, 'spoken_attached' => is_string($notice['spoken'] ?? null)]));
+
+        return [
+            'late_notice' => $notice['text'],
+            'late_notice_spoken' => is_string($notice['spoken'] ?? null) ? $notice['spoken'] : null,
+            'occurred_ago' => $notice['ago'] ?? null,
+            'occurred_at_local' => $notice['occurred_at_local'] ?? null,
+        ];
     }
 
     /**

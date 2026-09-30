@@ -17,6 +17,7 @@ use App\Domains\AI\Models\AIExplanation;
 use App\Domains\AI\Models\AIInferenceLog;
 use App\Domains\AI\Support\HeuristicRulesRunner;
 use App\Domains\AI\Support\MediaVerdictFusion;
+use App\Domains\AI\Support\RecommendedActionText;
 use App\Domains\AI\Support\TenantAIQuota;
 use App\Domains\Context\Models\EventContextSnapshot;
 use App\Domains\Normalization\Models\NormalizedEvent;
@@ -268,6 +269,7 @@ class EvaluateEventWithAI
                 inferenceLatencyMs: $result->latencyMs,
                 inferenceCostEstimate: $result->costEstimate,
                 inferenceStatus: InferenceStatus::Success,
+                agentRecommendedAction: $result->recommendedAction,
             );
 
             $this->recordAgentUsage($evaluation, $result->inputTokens, $result->outputTokens);
@@ -425,6 +427,10 @@ class EvaluateEventWithAI
                 'mode' => $evaluation->evaluation_mode->value,
                 'classification' => $evaluation->classification->value,
                 'priority_level' => $evaluation->priority_level->value,
+                // Solo el origen: el texto de la recomendación es libre y no se registra.
+                'recommended_action_source' => $result !== null && trim((string) $result->recommendedAction) !== ''
+                    ? RecommendedActionText::SOURCE_AGENT
+                    : RecommendedActionText::SOURCE_DETERMINISTIC,
                 'model' => $evaluation->model_used,
                 'input_tokens' => $result?->inputTokens,
                 'output_tokens' => $result?->outputTokens,
@@ -532,8 +538,10 @@ class EvaluateEventWithAI
         InferenceStatus $inferenceStatus,
         ?int $inferenceInputTokens = null,
         ?int $inferenceOutputTokens = null,
+        ?string $agentRecommendedAction = null,
     ): AIEventEvaluation {
         $priority = $this->priorityFor($classification, $riskScore);
+        $recommendedAction = RecommendedActionText::resolve($agentRecommendedAction, $event, $classification, $priority);
 
         $evaluation = AIEventEvaluation::create([
             'normalized_event_id' => $event->id,
@@ -547,7 +555,7 @@ class EvaluateEventWithAI
             'is_real_event' => $classification === EventClassification::RealEvent ? true
                 : ($classification->isActionable() ? null : false),
             'requires_action' => $classification->isActionable() && $priority->score() >= EvaluationPriority::Normal->score(),
-            'recommended_action' => null,
+            'recommended_action' => $recommendedAction['text'],
             'explanation_text' => $explanationSummary,
             'signals_json' => [
                 'reasoning_steps' => $reasoningSteps,
@@ -587,6 +595,8 @@ class EvaluateEventWithAI
                 'classification' => $classification->value,
                 'confidence_score' => $confidence,
                 'risk_score' => $riskScore,
+                'recommended_action' => $recommendedAction['text'],
+                'recommended_action_source' => $recommendedAction['source'],
             ],
             'latency_ms' => $inferenceLatencyMs,
             'tokens_used' => $inferenceTokens,
