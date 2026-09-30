@@ -97,7 +97,9 @@ function StreamCard({ incident, selected, onClick }: StreamCardProps) {
     return (
         <div
             className={cn(
-                'flex cursor-pointer overflow-hidden rounded-md border border-border bg-surface-1',
+                // shrink-0: dentro de la columna con scroll, una tarjeta con
+                // overflow-hidden se aplastaba a una línea al haber muchas.
+                'flex shrink-0 cursor-pointer overflow-hidden rounded-md border border-border bg-surface-1',
                 'transition-colors hover:bg-surface-2',
                 selected ? 'border-primary/60 bg-primary/10' : '',
                 incident.realtime

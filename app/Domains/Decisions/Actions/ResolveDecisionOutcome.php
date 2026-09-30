@@ -155,9 +155,10 @@ class ResolveDecisionOutcome
                 'outcome' => $hardSafetyRule->outcomeOverride,
                 'sourceType' => DecisionSourceType::Rule,
                 'sourceRule' => $hardSafetyRule,
-                'reason' => 'Regla de seguridad obligatoria aplicada: '.$this->ruleLabel($hardSafetyRule).'.',
+                'reason' => 'Regla de seguridad obligatoria aplicada: '.$this->ruleLabel($hardSafetyRule).'.'
+                    .$this->aiReadingOfForcedOutcome($eval),
                 'requiresHumanReview' => $requiresHumanReview,
-                'explain' => [...$explain, 'source' => 'hard_safety'],
+                'explain' => [...$explain, 'source' => 'hard_safety', 'ai_classification' => $eval->classification?->value],
             ];
         }
 
@@ -227,6 +228,33 @@ class ResolveDecisionOutcome
                 'ai_outcome_missing' => true,
             ],
         ];
+    }
+
+    /**
+     * Una regla obligatoria (p. ej. «Botón de pánico → incidente») fija el
+     * desenlace sin importar lo que opine la IA; sin esta frase el operador ve
+     * la misma razón en la v1 («evento real») y en la v2 que, tras mirar las
+     * cámaras, lo juzga falsa alarma — y no sabe si la IA cambió de opinión.
+     */
+    private function aiReadingOfForcedOutcome(AIEventEvaluation $eval): string
+    {
+        $classification = $eval->classification;
+
+        if ($classification === null) {
+            return '';
+        }
+
+        $confidence = $eval->confidence_score !== null
+            ? ' ('.(int) round((float) $eval->confidence_score * 100).' %)'
+            : '';
+
+        return match ($classification) {
+            EventClassification::RealEvent => " La IA también lo considera un evento real{$confidence}.",
+            EventClassification::FalsePositive, EventClassification::Noise, EventClassification::Duplicate => ' La IA lo considera '
+                .mb_strtolower($classification->label()).$confidence
+                .', pero la regla no permite descartarlo sola: un operador debe confirmarlo antes de cerrar.',
+            default => ' La IA aún no puede confirmarlo: '.mb_strtolower($classification->label()).$confidence.'.',
+        };
     }
 
     /**

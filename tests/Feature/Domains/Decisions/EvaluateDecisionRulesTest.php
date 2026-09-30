@@ -114,6 +114,57 @@ class EvaluateDecisionRulesTest extends TestCase
         $this->assertNoSensitiveDataLogged();
     }
 
+    /**
+     * Real case (INC-00051, T-879): the panic rule forces INCIDENT, and the
+     * v2 evaluation — after seeing the unit parked in a workshop — reads it
+     * as a false alarm. The reason must say so, not repeat v1 verbatim.
+     */
+    public function test_forced_panic_incident_reason_carries_what_the_ai_now_thinks(): void
+    {
+        $teamId = User::factory()->create()->currentTeam->id;
+        $incidentOutcome = DecisionOutcome::firstWhere('code', DecisionOutcomeCode::Incident->value);
+        $ruleset = RuleSet::factory()->global()->create(['code' => 'default']);
+        DecisionRule::factory()->create([
+            'team_id' => null,
+            'ruleset_id' => $ruleset->id,
+            'code' => 'panic-button-always-incident',
+            'name' => 'Botón de pánico → incidente',
+            'scope' => RuleScope::Global,
+            'priority' => 1000,
+            'conditions_json' => ['all' => [['field' => 'classification', 'operator' => 'in', 'value' => ['real_event', 'false_positive', 'unclear']]]],
+            'outcome_override' => $incidentOutcome->id,
+            'stop_processing' => true,
+        ]);
+
+        $decide = function (EventClassification $classification, float $confidence) use ($teamId) {
+            $event = NormalizedEvent::factory()->create(['team_id' => $teamId]);
+
+            return app(EvaluateDecisionRules::class)->execute(AIEventEvaluation::factory()->create([
+                'normalized_event_id' => $event->id,
+                'team_id' => $teamId,
+                'classification' => $classification,
+                'confidence_score' => $confidence,
+                'risk_score' => 0.25,
+            ]));
+        };
+
+        $falseAlarm = $decide(EventClassification::FalsePositive, 0.96);
+        $this->assertSame(DecisionOutcomeCode::Incident->value, $falseAlarm->decision_code);
+        $this->assertStringContainsString('La IA lo considera falso positivo (96 %)', $falseAlarm->decision_reason);
+        $this->assertStringContainsString('un operador debe confirmarlo antes de cerrar', $falseAlarm->decision_reason);
+
+        $real = $decide(EventClassification::RealEvent, 0.93);
+        $this->assertStringContainsString('La IA también lo considera un evento real (93 %)', $real->decision_reason);
+
+        $unclear = $decide(EventClassification::Unclear, 0.5);
+        $this->assertStringContainsString('La IA aún no puede confirmarlo: sin determinar (50 %).', $unclear->decision_reason);
+
+        $resolved = $this->assertSystemLogged('decisions.outcome.resolved', fn (array $c) => ($c['calc']['ai_classification'] ?? null) === 'false_positive');
+        $this->assertSame('hard_safety', $resolved['calc']['source']);
+        $this->assertStringNotContainsString('La IA lo considera', json_encode($this->systemLogEntries()));
+        $this->assertNoSensitiveDataLogged();
+    }
+
     public function test_low_confidence_forces_human_review(): void
     {
         $user = User::factory()->create();

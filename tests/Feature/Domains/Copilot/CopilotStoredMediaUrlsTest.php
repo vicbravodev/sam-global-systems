@@ -108,6 +108,36 @@ class CopilotStoredMediaUrlsTest extends TestCase
         $this->assertSame('https://cdn.provider.com/poster.jpg', $items[0]['thumbnailUrl']);
     }
 
+    public function test_clip_frame_poster_is_resigned_and_a_foreign_frame_is_ignored(): void
+    {
+        Storage::disk('rustfs')->put('teams/1/frame-0.jpg', 'img');
+        $clip = EventMediaContext::factory()->videoClip()->create([
+            'team_id' => $this->team->id,
+            'asset_id' => $this->truck->id,
+            'media_url' => 'https://cdn.provider.com/clip.mp4',
+            'thumbnail_url' => null,
+        ]);
+        $frame = EventMediaContext::factory()->create([
+            'team_id' => $this->team->id,
+            'asset_id' => $this->truck->id,
+            'storage_path' => 'teams/1/frame-0.jpg',
+        ]);
+        $foreignFrame = EventMediaContext::factory()->create([
+            'team_id' => Team::factory()->create()->id,
+            'storage_path' => 'teams/2/frame-0.jpg',
+        ]);
+
+        $items = $this->showItems($this->conversationWithMedia([
+            ['id' => $clip->id, 'mediaType' => 'clip', 'url' => self::STALE, 'thumbnailUrl' => self::STALE, 'thumbnailMediaId' => $frame->id],
+            ['id' => $clip->id, 'mediaType' => 'clip', 'url' => self::STALE, 'thumbnailUrl' => self::STALE, 'thumbnailMediaId' => $foreignFrame->id],
+        ]));
+
+        $this->assertNotNull($items[0]['thumbnailUrl']);
+        $this->assertNotSame(self::STALE, $items[0]['thumbnailUrl']);
+        $this->assertStringContainsString('frame-0.jpg', $items[0]['thumbnailUrl']);
+        $this->assertNull($items[1]['thumbnailUrl']);
+    }
+
     public function test_media_of_another_tenant_is_never_resigned_nor_the_stored_url_served(): void
     {
         Storage::disk('rustfs')->put('teams/2/secret.jpg', 'img');

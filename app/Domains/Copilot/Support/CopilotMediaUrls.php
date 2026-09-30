@@ -60,7 +60,7 @@ final class CopilotMediaUrls
 
     /**
      * Re-resolves `url` / `thumbnailUrl` of every media card item from the
-     * tenant's own media rows. Stored URLs are never trusted: an item whose
+     * tenant's own media rows (`thumbnailMediaId`: the clip frame used as poster). Stored URLs are never trusted: an item whose
      * row is gone (or belongs to another tenant) loses both.
      *
      * @param  array<int, mixed>  $blocks
@@ -75,6 +75,10 @@ final class CopilotMediaUrls
                 foreach ((array) ($block['items'] ?? []) as $item) {
                     if (is_array($item) && is_numeric($item['id'] ?? null)) {
                         $ids[] = (int) $item['id'];
+                    }
+
+                    if (is_array($item) && is_numeric($item['thumbnailMediaId'] ?? null)) {
+                        $ids[] = (int) $item['thumbnailMediaId'];
                     }
                 }
             }
@@ -110,7 +114,15 @@ final class CopilotMediaUrls
 
                 $url = $row !== null ? $this->url($row) : null;
                 $blocks[$b]['items'][$i]['url'] = $url;
-                $blocks[$b]['items'][$i]['thumbnailUrl'] = $row !== null ? $this->thumbnail($row, $url) : null;
+                $thumbnail = $row !== null ? $this->thumbnail($row, $url) : null;
+
+                // A clip without its own poster shows its first extracted frame.
+                if ($row !== null && $thumbnail === null && is_numeric($item['thumbnailMediaId'] ?? null)) {
+                    $frame = $media->get((int) $item['thumbnailMediaId']);
+                    $thumbnail = $frame !== null ? $this->url($frame) : null;
+                }
+
+                $blocks[$b]['items'][$i]['thumbnailUrl'] = $thumbnail;
             }
         }
 

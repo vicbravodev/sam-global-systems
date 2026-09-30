@@ -111,12 +111,20 @@ export interface MediaItem {
     roleLabel: string | null;
     url: string | null;
     thumbnailUrl: string | null;
+    /** Frame del clip usado como miniatura (se re-firma al reabrir). */
+    thumbnailMediaId?: number | null;
     mimeType: string | null;
     durationSeconds: number | null;
     capturedAt: string | null;
     availability: string | null;
     eventType: string | null;
     eventHref: string | null;
+    /** Incidente abierto por el evento de esta media (INC-00051). */
+    incident?: string | null;
+    incidentHref?: string | null;
+    /** Veredicto de la IA de visión sobre el archivo (o sus frames). */
+    aiVerdict?: string | null;
+    aiSummary?: string | null;
 }
 
 export interface MediaBlock {

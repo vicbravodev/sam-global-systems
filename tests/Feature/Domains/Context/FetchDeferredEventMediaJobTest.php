@@ -795,6 +795,57 @@ class FetchDeferredEventMediaJobTest extends TestCase
         $this->assertNoSensitiveDataLogged();
     }
 
+    public function test_sweep_attaches_only_uploads_captured_around_this_event(): void
+    {
+        $this->makeSamsaraIntegration();
+
+        // Real case (T-415, 2026-09-28): two presses 108 s apart plus a
+        // safety-event upload 4 min earlier, all inside the 30-min listing.
+        $occurredAt = Carbon::parse('2026-09-28 07:31:43', 'UTC');
+        Carbon::setTestNow($occurredAt->copy()->addMinutes(2));
+
+        $event = NormalizedEvent::factory()->create([
+            'team_id' => $this->teamId,
+            'asset_id' => $this->asset->id,
+            'occurred_at' => $occurredAt,
+        ]);
+
+        $upload = fn (string $trigger, string $startTime, string $name): array => [
+            'input' => 'dashcamForwardFacing',
+            'mediaType' => 'image',
+            'triggerReason' => $trigger,
+            'startTime' => $startTime,
+            'urlInfo' => ['url' => "https://media.samsara.com/uploads/{$name}.jpg"],
+        ];
+
+        Http::fake([
+            'api.samsara.com/cameras/media?*' => Http::response(['data' => ['media' => [
+                $upload('safetyEvent', '2026-09-28T07:25:09.253Z', 'harsh-brake'),
+                $upload('panicButton', '2026-09-28T07:29:45.714Z', 'previous-press'),
+                $upload('panicButton', '2026-09-28T07:31:33.914Z', 'this-press'),
+            ]]]),
+            'media.samsara.com/*' => Http::response('jpeg-bytes', 200, ['Content-Type' => 'image/jpeg']),
+        ]);
+
+        $request = $this->makeRequest($event, ['sweep_only' => true]);
+
+        $this->runJob($request);
+
+        $stored = RawEventAttachment::where('raw_event_id', $event->raw_event_id)->pluck('storage_path');
+        $this->assertCount(1, $stored);
+        $this->assertStringEndsWith('uploaded-panicButton-20260928-073133-road-facing.jpg', $stored->sole());
+
+        Http::assertNotSent(fn ($req) => str_contains($req->url(), 'previous-press') || str_contains($req->url(), 'harsh-brake'));
+        $this->assertSame(1, $request->fresh()->response_metadata_json['uploaded_media_downloaded']);
+
+        $this->assertSystemLogged('media.deferred.sweep_completed', fn (array $c) => $c['calc']['items_found'] === 3
+            && $c['calc']['available'] === 1
+            && $c['calc']['out_of_window'] === 2
+            && $c['calc']['match_seconds'] === FetchDeferredEventMediaJob::UPLOADED_MATCH_SECONDS
+            && $c['result']['downloaded'] === 1);
+        $this->assertNoSensitiveDataLogged();
+    }
+
     public function test_generic_octet_stream_mime_is_normalized_from_the_filename(): void
     {
         $this->makeSamsaraIntegration();
@@ -855,12 +906,18 @@ class FetchDeferredEventMediaJobTest extends TestCase
     {
         $this->makeSamsaraIntegration();
 
+        $event = NormalizedEvent::factory()->create([
+            'team_id' => $this->teamId,
+            'asset_id' => $this->asset->id,
+            'occurred_at' => now()->subMinutes(2),
+        ]);
+
         Http::fake([
             'api.samsara.com/cameras/media?*' => Http::response(['data' => ['media' => [[
                 'input' => 'dashcamForwardFacing',
                 'mediaType' => 'image',
                 'triggerReason' => 'panicButton',
-                'startTime' => '2026-06-11T12:00:00Z',
+                'startTime' => $event->occurred_at->copy()->subSeconds(10)->toIso8601String(),
                 'urlInfo' => ['url' => 'https://media.samsara.com/uploads/panic.jpg'],
             ]]]]),
             // The provider rejects the retrieval placement outright.
@@ -868,7 +925,7 @@ class FetchDeferredEventMediaJobTest extends TestCase
             'media.samsara.com/*' => Http::response('still-bytes', 200, ['Content-Type' => 'image/jpeg']),
         ]);
 
-        $request = $this->makeRequest();
+        $request = $this->makeRequest($event);
 
         $this->runJob($request);
 

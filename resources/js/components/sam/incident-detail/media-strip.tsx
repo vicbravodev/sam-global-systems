@@ -8,6 +8,7 @@ import {
     FileQuestion,
     HelpCircle,
     Loader2,
+    Play,
     X,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -86,6 +87,9 @@ function MediaThumb({
     // Las URLs firmadas expiran (30 min): degradar al ícono en vez de dejar
     // una pared de imágenes rotas en pestañas long-lived.
     const [previewFailed, setPreviewFailed] = useState(false);
+    // Un clip sin frame extraído todavía: el propio video da el primer cuadro.
+    const videoPreview =
+        video && preview === null && item.url !== null && !previewFailed;
 
     return (
         <button
@@ -103,6 +107,16 @@ function MediaThumb({
                     loading="lazy"
                     onError={() => setPreviewFailed(true)}
                 />
+            ) : videoPreview ? (
+                <video
+                    src={`${item.url}#t=0.5`}
+                    preload="metadata"
+                    muted
+                    playsInline
+                    aria-hidden
+                    className="pointer-events-none h-full w-full object-cover"
+                    onError={() => setPreviewFailed(true)}
+                />
             ) : (
                 <span className="flex flex-col items-center gap-1 text-fg-3">
                     {video ? (
@@ -112,6 +126,13 @@ function MediaThumb({
                     )}
                     <span className="text-3xs uppercase">
                         {item.mediaType ?? 'media'}
+                    </span>
+                </span>
+            )}
+            {video && (preview !== null || videoPreview) && !previewFailed && (
+                <span className="absolute inset-0 grid place-items-center">
+                    <span className="grid size-7 place-items-center rounded-full bg-black/60 text-white">
+                        <Play size={13} strokeWidth={2} className="ml-0.5" />
                     </span>
                 </span>
             )}
@@ -125,6 +146,15 @@ function MediaThumb({
         </button>
     );
 }
+
+/** Un veredicto que afirma algo (confirma/contradice) pesa más que la duda. */
+const VERDICT_WEIGHT: Record<string, number> = {
+    contradicts_event: 3,
+    confirms_event: 3,
+    inconclusive: 1,
+    low_quality: 1,
+    unavailable: 0,
+};
 
 interface MediaStripProps {
     incidentId: number;
@@ -165,10 +195,26 @@ export function MediaStrip({
         PENDING_REQUEST_STATUSES.includes(request.status ?? ''),
     );
 
+    // Lo que la IA vio de este archivo: el propio veredicto o, en un clip,
+    // el de sus frames (la IA evalúa cuadros, no video). Gana el que afirma.
+    const assessmentsFor = (item: IncidentMediaItem) => {
+        const ids = new Set([item.id, ...(item.frameIds ?? [])]);
+
+        return assessments.filter((assessment) =>
+            ids.has(assessment.mediaContextId),
+        );
+    };
+
     const assessmentFor = (item: IncidentMediaItem) =>
-        assessments.find(
-            (assessment) => assessment.mediaContextId === item.id,
-        ) ?? null;
+        assessmentsFor(item).reduce<IncidentMediaAssessment | null>(
+            (best, assessment) =>
+                best === null ||
+                (VERDICT_WEIGHT[assessment.result ?? ''] ?? 0) >
+                    (VERDICT_WEIGHT[best.result ?? ''] ?? 0)
+                    ? assessment
+                    : best,
+            null,
+        );
 
     const images = media.filter(
         (item) => item.mediaType === 'image' || item.mediaType === 'snapshot',
@@ -211,7 +257,7 @@ export function MediaStrip({
     };
 
     const openItem = openIndex !== null ? (media[openIndex] ?? null) : null;
-    const openAssessment = openItem ? assessmentFor(openItem) : null;
+    const openAssessments = openItem ? assessmentsFor(openItem) : [];
 
     const navigate = (delta: number) => {
         if (openIndex === null || media.length === 0) {
@@ -313,19 +359,24 @@ export function MediaStrip({
                                 className="max-h-[55vh] w-full rounded-md object-contain"
                             />
                         ))}
-                    {openAssessment && (
-                        <div className="rounded-md border border-border bg-surface-2 p-3 text-xs">
+                    {openAssessments.map((assessment) => (
+                        <div
+                            key={assessment.id}
+                            className="rounded-md border border-border bg-surface-2 p-3 text-xs"
+                        >
                             <div className="mb-1 font-semibold text-fg-1">
-                                Qué vio la IA:{' '}
-                                {mediaResultLabel(openAssessment.result)}
-                                {openAssessment.confidenceScore !== null &&
-                                    ` (${Math.round(openAssessment.confidenceScore * 100)} %)`}
+                                {openAssessments.length > 1
+                                    ? 'Qué vio la IA en un cuadro: '
+                                    : 'Qué vio la IA: '}
+                                {mediaResultLabel(assessment.result)}
+                                {assessment.confidenceScore !== null &&
+                                    ` (${Math.round(assessment.confidenceScore * 100)} %)`}
                             </div>
                             <p className="text-fg-2">
-                                {openAssessment.summary ?? 'Sin resumen.'}
+                                {assessment.summary ?? 'Sin resumen.'}
                             </p>
                         </div>
-                    )}
+                    ))}
                     {media.length > 1 && (
                         <div className="flex items-center justify-between">
                             <Button
