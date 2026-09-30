@@ -86,7 +86,14 @@ class IntegrationsPageTest extends TestCase
                             fn (Assert $webhook) => $webhook
                                 ->where('url', fn ($url) => is_string($url) && str_contains((string) $url, '/webhooks/'))
                                 ->has('status')
-                                ->has('lastReceivedAt'),
+                                ->has('lastReceivedAt')
+                                ->has('secretConfigured')
+                                ->has('secretConfiguredAt')
+                                ->has('health')
+                                ->has('lastValidReceivedAt')
+                                ->has('lastRejectedAt')
+                                ->has('lastRejectionReason')
+                                ->missing('secret'),
                         ),
                 )
                 ->has('providers')

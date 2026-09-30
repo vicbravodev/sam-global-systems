@@ -45,6 +45,14 @@ class ProcessWebhookEventJob implements ShouldQueue
 
         $this->webhookEvent->markAsProcessing();
 
+        // Fail-closed: la Secret Key la genera Samsara y el tenant aún no la
+        // copió a SAM. No hay contra qué validar, así que no se ingiere nada.
+        if (! $this->endpoint->hasSecret()) {
+            $this->reject('secret_not_configured', 'none');
+
+            return;
+        }
+
         $payload = $this->webhookEvent->payload_json;
 
         // Preferred path: validate against the exact raw body bytes and the
@@ -71,19 +79,12 @@ class ProcessWebhookEventJob implements ShouldQueue
         );
 
         if (! $isValid) {
-            $this->webhookEvent->markAsInvalidSignature();
-            // event_type viene de la petición sin autenticar: sólo se registra si parece un código.
-            $eventType = LoggableCode::guard($this->webhookEvent->event_type);
-
-            SystemLog::skipped('webhook.event.rejected', reason: 'invalid_signature', input: [
-                'webhook_event_id' => $this->webhookEvent->id,
-                'signature_mode' => $signatureMode,
-                'event_type' => $eventType,
-                'event_type_valid' => $eventType !== null,
-            ]);
+            $this->reject('invalid_signature', $signatureMode);
 
             return;
         }
+
+        $this->endpoint->recordValidDelivery();
 
         try {
             $integration = $this->endpoint->tenantIntegration;
@@ -114,6 +115,27 @@ class ProcessWebhookEventJob implements ShouldQueue
 
             throw $e;
         }
+    }
+
+    /**
+     * Rechazo sin ingesta: marca el evento, deja la marca de rechazo en el
+     * endpoint (la salud se mide por firma) y lo narra con su razón.
+     */
+    private function reject(string $reason, string $signatureMode): void
+    {
+        $this->webhookEvent->markAsInvalidSignature();
+        $this->endpoint->recordRejection($reason);
+
+        // event_type viene de la petición sin autenticar: sólo se registra si parece un código.
+        $eventType = LoggableCode::guard($this->webhookEvent->event_type);
+
+        SystemLog::skipped('webhook.event.rejected', reason: $reason, input: [
+            'webhook_event_id' => $this->webhookEvent->id,
+            'webhook_endpoint_id' => $this->endpoint->id,
+            'signature_mode' => $signatureMode,
+            'event_type' => $eventType,
+            'event_type_valid' => $eventType !== null,
+        ]);
     }
 
     public function failed(\Throwable $exception): void
