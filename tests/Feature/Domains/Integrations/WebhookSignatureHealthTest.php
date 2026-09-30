@@ -127,6 +127,16 @@ class WebhookSignatureHealthTest extends TestCase
         $this->assertNoSensitiveDataLogged();
     }
 
+    public function test_signature_validation_is_fail_closed_without_a_secret(): void
+    {
+        $endpoint = $this->endpoint(secret: null);
+        $raw = '{"x":1}';
+
+        // Aunque alguien firme con la cadena vacía, sin secret no se acepta nada.
+        $this->assertFalse(app(ValidateWebhookSignature::class)->execute($endpoint, $raw, hash_hmac('sha256', $raw, '')));
+        $this->assertSystemNotLogged('webhook.signature.verified');
+    }
+
     public function test_an_invalid_signature_does_not_advance_the_valid_marker(): void
     {
         $endpoint = $this->endpoint();
