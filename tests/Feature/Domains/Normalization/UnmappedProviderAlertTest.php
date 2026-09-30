@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Domains\Normalization;
 
+use App\Domains\Ingestion\Actions\AlertPipelineFailure;
 use App\Domains\Ingestion\Models\PipelineFailureAlert;
 use App\Domains\Ingestion\Models\RawEvent;
 use App\Domains\Ingestion\Notifications\PipelineFailureNotification;
@@ -233,5 +234,28 @@ class UnmappedProviderAlertTest extends TestCase
 
         $this->assertSame(0, PipelineFailureAlert::withoutGlobalScopes()->count());
         Notification::assertNotSentTo($this->superAdmin, PipelineFailureNotification::class);
+    }
+
+    public function test_a_failing_alert_never_breaks_the_normalization_job(): void
+    {
+        $this->app->instance(AlertPipelineFailure::class, new class extends AlertPipelineFailure
+        {
+            public function __construct() {}
+
+            public function forUnmappedAlert(RawEvent $rawEvent, string $externalEventType): void
+            {
+                throw new \RuntimeException('smtp caído');
+            }
+        });
+
+        $raw = $this->rawEvent($this->teamA);
+
+        (new NormalizeEventJob($raw->id))->handle(app(NormalizeRawEvent::class));
+
+        $normalized = NormalizedEvent::withoutGlobalScopes()->where('raw_event_id', $raw->id)->sole();
+        $this->assertSame('unmapped', $normalized->status->value);
+
+        $failed = $this->assertSystemLogged('normalization.unmapped_alert.failed');
+        $this->assertSame('exception', $failed['reason']);
     }
 }

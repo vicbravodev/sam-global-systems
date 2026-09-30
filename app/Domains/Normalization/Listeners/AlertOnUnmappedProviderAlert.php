@@ -6,6 +6,7 @@ use App\Domains\Ingestion\Actions\AlertPipelineFailure;
 use App\Domains\Normalization\Events\EventUnmapped;
 use App\Support\LoggableCode;
 use App\Support\SystemLog;
+use Throwable;
 
 /**
  * Una alerta del proveedor (tipos de `pipeline.unmapped_alert_types`, p. ej.
@@ -15,7 +16,8 @@ use App\Support\SystemLog;
  *
  * Síncrono a propósito: corre dentro de NormalizeEventJob (ya en un worker) y
  * AlertPipelineFailure envía con `sendNow`, sin depender de otra cola. Nunca
- * lanza (AlertPipelineFailure se protege), así que no rompe la normalización.
+ * lanza: AlertPipelineFailure se protege y `handle` atrapa lo demás, así que
+ * un aviso fallido nunca rompe la normalización (el evento ya quedó procesado).
  * El tenant sale del propio raw event; el dedup es por raw event.
  */
 class AlertOnUnmappedProviderAlert
@@ -25,6 +27,18 @@ class AlertOnUnmappedProviderAlert
     ) {}
 
     public function handle(EventUnmapped $event): void
+    {
+        try {
+            $this->escalate($event);
+        } catch (Throwable $e) {
+            SystemLog::failed('normalization.unmapped_alert.failed', reason: 'exception', input: [
+                'raw_event_id' => (int) $event->rawEvent->id,
+                'team_id' => $event->rawEvent->team_id !== null ? (int) $event->rawEvent->team_id : null,
+            ], error: $e);
+        }
+    }
+
+    private function escalate(EventUnmapped $event): void
     {
         $rawEvent = $event->rawEvent;
         $input = [
