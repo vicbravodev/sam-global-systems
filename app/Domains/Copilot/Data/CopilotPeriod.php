@@ -17,6 +17,19 @@ final readonly class CopilotPeriod
     ) {}
 
     /**
+     * Explicit window the agent asked for (already validated: from < to).
+     */
+    public static function between(CarbonImmutable $from, CarbonImmutable $to): self
+    {
+        return new self(
+            $from,
+            $to,
+            'del '.$from->format('d/m').' al '.$to->format('d/m'),
+            max(1, (int) ceil($from->diffInDays($to))),
+        );
+    }
+
+    /**
      * Resolve the window from free text. Defaults to the last 7 days, which
      * is what a manager usually means by "últimamente".
      */

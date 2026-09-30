@@ -54,13 +54,12 @@ class SdkEventEvaluationAgent implements EventEvaluationAgent
             reasoningSteps: StructuredOutputParser::stringList($structured['reasoning_steps'] ?? []),
             keyFactors: StructuredOutputParser::keyValueMap($structured['key_factors'] ?? []),
             modelUsed: 'laravel-ai-sdk:'.($response->meta?->model ?? 'event-classifier'),
-            inputTokens: (int) $response->usage->promptTokens,
-            outputTokens: (int) $response->usage->completionTokens,
+            inputTokens: (int) $response->usage->inputTokens,
+            outputTokens: (int) $response->usage->outputTokens,
             latencyMs: $latencyMs,
-            costEstimate: $this->pricing->estimateCost(
+            costEstimate: $this->pricing->estimateUsageCost(
                 $response->meta?->model,
-                (int) $response->usage->promptTokens,
-                (int) $response->usage->completionTokens,
+                $response->usage,
             ),
             recommendedAction: is_string($structured['recommended_action'] ?? null) ? $structured['recommended_action'] : null,
         );

@@ -64,3 +64,22 @@ export function formatUsd(value: number): string {
         maximumFractionDigits: value < 1 ? 4 : 2,
     })}`;
 }
+
+/** "lun 29 sep, 14:05" — for timelines that span several days. */
+export function dayAndTime(iso: string | null | undefined): string {
+    if (!iso) {
+        return '—';
+    }
+
+    const date = new Date(iso);
+
+    return Number.isNaN(date.getTime())
+        ? '—'
+        : date.toLocaleString(APP_LOCALE, {
+              weekday: 'short',
+              day: 'numeric',
+              month: 'short',
+              hour: '2-digit',
+              minute: '2-digit',
+          });
+}

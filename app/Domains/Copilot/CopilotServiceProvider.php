@@ -6,7 +6,6 @@ use App\Contracts\AI\CopilotNarrator;
 use App\Domains\Copilot\Models\CopilotConversation;
 use App\Domains\Copilot\Policies\CopilotConversationPolicy;
 use App\Domains\Copilot\Support\TemplateCopilotNarrator;
-use App\Infrastructure\AI\Agents\SdkCopilotNarrator;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -17,19 +16,9 @@ class CopilotServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        // Same rule as the event evaluator: the LLM narrator is only used when
-        // the default AI provider has a key; otherwise answers are narrated
-        // from the grounded tool highlights (no tokens consumed).
-        $this->app->singletonIf(CopilotNarrator::class, function (): CopilotNarrator {
-            $provider = (string) config('ai.default');
-            $key = config("ai.providers.{$provider}.key");
-
-            if (is_string($key) && $key !== '') {
-                return $this->app->make(SdkCopilotNarrator::class);
-            }
-
-            return $this->app->make(TemplateCopilotNarrator::class);
-        });
+        // The agent (RunCopilotAgentTurn) phrases its own answers; the
+        // narrator contract only backs the deterministic, token-free path.
+        $this->app->singletonIf(CopilotNarrator::class, TemplateCopilotNarrator::class);
     }
 
     public function boot(): void

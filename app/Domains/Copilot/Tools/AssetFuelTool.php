@@ -7,25 +7,18 @@ use App\Domains\Assets\Models\AssetTelemetrySnapshot;
 use App\Domains\Copilot\Data\CopilotToolContext;
 use App\Domains\Copilot\Data\CopilotToolResult;
 use App\Domains\Copilot\Support\CopilotPresenter;
+use App\Domains\Copilot\Support\FuelConsumption;
 
 /**
  * Fuel level, consumption over the window and detected refuels.
  *
  * Providers report the tank as a percentage, so consumption is expressed in
- * percentage points of tank; a jump of REFUEL_JUMP points or more between two
+ * percentage points of tank; a jump of FuelConsumption::REFUEL_JUMP points or more between two
  * consecutive readings is treated as a refuel.
  */
 final class AssetFuelTool implements CopilotTool
 {
-    private const REFUEL_JUMP = 10.0;
-
     private const LOW_FUEL_PERCENT = 20.0;
-
-    /**
-     * A sudden drop this large between two readings is flagged for review
-     * (possible theft or sensor error).
-     */
-    private const SUDDEN_DROP = 15.0;
 
     public function run(CopilotToolContext $context): CopilotToolResult
     {
@@ -64,33 +57,7 @@ final class AssetFuelTool implements CopilotTool
             );
         }
 
-        $consumed = 0.0;
-        $refuels = [];
-        $drops = [];
-
-        for ($i = 1; $i < $series->count(); $i++) {
-            $previous = (float) $series[$i - 1]->data_json['value'];
-            $current = (float) $series[$i]->data_json['value'];
-            $delta = $current - $previous;
-
-            if ($delta >= self::REFUEL_JUMP) {
-                $refuels[] = [
-                    'at' => $series[$i]->recorded_at->toIso8601String(),
-                    'from' => round($previous, 1),
-                    'to' => round($current, 1),
-                ];
-            } elseif ($delta < 0) {
-                $consumed += -$delta;
-
-                if (-$delta >= self::SUDDEN_DROP) {
-                    $drops[] = [
-                        'at' => $series[$i]->recorded_at->toIso8601String(),
-                        'from' => round($previous, 1),
-                        'to' => round($current, 1),
-                    ];
-                }
-            }
-        }
+        ['consumed' => $consumed, 'refuels' => $refuels, 'drops' => $drops] = FuelConsumption::fromSeries($series);
 
         $current = round((float) ($latest->data_json['value'] ?? 0), 1);
         $rawUnit = (string) ($latest->data_json['unit'] ?? '%');

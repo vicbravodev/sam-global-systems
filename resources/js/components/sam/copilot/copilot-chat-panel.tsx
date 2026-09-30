@@ -79,13 +79,19 @@ export function CopilotChatPanel({
         [turnKey],
     );
 
+    // Follows streamed text and cards while an answer is being written.
+    const lastMessage = chat.messages[chat.messages.length - 1];
+    const streamTick = lastMessage?.streaming
+        ? lastMessage.content.length + lastMessage.blocks.length
+        : 0;
+
     useEffect(() => {
         const el = scrollRef.current;
 
         if (el) {
             el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
         }
-    }, [chat.messages.length, chat.busy]);
+    }, [chat.messages.length, chat.busy, streamTick]);
 
     const sampleAsset = asset ?? catalog.assets[0] ?? null;
 
@@ -185,9 +191,11 @@ export function CopilotChatPanel({
                         </div>
                     )}
 
-                    {chat.messages.map((message) => (
+                    {chat.messages.map((message, index) => (
                         <CopilotMessageView
                             key={message.id}
+                            showFollowups={index === chat.messages.length - 1}
+                            onSuggest={suggest}
                             message={message}
                             userInitials={initials(userName)}
                             assetLabel={(id) => {
@@ -201,7 +209,18 @@ export function CopilotChatPanel({
                         />
                     ))}
 
-                    {chat.busy && <CopilotThinking compact={compact} />}
+                    {chat.busy && !chat.messages.some((m) => m.streaming) && (
+                        <CopilotThinking compact={compact} />
+                    )}
+                    {chat.busy && (
+                        <button
+                            type="button"
+                            onClick={chat.stop}
+                            className="cursor-pointer self-start rounded-full border border-border bg-surface-2 px-2.5 py-1 text-2xs text-fg-2 hover:bg-surface-3"
+                        >
+                            Detener
+                        </button>
+                    )}
                 </div>
             </div>
 

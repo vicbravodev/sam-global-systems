@@ -38,7 +38,8 @@ Reglas por zona (se cargan al trabajar ahí): [`app/CLAUDE.md`](app/CLAUDE.md) �
 2. **Uso facturable** sólo vía `App\Domains\Tenancy\Actions\RecordUsageEvent` con `event_key` idempotente. Cobro por **tracto-día**: sólo se sondea, evalúa y cobra lo `monitored` (`monitoring_state`); el tope contratado es suave (se audita y se cobra el extra). Sin planes ni trial (`plans` = plantillas de topes). Detalle en `config/billing.php`, `ResolveBillingTerms`, `AssetDayPricing`.
 3. **Cobro por transferencia.** Stripe/Cashier retirados: no iniciar trabajo de Stripe.
 4. **Webhooks:** el tenant se resuelve desde `WebhookEndpoint` en DB (nunca del payload) y la firma se valida antes de ingerir.
-5. **Pipeline:** emergencias (pánico, colisión, vuelco) abren incidente sin esperar IA ni decisiones. Las categorías de `ai.skip_evaluation_categories` (`safety`, `maintenance`) no se evalúan con IA y, por tanto, no generan decisión ni incidente.
+5. **Toda feature nueva lleva tests y logging, o no está terminada.** Tests: happy path, fallos, bordes y fuga de tenant sobre el camino real ([`tests/CLAUDE.md`](tests/CLAUDE.md)). Logging narrativo vía `App\Support\SystemLog` en cada decisión, degradación y fallo, con su código en `docs/SAM/logging.md` y un test `AssertsSystemLog` (`assertSystemLogged` + `assertNoSensitiveDataLogged`) ([`app/CLAUDE.md`](app/CLAUDE.md)). Sin cualquiera de los dos, no se abre PR.
+6. **Pipeline:** emergencias (pánico, colisión, vuelco) abren incidente sin esperar IA ni decisiones. Las categorías de `ai.skip_evaluation_categories` (`safety`, `maintenance`) no se evalúan con IA y, por tanto, no generan decisión ni incidente.
 
 ## Convenciones no obvias
 

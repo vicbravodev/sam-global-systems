@@ -50,12 +50,12 @@ class AIUsageListener
             $invocationId = $event->invocationId;
             $logInput = ['team_id' => $link->team_id, 'invocation_id' => $invocationId];
 
-            if ((int) $usage->promptTokens > 0) {
+            if ((int) $usage->inputTokens > 0) {
                 if (UsageMeter::where('code', 'ai_tokens_in')->exists()) {
                     $this->recordUsageEvent->execute(
                         teamId: $link->team_id,
                         meterCode: 'ai_tokens_in',
-                        quantity: (int) $usage->promptTokens,
+                        quantity: (int) $usage->inputTokens,
                         eventKey: 'ai_tokens_in:sdk:'.$invocationId,
                         metadata: [
                             'agent_conversation_id' => $link->agent_conversation_id,
@@ -63,18 +63,18 @@ class AIUsageListener
                         ],
                     );
                 } else {
-                    $this->logMeterMissing($logInput, 'in', 'ai_tokens_in', (int) $usage->promptTokens);
+                    $this->logMeterMissing($logInput, 'in', 'ai_tokens_in', (int) $usage->inputTokens);
                 }
             } else {
                 SystemLog::skipped('ai.usage.not_metered', reason: 'zero_tokens', input: $logInput, calc: ['direction' => 'in'], debug: true);
             }
 
-            if ((int) $usage->completionTokens > 0) {
+            if ((int) $usage->outputTokens > 0) {
                 if (UsageMeter::where('code', 'ai_tokens_out')->exists()) {
                     $this->recordUsageEvent->execute(
                         teamId: $link->team_id,
                         meterCode: 'ai_tokens_out',
-                        quantity: (int) $usage->completionTokens,
+                        quantity: (int) $usage->outputTokens,
                         eventKey: 'ai_tokens_out:sdk:'.$invocationId,
                         metadata: [
                             'agent_conversation_id' => $link->agent_conversation_id,
@@ -82,7 +82,7 @@ class AIUsageListener
                         ],
                     );
                 } else {
-                    $this->logMeterMissing($logInput, 'out', 'ai_tokens_out', (int) $usage->completionTokens);
+                    $this->logMeterMissing($logInput, 'out', 'ai_tokens_out', (int) $usage->outputTokens);
                 }
             } else {
                 SystemLog::skipped('ai.usage.not_metered', reason: 'zero_tokens', input: $logInput, calc: ['direction' => 'out'], debug: true);

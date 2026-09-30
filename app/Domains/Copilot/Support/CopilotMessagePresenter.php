@@ -22,6 +22,8 @@ final class CopilotMessagePresenter
             'tools' => $message->tools_json ?? [],
             'sources' => $message->sources_json ?? [],
             'context' => $message->context_json,
+            'followups' => array_values((array) ($message->context_json['followups'] ?? [])),
+            'partial' => (bool) ($message->context_json['partial'] ?? false),
             'usage' => $message->role->value === 'assistant' ? [
                 'model' => $message->model,
                 'inputTokens' => $message->input_tokens,

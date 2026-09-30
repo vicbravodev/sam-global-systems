@@ -3,6 +3,7 @@
 use App\Http\Middleware\EnsureSuperAdmin;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\RendersErrorsAsJson;
 use App\Http\Middleware\SetTeamUrlDefaults;
 use App\Http\Middleware\TrustProxiesFromConfig;
 use App\Support\DeniedRequestLog;
@@ -12,6 +13,8 @@ use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Http\Middleware\TrustProxies;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Middleware\ThrottleRequests;
+use Illuminate\Routing\Middleware\ThrottleRequestsWithRedis;
 use Inertia\Inertia;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -47,6 +50,13 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'ensure.super_admin' => EnsureSuperAdmin::class,
         ]);
+
+        // RendersErrorsAsJson (copilot.stream) must run before the throttle
+        // so a 429 is JSON too, not only policy/404/validation errors.
+        $middleware->prependToPriorityList(
+            before: [ThrottleRequests::class, ThrottleRequestsWithRedis::class],
+            prepend: RendersErrorsAsJson::class,
+        );
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         // Todo reporte de excepción lleva dónde ocurrió (nunca el payload).

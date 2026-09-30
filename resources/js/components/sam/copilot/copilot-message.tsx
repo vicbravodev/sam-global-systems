@@ -3,6 +3,7 @@ import {
     Check,
     Copy,
     FileClock,
+    Loader2,
     Sparkles,
     ThumbsDown,
     ThumbsUp,
@@ -60,6 +61,9 @@ interface Props {
     actions: BlockActions;
     onRate?: (id: number, rating: -1 | 1 | null) => void;
     compact?: boolean;
+    /** Show the agent's suggested follow-ups (only the last assistant message). */
+    showFollowups?: boolean;
+    onSuggest?: (prompt: string) => void;
 }
 
 export function CopilotMessageView({
@@ -69,6 +73,8 @@ export function CopilotMessageView({
     actions,
     onRate,
     compact = false,
+    showFollowups = false,
+    onSuggest,
 }: Props) {
     const [showSources, setShowSources] = useState(false);
     const [copied, setCopied] = useState(false);
@@ -138,85 +144,148 @@ export function CopilotMessageView({
                     </div>
                 )}
 
-                <div className="break-words text-fg-1">
-                    <RichText text={message.content} />
-                </div>
+                {message.streaming &&
+                    (message.activeTools?.length ?? 0) > 0 && (
+                        <div
+                            className="mb-2 flex flex-wrap gap-1"
+                            role="status"
+                            aria-live="polite"
+                        >
+                            {message.activeTools?.map((tool) => (
+                                <span
+                                    key={tool.toolCallId}
+                                    className="inline-flex items-center gap-1 rounded-full border border-border bg-surface-2 px-2 py-0.5 font-mono text-3xs text-fg-2"
+                                >
+                                    <Loader2 className="size-2.5 text-ai-accent motion-safe:animate-spin" />
+                                    {tool.label}
+                                </span>
+                            ))}
+                        </div>
+                    )}
+
+                {(message.content !== '' || message.streaming) && (
+                    <div className="break-words text-fg-1">
+                        <RichText text={message.content} />
+                        {message.streaming && (
+                            <span
+                                aria-hidden
+                                className="ml-0.5 inline-block h-3.5 w-1 translate-y-0.5 rounded-sm bg-ai-accent motion-safe:animate-pulse"
+                            />
+                        )}
+                    </div>
+                )}
+
+                {!message.streaming &&
+                    message.content === '' &&
+                    message.blocks.length === 0 && (
+                        <div className="text-xs text-fg-3">
+                            {message.partial
+                                ? 'Se detuvo la respuesta antes de generar contenido.'
+                                : 'No se generó una respuesta. Intenta de nuevo.'}
+                        </div>
+                    )}
+
+                {message.partial && !message.streaming && (
+                    <div className="mt-1.5 text-2xs text-fg-3">
+                        Respuesta incompleta
+                    </div>
+                )}
 
                 <CopilotBlocks
                     blocks={message.blocks}
                     actions={{ ...actions, compact }}
                 />
 
-                <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-dashed border-border pt-2">
-                    {message.sources.length > 0 && (
-                        <button
-                            type="button"
-                            onClick={() => setShowSources((v) => !v)}
-                            className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-border bg-surface-2 px-2 py-0.5 text-2xs font-medium text-fg-2 hover:bg-surface-3"
-                        >
-                            <FileClock className="size-3" />
-                            {message.sources.length} fuente
-                            {message.sources.length > 1 ? 's' : ''} ·{' '}
-                            {showSources ? 'ocultar' : 'ver'}
-                        </button>
+                {showFollowups &&
+                    !message.streaming &&
+                    message.followups.length > 0 && (
+                        <div className="mt-3 flex flex-wrap gap-1.5">
+                            {message.followups.map((question) => (
+                                <button
+                                    key={question}
+                                    type="button"
+                                    onClick={() => onSuggest?.(question)}
+                                    className="cursor-pointer rounded-full border border-ai-accent/35 bg-ai-accent-bg px-2.5 py-1 text-left text-2xs text-ai-accent hover:bg-surface-3"
+                                >
+                                    {question}
+                                </button>
+                            ))}
+                        </div>
                     )}
-                    <span className="flex-1" />
-                    {usage && (
-                        <Tooltip>
-                            <TooltipTrigger asChild>
-                                <span className="cursor-default font-mono text-3xs text-fg-3">
-                                    {tokens > 0
-                                        ? `${formatTokens(tokens)} tokens`
-                                        : 'sin LLM'}{' '}
-                                    · {(usage.latencyMs / 1000).toFixed(1)} s
-                                </span>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                                {usage.model ??
-                                    'Respuesta generada desde datos (sin modelo de lenguaje)'}
-                                {tokens > 0 &&
-                                    ` · ${usage.inputTokens} entrada / ${usage.outputTokens} salida · ${formatUsd(usage.cost)}`}
-                            </TooltipContent>
-                        </Tooltip>
-                    )}
-                    <FootButton
-                        label="Útil"
-                        active={message.feedback === 1}
-                        onClick={() =>
-                            onRate?.(
-                                message.id,
-                                message.feedback === 1 ? null : 1,
-                            )
-                        }
-                    >
-                        <ThumbsUp className="size-3" />
-                    </FootButton>
-                    <FootButton
-                        label="No fue útil"
-                        active={message.feedback === -1}
-                        onClick={() =>
-                            onRate?.(
-                                message.id,
-                                message.feedback === -1 ? null : -1,
-                            )
-                        }
-                    >
-                        <ThumbsDown className="size-3" />
-                    </FootButton>
-                    <FootButton
-                        label={copied ? 'Copiado' : 'Copiar'}
-                        onClick={copy}
-                    >
-                        {copied ? (
-                            <Check className="size-3" />
-                        ) : (
-                            <Copy className="size-3" />
+
+                {!message.streaming && message.id > 0 && (
+                    <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-dashed border-border pt-2">
+                        {message.sources.length > 0 && (
+                            <button
+                                type="button"
+                                onClick={() => setShowSources((v) => !v)}
+                                className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-border bg-surface-2 px-2 py-0.5 text-2xs font-medium text-fg-2 hover:bg-surface-3"
+                            >
+                                <FileClock className="size-3" />
+                                {message.sources.length} fuente
+                                {message.sources.length > 1 ? 's' : ''} ·{' '}
+                                {showSources ? 'ocultar' : 'ver'}
+                            </button>
                         )}
-                    </FootButton>
-                    <span className="font-mono text-3xs text-fg-3">
-                        {timeOfDay(message.createdAt)}
-                    </span>
-                </div>
+                        <span className="flex-1" />
+                        {usage && (
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <span className="cursor-default font-mono text-3xs text-fg-3">
+                                        {tokens > 0
+                                            ? `${formatTokens(tokens)} tokens`
+                                            : 'sin LLM'}{' '}
+                                        · {(usage.latencyMs / 1000).toFixed(1)}{' '}
+                                        s
+                                    </span>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                    {usage.model ??
+                                        'Respuesta generada desde datos (sin modelo de lenguaje)'}
+                                    {tokens > 0 &&
+                                        ` · ${usage.inputTokens} entrada / ${usage.outputTokens} salida · ${formatUsd(usage.cost)}`}
+                                </TooltipContent>
+                            </Tooltip>
+                        )}
+                        <FootButton
+                            label="Útil"
+                            active={message.feedback === 1}
+                            onClick={() =>
+                                onRate?.(
+                                    message.id,
+                                    message.feedback === 1 ? null : 1,
+                                )
+                            }
+                        >
+                            <ThumbsUp className="size-3" />
+                        </FootButton>
+                        <FootButton
+                            label="No fue útil"
+                            active={message.feedback === -1}
+                            onClick={() =>
+                                onRate?.(
+                                    message.id,
+                                    message.feedback === -1 ? null : -1,
+                                )
+                            }
+                        >
+                            <ThumbsDown className="size-3" />
+                        </FootButton>
+                        <FootButton
+                            label={copied ? 'Copiado' : 'Copiar'}
+                            onClick={copy}
+                        >
+                            {copied ? (
+                                <Check className="size-3" />
+                            ) : (
+                                <Copy className="size-3" />
+                            )}
+                        </FootButton>
+                        <span className="font-mono text-3xs text-fg-3">
+                            {timeOfDay(message.createdAt)}
+                        </span>
+                    </div>
+                )}
 
                 {showSources && (
                     <div className="mt-2 flex flex-col gap-1">

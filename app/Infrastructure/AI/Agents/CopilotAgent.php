@@ -2,56 +2,75 @@
 
 namespace App\Infrastructure\AI\Agents;
 
+use App\Domains\Copilot\Data\CopilotTurnScope;
+use App\Infrastructure\AI\Middleware\CopilotStepGuard;
+use Laravel\Ai\Attributes\CacheInstructions;
+use Laravel\Ai\Attributes\CacheToolDefinitions;
+use Laravel\Ai\Attributes\MaxSteps;
 use Laravel\Ai\Attributes\Timeout;
 use Laravel\Ai\Contracts\Agent;
 use Laravel\Ai\Contracts\Conversational;
+use Laravel\Ai\Contracts\HasMiddleware;
+use Laravel\Ai\Contracts\HasTools;
+use Laravel\Ai\Contracts\Tool;
 use Laravel\Ai\Messages\Message;
 use Laravel\Ai\Promptable;
 use Stringable;
 
 /**
- * SAM Copilot persona: a senior fleet-monitoring operator answering a
- * manager or owner. It only ever phrases the JSON facts it receives.
+ * SAM Copilot: a senior fleet-monitoring operator answering a manager or
+ * owner. A multi-step tool-calling agent: every fact comes from the
+ * permission-filtered, tenant-scoped tools of the turn, and CopilotStepGuard
+ * caps steps and tokens.
  *
- * Runs inside the HTTP request (not a job): a slow provider must not hold a
- * php-fpm worker for the SDK's 60 s default. On timeout the narrator falls
- * back to the template answer.
+ * Runs inside the HTTP request (not a job): the timeout keeps a slow provider
+ * from holding a php-fpm worker for the SDK's 60 s default.
  */
-#[Timeout(20)]
-class CopilotAgent implements Agent, Conversational
+#[MaxSteps(6)]
+#[Timeout(45)]
+#[CacheInstructions]
+#[CacheToolDefinitions]
+class CopilotAgent implements Agent, Conversational, HasMiddleware, HasTools
 {
     use Promptable;
 
     /**
      * @param  list<array{role: string, content: string}>  $history
+     * @param  list<Tool>  $tools
      */
-    public function __construct(private readonly array $history = []) {}
+    public function __construct(
+        private readonly CopilotTurnScope $scope,
+        private readonly array $history,
+        private readonly array $tools,
+        private readonly CopilotStepGuard $guard,
+    ) {}
 
     public function instructions(): Stringable|string
     {
-        return <<<'INSTRUCTIONS'
+        $now = $this->scope->now->setTimezone($this->scope->timezone);
+        $readable = $now->locale('es_MX')->translatedFormat('l j \d\e F \d\e Y, H:i');
+        $iso = $now->toIso8601String();
+
+        return <<<INSTRUCTIONS
 Eres SAM Copilot, el monitorista senior de una central de monitoreo de flotas.
-Te consulta el gerente o el dueño de la empresa. Respondes como un operador
-experto: directo, preciso y accionable.
+Te consulta el gerente o el dueño. Respondes SIEMPRE en español de México: directo, preciso y accionable.
 
-Recibes un JSON con:
-- "question": la pregunta del usuario.
-- "intent": lo que el sistema entendió que pide.
-- "facts": datos REALES de la plataforma consultados para esta pregunta.
-- "highlights": frases ya verificadas contra esos datos.
+Ahora es {$readable} (zona {$this->scope->timezone}, ISO {$iso}).
 
-REGLAS OBLIGATORIAS:
-1. Responde SIEMPRE en español de México, en 2 a 5 frases cortas o viñetas.
-2. Usa EXCLUSIVAMENTE los datos de "facts" y "highlights". Nunca inventes
-   ubicaciones, cifras, nombres, horarios ni estados. Si un dato falta, dilo.
-3. Empieza por la respuesta directa a la pregunta; después, lo que el
-   gerente debería saber o hacer (riesgos, anomalías, próximos pasos).
-4. La interfaz ya muestra tarjetas con el detalle (mapas, tablas, media):
-   no repitas listas completas, resume y destaca lo importante.
-5. No uses Markdown de encabezados ni emojis. Puedes usar **negritas** para
-   cifras clave.
-6. Si los datos indican falta de permisos, explica que el rol del usuario no
-   tiene acceso y sugiere pedirlo al administrador.
+CÓMO TRABAJAS
+1. Todo dato sale de tus herramientas. Nunca inventes cifras, ubicaciones, nombres, horarios ni estados.
+2. Convierte expresiones de tiempo ("anoche", "la semana pasada", "desde el lunes") a from/to ISO-8601 con la zona indicada.
+3. Si no sabes el código exacto de una unidad, usa find_assets. Si una herramienta devuelve error, corrige los argumentos o explica qué faltó.
+4. Para "cuál/qué unidad más/menos…", "top" o comparar la flota usa rank_assets. Para "qué pasó…" usa search_events y/o open_incidents.
+5. Puedes encadenar herramientas: primero encuentra, luego profundiza en lo relevante.
+6. Si una herramienta indica falta de permisos, dilo y sugiere pedir acceso al administrador.
+
+CÓMO RESPONDES
+- Primero la respuesta directa; luego riesgos, anomalías (marcadas "outlier") y el siguiente paso recomendado.
+- 2 a 6 frases o viñetas. La interfaz ya muestra tarjetas (mapas, tablas, rankings): no repitas listas, destaca lo importante.
+- Combustible es % de tanque, no litros. Ralentí es motor encendido sin moverse.
+- **Negritas** sólo para cifras y unidades clave. Sin encabezados ni emojis.
+- Al terminar, llama a suggest_followups con 2 o 3 preguntas de seguimiento.
 INSTRUCTIONS;
     }
 
@@ -64,5 +83,21 @@ INSTRUCTIONS;
             fn (array $turn) => new Message($turn['role'], $turn['content']),
             $this->history,
         );
+    }
+
+    /**
+     * @return iterable<Tool>
+     */
+    public function tools(): iterable
+    {
+        return $this->tools;
+    }
+
+    /**
+     * @return array<int, mixed>
+     */
+    public function middleware(): array
+    {
+        return [$this->guard];
     }
 }

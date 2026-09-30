@@ -158,9 +158,9 @@ return [
     */
 
     'pricing' => [
-        'gpt-5.4' => ['input' => 2.50, 'output' => 15.00],
-        'gpt-5.4-mini' => ['input' => 0.75, 'output' => 4.50],
-        'gpt-5.4-nano' => ['input' => 0.20, 'output' => 1.25],
+        'gpt-5.4' => ['input' => 2.50, 'cached_input' => 0.25, 'output' => 15.00],
+        'gpt-5.4-mini' => ['input' => 0.75, 'cached_input' => 0.075, 'output' => 4.50],
+        'gpt-5.4-nano' => ['input' => 0.20, 'cached_input' => 0.02, 'output' => 1.25],
         'gpt-5.4-pro' => ['input' => 30.00, 'output' => 180.00],
     ],
 
@@ -237,6 +237,11 @@ return [
     | Critical-severity events ALWAYS reach the model regardless of quota.
     |
     */
+
+    'copilot' => [
+        // Turn-wide token budget (input + output across steps); beyond it the agent must answer without more tools.
+        'max_turn_tokens' => (int) env('COPILOT_MAX_TURN_TOKENS', 60000),
+    ],
 
     'quota' => [
         'monthly_token_limit' => (int) env('AI_QUOTA_MONTHLY_TOKEN_LIMIT', 5_000_000),

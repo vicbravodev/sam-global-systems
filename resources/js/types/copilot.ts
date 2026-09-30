@@ -10,6 +10,9 @@ export type CopilotIntent =
     | 'open_incidents'
     | 'driver_ranking'
     | 'fleet_overview'
+    | 'asset_ranking'
+    | 'event_search'
+    | 'asset_timeline'
     | 'general';
 
 export type CopilotChannel = 'page' | 'bubble';
@@ -235,6 +238,36 @@ export interface AssetPickerBlock {
     options: CopilotAssetOption[];
 }
 
+export interface RankingBlock {
+    type: 'ranking';
+    metric: string;
+    label: string;
+    unit: string;
+    items: {
+        assetId: number;
+        code: string | null;
+        name: string;
+        value: number;
+        outlier: boolean;
+        href: string;
+    }[];
+    average: number;
+}
+
+export interface TimelineItem {
+    at: string;
+    kind: 'event' | 'incident' | 'idle';
+    label: string;
+    severity?: Severity;
+    href?: string;
+    minutes?: number;
+}
+
+export interface TimelineBlock {
+    type: 'timeline';
+    items: TimelineItem[];
+}
+
 export interface NoticeBlock {
     type: 'notice';
     tone: 'warn' | 'info';
@@ -255,6 +288,8 @@ export type CopilotBlock =
     | AssetsBlock
     | FleetMapBlock
     | AssetPickerBlock
+    | RankingBlock
+    | TimelineBlock
     | NoticeBlock;
 
 export interface CopilotSource {
@@ -272,6 +307,14 @@ export interface CopilotUsage {
     latencyMs: number;
 }
 
+/** One tool the turn ran; status/durationMs are absent on answers stored before the agent. */
+export interface CopilotToolTrace {
+    tool: string;
+    label: string;
+    status?: 'ok' | 'denied' | 'error';
+    durationMs?: number;
+}
+
 export interface CopilotMessage {
     id: number;
     role: 'user' | 'assistant';
@@ -279,18 +322,30 @@ export interface CopilotMessage {
     intent: CopilotIntent | null;
     intentLabel: string | null;
     blocks: CopilotBlock[];
-    tools: { tool: string; label: string }[];
+    tools: CopilotToolTrace[];
     sources: CopilotSource[];
     context: {
         asset_id?: number;
         intent?: string;
-        resolved?: { asset_id: number | null; asset_code: string | null };
+        resolved?: { asset_id: number | null; asset_code?: string | null };
+        facts_digest?: string;
+        followups?: string[];
+        mode?: 'agent' | 'deterministic';
+        partial?: boolean;
     } | null;
+    /** Follow-up questions the agent suggested (empty for user turns). */
+    followups: string[];
+    /** The answer was cut short (provider failure or client disconnect mid-stream). */
+    partial?: boolean;
     usage: CopilotUsage | null;
     feedback: -1 | 1 | null;
     createdAt: string | null;
     /** Client-only: optimistic question not yet confirmed by the server. */
     pending?: boolean;
+    /** Client-only: the answer is still being streamed. */
+    streaming?: boolean;
+    /** Client-only: tools currently running for a streaming answer. */
+    activeTools?: { toolCallId: string; label: string }[];
 }
 
 export interface CopilotConversation {

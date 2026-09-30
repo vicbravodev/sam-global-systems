@@ -15,7 +15,7 @@ use Laravel\Ai\Events\AgentStreamed;
 use Laravel\Ai\Prompts\AgentPrompt;
 use Laravel\Ai\Responses\AgentResponse;
 use Laravel\Ai\Responses\Data\Meta;
-use Laravel\Ai\Responses\Data\Usage;
+use Laravel\Ai\Responses\Data\TextUsage;
 use Mockery;
 use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
@@ -165,7 +165,7 @@ class AiUsageMeteringTest extends TestCase
 
         $invocationId = $link->agent_conversation_id;
         $prompt = Mockery::mock(AgentPrompt::class);
-        $response = new AgentResponse($invocationId, 'streamed text', new Usage(promptTokens: 100, completionTokens: 25), new Meta('openai', 'gpt-test'));
+        $response = new AgentResponse($invocationId, 'streamed text', new TextUsage(inputTokens: 100, outputTokens: 25), new Meta('openai', 'gpt-test'));
         $response->withinConversation($link->agent_conversation_id, (object) ['id' => $user->id]);
 
         event(new AgentStreamed($invocationId, $prompt, $response));
@@ -215,7 +215,7 @@ class AiUsageMeteringTest extends TestCase
         int $promptTokens,
         int $completionTokens,
     ): AgentPrompted {
-        $usage = new Usage(promptTokens: $promptTokens, completionTokens: $completionTokens);
+        $usage = new TextUsage(inputTokens: $promptTokens, outputTokens: $completionTokens);
         $meta = new Meta('openai', 'gpt-test');
 
         $response = new AgentResponse($invocationId, 'fake text', $usage, $meta);

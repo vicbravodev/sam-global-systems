@@ -18,6 +18,9 @@ enum CopilotIntent: string
     case OpenIncidents = 'open_incidents';
     case DriverRanking = 'driver_ranking';
     case FleetOverview = 'fleet_overview';
+    case AssetRanking = 'asset_ranking';
+    case EventSearch = 'event_search';
+    case AssetTimeline = 'asset_timeline';
     case General = 'general';
 
     public function label(): string
@@ -32,6 +35,9 @@ enum CopilotIntent: string
             self::OpenIncidents => 'Incidentes abiertos',
             self::DriverRanking => 'Ranking de conductores',
             self::FleetOverview => 'Estado de la flota',
+            self::AssetRanking => 'Ranking de unidades',
+            self::EventSearch => 'Búsqueda de eventos',
+            self::AssetTimeline => 'Línea de tiempo de unidad',
             self::General => 'Consulta general',
         };
     }
@@ -47,6 +53,7 @@ enum CopilotIntent: string
             self::AssetMedia,
             self::EngineStats,
             self::FuelReport,
+            self::AssetTimeline,
         ], true);
     }
 }

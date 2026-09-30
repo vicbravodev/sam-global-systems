@@ -4,6 +4,7 @@ namespace Tests\Feature\Domains\AI;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
+use Laravel\Ai\Migrations\AiMigration;
 use Tests\TestCase;
 
 /**
@@ -29,7 +30,7 @@ class AgentConversationSchemaTest extends TestCase
         );
     }
 
-    public function test_agent_conversation_messages_carries_participant_and_approval_columns(): void
+    public function test_agent_conversation_messages_carries_participant_and_step_columns(): void
     {
         $this->assertTrue(
             Schema::hasColumn('agent_conversation_messages', 'participant_type'),
@@ -42,8 +43,34 @@ class AgentConversationSchemaTest extends TestCase
         );
 
         $this->assertTrue(
-            Schema::hasColumn('agent_conversation_messages', 'approval_state'),
-            'v0.10 added approval_state to messages for human-in-the-loop approvals',
+            Schema::hasColumn('agent_conversation_messages', 'steps'),
+            'laravel/ai 1.0 stores each assistant turn as steps',
         );
+
+        $this->assertTrue(
+            Schema::hasColumn('agent_conversation_messages', 'status'),
+            'laravel/ai 1.0 replaced approval_state with a message status',
+        );
+
+        foreach (['tool_calls', 'tool_results', 'approval_state'] as $column) {
+            $this->assertFalse(
+                Schema::hasColumn('agent_conversation_messages', $column),
+                "laravel/ai 1.0 no longer writes {$column}; a leftover NOT NULL column would break inserts",
+            );
+        }
+    }
+
+    public function test_steps_migration_runs_on_the_ai_conversations_connection(): void
+    {
+        $path = database_path('migrations/2026_10_05_100000_store_agent_conversation_messages_as_steps.php');
+        $migration = require $path;
+
+        $this->assertInstanceOf(AiMigration::class, $migration, 'Like the package migrations, it must honour ai.conversations.connection');
+
+        config(['ai.conversations.connection' => 'ai_conversations']);
+        $this->assertSame('ai_conversations', $migration->getConnection());
+
+        // Every schema and data statement goes through that connection, never the default one.
+        $this->assertDoesNotMatchRegularExpression('/\b(Schema|DB)::(?!connection\()/', (string) file_get_contents($path));
     }
 }
