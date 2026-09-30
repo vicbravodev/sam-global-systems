@@ -347,8 +347,31 @@ export interface CopilotMessage {
     /** Client-only: the answer is still being streamed. */
     streaming?: boolean;
     /** Client-only: tools currently running for a streaming answer. */
-    activeTools?: { toolCallId: string; label: string }[];
+    activeTools?: { toolCallId: string; tool: string; label: string }[];
+    /**
+     * Client-only: stable React key of a turn sent from this client. It is
+     * kept from the optimistic question / draft answer to the stored
+     * messages so nothing remounts when the server's copy arrives.
+     */
+    clientKey?: string;
+    /** Client-only: where a live answer is (drives the activity line). */
+    phase?: CopilotTurnPhase;
+    /** Client-only: epoch ms when the question was sent. */
+    startedAt?: number;
+    /** Client-only: send → done, measured in the browser. */
+    elapsedMs?: number;
+    /** Client-only: tools the live answer started (hidden ones excluded). */
+    toolCount?: number;
+    /** Client-only: card placeholders of tools whose cards have not arrived. */
+    pendingCards?: { toolCallId: string; tool: string; finished: boolean }[];
 }
+
+export type CopilotTurnPhase =
+    | 'thinking'
+    | 'tool'
+    | 'writing'
+    | 'finishing'
+    | 'done';
 
 export interface CopilotConversation {
     id: number;

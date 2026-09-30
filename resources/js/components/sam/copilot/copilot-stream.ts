@@ -6,7 +6,12 @@ import type {
 } from '@/types/copilot';
 
 export type CopilotStreamPart =
+    | { type: 'text-start'; id: string }
     | { type: 'text-delta'; id: string; delta: string }
+    | { type: 'text-end'; id: string }
+    | { type: 'start-step' }
+    | { type: 'finish-step' }
+    | { type: 'finish' }
     | {
           type: 'tool-input-available';
           toolCallId: string;
@@ -38,7 +43,12 @@ export type CopilotStreamPart =
     | { type: 'error'; errorText: string };
 
 const KNOWN_TYPES: ReadonlySet<string> = new Set([
+    'text-start',
     'text-delta',
+    'text-end',
+    'start-step',
+    'finish-step',
+    'finish',
     'tool-input-available',
     'tool-output-available',
     'tool-output-error',
@@ -70,11 +80,6 @@ function parsePart(payload: string): CopilotStreamPart | null {
 }
 
 /**
- * Reads the Vercel UI message stream the Copilot endpoint emits: one JSON
- * part per `data:` line, frames separated by a blank line, `[DONE]` last.
- * Part types the UI does not use (start, finish, text-start...) are dropped.
- */
-/**
  * Appends a `text-delta` to the draft answer. Each agent step streams its
  * text under a new part `id`; a new id starts a new paragraph so the steps
  * never run together ("…la unidad.Está en ruta.").
@@ -91,6 +96,12 @@ export function appendTextDelta(
     return { content: content + separator + delta, lastId: id };
 }
 
+/**
+ * Reads the Vercel UI message stream the Copilot endpoint emits: one JSON
+ * part per `data:` line, frames separated by a blank line, `[DONE]` last.
+ * Part types the UI does not use (start, tool-input-start...) are dropped;
+ * the step/text boundaries drive the activity line.
+ */
 export async function* readCopilotStream(
     body: ReadableStream<Uint8Array>,
 ): AsyncGenerator<CopilotStreamPart> {

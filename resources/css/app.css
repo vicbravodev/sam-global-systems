@@ -605,6 +605,50 @@
         opacity: 1;
     }
 }
+/* Live answer pieces: each mounts once (stable keys), so these entrances
+   never replay. Under reduced motion only the opacity survives (the global
+   reduced-motion reset below would otherwise zero it). */
+@keyframes sam-copilot-rise {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+}
+@keyframes sam-copilot-fade {
+    from {
+        opacity: 0;
+    }
+}
+@keyframes sam-copilot-fade-out {
+    to {
+        opacity: 0;
+    }
+}
+.sam-copilot-rise {
+    animation: sam-copilot-rise var(--motion-normal) var(--ease-out) both;
+}
+.sam-copilot-fade {
+    animation: sam-copilot-fade var(--motion-fast) var(--ease-out) both;
+}
+.sam-copilot-fade-out {
+    animation: sam-copilot-fade-out var(--motion-fast) var(--ease-out) both;
+}
+.sam-copilot-reveal {
+    transition: opacity var(--motion-normal) var(--ease-out);
+}
+@media (prefers-reduced-motion: reduce) {
+    .sam-copilot-rise {
+        animation-name: sam-copilot-fade;
+        animation-duration: var(--motion-normal) !important;
+    }
+    .sam-copilot-fade,
+    .sam-copilot-fade-out {
+        animation-duration: var(--motion-fast) !important;
+    }
+    .sam-copilot-reveal {
+        transition-duration: var(--motion-normal) !important;
+    }
+}
 @keyframes sam-copilot-dots {
     0%,
     80%,

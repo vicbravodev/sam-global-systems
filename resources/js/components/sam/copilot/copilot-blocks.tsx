@@ -19,7 +19,7 @@ import {
     Truck,
     User,
 } from 'lucide-react';
-import { lazy, Suspense, useMemo, useState } from 'react';
+import { lazy, memo, Suspense, useMemo, useState } from 'react';
 import { SparkArea } from '@/components/sam/charts';
 import { SeverityBadge } from '@/components/sam/severity-badge';
 import { cn } from '@/lib/utils';
@@ -113,14 +113,26 @@ function toneClass(tone: Tone): string {
     return tone ? (TONE_CLASSES[tone] ?? '') : '';
 }
 
-export function CopilotBlocks({
+const NO_PENDING: { toolCallId: string; tool: string }[] = [];
+
+/**
+ * The cards of one answer, append-only in arrival order. Keys are the index
+ * (the stored answer keeps the streamed order), so a card mounts once: on a
+ * live answer it rises in individually, and a tool still running holds a
+ * placeholder of roughly the card's height where its card will land.
+ */
+export const CopilotBlocks = memo(function CopilotBlocks({
     blocks,
     actions,
+    live = false,
+    pending = NO_PENDING,
 }: {
     blocks: CopilotBlock[];
     actions: BlockActions;
+    live?: boolean;
+    pending?: { toolCallId: string; tool: string }[];
 }) {
-    if (blocks.length === 0) {
+    if (blocks.length === 0 && pending.length === 0) {
         return null;
     }
 
@@ -129,17 +141,61 @@ export function CopilotBlocks({
             {blocks.map((block, index) => (
                 <div
                     key={`${block.type}-${index}`}
-                    className="motion-safe:animate-[sam-copilot-in_var(--motion-normal)_var(--ease-out)_both]"
-                    style={{ animationDelay: `${index * 60}ms` }}
+                    className={live ? 'sam-copilot-rise' : undefined}
                 >
                     <BlockSwitch block={block} actions={actions} />
                 </div>
             ))}
+            {pending.map((placeholder) => (
+                <CardPlaceholder
+                    key={placeholder.toolCallId}
+                    tool={placeholder.tool}
+                    compact={actions.compact}
+                />
+            ))}
+        </div>
+    );
+});
+
+/** Skeleton sized like the card the running tool usually returns. */
+function CardPlaceholder({
+    tool,
+    compact,
+}: {
+    tool: string;
+    compact?: boolean;
+}) {
+    const body =
+        tool === 'asset_location' ? (
+            <div
+                className="w-full bg-surface-2"
+                style={{ height: (compact ? 160 : 220) + 80 }}
+            />
+        ) : tool === 'asset_media' ? (
+            <div className="aspect-video w-full bg-surface-2" />
+        ) : tool === 'fleet_overview' ? (
+            <div
+                className="w-full bg-surface-2"
+                style={{ height: compact ? 170 : 240 }}
+            />
+        ) : (
+            <div className="h-16 w-full bg-surface-2" />
+        );
+
+    return (
+        <div
+            aria-hidden
+            className="sam-copilot-fade overflow-hidden rounded-lg border border-border bg-surface-1"
+        >
+            <div className="flex h-8 items-center gap-2 border-b border-border bg-surface-2 px-3">
+                <span className="h-2 w-24 rounded-full bg-surface-3 motion-safe:animate-pulse" />
+            </div>
+            <div className="motion-safe:animate-pulse">{body}</div>
         </div>
     );
 }
 
-function BlockSwitch({
+const BlockSwitch = memo(function BlockSwitch({
     block,
     actions,
 }: {
@@ -182,7 +238,7 @@ function BlockSwitch({
         default:
             return null;
     }
-}
+});
 
 // ---------- shared pieces ----------
 
