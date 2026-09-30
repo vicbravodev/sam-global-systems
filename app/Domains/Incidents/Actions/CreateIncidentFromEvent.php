@@ -111,7 +111,8 @@ class CreateIncidentFromEvent
             // IncidentCreated, sin notificaciones, sin subir prioridad).
             $dedupWindowMinutes = (int) config('incidents.duplicate_window_minutes', 30);
             $dedupWindowStart = $this->windowStart($event, $dedupWindowMinutes);
-            $existing = $this->findOpenDuplicate($event, $incidentType, $dedupWindowStart);
+            $dedupWindowEnd = $this->windowEnd($event, $dedupWindowMinutes);
+            $existing = $this->findOpenDuplicate($event, $incidentType, $dedupWindowStart, $dedupWindowEnd);
 
             if ($existing !== null) {
                 $link = $this->linkEventToIncident->execute(
@@ -123,9 +124,9 @@ class CreateIncidentFromEvent
                 $raise = $this->raisePriorityIfHigher($existing, $priority, $event);
 
                 // Derivado tras el match, sin repetir la query: qué rama del
-                // orWhere (activo/conductor) y de activeSince lo sostiene.
+                // orWhere (activo/conductor) y de activeWithin lo sostiene.
                 $matchedOn = $event->asset_id !== null && $existing->asset_id === $event->asset_id ? 'asset' : 'driver';
-                $matchBasis = $existing->opened_at !== null && $existing->opened_at->gte($dedupWindowStart)
+                $matchBasis = $existing->opened_at !== null && $existing->opened_at->between($dedupWindowStart, $dedupWindowEnd)
                     ? 'opened_in_window'
                     : 'linked_event_in_window';
 
@@ -134,6 +135,7 @@ class CreateIncidentFromEvent
                     'calc' => [
                         'window_minutes' => $dedupWindowMinutes,
                         'window_start' => $dedupWindowStart->toIso8601String(),
+                        'window_end' => $dedupWindowEnd->toIso8601String(),
                         'matched_on' => $matchedOn,
                         'match_basis' => $matchBasis,
                     ],
@@ -445,8 +447,12 @@ class CreateIncidentFromEvent
      * dentro de ella. Un flujo continuo de eventos (p. ej. device_offline cada
      * hora de un activo parado) extiende la ventana y queda en un solo
      * incidente; un evento tras un silencio largo abre uno nuevo.
+     *
+     * La ventana rodea la ocurrencia por ambos lados: un pánico entregado con
+     * días de retraso (rescate, reintento del proveedor) no puede colgarse de
+     * un incidente abierto DESPUÉS por otro pánico de la misma unidad.
      */
-    private function findOpenDuplicate(NormalizedEvent $event, IncidentType $incidentType, Carbon $threshold): ?Incident
+    private function findOpenDuplicate(NormalizedEvent $event, IncidentType $incidentType, Carbon $threshold, Carbon $until): ?Incident
     {
         if ($event->asset_id === null && $event->driver_id === null) {
             return null;
@@ -464,7 +470,7 @@ class CreateIncidentFromEvent
                     $q->orWhere('driver_id', $event->driver_id);
                 }
             })
-            ->where(fn ($q) => $this->activeSince($q, $threshold))
+            ->where(fn ($q) => $this->activeWithin($q, $threshold, $until))
             ->orderByDesc('opened_at')
             ->first();
     }
@@ -501,7 +507,7 @@ class CreateIncidentFromEvent
         $aggregate = $base()
             ->whereNull('asset_id')
             ->whereNull('driver_id')
-            ->where(fn ($q) => $this->activeSince($q, $threshold))
+            ->where(fn ($q) => $this->activeWithin($q, $threshold, $this->windowEnd($event, $windowMinutes)))
             ->orderByDesc('opened_at')
             ->first();
 
@@ -534,15 +540,20 @@ class CreateIncidentFromEvent
     /**
      * @param  Builder<Incident>  $query
      */
-    private function activeSince(Builder $query, Carbon $threshold): void
+    private function activeWithin(Builder $query, Carbon $from, Carbon $until): void
     {
-        $query->where('opened_at', '>=', $threshold)
-            ->orWhereHas('eventLinks.normalizedEvent', fn ($q) => $q->where('occurred_at', '>=', $threshold));
+        $query->whereBetween('opened_at', [$from, $until])
+            ->orWhereHas('eventLinks.normalizedEvent', fn ($q) => $q->whereBetween('occurred_at', [$from, $until]));
     }
 
     private function windowStart(NormalizedEvent $event, int $minutes): Carbon
     {
         return Carbon::instance($event->occurred_at ?? now())->subMinutes($minutes);
+    }
+
+    private function windowEnd(NormalizedEvent $event, int $minutes): Carbon
+    {
+        return Carbon::instance($event->occurred_at ?? now())->addMinutes($minutes);
     }
 
     private function isDeviceOffline(NormalizedEvent $event): bool
