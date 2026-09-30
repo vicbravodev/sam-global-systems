@@ -106,7 +106,7 @@ class RefreshIncidentOnEventMediaAvailableTest extends TestCase
         Incident::factory()->open()->create(['team_id' => $other->id, 'related_event_id' => $event->id]);
         $media = $this->mediaFor($event);
 
-        $this->assertNoTenantLeak($other, fn () => $this->handle($media, $event));
+        $this->assertNoTenantLeak($this->team, fn () => $this->handle($media, $event));
 
         Event::assertDispatched(IncidentUpdatedBroadcast::class, fn (IncidentUpdatedBroadcast $b) => $b->teamId === $this->team->id);
         Event::assertNotDispatched(IncidentUpdatedBroadcast::class, fn (IncidentUpdatedBroadcast $b) => $b->teamId === $other->id);
