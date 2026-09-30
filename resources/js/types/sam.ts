@@ -382,6 +382,8 @@ export interface IncidentMediaItem {
     mimeType: string | null;
     url: string | null;
     thumbnailUrl: string | null;
+    /** Frames extraídos de este clip: la IA los evalúa en su nombre. */
+    frameIds?: number[];
     durationSeconds: number | null;
     sizeBytes: number | null;
     capturedAt: string | null;

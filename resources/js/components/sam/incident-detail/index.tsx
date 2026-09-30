@@ -1,3 +1,4 @@
+import { Play } from 'lucide-react';
 import type { IncidentDetail } from '@/types/sam';
 import { Activity } from './activity';
 import { AiEvaluationCard } from './ai-evaluation';
@@ -43,13 +44,29 @@ function MediaPreviewStrip({ incident }: { incident: IncidentDetail }) {
             {thumbs.length > 0 && (
                 <div className="mb-2 flex gap-2 overflow-x-auto pb-1">
                     {thumbs.map((thumb) => (
-                        <img
+                        <span
                             key={thumb.id}
-                            src={thumb.url ?? undefined}
-                            alt={`Media #${thumb.id}`}
-                            loading="lazy"
-                            className="h-20 w-32 shrink-0 rounded-md border border-border object-cover"
-                        />
+                            className="relative h-20 w-32 shrink-0 overflow-hidden rounded-md border border-border bg-surface-2"
+                        >
+                            <img
+                                src={thumb.url ?? undefined}
+                                alt={`Media #${thumb.id}`}
+                                loading="lazy"
+                                className="h-full w-full object-cover"
+                            />
+                            {(thumb.mediaType === 'clip' ||
+                                thumb.mediaType === 'video') && (
+                                <span className="absolute inset-0 grid place-items-center">
+                                    <span className="grid size-6 place-items-center rounded-full bg-black/60 text-white">
+                                        <Play
+                                            size={11}
+                                            strokeWidth={2}
+                                            className="ml-0.5"
+                                        />
+                                    </span>
+                                </span>
+                            )}
+                        </span>
                     ))}
                     {summary.total > thumbs.length && (
                         <span className="grid h-20 w-16 shrink-0 place-items-center rounded-md border border-border bg-surface-2 font-mono text-xs text-fg-3">
