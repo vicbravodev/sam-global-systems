@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Incidents;
 use App\Domains\Access\Actions\AuthorizeAction;
 use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\AI\Models\AIMediaAssessment;
+use App\Domains\AI\Support\MediaFileVerdicts;
 use App\Domains\Context\Enums\IncidentRelationType;
 use App\Domains\Context\Models\EventMediaContext;
 use App\Domains\Context\Models\EventMediaRequest;
@@ -377,20 +378,22 @@ class IncidentInboxController extends Controller
             ->where('normalized_event_id', $incident->related_event_id)
             ->select('id');
 
-        // Un veredicto por media: la evaluación más reciente gana.
-        $verdicts = AIMediaAssessment::query()
-            ->whereIn('evaluation_id', $evaluationIds)
-            ->orderByDesc('assessed_at')
-            ->get(['event_media_context_id', 'result'])
-            ->unique('event_media_context_id');
+        // Una entrada por archivo real: los frames extraídos se pliegan bajo su
+        // clip y le dan miniatura (un mp4 no se previsualiza en un <img>).
+        $entries = $this->galleryOrder(app(EventMediaGallery::class)->entries($media));
+
+        // Un veredicto por archivo (el de un clip sale de sus frames): el
+        // resumen nunca dice "8 de 4 medias evaluadas".
+        $verdicts = collect(MediaFileVerdicts::forFiles(
+            AIMediaAssessment::query()->whereIn('evaluation_id', $evaluationIds)->get(),
+            collect($entries)->mapWithKeys(fn (array $entry): array => [
+                (int) $entry['media']->id => [(int) $entry['media']->id, ...$entry['frameIds']],
+            ])->all(),
+        ));
 
         $countFor = fn (string $result): int => $verdicts
             ->filter(fn (AIMediaAssessment $assessment) => $assessment->result?->value === $result)
             ->count();
-
-        // Una entrada por archivo real: los frames extraídos se pliegan bajo su
-        // clip y le dan miniatura (un mp4 no se previsualiza en un <img>).
-        $entries = $this->galleryOrder(app(EventMediaGallery::class)->entries($media));
 
         $thumbnails = collect($entries)
             ->map(fn (array $entry): array => [

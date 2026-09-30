@@ -265,6 +265,33 @@ class IncidentDetailPageTest extends TestCase
         ]);
     }
 
+    public function test_visual_summary_counts_one_verdict_per_file_not_per_frame(): void
+    {
+        [$incident, $photo, $clip, $firstFrame] = $this->makePanicMediaSet();
+        $secondFrame = EventMediaContext::query()->where('metadata_json->offset_seconds', 15)->sole();
+
+        $evaluation = AIEventEvaluation::factory()->create([
+            'team_id' => $this->team->id,
+            'normalized_event_id' => $incident->related_event_id,
+        ]);
+
+        AIMediaAssessment::factory()->create(['evaluation_id' => $evaluation->id, 'event_media_context_id' => $photo->id, 'result' => 'inconclusive']);
+        AIMediaAssessment::factory()->create(['evaluation_id' => $evaluation->id, 'event_media_context_id' => $firstFrame->id, 'result' => 'inconclusive']);
+        AIMediaAssessment::factory()->contradicts()->create(['evaluation_id' => $evaluation->id, 'event_media_context_id' => $secondFrame->id]);
+
+        $response = $this->actingAs($this->user)->getJson(
+            route('incidents.show', ['current_team' => $this->team->slug, 'incident' => $incident->id]),
+        );
+
+        // 2 files (photo + clip), both assessed; the clip reads as the frame
+        // that saw something.
+        $response->assertJsonPath('mediaSummary.total', 2);
+        $response->assertJsonPath('mediaSummary.assessed', 2);
+        $response->assertJsonPath('mediaSummary.contradicts', 1);
+        $response->assertJsonPath('mediaSummary.inconclusive', 1);
+        $this->assertNotNull($clip->id);
+    }
+
     public function test_timeline_entries_are_presented_in_spanish_with_entry_type(): void
     {
         [$incident] = $this->makeIncidentWithEvent();

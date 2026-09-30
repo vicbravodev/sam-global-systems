@@ -2,8 +2,8 @@
 
 namespace App\Domains\Copilot\Tools;
 
-use App\Domains\AI\Enums\MediaAssessmentResult;
 use App\Domains\AI\Models\AIMediaAssessment;
+use App\Domains\AI\Support\MediaFileVerdicts;
 use App\Domains\Context\Models\EventMediaContext;
 use App\Domains\Context\Support\EventMediaGallery;
 use App\Domains\Copilot\Data\CopilotToolContext;
@@ -160,51 +160,21 @@ final class AssetMediaTool implements CopilotTool
     }
 
     /**
-     * Latest AI verdict per file: the file's own assessment or, for a clip,
-     * the most telling one among its frames (the vision model reads frames).
-     *
      * @param  list<array{media: EventMediaContext, url: string|null, thumbnailUrl: string|null, frameIds: list<int>}>  $entries
      * @return array<int, AIMediaAssessment>
      */
     private function latestVerdicts(array $entries): array
     {
-        $ownerOf = [];
+        $files = [];
 
         foreach ($entries as $entry) {
-            $ownerOf[(int) $entry['media']->id] = (int) $entry['media']->id;
-
-            foreach ($entry['frameIds'] as $frameId) {
-                $ownerOf[$frameId] = (int) $entry['media']->id;
-            }
+            $files[(int) $entry['media']->id] = [(int) $entry['media']->id, ...$entry['frameIds']];
         }
 
-        $verdicts = [];
-
-        AIMediaAssessment::query()
-            ->whereIn('event_media_context_id', array_keys($ownerOf))
-            ->orderByDesc('assessed_at')
-            ->orderByDesc('id')
-            ->get()
-            ->each(function (AIMediaAssessment $assessment) use ($ownerOf, &$verdicts): void {
-                $owner = $ownerOf[(int) $assessment->event_media_context_id];
-                $current = $verdicts[$owner] ?? null;
-
-                if ($current === null || self::weight($assessment) > self::weight($current)) {
-                    $verdicts[$owner] = $assessment;
-                }
-            });
-
-        return $verdicts;
-    }
-
-    /** A verdict that affirms something (confirms/contradicts) beats doubt. */
-    private static function weight(AIMediaAssessment $assessment): int
-    {
-        return match ($assessment->result) {
-            MediaAssessmentResult::ConfirmsEvent, MediaAssessmentResult::ContradictsEvent => 2,
-            MediaAssessmentResult::Inconclusive, MediaAssessmentResult::LowQuality => 1,
-            default => 0,
-        };
+        return MediaFileVerdicts::forFiles(
+            AIMediaAssessment::query()->whereIn('event_media_context_id', array_merge(...array_values($files)))->get(),
+            $files,
+        );
     }
 
     /**
