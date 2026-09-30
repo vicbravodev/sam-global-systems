@@ -11,6 +11,7 @@ use App\Domains\Incidents\Enums\TimelineActorType;
 use App\Domains\Incidents\Enums\TimelineEntryType;
 use App\Domains\Incidents\Events\IncidentCreated;
 use App\Domains\Incidents\Jobs\RetryIncidentCreatedReactionJob;
+use App\Domains\Incidents\Jobs\RetryIncidentWorkflowUsageJob;
 use App\Domains\Incidents\Listeners\AssignOnCallOnIncidentCreated;
 use App\Domains\Incidents\Listeners\StartCallVerificationOnIncidentCreated;
 use App\Domains\Incidents\Models\Incident;
@@ -29,6 +30,7 @@ use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Models\User;
 use App\Support\TenantContext;
+use Database\Seeders\IncidentMeterSeeder;
 use Database\Seeders\IncidentsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
@@ -268,8 +270,66 @@ class IncidentCreatedReactionsTest extends TestCase
         $this->assertSame($incident->id, $c['input']['incident_id']);
         $this->assertSame('incident_workflows', $c['input']['meter_code']);
         $this->assertSame('incident_workflows:'.$incident->id, $c['input']['event_key']);
+        $this->assertTrue($c['result']['retry_requested']);
+        $this->assertSame('billing', $c['result']['retry_queue']);
         $this->assertSystemLogged('incidents.incident.created', fn (array $c) => $c['result']['usage_recorded'] === false);
         $this->assertNoSensitiveDataLogged();
+
+        Bus::assertDispatched(RetryIncidentWorkflowUsageJob::class, fn (RetryIncidentWorkflowUsageJob $job) => $job->incidentId === $incident->id
+            && $job->teamId === $this->team->id
+            && $job->queue === 'billing');
+    }
+
+    public function test_the_usage_retry_records_the_charge_exactly_once(): void
+    {
+        Bus::fake();
+        UsageMeter::query()->where('code', 'incident_workflows')->delete();
+        Cache::forget('usage_meter:incident_workflows');
+
+        $incident = $this->openPanic($this->panicEvent());
+
+        $retry = null;
+        Bus::assertDispatched(RetryIncidentWorkflowUsageJob::class, function (RetryIncidentWorkflowUsageJob $job) use (&$retry) {
+            $retry = $job;
+
+            return true;
+        });
+
+        // El meter vuelve (p. ej. se corrió el seeder que faltaba).
+        $this->seed(IncidentMeterSeeder::class);
+        Cache::forget('usage_meter:incident_workflows');
+        Context::flush();
+
+        app()->call([$retry, 'handle']);
+        app()->call([$retry, 'handle']);
+
+        $usage = UsageEvent::withoutGlobalScopes()->sole();
+        $this->assertSame('incident_workflows:'.$incident->id, $usage->event_key);
+        $this->assertSame($this->team->id, (int) $usage->team_id);
+        $this->assertSame(1, (int) $usage->quantity);
+
+        $lines = $this->systemLogEntries('incidents.usage.retried');
+        $this->assertCount(2, $lines);
+        $this->assertTrue($lines[0]['context']['result']['recorded']);
+        $this->assertFalse($lines[1]['context']['result']['recorded']);
+        $this->assertTrue($lines[1]['context']['result']['already_recorded']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_usage_retry_for_another_tenant_charges_nothing(): void
+    {
+        Bus::fake();
+        $incident = Incident::factory()->create(['team_id' => $this->team->id]);
+        $other = Team::factory()->create();
+
+        $this->assertNoTenantLeak(
+            $other,
+            fn () => app()->call([new RetryIncidentWorkflowUsageJob($incident->id, $other->id, [], now()->toIso8601String()), 'handle']),
+        );
+
+        $this->assertSame(0, UsageEvent::withoutGlobalScopes()->count());
+        $c = $this->assertSystemLogged('incidents.usage.retry_skipped', fn (array $c) => $c['reason'] === 'incident_missing');
+        $this->assertArrayNotHasKey('incident_id', $c['input']);
     }
 
     public function test_the_usage_is_recorded_once_per_incident(): void
