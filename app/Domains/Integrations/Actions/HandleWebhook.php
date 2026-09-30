@@ -62,11 +62,9 @@ class HandleWebhook
             'has_timestamp_header' => $signatureTimestamp !== null && $signatureTimestamp !== '',
         ]);
 
-        // Minute resolution is all the UI shows; writing the same hot row on
-        // every webhook (up to 300/min) only adds lock contention.
-        if ($endpoint->last_received_at === null || $endpoint->last_received_at->lt(now()->subMinute())) {
-            $endpoint->update(['last_received_at' => now()]);
-        }
+        // La salud del endpoint NO se toca aquí: recibir no prueba nada hasta
+        // validar la firma. ProcessWebhookEventJob deja la marca válida o la
+        // de rechazo (WebhookEndpoint::recordValidDelivery/recordRejection).
 
         WebhookReceived::dispatch($integration->team_id, $webhookEvent->id, $eventType);
 
