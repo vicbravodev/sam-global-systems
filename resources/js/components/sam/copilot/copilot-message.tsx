@@ -213,7 +213,7 @@ export function CopilotMessageView({
                         </div>
                     )}
 
-                {!message.streaming && (
+                {!message.streaming && message.id > 0 && (
                     <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-dashed border-border pt-2">
                         {message.sources.length > 0 && (
                             <button

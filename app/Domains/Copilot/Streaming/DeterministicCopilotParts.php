@@ -18,15 +18,20 @@ final class DeterministicCopilotParts
 {
     /**
      * @param  array<string, mixed>  $messagePayload
-     * @param  bool  $withStart  false when the agent stream already sent `start`
+     * @param  bool  $withStart  false when the agent stream already sent `start` (and the conversation part)
      * @return Generator<array<string, mixed>>
      */
-    public static function parts(CopilotTurnCollector $collector, CopilotTurnOutcome $outcome, array $messagePayload, bool $withStart = true): Generator
+    public static function parts(CopilotTurnCollector $collector, CopilotTurnOutcome $outcome, array $messagePayload, bool $withStart = true, ?int $conversationId = null): Generator
     {
         $id = 'det_'.Str::ulid();
 
         if ($withStart) {
             yield ['type' => 'start', 'messageId' => $id];
+
+            if ($conversationId !== null) {
+                yield ['type' => 'data-copilot-conversation', 'data' => ['id' => $conversationId]];
+            }
+
             yield ['type' => 'start-step'];
         }
 

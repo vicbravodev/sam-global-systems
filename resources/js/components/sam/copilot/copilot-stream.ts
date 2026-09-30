@@ -24,6 +24,7 @@ export type CopilotStreamPart =
               blocks: CopilotBlock[];
           };
       }
+    | { type: 'data-copilot-conversation'; data: { id: number } }
     | { type: 'data-copilot-followups'; data: { questions: string[] } }
     | {
           type: 'data-copilot-message';
@@ -42,6 +43,7 @@ const KNOWN_TYPES: ReadonlySet<string> = new Set([
     'tool-output-available',
     'tool-output-error',
     'data-copilot-blocks',
+    'data-copilot-conversation',
     'data-copilot-followups',
     'data-copilot-message',
     'error',

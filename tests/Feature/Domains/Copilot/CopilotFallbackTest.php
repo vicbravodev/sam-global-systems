@@ -50,7 +50,7 @@ class CopilotFallbackTest extends TestCase
         $parts = $this->parts($response);
         $types = $this->types($parts);
 
-        $this->assertSame(['start', 'start-step', 'data-copilot-blocks', 'text-start', 'text-delta', 'text-end', 'finish-step', 'data-copilot-message', 'finish'], $types);
+        $this->assertSame(['start', 'data-copilot-conversation', 'start-step', 'data-copilot-blocks', 'text-start', 'text-delta', 'text-end', 'finish-step', 'data-copilot-message', 'finish'], $types);
         $this->assertStringEndsWith("data: [DONE]\n\n", $response->streamedContent());
 
         $answer = $this->firstPart($parts, 'data-copilot-message')['data']['answer'];
@@ -84,6 +84,8 @@ class CopilotFallbackTest extends TestCase
 
         // One start only: the fallback continues the stream the agent opened.
         $this->assertSame(1, count(array_keys($types, 'start')));
+        $this->assertSame(1, count(array_keys($types, 'data-copilot-conversation')));
+        $this->assertSame('data-copilot-conversation', $types[1]);
         $this->assertNotContains('error', $types);
         $this->assertSame(['finish-step', 'data-copilot-message', 'finish'], array_slice($types, -3));
 

@@ -61,8 +61,14 @@ class CopilotStreamEndpointTest extends TestCase
         $types = $this->types($parts);
 
         $this->assertSame('start', $types[0]);
-        $this->assertSame('start-step', $types[1]);
+        $this->assertSame('data-copilot-conversation', $types[1]);
+        $this->assertSame('start-step', $types[2]);
         $this->assertSame(1, count(array_keys($types, 'start')));
+        $this->assertSame(1, count(array_keys($types, 'data-copilot-conversation')));
+        $this->assertSame(
+            $this->firstPart($parts, 'data-copilot-message')['data']['conversation']['id'],
+            $this->firstPart($parts, 'data-copilot-conversation')['data']['id'],
+        );
         $this->assertLessThan(array_search('text-delta', $types), array_search('data-copilot-blocks', $types));
         $this->assertLessThan(array_search('data-copilot-message', $types), array_search('data-copilot-followups', $types));
         $this->assertLessThan(array_search('finish', $types), array_search('data-copilot-message', $types));
@@ -226,9 +232,13 @@ class CopilotStreamEndpointTest extends TestCase
         $types = $this->types($parts);
 
         CopilotAgent::assertNeverPrompted();
-        $this->assertSame(['start', 'start-step', 'data-copilot-blocks', 'text-start', 'text-delta', 'text-end', 'finish-step', 'data-copilot-message', 'finish'], $types);
+        $this->assertSame(['start', 'data-copilot-conversation', 'start-step', 'data-copilot-blocks', 'text-start', 'text-delta', 'text-end', 'finish-step', 'data-copilot-message', 'finish'], $types);
         $this->assertStringEndsWith("data: [DONE]\n\n", $response->streamedContent());
 
+        $this->assertSame(
+            $this->firstPart($parts, 'data-copilot-message')['data']['conversation']['id'],
+            $this->firstPart($parts, 'data-copilot-conversation')['data']['id'],
+        );
         $blocks = $this->firstPart($parts, 'data-copilot-blocks')['data'];
         $this->assertSame('deterministic', $blocks['tool']);
         $this->assertSame('location', $blocks['blocks'][0]['type']);

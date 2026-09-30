@@ -42,50 +42,6 @@ export function useCopilotChat({
 
     const base = `/${teamSlug}/copilot`;
 
-    /**
-     * A new thread whose stream ended without the final message never learned
-     * its conversation id. The catalog lists the user's conversations; the one
-     * that was just created is the newest with activity since the turn began
-     * (60 s of client/server clock skew tolerated).
-     */
-    const adoptConversation = useCallback(
-        async (since: number) => {
-            if (conversationId !== null) {
-                return;
-            }
-
-            try {
-                const response = await fetch(`${base}/catalog`, {
-                    credentials: 'same-origin',
-                    headers: { Accept: 'application/json' },
-                });
-
-                if (!response.ok) {
-                    return;
-                }
-
-                const data = (await response.json()) as {
-                    conversations?: CopilotConversation[];
-                };
-                const created = (data.conversations ?? [])
-                    .filter(
-                        (c) =>
-                            c.lastMessageAt !== null &&
-                            Date.parse(c.lastMessageAt) >= since - 60_000,
-                    )
-                    .sort((a, b) => b.id - a.id)[0];
-
-                if (created) {
-                    setConversationId(created.id);
-                    onConversationSaved?.(created);
-                }
-            } catch {
-                // Best effort: the next send simply starts a new thread.
-            }
-        },
-        [base, conversationId, onConversationSaved],
-    );
-
     const send = useCallback(
         async (content: string, hints: CopilotSendHints = {}) => {
             const text = content.trim();
@@ -121,9 +77,9 @@ export function useCopilotChat({
             abortRef.current = controller;
 
             const draftId = optimistic.id - 1;
-            const startedAt = Date.now();
             let completed = false;
             let rejected = false;
+            let draftCreated = false;
             const patch = (fn: (m: CopilotMessage) => CopilotMessage) =>
                 setMessages((current) =>
                     current.map((m) => (m.id === draftId ? fn(m) : m)),
@@ -186,6 +142,7 @@ export function useCopilotChat({
                     activeTools: [],
                     followups: [],
                 };
+                draftCreated = true;
                 setMessages((current) => [...current, draft]);
 
                 for await (const part of readCopilotStream(response.body)) {
@@ -229,6 +186,10 @@ export function useCopilotChat({
                                 ...m,
                                 content: m.content + part.delta,
                             }));
+                            break;
+                        case 'data-copilot-conversation':
+                            // Early, before any model work: the thread survives a stop.
+                            setConversationId(part.data.id);
                             break;
                         case 'data-copilot-followups':
                             patch((m) => ({
@@ -275,8 +236,8 @@ export function useCopilotChat({
                     // The stream ended without the final message (stop, drop,
                     // server omitted it). The server stored the question, so it
                     // stays visible; only the client-side flags are settled.
-                    setMessages((current) =>
-                        current.map((m) =>
+                    setMessages((current) => {
+                        const settled = current.map((m) =>
                             m.id === optimistic.id
                                 ? { ...m, pending: false }
                                 : m.id === draftId
@@ -287,24 +248,30 @@ export function useCopilotChat({
                                         activeTools: [],
                                     }
                                   : m,
-                        ),
-                    );
-                    void adoptConversation(startedAt);
+                        );
+
+                        // Stopped before the answer started: leave an inline note.
+                        return draftCreated
+                            ? settled
+                            : [
+                                  ...settled,
+                                  {
+                                      ...optimistic,
+                                      id: draftId,
+                                      role: 'assistant' as const,
+                                      content: 'Se detuvo antes de responder.',
+                                      pending: false,
+                                      partial: true,
+                                  },
+                              ];
+                    });
                 }
 
                 setBusy(false);
                 abortRef.current = null;
             }
         },
-        [
-            adoptConversation,
-            base,
-            busy,
-            channel,
-            conversationId,
-            onConversationSaved,
-            onQuota,
-        ],
+        [base, busy, channel, conversationId, onConversationSaved, onQuota],
     );
 
     const stop = useCallback(() => abortRef.current?.abort(), []);

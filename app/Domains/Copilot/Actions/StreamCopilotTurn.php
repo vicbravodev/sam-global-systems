@@ -61,6 +61,8 @@ class StreamCopilotTurn
     ): Response {
         $turn = TenantContext::for($team->id, fn (): CopilotTurn => $this->prepare->execute($team, $user, $permissions, $content, $conversation, $hints, $channel));
 
+        $this->state->conversationId = $turn->conversation->id;
+
         // Keep running when the browser leaves, so the partial answer is stored.
         ignore_user_abort(true);
 
@@ -137,7 +139,7 @@ class StreamCopilotTurn
 
         $this->store($turn, $outcome);
 
-        return DeterministicCopilotParts::parts($turn->collector, $outcome, (array) $this->state->messagePayload, $withStart);
+        return DeterministicCopilotParts::parts($turn->collector, $outcome, (array) $this->state->messagePayload, $withStart, $turn->conversation->id);
     }
 
     /**

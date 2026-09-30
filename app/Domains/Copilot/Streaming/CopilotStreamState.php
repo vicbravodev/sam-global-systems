@@ -14,6 +14,11 @@ use Closure;
  */
 final class CopilotStreamState
 {
+    /**
+     * The turn's conversation, announced right after `start`.
+     */
+    public ?int $conversationId = null;
+
     public bool $textStarted = false;
 
     public ?int $firstTextMs = null;

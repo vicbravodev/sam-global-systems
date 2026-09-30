@@ -15,6 +15,8 @@ use Throwable;
 /**
  * The Vercel data stream protocol with the Copilot data parts on top:
  *
+ * - `data-copilot-conversation` right after `start`, before any model or
+ *   tool work, so the browser can continue the thread if it stops early;
  * - `data-copilot-blocks` right after the tool that produced the cards;
  * - `data-copilot-followups` and `data-copilot-message` (the stored turn)
  *   just before `finish`. The turn's `then()` runs when the agent stream is
@@ -92,6 +94,11 @@ final class CopilotStreamProtocol extends VercelDataProtocol
                 }
 
                 yield $part;
+
+                if ($part['type'] === 'start' && $this->state->conversationId !== null) {
+                    yield ['type' => 'data-copilot-conversation', 'data' => ['id' => $this->state->conversationId]];
+                }
+
                 yield from $this->drain();
             }
 
