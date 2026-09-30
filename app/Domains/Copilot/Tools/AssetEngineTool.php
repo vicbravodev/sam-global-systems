@@ -8,6 +8,7 @@ use App\Domains\Assets\Models\AssetTelemetrySnapshot;
 use App\Domains\Copilot\Data\CopilotToolContext;
 use App\Domains\Copilot\Data\CopilotToolResult;
 use App\Domains\Copilot\Support\CopilotPresenter;
+use App\Domains\Copilot\Support\IdleTimeCalculator;
 
 /**
  * Engine and vehicle statistics: ignition, odometer, distance covered in the
@@ -38,6 +39,8 @@ final class AssetEngineTool implements CopilotTool
     ];
 
     private const SERIES_LIMIT = 60;
+
+    public function __construct(private readonly IdleTimeCalculator $idle) {}
 
     public function run(CopilotToolContext $context): CopilotToolResult
     {
@@ -99,6 +102,8 @@ final class AssetEngineTool implements CopilotTool
         $avgSpeed = $moving->isNotEmpty() ? round($moving->avg(fn (AssetLocationSnapshot $s) => (float) $s->speed), 1) : null;
         $overSpeed = $positions->filter(fn (AssetLocationSnapshot $s) => (float) $s->speed > 100)->count();
 
+        $idle = $this->idle->forAsset($asset, $context->period->from, $context->period->to);
+
         $label = CopilotPresenter::assetLabel($asset);
         $stats = array_values(array_filter([
             ['label' => 'Recorrido', 'value' => $distance !== null ? number_format($distance, 1, '.', ',') : '—', 'unit' => $distance !== null ? 'km' : null, 'hint' => $context->period->label],
@@ -137,23 +142,34 @@ final class AssetEngineTool implements CopilotTool
             $highlights[] = 'Velocidad máxima registrada: '.round((float) $maxSpeed).' km/h'.($overSpeed > 0 ? " ({$overSpeed} lecturas sobre 100 km/h)." : '.');
         }
 
+        if ($idle->hours > 0) {
+            $highlights[] = "Ralentí: {$idle->hours} h en {$context->period->label}.";
+        }
+
         if ($readings === [] && $positions->isEmpty()) {
             $highlights[] = "{$label} no tiene telemetría de motor en {$context->period->label}.";
+        }
+
+        $facts = [
+            'asset' => $label,
+            'period' => $context->period->label,
+            'readings' => array_map(fn (array $r) => [$r['label'] => trim($r['value'].' '.($r['unit'] ?? ''))], $readings),
+            'distance_km' => $distance,
+            'max_speed_kph' => $maxSpeed,
+            'avg_moving_speed_kph' => $avgSpeed,
+            'readings_over_100_kph' => $overSpeed,
+        ];
+
+        if ($idle->hours > 0) {
+            $facts['idle_hours'] = $idle->hours;
+            $facts['idle_source'] = $idle->source;
         }
 
         return new CopilotToolResult(
             tool: 'asset_engine',
             label: 'Telemetría de motor',
             blocks: [$block],
-            facts: [
-                'asset' => $label,
-                'period' => $context->period->label,
-                'readings' => array_map(fn (array $r) => [$r['label'] => trim($r['value'].' '.($r['unit'] ?? ''))], $readings),
-                'distance_km' => $distance,
-                'max_speed_kph' => $maxSpeed,
-                'avg_moving_speed_kph' => $avgSpeed,
-                'readings_over_100_kph' => $overSpeed,
-            ],
+            facts: $facts,
             highlights: $highlights,
         );
     }
