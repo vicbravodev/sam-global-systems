@@ -114,6 +114,13 @@ class IntegrationPageController extends Controller
             'url' => route('webhooks.handle', ['endpoint_url' => $endpoint->url]),
             'status' => (string) $endpoint->status,
             'lastReceivedAt' => $endpoint->last_received_at?->toIso8601String(),
+            // La Secret Key nunca viaja: sólo si está configurada y cuándo.
+            'secretConfigured' => $endpoint->hasSecret(),
+            'secretConfiguredAt' => $endpoint->secret_configured_at?->toIso8601String(),
+            'health' => $endpoint->signatureHealth(),
+            'lastValidReceivedAt' => $endpoint->last_valid_received_at?->toIso8601String(),
+            'lastRejectedAt' => $endpoint->last_rejected_at?->toIso8601String(),
+            'lastRejectionReason' => $endpoint->last_rejection_reason,
         ];
     }
 
