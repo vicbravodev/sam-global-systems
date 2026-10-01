@@ -71,8 +71,7 @@ class CreateTenant
         foreach ($billingRates as $rate) {
             // usage_meter_id es FK NOT NULL con cascade y UsageMeter no usa
             // soft-delete: la tarifa siempre tiene su medidor.
-            $meter = $rate->usageMeter
-                ?? throw new LogicException("billing_rate {$rate->id} sin usage_meter");
+            $meter = $rate->usageMeter ?? throw new LogicException("billing_rate {$rate->id} sin usage_meter");
 
             TenantFeature::query()->create([
                 'team_id' => $team->id,
