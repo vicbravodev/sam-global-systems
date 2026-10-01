@@ -32,7 +32,7 @@ class SyncDriverFromIntegration
 
             $existingDriver = $this->resolveByExternalReference($providerId, $externalId, $teamId);
 
-            if ($existingDriver) {
+            if ($existingDriver !== null) {
                 return $this->updateExistingDriver($existingDriver, $driverData, $providerId);
             }
 
@@ -58,7 +58,7 @@ class SyncDriverFromIntegration
             ->where('external_id', $externalId)
             ->first();
 
-        if (! $reference) {
+        if ($reference === null) {
             return null;
         }
 
@@ -94,6 +94,8 @@ class SyncDriverFromIntegration
         $lastName = $incomingLast ?? $driver->last_name;
         $fullName = trim("{$firstName} {$lastName}");
 
+        // Un campo ausente o vacío conserva el valor guardado; "0" es un valor
+        // real (código de empleado, apellido) y se aplica igual que al crear.
         $driver->update(array_filter([
             'first_name' => $incomingFirst,
             'last_name' => $incomingLast,
@@ -103,7 +105,7 @@ class SyncDriverFromIntegration
             'external_primary_id' => $driverData['external_id'],
             'metadata_json' => $driverData['metadata'] ?? null,
             'last_seen_at' => now(),
-        ]));
+        ], fn (mixed $value): bool => $value !== null && $value !== '' && $value !== []));
 
         DriverExternalReference::where('provider_id', $providerId)
             ->where('external_id', $driverData['external_id'])
@@ -176,7 +178,9 @@ class SyncDriverFromIntegration
      * between defaults (create) and keeping existing values (update).
      *
      * @param  array<string, mixed>  $driverData
-     * @return array{0: ?string, 1: ?string}
+     *                                            Los valores estructurados llegan tal cual del payload (no siempre son
+     *                                            string), por eso el tipo es mixed y quien llama los castea.
+     * @return array{0: mixed, 1: mixed}
      */
     private function resolveName(array $driverData): array
     {
@@ -186,7 +190,11 @@ class SyncDriverFromIntegration
         $hasFirst = $first !== null && $first !== '';
         $hasLast = $last !== null && $last !== '';
 
-        if (! $hasFirst && ! $hasLast && ! empty($driverData['name'])) {
+        // Equivalente exacto del `! empty()` previo (un nombre "0" cuenta como
+        // ausente, igual que antes).
+        $hasName = ! in_array($driverData['name'] ?? null, [null, false, 0, 0.0, '', '0', []], true);
+
+        if (! $hasFirst && ! $hasLast && $hasName) {
             $parts = preg_split('/\s+/', trim((string) $driverData['name']), 2);
             $first = $parts[0] ?? null;
             $last = $parts[1] ?? null;
