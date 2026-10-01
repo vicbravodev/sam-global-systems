@@ -7,6 +7,7 @@ use App\Domains\Tenancy\Actions\ResolveBillingTerms;
 use App\Domains\Tenancy\Enums\FeatureSource;
 use App\Domains\Tenancy\Models\InvoiceSnapshot;
 use App\Domains\Tenancy\Models\Subscription;
+use App\Domains\Tenancy\Models\TenantBillingTerms;
 use App\Domains\Tenancy\Models\TenantFeature;
 use App\Models\Team;
 use App\Models\User;
@@ -36,6 +37,33 @@ class AdminBillingTermsTest extends TestCase
         $this->assertSame(450.0, $terms->unitPrice);
         $this->assertSame('mxn', $terms->currency);
         $this->assertNull($terms->includedAssets);
+    }
+
+    public function test_volume_tiers_from_json_are_normalized_to_the_promised_shape(): void
+    {
+        $team = Team::factory()->create(['is_personal' => false]);
+        // JSON tal como puede venir de la fila: números como texto, `to`
+        // ausente o vacío, una entrada basura que no es escalón y un escalón
+        // sin precio (se descarta: nunca cobrar 0 en silencio).
+        TenantBillingTerms::factory()->create([
+            'team_id' => $team->id,
+            'volume_tiers_json' => [
+                ['from' => '1', 'to' => '25', 'unit_price' => '500'],
+                ['from' => 26, 'unit_price' => 450.5],
+                'no-es-un-escalon',
+                ['from' => 500],
+            ],
+        ]);
+
+        $terms = app(ResolveBillingTerms::class)->execute($team->id);
+
+        $this->assertSame([
+            ['from' => 1, 'to' => 25, 'unit_price' => 500.0],
+            ['from' => 26, 'to' => null, 'unit_price' => 450.5],
+        ], $terms->volumeTiers);
+        $this->assertSame(500.0, $terms->unitPriceFor(20));
+        $this->assertSame(450.5, $terms->unitPriceFor(300));
+        $this->assertNull($terms->explainUnitPriceFor(300)['tier_to']);
     }
 
     public function test_super_admin_sets_terms_and_they_drive_the_asset_cap(): void
