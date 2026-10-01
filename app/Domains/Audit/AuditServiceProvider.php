@@ -34,7 +34,7 @@ class AuditServiceProvider extends ServiceProvider
         // Wildcard listener — captures every dispatched event.
         // Filtering happens inside `AuditAnyDomainEvent` via the
         // `AuditableEventClassifier`, which reads `config('audit.events')`.
-        if (config('audit.wildcard_listener_enabled', true)) {
+        if ((bool) config('audit.wildcard_listener_enabled', true)) {
             Event::listen('*', AuditAnyDomainEvent::class);
         }
     }

@@ -66,11 +66,11 @@ class TenantController extends Controller
             $subscription = $subscriptions->get($team->id);
 
             return [
-                'id' => (int) $team->id,
-                'name' => (string) $team->name,
-                'slug' => (string) $team->slug,
-                'isPersonal' => (bool) $team->is_personal,
-                'membersCount' => (int) $team->members_count,
+                'id' => $team->id,
+                'name' => $team->name,
+                'slug' => $team->slug,
+                'isPersonal' => $team->is_personal,
+                'membersCount' => $team->members_count,
                 'plan' => $subscription?->plan?->name,
                 'subscriptionStatus' => $subscription?->status->value,
                 'createdAt' => $team->created_at?->toIso8601String(),
@@ -128,9 +128,9 @@ class TenantController extends Controller
                 $pivot = $member->getRelation('pivot');
 
                 return [
-                    'id' => (int) $member->id,
-                    'name' => (string) $member->name,
-                    'email' => (string) $member->email,
+                    'id' => $member->id,
+                    'name' => $member->name,
+                    'email' => $member->email,
                     'role' => $pivot instanceof Membership ? $pivot->role->value : '',
                 ];
             })->values()->all();
@@ -140,8 +140,8 @@ class TenantController extends Controller
                 ->orderBy('feature_key')
                 ->get()
                 ->map(fn (TenantFeature $feature) => [
-                    'key' => (string) $feature->feature_key,
-                    'enabled' => (bool) $feature->enabled,
+                    'key' => $feature->feature_key,
+                    'enabled' => $feature->enabled,
                     'source' => $feature->source->value,
                     'limits' => $feature->limits_json,
                 ])->values()->all();
@@ -153,11 +153,11 @@ class TenantController extends Controller
                 ->limit(20)
                 ->get()
                 ->map(fn (TenantUsageCounter $counter) => [
-                    'meter' => (string) ($counter->usageMeter?->name ?? $counter->usageMeter?->code ?? '—'),
+                    'meter' => $counter->usageMeter?->name ?? $counter->usageMeter?->code ?? '—',
                     'periodStart' => $counter->period_start?->toDateString(),
-                    'consumed' => (int) $counter->consumed_value,
-                    'included' => (int) $counter->included_value,
-                    'overage' => (int) $counter->overage_value,
+                    'consumed' => $counter->consumed_value,
+                    'included' => $counter->included_value,
+                    'overage' => $counter->overage_value,
                     // Cost-plus meters (Twilio): provider cost and what the
                     // tenant is charged, in USD — not a raw micro count.
                     'money' => $counter->usageMeter?->unit === CostPlusPricing::MICRO_UNIT
@@ -165,7 +165,7 @@ class TenantController extends Controller
                             'providerCost' => CostPlusPricing::providerCost((float) $counter->consumed_value),
                             'charged' => CostPlusPricing::charged(
                                 (float) $counter->consumed_value,
-                                CostPlusPricing::markupFor($team->id, (int) $counter->usage_meter_id),
+                                CostPlusPricing::markupFor($team->id, $counter->usage_meter_id),
                             ),
                         ]
                         : null,
@@ -177,10 +177,10 @@ class TenantController extends Controller
 
             return Inertia::render('admin/tenants/show', [
                 'tenant' => [
-                    'id' => (int) $team->id,
-                    'name' => (string) $team->name,
-                    'slug' => (string) $team->slug,
-                    'isPersonal' => (bool) $team->is_personal,
+                    'id' => $team->id,
+                    'name' => $team->name,
+                    'slug' => $team->slug,
+                    'isPersonal' => $team->is_personal,
                     'createdAt' => $team->created_at?->toIso8601String(),
                     'branding' => [
                         'displayName' => $branding?->display_name,
@@ -189,7 +189,7 @@ class TenantController extends Controller
                         'logoUrl' => $branding?->logo_url,
                     ],
                 ],
-                'subscription' => $subscription ? [
+                'subscription' => $subscription !== null ? [
                     'status' => $subscription->status->value,
                     'plan' => $subscription->plan?->name,
                     'billingCycle' => $subscription->billing_cycle?->value,
@@ -205,18 +205,18 @@ class TenantController extends Controller
                     ->limit(12)
                     ->get()
                     ->map(fn ($invoice) => [
-                        'id' => (int) $invoice->id,
+                        'id' => $invoice->id,
                         'periodStart' => $invoice->period_start?->toDateString(),
                         'periodEnd' => $invoice->period_end?->toDateString(),
                         'total' => (float) $invoice->total,
-                        'currency' => (string) $invoice->currency,
+                        'currency' => $invoice->currency,
                         'status' => $invoice->status->value,
                         'hasReceipt' => $invoice->payment_receipt_file_object_id !== null,
                         'paidAt' => $invoice->paid_at?->toDateString(),
                     ])->values()->all(),
                 'plans' => $this->planOptions(),
                 'assetUsage' => $this->assetUsage($team, $resolveAssetLimit),
-                'billingTerms' => $resolveBillingTerms->execute((int) $team->id)->toArray(),
+                'billingTerms' => $resolveBillingTerms->execute($team->id)->toArray(),
                 'billingDefaults' => [
                     'currency' => config('billing.currency'),
                     'unit_price' => (float) config('billing.unit_price'),
@@ -246,13 +246,13 @@ class TenantController extends Controller
 
         $audit->execute(
             actorType: AuditActorType::User,
-            actorId: (int) $user->id,
+            actorId: $user->id,
             action: 'tenant.updated',
             category: AuditCategory::Security,
             entityType: Team::class,
-            entityId: (int) $team->id,
+            entityId: $team->id,
             summary: "Tenant {$team->name} actualizado.",
-            teamId: (int) $team->id,
+            teamId: $team->id,
             metadata: ['actor_email' => $user->email],
             signature: 'tenant.updated:'.$team->id.':'.Str::uuid()->toString(),
             ipAddress: $request->ip(),
@@ -271,13 +271,13 @@ class TenantController extends Controller
         }
 
         $name = $team->name;
-        $teamId = (int) $team->id;
+        $teamId = $team->id;
 
         $deleteTenant->execute($team);
 
         $audit->execute(
             actorType: AuditActorType::User,
-            actorId: (int) $user->id,
+            actorId: $user->id,
             action: 'tenant.deleted',
             category: AuditCategory::Security,
             entityType: Team::class,
@@ -308,7 +308,7 @@ class TenantController extends Controller
             ->pluck('aggregate', 'monitoring_state');
 
         return [
-            'limit' => $resolveAssetLimit->execute((int) $team->id),
+            'limit' => $resolveAssetLimit->execute($team->id),
             'current' => (int) ($byState[AssetMonitoringState::Monitored->value] ?? 0),
             'pending' => (int) ($byState[AssetMonitoringState::Pending->value] ?? 0),
             'excluded' => (int) ($byState[AssetMonitoringState::Excluded->value] ?? 0),
@@ -362,8 +362,8 @@ class TenantController extends Controller
             ->orderBy('name')
             ->get(['code', 'name'])
             ->map(fn (Plan $plan) => [
-                'code' => (string) $plan->code,
-                'name' => (string) $plan->name,
+                'code' => $plan->code,
+                'name' => $plan->name,
             ])->all();
     }
 
@@ -376,7 +376,8 @@ class TenantController extends Controller
      */
     private function provisionOwner(array $data): User
     {
-        if (empty($data['owner_name'])) {
+        // Mismo criterio que el empty() original: ausente, null, '' o '0'.
+        if (in_array($data['owner_name'] ?? null, [null, '', '0'], true)) {
             throw ValidationException::withMessages([
                 'owner_name' => 'El nombre del propietario es obligatorio para crear un usuario nuevo.',
             ]);

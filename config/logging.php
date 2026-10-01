@@ -83,7 +83,8 @@ return [
         // Seguir un evento: `jq 'select(.extra.trace_id == "<id>")' storage/logs/system-*.json`.
         // Catálogo de códigos: docs/SAM/logging.md. Con LOG_JSON_STDERR=true va a
         // stderr (para un agregador) en lugar de a archivo.
-        'json' => env('LOG_JSON_STDERR', false) ? [
+        // Misma truthiness que antes: env() da bool, null o string ('' y '0' = no).
+        'json' => ! in_array(env('LOG_JSON_STDERR', false), [null, false, '', '0'], true) ? [
             'driver' => 'monolog',
             'level' => env('LOG_JSON_LEVEL', env('LOG_LEVEL', 'debug')),
             'handler' => StreamHandler::class,

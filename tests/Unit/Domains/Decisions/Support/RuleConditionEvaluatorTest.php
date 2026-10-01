@@ -92,4 +92,71 @@ class RuleConditionEvaluatorTest extends TestCase
             ['risk_score' => 0.9],
         ));
     }
+
+    /**
+     * Las reglas del tenant se escribieron contra `==`/`in_array` laxos: la
+     * igualdad explícita del evaluador debe dar exactamente lo mismo para
+     * todo par hecho/valor posible (hechos null|bool|int|float|string; valores
+     * del JSON de la regla, incluidos '5', 'true', '0', '' y ' 5').
+     */
+    public function test_equality_operators_preserve_php_loose_comparison(): void
+    {
+        $values = [
+            null, true, false,
+            0, 1, 5, -1,
+            0.0, 0.5, 5.0, 0.95,
+            '', '0', '1', '5', '5.0', ' 5', '5 ', '1e1', '10', '0.5', '00', 'abc', 'true', 'false', 'null',
+            'real_event', 'panic_button', 'confirmed_false',
+            [], ['5'], [5],
+        ];
+
+        foreach ($values as $actual) {
+            foreach ($values as $expected) {
+                $label = var_export($actual, true).' vs '.var_export($expected, true);
+                $facts = ['f' => $actual];
+
+                $this->assertSame(
+                    $actual == $expected,
+                    $this->evaluator->matches(['field' => 'f', 'operator' => 'eq', 'value' => $expected], $facts),
+                    "eq {$label}",
+                );
+                $this->assertSame(
+                    $actual != $expected,
+                    $this->evaluator->matches(['field' => 'f', 'operator' => 'neq', 'value' => $expected], $facts),
+                    "neq {$label}",
+                );
+                $this->assertSame(
+                    in_array($actual, [$expected, 'zzz'], false),
+                    $this->evaluator->matches(['field' => 'f', 'operator' => 'in', 'value' => [$expected, 'zzz']], $facts),
+                    "in {$label}",
+                );
+                $this->assertSame(
+                    ! in_array($actual, [$expected], false),
+                    $this->evaluator->matches(['field' => 'f', 'operator' => 'not_in', 'value' => [$expected]], $facts),
+                    "not_in {$label}",
+                );
+            }
+        }
+    }
+
+    public function test_equality_keeps_numeric_string_and_boolean_semantics(): void
+    {
+        $this->assertTrue($this->evaluator->matches(
+            ['field' => 'repeated_panic_count_24h', 'operator' => 'eq', 'value' => '3'],
+            ['repeated_panic_count_24h' => 3],
+        ));
+        $this->assertTrue($this->evaluator->matches(
+            ['field' => 'risk_score', 'operator' => 'in', 'value' => ['0.5', 1]],
+            ['risk_score' => 0.5],
+        ));
+        // Hecho de cámara indeterminado (null) casa `eq false`, como con `==`.
+        $this->assertTrue($this->evaluator->matches(
+            ['field' => 'media_passenger_detected', 'operator' => 'eq', 'value' => false],
+            ['media_passenger_detected' => null],
+        ));
+        $this->assertFalse($this->evaluator->matches(
+            ['field' => 'classification', 'operator' => 'eq', 'value' => 0],
+            ['classification' => 'real_event'],
+        ));
+    }
 }

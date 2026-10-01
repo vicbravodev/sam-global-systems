@@ -76,7 +76,7 @@ class SamsaraExportFixturesCommand extends Command
                 ->get()
                 ->unique('external_event_id')
                 ->each(function (RawEvent $raw) use (&$files, $limit) {
-                    $payload = (array) $raw->payload_json;
+                    $payload = $raw->payload_json;
                     $kind = ($payload['eventType'] ?? null) === 'AlertIncident' ? 'webhook' : (isset($payload['behaviorLabels']) ? 'safety_event' : null);
 
                     if ($kind === null) {
@@ -99,6 +99,10 @@ class SamsaraExportFixturesCommand extends Command
             return $files;
         });
 
+        // Mismo criterio que el `?:` previo: '' y '0' caen al directorio por defecto.
+        $output = $this->option('output');
+        $outputDirectory = in_array($output, [null, '', '0'], true) ? database_path('fixtures') : $output;
+
         foreach (['panic' => 'samsara-panic-events.json', 'alert' => 'samsara-alert-events.json', 'safety' => 'samsara-safety-events.json'] as $bucket => $name) {
             if ($files[$bucket] === []) {
                 $this->line("  {$name}: sin eventos reales, no se toca.");
@@ -107,7 +111,7 @@ class SamsaraExportFixturesCommand extends Command
             }
 
             file_put_contents(
-                rtrim((string) ($this->option('output') ?: database_path('fixtures')), '/')."/{$name}",
+                rtrim($outputDirectory, '/')."/{$name}",
                 json_encode($files[$bucket], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)."\n",
             );
             $this->info(sprintf('  %s: %d evento(s)', $name, count($files[$bucket])));

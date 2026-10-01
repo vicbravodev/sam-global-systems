@@ -31,7 +31,9 @@ class RetryFailedAction
         }
 
         $backoff = $policies->retryBackoffSeconds;
-        $delaySeconds = $backoff[$execution->attempts] ?? end($backoff) ?: 0;
+        // Sin backoff configurado, end() devuelve false: se reintenta ya.
+        $delaySeconds = $backoff[$execution->attempts] ?? end($backoff);
+        $delaySeconds = $delaySeconds === false ? 0 : $delaySeconds;
 
         $execution->status = ActionExecutionStatus::Retrying;
         $execution->save();

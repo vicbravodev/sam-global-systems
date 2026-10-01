@@ -21,14 +21,14 @@ class AuditLogController extends Controller
 
         if ($request->filled('actor_type')) {
             $actorType = AuditActorType::tryFrom($request->input('actor_type'));
-            if ($actorType) {
+            if ($actorType !== null) {
                 $query->where('actor_type', $actorType);
             }
         }
 
         if ($request->filled('category')) {
             $category = AuditCategory::tryFrom($request->input('category'));
-            if ($category) {
+            if ($category !== null) {
                 $query->where('category', $category);
             }
         }

@@ -39,7 +39,7 @@ trait IsolatesIncidentCreatedReaction
         $dispatchError = null;
 
         try {
-            RetryIncidentCreatedReactionJob::dispatch(self::class, (int) $incident->id, (int) $incident->team_id, $queue);
+            RetryIncidentCreatedReactionJob::dispatch(self::class, $incident->id, $incident->team_id, $queue);
         } catch (Throwable $e) {
             report($e);
             $dispatchError = $e;

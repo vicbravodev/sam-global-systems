@@ -43,13 +43,13 @@ class GlobalChannelController extends Controller
             ->orderBy('name')
             ->get()
             ->map(fn (NotificationChannel $channel) => [
-                'id' => (int) $channel->id,
-                'code' => (string) $channel->code,
-                'name' => (string) $channel->name,
-                'provider' => (string) $channel->provider,
+                'id' => $channel->id,
+                'code' => $channel->code,
+                'name' => $channel->name,
+                'provider' => $channel->provider,
                 'channelType' => $channel->channel_type?->value,
-                'isActive' => (bool) $channel->is_active,
-                'configKeys' => array_map('strval', array_keys((array) ($channel->config_json ?? []))),
+                'isActive' => $channel->is_active,
+                'configKeys' => array_map('strval', array_keys($channel->config_json ?? [])),
             ])->values()->all();
 
         return Inertia::render('admin/channels/index', [

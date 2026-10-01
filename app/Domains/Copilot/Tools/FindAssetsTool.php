@@ -24,10 +24,12 @@ final class FindAssetsTool implements CopilotTool
         }
 
         $query = (string) ($context->arguments['query'] ?? '');
-        $tokens = array_values(array_filter(array_map(
-            fn (string $token) => CopilotText::key($token),
-            preg_split('/\s+/', CopilotText::normalize($query)) ?: [],
-        )));
+        $words = preg_split('/\s+/', CopilotText::normalize($query));
+        // Sólo se descartan los tokens vacíos: "0" es un fragmento de código válido.
+        $tokens = array_values(array_filter(
+            array_map(fn (string $token) => CopilotText::key($token), $words === false ? [] : $words),
+            fn (string $token): bool => $token !== '',
+        ));
         $whole = CopilotText::key($query);
         $limit = (int) ($context->arguments['limit'] ?? self::DEFAULT_LIMIT);
 
@@ -54,7 +56,7 @@ final class FindAssetsTool implements CopilotTool
 
         $items = $matches->take($limit)->map(fn (Asset $asset) => [
             'code' => $asset->code,
-            'name' => (string) $asset->name,
+            'name' => $asset->name,
             'category' => $asset->assetType?->category?->value,
             'lastSeenAt' => $asset->last_seen_at?->toIso8601String(),
         ])->all();

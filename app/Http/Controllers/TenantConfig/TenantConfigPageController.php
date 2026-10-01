@@ -67,13 +67,13 @@ class TenantConfigPageController extends Controller
                 ->orderBy('setting_key')
                 ->get()
                 ->map(fn (TenantSetting $setting): array => [
-                    'id' => (int) $setting->id,
+                    'id' => $setting->id,
                     'key' => $setting->setting_key,
                     'group' => $setting->setting_group?->value,
                     'valueType' => $setting->value_type?->value,
                     'value' => $setting->typed_value,
-                    'isActive' => (bool) $setting->is_active,
-                    'version' => (int) $setting->version,
+                    'isActive' => $setting->is_active,
+                    'version' => $setting->version,
                 ])
                 ->all(),
             'aiProfile' => function () use ($current_team, $resolveAIProfile): array {
@@ -111,13 +111,13 @@ class TenantConfigPageController extends Controller
                 ->orderBy('policy_code')
                 ->get()
                 ->map(fn (TenantNotificationPolicy $policy): array => [
-                    'id' => (int) $policy->id,
+                    'id' => $policy->id,
                     'policyCode' => $policy->policy_code,
                     'notificationType' => $policy->notification_type,
                     'priority' => $policy->priority,
-                    'allowedChannels' => (array) ($policy->allowed_channels_json ?? []),
-                    'fallbackChannels' => (array) ($policy->fallback_channels_json ?? []),
-                    'isActive' => (bool) $policy->is_active,
+                    'allowedChannels' => $policy->allowed_channels_json ?? [],
+                    'fallbackChannels' => $policy->fallback_channels_json ?? [],
+                    'isActive' => $policy->is_active,
                 ])
                 ->all(),
             'escalationConfigs' => fn () => TenantEscalationConfig::query()
@@ -125,12 +125,12 @@ class TenantConfigPageController extends Controller
                 ->orderBy('escalation_type')
                 ->get()
                 ->map(fn (TenantEscalationConfig $config): array => [
-                    'id' => (int) $config->id,
+                    'id' => $config->id,
                     'escalationType' => $config->escalation_type,
-                    'triggerConditions' => (array) ($config->trigger_conditions_json ?? []),
-                    'steps' => (array) ($config->steps_json ?? []),
+                    'triggerConditions' => $config->trigger_conditions_json ?? [],
+                    'steps' => $config->steps_json ?? [],
                     'timeConstraints' => $config->time_constraints_json,
-                    'isActive' => (bool) $config->is_active,
+                    'isActive' => $config->is_active,
                 ])
                 ->all(),
             'escalationConditionFields' => fn () => TriggerConditionCatalog::escalationFields(),
@@ -144,8 +144,8 @@ class TenantConfigPageController extends Controller
                     ->get(['users.id', 'users.name', 'users.email'])
                     ->map(fn ($user): array => [
                         'value' => (string) $user->id,
-                        'label' => (string) $user->name,
-                        'description' => (string) $user->email,
+                        'label' => $user->name,
+                        'description' => $user->email,
                     ])
                     ->all(),
             ],
@@ -154,13 +154,13 @@ class TenantConfigPageController extends Controller
                 ->orderBy('profile_code')
                 ->get()
                 ->map(fn (TenantScheduleProfile $profile): array => [
-                    'id' => (int) $profile->id,
+                    'id' => $profile->id,
                     'profileCode' => $profile->profile_code,
                     'timezone' => $profile->timezone,
-                    'operatingHours' => (array) ($profile->operating_hours_json ?? []),
+                    'operatingHours' => $profile->operating_hours_json ?? [],
                     'shiftRules' => $profile->shift_rules_json,
                     'afterHoursBehavior' => $profile->after_hours_behavior_json,
-                    'isActive' => (bool) $profile->is_active,
+                    'isActive' => $profile->is_active,
                 ])
                 ->all(),
             'versions' => fn () => TenantConfigVersion::query()
@@ -169,8 +169,8 @@ class TenantConfigPageController extends Controller
                 ->limit(15)
                 ->get()
                 ->map(fn (TenantConfigVersion $version): array => [
-                    'id' => (int) $version->id,
-                    'version' => (int) $version->version,
+                    'id' => $version->id,
+                    'version' => $version->version,
                     'createdByType' => $version->created_by_type?->value,
                     'createdAt' => $version->created_at?->toIso8601String(),
                     'snapshot' => $version->snapshot_json,
@@ -188,12 +188,12 @@ class TenantConfigPageController extends Controller
                     ->orderBy('name')
                     ->get()
                     ->map(fn (NotificationChannel $channel): array => [
-                        'id' => (int) $channel->id,
+                        'id' => $channel->id,
                         'code' => $channel->code,
                         'name' => $channel->name,
                         'provider' => $channel->provider,
                         'channelType' => $channel->channel_type?->value,
-                        'isActive' => (bool) $channel->is_active,
+                        'isActive' => $channel->is_active,
                         // Per-tenant switch over SAM platform channels (V2-B1).
                         'enabledForTeam' => ! in_array($channel->id, $disabledGlobals, true),
                     ])
@@ -212,10 +212,14 @@ class TenantConfigPageController extends Controller
 
                 $logoUrl = null;
 
-                if ($branding?->logo_url) {
+                $logoPath = $branding?->logo_url;
+
+                // logo_url es una clave de storage (BrandingController) o lo que
+                // fije el super-admin; '' y '0' no son claves válidas: sin logo.
+                if ($logoPath !== null && $logoPath !== '' && $logoPath !== '0') {
                     try {
                         $logoUrl = app(ObjectStorage::class)
-                            ->temporaryUrl($branding->logo_url, now()->addMinutes(30));
+                            ->temporaryUrl($logoPath, now()->addMinutes(30));
                     } catch (\Throwable) {
                         $logoUrl = null;
                     }

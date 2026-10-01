@@ -27,7 +27,7 @@ final class StructuredOutputParser
             return $response->structured;
         }
 
-        return self::decodeText((string) $response->text, $errorPrefix);
+        return self::decodeText($response->text, $errorPrefix);
     }
 
     /**

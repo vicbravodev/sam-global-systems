@@ -13,6 +13,18 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/**
+ * Alias de agregados que sólo existen cuando la consulta los carga
+ * (withCount/withExists en NotificationPageController e IncidentInboxController);
+ * fuera de esas consultas valen null.
+ *
+ * @property-read int|null $attempted_deliveries_count
+ * @property-read int|null $delivered_deliveries_count
+ * @property-read int|null $failed_deliveries_count
+ * @property-read int|null $delivered_count
+ * @property-read int|null $failed_count
+ * @property-read bool|null $addressed_to_me
+ */
 class Notification extends Model
 {
     /** @use HasFactory<NotificationFactory> */

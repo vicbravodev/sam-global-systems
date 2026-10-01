@@ -82,7 +82,7 @@ class ReevaluateEventWithNewEvidence
             $existing->update([
                 'status' => ReevaluationStatus::Skipped,
                 'processed_at' => now(),
-                'reason' => trim((string) ($existing->reason ?? '').' | superseded by new request'),
+                'reason' => trim(($existing->reason ?? '').' | superseded by new request'),
             ]);
 
             SystemLog::ok(

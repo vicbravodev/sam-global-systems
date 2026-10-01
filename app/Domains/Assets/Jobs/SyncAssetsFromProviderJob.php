@@ -69,11 +69,11 @@ class SyncAssetsFromProviderJob implements ShouldQueue
         // Una sola notificación por corrida de sync (no una por unidad): el
         // cliente decide cuáles enciende sabiendo cuánto cupo le queda.
         if ($discovered > 0) {
-            $notifyPending->execute((int) $this->integration->team_id, $discovered);
+            $notifyPending->execute($this->integration->team_id, $discovered);
         }
 
         TenantContext::for($this->integration->team_id, fn () => SystemLog::ok('assets.sync.completed', input: [
-            'team_id' => (int) $this->integration->team_id,
+            'team_id' => $this->integration->team_id,
             'integration_id' => $this->integration->id,
             'stage' => 'provider_job',
         ], result: [

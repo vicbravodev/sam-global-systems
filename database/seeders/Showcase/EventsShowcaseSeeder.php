@@ -117,7 +117,7 @@ class EventsShowcaseSeeder extends ShowcaseStep
     {
         $ymd = $day->format('Ymd');
         $random = $this->ctx->random('events', $ymd);
-        $weekdayFactor = match ((int) $day->dayOfWeekIso) {
+        $weekdayFactor = match ($day->dayOfWeekIso) {
             6 => 0.6,
             7 => 0.35,
             default => 1.0,
@@ -163,7 +163,7 @@ class EventsShowcaseSeeder extends ShowcaseStep
             $who = [
                 'id' => (string) ($asset->external_primary_id ?? $asset->id),
                 'name' => $asset->name,
-                'driver_id' => $driver?->external_primary_id ?? ($driver ? (string) $driver->id : null),
+                'driver_id' => $driver?->external_primary_id ?? ($driver !== null ? (string) $driver->id : null),
                 'driver_name' => $driver?->full_name,
                 'lat' => $lat,
                 'lng' => $lng,

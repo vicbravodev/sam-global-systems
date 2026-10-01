@@ -14,7 +14,7 @@ class ResolveDriverForEvent
             ->orderByDesc('started_at')
             ->first();
 
-        if (! $assignment) {
+        if ($assignment === null) {
             return null;
         }
 

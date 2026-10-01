@@ -14,7 +14,7 @@ class LoginResponse implements LoginResponseContract
         $user = $request->user();
         $team = $user?->currentTeam ?? $user?->personalTeam();
 
-        if ($user === null || ! $team) {
+        if ($user === null || $team === null) {
             abort(403);
         }
 

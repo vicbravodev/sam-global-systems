@@ -34,7 +34,7 @@ class VideoFrameExtractor
     {
         $binary = $this->binary();
 
-        return (bool) Cache::remember(
+        return Cache::remember(
             'media-frames:ffmpeg-available:'.md5($binary),
             (int) config('media-frames.availability_cache_seconds', 600),
             function () use ($binary): bool {
@@ -58,7 +58,9 @@ class VideoFrameExtractor
         File::ensureDirectoryExists($workDir);
 
         try {
-            $input = $workDir.'/input.'.(preg_replace('/[^a-z0-9]/i', '', $extension) ?: 'mp4');
+            // Sin extensión utilizable (null, '' o '0', como el `?:` de antes) se asume mp4.
+            $safeExtension = preg_replace('/[^a-z0-9]/i', '', $extension);
+            $input = $workDir.'/input.'.(in_array($safeExtension, [null, '', '0'], true) ? 'mp4' : $safeExtension);
             File::put($input, $videoContents);
 
             $duration = $durationSeconds !== null && $durationSeconds > 0

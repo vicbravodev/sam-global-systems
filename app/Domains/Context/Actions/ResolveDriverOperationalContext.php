@@ -44,13 +44,13 @@ class ResolveDriverOperationalContext
             'full_name' => $driver->full_name,
             'employee_code' => $driver->employee_code,
             'status' => $driver->status?->value,
-            'current_assignment' => $currentAssignment ? [
+            'current_assignment' => $currentAssignment !== null ? [
                 'asset_id' => $currentAssignment->asset_id,
                 'asset_name' => $currentAssignment->asset?->name,
                 'started_at' => $currentAssignment->started_at?->toIso8601String(),
                 'assignment_type' => $currentAssignment->assignment_type?->value,
             ] : null,
-            'risk_profile' => $driver->riskProfile ? [
+            'risk_profile' => $driver->riskProfile !== null ? [
                 'risk_score' => $driver->riskProfile->risk_score ?? null,
                 'last_calculated_at' => $driver->riskProfile->last_calculated_at?->toIso8601String(),
             ] : null,

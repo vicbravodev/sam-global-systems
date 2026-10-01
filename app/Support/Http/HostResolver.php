@@ -26,7 +26,8 @@ class HostResolver
         }
 
         if ($addresses === []) {
-            $addresses = @gethostbynamel($host) ?: [];
+            $resolved = @gethostbynamel($host);
+            $addresses = $resolved !== false ? $resolved : [];
         }
 
         return array_values(array_unique($addresses));

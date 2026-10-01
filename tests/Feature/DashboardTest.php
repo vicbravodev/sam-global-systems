@@ -441,6 +441,33 @@ class DashboardTest extends TestCase
         );
     }
 
+    /**
+     * Regresión: el `?:` trataba el nombre "0" (válido en
+     * StoreIntegrationRequest) como vacío y mostraba el del proveedor.
+     */
+    public function test_integration_named_zero_keeps_its_own_name(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+
+        $provider = IntegrationProvider::factory()->create(['name' => 'Samsara']);
+        TenantIntegration::factory()->active()->create([
+            'team_id' => $team->id,
+            'provider_id' => $provider->id,
+            'name' => '0',
+        ]);
+
+        $response = $this
+            ->actingAs($user)
+            ->get(route('dashboard', ['current_team' => $team->slug]));
+
+        $response->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('integrations', 1)
+            ->where('integrations.0.name', '0')
+            ->where('integrations.0.provider', 'Samsara')
+        );
+    }
+
     public function test_usage_only_includes_counters_of_current_period(): void
     {
         $user = User::factory()->create();

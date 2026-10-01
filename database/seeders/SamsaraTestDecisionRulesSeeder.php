@@ -28,7 +28,7 @@ class SamsaraTestDecisionRulesSeeder extends Seeder
 
         $team = Team::query()->where('slug', 'serviexpress-jc')->first();
 
-        if (! $team) {
+        if ($team === null) {
             $this->command?->warn('Team [serviexpress-jc] not found; seed SamsaraTestSeeder first.');
 
             return;

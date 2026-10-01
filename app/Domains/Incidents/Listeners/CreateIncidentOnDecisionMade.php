@@ -29,7 +29,7 @@ class CreateIncidentOnDecisionMade
         $decision = $event->decision;
         $outcome = DecisionOutcomeCode::tryFrom(strtoupper((string) $decision->outcome?->code));
 
-        $decisionId = (int) $decision->id;
+        $decisionId = $decision->id;
 
         if ($outcome === null) {
             $rawOutcomeCode = LoggableCode::guard($decision->outcome?->code);

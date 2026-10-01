@@ -31,7 +31,7 @@ class RoleController extends Controller
             // Roles de sistema + los personalizados de ESTE tenant, nunca los
             // de otros tenants.
             'roles' => Role::tenant()
-                ->visibleToTeam((int) $current_team->id)
+                ->visibleToTeam($current_team->id)
                 ->with('permissions')
                 ->orderBy('name')
                 ->get()
@@ -66,7 +66,7 @@ class RoleController extends Controller
         $role = Role::create([
             'team_id' => $current_team->id,
             'name' => $request->validated('name'),
-            'code' => Role::customCodeFor((int) $current_team->id, $request->validated('code')),
+            'code' => Role::customCodeFor($current_team->id, $request->validated('code')),
             'description' => $request->validated('description'),
             'scope' => RoleScope::Tenant,
             'is_system' => false,
@@ -80,7 +80,7 @@ class RoleController extends Controller
     public function update(UpdateRoleRequest $request, Team $current_team, Role $role, SyncRolePermissions $syncRolePermissions, #[CurrentUser] User $user): RedirectResponse
     {
         // Un rol de otro tenant no existe para este (404, sin filtrar su id).
-        abort_unless($role->isVisibleToTeam((int) $current_team->id), 404);
+        abort_unless($role->isVisibleToTeam($current_team->id), 404);
 
         $this->authorize('update', $role);
 
@@ -97,7 +97,7 @@ class RoleController extends Controller
 
     public function destroy(Team $current_team, Role $role): RedirectResponse
     {
-        abort_unless($role->isVisibleToTeam((int) $current_team->id), 404);
+        abort_unless($role->isVisibleToTeam($current_team->id), 404);
 
         $this->authorize('delete', $role);
 
@@ -132,7 +132,7 @@ class RoleController extends Controller
         return [
             // El propietario y uno mismo no se editan desde aquí.
             'locked' => ! $user->isSuperAdmin() && (
-                (int) $membership->user_id === (int) $user->id
+                $membership->user_id === $user->id
                 || $membership->getRawOriginal('role') === TeamRole::Owner->value
             ),
             'id' => $membership->id,

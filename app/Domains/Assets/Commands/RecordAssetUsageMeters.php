@@ -67,13 +67,13 @@ class RecordAssetUsageMeters extends Command
         // tenant que falla no deja sin cierre a los que siguen.
         TenantContext::withoutTenant(fn () => Team::query()->select('id')->chunkById(100, function ($teams) use ($recordUsage, $recordAssetDay, $date, $totals) {
             foreach ($teams as $team) {
-                $totals['teams_scanned_count']++;
+                self::bump($totals, 'teams_scanned_count');
 
                 try {
                     TenantContext::for($team->id, function () use ($team, $recordUsage, $recordAssetDay, $date, $totals) {
-                        if (($blocked = TenantCanSend::blockedReason((int) $team->id)) !== null) {
+                        if (($blocked = TenantCanSend::blockedReason($team->id)) !== null) {
                             SystemLog::skipped('billing.tenant.blocked', reason: $blocked, input: ['team_id' => $team->id, 'stage' => 'daily_close', 'local_date' => $date]);
-                            $totals['teams_blocked_count']++;
+                            self::bump($totals, 'teams_blocked_count');
 
                             return;
                         }
@@ -101,13 +101,13 @@ class RecordAssetUsageMeters extends Command
                             ],
                         );
 
-                        $totals['teams_closed_count']++;
-                        $totals['asset_days_recorded_count'] += $recorded;
-                        $totals['asset_days_already_recorded_count'] += $alreadyRecorded;
-                        $totals['cameras_count'] += $cameras['attached_cameras_count'] + $cameras['standalone_cameras_count'];
+                        self::bump($totals, 'teams_closed_count');
+                        self::bump($totals, 'asset_days_recorded_count', $recorded);
+                        self::bump($totals, 'asset_days_already_recorded_count', $alreadyRecorded);
+                        self::bump($totals, 'cameras_count', $cameras['attached_cameras_count'] + $cameras['standalone_cameras_count']);
                     });
                 } catch (\Throwable $e) {
-                    $totals['teams_failed_count']++;
+                    self::bump($totals, 'teams_failed_count');
                     TenantContext::for($team->id, fn () => SystemLog::failed(
                         'billing.daily_close.tenant_failed',
                         reason: 'exception',
@@ -121,7 +121,10 @@ class RecordAssetUsageMeters extends Command
             }
         }));
 
-        $closeInput = ['local_date' => $date, 'date_source' => $this->option('date') ? 'option' : 'today'];
+        // Mismo criterio que resolveDate(): null o '' = hoy; cualquier otra
+        // opción ya pasó la validación Y-m-d, así que nunca es '0'.
+        $dateOption = $this->option('date');
+        $closeInput = ['local_date' => $date, 'date_source' => $dateOption === null || $dateOption === '' ? 'today' : 'option'];
         $closeResult = $totals->getArrayCopy();
 
         if ($closeResult['teams_failed_count'] > 0) {
@@ -149,9 +152,19 @@ class RecordAssetUsageMeters extends Command
             return AssetDayPricing::localDate(now());
         }
 
-        $parsed = \DateTimeImmutable::createFromFormat('!Y-m-d', (string) $option);
+        $parsed = \DateTimeImmutable::createFromFormat('!Y-m-d', $option);
 
         return $parsed !== false && $parsed->format('Y-m-d') === $option ? $option : null;
+    }
+
+    /**
+     * Suma sobre el acumulador compartido (todas sus claves arrancan en 0).
+     *
+     * @param  \ArrayObject<string, int>  $totals
+     */
+    private static function bump(\ArrayObject $totals, string $key, int $by = 1): void
+    {
+        $totals[$key] = ($totals[$key] ?? 0) + $by;
     }
 
     /**

@@ -38,7 +38,7 @@ class OperatorFeedbackCollector
             ->orderBy('evaluation_version')
             ->get()
             ->map(fn (AIEventEvaluation $evaluation): array => [
-                'evaluation_version' => (int) $evaluation->evaluation_version,
+                'evaluation_version' => $evaluation->evaluation_version,
                 // whereNotNull('operator_verdict') arriba: siempre hay veredicto.
                 'verdict' => ($evaluation->operator_verdict ?? throw new LogicException("ai_event_evaluation {$evaluation->id} sin operator_verdict"))->value,
                 'ai_classification' => $evaluation->classification?->value,

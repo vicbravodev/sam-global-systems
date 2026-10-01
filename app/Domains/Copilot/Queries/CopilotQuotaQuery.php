@@ -39,7 +39,7 @@ class CopilotQuotaQuery
         return [
             'used' => $used,
             'included' => $includedQuantity,
-            'percent' => $includedQuantity ? round($used / $includedQuantity * 100, 1) : null,
+            'percent' => $includedQuantity !== null && $includedQuantity !== 0 ? round($used / $includedQuantity * 100, 1) : null,
             'periodStart' => $periodStart->toIso8601String(),
             'overage' => $includedQuantity !== null ? max(0, $used - $includedQuantity) : 0,
         ];

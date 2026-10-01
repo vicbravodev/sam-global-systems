@@ -62,7 +62,7 @@ class AuditShowcaseSeeder extends ShowcaseStep
             $opened = CarbonImmutable::parse($incident->opened_at);
             $random = ShowcaseRandom::forKey('audit:'.$incident->id);
             $sig = fn (string $what) => $this->ctx->key('audit', 'incident', (string) $incident->id, $what);
-            $event = $incident->related_event_id ? NormalizedEvent::query()->find($incident->related_event_id) : null;
+            $event = $incident->related_event_id !== null ? NormalizedEvent::query()->find($incident->related_event_id) : null;
 
             $logs[] = $this->log('incident.created', 'domain', $incident->created_by_type?->value === 'user' ? 'user' : 'ai', $incident->created_by_id, 'Incident', $incident->id, "Incidente abierto: {$incident->title}", $opened, $sig('created'));
 
@@ -225,7 +225,7 @@ class AuditShowcaseSeeder extends ShowcaseStep
             'source_reference_id' => null,
             'signature' => $signature,
             'summary' => $summary,
-            'metadata_json' => array_filter(['actor_email' => $email, 'showcase' => true]),
+            'metadata_json' => array_filter(['actor_email' => $email, 'showcase' => true], fn (string|bool|null $value): bool => $value !== null && $value !== ''),
             'ip_address' => $ip ?? ($user ? '201.141.'.$random->int(1, 254).'.'.$random->int(1, 254) : null),
             'user_agent' => $user ? $random->pick(self::AGENTS) : null,
             'occurred_at' => $at,
@@ -244,7 +244,7 @@ class AuditShowcaseSeeder extends ShowcaseStep
             'team_id' => $this->ctx->team->id,
             'entity_type' => 'Incident',
             'entity_id' => $incident->id,
-            'changed_by_type' => $userId ? 'user' : 'system',
+            'changed_by_type' => $userId !== null ? 'user' : 'system',
             'changed_by_id' => $userId,
             'change_type' => $type,
             'before_json' => $before,
@@ -275,12 +275,15 @@ class AuditShowcaseSeeder extends ShowcaseStep
             $traces[] = $this->span($traceId, $this->uuid("span-{$module}", $incident->id), $root, $module, $operation, $cursor, $duration, $failedModule === $module ? 'Timeout consultando la ubicación en vivo; se usó la última conocida.' : null);
         }
 
+        // Ids de secuencia: un related_decision_id nunca vale 0.
+        $decisionId = $incident->related_decision_id;
+
         $pairs = array_filter([
-            $event ? ['raw_event', (int) $event->raw_event_id, 'normalized_event', (int) $event->id, 'generated'] : null,
-            $incident->related_decision_id && $event ? ['normalized_event', (int) $event->id, 'decision', (int) $incident->related_decision_id, 'triggered'] : null,
-            $incident->related_decision_id ? ['decision', (int) $incident->related_decision_id, 'incident', (int) $incident->id, 'generated'] : null,
-            $event && ! $incident->related_decision_id ? ['normalized_event', (int) $event->id, 'incident', (int) $incident->id, 'linked_to'] : null,
-        ]);
+            $event !== null ? ['raw_event', $event->raw_event_id, 'normalized_event', $event->id, 'generated'] : null,
+            $decisionId !== null && $event !== null ? ['normalized_event', $event->id, 'decision', $decisionId, 'triggered'] : null,
+            $decisionId !== null ? ['decision', $decisionId, 'incident', $incident->id, 'generated'] : null,
+            $event !== null && $decisionId === null ? ['normalized_event', $event->id, 'incident', $incident->id, 'linked_to'] : null,
+        ], fn (?array $pair): bool => $pair !== null);
 
         foreach ($pairs as [$sourceType, $sourceId, $targetType, $targetId, $relation]) {
             $links[] = [
@@ -308,7 +311,7 @@ class AuditShowcaseSeeder extends ShowcaseStep
             'team_id' => $this->ctx->team->id,
             'module_name' => $module,
             'operation_name' => $operation,
-            'status' => $error ? 'failed' : 'completed',
+            'status' => $error !== null && $error !== '' ? 'failed' : 'completed',
             'started_at' => $start,
             'finished_at' => $start->addMilliseconds($durationMs),
             'duration_ms' => $durationMs,

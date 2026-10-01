@@ -63,14 +63,14 @@ class CheckIntegrationHealthJob implements ShouldQueue
             ->whereIn('status', [TenantIntegrationStatus::Active, TenantIntegrationStatus::Error])
             ->chunkById(100, function ($integrations) use ($sendNotification) {
                 foreach ($integrations as $integration) {
-                    TenantContext::for((int) $integration->team_id, fn () => $this->inspect($integration, $sendNotification));
+                    TenantContext::for($integration->team_id, fn () => $this->inspect($integration, $sendNotification));
                 }
             }));
     }
 
     private function inspect(TenantIntegration $integration, SendNotification $sendNotification): void
     {
-        $teamId = (int) $integration->team_id;
+        $teamId = $integration->team_id;
 
         $hasMonitoredFleet = Asset::query()->where('team_id', $teamId)->monitored()->exists();
 
@@ -89,7 +89,7 @@ class CheckIntegrationHealthJob implements ShouldQueue
                 eventKey: sprintf('integration_error:%d:%d', $integration->id, $since->getTimestamp()),
                 subject: "La integración {$integration->name} dejó de responder",
                 body: 'SAM no puede leer tu flota desde el proveedor'
-                    .($integration->last_error_message ? " ({$integration->last_error_message})" : '')
+                    .(! in_array($integration->last_error_message, [null, '', '0'], true) ? " ({$integration->last_error_message})" : '')
                     .'. Mientras tanto no llegan pánicos ni posiciones: revisa las credenciales en Integraciones.',
             );
 
@@ -117,7 +117,7 @@ class CheckIntegrationHealthJob implements ShouldQueue
             eventKey: sprintf('integration_silent:%d:%d', $integration->id, $anchor->getTimestamp()),
             subject: "Sin datos de {$integration->name} desde hace más de {$silenceMinutes} min",
             body: 'Tu flota vigilada no está enviando posiciones ni eventos a SAM'
-                .($lastData ? ' desde el '.$lastData->copy()->setTimezone((string) config('billing.timezone', 'America/Mexico_City'))->format('d/m H:i') : '')
+                .($lastData !== null ? ' desde el '.$lastData->copy()->setTimezone((string) config('billing.timezone', 'America/Mexico_City'))->format('d/m H:i') : '')
                 .'. Puede ser el proveedor, el token o los webhooks: revisa Integraciones.',
         );
     }
@@ -143,9 +143,9 @@ class CheckIntegrationHealthJob implements ShouldQueue
             }
 
             SystemLog::degraded('integrations.health.webhook_degraded', reason: $health, input: [
-                'team_id' => (int) $integration->team_id,
-                'integration_id' => (int) $integration->id,
-                'webhook_endpoint_id' => (int) $endpoint->id,
+                'team_id' => $integration->team_id,
+                'integration_id' => $integration->id,
+                'webhook_endpoint_id' => $endpoint->id,
                 'last_rejection_reason' => $endpoint->last_rejection_reason,
             ], calc: [
                 'secret_configured' => $endpoint->hasSecret(),
@@ -213,14 +213,14 @@ class CheckIntegrationHealthJob implements ShouldQueue
 
     private function alert(SendNotification $sendNotification, TenantIntegration $integration, string $eventKey, string $subject, string $body): void
     {
-        $recipients = IncidentSupervisors::recipients((int) $integration->team_id);
+        $recipients = IncidentSupervisors::recipients($integration->team_id);
 
         if ($recipients === []) {
             return;
         }
 
         $sendNotification->execute(
-            teamId: (int) $integration->team_id,
+            teamId: $integration->team_id,
             notificationType: 'integration.health',
             sourceType: NotificationSourceType::SystemEvent,
             sourceReferenceId: (string) $integration->id,

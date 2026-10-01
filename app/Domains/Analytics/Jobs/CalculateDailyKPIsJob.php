@@ -32,7 +32,8 @@ class CalculateDailyKPIsJob implements ShouldQueue
 
     public function handle(CalculateKPIsForTenant $action): void
     {
-        $day = $this->forDate ? now()->parse($this->forDate) : now()->subDay();
+        // forDate llega de toDateString() o es null: un '0' no es una fecha posible.
+        $day = $this->forDate !== null && $this->forDate !== '' ? now()->parse($this->forDate) : now()->subDay();
         $start = $day->copy()->startOfDay();
         $end = $day->copy()->endOfDay();
 
@@ -51,7 +52,7 @@ class CalculateDailyKPIsJob implements ShouldQueue
             // with the customer base, and a retry restarted everyone from zero.
             $teamsQuery->select('teams.id')->chunkById(100, function ($teams) use ($day) {
                 foreach ($teams as $team) {
-                    self::dispatch((int) $team->id, $day->toDateString());
+                    self::dispatch($team->id, $day->toDateString());
                 }
             });
 

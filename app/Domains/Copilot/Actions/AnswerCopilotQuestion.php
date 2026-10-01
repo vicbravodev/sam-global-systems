@@ -79,9 +79,8 @@ class AnswerCopilotQuestion
             $namedAsset = $this->assets->resolveFromPrompt($teamId, $question);
             $pinnedAsset = $this->assets->resolveById($teamId, $hints['asset_id'] ?? null);
 
-            $intent = isset($hints['intent']) && ($explicit = CopilotIntent::tryFrom((string) $hints['intent']))
-                ? $explicit
-                : $this->router->route($question, $namedAsset !== null || $pinnedAsset !== null);
+            $explicit = isset($hints['intent']) ? CopilotIntent::tryFrom($hints['intent']) : null;
+            $intent = $explicit ?? $this->router->route($question, $namedAsset !== null || $pinnedAsset !== null);
 
             // Unit questions use the unit named in the text, then the one pinned
             // in the composer, then the one the thread was already about
@@ -147,9 +146,9 @@ class AnswerCopilotQuestion
             ->limit(self::PICKER_LIMIT)
             ->get()
             ->map(fn (Asset $asset) => [
-                'id' => (int) $asset->id,
+                'id' => $asset->id,
                 'code' => $asset->code,
-                'name' => (string) $asset->name,
+                'name' => $asset->name,
                 'category' => $asset->assetType?->category->value,
             ])
             ->all();

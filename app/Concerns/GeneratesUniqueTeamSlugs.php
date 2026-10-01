@@ -20,7 +20,7 @@ trait GeneratesUniqueTeamSlugs
                     ->orWhere('slug', 'like', $defaultSlug.'-%');
             });
 
-        if ($excludeId) {
+        if ($excludeId !== null && $excludeId !== 0) {
             $query->where('id', '!=', $excludeId);
         }
 
@@ -30,7 +30,7 @@ trait GeneratesUniqueTeamSlugs
             ->map(function (string $slug) use ($defaultSlug): ?int {
                 if ($slug === $defaultSlug) {
                     return 0;
-                } elseif (preg_match('/^'.preg_quote($defaultSlug, '/').'-(\d+)$/', $slug, $matches)) {
+                } elseif (preg_match('/^'.preg_quote($defaultSlug, '/').'-(\d+)$/', $slug, $matches) === 1) {
                     return (int) $matches[1];
                 }
 

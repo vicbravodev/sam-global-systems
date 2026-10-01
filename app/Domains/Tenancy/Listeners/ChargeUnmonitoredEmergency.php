@@ -34,7 +34,7 @@ class ChargeUnmonitoredEmergency implements ShouldQueue
     public function handle(UnmonitoredAssetEmergencyReceived $event): void
     {
         $normalized = $event->normalizedEvent;
-        $teamId = (int) $normalized->team_id;
+        $teamId = $normalized->team_id;
         $assetId = $normalized->asset_id;
 
         if ($assetId === null) {

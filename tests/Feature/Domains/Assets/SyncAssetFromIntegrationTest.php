@@ -186,6 +186,63 @@ class SyncAssetFromIntegrationTest extends TestCase
         );
     }
 
+    public function test_resync_keeps_a_zero_name_and_code_like_creation_does(): void
+    {
+        Event::fake([AssetDiscovered::class]);
+
+        [, $team, , $integration] = $this->createSetup();
+
+        $action = app(SyncAssetFromIntegration::class);
+
+        $action->execute($team->id, $integration->id, [
+            'external_id' => 'ext-vehicle-zero',
+            'name' => 'Unidad vieja',
+            'code' => 'OLD-1',
+            'asset_type_code' => 'vehicle',
+        ]);
+
+        // El proveedor renombra la unidad a "0": la creación guardaría "0", así
+        // que el re-sync también debe guardarlo (no descartarlo como vacío).
+        $resynced = $action->execute($team->id, $integration->id, [
+            'external_id' => 'ext-vehicle-zero',
+            'name' => '0',
+            'code' => '0',
+            'asset_type_code' => 'vehicle',
+        ]);
+
+        $this->assertSame('0', $resynced->name);
+        $this->assertSame('0', $resynced->code);
+    }
+
+    public function test_resync_does_not_blank_fields_the_provider_omits(): void
+    {
+        Event::fake([AssetDiscovered::class]);
+
+        [, $team, , $integration] = $this->createSetup();
+
+        $action = app(SyncAssetFromIntegration::class);
+
+        $action->execute($team->id, $integration->id, [
+            'external_id' => 'ext-vehicle-keep',
+            'name' => 'Truck Keep',
+            'code' => 'KEEP-1',
+            'metadata' => ['vin' => 'X'],
+            'asset_type_code' => 'vehicle',
+        ]);
+
+        $resynced = $action->execute($team->id, $integration->id, [
+            'external_id' => 'ext-vehicle-keep',
+            'name' => '',
+            'code' => null,
+            'metadata' => [],
+            'asset_type_code' => 'vehicle',
+        ]);
+
+        $this->assertSame('Truck Keep', $resynced->name);
+        $this->assertSame('KEEP-1', $resynced->code);
+        $this->assertSame(['vin' => 'X'], $resynced->metadata_json);
+    }
+
     public function test_it_dispatches_asset_discovered_event_for_new_asset(): void
     {
         Event::fake([AssetDiscovered::class]);

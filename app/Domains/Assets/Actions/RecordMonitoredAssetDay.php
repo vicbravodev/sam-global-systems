@@ -48,7 +48,7 @@ class RecordMonitoredAssetDay
      */
     public function outcome(Asset $asset, ?string $localDate = null, ?bool $tenantBillable = null, bool $fromDailyClose = false): string
     {
-        $teamId = (int) $asset->team_id;
+        $teamId = $asset->team_id;
         $localDate ??= AssetDayPricing::localDate(now());
 
         return TenantContext::for($teamId, function () use ($asset, $teamId, $localDate, $tenantBillable, $fromDailyClose): string {
@@ -84,7 +84,7 @@ class RecordMonitoredAssetDay
                 return 'legacy_sample_exists';
             }
 
-            $eventKey = self::eventKey($teamId, (int) $asset->id, $localDate);
+            $eventKey = self::eventKey($teamId, $asset->id, $localDate);
 
             $inserted = $this->recordUsage->record(
                 teamId: $teamId,

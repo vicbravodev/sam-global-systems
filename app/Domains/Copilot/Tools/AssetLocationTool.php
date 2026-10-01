@@ -34,7 +34,7 @@ final class AssetLocationTool implements CopilotTool
         abort_if($asset === null || $asset->team_id !== $context->teamId, 404);
 
         $trailFrom = $context->period->to->subHours(self::TRAIL_WINDOW_HOURS)->max($context->period->from);
-        $trail = $this->sampledTrail((int) $asset->id, $trailFrom, $context->period->to);
+        $trail = $this->sampledTrail($asset->id, $trailFrom, $context->period->to);
 
         $latest = AssetLocationSnapshot::query()
             ->where('asset_id', $asset->id)
@@ -64,7 +64,7 @@ final class AssetLocationTool implements CopilotTool
 
         $block = [
             'type' => 'location',
-            'assetId' => (int) $asset->id,
+            'assetId' => $asset->id,
             'assetLabel' => $label,
             'motion' => $motion,
             'motionLabel' => CopilotPresenter::motionLabel($motion),
@@ -76,10 +76,11 @@ final class AssetLocationTool implements CopilotTool
                 'speed' => $s->speed !== null ? (float) $s->speed : null,
                 'recordedAt' => $s->recorded_at->toIso8601String(),
             ])->all(),
-            'href' => CopilotPresenter::assetHref($context->teamSlug, (int) $asset->id),
+            'href' => CopilotPresenter::assetHref($context->teamSlug, $asset->id),
         ];
 
-        $where = $latest->formatted_location ?: sprintf('%.5f, %.5f', $location['latitude'], $location['longitude']);
+        // Una dirección geocodificada nunca es '0': null o '' caen a las coordenadas.
+        $where = $latest->formatted_location !== null && $latest->formatted_location !== '' ? $latest->formatted_location : sprintf('%.5f, %.5f', $location['latitude'], $location['longitude']);
         $speed = $location['speed'] !== null ? " a {$location['speed']} km/h" : '';
 
         return new CopilotToolResult(
@@ -88,9 +89,9 @@ final class AssetLocationTool implements CopilotTool
             blocks: [$block],
             sources: [[
                 'kind' => 'asset',
-                'id' => (int) $asset->id,
+                'id' => $asset->id,
                 'label' => $label,
-                'href' => CopilotPresenter::assetHref($context->teamSlug, (int) $asset->id),
+                'href' => CopilotPresenter::assetHref($context->teamSlug, $asset->id),
             ]],
             facts: [
                 'asset' => $label,

@@ -43,7 +43,7 @@ class SamsaraConnectCommand extends Command
 
         $team = Team::query()->find($teamId);
 
-        if (! $team) {
+        if ($team === null) {
             $this->error("Team #{$teamId} not found.");
 
             return self::FAILURE;
@@ -65,13 +65,13 @@ class SamsaraConnectCommand extends Command
                 'name' => (string) $this->option('name'),
                 'status' => TenantIntegrationStatus::Pending,
                 'auth_type' => AuthType::ApiKey,
-                'credentials_encrypted' => (string) $this->argument('token'),
+                'credentials_encrypted' => $this->argument('token'),
             ],
         );
 
         IntegrationCredential::updateOrCreate(
             ['tenant_integration_id' => $integration->id, 'key' => 'api_token'],
-            ['value_encrypted' => (string) $this->argument('token')],
+            ['value_encrypted' => $this->argument('token')],
         );
 
         $this->info("Integration #{$integration->id} ready for team #{$team->id} ({$team->name}).");
@@ -94,8 +94,13 @@ class SamsaraConnectCommand extends Command
             // Samsara generates the webhook Secret Key itself (it cannot be set
             // via the API/dashboard), so the real signing secret must be copied
             // back into SAM. Use --secret=... once the webhook exists in Samsara.
-            if ($secret = $this->option('secret')) {
-                $endpoint->forceFill(['secret' => (string) $secret, 'secret_configured_at' => now()])->save();
+            // Mismo criterio que la truthiness previa: '' y '0' cuentan como
+            // "sin --secret" (ninguno es un Secret Key real de Samsara).
+            $secret = $this->option('secret');
+            $hasSecret = ! in_array($secret, [null, '', '0'], true);
+
+            if ($hasSecret) {
+                $endpoint->forceFill(['secret' => $secret, 'secret_configured_at' => now()])->save();
             }
 
             $url = route('webhooks.handle', ['endpoint_url' => $endpoint->url]);
@@ -107,7 +112,7 @@ class SamsaraConnectCommand extends Command
             $this->line('  2. Copy the Secret Key that Samsara generates for the webhook and store');
             $this->line('     it in SAM: re-run with --webhook --secret="<samsara-secret-key>".');
 
-            if (! $this->option('secret')) {
+            if (! $hasSecret) {
                 $this->warn('  No --secret provided yet: every webhook is rejected (secret_not_configured)');
                 $this->warn('  until the real Samsara Secret Key is stored. SAM verifies X-Samsara-Signature');
                 $this->warn('  (v1=<hmac>) + X-Samsara-Timestamp on every event.');

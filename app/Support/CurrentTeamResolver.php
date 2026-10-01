@@ -27,7 +27,7 @@ class CurrentTeamResolver
         }
 
         if ($user->isSuperAdmin()) {
-            return (int) $team->id;
+            return $team->id;
         }
 
         $isMember = fn (): bool => Membership::query()
@@ -38,7 +38,7 @@ class CurrentTeamResolver
         // En procesos de larga vida (workers) la "request" del contenedor no
         // cambia entre jobs: ahí no se memoiza.
         if (app()->runningInConsole() && ! app()->runningUnitTests()) {
-            return $isMember() ? (int) $team->id : null;
+            return $isMember() ? $team->id : null;
         }
 
         $attributes = request()->attributes;
@@ -48,7 +48,8 @@ class CurrentTeamResolver
             $attributes->set($key, $isMember());
         }
 
-        return $attributes->get($key) ? (int) $team->id : null;
+        // Sólo este método escribe la clave, siempre con el bool de $isMember().
+        return $attributes->get($key) === true ? $team->id : null;
     }
 
     /**

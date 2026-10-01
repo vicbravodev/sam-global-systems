@@ -67,7 +67,7 @@ class TenantMemberController extends Controller
             'role' => ['required', Rule::in([TeamRole::Admin->value, TeamRole::Member->value])],
         ]);
 
-        if ($team->owner()?->is($user)) {
+        if ($team->owner()?->is($user) === true) {
             throw ValidationException::withMessages([
                 'role' => 'Usa "hacer propietario" para reasignar al owner.',
             ]);
@@ -84,7 +84,7 @@ class TenantMemberController extends Controller
 
     public function destroy(Request $request, Team $team, User $user, #[CurrentUser] User $actor): RedirectResponse
     {
-        if ($team->owner()?->is($user)) {
+        if ($team->owner()?->is($user) === true) {
             throw ValidationException::withMessages([
                 'member' => 'No se puede quitar al propietario del tenant.',
             ]);
@@ -96,7 +96,7 @@ class TenantMemberController extends Controller
             $user->switchAwayFrom($team);
         });
 
-        app(AuthorizeAction::class)->invalidateCache((int) $user->id, (int) $team->id);
+        app(AuthorizeAction::class)->invalidateCache($user->id, $team->id);
 
         $this->record($request, $actor, $team, 'tenant.member_removed',
             "{$user->email} removido del tenant {$team->name}.",
@@ -118,7 +118,7 @@ class TenantMemberController extends Controller
         DB::transaction(function () use ($team, $user, $updateTeamMemberRole) {
             $currentOwner = $team->owner();
 
-            if ($currentOwner && ! $currentOwner->is($user)) {
+            if ($currentOwner !== null && ! $currentOwner->is($user)) {
                 $updateTeamMemberRole->handle($team, $currentOwner, TeamRole::Admin);
             }
 
@@ -139,13 +139,13 @@ class TenantMemberController extends Controller
     {
         $this->audit->execute(
             actorType: AuditActorType::User,
-            actorId: (int) $actor->id,
+            actorId: $actor->id,
             action: $action,
             category: AuditCategory::Security,
             entityType: Team::class,
-            entityId: (int) $team->id,
+            entityId: $team->id,
             summary: $summary,
-            teamId: (int) $team->id,
+            teamId: $team->id,
             metadata: ['actor_email' => $actor->email] + $metadata,
             signature: $action.':'.$team->id.':'.Str::uuid()->toString(),
             ipAddress: $request->ip(),

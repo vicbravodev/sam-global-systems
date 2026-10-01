@@ -231,7 +231,9 @@ final class AutomaticSystemLog
         $host = strtolower((string) parse_url($url, PHP_URL_HOST));
         $provider = self::providerForHost($host);
 
-        $path = (string) (parse_url($url, PHP_URL_PATH) ?: '/');
+        // Misma truthiness que el `?:` previo: null, false, '' y '0' → '/'.
+        $path = parse_url($url, PHP_URL_PATH);
+        $path = is_string($path) && $path !== '' && $path !== '0' ? $path : '/';
 
         return [
             'provider' => $provider,

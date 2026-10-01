@@ -30,11 +30,12 @@ final readonly class CopilotTurnScope
     public static function fromTeam(Team $team, array $permissions, bool $isSuperAdmin): self
     {
         return new self(
-            (int) $team->id,
-            (string) $team->slug,
+            $team->id,
+            $team->slug,
             $permissions,
             $isSuperAdmin,
-            $team->timezone ?: (string) config('app.timezone'),
+            // Una zona horaria nunca es '0': null o '' caen al default de la app.
+            $team->timezone !== null && $team->timezone !== '' ? $team->timezone : (string) config('app.timezone'),
             CarbonImmutable::now(),
         );
     }

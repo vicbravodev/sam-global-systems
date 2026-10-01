@@ -116,7 +116,7 @@ class CopilotUsageQuery
             ->get()
             ->map(function (CopilotMessage $answer): array {
                 return [
-                    'id' => (int) $answer->id,
+                    'id' => $answer->id,
                     'question' => (string) $answer->getAttribute('question_content'),
                     'user' => $answer->conversation?->user?->name,
                     'intent' => $answer->intent?->label(),

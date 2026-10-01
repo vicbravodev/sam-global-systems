@@ -43,7 +43,7 @@ class SdkMediaAssessmentAgent implements MediaAssessmentAgent
             throw new RuntimeException('Laravel AI SDK media invocation failed: '.$exception->getMessage(), previous: $exception);
         }
 
-        $latencyMs = (int) intdiv(hrtime(true) - $startedAt, 1_000_000);
+        $latencyMs = intdiv(hrtime(true) - $startedAt, 1_000_000);
 
         $structured = $this->parseStructuredResponse($response);
 
@@ -55,8 +55,8 @@ class SdkMediaAssessmentAgent implements MediaAssessmentAgent
             summaryText: (string) ($structured['summary_text'] ?? ''),
             extractedSignals: $this->normalizeSignals($structured['extracted_signals'] ?? []),
             modelUsed: 'laravel-ai-sdk:'.($response->meta?->model ?? 'media-inspector'),
-            inputTokens: (int) $response->usage->inputTokens,
-            outputTokens: (int) $response->usage->outputTokens,
+            inputTokens: $response->usage->inputTokens,
+            outputTokens: $response->usage->outputTokens,
             latencyMs: $latencyMs,
             costEstimate: $this->pricing->estimateUsageCost(
                 $response->meta?->model,
@@ -88,7 +88,7 @@ class SdkMediaAssessmentAgent implements MediaAssessmentAgent
         }
 
         $maxBytes = max(1, (int) config('ai.media.max_image_bytes', 8 * 1024 * 1024));
-        $size = (int) $disk->size($input->storagePath);
+        $size = $disk->size($input->storagePath);
 
         if ($size > $maxBytes) {
             throw new MediaFileRejectedException(

@@ -226,6 +226,54 @@ class SyncDriverFromIntegrationTest extends TestCase
         $this->assertSame('+14155551234', $driver->fresh()->phone);
     }
 
+    /**
+     * Regresión: el re-sync filtraba con array_filter() sin callback, que
+     * descartaba los valores "0" (código de empleado o apellido) aunque la
+     * creación sí los guardaba; el driver se quedaba con el valor viejo.
+     */
+    public function test_resync_applies_zero_string_values_like_creation_does(): void
+    {
+        Event::fake([DriverDiscovered::class]);
+
+        [, $team, , $integration] = $this->createSetup();
+        $action = app(SyncDriverFromIntegration::class);
+
+        $driver = $action->execute($team->id, $integration->id, [
+            'external_id' => 'ext-zero', 'first_name' => 'Ana', 'last_name' => 'Ruiz', 'employee_code' => 'EMP-9',
+        ]);
+
+        $action->execute($team->id, $integration->id, [
+            'external_id' => 'ext-zero', 'first_name' => 'Ana', 'last_name' => '0', 'employee_code' => '0',
+        ]);
+
+        $fresh = $driver->fresh();
+        $this->assertSame('0', $fresh->employee_code);
+        $this->assertSame('0', $fresh->last_name);
+        $this->assertSame('Ana 0', $fresh->full_name);
+    }
+
+    public function test_resync_keeps_existing_values_when_payload_fields_are_absent_or_empty(): void
+    {
+        Event::fake([DriverDiscovered::class]);
+
+        [, $team, , $integration] = $this->createSetup();
+        $action = app(SyncDriverFromIntegration::class);
+
+        $driver = $action->execute($team->id, $integration->id, [
+            'external_id' => 'ext-keep', 'first_name' => 'Ana', 'last_name' => 'Ruiz',
+            'employee_code' => 'EMP-9', 'metadata' => ['source' => 'samsara'],
+        ]);
+
+        $action->execute($team->id, $integration->id, [
+            'external_id' => 'ext-keep', 'first_name' => 'Ana', 'last_name' => '', 'employee_code' => '', 'metadata' => [],
+        ]);
+
+        $fresh = $driver->fresh();
+        $this->assertSame('EMP-9', $fresh->employee_code);
+        $this->assertSame('Ruiz', $fresh->last_name);
+        $this->assertSame(['source' => 'samsara'], $fresh->metadata_json);
+    }
+
     public function test_it_refuses_to_claim_a_driver_owned_by_another_tenant(): void
     {
         Event::fake([DriverDiscovered::class]);

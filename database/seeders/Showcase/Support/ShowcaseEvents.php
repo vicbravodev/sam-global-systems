@@ -48,7 +48,7 @@ final class ShowcaseEvents
     public function scenario(NormalizedEvent $event): EventScenario
     {
         return ShowcaseEventCatalog::scenarioFor(
-            (int) $event->id,
+            $event->id,
             (string) $event->eventType?->code,
             (string) $event->eventCategory?->code,
             $this->skipCategories,

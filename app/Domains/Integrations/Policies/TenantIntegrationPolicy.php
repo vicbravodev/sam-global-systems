@@ -16,14 +16,14 @@ class TenantIntegrationPolicy
     {
         $team = currentTeam();
 
-        return $team && $this->authorizeAction->execute($user, 'integrations.view', $team);
+        return $team !== null && $this->authorizeAction->execute($user, 'integrations.view', $team);
     }
 
     public function view(User $user, TenantIntegration $integration): bool
     {
         $team = currentTeam();
 
-        return $team
+        return $team !== null
             && $integration->team_id === $team->id
             && $this->authorizeAction->execute($user, 'integrations.view', $team);
     }
@@ -32,14 +32,14 @@ class TenantIntegrationPolicy
     {
         $team = currentTeam();
 
-        return $team && $this->authorizeAction->execute($user, 'integrations.manage', $team);
+        return $team !== null && $this->authorizeAction->execute($user, 'integrations.manage', $team);
     }
 
     public function update(User $user, TenantIntegration $integration): bool
     {
         $team = currentTeam();
 
-        return $team
+        return $team !== null
             && $integration->team_id === $team->id
             && $this->authorizeAction->execute($user, 'integrations.manage', $team);
     }
@@ -48,7 +48,7 @@ class TenantIntegrationPolicy
     {
         $team = currentTeam();
 
-        return $team
+        return $team !== null
             && $integration->team_id === $team->id
             && $this->authorizeAction->execute($user, 'integrations.manage', $team);
     }

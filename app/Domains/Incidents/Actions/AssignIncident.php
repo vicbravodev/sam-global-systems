@@ -71,7 +71,7 @@ class AssignIncident
      */
     private function guardAssignee(Incident $incident, AssigneeType $assigneeType, int $assigneeId): void
     {
-        $teamId = (int) $incident->team_id;
+        $teamId = $incident->team_id;
 
         $valid = match ($assigneeType) {
             AssigneeType::User => TeamMembers::isAssignable($teamId, $assigneeId),

@@ -124,7 +124,7 @@ class EvaluateEventMultimodally
         };
         $remainingSlots = $this->remainingImageSlots($evaluation);
         $slotsAtStart = $remainingSlots;
-        $profile = $this->resolveTenantProfile->execute((int) $evaluation->team_id);
+        $profile = $this->resolveTenantProfile->execute($evaluation->team_id);
 
         foreach ($mediaContexts as $media) {
             $existing = AIMediaAssessment::query()
@@ -167,7 +167,7 @@ class EvaluateEventMultimodally
             // otro la salta y quien tiene el lock la persiste o la reintenta.
             $lock = Cache::lock(self::MEDIA_LOCK_PREFIX.$media->id, self::MEDIA_LOCK_SECONDS);
 
-            if (! $lock->get()) {
+            if ($lock->get() !== true) {
                 SystemLog::skipped('ai.media.assessment_skipped', reason: 'in_progress', input: ['evaluation_id' => $evaluation->id, 'event_media_context_id' => $media->id]);
                 $countSkip('in_progress');
 
@@ -421,7 +421,7 @@ class EvaluateEventMultimodally
         MediaAssessmentType $assessmentType,
         MediaFileRejectedException $exception,
     ): AIMediaAssessment {
-        SystemLog::skipped('ai.media.assessment_rejected', reason: 'rejected_before_model', input: ['evaluation_id' => $evaluation->id, 'event_media_context_id' => $media->id, 'rejection' => (string) $exception->reason]);
+        SystemLog::skipped('ai.media.assessment_rejected', reason: 'rejected_before_model', input: ['evaluation_id' => $evaluation->id, 'event_media_context_id' => $media->id, 'rejection' => $exception->reason]);
 
         return DB::transaction(fn () => AIMediaAssessment::create([
             'evaluation_id' => $evaluation->id,
@@ -456,7 +456,7 @@ class EvaluateEventMultimodally
         EventMediaContext $media,
         MediaAssessmentType $assessmentType,
     ): MediaAssessmentInput {
-        $metadata = (array) ($media->metadata_json ?? []);
+        $metadata = $media->metadata_json ?? [];
 
         return new MediaAssessmentInput(
             teamId: $evaluation->team_id,

@@ -30,7 +30,7 @@ class AutomationTargetLabels
     {
         $this->users = $team->members()
             ->get(['users.id', 'users.name'])
-            ->mapWithKeys(fn ($user): array => [(string) $user->id => (string) $user->name])
+            ->mapWithKeys(fn ($user): array => [(string) $user->id => $user->name])
             ->all();
 
         // Roles RBAC sin BelongsToTenant (team_id nullable): idiom explícito
@@ -39,14 +39,14 @@ class AutomationTargetLabels
             ->where(fn ($query) => $query->where('team_id', $team->id)->orWhereNull('team_id'))
             ->orderByRaw('team_id is null desc')
             ->get(['code', 'name'])
-            ->mapWithKeys(fn (Role $role): array => [(string) $role->code => (string) $role->name])
+            ->mapWithKeys(fn (Role $role): array => [$role->code => $role->name])
             ->all();
 
         $this->templates = ActionTemplate::query()
             ->where(fn ($query) => $query->where('team_id', $team->id)->orWhereNull('team_id'))
             ->orderByRaw('team_id is null desc')
             ->get(['code', 'name'])
-            ->mapWithKeys(fn (ActionTemplate $template): array => [(string) $template->code => (string) $template->name])
+            ->mapWithKeys(fn (ActionTemplate $template): array => [$template->code => $template->name])
             ->all();
     }
 

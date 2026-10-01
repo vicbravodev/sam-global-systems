@@ -27,7 +27,7 @@ class ReportExecutionController extends Controller
 
         if ($request->filled('status')) {
             $status = ReportExecutionStatus::tryFrom($request->string('status'));
-            if ($status) {
+            if ($status !== null) {
                 $query->where('status', $status);
             }
         }
@@ -57,7 +57,9 @@ class ReportExecutionController extends Controller
 
         $path = $execution->file_path;
 
-        if (! $path) {
+        // file_path lo escribe GenerateReport (ruta generada, nunca '0') y
+        // ExpireOldReports lo pone a null al expirar.
+        if ($path === null || $path === '') {
             throw new NotFoundHttpException('Report has no stored file');
         }
 
@@ -71,8 +73,12 @@ class ReportExecutionController extends Controller
             }
 
             $contents = $disk->get($path);
-            $mime = $fileObject?->content_type
-                ?: ($disk->mimeType($path) ?: 'application/octet-stream');
+            $mime = $fileObject?->content_type;
+
+            if ($mime === null || $mime === '') {
+                $detected = $disk->mimeType($path);
+                $mime = is_string($detected) && $detected !== '' ? $detected : 'application/octet-stream';
+            }
         } catch (Throwable $e) {
             if (! ObjectStorageFailure::matches($e)) {
                 throw $e;
@@ -86,7 +92,9 @@ class ReportExecutionController extends Controller
             return $this->storageUnavailable($request, $current_team);
         }
 
-        $filename = $fileObject?->original_filename ?: basename($path);
+        // original_filename lo fija GenerateReport con basename() de la ruta generada.
+        $originalFilename = $fileObject?->original_filename;
+        $filename = $originalFilename !== null && $originalFilename !== '' ? $originalFilename : basename($path);
 
         return response((string) $contents, 200, [
             'Content-Type' => $mime,

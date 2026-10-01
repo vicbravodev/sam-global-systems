@@ -206,7 +206,7 @@ class DetectOfflineAssetsJob implements ShouldQueue
 
         if ($alreadyRaised) {
             SystemLog::skipped('assets.offline.skipped', reason: 'already_raised', input: [
-                'team_id' => (int) $asset->team_id,
+                'team_id' => $asset->team_id,
                 'asset_id' => $asset->id,
             ], result: ['deduplication_key' => $deduplicationKey], debug: true);
 
@@ -238,7 +238,7 @@ class DetectOfflineAssetsJob implements ShouldQueue
                 'was_in_motion' => $wasInMotion,
             ],
             sourceType: EventSourceType::InternalMonitor->value,
-            teamId: (int) $asset->team_id,
+            teamId: $asset->team_id,
             providerId: null,
             deduplicationKey: $deduplicationKey,
             eventTypeRaw: self::EVENT_TYPE_CODE,
@@ -249,7 +249,7 @@ class DetectOfflineAssetsJob implements ShouldQueue
         // Nunca nombre, clave ni posición del activo: la edad del último fix
         // (respecto de la última conexión) basta para explicar `was_in_motion`.
         SystemLog::ok('assets.offline.raised', input: [
-            'team_id' => (int) $asset->team_id,
+            'team_id' => $asset->team_id,
             'asset_id' => $asset->id,
         ], calc: [
             'silent_minutes' => $silentMinutes,
@@ -280,7 +280,7 @@ class DetectOfflineAssetsJob implements ShouldQueue
 
         $inMotion = is_numeric($override)
             ? (int) $override
-            : (int) $tenantConfig->resolve((int) $asset->team_id, self::SETTING_KEY, self::DEFAULT_OFFLINE_MINUTES);
+            : (int) $tenantConfig->resolve($asset->team_id, self::SETTING_KEY, self::DEFAULT_OFFLINE_MINUTES);
 
         if ($inMotion <= 0 || $wasInMotion) {
             return [
@@ -293,7 +293,7 @@ class DetectOfflineAssetsJob implements ShouldQueue
         }
 
         $parked = (int) $tenantConfig->resolve(
-            (int) $asset->team_id,
+            $asset->team_id,
             self::PARKED_SETTING_KEY,
             self::DEFAULT_PARKED_OFFLINE_MINUTES,
         );
@@ -351,7 +351,7 @@ class DetectOfflineAssetsJob implements ShouldQueue
 
                     $event->forceFill(['payload_normalized_json' => $payload])->save();
 
-                    ApplyExternalResolutionJob::dispatch((int) $event->id);
+                    ApplyExternalResolutionJob::dispatch($event->id);
 
                     $resolved++;
 
@@ -362,7 +362,7 @@ class DetectOfflineAssetsJob implements ShouldQueue
                         // de vida (null si el evento no lo guardó). `raised_to_recovery_minutes`:
                         // del aviso (`occurred_at`) a la prueba de vida.
                         SystemLog::ok('assets.offline.resolved', input: [
-                            'team_id' => (int) $event->team_id,
+                            'team_id' => $event->team_id,
                             'normalized_event_id' => $event->id,
                             'asset_id' => $event->asset_id,
                         ], calc: [

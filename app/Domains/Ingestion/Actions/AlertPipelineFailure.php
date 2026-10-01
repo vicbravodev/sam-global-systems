@@ -81,13 +81,13 @@ class AlertPipelineFailure
         $this->guarded(fn () => $this->alert(
             kind: PipelineFailureAlert::KIND_REPROCESS_EXHAUSTED,
             stage: 'ingestion.reprocess_stuck_raw_events',
-            rawEventId: (int) $rawEvent->id,
+            rawEventId: $rawEvent->id,
             normalizedEventId: null,
-            expectedTeamId: $rawEvent->team_id !== null ? (int) $rawEvent->team_id : null,
+            expectedTeamId: $rawEvent->team_id,
             forceEmergency: false,
             error: null,
-            reprocessAttempts: (int) $rawEvent->reprocess_attempts,
-        ), ['raw_event_id' => (int) $rawEvent->id]);
+            reprocessAttempts: $rawEvent->reprocess_attempts,
+        ), ['raw_event_id' => $rawEvent->id]);
     }
 
     /**
@@ -102,14 +102,14 @@ class AlertPipelineFailure
         $this->guarded(fn () => $this->alert(
             kind: PipelineFailureAlert::KIND_UNMAPPED_ALERT,
             stage: 'normalization.unmapped_alert',
-            rawEventId: (int) $rawEvent->id,
+            rawEventId: $rawEvent->id,
             normalizedEventId: null,
-            expectedTeamId: $rawEvent->team_id !== null ? (int) $rawEvent->team_id : null,
+            expectedTeamId: $rawEvent->team_id,
             forceEmergency: true,
             error: null,
             reprocessAttempts: null,
             externalEventType: LoggableCode::guard($externalEventType),
-        ), ['raw_event_id' => (int) $rawEvent->id]);
+        ), ['raw_event_id' => $rawEvent->id]);
     }
 
     /**
@@ -309,12 +309,12 @@ class AlertPipelineFailure
                 $classification = $this->classify->fromNormalized($normalized);
 
                 return [
-                    'team_id' => (int) $normalized->team_id,
-                    'raw_event_id' => (int) $normalized->raw_event_id,
-                    'normalized_event_id' => (int) $normalized->id,
+                    'team_id' => $normalized->team_id,
+                    'raw_event_id' => $normalized->raw_event_id,
+                    'normalized_event_id' => $normalized->id,
                     'event_type_code' => $classification['event_type_code'],
                     'emergency' => $classification['emergency'],
-                    'asset_id' => $normalized->asset_id !== null ? (int) $normalized->asset_id : null,
+                    'asset_id' => $normalized->asset_id,
                     'occurred_at' => $normalized->occurred_at?->toIso8601String(),
                 ];
             }
@@ -334,12 +334,12 @@ class AlertPipelineFailure
             ];
         }
 
-        $teamId = $rawEvent->team_id !== null ? (int) $rawEvent->team_id : null;
+        $teamId = $rawEvent->team_id;
         $classification = TenantContext::for($teamId, fn () => $this->classify->execute($rawEvent));
 
         return [
             'team_id' => $teamId,
-            'raw_event_id' => (int) $rawEvent->id,
+            'raw_event_id' => $rawEvent->id,
             'normalized_event_id' => $classification['normalized_event_id'],
             'event_type_code' => $classification['event_type_code'],
             'emergency' => $classification['emergency'],

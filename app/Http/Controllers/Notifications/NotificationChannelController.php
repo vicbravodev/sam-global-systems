@@ -38,8 +38,8 @@ class NotificationChannelController extends Controller
         );
 
         return response()->json(['data' => [
-            'channel_id' => (int) $channel->id,
-            'enabled' => (bool) $toggle->enabled,
+            'channel_id' => $channel->id,
+            'enabled' => $toggle->enabled,
         ]]);
     }
 }

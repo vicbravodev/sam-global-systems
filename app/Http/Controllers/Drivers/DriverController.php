@@ -23,7 +23,7 @@ class DriverController extends Controller
 
         if ($request->filled('status')) {
             $status = DriverStatus::tryFrom($request->input('status'));
-            if ($status) {
+            if ($status !== null) {
                 $query->where('status', $status);
             }
         }

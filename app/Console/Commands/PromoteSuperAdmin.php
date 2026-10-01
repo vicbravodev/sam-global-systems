@@ -26,7 +26,7 @@ class PromoteSuperAdmin extends Command
             return self::FAILURE;
         }
 
-        $demote = (bool) $this->option('demote');
+        $demote = $this->option('demote');
 
         $setGlobalRole->execute($user, ! $demote);
 

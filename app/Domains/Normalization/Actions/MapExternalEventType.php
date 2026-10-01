@@ -90,7 +90,7 @@ class MapExternalEventType
     {
         $conditions = $rule->external_conditions_json;
 
-        if (empty($conditions)) {
+        if ($conditions === null || $conditions === []) {
             return null;
         }
 

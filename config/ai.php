@@ -270,7 +270,7 @@ return [
         'allowed_download_hosts' => array_values(array_filter(array_map('trim', explode(',', (string) env(
             'AI_MEDIA_ALLOWED_DOWNLOAD_HOSTS',
             'samsara.com,samsara-*.s3.amazonaws.com,amazonaws.com,cloudfront.net',
-        ))))),
+        ))), static fn (string $host): bool => $host !== '' && $host !== '0')),
         'max_download_bytes' => (int) env('AI_MEDIA_MAX_DOWNLOAD_BYTES', 200 * 1024 * 1024),
         'download_timeout' => (int) env('AI_MEDIA_DOWNLOAD_TIMEOUT', 120),
     ],

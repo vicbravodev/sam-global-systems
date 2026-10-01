@@ -57,7 +57,7 @@ class RequestPanicMediaOnContextBuilt
 
         $enabled = filter_var(
             $this->tenantConfigResolver->resolve(
-                (int) $normalizedEvent->team_id,
+                $normalizedEvent->team_id,
                 self::SETTING_KEY,
                 false,
             ),

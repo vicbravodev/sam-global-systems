@@ -63,7 +63,7 @@ class EnrichContextJob implements ShouldBeUnique, ShouldQueue
     {
         $normalizedEvent = NormalizedEvent::withoutGlobalScopes()->find($this->normalizedEventId);
 
-        if ($normalizedEvent) {
+        if ($normalizedEvent !== null) {
             $normalizedEvent->forceFill(['status' => NormalizedEventStatus::Failed])->save();
         }
 

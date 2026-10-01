@@ -20,14 +20,14 @@ class AuditLogPolicy
     {
         $team = currentTeam();
 
-        return $team && $this->authorizeAction->execute($user, 'audit.view', $team);
+        return $team !== null && $this->authorizeAction->execute($user, 'audit.view', $team);
     }
 
     public function view(User $user, AuditLog $auditLog): bool
     {
         $team = currentTeam();
 
-        return $team
+        return $team !== null
             && $auditLog->team_id === $team->id
             && $this->authorizeAction->execute($user, 'audit.view', $team);
     }

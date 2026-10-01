@@ -19,7 +19,7 @@ class AssignRoleToMember
         // Sólo roles de sistema o propios del team de la membresía: un rol
         // personalizado de otro tenant no existe para éste.
         $role = Role::query()
-            ->visibleToTeam((int) $membership->team_id)
+            ->visibleToTeam($membership->team_id)
             ->where('code', $roleCode)
             ->firstOrFail();
 

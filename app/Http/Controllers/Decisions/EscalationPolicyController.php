@@ -35,7 +35,7 @@ class EscalationPolicyController extends Controller
             'trigger_conditions_json' => $request->input('trigger_conditions_json'),
             'escalation_steps_json' => (array) $request->input('escalation_steps_json'),
             'max_wait_seconds' => $request->input('max_wait_seconds'),
-            'requires_acknowledgement' => (bool) $request->boolean('requires_acknowledgement'),
+            'requires_acknowledgement' => $request->boolean('requires_acknowledgement'),
             'is_active' => $request->boolean('is_active', true),
         ]);
 

@@ -16,14 +16,14 @@ class TenantScheduleProfilePolicy
     {
         $team = currentTeam();
 
-        return $team && $this->authorizeAction->execute($user, 'config.view', $team);
+        return $team !== null && $this->authorizeAction->execute($user, 'config.view', $team);
     }
 
     public function update(User $user, TenantScheduleProfile $profile): bool
     {
         $team = currentTeam();
 
-        return $team
+        return $team !== null
             && $profile->team_id === $team->id
             && $this->authorizeAction->execute($user, 'config.manage', $team);
     }

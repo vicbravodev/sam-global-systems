@@ -262,6 +262,65 @@ class NormalizeRawEventTest extends TestCase
         );
     }
 
+    /**
+     * Un id `'0'` en el payload de Samsara cuenta como "sin id": corta la
+     * cadena de candidatos (gana el primer no-null, como `??`) y no se busca
+     * aunque exista una referencia externa `'0'`.
+     */
+    public function test_zero_string_payload_ids_count_as_missing_asset_and_driver(): void
+    {
+        Event::fake([EventNormalized::class, EventUnmapped::class]);
+
+        $panicType = EventType::factory()->create([
+            'code' => 'panic_button',
+            'category_id' => $this->emergencyCategory->id,
+            'default_severity_id' => $this->criticalSeverity->id,
+        ]);
+
+        EventMappingRule::factory()->create([
+            'provider_id' => $this->samsaraProvider->id,
+            'external_event_type' => 'panicButton',
+            'mapped_event_type_id' => $panicType->id,
+        ]);
+
+        $asset = Asset::factory()->create(['team_id' => $this->teamId]);
+        AssetExternalReference::factory()->create([
+            'asset_id' => $asset->id,
+            'provider_id' => $this->samsaraProvider->id,
+            'external_id' => '0',
+        ]);
+        $otherAsset = Asset::factory()->create(['team_id' => $this->teamId]);
+        AssetExternalReference::factory()->create([
+            'asset_id' => $otherAsset->id,
+            'provider_id' => $this->samsaraProvider->id,
+            'external_id' => 'veh-1',
+        ]);
+        $driver = Driver::factory()->create(['team_id' => $this->teamId]);
+        DriverExternalReference::factory()->create([
+            'driver_id' => $driver->id,
+            'provider_id' => $this->samsaraProvider->id,
+            'external_id' => '0',
+        ]);
+
+        $rawEvent = RawEvent::factory()->pendingProcessing()->create([
+            'team_id' => $this->teamId,
+            'provider_id' => $this->samsaraProvider->id,
+            'event_type_raw' => 'panicButton',
+            'payload_json' => [
+                'asset' => ['id' => '0'],
+                'vehicle' => ['id' => 'veh-1'],
+                'driver' => ['id' => '0'],
+            ],
+        ]);
+
+        $normalized = app(NormalizeRawEvent::class)->execute($rawEvent);
+
+        $this->assertNotNull($normalized);
+        $this->assertNull($normalized->asset_id);
+        $this->assertNull($normalized->driver_id);
+        $this->assertSame('no_vehicle_in_payload', $normalized->payload_normalized_json['asset_unresolved_reason']);
+    }
+
     public function test_normalization_resolves_driver_from_external_id(): void
     {
         Event::fake([EventNormalized::class, EventUnmapped::class]);

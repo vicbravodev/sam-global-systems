@@ -78,7 +78,7 @@ class IncidentInboxController extends Controller
                 'aiEvaluation',
             ]);
 
-        $this->applyFilters($query, $filters, (int) $current_team->id);
+        $this->applyFilters($query, $filters, $current_team->id);
 
         /** @var EloquentCollection<int, Incident> $incidents */
         $incidents = $query
@@ -89,7 +89,7 @@ class IncidentInboxController extends Controller
         $users = $this->resolveUsers(
             $incidents->map(fn (Incident $incident) => $incident->currentAssignment)
                 ->filter(fn ($assignment) => $assignment?->assigned_to_type === AssigneeType::User)
-                ->map(fn ($assignment) => (int) $assignment->assigned_to_id)
+                ->map(fn ($assignment) => $assignment->assigned_to_id)
                 // Los que tienen tomado un incidente se resuelven en la misma
                 // consulta que los asignados: la bandeja pinta ambos nombres.
                 ->concat($incidents->map(fn (Incident $incident) => $incident->claimed_by_user_id)),
@@ -238,7 +238,7 @@ class IncidentInboxController extends Controller
             'severities' => array_values(IncidentPriority::query()
                 ->orderBy('id')
                 ->get(['code', 'name'])
-                ->map(fn (IncidentPriority $p) => ['value' => (string) $p->code, 'label' => (string) $p->name])
+                ->map(fn (IncidentPriority $p) => ['value' => $p->code, 'label' => $p->name])
                 ->all()),
             // Real catalog statuses, labeled with the same Spanish strings the
             // rows render so the operator can always filter what they see (B5).
@@ -247,8 +247,8 @@ class IncidentInboxController extends Controller
                 ->orderBy('id')
                 ->get(['code', 'name'])
                 ->map(fn (IncidentStatus $s) => [
-                    'value' => (string) $s->code,
-                    'label' => IncidentStatusPresenter::filterLabel((string) $s->code, (string) $s->name),
+                    'value' => $s->code,
+                    'label' => IncidentStatusPresenter::filterLabel($s->code, $s->name),
                 ])
                 ->all()),
             'providers' => array_values($providers),
@@ -270,7 +270,7 @@ class IncidentInboxController extends Controller
         return array_values($current_team->members()
             ->orderBy('users.name')
             ->get(['users.id', 'users.name'])
-            ->map(fn (User $user) => ['id' => (int) $user->id, 'name' => (string) $user->name])
+            ->map(fn (User $user) => ['id' => $user->id, 'name' => $user->name])
             ->all());
     }
 
@@ -285,12 +285,12 @@ class IncidentInboxController extends Controller
             'types' => array_values(IncidentType::query()
                 ->orderBy('name')
                 ->get(['id', 'code', 'name'])
-                ->map(fn (IncidentType $t) => ['id' => (int) $t->id, 'code' => (string) $t->code, 'name' => (string) $t->name])
+                ->map(fn (IncidentType $t) => ['id' => $t->id, 'code' => $t->code, 'name' => $t->name])
                 ->all()),
             'priorities' => array_values(IncidentPriority::query()
                 ->orderBy('id')
                 ->get(['id', 'code', 'name'])
-                ->map(fn (IncidentPriority $p) => ['id' => (int) $p->id, 'code' => (string) $p->code, 'name' => (string) $p->name])
+                ->map(fn (IncidentPriority $p) => ['id' => $p->id, 'code' => $p->code, 'name' => $p->name])
                 ->all()),
         ];
     }
@@ -326,16 +326,16 @@ class IncidentInboxController extends Controller
 
         $userIds = collect([
             $incident->currentAssignment?->assigned_to_type === AssigneeType::User
-                ? (int) $incident->currentAssignment->assigned_to_id
+                ? $incident->currentAssignment->assigned_to_id
                 : null,
             $incident->claimed_by_user_id,
         ])
-            ->concat($incident->comments->map(fn ($comment) => (int) $comment->user_id))
+            ->concat($incident->comments->map(fn ($comment) => $comment->user_id))
             ->concat($incident->timeline
                 ->filter(fn ($entry) => $entry->actor_type === TimelineActorType::User)
                 ->map(fn ($entry) => (int) $entry->actor_id));
 
-        $users = $this->resolveUsers($userIds, (int) $incident->team_id);
+        $users = $this->resolveUsers($userIds, $incident->team_id);
 
         $detail = $this->presenter->toDetail($incident, $users);
         // Incluido también en la rama JSON: el panel de la bandeja muestra el
@@ -391,7 +391,7 @@ class IncidentInboxController extends Controller
         $verdicts = collect(MediaFileVerdicts::forFiles(
             AIMediaAssessment::query()->whereIn('evaluation_id', $evaluationIds)->get(),
             collect($entries)->mapWithKeys(fn (array $entry): array => [
-                (int) $entry['media']->id => [(int) $entry['media']->id, ...$entry['frameIds']],
+                $entry['media']->id => [$entry['media']->id, ...$entry['frameIds']],
             ])->all(),
         ));
 
@@ -401,7 +401,7 @@ class IncidentInboxController extends Controller
 
         $thumbnails = collect($entries)
             ->map(fn (array $entry): array => [
-                'id' => (int) $entry['media']->id,
+                'id' => $entry['media']->id,
                 'url' => $entry['thumbnailUrl'] ?? (EventMediaGallery::isVideo($entry['media']) ? null : $entry['url']),
                 'mediaType' => $entry['media']->media_type?->value,
             ])
@@ -447,15 +447,15 @@ class IncidentInboxController extends Controller
             ->get();
 
         return array_map(fn (array $entry): array => [
-            'id' => (int) $entry['media']->id,
+            'id' => $entry['media']->id,
             'mediaType' => $entry['media']->media_type?->value,
             'mimeType' => $entry['media']->mime_type,
             'url' => $entry['url'],
             'thumbnailUrl' => $entry['thumbnailUrl'],
             // Frames que la IA evaluó por este clip: su veredicto es el del clip.
             'frameIds' => $entry['frameIds'],
-            'durationSeconds' => $entry['media']->duration_seconds !== null ? (int) $entry['media']->duration_seconds : null,
-            'sizeBytes' => $entry['media']->size_bytes !== null ? (int) $entry['media']->size_bytes : null,
+            'durationSeconds' => $entry['media']->duration_seconds,
+            'sizeBytes' => $entry['media']->size_bytes,
             'capturedAt' => $entry['media']->captured_at?->toIso8601String(),
             'availabilityStatus' => $entry['media']->availability_status?->value,
         ], $this->galleryOrder(app(EventMediaGallery::class)->entries($media)));
@@ -470,8 +470,8 @@ class IncidentInboxController extends Controller
      */
     private function galleryOrder(array $entries): array
     {
-        usort($entries, fn (array $a, array $b): int => [EventMediaGallery::isVideo($a['media']), (int) $a['media']->id]
-            <=> [EventMediaGallery::isVideo($b['media']), (int) $b['media']->id]);
+        usort($entries, fn (array $a, array $b): int => [EventMediaGallery::isVideo($a['media']), $a['media']->id]
+            <=> [EventMediaGallery::isVideo($b['media']), $b['media']->id]);
 
         return $entries;
     }
@@ -496,10 +496,10 @@ class IncidentInboxController extends Controller
             ->orderByDesc('assessed_at')
             ->get()
             ->map(fn (AIMediaAssessment $assessment): array => [
-                'id' => (int) $assessment->id,
-                'mediaContextId' => (int) $assessment->event_media_context_id,
+                'id' => $assessment->id,
+                'mediaContextId' => $assessment->event_media_context_id,
                 'result' => $assessment->result?->value,
-                'confidenceScore' => $assessment->confidence_score !== null ? (float) $assessment->confidence_score : null,
+                'confidenceScore' => $assessment->confidence_score,
                 'summary' => $assessment->summary_text,
                 'assessmentType' => $assessment->assessment_type?->value,
                 'modelUsed' => $assessment->model_used,
@@ -525,7 +525,7 @@ class IncidentInboxController extends Controller
             ->limit(5)
             ->get()
             ->map(fn (EventMediaRequest $request): array => [
-                'id' => (int) $request->id,
+                'id' => $request->id,
                 'status' => $request->status?->value,
                 'requestType' => $request->request_type?->value,
                 'requestedAt' => ($request->requested_at ?? $request->created_at)?->toIso8601String(),
@@ -559,7 +559,7 @@ class IncidentInboxController extends Controller
             foreach ($links as $link) {
                 $linked = $link->incident;
 
-                if ($linked === null || (int) $linked->team_id !== (int) $incident->team_id) {
+                if ($linked === null || $linked->team_id !== $incident->team_id) {
                     continue;
                 }
 
@@ -602,9 +602,9 @@ class IncidentInboxController extends Controller
     private function priorIncidentRow(Incident $other, ?string $relationType, ?float $confidence): array
     {
         return [
-            'incidentId' => (int) $other->id,
+            'incidentId' => $other->id,
             'reference' => $other->reference(),
-            'title' => (string) $other->title,
+            'title' => $other->title,
             'status' => $other->status?->code,
             'statusLabel' => IncidentStatusPresenter::label($other->status?->code),
             'severity' => $other->priority?->code,
@@ -624,7 +624,7 @@ class IncidentInboxController extends Controller
      */
     private function mediaRetrieval(Incident $incident): array
     {
-        $maxAgeHours = MediaRetrievalWindow::maxAgeHours((int) $incident->team_id);
+        $maxAgeHours = MediaRetrievalWindow::maxAgeHours($incident->team_id);
 
         if ($incident->related_event_id === null) {
             return ['available' => false, 'reason' => 'El incidente no tiene un evento de origen.', 'maxAgeHours' => $maxAgeHours];
@@ -636,7 +636,7 @@ class IncidentInboxController extends Controller
             ->value('occurred_at');
 
         $expiredReason = MediaRetrievalWindow::expiredReason(
-            (int) $incident->team_id,
+            $incident->team_id,
             $occurredAt !== null ? Carbon::parse($occurredAt) : null,
         );
 
@@ -663,8 +663,8 @@ class IncidentInboxController extends Controller
             ->limit(10)
             ->get()
             ->map(fn (IncidentCallVerification $call): array => [
-                'id' => (int) $call->id,
-                'attempt' => (int) $call->attempt,
+                'id' => $call->id,
+                'attempt' => $call->attempt,
                 'status' => $call->status?->value,
                 'outcome' => $call->outcome?->value,
                 'phone' => $this->maskPhone($call->phone),
@@ -675,7 +675,7 @@ class IncidentInboxController extends Controller
 
         $notifications = [];
 
-        if ($request->user()?->can('viewAny', Notification::class)) {
+        if ($request->user()?->can('viewAny', Notification::class) === true) {
             $notifications = array_values(Notification::query()
                 ->where('team_id', $incident->team_id)
                 ->where('source_type', NotificationSourceType::Incident)
@@ -689,10 +689,10 @@ class IncidentInboxController extends Controller
                 ->limit(10)
                 ->get()
                 ->map(fn (Notification $notification): array => [
-                    'id' => (int) $notification->id,
-                    'subject' => (string) ($notification->subject ?? $notification->notification_type),
+                    'id' => $notification->id,
+                    'subject' => $notification->subject ?? $notification->notification_type,
                     'createdAt' => $notification->created_at?->toIso8601String(),
-                    'deliveries' => (int) $notification->deliveries_count,
+                    'deliveries' => $notification->deliveries_count,
                     'delivered' => (int) $notification->getAttribute('delivered_count'),
                     'failed' => (int) $notification->getAttribute('failed_count'),
                 ])

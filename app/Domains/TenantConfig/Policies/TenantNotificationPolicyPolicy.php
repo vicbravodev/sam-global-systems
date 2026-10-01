@@ -16,14 +16,14 @@ class TenantNotificationPolicyPolicy
     {
         $team = currentTeam();
 
-        return $team && $this->authorizeAction->execute($user, 'config.view', $team);
+        return $team !== null && $this->authorizeAction->execute($user, 'config.view', $team);
     }
 
     public function update(User $user, ?TenantNotificationPolicy $policy = null): bool
     {
         $team = currentTeam();
 
-        if (! $team) {
+        if ($team === null) {
             return false;
         }
 

@@ -55,7 +55,11 @@ class SamsaraReplayCommand extends Command
             return self::FAILURE;
         }
 
-        $types = array_filter(array_map('trim', explode(',', (string) $this->option('types'))));
+        // Mismo criterio que el array_filter() sin callback: descarta '' y '0'.
+        $types = array_filter(
+            array_map('trim', explode(',', (string) $this->option('types'))),
+            fn (string $type): bool => $type !== '' && $type !== '0',
+        );
 
         if ($types !== []) {
             $events = array_values(array_filter($events, fn ($event) => in_array($event['event_type'] ?? null, $types, true)));
@@ -67,7 +71,7 @@ class SamsaraReplayCommand extends Command
 
         $team = Team::query()->where('slug', $this->option('team'))->first();
 
-        if (! $team) {
+        if ($team === null) {
             $this->error("Team [{$this->option('team')}] not found. Seed it first (SamsaraTestSeeder).");
 
             return self::FAILURE;
@@ -84,7 +88,7 @@ class SamsaraReplayCommand extends Command
         // whereHas garantiza la integración, pero se re-verifica al cargarla.
         $integration = $endpoint?->tenantIntegration;
 
-        if (! $endpoint || $integration === null) {
+        if ($endpoint === null || $integration === null) {
             $this->error("No active Samsara webhook endpoint for team [{$team->slug}]. Connect the integration in the UI first.");
 
             return self::FAILURE;

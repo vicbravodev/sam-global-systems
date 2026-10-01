@@ -73,7 +73,7 @@ class WebhookNotificationDriver implements NotificationDriver
             ],
         );
 
-        $timeout = is_int($config['timeout'] ?? null) ? (int) $config['timeout'] : self::DEFAULT_TIMEOUT_SECONDS;
+        $timeout = is_int($config['timeout'] ?? null) ? $config['timeout'] : self::DEFAULT_TIMEOUT_SECONDS;
 
         try {
             /** @var PendingRequest $request */
@@ -97,11 +97,22 @@ class WebhookNotificationDriver implements NotificationDriver
             'driver' => 'webhook',
             'event_key' => $eventKey,
             'status_code' => $response->status(),
-            'body' => Str::limit((string) $response->body(), 500, ''),
+            'body' => Str::limit($response->body(), 500, ''),
         ];
 
         if ($response->successful()) {
-            $providerId = $response->header('X-Message-ID') ?: $response->header('Idempotency-Key') ?: ('webhook-'.$eventKey);
+            // Primera cabecera con valor (vacía o "0" no cuentan, como el `?:` de antes).
+            $providerId = 'webhook-'.$eventKey;
+
+            foreach (['X-Message-ID', 'Idempotency-Key'] as $header) {
+                $value = $response->header($header);
+
+                if ($value !== '' && $value !== '0') {
+                    $providerId = $value;
+
+                    break;
+                }
+            }
 
             return DeliveryResult::success(
                 providerMessageId: $providerId,

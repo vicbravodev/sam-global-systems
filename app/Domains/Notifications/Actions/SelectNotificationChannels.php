@@ -53,14 +53,14 @@ class SelectNotificationChannels
         /** @var Team|null $team */
         $team = $notification->team;
 
-        if (! $team) {
+        if ($team === null) {
             return $this->selection([], 'no_team', $calc);
         }
 
         $policy = $this->policies->resolve($team);
 
         $channels = NotificationChannel::query()
-            ->usableByTeam((int) $team->id)
+            ->usableByTeam($team->id)
             ->get();
 
         $calc['usable_channel_types'] = $this->typesOf($channels->all());
@@ -101,7 +101,7 @@ class SelectNotificationChannels
 
         $calc['quiet_hours_active'] = $quiet['active'];
         $calc['quiet_hours_source'] = $quiet['source'];
-        $calc['muted'] = $preference !== null ? (bool) $preference->muted : null;
+        $calc['muted'] = $preference !== null ? $preference->muted : null;
 
         if (is_array($forced) && $forced !== []) {
             $candidates = $this->onlyTypes($channels->all(), $forced);

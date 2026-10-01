@@ -18,7 +18,7 @@ class VerifyPhoneOtp
 
     public function execute(User $user, int $teamId, string $code): OtpResult
     {
-        $key = OtpCacheKeys::forUser((int) $user->id);
+        $key = OtpCacheKeys::forUser($user->id);
         $entry = Cache::get($key);
 
         if (! is_array($entry) || ! isset($entry['code'])) {
@@ -64,11 +64,11 @@ class VerifyPhoneOtp
     {
         $this->audit->execute(
             actorType: AuditActorType::User,
-            actorId: (int) $user->id,
+            actorId: $user->id,
             action: $action,
             category: AuditCategory::Security,
             entityType: 'User',
-            entityId: (int) $user->id,
+            entityId: $user->id,
             summary: "Phone OTP {$outcome} for user {$user->id}",
             teamId: $teamId,
             metadata: ['outcome' => $outcome],

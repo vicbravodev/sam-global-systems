@@ -16,14 +16,14 @@ class NotificationPolicy
     {
         $team = currentTeam();
 
-        return $team && $this->authorizeAction->execute($user, 'notifications.view', $team);
+        return $team !== null && $this->authorizeAction->execute($user, 'notifications.view', $team);
     }
 
     public function view(User $user, Notification $notification): bool
     {
         $team = currentTeam();
 
-        return $team
+        return $team !== null
             && $notification->team_id === $team->id
             && $this->authorizeAction->execute($user, 'notifications.view', $team);
     }
@@ -32,13 +32,13 @@ class NotificationPolicy
     {
         $team = currentTeam();
 
-        return $team && $this->authorizeAction->execute($user, 'notifications.send', $team);
+        return $team !== null && $this->authorizeAction->execute($user, 'notifications.send', $team);
     }
 
     public function manage(User $user): bool
     {
         $team = currentTeam();
 
-        return $team && $this->authorizeAction->execute($user, 'notifications.manage', $team);
+        return $team !== null && $this->authorizeAction->execute($user, 'notifications.manage', $team);
     }
 }

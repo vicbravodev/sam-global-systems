@@ -42,7 +42,7 @@ class DecisionsShowcaseSeeder extends ShowcaseStep
             ->where('is_active', true)
             ->orderByRaw('team_id is null')
             ->first();
-        $this->ruleCodes = $this->ruleSet
+        $this->ruleCodes = $this->ruleSet !== null
             ? DecisionRule::query()->where('ruleset_id', $this->ruleSet->id)->pluck('code')->all()
             : [];
         $this->seedEscalationPolicies();
@@ -98,7 +98,7 @@ class DecisionsShowcaseSeeder extends ShowcaseStep
 
                 $steps = [
                     ['ai', null, ['classification' => $s->classification, 'confidence' => $s->confidence], ['suggested' => $s->recommendedAction], 'Clasificación de IA: '.$s->classification.' ('.round($s->confidence * 100).' %).'],
-                    ['rule', $ruleCode, ['event_type_code' => $s->typeCode, 'risk_score' => $s->riskScore], ['outcome' => $s->decisionCode], $ruleCode ? "La regla {$ruleCode} fija el resultado {$s->decisionCode}." : 'Ninguna regla del tenant aplica; se usa la recomendación de IA.'],
+                    ['rule', $ruleCode, ['event_type_code' => $s->typeCode, 'risk_score' => $s->riskScore], ['outcome' => $s->decisionCode], $ruleCode !== null && $ruleCode !== '' ? "La regla {$ruleCode} fija el resultado {$s->decisionCode}." : 'Ninguna regla del tenant aplica; se usa la recomendación de IA.'],
                     ['tenant_policy', null, ['automation_level' => 'assisted'], ['requires_human_review' => $s->requiresHumanReview], $s->requiresHumanReview ? 'Política del tenant: revisión humana obligatoria.' : 'Política del tenant: ejecución automática permitida.'],
                 ];
 
@@ -121,7 +121,7 @@ class DecisionsShowcaseSeeder extends ShowcaseStep
                     ];
                 }
 
-                if ($s->humanOverride && ($reviewer = $this->ctx->users['supervisor'] ?? $this->ctx->users['admin'] ?? null)) {
+                if ($s->humanOverride && ($reviewer = $this->ctx->users['supervisor'] ?? $this->ctx->users['admin'] ?? null) !== null) {
                     [$new, $why] = match ($s->decisionCode) {
                         'ESCALATE' => ['INCIDENT', 'El conductor respondió al teléfono y confirmó que está a salvo; se atiende como incidente normal.'],
                         'INCIDENT' => [$s->isReal() ? 'ESCALATE' : 'IGNORE', $s->isReal() ? 'La unidad lleva carga de alto valor: se escala al protocolo completo.' : 'Falsa alarma confirmada con el conductor.'],
@@ -177,7 +177,7 @@ class DecisionsShowcaseSeeder extends ShowcaseStep
                     'is_active' => ! $this->ctx->hasRealData,
                 ]);
 
-            $this->policies[$code] = (int) $policy->id;
+            $this->policies[$code] = $policy->id;
         }
     }
 
@@ -192,6 +192,7 @@ class DecisionsShowcaseSeeder extends ShowcaseStep
             default => 'Evento descartado como ruido.',
         };
 
-        return $base.($rule ? " (regla {$rule}, IA: {$classification})" : " (IA: {$classification})");
+        // Códigos de decision_rules (nunca '0'): basta con descartar null y vacío.
+        return $base.($rule !== null && $rule !== '' ? " (regla {$rule}, IA: {$classification})" : " (IA: {$classification})");
     }
 }

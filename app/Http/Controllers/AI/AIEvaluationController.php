@@ -24,7 +24,7 @@ class AIEvaluationController extends Controller
 
         if ($request->filled('classification')) {
             $classification = EventClassification::tryFrom($request->input('classification'));
-            if ($classification) {
+            if ($classification !== null) {
                 $query->where('classification', $classification);
             }
         }

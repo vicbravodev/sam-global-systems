@@ -18,7 +18,10 @@ use Illuminate\Support\Facades\DB;
 class UpdatePlanLimits
 {
     /**
-     * @param  array<string, int>  $meterLimits  meter code => included_quantity
+     * La regla `integer` del formulario no convierte: un "5" llega como
+     * string numérico, de ahí el `(int)` de abajo.
+     *
+     * @param  array<string, int|numeric-string>  $meterLimits  meter code => included_quantity
      */
     public function execute(Plan $plan, array $meterLimits): Plan
     {
@@ -41,7 +44,7 @@ class UpdatePlanLimits
                     ->where('usage_meter_id', $meterId)
                     ->first();
 
-                if ($rate) {
+                if ($rate !== null) {
                     $rate->update(['included_quantity' => $quantity]);
 
                     continue;

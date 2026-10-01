@@ -29,7 +29,7 @@ class AssetMonitoringController extends Controller
     public function update(Request $request, Team $current_team, Asset $asset): RedirectResponse
     {
         // Comparación explícita de team además del scope global (§2.1 punto 6).
-        abort_if((int) $asset->team_id !== (int) $current_team->id, 404);
+        abort_if($asset->team_id !== $current_team->id, 404);
         $this->authorizeManage($request, $current_team);
 
         $data = $request->validate([
@@ -73,7 +73,7 @@ class AssetMonitoringController extends Controller
             ->whereKey($data['asset_ids'])
             ->get();
 
-        $result = $this->setMonitoring->executeMany((int) $current_team->id, $assets, $state, $request->user());
+        $result = $this->setMonitoring->executeMany($current_team->id, $assets, $state, $request->user());
         $changed = $result['changed'];
 
         $verb = $state === AssetMonitoringState::Monitored ? 'encendidas' : 'apagadas';
@@ -92,7 +92,7 @@ class AssetMonitoringController extends Controller
      */
     private function ensureContactReady(Team $team): void
     {
-        $readiness = TenantContactReadiness::for((int) $team->id);
+        $readiness = TenantContactReadiness::for($team->id);
 
         if (! $readiness['ready']) {
             throw ValidationException::withMessages([

@@ -29,7 +29,7 @@ class RefreshIncidentOnEventMediaAvailable
     {
         $normalizedEvent = $event->normalizedEvent;
 
-        TenantContext::for((int) $normalizedEvent->team_id, function () use ($event, $normalizedEvent): void {
+        TenantContext::for($normalizedEvent->team_id, function () use ($event, $normalizedEvent): void {
             $incident = Incident::query()
                 ->where('related_event_id', $normalizedEvent->id)
                 ->orderByDesc('id')

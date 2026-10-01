@@ -32,8 +32,8 @@ class PlanController extends Controller
             ->orderBy('name')
             ->get(['id', 'code', 'name'])
             ->map(fn (UsageMeter $meter) => [
-                'code' => (string) $meter->code,
-                'name' => (string) $meter->name,
+                'code' => $meter->code,
+                'name' => $meter->name,
             ])->values()->all();
 
         $plans = Plan::query()
@@ -41,15 +41,15 @@ class PlanController extends Controller
             ->orderBy('base_price')
             ->get()
             ->map(fn (Plan $plan) => [
-                'id' => (int) $plan->id,
-                'code' => (string) $plan->code,
-                'name' => (string) $plan->name,
+                'id' => $plan->id,
+                'code' => $plan->code,
+                'name' => $plan->name,
                 'basePrice' => (float) $plan->base_price,
-                'isActive' => (bool) $plan->is_active,
+                'isActive' => $plan->is_active,
                 // Las tarifas sin medidor se omiten.
                 'limits' => $plan->billingRates
                     ->mapWithKeys(fn (BillingRate $rate) => $rate->usageMeter === null ? [] : [
-                        $rate->usageMeter->code => (int) $rate->included_quantity,
+                        $rate->usageMeter->code => $rate->included_quantity,
                     ])->all(),
             ])->values()->all();
 
@@ -73,11 +73,11 @@ class PlanController extends Controller
 
         $this->audit->execute(
             actorType: AuditActorType::User,
-            actorId: (int) $user->id,
+            actorId: $user->id,
             action: 'plan.limits_updated',
             category: AuditCategory::Billing,
             entityType: Plan::class,
-            entityId: (int) $plan->id,
+            entityId: $plan->id,
             summary: "Límites del plan {$plan->name} actualizados.",
             metadata: ['actor_email' => $user->email, 'limits' => $limits],
             signature: 'plan.limits_updated:'.$plan->id.':'.Str::uuid()->toString(),

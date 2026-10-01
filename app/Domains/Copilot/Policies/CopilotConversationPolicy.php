@@ -22,7 +22,7 @@ class CopilotConversationPolicy
     {
         $team = currentTeam();
 
-        return $team && $this->authorizeAction->execute($user, 'copilot.use', $team);
+        return $team !== null && $this->authorizeAction->execute($user, 'copilot.use', $team);
     }
 
     public function create(User $user): bool
@@ -34,7 +34,7 @@ class CopilotConversationPolicy
     {
         $team = currentTeam();
 
-        return $team
+        return $team !== null
             && $conversation->team_id === $team->id
             && $conversation->user_id === $user->id
             && $this->authorizeAction->execute($user, 'copilot.use', $team);
@@ -54,6 +54,6 @@ class CopilotConversationPolicy
     {
         $team = currentTeam();
 
-        return $team && $this->authorizeAction->execute($user, 'copilot.usage.view', $team);
+        return $team !== null && $this->authorizeAction->execute($user, 'copilot.usage.view', $team);
     }
 }

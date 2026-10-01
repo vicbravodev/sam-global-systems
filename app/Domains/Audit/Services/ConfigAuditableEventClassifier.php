@@ -117,12 +117,12 @@ class ConfigAuditableEventClassifier implements AuditableEventClassifier
 
     private function readProperty(object $event, string $property): mixed
     {
-        if (! property_exists($event, $property) && ! isset($event->{$property})) {
-            return null;
-        }
-
+        // data_get devuelve la propiedad sólo si isset() (null en otro caso),
+        // igual que el acceso dinámico anterior. La clave va como array para
+        // no partirla por puntos; ningún evento del allowlist implementa
+        // ArrayAccess ni __get/__isset, así que siempre se lee la propiedad.
         try {
-            return $event->{$property} ?? null;
+            return data_get($event, [$property]);
         } catch (\Throwable) {
             return null;
         }

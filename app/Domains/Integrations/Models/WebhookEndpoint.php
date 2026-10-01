@@ -141,7 +141,7 @@ class WebhookEndpoint extends Model
     protected static function booted(): void
     {
         static::creating(function (WebhookEndpoint $endpoint) {
-            if (empty($endpoint->url)) {
+            if (in_array($endpoint->url, [null, '', '0'], true)) {
                 $endpoint->url = Str::uuid()->toString();
             }
 

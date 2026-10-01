@@ -43,10 +43,13 @@ class IncidentResolutionController extends Controller
     {
         $this->authorize('close', $incident);
 
+        // Mismo criterio que el `?:` original: '' y '0' usan el resumen por defecto.
+        $summary = $request->string('summary')->toString();
+
         $resolution = $closeIncident->execute(
             incident: $incident,
             resolutionCode: ResolutionCode::UnresolvedClosed,
-            summary: $request->string('summary')->toString() ?: 'Closed without further action.',
+            summary: in_array($summary, ['', '0'], true) ? 'Closed without further action.' : $summary,
             resolvedByType: IncidentCreatorType::User,
             resolvedById: $user->id,
         );

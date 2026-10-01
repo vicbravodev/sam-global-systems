@@ -103,7 +103,7 @@ class BillingShowcaseSeeder extends ShowcaseStep
 
             // Una flota real más grande que el plan recibe una ampliación
             // negociada: sin ella el tope de activos frenaría la sincronización real.
-            $override = $code === 'monitored_assets' && $activeAssets > (int) $rate->included_quantity;
+            $override = $code === 'monitored_assets' && $activeAssets > $rate->included_quantity;
 
             TenantFeature::query()->create([
                 'team_id' => $this->ctx->team->id,
@@ -112,7 +112,7 @@ class BillingShowcaseSeeder extends ShowcaseStep
                 'source' => $override ? 'manual_override' : 'default_plan',
                 'limits_json' => $override
                     ? ['included_quantity' => (int) (ceil($activeAssets * 1.2 / 50) * 50), 'note' => 'Ampliación negociada con el cliente']
-                    : ($rate->included_quantity > 0 ? ['included_quantity' => (int) $rate->included_quantity] : null),
+                    : ($rate->included_quantity > 0 ? ['included_quantity' => $rate->included_quantity] : null),
             ]);
             $this->ctx->count('tenant_features');
         }
@@ -149,7 +149,8 @@ class BillingShowcaseSeeder extends ShowcaseStep
      * Cantidad por medidor y día a partir de lo que el showcase sembró.
      *
      * @param  array<int, string>  $meterCodes
-     * @return array<string, array<string, int>> medidor => [Y-m-d => cantidad]
+     * @return array<string, array<string, int|numeric-string>> medidor => [Y-m-d => cantidad]
+     *                                                          (`sum()` de pgsql es numeric: llega como texto)
      */
     private function dailyUsage(array $meterCodes): array
     {
@@ -259,7 +260,7 @@ class BillingShowcaseSeeder extends ShowcaseStep
     }
 
     /**
-     * @param  array<string, array<string, int>>  $daily
+     * @param  array<string, array<string, int|numeric-string>>  $daily
      */
     private function recordUsage(array $daily, Subscription $subscription): void
     {
@@ -269,7 +270,7 @@ class BillingShowcaseSeeder extends ShowcaseStep
         $before = DB::table('usage_events')->where('team_id', $this->ctx->team->id)->count();
 
         foreach ($daily as $meter => $days) {
-            $values = array_values(array_filter($days));
+            $values = array_values(array_filter($days, fn (int|string $qty): bool => $qty !== 0 && $qty !== '0'));
             $average = $values === [] ? 0 : array_sum($values) / count($values);
 
             // Historial previo a la ventana: adopción creciente hasta el promedio actual.

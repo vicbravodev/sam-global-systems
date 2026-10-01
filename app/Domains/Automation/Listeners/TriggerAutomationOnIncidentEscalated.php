@@ -34,7 +34,7 @@ class TriggerAutomationOnIncidentEscalated
         }
 
         $this->triggerEscalationWorkflow->execute(
-            teamId: (int) $incident->team_id,
+            teamId: $incident->team_id,
             triggerType: WorkflowTriggerType::IncidentEscalated,
             sourceType: ActionExecutionSourceType::Escalation,
             sourceReferenceId: (string) $incident->id,

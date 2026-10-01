@@ -67,6 +67,16 @@ class FindAssetsToolTest extends TestCase
         $this->assertNoSensitiveDataLogged();
     }
 
+    public function test_zero_is_a_search_token_not_an_empty_one(): void
+    {
+        $this->unit('T-10', 'Kenworth diez');
+        $this->unit('R55', 'Remolque seco');
+
+        $out = $this->find(['query' => '0']);
+
+        $this->assertSame(['T-10'], array_column($out['facts']['items'], 'code'));
+    }
+
     public function test_exact_code_comes_first(): void
     {
         $this->unit('T5550', 'Kenworth largo');

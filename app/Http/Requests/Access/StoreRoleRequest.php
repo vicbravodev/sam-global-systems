@@ -34,7 +34,7 @@ class StoreRoleRequest extends FormRequest
                     $team = $this->route('current_team');
 
                     if ($team instanceof Team && is_string($value)
-                        && Role::query()->where('code', Role::customCodeFor((int) $team->id, $value))->exists()) {
+                        && Role::query()->where('code', Role::customCodeFor($team->id, $value))->exists()) {
                         $fail('Ya existe un rol con este código en tu empresa.');
                     }
                 },

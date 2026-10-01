@@ -91,7 +91,7 @@ class RuleConditionEvaluator
                 $problems = [];
 
                 foreach ($conditions[$block] as $i => $child) {
-                    $segment = is_int($i) ? $i : (LoggableCode::guard((string) $i) ?? '?');
+                    $segment = is_int($i) ? $i : (LoggableCode::guard($i) ?? '?');
                     $childPath = "{$path}.{$block}.{$segment}";
 
                     if (! is_array($child)) {
@@ -140,18 +140,122 @@ class RuleConditionEvaluator
         $actual = $facts[$field] ?? null;
 
         return match ($operator) {
-            'eq' => $actual == $expected,
-            'neq' => $actual != $expected,
+            'eq' => self::looselyEquals($actual, $expected),
+            'neq' => ! self::looselyEquals($actual, $expected),
             'gt' => is_numeric($actual) && is_numeric($expected) && $actual > $expected,
             'gte' => is_numeric($actual) && is_numeric($expected) && $actual >= $expected,
             'lt' => is_numeric($actual) && is_numeric($expected) && $actual < $expected,
             'lte' => is_numeric($actual) && is_numeric($expected) && $actual <= $expected,
-            'in' => is_array($expected) && in_array($actual, $expected, false),
-            'not_in' => is_array($expected) && ! in_array($actual, $expected, false),
+            'in' => is_array($expected) && self::containsLoosely($expected, $actual),
+            'not_in' => is_array($expected) && ! self::containsLoosely($expected, $actual),
             'contains' => is_string($actual) && is_string($expected) && str_contains($actual, $expected),
             'is_null' => $actual === null,
             'is_not_null' => $actual !== null,
             default => false,
         };
+    }
+
+    /**
+     * @param  array<mixed>  $haystack
+     */
+    private static function containsLoosely(array $haystack, mixed $needle): bool
+    {
+        foreach ($haystack as $item) {
+            if (self::looselyEquals($needle, $item)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Igualdad de `eq`/`neq`/`in`/`not_in`. Reproduce explícitamente la
+     * comparación `==` de PHP 8 con la que se escribieron las reglas del
+     * tenant: los hechos son null|bool|int|float|string y los valores llegan
+     * del JSON de la regla (el builder manda números como número, pero el
+     * editor JSON y las reglas viejas pueden traer '5' o 'true'). Así:
+     *
+     * - bool contra cualquier cosa compara verdad: `false` casa con null, 0,
+     *   '' y '0' (un hecho de cámara aún indeterminado, null, casa `eq false`).
+     * - null contra string sólo casa con ''; contra número, con 0; contra
+     *   array, con [].
+     * - número contra string numérico ('5', ' 5', '5.0', '1e1') compara como
+     *   número; contra string no numérico, compara el número como texto.
+     * - dos strings numéricos comparan como número ('5' casa '5.0'); si no,
+     *   texto exacto.
+     */
+    private static function looselyEquals(mixed $a, mixed $b): bool
+    {
+        if (is_bool($a) || is_bool($b)) {
+            return (bool) $a === (bool) $b;
+        }
+
+        if ($a === null || $b === null) {
+            $other = $a ?? $b;
+
+            return match (true) {
+                $other === null => true,
+                is_string($other) => $other === '',
+                is_int($other), is_float($other) => (bool) $other === false,
+                is_array($other) => $other === [],
+                default => false,
+            };
+        }
+
+        if (is_array($a) || is_array($b)) {
+            return is_array($a) && is_array($b) && self::arraysLooselyEqual($a, $b);
+        }
+
+        $aIsNumber = is_int($a) || is_float($a);
+        $bIsNumber = is_int($b) || is_float($b);
+
+        if ($aIsNumber || $bIsNumber || (is_string($a) && is_string($b) && is_numeric($a) && is_numeric($b))) {
+            if (is_numeric($a) && is_numeric($b)) {
+                return self::numbersEqual($a, $b);
+            }
+
+            // Número contra string no numérico: PHP 8 compara el número como texto.
+            if ($aIsNumber && is_string($b)) {
+                return (string) $a === $b;
+            }
+
+            if ($bIsNumber && is_string($a)) {
+                return $a === (string) $b;
+            }
+
+            return false;
+        }
+
+        return $a === $b;
+    }
+
+    /**
+     * Ambos lados son numéricos (int, float o string numérico). Se comparan
+     * como float, exacto para todo hecho de regla (scores, conteos e ids
+     * muy por debajo de 2^53).
+     */
+    private static function numbersEqual(int|float|string $a, int|float|string $b): bool
+    {
+        return (float) $a === (float) $b;
+    }
+
+    /**
+     * @param  array<mixed>  $a
+     * @param  array<mixed>  $b
+     */
+    private static function arraysLooselyEqual(array $a, array $b): bool
+    {
+        if (count($a) !== count($b)) {
+            return false;
+        }
+
+        foreach ($a as $key => $value) {
+            if (! array_key_exists($key, $b) || ! self::looselyEquals($value, $b[$key])) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

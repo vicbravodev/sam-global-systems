@@ -63,16 +63,16 @@ final class AssetTimelineTool implements CopilotTool
             ->concat($events->map(fn (NormalizedEvent $e) => [
                 'at' => $e->occurred_at->toIso8601String(),
                 'kind' => 'event',
-                'label' => (string) ($e->eventType?->name ?? 'Evento'),
+                'label' => $e->eventType?->name ?? 'Evento',
                 'severity' => CopilotPresenter::severity($e->eventSeverity?->code),
-                'href' => CopilotPresenter::eventHref($context->teamSlug, (int) $e->id),
+                'href' => CopilotPresenter::eventHref($context->teamSlug, $e->id),
             ]))
             ->concat($incidents->map(fn (Incident $i) => [
                 'at' => $i->opened_at->toIso8601String(),
                 'kind' => 'incident',
                 'label' => $i->reference().' · '.$i->title,
                 'severity' => CopilotPresenter::severity($i->priority?->code),
-                'href' => CopilotPresenter::incidentHref($context->teamSlug, (int) $i->id),
+                'href' => CopilotPresenter::incidentHref($context->teamSlug, $i->id),
             ]))
             ->concat($idle->map(fn (array $segment) => [
                 'at' => $segment['from'],
@@ -107,13 +107,13 @@ final class AssetTimelineTool implements CopilotTool
                 'type' => 'timeline',
                 'items' => $this->cardItems($items),
                 'total' => $items->count(),
-                'href' => CopilotPresenter::assetHref($context->teamSlug, (int) $asset->id),
+                'href' => CopilotPresenter::assetHref($context->teamSlug, $asset->id),
             ]],
             sources: array_values($incidents->take(5)->map(fn (Incident $i) => [
                 'kind' => 'incident',
-                'id' => (int) $i->id,
+                'id' => $i->id,
                 'label' => $i->reference().' · '.$i->title,
-                'href' => CopilotPresenter::incidentHref($context->teamSlug, (int) $i->id),
+                'href' => CopilotPresenter::incidentHref($context->teamSlug, $i->id),
             ])->all()),
             facts: [
                 'asset' => $label,

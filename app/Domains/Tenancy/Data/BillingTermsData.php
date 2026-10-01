@@ -9,7 +9,7 @@ namespace App\Domains\Tenancy\Data;
 final readonly class BillingTermsData
 {
     /**
-     * @param  list<array{from: int, to: int|null, unit_price: float}>  $volumeTiers
+     * @param  list<array{from: int, to: int|null, unit_price: float|int}>  $volumeTiers  ResolveBillingTerms ya los normaliza a float, pero un precio entero (500) es válido y se lee como float al cotizar
      */
     public function __construct(
         public float $unitPrice,

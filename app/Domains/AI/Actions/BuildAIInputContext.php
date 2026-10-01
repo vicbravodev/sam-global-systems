@@ -79,7 +79,7 @@ class BuildAIInputContext
      */
     private function eventBlock(NormalizedEvent $event): array
     {
-        $timezone = $this->timezoneFor((int) $event->team_id);
+        $timezone = $this->timezoneFor($event->team_id);
         $local = Carbon::instance($event->occurred_at)->setTimezone($timezone);
 
         return [
@@ -301,11 +301,11 @@ class BuildAIInputContext
             ->get()
             ->unique('event_media_context_id')
             ->map(fn (AIMediaAssessment $assessment): array => [
-                'media_context_id' => (int) $assessment->event_media_context_id,
+                'media_context_id' => $assessment->event_media_context_id,
                 'media_type' => $assessment->media_type?->value,
                 'result' => $assessment->result?->value,
                 'confidence' => $assessment->confidence_score !== null
-                    ? round((float) $assessment->confidence_score, 2)
+                    ? round($assessment->confidence_score, 2)
                     : null,
                 'summary' => $assessment->summary_text,
                 'extracted_signals' => $assessment->extracted_signals_json ?? [],

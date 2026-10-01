@@ -28,7 +28,7 @@ class DetectDuplicateEvent
             ->where('deduplication_key', $deduplicationKey)
             ->first();
 
-        if ($existingKey !== null && (int) $existingKey->raw_event_id === (int) $rawEvent->id) {
+        if ($existingKey !== null && $existingKey->raw_event_id === $rawEvent->id) {
             // La clave es del propio evento: es un re-proceso (rescate de
             // atascados o reintento tras pasar el dedup), no un duplicado.
             SystemLog::ok('ingestion.dedup.own_key', input: ['raw_event_id' => $rawEvent->id, 'dedup_source' => $dedupSource]);

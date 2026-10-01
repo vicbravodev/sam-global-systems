@@ -343,7 +343,9 @@ class FollowVehicleStatsFeedJob implements ShouldBeUnique, ShouldQueue
         $base = (int) config('telematics.backoff.base_seconds', 5);
         $max = (int) config('telematics.backoff.max_seconds', 300);
 
-        return (int) min($max, $base * (2 ** min(16, $failures - 1)));
+        // $failures >= 1 (contador + 1), así que el exponente nunca es
+        // negativo y la potencia es entera.
+        return min($max, $base * (2 ** min(16, $failures - 1)));
     }
 
     private function publish(VehicleStatsIngestResult $result): void
@@ -395,7 +397,7 @@ class FollowVehicleStatsFeedJob implements ShouldBeUnique, ShouldQueue
         $moving = array_filter(
             $result->positions,
             fn (array $position) => ($position['moving'] ?? false) === true
-                && MovementCriterion::isMovingSpeed(isset($position['speed_kph']) ? (float) $position['speed_kph'] : null),
+                && MovementCriterion::isMovingSpeed($position['speed_kph'] ?? null),
         );
 
         if ($moving === []) {

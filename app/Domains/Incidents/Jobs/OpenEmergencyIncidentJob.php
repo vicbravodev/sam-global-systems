@@ -61,7 +61,7 @@ class OpenEmergencyIncidentJob implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        if ((int) $event->team_id !== $this->teamId) {
+        if ($event->team_id !== $this->teamId) {
             // Ni $this->teamId ni $event->team_id, ni el id del evento: el
             // evento es ajeno al team del job (o el job al del evento).
             SystemLog::skipped('incidents.emergency.job_skipped', reason: 'team_mismatch', calc: ['team_matches' => false]);

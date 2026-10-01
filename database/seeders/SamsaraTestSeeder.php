@@ -98,7 +98,7 @@ class SamsaraTestSeeder extends Seeder
         foreach (self::USERS as $userData) {
             $user = User::query()->where('email', $userData['email'])->first();
 
-            if (! $user) {
+            if ($user === null) {
                 $user = User::query()->create([
                     'name' => $userData['name'],
                     'email' => $userData['email'],
@@ -124,7 +124,7 @@ class SamsaraTestSeeder extends Seeder
 
         $role = Role::query()->where('code', $rbacRoleCode)->first();
 
-        if ($role) {
+        if ($role !== null) {
             Membership::query()
                 ->where('team_id', $team->id)
                 ->where('user_id', $user->id)

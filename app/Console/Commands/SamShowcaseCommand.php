@@ -39,7 +39,7 @@ class SamShowcaseCommand extends Command
         $seeder = (new ShowcaseSeeder)->configure(
             teamSlug: (string) $this->option('team'),
             days: (int) $this->option('days'),
-            extraTenants: (bool) $this->option('with-extra-tenants'),
+            extraTenants: $this->option('with-extra-tenants'),
         );
         $seeder->setContainer($this->laravel)->setCommand($this);
         $seeder->__invoke();

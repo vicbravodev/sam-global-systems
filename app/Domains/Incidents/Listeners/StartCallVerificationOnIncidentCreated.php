@@ -47,7 +47,7 @@ class StartCallVerificationOnIncidentCreated implements IncidentCreatedReaction
 
         $enabled = filter_var(
             $this->tenantConfig->resolve(
-                (int) $incident->team_id,
+                $incident->team_id,
                 StartIncidentCallVerification::SETTING_ENABLED,
                 true,
             ),

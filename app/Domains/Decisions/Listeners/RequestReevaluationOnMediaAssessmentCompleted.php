@@ -106,7 +106,7 @@ class RequestReevaluationOnMediaAssessmentCompleted
         SystemLog::ok(
             'ai.reevaluation.requested',
             input: [
-                'normalized_event_id' => (int) $evaluation->normalized_event_id,
+                'normalized_event_id' => $evaluation->normalized_event_id,
                 'evaluation_id' => $evaluation->id,
                 'trigger_type' => ReevaluationTrigger::MediaArrived->value,
                 'trigger_reference_id' => $latest?->id,
@@ -120,7 +120,7 @@ class RequestReevaluationOnMediaAssessmentCompleted
         );
 
         ReevaluateEventJob::dispatch(
-            (int) $evaluation->normalized_event_id,
+            $evaluation->normalized_event_id,
             ReevaluationTrigger::MediaArrived->value,
             $latest?->id,
             'Deferred media assessed: '.($latest?->result?->value ?? 'unknown'),

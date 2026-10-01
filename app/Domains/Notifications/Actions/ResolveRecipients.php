@@ -108,8 +108,8 @@ class ResolveRecipients
         foreach ($memberships as $membership) {
             $user = $membership->user;
 
-            if (! $user || ! $user->email) {
-                $reason = $user ? 'no_email' : 'no_user';
+            if ($user === null || in_array($user->email, ['', '0'], true)) {
+                $reason = $user !== null ? 'no_email' : 'no_user';
                 $dropped[$reason] = ($dropped[$reason] ?? 0) + 1;
 
                 continue;

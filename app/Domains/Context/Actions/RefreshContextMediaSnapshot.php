@@ -53,7 +53,7 @@ class RefreshContextMediaSnapshot
         $snapshot->forceFill([
             'media_snapshot_json' => $mediaSnapshot,
             'signals_json' => $signals,
-            'context_version' => (int) $snapshot->context_version + 1,
+            'context_version' => $snapshot->context_version + 1,
         ])->save();
 
         return $snapshot->fresh();

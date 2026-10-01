@@ -194,7 +194,7 @@ class AccessSeeder extends Seeder
         foreach (self::ROLE_PERMISSIONS as $roleCode => $permissionCodes) {
             $role = Role::where('code', $roleCode)->first();
 
-            if (! $role) {
+            if ($role === null) {
                 continue;
             }
 

@@ -26,7 +26,7 @@ class GeofenceController extends Controller
 
         if ($request->filled('category')) {
             $category = GeofenceCategory::tryFrom($request->input('category'));
-            if ($category) {
+            if ($category !== null) {
                 $query->where('category', $category);
             }
         }

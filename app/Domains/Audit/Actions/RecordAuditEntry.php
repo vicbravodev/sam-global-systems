@@ -48,7 +48,7 @@ class RecordAuditEntry
             $sourceReferenceId,
         );
 
-        $occurredAt = $occurredAt ? CarbonImmutable::instance($occurredAt) : CarbonImmutable::now();
+        $occurredAt = $occurredAt !== null ? CarbonImmutable::instance($occurredAt) : CarbonImmutable::now();
 
         if ($teamId !== null) {
             $existing = AuditLog::withoutGlobalScopes()

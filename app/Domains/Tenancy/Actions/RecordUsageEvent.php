@@ -68,7 +68,7 @@ class RecordUsageEvent
                 'usage_meter_id' => $meter->id,
                 'event_key' => $eventKey,
                 'quantity' => $quantity,
-                'metadata_json' => $metadata ? json_encode($metadata) : null,
+                'metadata_json' => $metadata !== null && $metadata !== [] ? json_encode($metadata) : null,
                 'occurred_at' => $occurredAt,
                 'billing_period_key' => $billingPeriodKey,
                 'created_at' => now(),

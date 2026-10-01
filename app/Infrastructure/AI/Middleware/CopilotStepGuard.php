@@ -21,7 +21,7 @@ final class CopilotStepGuard
 
     public function handle(PendingStep $step, Closure $next): mixed
     {
-        $tokens = (int) $step->usage->inputTokens + (int) $step->usage->outputTokens;
+        $tokens = $step->usage->inputTokens + $step->usage->outputTokens;
 
         $reason = match (true) {
             $step->isFinalStep => 'max_steps',

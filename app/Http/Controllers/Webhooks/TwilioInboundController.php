@@ -35,7 +35,7 @@ class TwilioInboundController extends Controller
         $validator = new RequestValidator($authToken);
 
         $isValid = $validator->validate(
-            (string) $request->header('X-Twilio-Signature', ''),
+            $request->header('X-Twilio-Signature', ''),
             $request->fullUrl(),
             $request->post(),
         );

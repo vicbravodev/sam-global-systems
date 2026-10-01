@@ -65,7 +65,8 @@ class LoadRecentAssetHistory
             ->with(['eventSeverity', 'eventType'])
             ->get();
 
-        $recentSameTypeCount = $currentEventTypeId
+        // Ids de secuencia: 0 no existe, así que basta con descartar null.
+        $recentSameTypeCount = $currentEventTypeId !== null
             ? $events->where('event_type_id', $currentEventTypeId)->count()
             : 0;
 

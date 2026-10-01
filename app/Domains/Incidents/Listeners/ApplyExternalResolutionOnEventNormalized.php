@@ -15,6 +15,6 @@ class ApplyExternalResolutionOnEventNormalized
             return;
         }
 
-        ApplyExternalResolutionJob::dispatch((int) $normalizedEvent->id)->afterCommit();
+        ApplyExternalResolutionJob::dispatch($normalizedEvent->id)->afterCommit();
     }
 }

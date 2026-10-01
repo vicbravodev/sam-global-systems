@@ -75,7 +75,7 @@ class ApplyReevaluationToIncident
      */
     public function execute(Incident $incident, Decision $decision): bool
     {
-        if ((int) $decision->team_id !== (int) $incident->team_id) {
+        if ($decision->team_id !== $incident->team_id) {
             // Uno de los dos es de otro tenant: ni el id del incidente ni el
             // de la decisión.
             DB::afterCommit(fn () => SystemLog::skipped('incidents.reevaluation.applied',
@@ -97,14 +97,15 @@ class ApplyReevaluationToIncident
                 return false;
             }
 
-            $currentDecisionId = $incident->related_decision_id !== null ? (int) $incident->related_decision_id : null;
+            $currentDecisionId = $incident->related_decision_id;
 
             // El evento puede ser el origen del incidente o un evento de
             // soporte vinculado (agrupado por activo/conductor). Sólo el de
             // origen mueve `related_decision_id`.
-            $isRootEvent = (int) $incident->related_event_id === (int) $decision->normalized_event_id;
+            // related_event_id es nullable (nullOnDelete): null → 0, nunca casa.
+            $isRootEvent = (int) $incident->related_event_id === $decision->normalized_event_id;
 
-            if ($isRootEvent && $currentDecisionId !== null && $currentDecisionId >= (int) $decision->id) {
+            if ($isRootEvent && $currentDecisionId !== null && $currentDecisionId >= $decision->id) {
                 DB::afterCommit(fn () => SystemLog::skipped('incidents.reevaluation.applied',
                     reason: 'decision_not_newer',
                     input: $logInput,
@@ -137,7 +138,7 @@ class ApplyReevaluationToIncident
             $newPriority = $this->resolvePriority($decision->priority_level?->value);
             $raisePriority = ! $isTerminal
                 && $newPriority !== null
-                && (int) $newPriority->level > (int) ($previousPriority->level ?? 0);
+                && $newPriority->level > ($previousPriority->level ?? 0);
 
             if ($raisePriority) {
                 $updates['incident_priority_id'] = $newPriority->id;
@@ -150,7 +151,7 @@ class ApplyReevaluationToIncident
             $version = $evaluation?->evaluation_version;
             $classification = $evaluation?->classification;
             $confidence = $evaluation?->confidence_score !== null
-                ? (int) round(((float) $evaluation->confidence_score) * 100)
+                ? (int) round($evaluation->confidence_score * 100)
                 : null;
 
             $this->appendTimelineEntry->execute(

@@ -206,7 +206,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
 
         if (! isset($metadata['retrieval_id']) && ! isset($metadata['still_retrievals'])) {
             $maxAgeHours = max(1, (int) $tenantConfig->resolve(
-                (int) $event->team_id,
+                $event->team_id,
                 self::SETTING_RETRIEVAL_MAX_AGE,
                 self::DEFAULT_RETRIEVAL_MAX_AGE_HOURS,
             ));
@@ -276,7 +276,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         $occurredAt = Carbon::instance($event->occurred_at ?? $request->requested_at ?? now());
 
         $windowSeconds = min(self::MAX_CLIP_WINDOW_SECONDS, max(1, (int) $tenantConfig->resolve(
-            (int) $event->team_id,
+            $event->team_id,
             self::SETTING_CLIP_WINDOW,
             self::DEFAULT_CLIP_WINDOW_SECONDS,
         )));
@@ -338,13 +338,13 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         $occurredAt = Carbon::instance($event->occurred_at ?? $request->requested_at ?? now());
 
         $count = max(1, (int) $tenantConfig->resolve(
-            (int) $event->team_id,
+            $event->team_id,
             self::SETTING_STILL_COUNT,
             self::DEFAULT_STILL_COUNT,
         ));
 
         $windowSeconds = 60 * max(1, (int) $tenantConfig->resolve(
-            (int) $event->team_id,
+            $event->team_id,
             self::SETTING_STILL_WINDOW,
             self::DEFAULT_STILL_WINDOW_MINUTES,
         ));
@@ -514,7 +514,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         $failedDownloads = 0;
 
         foreach ($retrievals as $retrieval) {
-            $items = $mediaAdapter->checkMedia($integration, (string) $retrieval['retrieval_id'])['items'];
+            $items = $mediaAdapter->checkMedia($integration, $retrieval['retrieval_id'])['items'];
             $itemsSeen += count($items);
 
             if ($items === []) {
@@ -539,11 +539,11 @@ class FetchDeferredEventMediaJob implements ShouldQueue
 
                 $filename = sprintf(
                     'deferred-still-%d-%s',
-                    (int) $retrieval['index'],
+                    $retrieval['index'],
                     $this->stillFilenameFor($item['input']),
                 );
 
-                $item['offset_seconds'] = (int) $retrieval['offset_seconds'];
+                $item['offset_seconds'] = $retrieval['offset_seconds'];
 
                 $outcome = $this->downloadMedia($event, $item, $storage, $filename, AttachmentType::Snapshot, 'image/jpeg');
 
@@ -591,7 +591,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
             return;
         }
 
-        if ((int) $metadata['stills_downloaded'] === 0) {
+        if ($metadata['stills_downloaded'] === 0) {
             $request->forceFill(['response_metadata_json' => $metadata])->save();
             $this->closeWithoutNewMedia($request, $event, MediaRequestStatus::Failed, 'Provider reported every requested still as failed.', 'all_stills_failed');
             $refreshSnapshot->execute($event->id);
@@ -610,7 +610,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         SystemLog::ok(
             'media.deferred.completed',
             input: $this->logInput($request),
-            result: ['available' => $availableCount, 'downloaded' => $downloaded, 'already_stored' => $alreadyStored, 'stills_downloaded_total' => (int) $metadata['stills_downloaded']],
+            result: ['available' => $availableCount, 'downloaded' => $downloaded, 'already_stored' => $alreadyStored, 'stills_downloaded_total' => $metadata['stills_downloaded']],
         );
     }
 
@@ -634,7 +634,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         $occurredAt = Carbon::instance($event->occurred_at ?? $request->requested_at ?? now());
 
         $windowSeconds = 60 * max(1, (int) $tenantConfig->resolve(
-            (int) $event->team_id,
+            $event->team_id,
             self::SETTING_STILL_WINDOW,
             self::DEFAULT_STILL_WINDOW_MINUTES,
         ));
@@ -665,7 +665,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
 
             $availableCount++;
 
-            $isVideo = str_starts_with((string) ($item['media_type'] ?? ''), 'video');
+            $isVideo = str_starts_with($item['media_type'] ?? '', 'video');
 
             $outcome = $this->downloadMedia(
                 $event,
@@ -858,9 +858,12 @@ class FetchDeferredEventMediaJob implements ShouldQueue
             default => 'input-'.substr(md5((string) $item['input']), 0, 8),
         };
 
-        $trigger = preg_replace('/[^a-zA-Z0-9]+/', '', (string) ($item['trigger_reason'] ?? 'unknown')) ?: 'unknown';
+        // El nombre es la clave de dedupe en storage: conserva la lectura
+        // falsy de siempre (null, '' y '0' caen en 'unknown').
+        $trigger = preg_replace('/[^a-zA-Z0-9]+/', '', $item['trigger_reason'] ?? 'unknown');
+        $trigger = $trigger === null || $trigger === '' || $trigger === '0' ? 'unknown' : $trigger;
 
-        $extension = str_starts_with((string) ($item['media_type'] ?? ''), 'video') ? 'mp4' : 'jpg';
+        $extension = str_starts_with($item['media_type'] ?? '', 'video') ? 'mp4' : 'jpg';
 
         return sprintf('uploaded-%s-%s-%s.%s', $trigger, $stamp, $input, $extension);
     }
@@ -956,11 +959,14 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         $metadata = ['source' => $source, 'input' => $item['input']];
 
         if (array_key_exists('offset_seconds', $item)) {
-            $metadata['offset_seconds'] = (int) $item['offset_seconds'];
+            $metadata['offset_seconds'] = $item['offset_seconds'];
         }
 
-        if (! empty($item['trigger_reason'])) {
-            $metadata['trigger_reason'] = (string) $item['trigger_reason'];
+        // Misma lectura que el `! empty()` de antes: null, '' y '0' no se anotan.
+        $triggerReason = $item['trigger_reason'] ?? null;
+
+        if ($triggerReason !== null && $triggerReason !== '' && $triggerReason !== '0') {
+            $metadata['trigger_reason'] = $triggerReason;
         }
 
         // Capture instant of uploaded media: lets the vision model know how
@@ -1037,7 +1043,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
                 ->first();
 
             if ($integration !== null) {
-                return [$integration, (string) $reference->external_id];
+                return [$integration, $reference->external_id];
             }
         }
 

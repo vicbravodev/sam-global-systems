@@ -62,7 +62,7 @@ class AssignOnCallOnIncidentCreated implements IncidentCreatedReaction
             return;
         }
 
-        $explain = $this->resolveOnCallOperator->explain((int) $incident->team_id, $incident->opened_at);
+        $explain = $this->resolveOnCallOperator->explain($incident->team_id, $incident->opened_at);
         $userId = $explain['user_id'];
 
         if ($userId === null) {
@@ -124,12 +124,14 @@ class AssignOnCallOnIncidentCreated implements IncidentCreatedReaction
     {
         $user = User::query()->find($userId);
 
-        if ($user === null || ! $user->email) {
+        // users.email es NOT NULL y se valida como email al registrarse: '0'
+        // no puede ocurrir, así que sólo el vacío cuenta como "sin email".
+        if ($user === null || $user->email === '') {
             return null;
         }
 
         return $this->sendNotification->execute(
-            teamId: (int) $incident->team_id,
+            teamId: $incident->team_id,
             notificationType: 'incident.assigned.on_call',
             sourceType: NotificationSourceType::Incident,
             sourceReferenceId: (string) $incident->id,

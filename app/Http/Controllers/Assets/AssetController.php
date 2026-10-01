@@ -24,7 +24,7 @@ class AssetController extends Controller
 
         if ($request->filled('status')) {
             $status = AssetStatus::tryFrom($request->input('status'));
-            if ($status) {
+            if ($status !== null) {
                 $query->where('status', $status);
             }
         }
@@ -78,7 +78,7 @@ class AssetController extends Controller
 
         if ($request->filled('type')) {
             $telemetryType = TelemetryType::tryFrom($request->input('type'));
-            if ($telemetryType) {
+            if ($telemetryType !== null) {
                 $query->where('telemetry_type', $telemetryType);
             }
         }

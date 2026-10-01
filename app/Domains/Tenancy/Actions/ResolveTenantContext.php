@@ -12,7 +12,7 @@ class ResolveTenantContext
     {
         $team = $user->currentTeam;
 
-        if (! $team) {
+        if ($team === null) {
             throw TenantContextException::noTeamResolved();
         }
 

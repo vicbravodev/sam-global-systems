@@ -16,14 +16,14 @@ class AnalyticsSnapshotPolicy
     {
         $team = currentTeam();
 
-        return $team && $this->authorizeAction->execute($user, 'reports.view', $team);
+        return $team !== null && $this->authorizeAction->execute($user, 'reports.view', $team);
     }
 
     public function view(User $user, AnalyticsSnapshot $snapshot): bool
     {
         $team = currentTeam();
 
-        return $team
+        return $team !== null
             && $snapshot->team_id === $team->id
             && $this->authorizeAction->execute($user, 'reports.view', $team);
     }

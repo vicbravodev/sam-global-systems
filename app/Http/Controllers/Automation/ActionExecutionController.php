@@ -22,7 +22,7 @@ class ActionExecutionController extends Controller
 
         if ($request->filled('status')) {
             $status = ActionExecutionStatus::tryFrom((string) $request->input('status'));
-            if ($status) {
+            if ($status !== null) {
                 $query->where('status', $status);
             }
         }

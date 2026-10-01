@@ -16,7 +16,7 @@ class TenantBrandingPolicy
     {
         $team = currentTeam();
 
-        return $team
+        return $team !== null
             && $branding->team_id === $team->id
             && $this->authorizeAction->execute($user, 'tenancy.manage', $team);
     }
@@ -25,7 +25,7 @@ class TenantBrandingPolicy
     {
         $team = currentTeam();
 
-        return $team
+        return $team !== null
             && $branding->team_id === $team->id
             && $this->authorizeAction->execute($user, 'tenancy.manage', $team);
     }

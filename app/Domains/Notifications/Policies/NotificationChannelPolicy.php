@@ -17,7 +17,7 @@ class NotificationChannelPolicy
     {
         $team = currentTeam();
 
-        return $team && $this->authorizeAction->execute($user, 'notifications.view', $team);
+        return $team !== null && $this->authorizeAction->execute($user, 'notifications.view', $team);
     }
 
     /**
@@ -29,7 +29,7 @@ class NotificationChannelPolicy
     {
         $team = currentTeam();
 
-        if (! $team) {
+        if ($team === null) {
             return false;
         }
 

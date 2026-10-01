@@ -35,7 +35,8 @@ final class CopilotPresenter
 
     public static function assetLabel(Asset $asset): string
     {
-        return $asset->code ? "{$asset->code} · {$asset->name}" : (string) $asset->name;
+        // "0" es un código de unidad válido: sólo null/'' significan "sin código".
+        return $asset->code !== null && $asset->code !== '' ? "{$asset->code} · {$asset->name}" : $asset->name;
     }
 
     public static function assetHref(string $teamSlug, int $assetId): string
@@ -88,7 +89,7 @@ final class CopilotPresenter
             'longitude' => $longitude,
             'formattedLocation' => $location->formatted_location,
             'speed' => $location->speed !== null ? round((float) $location->speed, 1) : null,
-            'heading' => $location->heading !== null ? (int) $location->heading : null,
+            'heading' => $location->heading,
             'recordedAt' => $location->recorded_at->toIso8601String(),
             'mapsUrl' => self::mapsUrl($latitude, $longitude),
         ];

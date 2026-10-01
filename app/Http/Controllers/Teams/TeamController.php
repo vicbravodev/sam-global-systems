@@ -69,7 +69,9 @@ class TeamController extends Controller
                     'id' => $member->id,
                     'name' => $member->name,
                     'email' => $member->email,
-                    'avatar' => $member->avatar ?? null,
+                    // `users` no tiene columna ni accessor de avatar: la UI
+                    // cae siempre a las iniciales (AvatarFallback).
+                    'avatar' => null,
                     'role' => $role?->value,
                     'role_label' => $role?->label(),
                 ];
@@ -148,7 +150,7 @@ class TeamController extends Controller
             $team->delete();
         });
 
-        if ($fallbackTeam) {
+        if ($fallbackTeam !== null) {
             $user->switchTeam($fallbackTeam);
         }
 

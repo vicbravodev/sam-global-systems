@@ -40,7 +40,7 @@ class PrepareCopilotTurn
 
         $startedAt = hrtime(true);
 
-        ['history' => $history, 'previousAssetId' => $previousAssetId] = $conversation
+        ['history' => $history, 'previousAssetId' => $previousAssetId] = $conversation !== null
             ? $this->history->forConversation($conversation)
             : ['history' => [], 'previousAssetId' => null];
 
@@ -51,6 +51,8 @@ class PrepareCopilotTurn
             'last_message_at' => now(),
         ]);
 
+        $contextHints = array_filter($hints, fn ($value) => $value !== null);
+
         $question = CopilotMessage::query()->create([
             'team_id' => $team->id,
             'copilot_conversation_id' => $conversation->id,
@@ -58,7 +60,7 @@ class PrepareCopilotTurn
             'role' => CopilotMessageRole::User,
             'content' => $content,
             'channel' => $channel,
-            'context_json' => array_filter($hints, fn ($value) => $value !== null) ?: null,
+            'context_json' => $contextHints !== [] ? $contextHints : null,
         ]);
 
         SystemLog::ok('copilot.turn.started', [

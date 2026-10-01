@@ -120,7 +120,7 @@ class ReprocessStuckRawEventsJob implements ShouldBeUnique, ShouldQueue
 
                     $retryable[] = [
                         'team_id' => $teamId,
-                        'raw_event_id' => (int) $event->id,
+                        'raw_event_id' => $event->id,
                         'emergency' => $classify->execute($event)['emergency'],
                         'received_at' => $event->received_at->getTimestamp(),
                     ];

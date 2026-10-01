@@ -95,7 +95,8 @@ final class TwilioSandbox
      */
     private static function sid(string $prefix, string $to): string
     {
-        $digits = preg_replace('/\D/', '', $to) ?: '9';
+        $digits = preg_replace('/\D/', '', $to);
+        $digits = in_array($digits, [null, '', '0'], true) ? '9' : $digits;
         $marker = str_starts_with($to, 'whatsapp:') ? 'w' : 'f';
         $random = substr(bin2hex(random_bytes(16)), 0, 30);
 

@@ -26,16 +26,16 @@ class RecordCopilotUsage
 
         $metadata = [
             'source' => 'copilot',
-            'copilot_message_id' => (int) $answer->id,
-            'copilot_conversation_id' => (int) $answer->copilot_conversation_id,
+            'copilot_message_id' => $answer->id,
+            'copilot_conversation_id' => $answer->copilot_conversation_id,
             'intent' => $answer->intent?->value,
             'model' => $answer->model,
         ];
 
         $usage = [
             self::QUERIES_METER => 1,
-            'ai_tokens_in' => (int) $answer->input_tokens,
-            'ai_tokens_out' => (int) $answer->output_tokens,
+            'ai_tokens_in' => $answer->input_tokens,
+            'ai_tokens_out' => $answer->output_tokens,
         ];
 
         foreach ($usage as $meter => $quantity) {
@@ -44,7 +44,7 @@ class RecordCopilotUsage
             }
 
             $this->recordUsageEvent->execute(
-                teamId: (int) $answer->team_id,
+                teamId: $answer->team_id,
                 meterCode: $meter,
                 quantity: $quantity,
                 eventKey: "{$meter}:copilot:{$answer->id}",

@@ -28,8 +28,8 @@ class DecisionFactsBuilder
 
         return [
             'classification' => $eval->classification->value,
-            'risk_score' => (float) ($eval->risk_score ?? 0.0),
-            'confidence_score' => (float) ($eval->confidence_score ?? 0.0),
+            'risk_score' => $eval->risk_score ?? 0.0,
+            'confidence_score' => $eval->confidence_score ?? 0.0,
             'priority_level' => $eval->priority_level->value,
             'is_real_event' => $eval->is_real_event,
             'requires_action' => $eval->requires_action,

@@ -50,7 +50,7 @@ class EvaluateVerificationCallOutcomeJob implements ShouldQueue
         TenantContext::set($verification->team_id);
 
         $retryDelay = max(30, (int) $tenantConfig->resolve(
-            (int) $verification->team_id,
+            $verification->team_id,
             StartIncidentCallVerification::SETTING_RETRY_DELAY,
             StartIncidentCallVerification::DEFAULT_RETRY_DELAY_SECONDS,
         ));

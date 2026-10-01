@@ -36,7 +36,7 @@ class TenantAIProfileController extends Controller
         $this->authorize('update', TenantAIProfile::class);
 
         $userId = $request->user()?->id;
-        $updatedByType = $userId ? SettingUpdatedByType::User : SettingUpdatedByType::System;
+        $updatedByType = $userId !== null ? SettingUpdatedByType::User : SettingUpdatedByType::System;
 
         // risk_tolerance / false_positive_tolerance / media_strategy ya no
         // tienen control en la UI (Tarea 12) y el form dejó de mandarlos;

@@ -45,7 +45,7 @@ class UpdateTenantSetting
             $previousTypedValue = $existing?->typed_value;
             $storedJson = $this->wrap($value, $valueType);
 
-            if ($existing) {
+            if ($existing !== null) {
                 $existing->fill([
                     'setting_group' => $settingGroup,
                     'value_json' => $storedJson,

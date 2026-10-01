@@ -29,13 +29,13 @@ class IncidentCreatedBroadcast implements ShouldBroadcast, ShouldRescue
         $incident->loadMissing(['priority', 'status']);
 
         return new self(
-            teamId: (int) $incident->team_id,
-            incidentId: (int) $incident->id,
-            title: (string) $incident->title,
-            priority: (string) ($incident->priority?->code ?? ''),
-            status: (string) ($incident->status?->code ?? ''),
-            assetId: $incident->asset_id !== null ? (int) $incident->asset_id : null,
-            driverId: $incident->driver_id !== null ? (int) $incident->driver_id : null,
+            teamId: $incident->team_id,
+            incidentId: $incident->id,
+            title: $incident->title,
+            priority: $incident->priority?->code ?? '',
+            status: $incident->status?->code ?? '',
+            assetId: $incident->asset_id,
+            driverId: $incident->driver_id,
             openedAt: $incident->opened_at->toIso8601String(),
         );
     }

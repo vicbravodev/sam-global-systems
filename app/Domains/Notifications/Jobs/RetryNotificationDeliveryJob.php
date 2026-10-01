@@ -130,7 +130,7 @@ class RetryNotificationDeliveryJob implements ShouldQueue
         // is checked at send time, not at dispatch time. The recipient still
         // gets the next usable channel of the fallback policy.
         $stillUsable = NotificationChannel::query()
-            ->usableByTeam((int) $delivery->team_id)
+            ->usableByTeam($delivery->team_id)
             ->whereKey($delivery->channel_id)
             ->exists();
 

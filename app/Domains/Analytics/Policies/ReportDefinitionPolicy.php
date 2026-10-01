@@ -16,14 +16,14 @@ class ReportDefinitionPolicy
     {
         $team = currentTeam();
 
-        return $team && $this->authorizeAction->execute($user, 'reports.view', $team);
+        return $team !== null && $this->authorizeAction->execute($user, 'reports.view', $team);
     }
 
     public function generate(User $user, ReportDefinition $definition): bool
     {
         $team = currentTeam();
 
-        if (! $team) {
+        if ($team === null) {
             return false;
         }
 

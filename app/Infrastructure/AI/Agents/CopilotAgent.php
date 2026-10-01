@@ -86,7 +86,7 @@ INSTRUCTIONS;
     }
 
     /**
-     * @return iterable<Tool>
+     * @return list<Tool>
      */
     public function tools(): iterable
     {

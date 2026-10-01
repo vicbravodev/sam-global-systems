@@ -31,7 +31,7 @@ class ConfigureWebhookSecret
         ?string $ipAddress = null,
         ?string $userAgent = null,
     ): WebhookEndpoint {
-        $teamId = (int) $integration->team_id;
+        $teamId = $integration->team_id;
 
         return TenantContext::for($teamId, function () use ($integration, $secret, $actor, $ipAddress, $userAgent, $teamId): WebhookEndpoint {
             // webhook_endpoints no lleva team_id: el tenant lo garantiza la
@@ -52,16 +52,16 @@ class ConfigureWebhookSecret
 
             $this->audit->execute(
                 actorType: AuditActorType::User,
-                actorId: (int) $actor->id,
+                actorId: $actor->id,
                 action: 'integration.webhook_secret.updated',
                 category: AuditCategory::Integration,
                 entityType: 'WebhookEndpoint',
-                entityId: (int) $endpoint->id,
+                entityId: $endpoint->id,
                 summary: "Secret Key del webhook configurada para la integración {$integration->id}",
                 teamId: $teamId,
                 metadata: [
-                    'tenant_integration_id' => (int) $integration->id,
-                    'webhook_endpoint_id' => (int) $endpoint->id,
+                    'tenant_integration_id' => $integration->id,
+                    'webhook_endpoint_id' => $endpoint->id,
                     'replaced_existing' => $replacedExisting,
                     'endpoint_created' => $created,
                 ],
@@ -76,8 +76,8 @@ class ConfigureWebhookSecret
 
             SystemLog::ok('integrations.webhook_secret.updated', input: [
                 'team_id' => $teamId,
-                'integration_id' => (int) $integration->id,
-                'webhook_endpoint_id' => (int) $endpoint->id,
+                'integration_id' => $integration->id,
+                'webhook_endpoint_id' => $endpoint->id,
             ], result: [
                 'replaced_existing' => $replacedExisting,
                 'endpoint_created' => $created,

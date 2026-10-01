@@ -109,7 +109,7 @@ class GenerateReport
      */
     private function buildResultSnapshot(ReportDefinition $definition, int $teamId): array
     {
-        $metricCodes = (array) ($definition->metrics_json ?? []);
+        $metricCodes = $definition->metrics_json ?? [];
 
         $kpiQuery = KpiRecord::query()
             ->where('team_id', $teamId)
@@ -154,7 +154,7 @@ class GenerateReport
             ReportOutputFormat::Pdf => $this->renderPdf($definition, $execution, $snapshot),
             ReportOutputFormat::Xlsx => $this->renderXlsx($execution, $definition, $snapshot),
             ReportOutputFormat::Csv => $this->snapshotAsCsv($snapshot),
-            default => json_encode($snapshot, JSON_PRETTY_PRINT) ?: '{}',
+            default => $this->snapshotAsJson($snapshot),
         };
 
         Storage::disk('rustfs')->put($path, $contents);
@@ -167,6 +167,16 @@ class GenerateReport
         );
 
         return [$path, $fileObjectId];
+    }
+
+    /**
+     * @param  array<string, mixed>  $snapshot
+     */
+    private function snapshotAsJson(array $snapshot): string
+    {
+        $json = json_encode($snapshot, JSON_PRETTY_PRINT);
+
+        return $json === false ? '{}' : $json;
     }
 
     private function extensionFor(ReportOutputFormat $format): string

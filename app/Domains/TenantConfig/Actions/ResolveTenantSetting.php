@@ -18,7 +18,8 @@ class ResolveTenantSetting implements TenantConfigResolver
             $cached = Cache::get($cacheKey);
 
             if ($cached !== null) {
-                return $cached['hit'] ? $cached['value'] : $systemDefault;
+                // La entrada siempre es ['hit' => bool, 'value' => mixed] (ver abajo).
+                return is_array($cached) && $cached['hit'] === true ? $cached['value'] : $systemDefault;
             }
 
             $setting = TenantSetting::query()

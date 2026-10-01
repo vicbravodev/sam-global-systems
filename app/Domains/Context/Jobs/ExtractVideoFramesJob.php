@@ -103,10 +103,14 @@ class ExtractVideoFramesJob implements ShouldBeUnique, ShouldQueue
             return;
         }
 
+        // La ruta la arma FetchDeferredEventMediaJob con extensión mp4/jpg:
+        // nunca es '0', así que basta con cubrir la ruta sin extensión.
+        $extension = pathinfo($clip->storage_path, PATHINFO_EXTENSION);
+
         $frames = $extractor->extract(
             $contents,
             $clip->duration_seconds !== null ? (float) $clip->duration_seconds : null,
-            pathinfo($clip->storage_path, PATHINFO_EXTENSION) ?: 'mp4',
+            $extension !== '' ? $extension : 'mp4',
         );
 
         $created = 0;

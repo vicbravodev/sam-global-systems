@@ -32,8 +32,8 @@ class AlertOnUnmappedProviderAlert
             $this->escalate($event);
         } catch (Throwable $e) {
             SystemLog::failed('normalization.unmapped_alert.failed', reason: 'exception', input: [
-                'raw_event_id' => (int) $event->rawEvent->id,
-                'team_id' => $event->rawEvent->team_id !== null ? (int) $event->rawEvent->team_id : null,
+                'raw_event_id' => $event->rawEvent->id,
+                'team_id' => $event->rawEvent->team_id,
             ], error: $e);
         }
     }
@@ -42,8 +42,8 @@ class AlertOnUnmappedProviderAlert
     {
         $rawEvent = $event->rawEvent;
         $input = [
-            'raw_event_id' => (int) $rawEvent->id,
-            'team_id' => $rawEvent->team_id !== null ? (int) $rawEvent->team_id : null,
+            'raw_event_id' => $rawEvent->id,
+            'team_id' => $rawEvent->team_id,
             'provider_id' => $event->providerId,
             'external_event_type' => LoggableCode::guard($event->externalEventType),
         ];
@@ -55,7 +55,12 @@ class AlertOnUnmappedProviderAlert
         if (! $isAlertType) {
             SystemLog::skipped('normalization.unmapped_alert.skipped', reason: 'not_alert_type', input: $input, calc: [
                 'is_alert_type' => false,
-                'alert_types' => array_values(array_filter(array_map(LoggableCode::guard(...), $alertTypes))),
+                // guard() devuelve null o un código no vacío; se conserva el
+                // descarte de '0' que hacía el array_filter sin callback.
+                'alert_types' => array_values(array_filter(
+                    array_map(LoggableCode::guard(...), $alertTypes),
+                    fn (?string $code): bool => $code !== null && $code !== '0',
+                )),
             ], debug: true);
 
             return;

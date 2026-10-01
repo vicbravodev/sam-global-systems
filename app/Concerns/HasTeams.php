@@ -103,7 +103,7 @@ trait HasTeams
      */
     public function switchAwayFrom(Team $team): void
     {
-        if ((int) $this->current_team_id !== (int) $team->id) {
+        if ((int) $this->current_team_id !== $team->id) {
             return;
         }
 
@@ -193,7 +193,7 @@ trait HasTeams
         $pivot = $team->relationLoaded('pivot') ? $team->getRelation('pivot') : null;
         $pivotRole = $pivot?->getAttribute('role');
 
-        $role = $pivotRole !== null && $pivot->getAttribute('user_id') == $this->getKey()
+        $role = $pivotRole !== null && (int) $pivot->getAttribute('user_id') === (int) $this->getKey()
             ? ($pivotRole instanceof TeamRole ? $pivotRole : TeamRole::tryFrom((string) $pivotRole))
             : $this->teamRole($team);
 

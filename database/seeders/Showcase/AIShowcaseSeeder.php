@@ -189,7 +189,7 @@ class AIShowcaseSeeder extends ShowcaseStep
         return [
             'evaluation_id' => $evaluation->id,
             'summary' => $this->summary($event, $s),
-            'reasoning_steps_json' => $this->reasoning($event, $s, (string) $evaluation->evaluation_mode?->value),
+            'reasoning_steps_json' => $this->reasoning($event, $s, $evaluation->evaluation_mode->value),
             'key_factors_json' => array_values(array_filter([
                 $s->withMedia ? 'Evidencia visual disponible' : null,
                 $s->isReal() ? 'Patrón consistente con un evento real' : 'Patrón típico de activación accidental',

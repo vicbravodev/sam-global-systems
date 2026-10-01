@@ -100,7 +100,7 @@ class TriggerEscalationWorkflow
      * Clave y valor esperado son texto del tenant: sólo llegan al log si
      * parecen un código (`LoggableCode`).
      *
-     * @param  array<string, mixed>  $conditions
+     * @param  array<array-key, mixed>  $conditions  JSON del tenant: una clave numérica ("12") llega como int.
      * @param  array<string, mixed>  $payload
      *                                         La comparación es estricta: `expected_type`/`actual_type`
      *                                         (`get_debug_type`) explican un "12" frente a 12, que en texto se ven

@@ -40,7 +40,7 @@ class UpdateDriverContactsRequest extends FormRequest
                     continue;
                 }
 
-                $value = (string) ($contact['value'] ?? '');
+                $value = $contact['value'];
 
                 if ($contactType === ContactType::MobilePhone->value && ! PhoneNumber::isE164($value)) {
                     $validator->errors()->add(

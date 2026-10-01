@@ -56,7 +56,7 @@ class AcceptTeamInvitation
 
             $invitation->forceFill(['accepted_at' => now()])->save();
 
-            $this->authorizeAction->invalidateCache((int) $user->id, (int) $team->id);
+            $this->authorizeAction->invalidateCache($user->id, $team->id);
 
             $user->switchTeam($team);
 

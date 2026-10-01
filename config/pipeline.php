@@ -48,6 +48,6 @@ return [
     'unmapped_alert_types' => array_values(array_filter(array_map(
         'trim',
         explode(',', (string) env('PIPELINE_UNMAPPED_ALERT_TYPES', 'AlertIncident')),
-    ))),
+    ), static fn (string $type): bool => $type !== '' && $type !== '0')),
 
 ];

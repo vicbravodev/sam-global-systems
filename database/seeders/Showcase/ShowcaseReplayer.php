@@ -88,7 +88,7 @@ class ShowcaseReplayer
         foreach ($this->pushedJobs() as $pushes) {
             foreach ($pushes as $push) {
                 if (is_object($push['job'])) {
-                    $this->alreadyQueued->attach($push['job']);
+                    $this->alreadyQueued->offsetSet($push['job']);
                 }
             }
         }
@@ -105,7 +105,7 @@ class ShowcaseReplayer
                 ->whereHas('provider', fn ($q) => $q->where('code', 'samsara'))
                 ->orderBy('id')
                 ->first();
-            $endpoint = $integration
+            $endpoint = $integration !== null
                 ? WebhookEndpoint::query()->where('tenant_integration_id', $integration->id)->where('status', 'active')->first()
                 : null;
 
@@ -156,7 +156,9 @@ class ShowcaseReplayer
     {
         $groups = [];
 
-        foreach (glob(database_path('fixtures/samsara-*.json')) ?: [] as $file) {
+        $files = glob(database_path('fixtures/samsara-*.json'));
+
+        foreach ($files === false ? [] : $files as $file) {
             $decoded = json_decode((string) file_get_contents($file), true);
             $entries = array_values(array_filter(is_array($decoded) ? $decoded : [], fn ($entry) => is_array($entry['raw_payload'] ?? null)));
             usort($entries, fn (array $a, array $b) => strcmp((string) ($b['occurred_at'] ?? ''), (string) ($a['occurred_at'] ?? '')));
@@ -256,11 +258,11 @@ class ShowcaseReplayer
                 foreach ($pushes as $push) {
                     $job = $push['job'];
 
-                    if (! is_object($job) || $seen->contains($job)) {
+                    if (! is_object($job) || $seen->offsetExists($job)) {
                         continue;
                     }
 
-                    $seen->attach($job);
+                    $seen->offsetSet($job);
 
                     if (! in_array($job::class, self::PIPELINE_JOBS, true)) {
                         $discarded++;

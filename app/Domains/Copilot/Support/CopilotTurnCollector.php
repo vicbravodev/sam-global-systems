@@ -138,7 +138,9 @@ final class CopilotTurnCollector
     public function primaryIntent(): CopilotIntent
     {
         foreach ($this->entries as $entry) {
-            if ($intent = CopilotToolDefinition::intentFor($entry['tool'])) {
+            $intent = CopilotToolDefinition::intentFor($entry['tool']);
+
+            if ($intent !== null) {
                 return $intent;
             }
         }
@@ -148,7 +150,10 @@ final class CopilotTurnCollector
 
     public function lastAssetId(): ?int
     {
-        $ids = array_values(array_filter(array_column($this->entries, 'assetId')));
+        $ids = array_values(array_filter(
+            array_column($this->entries, 'assetId'),
+            static fn (?int $id): bool => $id !== null && $id !== 0,
+        ));
 
         return $ids === [] ? null : $ids[count($ids) - 1];
     }

@@ -40,10 +40,18 @@ class NotificationRecipient extends Model
     public function addressForChannel(ChannelType $channelType): ?string
     {
         return match ($channelType) {
-            ChannelType::Sms, ChannelType::Voice, ChannelType::Whatsapp => $this->phone ?: null,
-            ChannelType::Email => $this->email ?: $this->address ?: null,
-            default => $this->address ?: null,
+            ChannelType::Sms, ChannelType::Voice, ChannelType::Whatsapp => self::presentOrNull($this->phone),
+            ChannelType::Email => self::presentOrNull($this->email) ?? self::presentOrNull($this->address),
+            default => self::presentOrNull($this->address),
         };
+    }
+
+    /**
+     * Lectura falsy de siempre: null, '' y '0' no son una dirección.
+     */
+    private static function presentOrNull(?string $value): ?string
+    {
+        return in_array($value, [null, '', '0'], true) ? null : $value;
     }
 
     /**

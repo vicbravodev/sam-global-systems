@@ -27,10 +27,10 @@ class IncidentUpdatedBroadcast implements ShouldBroadcast, ShouldRescue
         $incident->loadMissing(['priority', 'status']);
 
         return new self(
-            teamId: (int) $incident->team_id,
-            incidentId: (int) $incident->id,
-            status: (string) ($incident->status?->code ?? ''),
-            priority: (string) ($incident->priority?->code ?? ''),
+            teamId: $incident->team_id,
+            incidentId: $incident->id,
+            status: $incident->status?->code ?? '',
+            priority: $incident->priority?->code ?? '',
             assignedTo: $assignedTo,
             updatedAt: ($incident->updated_at ?? now())->toIso8601String(),
         );

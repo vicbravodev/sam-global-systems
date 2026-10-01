@@ -16,21 +16,21 @@ class TenantRuleOverridePolicy
     {
         $team = currentTeam();
 
-        return $team && $this->authorizeAction->execute($user, 'config.view', $team);
+        return $team !== null && $this->authorizeAction->execute($user, 'config.view', $team);
     }
 
     public function create(User $user): bool
     {
         $team = currentTeam();
 
-        return $team && $this->authorizeAction->execute($user, 'config.manage', $team);
+        return $team !== null && $this->authorizeAction->execute($user, 'config.manage', $team);
     }
 
     public function update(User $user, TenantRuleOverride $override): bool
     {
         $team = currentTeam();
 
-        return $team
+        return $team !== null
             && $override->team_id === $team->id
             && $this->authorizeAction->execute($user, 'config.manage', $team);
     }

@@ -25,14 +25,14 @@ class KpiController extends Controller
 
         if ($request->filled('period_type')) {
             $period = PeriodType::tryFrom($request->string('period_type'));
-            if ($period) {
+            if ($period !== null) {
                 $query->where('period_type', $period);
             }
         }
 
         if ($request->filled('dimension_type')) {
             $dimension = DimensionType::tryFrom($request->string('dimension_type'));
-            if ($dimension) {
+            if ($dimension !== null) {
                 $query->where('dimension_type', $dimension);
             }
         }

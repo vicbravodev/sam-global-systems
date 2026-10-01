@@ -39,7 +39,7 @@ class SendPhoneOtp
 
         // current_team_id lo controla el usuario: sólo se cobra el SMS a un
         // team del que es miembro.
-        if (! TeamMembers::isMember($teamId, (int) $user->id)) {
+        if (! TeamMembers::isMember($teamId, $user->id)) {
             return OtpResult::failure('not_member');
         }
 
@@ -68,7 +68,7 @@ class SendPhoneOtp
             return OtpResult::failure('no_sms_channel');
         }
 
-        if (! $this->withinDailyCaps((int) $user->id, $teamId)) {
+        if (! $this->withinDailyCaps($user->id, $teamId)) {
             $this->record($user, $teamId, 'phone_otp.send_failed', 'daily_limit');
 
             return OtpResult::failure('daily_limit');
@@ -79,7 +79,7 @@ class SendPhoneOtp
         // El código queda atado al número al que se envía: si el usuario
         // cambia de teléfono, el código viejo ya no verifica el nuevo.
         Cache::put(
-            OtpCacheKeys::forUser((int) $user->id),
+            OtpCacheKeys::forUser($user->id),
             ['code' => $code, 'attempts' => 0, 'phone' => $phone],
             OtpCacheKeys::TTL_SECONDS,
         );
@@ -109,7 +109,7 @@ class SendPhoneOtp
                     providerSid: $result->providerMessageId,
                     resourceType: $result->resourceType,
                     sourceType: MessagingChargeSource::Otp,
-                    sourceId: (int) $user->id,
+                    sourceId: $user->id,
                     channelType: ChannelType::Sms,
                     status: $result->providerStatus,
                     segments: $result->segments,
@@ -150,11 +150,11 @@ class SendPhoneOtp
         // Audit the OUTCOME only — never the code or the full number (PII).
         $this->audit->execute(
             actorType: AuditActorType::User,
-            actorId: (int) $user->id,
+            actorId: $user->id,
             action: $action,
             category: AuditCategory::Security,
             entityType: 'User',
-            entityId: (int) $user->id,
+            entityId: $user->id,
             summary: "Phone OTP {$outcome} for user {$user->id}",
             teamId: $teamId,
             metadata: ['outcome' => $outcome],

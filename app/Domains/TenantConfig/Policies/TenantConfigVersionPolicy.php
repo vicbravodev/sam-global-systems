@@ -16,14 +16,14 @@ class TenantConfigVersionPolicy
     {
         $team = currentTeam();
 
-        return $team && $this->authorizeAction->execute($user, 'config.view', $team);
+        return $team !== null && $this->authorizeAction->execute($user, 'config.view', $team);
     }
 
     public function view(User $user, TenantConfigVersion $version): bool
     {
         $team = currentTeam();
 
-        return $team
+        return $team !== null
             && $version->team_id === $team->id
             && $this->authorizeAction->execute($user, 'config.view', $team);
     }

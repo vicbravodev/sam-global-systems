@@ -69,7 +69,7 @@ class SyncAssetDevices
 
         // Only reconcile what this provider owns; devices registered by another
         // provider (or by hand) are none of this sync's business.
-        if ($providerId) {
+        if ($providerId !== null) {
             $query->where('provider_id', $providerId);
         }
 

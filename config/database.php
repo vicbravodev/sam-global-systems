@@ -2,6 +2,15 @@
 
 use Pdo\Mysql;
 
+// PDO::MYSQL_ATTR_SSL_CA está deprecada desde PHP 8.5 (sustituta:
+// Pdo\Mysql::ATTR_SSL_CA, que no existe antes de 8.4). composer.json admite
+// ^8.3, así que por debajo de 8.5 se sigue leyendo la constante antigua. Sólo
+// se evalúa con pdo_mysql cargado (ninguna de las dos existe sin él).
+$mysqlOptions = static fn (): array => extension_loaded('pdo_mysql') ? array_filter([
+    (PHP_VERSION_ID >= 80500 ? Mysql::ATTR_SSL_CA : constant('PDO::MYSQL_ATTR_SSL_CA')) => env('MYSQL_ATTR_SSL_CA'),
+    // Mismo criterio que array_filter() sin callback.
+], static fn (mixed $value): bool => ! in_array($value, [null, false, 0, 0.0, '', '0', []], true)) : [];
+
 return [
 
     /*
@@ -58,9 +67,7 @@ return [
             'prefix_indexes' => true,
             'strict' => true,
             'engine' => null,
-            'options' => extension_loaded('pdo_mysql') ? array_filter([
-                (PHP_VERSION_ID >= 80500 ? Mysql::ATTR_SSL_CA : PDO::MYSQL_ATTR_SSL_CA) => env('MYSQL_ATTR_SSL_CA'),
-            ]) : [],
+            'options' => $mysqlOptions(),
         ],
 
         'mariadb' => [
@@ -78,9 +85,7 @@ return [
             'prefix_indexes' => true,
             'strict' => true,
             'engine' => null,
-            'options' => extension_loaded('pdo_mysql') ? array_filter([
-                (PHP_VERSION_ID >= 80500 ? Mysql::ATTR_SSL_CA : PDO::MYSQL_ATTR_SSL_CA) => env('MYSQL_ATTR_SSL_CA'),
-            ]) : [],
+            'options' => $mysqlOptions(),
         ],
 
         'pgsql' => [

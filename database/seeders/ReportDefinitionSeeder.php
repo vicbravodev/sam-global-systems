@@ -88,7 +88,7 @@ class ReportDefinitionSeeder extends Seeder
                 ->where('code', $report['code'])
                 ->first();
 
-            $existing
+            $existing !== null
                 ? $existing->update($attributes)
                 : ReportDefinition::query()->create(['team_id' => null, 'code' => $report['code'], ...$attributes]);
         }

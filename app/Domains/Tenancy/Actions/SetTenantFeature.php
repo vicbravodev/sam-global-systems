@@ -37,7 +37,7 @@ class SetTenantFeature
 
         $feature->save();
 
-        TenantFeatureChanged::dispatch((int) $team->id, $featureKey, $enabled);
+        TenantFeatureChanged::dispatch($team->id, $featureKey, $enabled);
 
         return $feature;
     }

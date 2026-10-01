@@ -37,29 +37,29 @@ final readonly class CopilotPeriod
     {
         $now ??= CarbonImmutable::now();
 
-        if (preg_match('/\bhoy\b|\bturno\b/u', $normalizedPrompt)) {
+        if (preg_match('/\bhoy\b|\bturno\b/u', $normalizedPrompt) === 1) {
             return new self($now->startOfDay(), $now, 'hoy', 1);
         }
 
-        if (preg_match('/\bayer\b/u', $normalizedPrompt)) {
+        if (preg_match('/\bayer\b/u', $normalizedPrompt) === 1) {
             $yesterday = $now->subDay();
 
             return new self($yesterday->startOfDay(), $yesterday->endOfDay(), 'ayer', 1);
         }
 
-        if (preg_match('/(\d{1,3})\s*(dias|d)\b/u', $normalizedPrompt, $match)) {
+        if (preg_match('/(\d{1,3})\s*(dias|d)\b/u', $normalizedPrompt, $match) === 1) {
             $days = max(1, min(90, (int) $match[1]));
 
             return new self($now->subDays($days), $now, "últimos {$days} días", $days);
         }
 
-        if (preg_match('/(\d{1,2})\s*(horas|h)\b/u', $normalizedPrompt, $match)) {
+        if (preg_match('/(\d{1,2})\s*(horas|h)\b/u', $normalizedPrompt, $match) === 1) {
             $hours = max(1, min(72, (int) $match[1]));
 
             return new self($now->subHours($hours), $now, "últimas {$hours} h", 1);
         }
 
-        if (preg_match('/\bmes\b|\bmensual\b/u', $normalizedPrompt)) {
+        if (preg_match('/\bmes\b|\bmensual\b/u', $normalizedPrompt) === 1) {
             return new self($now->subDays(30), $now, 'últimos 30 días', 30);
         }
 

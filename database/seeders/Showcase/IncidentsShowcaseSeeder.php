@@ -131,9 +131,9 @@ class IncidentsShowcaseSeeder extends ShowcaseStep
             'opened_at' => $opened,
             'sla_due_at' => $life['sla_due_at'],
             'acknowledged_at' => $life['acknowledged_at'],
-            'acknowledged_by' => $life['acknowledged_at'] ? $operator->id : null,
-            'claimed_by_user_id' => $life['acknowledged_at'] && ! $life['terminal'] ? $operator->id : null,
-            'claimed_at' => $life['acknowledged_at'] && ! $life['terminal'] ? $life['acknowledged_at']->addSeconds(20) : null,
+            'acknowledged_by' => $life['acknowledged_at'] !== null ? $operator->id : null,
+            'claimed_by_user_id' => $life['acknowledged_at'] !== null && ! $life['terminal'] ? $operator->id : null,
+            'claimed_at' => $life['acknowledged_at'] !== null && ! $life['terminal'] ? $life['acknowledged_at']->addSeconds(20) : null,
             'resolved_at' => $life['resolved_at'],
             'closed_at' => $life['closed_at'],
             'false_positive_at' => $life['status'] === 'false_positive' ? $life['resolved_at'] : null,
@@ -325,14 +325,14 @@ class IncidentsShowcaseSeeder extends ShowcaseStep
             } else {
                 $state['status'] = $escalates ? 'escalated' : 'in_review';
 
-                if ($state['escalated_at']?->greaterThan($this->ctx->now)) {
+                if ($state['escalated_at']?->greaterThan($this->ctx->now) === true) {
                     $state['escalated_at'] = null;
                     $state['status'] = 'in_review';
                 }
             }
 
             $state['sla_breached_at'] = $slaDue->lessThan($this->ctx->now) ? $slaDue : null;
-        } elseif ($state['closed_at']?->greaterThan($this->ctx->now)) {
+        } elseif ($state['closed_at']?->greaterThan($this->ctx->now) === true) {
             $state['closed_at'] = null;
             $state['status'] = 'resolved';
         }

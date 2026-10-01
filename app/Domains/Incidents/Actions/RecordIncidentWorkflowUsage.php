@@ -38,8 +38,8 @@ class RecordIncidentWorkflowUsage
      */
     public function execute(Incident $incident, array $metadata): bool
     {
-        $teamId = (int) $incident->team_id;
-        $incidentId = (int) $incident->id;
+        $teamId = $incident->team_id;
+        $incidentId = $incident->id;
         $eventKey = self::eventKey($incidentId);
         // El reintento cobra en el mismo periodo que el intento original.
         $occurredAt = Carbon::now();

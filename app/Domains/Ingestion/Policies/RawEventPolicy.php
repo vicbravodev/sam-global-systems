@@ -21,14 +21,14 @@ class RawEventPolicy
     {
         $team = currentTeam();
 
-        return $team && $this->authorizeAction->execute($user, 'context.view', $team);
+        return $team !== null && $this->authorizeAction->execute($user, 'context.view', $team);
     }
 
     public function view(User $user, RawEvent $event): bool
     {
         $team = currentTeam();
 
-        return $team
+        return $team !== null
             && (int) $event->team_id === $team->id
             && $this->authorizeAction->execute($user, 'context.view', $team);
     }

@@ -16,14 +16,14 @@ class SubscriptionPolicy
     {
         $team = currentTeam();
 
-        return $team && $this->authorizeAction->execute($user, 'tenancy.billing.view', $team);
+        return $team !== null && $this->authorizeAction->execute($user, 'tenancy.billing.view', $team);
     }
 
     public function view(User $user, Subscription $subscription): bool
     {
         $team = currentTeam();
 
-        return $team
+        return $team !== null
             && $subscription->team_id === $team->id
             && $this->authorizeAction->execute($user, 'tenancy.billing.view', $team);
     }
@@ -32,7 +32,7 @@ class SubscriptionPolicy
     {
         $team = currentTeam();
 
-        return $team
+        return $team !== null
             && $subscription->team_id === $team->id
             && $this->authorizeAction->execute($user, 'tenancy.billing.manage', $team);
     }

@@ -22,7 +22,7 @@ class AutomationWorkflowPolicy
     public function view(User $user, AutomationWorkflow $workflow): bool
     {
         $team = currentTeam();
-        if (! $team) {
+        if ($team === null) {
             return false;
         }
 
@@ -42,7 +42,7 @@ class AutomationWorkflowPolicy
     public function update(User $user, AutomationWorkflow $workflow): bool
     {
         $team = currentTeam();
-        if (! $team) {
+        if ($team === null) {
             return false;
         }
 
@@ -58,7 +58,7 @@ class AutomationWorkflowPolicy
     public function trigger(User $user, AutomationWorkflow $workflow): bool
     {
         $team = currentTeam();
-        if (! $team) {
+        if ($team === null) {
             return false;
         }
 

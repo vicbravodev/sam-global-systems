@@ -57,7 +57,7 @@ class IntegrationPageController extends Controller
             'integrations' => $integrations
                 ->map(fn (TenantIntegration $integration) => $this->presentIntegration(
                     $integration,
-                    (int) ($events24h[$integration->id] ?? 0),
+                    $events24h[$integration->id] ?? 0,
                     $liveData[$integration->id] ?? null,
                     ($integrationsPerProvider[$integration->provider_id] ?? 0) === 1
                         ? ($fleet[$integration->provider_id] ?? ['assets' => 0, 'monitored' => 0, 'drivers' => 0])
@@ -80,10 +80,10 @@ class IntegrationPageController extends Controller
         $problem = IntegrationProblem::classify($integration->last_error_message);
 
         return [
-            'id' => (int) $integration->id,
-            'name' => (string) $integration->name,
-            'provider' => (string) ($integration->provider?->name ?? '—'),
-            'providerCode' => (string) ($integration->provider?->code ?? ''),
+            'id' => $integration->id,
+            'name' => $integration->name,
+            'provider' => $integration->provider?->name ?? '—',
+            'providerCode' => $integration->provider?->code ?? '',
             'capabilities' => array_values($integration->provider?->capabilities_json ?? []),
             'status' => $integration->status->value,
             'health' => $integration->status->healthKey(),
@@ -101,7 +101,7 @@ class IntegrationPageController extends Controller
             'problem' => $problem?->value,
             'events24h' => $events24h,
             'fleet' => $fleet,
-            'webhook' => $endpoint ? $this->presentWebhook($endpoint) : null,
+            'webhook' => $endpoint !== null ? $this->presentWebhook($endpoint) : null,
         ];
     }
 
@@ -112,7 +112,7 @@ class IntegrationPageController extends Controller
     {
         return [
             'url' => route('webhooks.handle', ['endpoint_url' => $endpoint->url]),
-            'status' => (string) $endpoint->status,
+            'status' => $endpoint->status,
             'lastReceivedAt' => $endpoint->last_received_at?->toIso8601String(),
             // La Secret Key nunca viaja: sólo si está configurada y cuándo.
             'secretConfigured' => $endpoint->hasSecret(),
@@ -220,9 +220,9 @@ class IntegrationPageController extends Controller
             ->orderBy('name')
             ->get(['id', 'code', 'name', 'type', 'capabilities_json'])
             ->map(fn (IntegrationProvider $provider) => [
-                'id' => (int) $provider->id,
-                'code' => (string) $provider->code,
-                'name' => (string) $provider->name,
+                'id' => $provider->id,
+                'code' => $provider->code,
+                'name' => $provider->name,
                 'type' => $provider->type->value,
                 'capabilities' => $provider->capabilities_json ?? [],
             ])

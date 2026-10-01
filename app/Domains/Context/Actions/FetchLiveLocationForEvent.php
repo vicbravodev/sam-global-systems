@@ -196,7 +196,7 @@ class FetchLiveLocationForEvent
 
             $tried++;
 
-            $live = $this->providerAdapter->fetchLiveLocation($integration, (string) $reference->external_id);
+            $live = $this->providerAdapter->fetchLiveLocation($integration, $reference->external_id);
 
             if ($live !== null) {
                 return ['live' => $live, 'references' => $references->count(), 'integrations_tried' => $tried];

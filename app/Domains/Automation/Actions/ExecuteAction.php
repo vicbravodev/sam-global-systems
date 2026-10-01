@@ -349,7 +349,7 @@ class ExecuteAction
             ? $execution->actionTemplate()->first()
             : null;
 
-        $variables = (array) ($execution->payload_json ?? []);
+        $variables = $execution->payload_json ?? [];
         $variables['incident'] ??= $this->incidentVariables($execution);
 
         $subject = $template?->subject_template !== null && $template?->subject_template !== ''
@@ -398,7 +398,7 @@ class ExecuteAction
      */
     private function resolveNotificationRecipients(ActionExecution $execution, ChannelType $channelType): array
     {
-        $payload = (array) ($execution->payload_json ?? []);
+        $payload = $execution->payload_json ?? [];
 
         $explicit = $payload['recipients'] ?? null;
 
@@ -409,7 +409,7 @@ class ExecuteAction
             ));
         }
 
-        $target = trim((string) ($execution->target_reference ?? ''));
+        $target = trim($execution->target_reference ?? '');
 
         if ($target === '') {
             return [];
@@ -449,8 +449,8 @@ class ExecuteAction
             ->map(fn (User $user): array => [
                 // The push driver resolves device tokens by user id; every
                 // other channel addresses the user by email.
-                'address' => $channelType === ChannelType::Push ? (string) $user->id : (string) $user->email,
-                'email' => (string) $user->email,
+                'address' => $channelType === ChannelType::Push ? (string) $user->id : $user->email,
+                'email' => $user->email,
                 // SMS/WhatsApp salen al teléfono verificado; sin él la entrega
                 // queda registrada como skipped (sin dirección), no se inventa.
                 'phone' => $user->verifiedPhone(),
@@ -485,7 +485,7 @@ class ExecuteAction
     private function assignIncident(ActionExecution $execution): array
     {
         $incident = $this->resolveIncident($execution);
-        $payload = (array) ($execution->payload_json ?? []);
+        $payload = $execution->payload_json ?? [];
 
         $assigneeId = (int) ($execution->target_reference ?? $payload['assignee_id'] ?? 0);
 
@@ -523,7 +523,7 @@ class ExecuteAction
     private function escalateIncident(ActionExecution $execution): array
     {
         $incident = $this->resolveIncident($execution);
-        $payload = (array) ($execution->payload_json ?? []);
+        $payload = $execution->payload_json ?? [];
 
         $fresh = $this->escalateIncidentAction->execute(
             incident: $incident,
@@ -543,7 +543,7 @@ class ExecuteAction
     private function requestHumanReview(ActionExecution $execution): array
     {
         $incident = $this->resolveIncident($execution);
-        $payload = (array) ($execution->payload_json ?? []);
+        $payload = $execution->payload_json ?? [];
 
         $fresh = $this->requestIncidentReviewAction->execute(
             incident: $incident,

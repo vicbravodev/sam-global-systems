@@ -4,7 +4,6 @@ namespace App\Domains\Assets\Actions;
 
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Assets\Models\AssetLocationSnapshot;
-use Carbon\CarbonInterface;
 
 /**
  * Keep the invariant "an asset's live position (`last_*` columns) is its
@@ -47,7 +46,6 @@ class RefreshAssetLivePosition
 
     private function advance(int $assetId, AssetLocationSnapshot $snapshot): void
     {
-        /** @var CarbonInterface $at */
         $at = $snapshot->recorded_at;
 
         Asset::query()

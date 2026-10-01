@@ -73,7 +73,7 @@ class ApplyExternalResolution
 
         if ($allowClose && ! $wasTerminal) {
             $mode = $this->tenantConfigResolver->resolve(
-                (int) $incident->team_id,
+                $incident->team_id,
                 self::SETTING_KEY,
                 self::MODE_ANNOTATE,
             );

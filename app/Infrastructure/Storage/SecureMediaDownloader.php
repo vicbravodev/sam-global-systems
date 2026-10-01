@@ -136,8 +136,8 @@ class SecureMediaDownloader
     private function assertAllowed(string $url): void
     {
         $parts = parse_url($url);
-        $scheme = strtolower((string) ($parts['scheme'] ?? ''));
-        $host = strtolower((string) ($parts['host'] ?? ''));
+        $scheme = strtolower($parts['scheme'] ?? '');
+        $host = strtolower($parts['host'] ?? '');
 
         if ($scheme !== 'https') {
             throw new MediaDownloadException('Solo se permiten descargas de media por https.');
@@ -184,7 +184,10 @@ class SecureMediaDownloader
             $hosts = explode(',', $hosts);
         }
 
-        return array_values(array_filter(array_map('strval', (array) $hosts)));
+        return array_values(array_filter(
+            array_map('strval', (array) $hosts),
+            static fn (string $host): bool => $host !== '' && $host !== '0',
+        ));
     }
 
     private function maxBytes(): int

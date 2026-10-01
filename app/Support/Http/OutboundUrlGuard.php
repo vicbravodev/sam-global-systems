@@ -66,7 +66,7 @@ class OutboundUrlGuard
         }
 
         $host = strtolower(rtrim(trim($parts['host'], '[]'), '.'));
-        $port = (int) ($parts['port'] ?? ($scheme === 'https' ? 443 : 80));
+        $port = $parts['port'] ?? ($scheme === 'https' ? 443 : 80);
 
         if ($host === '' || $this->isReservedHostname($host)) {
             throw new UnsafeOutboundUrlException("reserved_host:{$host}");

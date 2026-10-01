@@ -74,7 +74,7 @@ class NotifyOnIncidentCreated implements IncidentCreatedReaction
 
         // Un incidente por debajo del umbral del tenant (por defecto: low)
         // sólo avisa dentro de la app: no justifica un correo/SMS al equipo.
-        $threshold = $this->reachesOutOfBandThreshold((int) $incident->team_id, $severity);
+        $threshold = $this->reachesOutOfBandThreshold($incident->team_id, $severity);
 
         if (! $threshold['reaches']) {
             $payload['force_channels'] = [ChannelType::Web->value];
@@ -93,7 +93,7 @@ class NotifyOnIncidentCreated implements IncidentCreatedReaction
         }
 
         $this->sendNotification->execute(
-            teamId: (int) $incident->team_id,
+            teamId: $incident->team_id,
             notificationType: $notificationType['type'],
             sourceType: NotificationSourceType::Incident,
             sourceReferenceId: (string) $incident->id,

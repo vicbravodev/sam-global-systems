@@ -86,7 +86,7 @@ class InvoiceReceiptController extends Controller
         ])->save();
 
         return response()->json(['data' => [
-            'invoiceId' => (int) $invoice->id,
+            'invoiceId' => $invoice->id,
             'receiptKey' => $key,
         ]], 201);
     }

@@ -18,7 +18,7 @@ class TriggerAutomationOnDecisionMade
         $decision = $event->decision;
 
         $this->triggerEscalationWorkflow->execute(
-            teamId: (int) $decision->team_id,
+            teamId: $decision->team_id,
             triggerType: WorkflowTriggerType::DecisionOutcome,
             sourceType: ActionExecutionSourceType::Decision,
             sourceReferenceId: (string) $decision->id,
