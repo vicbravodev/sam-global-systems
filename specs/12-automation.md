@@ -365,6 +365,7 @@ app(RecordUsageEvent::class)->execute(
 ### Confirmation Expiry
 
 - Actions in `requires_confirmation` mode have a configurable TTL (default 30 minutes). A scheduled job sweeps expired confirmations and marks them `cancelled`.
+- Implementation: `ExpireUnconfirmedActionsJob` (queue `automation`, every minute, `onOneServer()`) fans out per tenant and runs `ExpireUnconfirmedActions` inside each tenant's context with `TenantAutomationPolicies::confirmationTtlSeconds`. An action expires once `created_at <= now − ttl`; a TTL ≤ 0 disables expiry. The transition is a conditional `UPDATE … WHERE status = 'pending'`, so a concurrent confirmation always wins. Expired rows keep status `cancelled` with the fixed `error_message` `ExpireUnconfirmedActions::EXPIRED_MESSAGE` plus a `warning` entry in `action_execution_logs`. The confirm endpoint (`ConfirmActionExecution`) rejects expired actions with 422 and expires an overdue one on the spot, so the TTL does not depend on the sweep cadence.
 
 ### Webhook Actions
 

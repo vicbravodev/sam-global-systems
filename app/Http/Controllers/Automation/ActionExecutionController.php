@@ -2,9 +2,9 @@
 
 namespace App\Http\Controllers\Automation;
 
+use App\Domains\Automation\Actions\ConfirmActionExecution;
 use App\Domains\Automation\Actions\RetryFailedAction;
 use App\Domains\Automation\Enums\ActionExecutionStatus;
-use App\Domains\Automation\Jobs\ExecuteActionJob;
 use App\Domains\Automation\Models\ActionExecution;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
@@ -69,20 +69,22 @@ class ActionExecutionController extends Controller
         return response()->json(['data' => $execution->fresh()], 202);
     }
 
-    public function confirm(Team $current_team, ActionExecution $execution): JsonResponse
-    {
+    public function confirm(
+        Team $current_team,
+        ActionExecution $execution,
+        ConfirmActionExecution $confirmActionExecution,
+    ): JsonResponse {
         $this->authorize('manage', $execution);
 
-        if ($execution->status !== ActionExecutionStatus::Pending) {
-            return response()->json([
+        return match ($confirmActionExecution->execute($execution)) {
+            ConfirmActionExecution::CONFIRMED => response()->json(['data' => $execution->fresh()], 202),
+            ConfirmActionExecution::EXPIRED => response()->json([
+                'message' => 'El plazo para confirmar esta acción venció; ya no se ejecutará.',
+            ], 422),
+            ConfirmActionExecution::NOT_PENDING => response()->json([
                 'message' => 'Solo las ejecuciones pendientes se pueden confirmar.',
-            ], 422);
-        }
-
-        $execution->update(['status' => ActionExecutionStatus::Queued]);
-        ExecuteActionJob::dispatch($execution->id);
-
-        return response()->json(['data' => $execution->fresh()], 202);
+            ], 422),
+        };
     }
 
     public function cancel(Team $current_team, ActionExecution $execution): JsonResponse
