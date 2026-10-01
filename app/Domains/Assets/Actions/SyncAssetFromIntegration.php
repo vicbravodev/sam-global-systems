@@ -38,7 +38,7 @@ class SyncAssetFromIntegration
 
             $existingAsset = $this->resolveAsset->execute($providerId, $externalId, $teamId);
 
-            if ($existingAsset) {
+            if ($existingAsset !== null) {
                 $asset = $this->updateExistingAsset($existingAsset, $assetData, $providerId);
             } else {
                 $this->assertExternalIdIsUnclaimed($teamId, $providerId, $externalId);
@@ -54,7 +54,7 @@ class SyncAssetFromIntegration
                 'asset_id' => $asset->id,
                 'integration_id' => $integrationId,
             ], calc: [
-                'branch' => $existingAsset ? 'updated' : 'created',
+                'branch' => $existingAsset !== null ? 'updated' : 'created',
                 'devices_reported' => array_key_exists('devices', $assetData) && is_array($assetData['devices']),
             ], debug: true);
 
@@ -106,12 +106,14 @@ class SyncAssetFromIntegration
         // signal. `last_seen_at` only moves with actual telemetry/location
         // (UpdateAssetLocationSnapshot), otherwise the whole fleet looks
         // "seen minutes ago" forever (C1-a) and offline detection goes blind.
+        // Un campo ausente, vacío o `[]` no pisa lo guardado; un nombre o
+        // código "0" sí es un valor real (la creación también lo guarda).
         $asset->update(array_filter([
             'name' => $assetData['name'] ?? null,
             'code' => $assetData['code'] ?? null,
             'external_primary_id' => $assetData['external_id'],
             'metadata_json' => $assetData['metadata'] ?? null,
-        ]));
+        ], fn (mixed $value): bool => $value !== null && $value !== '' && $value !== []));
 
         AssetExternalReference::where('provider_id', $providerId)
             ->where('external_id', $assetData['external_id'])
