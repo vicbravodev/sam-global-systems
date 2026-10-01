@@ -202,7 +202,11 @@ class Incident extends Model
     protected static function booted(): void
     {
         static::creating(function (Incident $incident): void {
-            if ($incident->number === null && $incident->team_id !== null) {
+            // En `creating` el modelo aún no está guardado: si nadie (ni el
+            // TenantContext vía BelongsToTenant) le puso team_id, el atributo
+            // falta de verdad y no hay secuencia que avanzar (el INSERT fallará
+            // por NOT NULL). Por eso aquí se lee el atributo crudo.
+            if ($incident->number === null && $incident->getAttribute('team_id') !== null) {
                 $incident->number = IncidentNumberSequence::next((int) $incident->team_id);
             }
         });
@@ -210,13 +214,11 @@ class Incident extends Model
         // The inbox badge counts open incidents: a new one or a status change
         // moves it.
         static::created(function (Incident $incident): void {
-            if ($incident->team_id !== null) {
-                NavBadgeCache::forget((int) $incident->team_id);
-            }
+            NavBadgeCache::forget((int) $incident->team_id);
         });
 
         static::updated(function (Incident $incident): void {
-            if ($incident->team_id !== null && $incident->wasChanged('incident_status_id')) {
+            if ($incident->wasChanged('incident_status_id')) {
                 NavBadgeCache::forget((int) $incident->team_id);
             }
         });

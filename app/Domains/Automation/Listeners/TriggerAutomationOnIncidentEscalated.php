@@ -27,10 +27,6 @@ class TriggerAutomationOnIncidentEscalated
             return;
         }
 
-        if ($incident->team_id === null) {
-            return;
-        }
-
         // Somebody already claimed it or acknowledged it: a human is on it,
         // the automation stays quiet.
         if (IncidentSuppression::isUnderHumanControl($incident)) {

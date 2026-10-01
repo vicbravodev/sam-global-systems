@@ -17,10 +17,6 @@ class TriggerAutomationOnDecisionMade
     {
         $decision = $event->decision;
 
-        if ($decision->team_id === null) {
-            return;
-        }
-
         $this->triggerEscalationWorkflow->execute(
             teamId: (int) $decision->team_id,
             triggerType: WorkflowTriggerType::DecisionOutcome,

@@ -1020,7 +1020,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
      */
     private function resolveIntegration(NormalizedEvent $event): ?array
     {
-        if ($event->team_id === null || $event->asset_id === null) {
+        if ($event->asset_id === null) {
             return null;
         }
 
