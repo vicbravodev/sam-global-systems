@@ -89,7 +89,7 @@ class DashboardController extends Controller
         $decisionsCurrent = $this->aiVerdictTotals($team->id, $weekAgo, $now);
         $decisionsPrevious = $this->aiVerdictTotals($team->id, $previousWeekStart, $previousWeekEnd);
 
-        $today = end($perDay) ?: ['total' => 0, 'critical' => 0];
+        $today = $perDay !== [] ? end($perDay) : ['total' => 0, 'critical' => 0];
         $yesterday = count($perDay) > 1 ? $perDay[count($perDay) - 2] : ['total' => 0, 'critical' => 0];
 
         return [
@@ -139,8 +139,8 @@ class DashboardController extends Controller
                 ->whereIn('ai_evaluation_id', $realEvaluations);
 
             return [
-                'total' => (int) (clone $decisions)->count(),
-                'human_overrides' => (int) DecisionOverride::query()
+                'total' => (clone $decisions)->count(),
+                'human_overrides' => DecisionOverride::query()
                     ->whereIn('decision_id', (clone $decisions)->select('id'))
                     ->count(),
             ];
@@ -208,9 +208,10 @@ class DashboardController extends Controller
                 return $incident->sla_due_at->getTimestamp() - $now->getTimestamp();
             }
 
-            $budget = (int) (($incident->priority?->sla_seconds
-                ?? $incident->relatedEvent?->eventSeverity?->response_sla_seconds)
-                ?: 1800);
+            $catalogBudget = $incident->priority?->sla_seconds
+                ?? $incident->relatedEvent?->eventSeverity?->response_sla_seconds;
+            // Un SLA de 0 s en catálogo equivale a "sin SLA": cae al default.
+            $budget = $catalogBudget !== null && $catalogBudget !== 0 ? $catalogBudget : 1800;
 
             $elapsed = (int) $incident->opened_at->diffInSeconds($now);
 
@@ -288,7 +289,7 @@ class DashboardController extends Controller
             ->map(fn (Incident $incident) => $incident->currentAssignment)
             ->filter(fn ($assignment) => $assignment !== null
                 && $assignment->assigned_to_type === AssigneeType::User)
-            ->map(fn ($assignment) => (int) $assignment->assigned_to_id)
+            ->map(fn ($assignment) => $assignment->assigned_to_id)
             ->unique()
             ->values();
 
@@ -339,13 +340,13 @@ class DashboardController extends Controller
     private function presentStreamEvent(NormalizedEvent $event, ?Decision $decision): array
     {
         return [
-            'id' => (int) $event->id,
+            'id' => $event->id,
             // ISO 8601: the client formats it in the viewer's timezone like
             // every other timestamp (the server used to print UTC, P1-1).
             'occurredAt' => $event->occurred_at?->toIso8601String(),
-            'provider' => (string) ($event->provider?->name ?? '—'),
-            'type' => (string) ($event->eventType?->name ?? $event->eventType?->code ?? '—'),
-            'asset' => (string) ($event->asset?->code ?? $event->asset?->name ?? '—'),
+            'provider' => $event->provider?->name ?? '—',
+            'type' => $event->eventType?->name ?? $event->eventType?->code ?? '—',
+            'asset' => $event->asset?->code ?? $event->asset?->name ?? '—',
             'decision' => $this->decisionChip($decision),
             'severity' => $this->severityKey($event),
         ];
@@ -403,12 +404,16 @@ class DashboardController extends Controller
 
         return array_values($integrations
             ->map(fn (TenantIntegration $integration) => [
-                'id' => (int) $integration->id,
+                'id' => $integration->id,
                 'key' => (string) ($integration->provider?->code ?? $integration->id),
-                'name' => (string) ($integration->name ?: ($integration->provider?->name ?? '—')),
-                'provider' => (string) ($integration->provider?->name ?? '—'),
+                // Sólo el nombre vacío cae al del proveedor: una integración
+                // llamada "0" (válida en StoreIntegrationRequest) conserva su nombre.
+                'name' => $integration->name !== ''
+                    ? $integration->name
+                    : ($integration->provider?->name ?? '—'),
+                'provider' => $integration->provider?->name ?? '—',
                 'health' => $integration->status->healthKey(),
-                'events24h' => (int) ($counts[$integration->id] ?? 0),
+                'events24h' => $counts[$integration->id] ?? 0,
                 'lastSync' => $integration->last_sync_at !== null
                     ? $this->relativeTime($integration->last_sync_at, $now)
                     : null,
@@ -442,18 +447,18 @@ class DashboardController extends Controller
             ->sortBy(fn (TenantUsageCounter $counter) => (string) $counter->usageMeter?->name)
             ->values()
             ->map(fn (TenantUsageCounter $counter) => [
-                'meterCode' => (string) ($counter->usageMeter?->code ?? ''),
-                'meterName' => (string) ($counter->usageMeter?->name ?? '—'),
-                'unit' => (string) ($counter->usageMeter?->unit ?? ''),
+                'meterCode' => $counter->usageMeter?->code ?? '',
+                'meterName' => $counter->usageMeter?->name ?? '—',
+                'unit' => $counter->usageMeter?->unit ?? '',
                 'amount' => $counter->usageMeter?->unit === CostPlusPricing::MICRO_UNIT
                     ? CostPlusPricing::charged(
                         (float) $counter->consumed_value,
-                        CostPlusPricing::markupFor($team->id, (int) $counter->usage_meter_id),
+                        CostPlusPricing::markupFor($team->id, $counter->usage_meter_id),
                     )
                     : null,
-                'consumed' => (int) $counter->consumed_value,
-                'included' => (int) $counter->included_value,
-                'overage' => (int) $counter->overage_value,
+                'consumed' => $counter->consumed_value,
+                'included' => $counter->included_value,
+                'overage' => $counter->overage_value,
                 'percentUsed' => $counter->included_value > 0
                     ? round($counter->consumed_value / $counter->included_value * 100, 1)
                     : null,
