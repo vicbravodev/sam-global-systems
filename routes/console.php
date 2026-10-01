@@ -9,6 +9,7 @@ use App\Domains\Assets\Jobs\DispatchTelematicsFeedsJob;
 use App\Domains\Assets\Jobs\PollAllDeviceConnectivityJob;
 use App\Domains\Assets\Jobs\PurgeOldAssetLocationsJob;
 use App\Domains\Assets\Jobs\PurgeOldAssetTelemetryJob;
+use App\Domains\Automation\Jobs\ExpireUnconfirmedActionsJob;
 use App\Domains\Drivers\Jobs\RecalculateDriverRiskProfilesJob;
 use App\Domains\Ingestion\Jobs\PollSamsaraSafetyEventsJob;
 use App\Domains\Ingestion\Jobs\PruneDeduplicationKeysJob;
@@ -103,6 +104,12 @@ Schedule::job(new CheckIntegrationHealthJob)->everyFiveMinutes()->onOneServer();
 // state the feed keeps on each asset, so a minute tick is one indexed query
 // per tenant.
 Schedule::job(new DetectUnauthorizedStopJob)->everyMinute()->onOneServer();
+
+// Caducidad de confirmaciones (spec 12 §13): las acciones `requires_confirmation`
+// que nadie confirmó dentro del TTL del tenant (30 min por defecto) pasan a
+// `cancelled`. Cada minuto, para que el plazo se cumpla con ±1 min; el
+// endpoint de confirmar ya rechaza las vencidas aunque el barrido no haya pasado.
+Schedule::job(new ExpireUnconfirmedActionsJob)->everyMinute()->onOneServer();
 
 // Telescope (sólo local, dependencia de desarrollo): poda diaria de entradas
 // de más de 48 h para que la tabla no crezca sin límite.
