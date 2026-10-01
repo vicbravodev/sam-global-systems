@@ -38,7 +38,9 @@ class CreateTenant
         // caller es la consola de super-admin, cuyo usuario tiene otro team
         // actual que el scope global aplicaría. Ver CLAUDE.md §2.1.
         TenantContext::for($team->id, function () use ($team, $owner, $planCode) {
-            if ($planCode) {
+            // Los planes vienen del PlanSeeder (no hay alta de planes en la
+            // consola) y ninguno tiene código "0": basta con descartar vacío.
+            if ($planCode !== null && $planCode !== '') {
                 $plan = Plan::where('code', $planCode)->firstOrFail();
 
                 Subscription::query()->create([

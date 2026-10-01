@@ -35,7 +35,8 @@ class Team extends Model
         parent::boot();
 
         static::creating(function (Team $team) {
-            if (empty($team->slug)) {
+            // Mismo criterio que el empty() previo: null, '' y '0' se regeneran.
+            if (in_array($team->slug, [null, '', '0'], true)) {
                 $team->slug = static::generateUniqueTeamSlug($team->name);
             }
         });

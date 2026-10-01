@@ -16,14 +16,14 @@ class TenantFeaturePolicy
     {
         $team = currentTeam();
 
-        return $team && $this->authorizeAction->execute($user, 'tenancy.manage', $team);
+        return $team !== null && $this->authorizeAction->execute($user, 'tenancy.manage', $team);
     }
 
     public function view(User $user, TenantFeature $feature): bool
     {
         $team = currentTeam();
 
-        return $team
+        return $team !== null
             && $feature->team_id === $team->id
             && $this->authorizeAction->execute($user, 'tenancy.manage', $team);
     }
@@ -32,7 +32,7 @@ class TenantFeaturePolicy
     {
         $team = currentTeam();
 
-        return $team
+        return $team !== null
             && $feature->team_id === $team->id
             && $this->authorizeAction->execute($user, 'tenancy.manage', $team);
     }

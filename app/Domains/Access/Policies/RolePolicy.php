@@ -16,14 +16,14 @@ class RolePolicy
     {
         $team = currentTeam();
 
-        return $team && $this->authorizeAction->execute($user, 'users.view', $team);
+        return $team !== null && $this->authorizeAction->execute($user, 'users.view', $team);
     }
 
     public function create(User $user): bool
     {
         $team = currentTeam();
 
-        return $team && $this->authorizeAction->execute($user, 'users.manage', $team);
+        return $team !== null && $this->authorizeAction->execute($user, 'users.manage', $team);
     }
 
     /**
@@ -49,8 +49,8 @@ class RolePolicy
 
         $team = currentTeam();
 
-        return $team
-            && $role->isOwnedByTeam((int) $team->id)
+        return $team !== null
+            && $role->isOwnedByTeam($team->id)
             && $this->authorizeAction->execute($user, 'users.manage', $team);
     }
 
@@ -62,6 +62,6 @@ class RolePolicy
     {
         $team = currentTeam();
 
-        return $team && $this->authorizeAction->execute($user, 'users.manage', $team);
+        return $team !== null && $this->authorizeAction->execute($user, 'users.manage', $team);
     }
 }

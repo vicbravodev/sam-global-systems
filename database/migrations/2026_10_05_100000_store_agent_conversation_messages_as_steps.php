@@ -88,7 +88,7 @@ return new class extends AiMigration
                     ...array_filter([
                         'denied' => $results[$call['id']]['denied'] ?? false,
                         'failed' => $results[$call['id']]['failed'] ?? false,
-                    ]),
+                    ], fn (mixed $flag): bool => (bool) $flag),
                 ])
                 ->all());
 

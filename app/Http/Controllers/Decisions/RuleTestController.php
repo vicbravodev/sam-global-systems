@@ -56,7 +56,7 @@ class RuleTestController extends Controller
             'result' => $explanation['matched'] ? 'match' : 'no_match',
             'checks' => $explanation['checks'],
             'event' => [
-                'evaluationId' => (int) $eval->id,
+                'evaluationId' => $eval->id,
                 'classification' => $eval->classification?->value,
                 'evaluatedAt' => $eval->evaluated_at?->toIso8601String(),
             ],
@@ -80,7 +80,7 @@ class RuleTestController extends Controller
             return response()->json(['result' => 'no_events']);
         }
 
-        $payload = (array) ($rawEvent->payload_json ?? []);
+        $payload = $rawEvent->payload_json ?? [];
         $checks = [];
         $matched = true;
 
@@ -102,7 +102,7 @@ class RuleTestController extends Controller
             'result' => $matched ? 'match' : 'no_match',
             'checks' => $checks,
             'event' => [
-                'rawEventId' => (int) $rawEvent->id,
+                'rawEventId' => $rawEvent->id,
                 'receivedAt' => $rawEvent->created_at?->toIso8601String(),
             ],
         ]);

@@ -64,7 +64,7 @@ class BillingPageController extends Controller
                 ->get()
                 ->keyBy('usage_meter_id')
             : collect();
-        $terms = $resolveTerms->execute((int) $current_team->id);
+        $terms = $resolveTerms->execute($current_team->id);
         $assetDayMeters = [
             AssetDayPricing::METER_CODE,
             AssetDayPricing::AI_METER_CODE,
@@ -81,7 +81,7 @@ class BillingPageController extends Controller
 
         return Inertia::render('billing/index', [
             'terms' => fn (): array => $terms->toArray(),
-            'estimate' => fn (): array => $estimate->execute((int) $current_team->id),
+            'estimate' => fn (): array => $estimate->execute($current_team->id),
             'fleet' => function () use ($current_team): array {
                 $byState = Asset::query()
                     ->where('team_id', $current_team->id)
@@ -144,7 +144,7 @@ class BillingPageController extends Controller
                 ->get()
                 ->map(fn (TenantFeature $feature): array => [
                     'key' => $feature->feature_key,
-                    'enabled' => (bool) $feature->enabled,
+                    'enabled' => $feature->enabled,
                     'source' => $feature->source->value,
                     'sourceLabel' => $feature->source->label(),
                     'limits' => $feature->limits_json,
@@ -174,7 +174,7 @@ class BillingPageController extends Controller
                     'amount' => $counter->usageMeter?->unit === CostPlusPricing::MICRO_UNIT
                         ? CostPlusPricing::charged(
                             (float) $counter->consumed_value,
-                            CostPlusPricing::markupFor($current_team->id, (int) $counter->usage_meter_id),
+                            CostPlusPricing::markupFor($current_team->id, $counter->usage_meter_id),
                         )
                         : null,
                     'consumed' => (float) $counter->consumed_value,
@@ -190,7 +190,7 @@ class BillingPageController extends Controller
                 ->limit(24)
                 ->get()
                 ->map(fn (InvoiceSnapshot $invoice): array => [
-                    'id' => (int) $invoice->id,
+                    'id' => $invoice->id,
                     'periodStart' => $invoice->period_start?->toDateString(),
                     'periodEnd' => $invoice->period_end?->toDateString(),
                     'subtotal' => (float) $invoice->subtotal,

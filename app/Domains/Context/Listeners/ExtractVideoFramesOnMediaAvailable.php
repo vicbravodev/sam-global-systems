@@ -19,7 +19,7 @@ class ExtractVideoFramesOnMediaAvailable
 {
     public function handle(EventMediaAvailable $event): void
     {
-        if (! config('media-frames.enabled', true)) {
+        if (! (bool) config('media-frames.enabled', true)) {
             return;
         }
 
@@ -29,6 +29,6 @@ class ExtractVideoFramesOnMediaAvailable
             return;
         }
 
-        ExtractVideoFramesJob::dispatch((int) $media->id, (int) $media->team_id)->afterCommit();
+        ExtractVideoFramesJob::dispatch($media->id, $media->team_id)->afterCommit();
     }
 }

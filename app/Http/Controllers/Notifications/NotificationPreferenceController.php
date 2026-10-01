@@ -53,7 +53,7 @@ class NotificationPreferenceController extends Controller
             'escalation_fallback_json' => $validated['escalation_fallback'] ?? null,
         ];
 
-        if ($preference) {
+        if ($preference !== null) {
             $preference->update($payload);
         } else {
             $preference = NotificationPreference::query()->create($payload);

@@ -176,7 +176,7 @@ class RecalculateDriverRiskProfilesJob implements ShouldQueue
         }
 
         $sendNotification->execute(
-            teamId: (int) $driver->team_id,
+            teamId: $driver->team_id,
             notificationType: 'driver.risk_deteriorated',
             sourceType: NotificationSourceType::SystemEvent,
             sourceReferenceId: (string) $driver->id,
@@ -208,7 +208,7 @@ class RecalculateDriverRiskProfilesJob implements ShouldQueue
      */
     private function sumCodes($counts, array $codes): int
     {
-        return (int) collect($codes)->sum(fn (string $code) => (int) ($counts[$code] ?? 0));
+        return collect($codes)->sum(fn (string $code) => (int) ($counts[$code] ?? 0));
     }
 
     private function levelFor(float $score): RiskLevel

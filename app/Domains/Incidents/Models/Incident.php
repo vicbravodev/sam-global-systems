@@ -207,19 +207,19 @@ class Incident extends Model
             // falta de verdad y no hay secuencia que avanzar (el INSERT fallará
             // por NOT NULL). Por eso aquí se lee el atributo crudo.
             if ($incident->number === null && $incident->getAttribute('team_id') !== null) {
-                $incident->number = IncidentNumberSequence::next((int) $incident->team_id);
+                $incident->number = IncidentNumberSequence::next($incident->team_id);
             }
         });
 
         // The inbox badge counts open incidents: a new one or a status change
         // moves it.
         static::created(function (Incident $incident): void {
-            NavBadgeCache::forget((int) $incident->team_id);
+            NavBadgeCache::forget($incident->team_id);
         });
 
         static::updated(function (Incident $incident): void {
             if ($incident->wasChanged('incident_status_id')) {
-                NavBadgeCache::forget((int) $incident->team_id);
+                NavBadgeCache::forget($incident->team_id);
             }
         });
     }
@@ -241,7 +241,7 @@ class Incident extends Model
     {
         $status = $this->relationLoaded('status') ? $this->status : $this->status()->first();
 
-        return $status !== null && (bool) $status->is_terminal;
+        return $status !== null && $status->is_terminal;
     }
 
     /**

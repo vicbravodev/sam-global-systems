@@ -49,29 +49,29 @@ class RulesPageController extends Controller
         return Inertia::render('rules/index', [
             'decisionRules' => fn () => $rules
                 ->map(fn (DecisionRule $rule): array => [
-                    'id' => (int) $rule->id,
+                    'id' => $rule->id,
                     'code' => $rule->code,
                     'name' => $rule->name,
                     'description' => $rule->description,
                     'scope' => $rule->scope?->value,
-                    'priority' => (int) $rule->priority,
+                    'priority' => $rule->priority,
                     'conditions' => $rule->conditions_json,
                     'outcomeCode' => $rule->outcomeOverride?->code,
                     'outcomeLabel' => $rule->outcomeOverride?->code !== null
                         ? (DecisionOutcomeCode::tryFrom($rule->outcomeOverride->code)?->label() ?? $rule->outcomeOverride->code)
                         : null,
-                    'outcomeId' => $rule->outcome_override !== null ? (int) $rule->outcome_override : null,
-                    'stopProcessing' => (bool) $rule->stop_processing,
-                    'isActive' => (bool) $rule->is_active,
+                    'outcomeId' => $rule->outcome_override,
+                    'stopProcessing' => $rule->stop_processing,
+                    'isActive' => $rule->is_active,
                     'isGlobal' => $rule->team_id === null,
-                    'rulesetId' => (int) $rule->ruleset_id,
+                    'rulesetId' => $rule->ruleset_id,
                     'rulesetCode' => $rule->ruleset?->code,
                     // Posición real en la que el motor revisa la regla (1 =
                     // primera). Null si está apagada o si pertenece a un
                     // conjunto de reglas que el motor no usa para este equipo.
                     'evaluationOrder' => $order[$rule->id] ?? null,
                     'inEffectiveRuleset' => $effectiveRulesetId !== null
-                        && (int) $rule->ruleset_id === (int) $effectiveRulesetId,
+                        && $rule->ruleset_id === $effectiveRulesetId,
                 ])
                 ->values()
                 ->all(),
@@ -84,10 +84,10 @@ class RulesPageController extends Controller
                 ->orderByDesc('is_default')
                 ->get(['id', 'code', 'name', 'is_default', 'team_id'])
                 ->map(fn (RuleSet $set): array => [
-                    'id' => (int) $set->id,
+                    'id' => $set->id,
                     'code' => $set->code,
                     'name' => $set->name,
-                    'isDefault' => (bool) $set->is_default,
+                    'isDefault' => $set->is_default,
                     'isGlobal' => $set->team_id === null,
                 ])
                 ->all(),
@@ -95,7 +95,7 @@ class RulesPageController extends Controller
                 ->orderBy('id')
                 ->get(['id', 'code', 'name'])
                 ->map(fn (DecisionOutcome $outcome): array => [
-                    'id' => (int) $outcome->id,
+                    'id' => $outcome->id,
                     'code' => $outcome->code,
                     'name' => $outcome->name,
                     'label' => DecisionOutcomeCode::tryFrom($outcome->code)?->label() ?? $outcome->name,
@@ -113,13 +113,15 @@ class RulesPageController extends Controller
                 ->limit(200)
                 ->get()
                 ->map(fn (EventMappingRule $rule): array => [
-                    'id' => (int) $rule->id,
-                    'providerId' => (int) $rule->provider_id,
+                    'id' => $rule->id,
+                    'providerId' => $rule->provider_id,
                     'provider' => $rule->provider?->name,
                     'externalEventType' => $rule->external_event_type,
-                    'hasConditions' => ! empty($rule->external_conditions_json),
-                    'conditions' => empty($rule->external_conditions_json) ? null : $rule->external_conditions_json,
-                    'mappedEventTypeId' => (int) $rule->mapped_event_type_id,
+                    'hasConditions' => $rule->external_conditions_json !== null && $rule->external_conditions_json !== [],
+                    'conditions' => $rule->external_conditions_json === null || $rule->external_conditions_json === []
+                        ? null
+                        : $rule->external_conditions_json,
+                    'mappedEventTypeId' => $rule->mapped_event_type_id,
                     'mappedEventType' => $rule->mappedEventType?->name,
                     'mappedSeverity' => $rule->mappedSeverity?->label ?? $rule->mappedSeverity?->code,
                     // Gravedad con la que el evento entra de verdad: la de la
@@ -127,9 +129,9 @@ class RulesPageController extends Controller
                     'effectiveSeverityCode' => $rule->mappedSeverity?->code
                         ?? $rule->mappedEventType?->defaultSeverity?->code,
                     'severityFromType' => $rule->mapped_severity_id === null,
-                    'mappedSeverityId' => $rule->mapped_severity_id !== null ? (int) $rule->mapped_severity_id : null,
-                    'priority' => (int) $rule->priority,
-                    'isActive' => (bool) $rule->is_active,
+                    'mappedSeverityId' => $rule->mapped_severity_id,
+                    'priority' => $rule->priority,
+                    'isActive' => $rule->is_active,
                 ])
                 ->all(),
             'mappingSummary' => fn (): array => [
@@ -146,17 +148,17 @@ class RulesPageController extends Controller
                 'eventTypes' => EventType::query()
                     ->orderBy('name')
                     ->get(['id', 'name'])
-                    ->map(fn (EventType $type) => ['value' => (string) $type->id, 'label' => (string) $type->name])
+                    ->map(fn (EventType $type) => ['value' => (string) $type->id, 'label' => $type->name])
                     ->all(),
                 'severities' => EventSeverity::query()
                     ->orderBy('level')
                     ->get(['id', 'code', 'label'])
-                    ->map(fn (EventSeverity $severity) => ['value' => (string) $severity->id, 'label' => (string) ($severity->label ?? $severity->code)])
+                    ->map(fn (EventSeverity $severity) => ['value' => (string) $severity->id, 'label' => $severity->label ?? $severity->code])
                     ->all(),
                 'categories' => EventCategory::query()
                     ->orderBy('name')
                     ->get(['id', 'name'])
-                    ->map(fn (EventCategory $category) => ['value' => (string) $category->id, 'label' => (string) $category->name])
+                    ->map(fn (EventCategory $category) => ['value' => (string) $category->id, 'label' => $category->name])
                     ->all(),
             ],
             'overrides' => fn () => TenantRuleOverride::query()
@@ -164,12 +166,12 @@ class RulesPageController extends Controller
                 ->orderBy('base_rule_code')
                 ->get()
                 ->map(fn (TenantRuleOverride $override): array => [
-                    'id' => (int) $override->id,
+                    'id' => $override->id,
                     'baseRuleCode' => $override->base_rule_code,
                     'overrideType' => $override->override_type?->value,
                     'config' => $override->override_config_json,
                     'reason' => $override->reason,
-                    'isActive' => (bool) $override->is_active,
+                    'isActive' => $override->is_active,
                 ])
                 ->all(),
             'overrideTypes' => fn () => array_map(fn (RuleOverrideType $type) => $type->value, RuleOverrideType::cases()),
@@ -195,9 +197,9 @@ class RulesPageController extends Controller
 
         return $rules
             ->filter(fn (DecisionRule $rule) => $rule->is_active
-                && (int) $rule->ruleset_id === $effectiveRulesetId)
+                && $rule->ruleset_id === $effectiveRulesetId)
             ->values()
-            ->mapWithKeys(fn (DecisionRule $rule, int $index) => [(int) $rule->id => $index + 1])
+            ->mapWithKeys(fn (DecisionRule $rule, int $index) => [$rule->id => $index + 1])
             ->all();
     }
 
@@ -209,7 +211,7 @@ class RulesPageController extends Controller
      */
     private function decisionSummary(Collection $rules): array
     {
-        $active = $rules->filter(fn (DecisionRule $rule) => (bool) $rule->is_active);
+        $active = $rules->filter(fn (DecisionRule $rule) => $rule->is_active);
 
         $byOutcome = [];
 

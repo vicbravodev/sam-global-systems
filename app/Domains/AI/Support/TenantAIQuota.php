@@ -52,9 +52,9 @@ class TenantAIQuota
             return false;
         }
 
-        $profile ??= $this->resolveTenantProfile->execute((int) $event->team_id);
+        $profile ??= $this->resolveTenantProfile->execute($event->team_id);
 
-        $usage = $this->usage((int) $event->team_id, $profile);
+        $usage = $this->usage($event->team_id, $profile);
         $blocked = $usage['exceeded_by'] !== null;
 
         SystemLog::ok(

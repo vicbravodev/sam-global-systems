@@ -99,19 +99,19 @@ final class PanicKpisTool implements CopilotTool
             $incident = $incidents->get($event->id);
 
             return [
-                'id' => (int) $event->id,
+                'id' => $event->id,
                 'reference' => $incident?->reference(),
                 'title' => 'Botón de pánico',
                 'severity' => 'critical',
                 'assetCode' => $event->asset?->code ?? $event->asset?->name,
                 'driverName' => $event->driver?->full_name,
                 'occurredAt' => $event->occurred_at->toIso8601String(),
-                'statusLabel' => $incident
+                'statusLabel' => $incident !== null
                     ? IncidentStatusPresenter::labelForIncident($incident)
                     : 'Sin incidente',
-                'href' => $incident
-                    ? CopilotPresenter::incidentHref($context->teamSlug, (int) $incident->id)
-                    : CopilotPresenter::eventHref($context->teamSlug, (int) $event->id),
+                'href' => $incident !== null
+                    ? CopilotPresenter::incidentHref($context->teamSlug, $incident->id)
+                    : CopilotPresenter::eventHref($context->teamSlug, $event->id),
             ];
         })->values()->all();
 
@@ -131,7 +131,7 @@ final class PanicKpisTool implements CopilotTool
             $blocks[] = ['type' => 'events', 'title' => 'Últimos botones de pánico', 'items' => $list];
         }
 
-        $scope = $context->asset ? ' de '.CopilotPresenter::assetLabel($context->asset) : '';
+        $scope = $context->asset !== null ? ' de '.CopilotPresenter::assetLabel($context->asset) : '';
         $highlights = [$events->count() === 0
             ? "No hubo botones de pánico{$scope} en {$period->label}."
             : "Se registraron {$events->count()} botón(es) de pánico{$scope} en {$period->label}, {$today} hoy."];
@@ -155,9 +155,9 @@ final class PanicKpisTool implements CopilotTool
             blocks: $blocks,
             sources: array_values($incidents->take(8)->map(fn (Incident $i) => [
                 'kind' => 'incident',
-                'id' => (int) $i->id,
-                'label' => (string) $i->title,
-                'href' => CopilotPresenter::incidentHref($context->teamSlug, (int) $i->id),
+                'id' => $i->id,
+                'label' => $i->title,
+                'href' => CopilotPresenter::incidentHref($context->teamSlug, $i->id),
             ])->all()),
             facts: [
                 'period' => $period->label,

@@ -36,8 +36,8 @@ class ClassifyRawEventEmergency
         if ($normalized !== null) {
             return [
                 ...$this->fromNormalized($normalized),
-                'normalized_event_id' => (int) $normalized->id,
-                'asset_id' => $normalized->asset_id !== null ? (int) $normalized->asset_id : null,
+                'normalized_event_id' => $normalized->id,
+                'asset_id' => $normalized->asset_id,
             ];
         }
 
@@ -69,7 +69,7 @@ class ClassifyRawEventEmergency
      */
     private function fromRaw(RawEvent $rawEvent): array
     {
-        $rawType = (string) ($rawEvent->event_type_raw ?? '');
+        $rawType = $rawEvent->event_type_raw ?? '';
 
         if ($rawType === '') {
             return ['emergency' => false, 'event_type_code' => null];

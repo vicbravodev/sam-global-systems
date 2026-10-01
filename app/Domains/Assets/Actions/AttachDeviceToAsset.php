@@ -58,7 +58,7 @@ class AttachDeviceToAsset
             ->where('status', '!=', DeviceStatus::Detached)
             ->whereNull('detached_at');
 
-        if ($providerId) {
+        if ($providerId !== null) {
             $query->where('provider_id', $providerId);
         }
 
@@ -81,7 +81,7 @@ class AttachDeviceToAsset
                 ->where('team_id', $asset->team_id)
                 ->select('id'));
 
-        if ($providerId) {
+        if ($providerId !== null) {
             $query->where('provider_id', $providerId);
         }
 

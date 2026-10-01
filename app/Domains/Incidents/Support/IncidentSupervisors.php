@@ -28,8 +28,8 @@ final class IncidentSupervisors
         foreach (self::users($teamId) as $user) {
             $recipients[] = [
                 'recipient_type' => 'user',
-                'address' => (string) $user->email,
-                'email' => (string) $user->email,
+                'address' => $user->email,
+                'email' => $user->email,
                 'phone' => $user->verifiedPhone(),
                 'name' => $user->name,
                 'recipient_reference_id' => (string) $user->id,
@@ -64,7 +64,7 @@ final class IncidentSupervisors
         foreach ($memberships as $membership) {
             $user = $membership->user;
 
-            if (! $user instanceof User || (string) $user->email === '') {
+            if (! $user instanceof User || $user->email === '') {
                 continue;
             }
 

@@ -49,7 +49,7 @@ class SendNotification
             ->where('event_key', $eventKey)
             ->first();
 
-        if ($existing) {
+        if ($existing !== null) {
             SystemLog::skipped('notifications.dedup.skipped', reason: 'event_key_exists', input: $logInput, result: ['existing_notification_id' => $existing->id]);
 
             return $existing;

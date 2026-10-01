@@ -61,7 +61,7 @@ class NotifyEscalationLevel
         string $body,
         ?NotificationPriority $priority = null,
     ): void {
-        $teamId = (int) $incident->team_id;
+        $teamId = $incident->team_id;
         $incident->loadMissing(['priority', 'type']);
         $step = $this->steps($teamId)[$level] ?? null;
 

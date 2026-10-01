@@ -26,12 +26,17 @@ class RenderNotificationContent
 
         $template = $template ?? $this->resolveTemplate($notification, $channelType);
 
-        $subject = $template?->subject_template
-            ? $this->render($template->subject_template, $variables)
+        // Una plantilla vacía (null, '' o '0', la lectura falsy de siempre)
+        // cae al texto guardado en la notificación.
+        $subjectTemplate = $template?->subject_template;
+        $bodyTemplate = $template?->body_template;
+
+        $subject = ! in_array($subjectTemplate, [null, '', '0'], true)
+            ? $this->render($subjectTemplate, $variables)
             : $notification->subject;
 
-        $body = $template?->body_template
-            ? $this->render($template->body_template, $variables)
+        $body = ! in_array($bodyTemplate, [null, '', '0'], true)
+            ? $this->render($bodyTemplate, $variables)
             : ($notification->body_preview ?? '');
 
         [$subject, $body] = $this->withLateNotice($channelType, $subject, $body, $variables);

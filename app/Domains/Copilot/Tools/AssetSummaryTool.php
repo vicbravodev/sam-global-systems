@@ -33,9 +33,9 @@ final class AssetSummaryTool implements CopilotTool
         $card = [
             'type' => 'asset',
             'asset' => [
-                'id' => (int) $asset->id,
+                'id' => $asset->id,
                 'code' => $asset->code,
-                'name' => (string) $asset->name,
+                'name' => $asset->name,
                 'category' => $category?->value,
                 'categoryLabel' => $category?->label(),
                 'typeName' => $asset->assetType?->name,
@@ -44,25 +44,26 @@ final class AssetSummaryTool implements CopilotTool
                 'motion' => $motion,
                 'motionLabel' => CopilotPresenter::motionLabel($motion),
                 'provider' => $asset->provider?->name,
-                'driver' => $driver ? [
-                    'id' => (int) $driver->id,
-                    'name' => (string) $driver->full_name,
-                    'href' => CopilotPresenter::driverHref($context->teamSlug, (int) $driver->id),
+                'driver' => $driver !== null ? [
+                    'id' => $driver->id,
+                    'name' => $driver->full_name,
+                    'href' => CopilotPresenter::driverHref($context->teamSlug, $driver->id),
                 ] : null,
                 'location' => CopilotPresenter::location($location),
                 'lastSignalAt' => $lastSignal?->toIso8601String(),
-                'href' => CopilotPresenter::assetHref($context->teamSlug, (int) $asset->id),
+                'href' => CopilotPresenter::assetHref($context->teamSlug, $asset->id),
             ],
         ];
 
         $label = CopilotPresenter::assetLabel($asset);
         $highlights = [
             "{$label} está ".mb_strtolower(CopilotPresenter::motionLabel($motion))
-                .($location?->formatted_location ? " en {$location->formatted_location}" : '')
+                // Una dirección geocodificada nunca es '0': sólo null/'' se omiten.
+                .($location?->formatted_location !== null && $location->formatted_location !== '' ? " en {$location->formatted_location}" : '')
                 .'.',
         ];
 
-        if ($driver) {
+        if ($driver !== null) {
             $highlights[] = "Conductor asignado: {$driver->full_name}.";
         }
 
@@ -72,9 +73,9 @@ final class AssetSummaryTool implements CopilotTool
             blocks: [$card],
             sources: [[
                 'kind' => 'asset',
-                'id' => (int) $asset->id,
+                'id' => $asset->id,
                 'label' => $label,
-                'href' => CopilotPresenter::assetHref($context->teamSlug, (int) $asset->id),
+                'href' => CopilotPresenter::assetHref($context->teamSlug, $asset->id),
             ]],
             facts: [
                 'asset' => $label,

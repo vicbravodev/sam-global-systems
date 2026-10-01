@@ -27,7 +27,9 @@ class ExpireOldReports
                 ->get();
 
             foreach ($candidates as $execution) {
-                if ($execution->file_path) {
+                // GenerateReport sólo escribe rutas "reports/{team}/{id}.ext":
+                // un '0' no puede darse, basta con descartar null y vacío.
+                if ($execution->file_path !== null && $execution->file_path !== '') {
                     Storage::disk('rustfs')->delete($execution->file_path);
                 }
 

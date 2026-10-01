@@ -68,10 +68,10 @@ class RetryIncidentWorkflowUsageJob implements ShouldQueue
 
         TenantContext::set($incident->team_id);
 
-        $eventKey = RecordIncidentWorkflowUsage::eventKey((int) $incident->id);
+        $eventKey = RecordIncidentWorkflowUsage::eventKey($incident->id);
 
         $inserted = $recordUsageEvent->record(
-            teamId: (int) $incident->team_id,
+            teamId: $incident->team_id,
             meterCode: RecordIncidentWorkflowUsage::METER_CODE,
             quantity: 1,
             eventKey: $eventKey,

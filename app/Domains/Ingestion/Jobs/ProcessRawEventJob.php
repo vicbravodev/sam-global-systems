@@ -68,7 +68,7 @@ class ProcessRawEventJob implements ShouldQueue
 
         $rawEvent = RawEvent::withoutGlobalScopes()->find($this->rawEventId);
 
-        if ($rawEvent) {
+        if ($rawEvent !== null) {
             TenantContext::for($rawEvent->team_id, function () use ($rawEvent, $exception) {
                 $rawEvent->markAsFailed();
 

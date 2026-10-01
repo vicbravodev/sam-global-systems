@@ -29,7 +29,7 @@ class ActionTemplatePolicy
     public function update(User $user, ActionTemplate $template): bool
     {
         $team = currentTeam();
-        if (! $team) {
+        if ($team === null) {
             return false;
         }
 

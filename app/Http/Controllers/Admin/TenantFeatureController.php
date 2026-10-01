@@ -43,13 +43,13 @@ class TenantFeatureController extends Controller
 
         $this->audit->execute(
             actorType: AuditActorType::User,
-            actorId: (int) $user->id,
+            actorId: $user->id,
             action: 'tenant.feature_updated',
             category: AuditCategory::Domain,
             entityType: Team::class,
-            entityId: (int) $team->id,
+            entityId: $team->id,
             summary: "Feature {$featureKey} del tenant {$team->name} actualizada.",
-            teamId: (int) $team->id,
+            teamId: $team->id,
             metadata: [
                 'actor_email' => $user->email,
                 'feature_key' => $featureKey,

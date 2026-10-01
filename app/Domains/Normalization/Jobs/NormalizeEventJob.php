@@ -35,7 +35,7 @@ class NormalizeEventJob implements ShouldQueue
     {
         $rawEvent = RawEvent::withoutGlobalScopes()->find($this->rawEventId);
 
-        if (! $rawEvent) {
+        if ($rawEvent === null) {
             SystemLog::skipped('normalization.job.skipped', reason: 'raw_event_missing', input: ['raw_event_id' => $this->rawEventId]);
 
             return;
@@ -76,7 +76,7 @@ class NormalizeEventJob implements ShouldQueue
     {
         $rawEvent = RawEvent::withoutGlobalScopes()->find($this->rawEventId);
 
-        if ($rawEvent) {
+        if ($rawEvent !== null) {
             $rawEvent->markAsFailed();
         }
 

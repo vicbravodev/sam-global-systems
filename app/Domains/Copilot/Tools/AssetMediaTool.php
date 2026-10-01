@@ -86,14 +86,14 @@ final class AssetMediaTool implements CopilotTool
             /** @var EventMediaContext $item */
             $item = $entry['media'];
             $event = $item->normalizedEvent;
-            $verdict = $verdicts[(int) $item->id] ?? null;
+            $verdict = $verdicts[$item->id] ?? null;
             $incident = $incidents->get($item->normalized_event_id);
 
             $url = $this->urls->url($item);
             [$thumbnailUrl, $thumbnailMediaId] = $this->resolveThumbnail($item, $url, $entry['frameIds'], $rowsById);
 
             return [
-                'id' => (int) $item->id,
+                'id' => $item->id,
                 'mediaType' => $item->media_type?->value,
                 'role' => $item->media_role?->value,
                 'roleLabel' => $this->cameraLabel($item),
@@ -107,9 +107,9 @@ final class AssetMediaTool implements CopilotTool
                 'capturedAt' => $item->captured_at?->toIso8601String(),
                 'availability' => $item->availability_status?->value,
                 'eventType' => $event?->eventType?->name,
-                'eventHref' => $event ? CopilotPresenter::eventHref($context->teamSlug, (int) $event->id) : null,
+                'eventHref' => $event !== null ? CopilotPresenter::eventHref($context->teamSlug, $event->id) : null,
                 'incident' => $incident?->reference(),
-                'incidentHref' => $incident ? CopilotPresenter::incidentHref($context->teamSlug, (int) $incident->id) : null,
+                'incidentHref' => $incident !== null ? CopilotPresenter::incidentHref($context->teamSlug, $incident->id) : null,
                 'aiVerdict' => $verdict?->result?->value,
                 'aiVerdictLabel' => $verdict?->result?->label(),
                 'aiSummary' => $verdict?->summary_text,
@@ -124,19 +124,19 @@ final class AssetMediaTool implements CopilotTool
             label: 'Archivo de media',
             blocks: [[
                 'type' => 'media',
-                'assetId' => (int) $asset->id,
+                'assetId' => $asset->id,
                 'assetLabel' => $label,
                 'items' => $items,
-                'href' => CopilotPresenter::assetHref($context->teamSlug, (int) $asset->id),
+                'href' => CopilotPresenter::assetHref($context->teamSlug, $asset->id),
             ]],
             sources: array_values($media
                 ->filter(fn (EventMediaContext $m) => $m->normalizedEvent !== null)
                 ->unique('normalized_event_id')
                 ->map(fn (EventMediaContext $m) => [
                     'kind' => 'event',
-                    'id' => (int) $m->normalized_event_id,
+                    'id' => $m->normalized_event_id,
                     'label' => ($m->normalizedEvent->eventType?->name ?? 'Evento').' · '.$m->captured_at?->format('d/m H:i'),
-                    'href' => CopilotPresenter::eventHref($context->teamSlug, (int) $m->normalized_event_id),
+                    'href' => CopilotPresenter::eventHref($context->teamSlug, $m->normalized_event_id),
                 ])
                 ->all()),
             facts: [
@@ -164,10 +164,12 @@ final class AssetMediaTool implements CopilotTool
             ],
             highlights: array_filter([
                 "La media más reciente de {$label} es {$kind}"
-                    .($latest['eventType'] ? " del evento «{$latest['eventType']}»" : '')
-                    .($latest['incident'] ? " ({$latest['incident']})" : '')
+                    // Nombres de tipo de evento y resúmenes de IA nunca son '0':
+                    // sólo null/'' se omiten. La referencia de incidente nunca es vacía.
+                    .($latest['eventType'] !== null && $latest['eventType'] !== '' ? " del evento «{$latest['eventType']}»" : '')
+                    .($latest['incident'] !== null ? " ({$latest['incident']})" : '')
                     .', '.CopilotPresenter::describeAge($latest['capturedAt']).'.',
-                $latest['aiSummary'] ? 'Lo que la IA vio: '.$latest['aiSummary'] : null,
+                $latest['aiSummary'] !== null && $latest['aiSummary'] !== '' ? 'Lo que la IA vio: '.$latest['aiSummary'] : null,
             ]),
         );
     }
@@ -192,7 +194,7 @@ final class AssetMediaTool implements CopilotTool
         $frame = $rowsById->get($frameIds[0]);
         $frameUrl = $frame instanceof EventMediaContext ? $this->urls->url($frame) : null;
 
-        return $frameUrl !== null ? [$frameUrl, (int) $frame->id] : [null, null];
+        return $frameUrl !== null ? [$frameUrl, $frame->id] : [null, null];
     }
 
     /**
@@ -204,7 +206,7 @@ final class AssetMediaTool implements CopilotTool
         $files = [];
 
         foreach ($entries as $entry) {
-            $files[(int) $entry['media']->id] = [(int) $entry['media']->id, ...$entry['frameIds']];
+            $files[$entry['media']->id] = [$entry['media']->id, ...$entry['frameIds']];
         }
 
         return MediaFileVerdicts::forFiles(

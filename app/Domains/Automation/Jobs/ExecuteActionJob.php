@@ -140,7 +140,7 @@ class ExecuteActionJob implements ShouldQueue
     private function linkedIncidentId(ActionExecution $execution): ?int
     {
         if ($execution->incident_id !== null) {
-            return (int) $execution->incident_id;
+            return $execution->incident_id;
         }
 
         $sourceType = $execution->source_type;

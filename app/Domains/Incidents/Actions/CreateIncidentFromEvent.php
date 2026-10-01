@@ -90,7 +90,7 @@ class CreateIncidentFromEvent
     private function createOrLink(NormalizedEvent $event, array $context, IncidentType $incidentType): Incident
     {
         return DB::transaction(function () use ($event, $context, $incidentType) {
-            $teamId = (int) $event->team_id;
+            $teamId = $event->team_id;
             $resolved = $this->resolvePriority($context['priority_code'] ?? null, $incidentType);
             $priority = $resolved['priority'];
 
@@ -102,7 +102,7 @@ class CreateIncidentFromEvent
                     'requested_found' => $resolved['requested_found'],
                     'type_default_priority_id' => $incidentType->default_priority_id,
                 ],
-                result: ['priority_code' => $priority->code, 'priority_level' => (int) $priority->level],
+                result: ['priority_code' => $priority->code, 'priority_level' => $priority->level],
             );
 
             // Solo se deduplica contra un incidente abierto DEL MISMO TIPO: un
@@ -326,7 +326,7 @@ class CreateIncidentFromEvent
                     'status_code' => $fresh->status?->code,
                     'asset_id' => $fresh->asset_id,
                     'driver_id' => $fresh->driver_id,
-                    'usage_event_key' => RecordIncidentWorkflowUsage::eventKey((int) $fresh->id),
+                    'usage_event_key' => RecordIncidentWorkflowUsage::eventKey($fresh->id),
                     'usage_recorded' => $usageRecorded,
                 ],
             ];
@@ -405,12 +405,12 @@ class CreateIncidentFromEvent
         $outcome = [
             'raised' => false,
             'previous_priority_code' => $current?->code,
-            'previous_level' => $current !== null ? (int) $current->level : null,
+            'previous_level' => $current?->level,
             'candidate_priority_code' => $candidate->code,
-            'candidate_level' => (int) $candidate->level,
+            'candidate_level' => $candidate->level,
         ];
 
-        if ($current !== null && (int) $candidate->level <= (int) $current->level) {
+        if ($current !== null && $candidate->level <= $current->level) {
             return $outcome;
         }
 
@@ -561,7 +561,7 @@ class CreateIncidentFromEvent
 
     private function dedupLockKey(NormalizedEvent $event, IncidentType $incidentType): ?string
     {
-        $teamId = (int) $event->team_id;
+        $teamId = $event->team_id;
 
         if ($this->isDeviceOffline($event)) {
             return "incident_dedup:{$teamId}:{$incidentType->id}:offline_burst";
@@ -611,13 +611,17 @@ class CreateIncidentFromEvent
 
         $eventTypeCode = $eventType?->code;
 
-        $candidates = array_values(array_unique(array_filter([
-            $code,
-            $eventTypeCode,
-            self::aliasFor($eventTypeCode)?->value,
-            self::categoryBucketFor($eventType?->category?->code)?->value,
-            IncidentTypeCode::Other->value,
-        ])));
+        // Mismo descarte que el array_filter sin callback sobre ?string.
+        $candidates = array_values(array_unique(array_filter(
+            [
+                $code,
+                $eventTypeCode,
+                self::aliasFor($eventTypeCode)?->value,
+                self::categoryBucketFor($eventType?->category?->code)?->value,
+                IncidentTypeCode::Other->value,
+            ],
+            fn (?string $candidate): bool => $candidate !== null && $candidate !== '' && $candidate !== '0',
+        )));
 
         $tried = [];
 
@@ -718,7 +722,9 @@ class CreateIncidentFromEvent
             ? $event->eventType
             : $event->eventType()->first();
 
-        $label = $eventType?->name ?: $typeName;
+        // Sin tipo o con nombre vacío ('' o '0', como el `?:` original) cae al bucket.
+        $eventTypeName = $eventType?->name;
+        $label = $eventTypeName !== null && $eventTypeName !== '' && $eventTypeName !== '0' ? $eventTypeName : $typeName;
 
         if ($event->asset_id === null) {
             return $label;
@@ -749,7 +755,7 @@ class CreateIncidentFromEvent
                 incident: $incident,
                 evidenceType: EvidenceType::EventSnapshot,
                 sourceType: EvidenceSourceType::EventContext,
-                sourceReferenceId: (int) $contextSnapshot->id,
+                sourceReferenceId: $contextSnapshot->id,
                 title: 'Instantánea de contexto del evento',
                 metadata: [
                     'context_version' => $contextSnapshot->context_version,
@@ -768,7 +774,7 @@ class CreateIncidentFromEvent
                 incident: $incident,
                 evidenceType: EvidenceType::AiExplanation,
                 sourceType: EvidenceSourceType::AiEvaluation,
-                sourceReferenceId: (int) $aiEvaluation->id,
+                sourceReferenceId: $aiEvaluation->id,
                 title: 'Explicación de la evaluación de IA',
                 description: $aiEvaluation->explanation_text,
                 metadata: [

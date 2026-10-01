@@ -231,8 +231,8 @@ class DecisionConditionCatalog
             ->orderBy('name')
             ->get(['code', 'name'])
             ->map(fn (EventType $type) => [
-                'value' => (string) $type->code,
-                'label' => (string) ($type->name ?? $type->code),
+                'value' => $type->code,
+                'label' => $type->name,
             ])
             ->all();
     }

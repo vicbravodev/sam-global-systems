@@ -16,14 +16,14 @@ class ReportExecutionPolicy
     {
         $team = currentTeam();
 
-        return $team && $this->authorizeAction->execute($user, 'reports.view', $team);
+        return $team !== null && $this->authorizeAction->execute($user, 'reports.view', $team);
     }
 
     public function view(User $user, ReportExecution $execution): bool
     {
         $team = currentTeam();
 
-        return $team
+        return $team !== null
             && $execution->team_id === $team->id
             && $this->authorizeAction->execute($user, 'reports.view', $team);
     }
@@ -32,7 +32,7 @@ class ReportExecutionPolicy
     {
         $team = currentTeam();
 
-        return $team
+        return $team !== null
             && $execution->team_id === $team->id
             && $this->authorizeAction->execute($user, 'reports.export', $team);
     }

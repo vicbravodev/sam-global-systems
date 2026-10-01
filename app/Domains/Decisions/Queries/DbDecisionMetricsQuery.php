@@ -20,11 +20,11 @@ class DbDecisionMetricsQuery implements DecisionMetricsQuery
         return TenantContext::for($teamId, function () use ($from, $to) {
             $base = Decision::query()->whereBetween('decided_at', [$from, $to]);
 
-            $total = (int) (clone $base)->count();
-            $humanReviewed = (int) (clone $base)->where('requires_human_review', true)->count();
-            $autoResolved = (int) (clone $base)->where('is_automated', true)->count();
+            $total = (clone $base)->count();
+            $humanReviewed = (clone $base)->where('requires_human_review', true)->count();
+            $autoResolved = (clone $base)->where('is_automated', true)->count();
 
-            $humanOverrides = (int) DecisionOverride::query()
+            $humanOverrides = DecisionOverride::query()
                 ->whereIn(
                     'decision_id',
                     Decision::query()

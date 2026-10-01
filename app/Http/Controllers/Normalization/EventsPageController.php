@@ -216,7 +216,7 @@ class EventsPageController extends Controller
         $description = $payload['description'] ?? null;
 
         return [
-            'id' => (int) $event->id,
+            'id' => $event->id,
             'occurredAt' => $event->occurred_at?->toIso8601String(),
             'status' => $event->status->value,
             'statusLabel' => self::STATUS_LABELS[$event->status->value],
@@ -228,9 +228,9 @@ class EventsPageController extends Controller
             'severityLabel' => $event->eventSeverity?->label,
             'severityColor' => $event->eventSeverity?->color,
             'asset' => $event->asset?->name,
-            'assetId' => $event->asset_id !== null ? (int) $event->asset_id : null,
+            'assetId' => $event->asset_id,
             'driver' => $event->driver?->full_name,
-            'driverId' => $event->driver_id !== null ? (int) $event->driver_id : null,
+            'driverId' => $event->driver_id,
             'provider' => $event->provider?->name,
             // Provider-side description when it says more than the type name
             // (e.g. the Samsara behavior label). Null when it merely repeats it.
@@ -253,7 +253,7 @@ class EventsPageController extends Controller
             'payload' => $event->payload_normalized_json,
             'context' => $this->context($event),
             'rawPayload' => $event->rawEvent?->payload_json,
-            'rawEventId' => (int) $event->raw_event_id,
+            'rawEventId' => $event->raw_event_id,
             'facts' => $this->facts($event),
         ];
     }
@@ -289,7 +289,7 @@ class EventsPageController extends Controller
             'signals' => $snapshot->signals_json,
         ], fn ($value) => $value !== null && $value !== []);
 
-        return $context === [] ? null : ['version' => (int) $snapshot->context_version] + $context;
+        return $context === [] ? null : ['version' => $snapshot->context_version] + $context;
     }
 
     /**
@@ -368,8 +368,8 @@ class EventsPageController extends Controller
 
         if ($isPlaceholder) {
             return [
-                'id' => (int) $evaluation->id,
-                'version' => (int) $evaluation->evaluation_version,
+                'id' => $evaluation->id,
+                'version' => $evaluation->evaluation_version,
                 'isPlaceholder' => true,
                 'placeholderLabel' => PlaceholderEvaluation::LABEL,
                 'classification' => null,
@@ -387,18 +387,18 @@ class EventsPageController extends Controller
         }
 
         return [
-            'id' => (int) $evaluation->id,
-            'version' => (int) $evaluation->evaluation_version,
+            'id' => $evaluation->id,
+            'version' => $evaluation->evaluation_version,
             'isPlaceholder' => false,
             'placeholderLabel' => null,
             'classification' => $evaluation->classification?->value,
             'classificationLabel' => $evaluation->classification?->label(),
-            'confidenceScore' => $evaluation->confidence_score !== null ? (float) $evaluation->confidence_score : null,
-            'riskScore' => $evaluation->risk_score !== null ? (float) $evaluation->risk_score : null,
+            'confidenceScore' => $evaluation->confidence_score,
+            'riskScore' => $evaluation->risk_score,
             'priorityLevel' => $evaluation->priority_level?->value,
             'mode' => $evaluation->evaluation_mode?->value,
-            'isRealEvent' => $evaluation->is_real_event !== null ? (bool) $evaluation->is_real_event : null,
-            'requiresAction' => (bool) $evaluation->requires_action,
+            'isRealEvent' => $evaluation->is_real_event,
+            'requiresAction' => $evaluation->requires_action,
             'recommendedAction' => $evaluation->recommended_action,
             'explanation' => $evaluation->explanation_text,
             'evaluatedAt' => $evaluation->evaluated_at?->toIso8601String(),
@@ -420,12 +420,12 @@ class EventsPageController extends Controller
         }
 
         return [
-            'id' => (int) $decision->id,
+            'id' => $decision->id,
             'code' => $decision->decision_code,
             'outcomeLabel' => DecisionOutcomeCode::tryFrom($decision->decision_code)?->label() ?? $decision->decision_code,
             'reason' => $decision->decision_reason,
-            'requiresHumanReview' => (bool) $decision->requires_human_review,
-            'isAutomated' => (bool) $decision->is_automated,
+            'requiresHumanReview' => $decision->requires_human_review,
+            'isAutomated' => $decision->is_automated,
             'priorityLevel' => $decision->priority_level,
             'decidedAt' => $decision->decided_at?->toIso8601String(),
         ];
@@ -447,9 +447,9 @@ class EventsPageController extends Controller
         }
 
         return [
-            'id' => (int) $incident->id,
+            'id' => $incident->id,
             'reference' => $incident->reference(),
-            'title' => (string) $incident->title,
+            'title' => $incident->title,
             'status' => $incident->status?->code,
             'uiStatus' => IncidentStatusPresenter::forIncident($incident),
             'statusLabel' => IncidentStatusPresenter::labelForIncident($incident),
@@ -481,13 +481,13 @@ class EventsPageController extends Controller
                 }
 
                 return [
-                    'id' => (int) $media->id,
+                    'id' => $media->id,
                     'mediaType' => $media->media_type?->value,
                     'mediaRole' => $media->media_role?->value,
                     'url' => $url,
                     'thumbnailUrl' => $media->thumbnail_url,
                     'capturedAt' => $media->captured_at?->toIso8601String(),
-                    'durationSeconds' => $media->duration_seconds !== null ? (int) $media->duration_seconds : null,
+                    'durationSeconds' => $media->duration_seconds,
                 ];
             })
             ->all());
@@ -502,20 +502,20 @@ class EventsPageController extends Controller
             'eventTypes' => EventType::query()
                 ->orderBy('name')
                 ->get(['id', 'name'])
-                ->map(fn (EventType $type) => ['value' => (string) $type->id, 'label' => (string) $type->name])
+                ->map(fn (EventType $type) => ['value' => (string) $type->id, 'label' => $type->name])
                 ->all(),
             'categories' => EventCategory::query()
                 ->orderBy('name')
                 ->get(['id', 'name'])
-                ->map(fn (EventCategory $category) => ['value' => (string) $category->id, 'label' => (string) $category->name])
+                ->map(fn (EventCategory $category) => ['value' => (string) $category->id, 'label' => $category->name])
                 ->all(),
             'severities' => EventSeverity::query()
                 ->orderBy('level')
                 ->get(['id', 'code', 'label'])
                 ->map(fn (EventSeverity $severity) => [
                     'value' => (string) $severity->id,
-                    'label' => (string) ($severity->label ?? $severity->code),
-                    'code' => (string) $severity->code,
+                    'label' => $severity->label ?? $severity->code,
+                    'code' => $severity->code,
                 ])
                 ->all(),
             'statuses' => array_map(

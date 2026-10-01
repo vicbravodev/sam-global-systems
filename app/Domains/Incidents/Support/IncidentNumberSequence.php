@@ -26,7 +26,7 @@ final class IncidentNumberSequence
      */
     public static function next(int $teamId): int
     {
-        $number = (int) DB::transaction(function () use ($teamId): int {
+        $number = DB::transaction(function () use ($teamId): int {
             $current = DB::table('teams')
                 ->where('id', $teamId)
                 ->lock(DB::getDriverName() === 'pgsql' ? 'for no key update' : true)

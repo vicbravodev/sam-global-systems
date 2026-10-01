@@ -56,7 +56,7 @@ class TenantInvoiceController extends Controller
             ->exists());
 
         $logInput = [
-            'team_id' => (int) $team->id,
+            'team_id' => $team->id,
             'actor_user_id' => $request->user()?->id,
             'period_start' => $start,
             'period_end' => $end,
@@ -89,9 +89,9 @@ class TenantInvoiceController extends Controller
             action: 'tenant.invoice_generated',
             category: AuditCategory::Billing,
             entityType: Team::class,
-            entityId: (int) $team->id,
+            entityId: $team->id,
             summary: "Factura de {$periodStart->format('Y-m')} generada a demanda para {$team->name}.",
-            teamId: (int) $team->id,
+            teamId: $team->id,
             metadata: ['period_start' => $start, 'period_end' => $end],
         );
 
@@ -161,7 +161,7 @@ class TenantInvoiceController extends Controller
     private function logStatusChange(Request $request, Team $team, InvoiceSnapshot $invoice, string $from): void
     {
         $input = [
-            'team_id' => (int) $team->id,
+            'team_id' => $team->id,
             'invoice_id' => $invoice->id,
             'actor_user_id' => $request->user()?->id,
         ];

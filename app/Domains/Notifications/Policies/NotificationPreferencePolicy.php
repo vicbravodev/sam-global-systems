@@ -16,7 +16,7 @@ class NotificationPreferencePolicy
     {
         $team = currentTeam();
 
-        if (! $team) {
+        if ($team === null) {
             return false;
         }
 

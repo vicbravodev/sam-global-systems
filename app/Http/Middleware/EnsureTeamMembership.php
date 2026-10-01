@@ -25,8 +25,8 @@ class EnsureTeamMembership
         // support. We force-switch their current team to the one in the URL so
         // the BelongsToTenant global scope transparently scopes every query to
         // the impersonated tenant — no membership or role check applies.
-        if ($user?->isSuperAdmin() && $team) {
-            if ($request->route('current_team') && ! $user->isCurrentTeam($team)) {
+        if ($user?->isSuperAdmin() === true && $team !== null) {
+            if ($request->route('current_team') !== null && ! $user->isCurrentTeam($team)) {
                 $user->forceSwitchTeam($team);
             }
 
@@ -35,11 +35,11 @@ class EnsureTeamMembership
             return $next($request);
         }
 
-        abort_if(! $user || ! $team || ! $user->belongsToTeam($team), 403);
+        abort_if($user === null || $team === null || ! $user->belongsToTeam($team), 403);
 
         $this->ensureTeamMemberHasRequiredRole($user, $team, $minimumRole);
 
-        if ($request->route('current_team') && ! $user->isCurrentTeam($team)) {
+        if ($request->route('current_team') !== null && ! $user->isCurrentTeam($team)) {
             $user->switchTeam($team);
         }
 

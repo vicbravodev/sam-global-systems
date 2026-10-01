@@ -23,7 +23,7 @@ class EventMappingRulePolicy
     {
         $team = currentTeam();
 
-        return $team && $this->authorizeAction->execute($user, 'decisions.view', $team);
+        return $team !== null && $this->authorizeAction->execute($user, 'decisions.view', $team);
     }
 
     public function create(User $user): bool

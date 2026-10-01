@@ -14,7 +14,7 @@ class Membership extends Pivot
     /**
      * The table associated with the model.
      *
-     * @var string
+     * @var string|null
      */
     protected $table = 'team_members';
 

@@ -67,7 +67,7 @@ class AggregateUsageJob implements ShouldQueue
 
             $teamsQuery->select('teams.id')->chunkById(100, function ($teams) use (&$dispatched) {
                 foreach ($teams as $team) {
-                    self::dispatch((int) $team->id, $this->forMonth);
+                    self::dispatch($team->id, $this->forMonth);
                     $dispatched++;
                 }
             });
@@ -206,7 +206,7 @@ class AggregateUsageJob implements ShouldQueue
 
         $includedValue = 0;
         $billingRate = null;
-        if ($subscription) {
+        if ($subscription !== null) {
             $billingRate = BillingRate::where('plan_id', $subscription->plan_id)
                 ->where('usage_meter_id', $meter->id)
                 ->first();
@@ -251,7 +251,7 @@ class AggregateUsageJob implements ShouldQueue
                 UsageLimitExceeded::dispatch(
                     $team->id,
                     $meter->code,
-                    (int) $totalConsumed,
+                    $totalConsumed,
                     $includedValue,
                 );
             }
@@ -264,7 +264,7 @@ class AggregateUsageJob implements ShouldQueue
             calc: [
                 'aggregation_type' => $meter->aggregation_type->value,
                 'consumed' => $totalConsumed,
-                'included' => (int) $includedValue,
+                'included' => $includedValue,
                 'included_source' => $subscription === null ? 'no_subscription' : ($billingRate === null ? 'no_plan_rate' : 'plan_rate'),
                 'previous_overage' => $previousOverage,
                 'previous_counter_found' => $previousCounter !== null,
@@ -289,7 +289,7 @@ class AggregateUsageJob implements ShouldQueue
         CarbonInterface $periodStart,
         CarbonInterface $periodEnd,
     ): bool {
-        if (! $previousCounter) {
+        if ($previousCounter === null) {
             return false;
         }
 
@@ -304,7 +304,7 @@ class AggregateUsageJob implements ShouldQueue
             UsageUpdatedBroadcast::dispatch(
                 $team->id,
                 $meter->code,
-                (int) $totalConsumed,
+                $totalConsumed,
                 $includedValue,
                 $overageValue,
                 $periodStart->toDateString(),

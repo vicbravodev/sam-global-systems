@@ -79,7 +79,7 @@ final class RankAssetsTool implements CopilotTool
 
         if (in_array($metric, self::COUNT_METRICS, true)) {
             // A unit without rows had zero of them: it belongs in the ranking.
-            $values = $ids->mapWithKeys(fn (int $id) => [$id => (float) $values->get($id, 0.0)]);
+            $values = $ids->mapWithKeys(fn (int $id) => [$id => $values->get($id, 0.0)]);
             $withoutData = 0;
             $emptyText = "Ninguna unidad registró {$meta['label']} en {$period->label}.";
             $isEmpty = $values->sum() <= 0;
@@ -121,7 +121,7 @@ final class RankAssetsTool implements CopilotTool
             $items[] = [
                 'assetId' => $id,
                 'code' => $asset->code,
-                'name' => (string) $asset->name,
+                'name' => $asset->name,
                 'value' => round($value, 2),
                 'outlier' => $std > 0 && $value > $avg + 1.5 * $std,
                 'href' => CopilotPresenter::assetHref($context->teamSlug, $id),
@@ -158,7 +158,7 @@ final class RankAssetsTool implements CopilotTool
             sources: array_map(fn (array $i) => [
                 'kind' => 'asset',
                 'id' => $i['assetId'],
-                'label' => (string) ($i['code'] ?? $i['name']),
+                'label' => $i['code'] ?? $i['name'],
                 'href' => $i['href'],
             ], $items),
             facts: [

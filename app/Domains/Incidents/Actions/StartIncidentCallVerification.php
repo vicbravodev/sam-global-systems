@@ -119,10 +119,15 @@ class StartIncidentCallVerification
 
             // Una cadena anterior sin lista guardada (intentos previos a esta
             // versión) conserva su número como primer destinatario.
-            $candidates = array_values(array_unique(array_filter([
-                $existing?->phone,
-                ...$this->uniquePhones($this->flattenCandidates($bySource)),
-            ])));
+            // Mismo descarte que el array_filter sin callback sobre ?string
+            // (null, '' y '0'; ningún teléfono E.164 es '0').
+            $candidates = array_values(array_unique(array_filter(
+                [
+                    $existing?->phone,
+                    ...$this->uniquePhones($this->flattenCandidates($bySource)),
+                ],
+                fn (?string $phone): bool => $phone !== null && $phone !== '' && $phone !== '0',
+            )));
         }
 
         if ($candidates === []) {
@@ -197,7 +202,7 @@ class StartIncidentCallVerification
     public function attemptBudgetTerms(IncidentCallVerification $verification): array
     {
         $configured = max(1, (int) $this->tenantConfig->resolve(
-            (int) $verification->team_id,
+            $verification->team_id,
             self::SETTING_ATTEMPTS,
             self::DEFAULT_ATTEMPTS,
         ));
@@ -233,7 +238,7 @@ class StartIncidentCallVerification
      */
     public function resolveCandidatesBySource(Incident $incident): array
     {
-        $teamId = (int) $incident->team_id;
+        $teamId = $incident->team_id;
         $bySource = ['driver' => [], 'verification_contacts' => [], 'escalation_steps' => [], 'supervisors' => []];
 
         foreach ($this->driverPhones($incident) as $phone) {
@@ -249,7 +254,7 @@ class StartIncidentCallVerification
             ->where('is_active', true)
             ->first();
 
-        foreach ((array) ($config?->steps_json ?? []) as $step) {
+        foreach ($config?->steps_json ?? [] as $step) {
             foreach ((array) (is_array($step) ? ($step['contacts'] ?? []) : []) as $contact) {
                 $bySource['escalation_steps'][] = is_string($contact) ? PhoneNumber::normalize($contact) : null;
             }

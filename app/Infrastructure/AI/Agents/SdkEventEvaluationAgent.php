@@ -38,7 +38,7 @@ class SdkEventEvaluationAgent implements EventEvaluationAgent
             throw new RuntimeException('Laravel AI SDK invocation failed: '.$exception->getMessage(), previous: $exception);
         }
 
-        $latencyMs = (int) intdiv(hrtime(true) - $startedAt, 1_000_000);
+        $latencyMs = intdiv(hrtime(true) - $startedAt, 1_000_000);
 
         $structured = $this->parseStructuredResponse($response);
 
@@ -54,8 +54,8 @@ class SdkEventEvaluationAgent implements EventEvaluationAgent
             reasoningSteps: StructuredOutputParser::stringList($structured['reasoning_steps'] ?? []),
             keyFactors: StructuredOutputParser::keyValueMap($structured['key_factors'] ?? []),
             modelUsed: 'laravel-ai-sdk:'.($response->meta?->model ?? 'event-classifier'),
-            inputTokens: (int) $response->usage->inputTokens,
-            outputTokens: (int) $response->usage->outputTokens,
+            inputTokens: $response->usage->inputTokens,
+            outputTokens: $response->usage->outputTokens,
             latencyMs: $latencyMs,
             costEstimate: $this->pricing->estimateUsageCost(
                 $response->meta?->model,

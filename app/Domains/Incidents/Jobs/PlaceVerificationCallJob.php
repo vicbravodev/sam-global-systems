@@ -119,13 +119,13 @@ class PlaceVerificationCallJob implements ShouldQueue
         // Tenant suspendido/cancelado/expirado: la llamada de verificación de
         // una emergencia se hace IGUAL (decisión 2026-09-28: la persona va
         // primero que el cobro). Queda anotado para cobranza/soporte.
-        $blocked = TenantCanSend::blockedReason((int) $verification->team_id);
+        $blocked = TenantCanSend::blockedReason($verification->team_id);
 
         if ($blocked !== null) {
             SystemLog::degraded('incidents.call_verification.emergency_override', reason: 'tenant_blocked', input: ['verification_id' => $verification->id, 'team_id' => $verification->team_id, 'blocked_reason' => $blocked]);
         }
 
-        $channel = $this->resolveVoiceChannel((int) $verification->team_id);
+        $channel = $this->resolveVoiceChannel($verification->team_id);
         $config = PlatformTwilioConfig::resolve($channel?->config_json ?? [], ChannelType::Voice);
         $from = $config['from'];
 
@@ -191,17 +191,17 @@ class PlaceVerificationCallJob implements ShouldQueue
         // Cost of the call itself (Twilio price, cost-plus billing): the
         // reconciler fetches it once the call is over.
         $recordCharge->execute(
-            teamId: (int) $verification->team_id,
+            teamId: $verification->team_id,
             providerSid: (string) ($call->sid ?? ''),
             resourceType: MessagingResourceType::Call,
             sourceType: MessagingChargeSource::VerificationCall,
-            sourceId: (int) $verification->id,
+            sourceId: $verification->id,
             channelType: ChannelType::Voice,
             status: isset($call->status) ? (string) $call->status : null,
         );
 
         $configuredDelay = (int) $tenantConfig->resolve(
-            (int) $verification->team_id,
+            $verification->team_id,
             StartIncidentCallVerification::SETTING_RETRY_DELAY,
             StartIncidentCallVerification::DEFAULT_RETRY_DELAY_SECONDS,
         );
@@ -248,7 +248,7 @@ class PlaceVerificationCallJob implements ShouldQueue
         }
 
         $recordUsage->execute(
-            teamId: (int) $verification->team_id,
+            teamId: $verification->team_id,
             meterCode: self::USAGE_METER_CODE,
             quantity: 1,
             eventKey: "voice_call:{$verification->id}",

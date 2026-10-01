@@ -43,8 +43,8 @@ class IncidentAIVerdictController extends Controller
         $verdict = OperatorVerdict::from($validated['verdict']);
 
         $evaluation = $recordOperatorVerdict->execute(
-            teamId: (int) $incident->team_id,
-            normalizedEventId: (int) $incident->related_event_id,
+            teamId: $incident->team_id,
+            normalizedEventId: $incident->related_event_id,
             verdict: $verdict,
             userId: $user->id,
             note: $validated['note'] ?? null,

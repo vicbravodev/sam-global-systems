@@ -35,10 +35,10 @@ class RecordOperatorVerdictOnIncidentResolved
         }
 
         $this->recordOperatorVerdict->execute(
-            teamId: (int) $incident->team_id,
-            normalizedEventId: (int) $incident->related_event_id,
+            teamId: $incident->team_id,
+            normalizedEventId: $incident->related_event_id,
             verdict: OperatorVerdict::FalsePositive,
-            userId: $resolution->resolved_by_id !== null ? (int) $resolution->resolved_by_id : null,
+            userId: $resolution->resolved_by_id,
             note: $resolution->resolution_summary,
         );
     }

@@ -65,7 +65,7 @@ class RunDecisionEngineJob implements ShouldBeUnique, ShouldQueue
                 ->where('ai_evaluation_id', $eval->id)
                 ->value('id');
 
-            if ($existingId) {
+            if ($existingId !== null) {
                 SystemLog::skipped('decisions.decision.already_exists', reason: 'decision_exists', input: [
                     'ai_evaluation_id' => $eval->id,
                     'stage' => 'engine_job',

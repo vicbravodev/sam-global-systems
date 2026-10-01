@@ -32,7 +32,7 @@ final class DeliveryFeedbackPresenter
 
         return match ($delivery->status) {
             DeliveryStatus::Delivered => match (true) {
-                $isCall => 'Llamada contestada'.($delivery->call_duration_seconds ? ' · '.self::duration($delivery->call_duration_seconds) : ''),
+                $isCall => 'Llamada contestada'.($delivery->call_duration_seconds !== null && $delivery->call_duration_seconds !== 0 ? ' · '.self::duration($delivery->call_duration_seconds) : ''),
                 $delivery->read_at !== null => 'Leído',
                 default => 'Entregado',
             },

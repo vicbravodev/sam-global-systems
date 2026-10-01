@@ -31,7 +31,7 @@ class MemberRoleController extends Controller
         abort_if($membership->team_id !== $current_team->id, 404);
 
         $role = Role::query()
-            ->visibleToTeam((int) $current_team->id)
+            ->visibleToTeam($current_team->id)
             ->where('code', $request->validated('role_code'))
             ->firstOrFail();
 

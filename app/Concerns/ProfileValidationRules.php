@@ -5,7 +5,6 @@ namespace App\Concerns;
 use App\Models\User;
 use App\Rules\ValidE164Phone;
 use Closure;
-use Illuminate\Contracts\Validation\Rule as RuleContract;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Validation\Rule;
 use Stringable;
@@ -15,7 +14,7 @@ trait ProfileValidationRules
     /**
      * Get the validation rules used to validate user profiles.
      *
-     * @return array<string, array<int, ValidationRule|RuleContract|Stringable|Closure|array<mixed>|string>>
+     * @return array<string, array<int, ValidationRule|Stringable|Closure|array<mixed>|string>>
      */
     protected function profileRules(?int $userId = null): array
     {
@@ -29,7 +28,7 @@ trait ProfileValidationRules
     /**
      * Get the validation rules used to validate user names.
      *
-     * @return array<int, ValidationRule|RuleContract|Stringable|Closure|array<mixed>|string>
+     * @return array<int, ValidationRule|Stringable|Closure|array<mixed>|string>
      */
     protected function nameRules(): array
     {
@@ -39,7 +38,7 @@ trait ProfileValidationRules
     /**
      * Get the validation rules used to validate a user's phone (E.164).
      *
-     * @return array<int, ValidationRule|RuleContract|Stringable|Closure|array<mixed>|string>
+     * @return array<int, ValidationRule|Stringable|Closure|array<mixed>|string>
      */
     protected function phoneRules(): array
     {
@@ -49,7 +48,7 @@ trait ProfileValidationRules
     /**
      * Get the validation rules used to validate user emails.
      *
-     * @return array<int, ValidationRule|RuleContract|Stringable|Closure|array<mixed>|string>
+     * @return array<int, ValidationRule|Stringable|Closure|array<mixed>|string>
      */
     protected function emailRules(?int $userId = null): array
     {

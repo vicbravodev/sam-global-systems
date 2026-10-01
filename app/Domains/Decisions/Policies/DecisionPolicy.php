@@ -16,14 +16,14 @@ class DecisionPolicy
     {
         $team = currentTeam();
 
-        return $team && $this->authorizeAction->execute($user, 'decisions.view', $team);
+        return $team !== null && $this->authorizeAction->execute($user, 'decisions.view', $team);
     }
 
     public function view(User $user, Decision $decision): bool
     {
         $team = currentTeam();
 
-        return $team
+        return $team !== null
             && $decision->team_id === $team->id
             && $this->authorizeAction->execute($user, 'decisions.view', $team);
     }
@@ -32,7 +32,7 @@ class DecisionPolicy
     {
         $team = currentTeam();
 
-        return $team
+        return $team !== null
             && $decision->team_id === $team->id
             && $this->authorizeAction->execute($user, 'decisions.override', $team);
     }

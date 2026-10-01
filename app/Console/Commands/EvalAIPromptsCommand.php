@@ -74,7 +74,7 @@ class EvalAIPromptsCommand extends Command
 
         $carrierEventId = $this->option('event') !== null
             ? (int) $this->option('event')
-            : (int) (TenantContext::for($teamId ?: null, fn () => NormalizedEvent::query()
+            : (int) (TenantContext::for($teamId !== 0 ? $teamId : null, fn () => NormalizedEvent::query()
                 ->where('team_id', $teamId)
                 ->orderByDesc('id')
                 ->value('id')) ?? 0);
@@ -163,8 +163,8 @@ class EvalAIPromptsCommand extends Command
         DB::beginTransaction();
 
         try {
-            $result = TenantContext::for($teamId ?: null, fn () => $agent->evaluate($context));
-            $measured = (int) intdiv(hrtime(true) - $startedAt, 1_000_000);
+            $result = TenantContext::for($teamId !== 0 ? $teamId : null, fn () => $agent->evaluate($context));
+            $measured = intdiv(hrtime(true) - $startedAt, 1_000_000);
 
             return [
                 'result' => $result,
@@ -174,7 +174,7 @@ class EvalAIPromptsCommand extends Command
         } catch (Throwable $exception) {
             return [
                 'result' => null,
-                'latency_ms' => (int) intdiv(hrtime(true) - $startedAt, 1_000_000),
+                'latency_ms' => intdiv(hrtime(true) - $startedAt, 1_000_000),
                 'error' => $exception->getMessage(),
             ];
         } finally {
@@ -218,7 +218,7 @@ class EvalAIPromptsCommand extends Command
         foreach ($files as $file) {
             try {
                 /** @var array<string, mixed> $data */
-                $data = json_decode((string) File::get($file), true, flags: JSON_THROW_ON_ERROR);
+                $data = json_decode(File::get($file), true, flags: JSON_THROW_ON_ERROR);
             } catch (JsonException $exception) {
                 throw new InvalidArgumentException('JSON inválido en '.basename($file).': '.$exception->getMessage());
             }

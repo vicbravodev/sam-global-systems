@@ -17,7 +17,7 @@ class AnalyticsSnapshotController extends Controller
 
         $snapshotType = SnapshotType::tryFrom($type);
 
-        if (! $snapshotType) {
+        if ($snapshotType === null) {
             throw new NotFoundHttpException("Unknown snapshot type [{$type}]");
         }
 
@@ -26,7 +26,7 @@ class AnalyticsSnapshotController extends Controller
             ->orderByDesc('period_start')
             ->first();
 
-        if (! $snapshot) {
+        if ($snapshot === null) {
             return response()->json(['data' => null], 404);
         }
 

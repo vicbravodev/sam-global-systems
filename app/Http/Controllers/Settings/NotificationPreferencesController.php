@@ -46,13 +46,13 @@ class NotificationPreferencesController extends Controller
         return Inertia::render('settings/notifications', [
             'preferences' => $preferences
                 ->map(fn (NotificationPreference $preference) => [
-                    'id' => (int) $preference->id,
-                    'notificationType' => (string) $preference->notification_type,
+                    'id' => $preference->id,
+                    'notificationType' => $preference->notification_type,
                     'allowedChannels' => array_values(array_filter(
                         $preference->allowed_channels_json ?? [],
                         fn ($value) => is_string($value),
                     )),
-                    'muted' => (bool) $preference->muted,
+                    'muted' => $preference->muted,
                 ])
                 ->all(),
             'knownTypes' => $knownTypes = $this->knownTypes($preferences->pluck('notification_type')->all()),
@@ -95,7 +95,7 @@ class NotificationPreferencesController extends Controller
             'muted' => (bool) ($validated['muted'] ?? false),
         ];
 
-        if ($preference) {
+        if ($preference !== null) {
             $preference->update($payload);
         } else {
             NotificationPreference::query()->create($payload);

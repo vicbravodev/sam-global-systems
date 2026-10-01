@@ -25,14 +25,14 @@ class NotificationController extends Controller
 
         if ($request->filled('status')) {
             $status = NotificationStatus::tryFrom((string) $request->input('status'));
-            if ($status) {
+            if ($status !== null) {
                 $query->where('status', $status);
             }
         }
 
         if ($request->filled('priority')) {
             $priority = NotificationPriority::tryFrom((string) $request->input('priority'));
-            if ($priority) {
+            if ($priority !== null) {
                 $query->where('priority', $priority);
             }
         }

@@ -58,7 +58,7 @@ class HandleInertiaRequests extends Middleware
         $user = $request->user();
         // Team actual validado (membresía o super-admin): `current_team_id` es
         // sólo una preferencia y puede apuntar a un team del que ya no es miembro.
-        $team = fn () => $user ? currentTeam() : null;
+        $team = fn () => $user !== null ? currentTeam() : null;
 
         return [
             ...parent::share($request),
@@ -67,18 +67,18 @@ class HandleInertiaRequests extends Middleware
                 // Sin relaciones: resolver el team actual carga `currentTeam` en el
                 // modelo y no debe viajar al navegador (puede ser un team ajeno).
                 'user' => $user?->withoutRelations(),
-                'permissions' => fn () => $user
+                'permissions' => fn () => $user !== null
                     ? app(AuthorizeAction::class)->resolvePermissions($user, $team())
                     : [],
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
-            'currentTeam' => fn () => $user && ($current = $team()) ? $user->toUserTeam($current) : null,
+            'currentTeam' => fn () => $user !== null && ($current = $team()) !== null ? $user->toUserTeam($current) : null,
             'teams' => fn () => $user?->toUserTeams(includeCurrent: true) ?? [],
             // Surfaces the impersonation banner: a super-admin whose current team
             // is one they do NOT belong to is, by definition, impersonating it.
-            'impersonation' => fn () => $user
+            'impersonation' => fn () => $user !== null
                 && $user->isSuperAdmin()
-                && $user->currentTeam
+                && $user->currentTeam !== null
                 && ! $user->belongsToTeam($user->currentTeam)
                     ? ['active' => true, 'team' => [
                         'name' => $user->currentTeam->name,
@@ -87,13 +87,13 @@ class HandleInertiaRequests extends Middleware
                     : null,
             // Cross-tenant counters for the super-admin console badges. Only
             // resolved (and only queried) for the SaaS operator.
-            'adminBadges' => fn () => $user?->isSuperAdmin()
+            'adminBadges' => fn () => $user?->isSuperAdmin() === true
                 ? $this->adminBadges()
                 : null,
             // SAM Copilot availability for the sidebar entry and the floating
             // bubble. Resolved through AuthorizeAction so the tenant feature
             // flag and the subscription state are honoured, not just the role.
-            'copilot' => fn () => $user && ($current = $team())
+            'copilot' => fn () => $user !== null && ($current = $team()) !== null
                 ? [
                     'enabled' => app(AuthorizeAction::class)->execute($user, 'copilot.use', $current),
                     'canViewUsage' => app(AuthorizeAction::class)->execute($user, 'copilot.usage.view', $current),
@@ -102,23 +102,23 @@ class HandleInertiaRequests extends Middleware
             // Which workspace sections the user may open. Resolved through the
             // same policies the page controllers authorize with, so the
             // sidebar never links to a page that answers 403.
-            'nav' => fn () => $user && $team()
+            'nav' => fn () => $user !== null && $team() !== null
                 ? $this->navPermissions($user)
                 : null,
             // Canal de arranque del cliente (decisión 2026-09-28): si ningún
             // admin/supervisor tiene teléfono Y correo verificados, SAM no
             // tiene a quién avisar de una emergencia. Sólo se calcula para
             // quien puede arreglarlo (gestiona incidentes).
-            'tenantSetup' => fn () => $user && ($current = $team())
+            'tenantSetup' => fn () => $user !== null && ($current = $team()) !== null
                 && app(AuthorizeAction::class)->execute($user, 'incidents.manage', $current)
                     ? Cache::remember(
                         'tenant_setup:'.$current->id,
                         60,
-                        fn () => TenantContactReadiness::for((int) $current->id),
+                        fn () => TenantContactReadiness::for($current->id),
                     )
                     : null,
             // Tenant-scoped counters for the workspace sidebar badges.
-            'navBadges' => fn () => ($current = $team())
+            'navBadges' => fn () => ($current = $team()) !== null
                 ? $this->navBadges($current->id)
                 : null,
         ];

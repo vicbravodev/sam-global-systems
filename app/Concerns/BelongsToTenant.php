@@ -15,7 +15,10 @@ trait BelongsToTenant
         // usuario autenticado después, así que este scope también filtra en
         // colas, listeners y comandos — donde antes era un no-op. Ver §2.1.
         static::addGlobalScope('tenant', function (Builder $builder) {
-            if ($teamId = currentTeamId()) {
+            $teamId = currentTeamId();
+
+            // Misma truthiness que antes: null y 0 no son un tenant.
+            if ($teamId !== null && $teamId !== 0) {
                 $builder->where($builder->getModel()->getTable().'.team_id', $teamId);
             } elseif (CurrentTeamResolver::shouldFailClosed()) {
                 // Usuario autenticado sin team válido: fail closed, nunca un
@@ -25,8 +28,12 @@ trait BelongsToTenant
         });
 
         static::creating(function ($model) {
-            if (! $model->team_id && $teamId = currentTeamId()) {
-                $model->team_id = $teamId;
+            if (! $model->team_id) {
+                $teamId = currentTeamId();
+
+                if ($teamId !== null && $teamId !== 0) {
+                    $model->team_id = $teamId;
+                }
             }
         });
     }

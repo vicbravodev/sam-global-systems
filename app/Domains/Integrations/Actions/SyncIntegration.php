@@ -74,7 +74,7 @@ class SyncIntegration
         }
 
         TenantContext::for($integration->team_id, fn () => SystemLog::ok('assets.sync.completed', input: [
-            'team_id' => (int) $integration->team_id,
+            'team_id' => $integration->team_id,
             'integration_id' => $integration->id,
             'stage' => 'integration_sync',
         ], result: [

@@ -55,8 +55,10 @@ class WorkflowRunStats
                 $stats[(int) $workflowId] = [
                     'lastRunAt' => ($last?->executed_at ?? $last?->created_at)?->toIso8601String(),
                     'lastStatus' => $last?->status?->value,
-                    'runs30d' => (int) ($count->runs ?? 0),
-                    'failed30d' => (int) ($count->failed ?? 0),
+                    // Alias del selectRaw (no columnas del modelo); el driver
+                    // puede devolverlos como texto, de ahí el cast.
+                    'runs30d' => (int) ($count?->getAttribute('runs') ?? 0),
+                    'failed30d' => (int) ($count?->getAttribute('failed') ?? 0),
                 ];
             }
 

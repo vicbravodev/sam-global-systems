@@ -28,6 +28,17 @@ class CopilotConversation extends Model
     ];
 
     /**
+     * Los mismos defaults que la tabla, para que un hilo recién creado (sin
+     * refresh) no tenga null en columnas NOT NULL.
+     *
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'is_pinned' => false,
+        'messages_count' => 0,
+    ];
+
+    /**
      * @return BelongsTo<User, $this>
      */
     public function user(): BelongsTo

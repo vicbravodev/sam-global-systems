@@ -88,7 +88,7 @@ final class AssetEngineTool implements CopilotTool
             ->map(fn (AssetTelemetrySnapshot $s) => (float) ($s->data_json['value'] ?? 0))
             ->filter(fn (float $v) => $v > 0);
 
-        $distance = $odometerSeries->count() >= 2 ? round($odometerSeries->max() - $odometerSeries->min(), 1) : null;
+        $distance = $odometerSeries->count() >= 2 ? round((float) $odometerSeries->max() - (float) $odometerSeries->min(), 1) : null;
 
         $positions = AssetLocationSnapshot::query()
             ->where('asset_id', $asset->id)
@@ -107,7 +107,7 @@ final class AssetEngineTool implements CopilotTool
         $label = CopilotPresenter::assetLabel($asset);
         $stats = [
             ['label' => 'Recorrido', 'value' => $distance !== null ? number_format($distance, 1, '.', ',') : '—', 'unit' => $distance !== null ? 'km' : null, 'hint' => $context->period->label],
-            ['label' => 'Vel. máxima', 'value' => $maxSpeed !== null ? round((float) $maxSpeed) : '—', 'unit' => $maxSpeed !== null ? 'km/h' : null, 'tone' => $maxSpeed !== null && $maxSpeed > 100 ? 'high' : null],
+            ['label' => 'Vel. máxima', 'value' => $maxSpeed !== null ? round($maxSpeed) : '—', 'unit' => $maxSpeed !== null ? 'km/h' : null, 'tone' => $maxSpeed !== null && $maxSpeed > 100 ? 'high' : null],
             ['label' => 'Vel. promedio', 'value' => $avgSpeed ?? '—', 'unit' => $avgSpeed !== null ? 'km/h' : null, 'hint' => 'en movimiento'],
             ['label' => 'Lecturas > 100 km/h', 'value' => $overSpeed, 'tone' => $overSpeed > 0 ? 'high' : null],
         ];
@@ -130,7 +130,7 @@ final class AssetEngineTool implements CopilotTool
         $highlights = [];
         $ignition = collect($readings)->firstWhere('key', 'ignition');
 
-        if ($ignition) {
+        if ($ignition !== null) {
             $highlights[] = "Motor {$this->lower($ignition['value'])} (".CopilotPresenter::describeAge($ignition['recordedAt']).').';
         }
 
@@ -139,7 +139,7 @@ final class AssetEngineTool implements CopilotTool
         }
 
         if ($maxSpeed !== null) {
-            $highlights[] = 'Velocidad máxima registrada: '.round((float) $maxSpeed).' km/h'.($overSpeed > 0 ? " ({$overSpeed} lecturas sobre 100 km/h)." : '.');
+            $highlights[] = 'Velocidad máxima registrada: '.round($maxSpeed).' km/h'.($overSpeed > 0 ? " ({$overSpeed} lecturas sobre 100 km/h)." : '.');
         }
 
         if ($idle->hours > 0) {

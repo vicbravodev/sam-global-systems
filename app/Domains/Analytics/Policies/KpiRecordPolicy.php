@@ -16,14 +16,14 @@ class KpiRecordPolicy
     {
         $team = currentTeam();
 
-        return $team && $this->authorizeAction->execute($user, 'reports.view', $team);
+        return $team !== null && $this->authorizeAction->execute($user, 'reports.view', $team);
     }
 
     public function view(User $user, KpiRecord $kpi): bool
     {
         $team = currentTeam();
 
-        return $team
+        return $team !== null
             && $kpi->team_id === $team->id
             && $this->authorizeAction->execute($user, 'reports.view', $team);
     }
@@ -32,6 +32,6 @@ class KpiRecordPolicy
     {
         $team = currentTeam();
 
-        return $team && $this->authorizeAction->execute($user, 'ai.analysis.view', $team);
+        return $team !== null && $this->authorizeAction->execute($user, 'ai.analysis.view', $team);
     }
 }

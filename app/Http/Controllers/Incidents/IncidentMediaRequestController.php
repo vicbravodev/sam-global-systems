@@ -44,13 +44,13 @@ class IncidentMediaRequestController extends Controller
 
         // Footage past the device retention window is gone: refuse up front
         // instead of queueing a request that is guaranteed to fail.
-        $expired = MediaRetrievalWindow::expiredReason((int) $incident->team_id, $event->occurred_at);
+        $expired = MediaRetrievalWindow::expiredReason($incident->team_id, $event->occurred_at);
         abort_if($expired !== null, 422, $expired ?? '');
 
         $mediaRequest = $action->execute($event, $type);
 
         return response()->json(['data' => [
-            'id' => (int) $mediaRequest->id,
+            'id' => $mediaRequest->id,
             'status' => $mediaRequest->status?->value,
             'requestType' => $mediaRequest->request_type?->value,
         ]], 202);

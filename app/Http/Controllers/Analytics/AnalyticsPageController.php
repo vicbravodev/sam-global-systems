@@ -95,7 +95,7 @@ class AnalyticsPageController extends Controller
                 ->orderBy('name')
                 ->get()
                 ->map(fn (ReportDefinition $report): array => [
-                    'id' => (int) $report->id,
+                    'id' => $report->id,
                     'code' => $report->code,
                     'name' => $report->name,
                     'description' => $report->description,
@@ -110,8 +110,8 @@ class AnalyticsPageController extends Controller
                 ->limit(20)
                 ->get()
                 ->map(fn (ReportExecution $execution): array => [
-                    'id' => (int) $execution->id,
-                    'reportId' => (int) $execution->report_definition_id,
+                    'id' => $execution->id,
+                    'reportId' => $execution->report_definition_id,
                     'reportName' => $execution->definition?->name,
                     'status' => $execution->status?->value,
                     'format' => $execution->output_format->value,
@@ -141,12 +141,14 @@ class AnalyticsPageController extends Controller
             ->orderBy('period_start')
             ->get(['kpi_code', 'value', 'unit', 'period_start']);
 
-        // Recalculations can leave several rows per day: keep the last.
-        /** @var Collection<string, Collection<string, KpiRecord>> $byCode */
-        $byCode = $records
-            ->groupBy('kpi_code')
-            ->map(fn (Collection $rows): Collection => $rows
-                ->keyBy(fn (KpiRecord $row) => $row->period_start?->toDateString()));
+        // Recalculations can leave several rows per day: keep the last
+        // (rows come ordered by period_start, so a later one overwrites).
+        $grouped = [];
+        foreach ($records as $row) {
+            $grouped[$row->kpi_code][$row->period_start->toDateString()] = $row;
+        }
+
+        $byCode = collect($grouped)->map(fn (array $rows): Collection => collect($rows));
 
         $fromDate = $from->toDateString();
 
@@ -184,7 +186,7 @@ class AnalyticsPageController extends Controller
                     'series' => $current
                         ->map(fn (KpiRecord $row, string $date): array => [
                             'date' => $date,
-                            'value' => (float) $row->value,
+                            'value' => $row->value,
                         ])
                         ->values()
                         ->all(),
@@ -222,7 +224,7 @@ class AnalyticsPageController extends Controller
             return null;
         }
 
-        $values = $daily->map(fn (KpiRecord $row): float => (float) $row->value);
+        $values = $daily->map(fn (KpiRecord $row): float => $row->value);
 
         return match ($aggregation) {
             'latest' => $values->last(),
@@ -230,7 +232,7 @@ class AnalyticsPageController extends Controller
             default => $weights === null
                 ? round((float) $values->avg(), 4)
                 : round(
-                    $daily->sum(fn (KpiRecord $row, string $date): float => (float) $row->value * $this->weightOn($weights, $date))
+                    $daily->sum(fn (KpiRecord $row, string $date): float => $row->value * $this->weightOn($weights, $date))
                         / $daily->keys()->sum(fn (string $date): float => $this->weightOn($weights, $date)),
                     4,
                 ),

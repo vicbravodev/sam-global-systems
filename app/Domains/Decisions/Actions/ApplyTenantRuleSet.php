@@ -124,7 +124,7 @@ class ApplyTenantRuleSet
             ->where('is_default', true)
             ->first();
 
-        if ($tenantSet) {
+        if ($tenantSet !== null) {
             return $tenantSet;
         }
 

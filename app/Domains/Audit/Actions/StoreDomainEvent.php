@@ -31,7 +31,7 @@ class StoreDomainEvent
         $log->aggregate_type = $aggregateType;
         $log->aggregate_id = $aggregateId;
         $log->payload_json = $payloadJson;
-        $log->occurred_at = $occurredAt ? CarbonImmutable::instance($occurredAt) : CarbonImmutable::now();
+        $log->occurred_at = $occurredAt !== null ? CarbonImmutable::instance($occurredAt) : CarbonImmutable::now();
         $log->correlation_id = $correlationId;
         $log->causation_id = $causationId;
         $log->save();

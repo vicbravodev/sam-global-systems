@@ -54,9 +54,9 @@ class CopilotCatalog
                 ->limit(self::ASSETS_LIMIT)
                 ->get(['id', 'team_id', 'code', 'name', 'status', 'asset_type_id'])
                 ->map(fn (Asset $asset) => [
-                    'id' => (int) $asset->id,
+                    'id' => $asset->id,
                     'code' => $asset->code,
-                    'name' => (string) $asset->name,
+                    'name' => $asset->name,
                     'category' => $asset->assetType?->category->value,
                     'status' => $asset->status->value,
                 ])

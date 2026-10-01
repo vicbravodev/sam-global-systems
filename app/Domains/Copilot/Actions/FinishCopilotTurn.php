@@ -37,8 +37,9 @@ class FinishCopilotTurn
         $tools = $collector->tools();
         $blocks = $collector->blocks();
         $followups = $collector->followupList();
+        $factsDigest = $collector->factsDigest();
 
-        $reply = DB::transaction(function () use ($turn, $outcome, $latencyMs, $cost, $collector, $tools, $blocks, $followups): CopilotMessage {
+        $reply = DB::transaction(function () use ($turn, $outcome, $latencyMs, $cost, $collector, $tools, $blocks, $followups, $factsDigest): CopilotMessage {
             $reply = CopilotMessage::query()->create([
                 'team_id' => $turn->team->id,
                 'copilot_conversation_id' => $turn->conversation->id,
@@ -49,10 +50,11 @@ class FinishCopilotTurn
                 'channel' => $turn->channel,
                 'context_json' => array_filter([
                     'resolved' => ['asset_id' => $collector->lastAssetId()],
-                    'facts_digest' => $collector->factsDigest() ?: null,
-                    'followups' => $followups ?: null,
+                    // El digest siempre es "herramienta: ..." o vacío: nunca '0'.
+                    'facts_digest' => $factsDigest !== '' ? $factsDigest : null,
+                    'followups' => $followups !== [] ? $followups : null,
                     'mode' => $outcome->mode,
-                    'partial' => $outcome->partial ?: null,
+                    'partial' => $outcome->partial ? true : null,
                 ], fn ($value) => $value !== null),
                 'blocks_json' => $blocks,
                 'tools_json' => $tools,
@@ -76,12 +78,12 @@ class FinishCopilotTurn
 
         $this->audit->execute(
             actorType: AuditActorType::User,
-            actorId: (int) $turn->user->id,
+            actorId: $turn->user->id,
             action: 'copilot.query',
             category: AuditCategory::Ai,
             entityType: CopilotMessage::class,
-            entityId: (int) $reply->id,
-            summary: 'Consulta a SAM Copilot: '.Str::limit((string) $turn->question->content, 120),
+            entityId: $reply->id,
+            summary: 'Consulta a SAM Copilot: '.Str::limit($turn->question->content, 120),
             teamId: $turn->team->id,
             metadata: [
                 'intent' => $outcome->intent->value,

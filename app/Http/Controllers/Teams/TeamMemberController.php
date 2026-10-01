@@ -66,7 +66,7 @@ class TeamMemberController extends Controller
 
             $user->switchAwayFrom($team);
 
-            $authorizeAction->invalidateCache((int) $user->id, (int) $team->id);
+            $authorizeAction->invalidateCache($user->id, $team->id);
         });
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Member removed.')]);

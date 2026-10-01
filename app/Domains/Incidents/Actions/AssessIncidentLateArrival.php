@@ -59,12 +59,12 @@ class AssessIncidentLateArrival
             return ['late' => false, 'reason' => 'within_threshold', 'calc' => $calc, 'notice' => null];
         }
 
-        $teamId = (int) $event->team_id;
+        $teamId = $event->team_id;
         [$timezone, $timezoneSource] = $this->timezone($teamId, $opened);
 
         $raw = RawEvent::query()->where('team_id', $teamId)->whereKey($event->raw_event_id)->first();
 
-        $reprocessAttempts = (int) ($raw?->reprocess_attempts ?? 0);
+        $reprocessAttempts = $raw?->reprocess_attempts ?? 0;
         $receivedAt = $raw?->received_at !== null ? CarbonImmutable::instance($raw->received_at) : null;
         $receiveDelaySeconds = $receivedAt !== null ? (int) $occurred->diffInSeconds($receivedAt, false) : null;
 

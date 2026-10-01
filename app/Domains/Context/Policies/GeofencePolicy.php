@@ -16,14 +16,14 @@ class GeofencePolicy
     {
         $team = currentTeam();
 
-        return $team && $this->authorizeAction->execute($user, 'geofences.view', $team);
+        return $team !== null && $this->authorizeAction->execute($user, 'geofences.view', $team);
     }
 
     public function view(User $user, Geofence $geofence): bool
     {
         $team = currentTeam();
 
-        return $team
+        return $team !== null
             && $geofence->team_id === $team->id
             && $this->authorizeAction->execute($user, 'geofences.view', $team);
     }
@@ -32,14 +32,14 @@ class GeofencePolicy
     {
         $team = currentTeam();
 
-        return $team && $this->authorizeAction->execute($user, 'geofences.manage', $team);
+        return $team !== null && $this->authorizeAction->execute($user, 'geofences.manage', $team);
     }
 
     public function update(User $user, Geofence $geofence): bool
     {
         $team = currentTeam();
 
-        return $team
+        return $team !== null
             && $geofence->team_id === $team->id
             && $this->authorizeAction->execute($user, 'geofences.manage', $team);
     }
@@ -48,7 +48,7 @@ class GeofencePolicy
     {
         $team = currentTeam();
 
-        return $team
+        return $team !== null
             && $geofence->team_id === $team->id
             && $this->authorizeAction->execute($user, 'geofences.manage', $team);
     }

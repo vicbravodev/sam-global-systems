@@ -16,8 +16,9 @@ class ResolveEventSeverity
     {
         // Las FK de severidad son nullOnDelete: si la fila no carga, la cascada
         // sigue al siguiente nivel en vez de reventar.
-        $ruleSeverity = $rule->mapped_severity_id ? $rule->mappedSeverity : null;
-        $typeSeverity = $ruleSeverity === null && $type->default_severity_id ? $type->defaultSeverity : null;
+        // Son FK a event_severities.id (secuencia desde 1): nunca valen 0.
+        $ruleSeverity = $rule->mapped_severity_id !== null ? $rule->mappedSeverity : null;
+        $typeSeverity = $ruleSeverity === null && $type->default_severity_id !== null ? $type->defaultSeverity : null;
 
         if ($ruleSeverity !== null) {
             $source = 'rule_override';

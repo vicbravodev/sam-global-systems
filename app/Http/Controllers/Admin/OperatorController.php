@@ -32,9 +32,9 @@ class OperatorController extends Controller
             ->orderBy('name')
             ->get(['id', 'name', 'email'])
             ->map(fn (User $user) => [
-                'id' => (int) $user->id,
-                'name' => (string) $user->name,
-                'email' => (string) $user->email,
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
             ])->values()->all();
 
         return Inertia::render('admin/operators/index', [
@@ -101,11 +101,11 @@ class OperatorController extends Controller
     {
         $this->audit->execute(
             actorType: AuditActorType::User,
-            actorId: (int) $actor->id,
+            actorId: $actor->id,
             action: $action,
             category: AuditCategory::Security,
             entityType: User::class,
-            entityId: (int) $target->id,
+            entityId: $target->id,
             summary: $summary,
             metadata: ['actor_email' => $actor->email, 'target_email' => $target->email],
             signature: $action.':'.$target->id.':'.Str::uuid()->toString(),

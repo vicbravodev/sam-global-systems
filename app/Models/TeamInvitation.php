@@ -25,7 +25,8 @@ class TeamInvitation extends Model
         parent::boot();
 
         static::creating(function (TeamInvitation $invitation) {
-            if (empty($invitation->code)) {
+            // Mismo criterio que el empty() previo: null, '' y '0' se regeneran.
+            if (in_array($invitation->code, [null, '', '0'], true)) {
                 $invitation->code = Str::random(64);
             }
         });

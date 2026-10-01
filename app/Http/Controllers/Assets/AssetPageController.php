@@ -191,7 +191,7 @@ class AssetPageController extends Controller
             ->pluck('aggregate', 'monitoring_state');
 
         $monitored = (int) ($byState[AssetMonitoringState::Monitored->value] ?? 0);
-        $cap = $resolveAssetLimit->execute((int) $team->id);
+        $cap = $resolveAssetLimit->execute($team->id);
 
         return [
             'monitored' => $monitored,
@@ -353,7 +353,7 @@ class AssetPageController extends Controller
         $locationAt = $asset->last_location_at;
 
         if ($locationAt !== null && $this->hasLivePosition($asset) && $asset->last_speed_kph !== null) {
-            $candidates[] = ['kph' => (float) $asset->last_speed_kph, 'at' => $locationAt, 'source' => 'location'];
+            $candidates[] = ['kph' => $asset->last_speed_kph, 'at' => $locationAt, 'source' => 'location'];
         }
 
         $telemetry = $asset->latestSpeedTelemetry;
@@ -395,14 +395,14 @@ class AssetPageController extends Controller
             ->limit(self::RECENT_EVENTS_LIMIT)
             ->get()
             ->map(fn (NormalizedEvent $event) => [
-                'id' => (int) $event->id,
+                'id' => $event->id,
                 'occurredAt' => $event->occurred_at?->toIso8601String(),
                 'eventType' => $event->eventType?->name ?? $event->eventType?->code,
                 'category' => $event->eventCategory?->name,
                 'severity' => $event->eventSeverity?->code,
-                'driver' => $event->driver ? [
-                    'id' => (int) $event->driver->id,
-                    'name' => (string) $event->driver->full_name,
+                'driver' => $event->driver !== null ? [
+                    'id' => $event->driver->id,
+                    'name' => $event->driver->full_name,
                 ] : null,
             ])
             ->all());
@@ -513,8 +513,8 @@ class AssetPageController extends Controller
                 ->orderBy('name')
                 ->get(['code', 'name'])
                 ->map(fn (AssetType $type) => [
-                    'value' => (string) $type->code,
-                    'label' => (string) $type->name,
+                    'value' => $type->code,
+                    'label' => $type->name,
                 ])
                 ->all()),
         ];
@@ -531,29 +531,29 @@ class AssetPageController extends Controller
         $driver = $asset->currentDriverAssignment?->driver;
 
         return [
-            'id' => (int) $asset->id,
-            'name' => (string) $asset->name,
+            'id' => $asset->id,
+            'name' => $asset->name,
             'code' => $asset->code,
             'status' => $asset->status->value,
             'monitoringState' => $asset->monitoring_state->value,
             'vehicle' => $this->vehicle($asset),
             // Currently assigned primary driver (reciprocal of the driver
             // roster's "activo asignado" column). Null when nobody is assigned.
-            'driver' => $driver ? [
-                'id' => (int) $driver->id,
-                'name' => (string) $driver->full_name,
+            'driver' => $driver !== null ? [
+                'id' => $driver->id,
+                'name' => $driver->full_name,
                 'employeeCode' => $driver->employee_code,
             ] : null,
-            'type' => $asset->assetType ? [
-                'code' => (string) $asset->assetType->code,
-                'name' => (string) $asset->assetType->name,
+            'type' => $asset->assetType !== null ? [
+                'code' => $asset->assetType->code,
+                'name' => $asset->assetType->name,
                 'category' => $asset->assetType->category->value,
             ] : null,
             'devices' => $asset->devices
                 ->map(fn (AssetDevice $device) => [
-                    'id' => (int) $device->id,
-                    'deviceType' => (string) $device->device_type,
-                    'label' => self::DEVICE_TYPE_LABELS[$device->device_type] ?? (string) $device->device_type,
+                    'id' => $device->id,
+                    'deviceType' => $device->device_type,
+                    'label' => self::DEVICE_TYPE_LABELS[$device->device_type] ?? $device->device_type,
                     'externalDeviceId' => $device->external_device_id,
                     'status' => $device->status->value,
                 ])
@@ -563,7 +563,7 @@ class AssetPageController extends Controller
                 'latitude' => (float) $asset->last_latitude,
                 'longitude' => (float) $asset->last_longitude,
                 'formattedLocation' => $asset->last_formatted_location,
-                'speed' => $asset->last_speed_kph !== null ? (float) $asset->last_speed_kph : null,
+                'speed' => $asset->last_speed_kph,
                 'heading' => $asset->last_heading,
                 'recordedAt' => $asset->last_location_at->toIso8601String(),
             ] : null,
@@ -603,14 +603,14 @@ class AssetPageController extends Controller
     private function toMarker(Asset $asset): array
     {
         return [
-            'id' => (int) $asset->id,
-            'name' => (string) $asset->name,
+            'id' => $asset->id,
+            'name' => $asset->name,
             'code' => $asset->code,
             'status' => $asset->status->value,
             'category' => $asset->assetType?->category->value,
             'latitude' => (float) $asset->last_latitude,
             'longitude' => (float) $asset->last_longitude,
-            'speed' => $asset->last_speed_kph !== null ? (float) $asset->last_speed_kph : null,
+            'speed' => $asset->last_speed_kph,
             'heading' => $asset->last_heading,
             'recordedAt' => $asset->last_location_at?->toIso8601String(),
             'driver' => $asset->currentDriverAssignment?->driver?->full_name,
@@ -730,12 +730,12 @@ class AssetPageController extends Controller
 
             $seen[$bucket] = true;
             $rows[] = [
-                'id' => (int) $snapshot->id,
+                'id' => $snapshot->id,
                 'latitude' => (float) $snapshot->latitude,
                 'longitude' => (float) $snapshot->longitude,
                 'formattedLocation' => $snapshot->formatted_location,
                 'speed' => $snapshot->speed !== null ? (float) $snapshot->speed : null,
-                'heading' => $snapshot->heading !== null ? (int) $snapshot->heading : null,
+                'heading' => $snapshot->heading,
                 'source' => $snapshot->source->value,
                 'recordedAt' => $snapshot->recorded_at->toIso8601String(),
             ];
@@ -797,18 +797,18 @@ class AssetPageController extends Controller
             ->limit(self::INCIDENTS_LIMIT)
             ->get()
             ->map(fn (Incident $incident) => [
-                'id' => (int) $incident->id,
+                'id' => $incident->id,
                 'reference' => $incident->reference(),
-                'title' => (string) $incident->title,
-                'status' => $incident->status ? [
-                    'code' => (string) $incident->status->code,
+                'title' => $incident->title,
+                'status' => $incident->status !== null ? [
+                    'code' => $incident->status->code,
                     'uiStatus' => IncidentStatusPresenter::forIncident($incident),
                     // Same rendered string as inbox/detail/palette (C1-b).
                     'name' => IncidentStatusPresenter::labelForIncident($incident),
                 ] : null,
-                'priority' => $incident->priority ? [
-                    'code' => (string) $incident->priority->code,
-                    'name' => (string) $incident->priority->name,
+                'priority' => $incident->priority !== null ? [
+                    'code' => $incident->priority->code,
+                    'name' => $incident->priority->name,
                 ] : null,
                 'type' => $incident->type?->name,
                 'openedAt' => $incident->opened_at?->toIso8601String(),

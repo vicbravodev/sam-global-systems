@@ -97,7 +97,8 @@ class WriteAuditLogJob implements ShouldQueue
 
     private function buildSummary(): string
     {
-        $aggregate = $this->aggregateType
+        // aggregateType es un FQCN de modelo: nunca '0', basta excluir null y ''.
+        $aggregate = $this->aggregateType !== null && $this->aggregateType !== ''
             ? sprintf(' on %s#%s', class_basename($this->aggregateType), $this->aggregateId ?? '?')
             : '';
 

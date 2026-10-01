@@ -33,7 +33,7 @@ class GuardRoleDelegation
             return;
         }
 
-        if ((int) $target->user_id === (int) $actor->id) {
+        if ($target->user_id === $actor->id) {
             throw new AuthorizationException('No puedes cambiar tu propio rol.');
         }
 

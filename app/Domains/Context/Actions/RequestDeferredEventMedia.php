@@ -97,7 +97,7 @@ class RequestDeferredEventMedia
         }
 
         $this->recordUsageEvent->execute(
-            teamId: (int) $request->team_id,
+            teamId: $request->team_id,
             meterCode: self::USAGE_METER_CODE,
             quantity: 1,
             eventKey: "media_request:{$request->id}",

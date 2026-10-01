@@ -25,7 +25,7 @@ class ResolveAssetFromExternalId
             ->where('external_id', $externalId)
             ->first();
 
-        if (! $reference) {
+        if ($reference === null) {
             return null;
         }
 

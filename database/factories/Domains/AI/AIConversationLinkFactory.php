@@ -22,7 +22,7 @@ class AIConversationLinkFactory extends Factory
             'team_id' => Team::factory(),
             'user_id' => User::factory(),
             'agent_conversation_id' => function () {
-                $id = (string) fake()->uuid();
+                $id = fake()->uuid();
 
                 if (Schema::hasTable('agent_conversations')) {
                     DB::table('agent_conversations')->insert([

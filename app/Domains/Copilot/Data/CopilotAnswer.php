@@ -25,7 +25,7 @@ final readonly class CopilotAnswer
      */
     public function blocks(): array
     {
-        return array_merge(...array_map(fn (CopilotToolResult $r) => $r->blocks, $this->results ?: [new CopilotToolResult('none', 'none')]));
+        return array_merge(...array_map(fn (CopilotToolResult $r) => $r->blocks, $this->results !== [] ? $this->results : [new CopilotToolResult('none', 'none')]));
     }
 
     /**
@@ -57,7 +57,7 @@ final readonly class CopilotAnswer
      */
     public function highlights(): array
     {
-        return array_merge(...array_map(fn (CopilotToolResult $r) => $r->highlights, $this->results ?: [new CopilotToolResult('none', 'none')]));
+        return array_merge(...array_map(fn (CopilotToolResult $r) => $r->highlights, $this->results !== [] ? $this->results : [new CopilotToolResult('none', 'none')]));
     }
 
     /**

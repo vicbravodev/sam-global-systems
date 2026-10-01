@@ -18,7 +18,7 @@ class ResolveActionTemplate
             ->where('is_active', true)
             ->first();
 
-        if ($tenantTemplate) {
+        if ($tenantTemplate !== null) {
             return $tenantTemplate;
         }
 

@@ -176,7 +176,10 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
         $status = $response->status();
 
         if ($status === 429) {
-            throw new ProviderRateLimited(max(0.0, (float) ($response->header('Retry-After') ?: 1)));
+            // Sin cabecera (o "0") se espera 1 s, como hasta ahora.
+            $retryAfter = $response->header('Retry-After');
+
+            throw new ProviderRateLimited(max(0.0, (float) ($retryAfter === '' || $retryAfter === '0' ? 1 : $retryAfter)));
         }
 
         if ($status === 401 || $status === 403) {
@@ -308,7 +311,8 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
             $cursor = $response->json('pagination.endCursor');
             $hasNext = (bool) $response->json('pagination.hasNextPage', false);
             $pages++;
-        } while ($hasNext && $cursor && $pages < self::MAX_PAGES);
+            // endCursor de Samsara es un token opaco (string no vacío o null).
+        } while ($hasNext && is_string($cursor) && $cursor !== '' && $pages < self::MAX_PAGES);
 
         return array_values($byAsset);
     }
@@ -359,6 +363,21 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
     }
 
     /**
+     * Newest reading of a history-style list. Only a non-empty array counts:
+     * an empty list, an empty last reading or a scalar reads as "no reading"
+     * (callers reject anything that is not an array).
+     *
+     * @param  array<mixed>  $readings
+     * @return array<mixed>|null
+     */
+    private function newestReading(array $readings): ?array
+    {
+        $last = end($readings);
+
+        return is_array($last) && $last !== [] ? $last : null;
+    }
+
+    /**
      * Map one stat off a vehicle record, converting to the unit we store.
      *
      * Returns null when the vehicle does not report this stat — Samsara omits
@@ -373,7 +392,7 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
 
         // History-style responses nest a list of readings; take the newest.
         if (is_array($stat) && array_is_list($stat)) {
-            $stat = end($stat) ?: null;
+            $stat = $this->newestReading($stat);
         }
 
         if (! is_array($stat)) {
@@ -431,7 +450,7 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
         $location = $record['location'] ?? null;
 
         if (is_array($location) && array_is_list($location)) {
-            $location = end($location) ?: null;
+            $location = $this->newestReading($location);
         }
 
         if (! is_array($location)) {
@@ -690,18 +709,26 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
 
         foreach ((array) $response->json('data.media', []) as $media) {
             $media = (array) $media;
+            $url = Arr::get($media, 'urlInfo.url');
 
             $items[] = [
                 'input' => $this->normalizeUploadedInput(Arr::get($media, 'input')),
-                'status' => Arr::get($media, 'urlInfo.url') ? 'available' : 'pending',
-                'url' => Arr::get($media, 'urlInfo.url'),
-                'media_type' => Arr::get($media, 'mediaType'),
-                'trigger_reason' => Arr::get($media, 'triggerReason'),
+                'status' => (bool) $url ? 'available' : 'pending',
+                'url' => $url,
+                // El contrato promete string|null: un escalar se lee como el
+                // `(string)` que antes hacía el consumidor; lo demás, ausente.
+                'media_type' => $this->scalarString(Arr::get($media, 'mediaType')),
+                'trigger_reason' => $this->scalarString(Arr::get($media, 'triggerReason')),
                 'start_time' => Arr::get($media, 'startTime'),
             ];
         }
 
         return ['items' => $items];
+    }
+
+    private function scalarString(mixed $value): ?string
+    {
+        return is_scalar($value) ? (string) $value : null;
     }
 
     private function normalizeUploadedInput(?string $input): ?string
@@ -903,7 +930,8 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
             $cursor = $response->json('pagination.endCursor');
             $hasNext = (bool) $response->json('pagination.hasNextPage', false);
             $pages++;
-        } while ($hasNext && $cursor && $pages < self::MAX_PAGES);
+            // endCursor de Samsara es un token opaco (string no vacío o null).
+        } while ($hasNext && is_string($cursor) && $cursor !== '' && $pages < self::MAX_PAGES);
 
         return $records;
     }
@@ -1035,7 +1063,7 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
         $gps = Arr::get($record, 'gps');
 
         if (is_array($gps) && array_is_list($gps)) {
-            $gps = end($gps) ?: null;
+            $gps = $this->newestReading($gps);
         }
 
         if (! is_array($gps)) {
@@ -1104,8 +1132,10 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
             ->whereIn('key', ['api_token', 'api_key', 'access_token'])
             ->first();
 
-        if ($credential && ! empty($credential->value_encrypted)) {
-            return (string) $credential->value_encrypted;
+        // Igual que el `! empty()` de antes: '' y '0' no son un token y caen
+        // al blob de credenciales.
+        if ($credential !== null && $credential->value_encrypted !== '' && $credential->value_encrypted !== '0') {
+            return $credential->value_encrypted;
         }
 
         $raw = $integration->credentials_encrypted;

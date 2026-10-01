@@ -3,6 +3,7 @@
 namespace App\Domains\Copilot\Tools\Sdk;
 
 use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Illuminate\JsonSchema\Types\Type;
 
 /**
  * A delegating tool that takes arguments of its own on top of the shared
@@ -12,7 +13,7 @@ use Illuminate\Contracts\JsonSchema\JsonSchema;
 abstract class ArgumentedCopilotTool extends DelegatingCopilotTool
 {
     /**
-     * @return array<string, mixed> extra JSON-schema args
+     * @return array<string, Type> extra JSON-schema args
      */
     abstract protected function extraSchema(JsonSchema $schema): array;
 
@@ -22,7 +23,7 @@ abstract class ArgumentedCopilotTool extends DelegatingCopilotTool
     abstract protected function extraRules(): array;
 
     /**
-     * @return array<string, mixed>
+     * @return array<string, Type>
      */
     public function schema(JsonSchema $schema): array
     {

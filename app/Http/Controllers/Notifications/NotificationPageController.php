@@ -118,7 +118,7 @@ class NotificationPageController extends Controller
 
         $rows = $deliveries->map(function (NotificationDelivery $delivery) use ($charges, $fallbackSources): array {
             $channelType = $delivery->channel?->channel_type;
-            $recipientKey = (int) $delivery->recipient_id;
+            $recipientKey = $delivery->recipient_id;
             $fallbackFrom = $fallbackSources[$delivery->id] ?? null;
 
             $events = ($charges->get($delivery->id) ?? collect())
@@ -134,7 +134,7 @@ class NotificationPageController extends Controller
                 ->all();
 
             return [
-                'id' => (int) $delivery->id,
+                'id' => $delivery->id,
                 'recipient' => [
                     'id' => $recipientKey,
                     'name' => $delivery->recipient?->name,
@@ -149,7 +149,7 @@ class NotificationPageController extends Controller
                 'statusLabel' => DeliveryFeedbackPresenter::label($delivery, $channelType),
                 'tone' => DeliveryFeedbackPresenter::tone($delivery),
                 'reason' => DeliveryFeedbackPresenter::reason($delivery),
-                'attempts' => (int) $delivery->attempt_number,
+                'attempts' => $delivery->attempt_number,
                 'isFallback' => $fallbackFrom !== null,
                 'fallbackFromChannel' => $fallbackFrom?->channel?->channel_type?->label(),
                 'callDurationSeconds' => $delivery->call_duration_seconds,
@@ -344,9 +344,9 @@ class NotificationPageController extends Controller
      */
     private function statusDisplay(Notification $notification): array
     {
-        $attempted = (int) ($notification->attempted_deliveries_count ?? 0);
-        $delivered = (int) ($notification->delivered_deliveries_count ?? 0);
-        $failed = (int) ($notification->failed_deliveries_count ?? 0);
+        $attempted = $notification->attempted_deliveries_count ?? 0;
+        $delivered = $notification->delivered_deliveries_count ?? 0;
+        $failed = $notification->failed_deliveries_count ?? 0;
 
         return match ($notification->status) {
             NotificationStatus::Pending => ['label' => 'Pendiente', 'tone' => 'neutral'],
@@ -435,8 +435,8 @@ class NotificationPageController extends Controller
         $display = $this->statusDisplay($notification);
 
         return [
-            'id' => (int) $notification->id,
-            'type' => (string) $notification->notification_type,
+            'id' => $notification->id,
+            'type' => $notification->notification_type,
             'priority' => $notification->priority->value,
             'status' => $notification->status->value,
             'subject' => $notification->subject,
@@ -446,14 +446,14 @@ class NotificationPageController extends Controller
             'sentAt' => $notification->sent_at?->toIso8601String(),
             'createdAt' => $notification->created_at?->toIso8601String(),
             'isRead' => $notification->reads->isNotEmpty(),
-            'addressedToMe' => (bool) ($notification->addressed_to_me ?? false),
+            'addressedToMe' => $notification->addressed_to_me ?? false,
             'statusLabel' => $display['label'],
             'statusTone' => $display['tone'],
             'statusReason' => $this->statusReason($notification),
-            'recipientsCount' => (int) $notification->recipients_count,
+            'recipientsCount' => $notification->recipients_count,
             'channels' => $this->channels($notification),
             'deliverySummary' => isset($notification->attempted_deliveries_count) ? [
-                'attempted' => (int) $notification->attempted_deliveries_count,
+                'attempted' => $notification->attempted_deliveries_count,
                 'delivered' => (int) $notification->getAttribute('delivered_deliveries_count'),
                 'failed' => (int) $notification->getAttribute('failed_deliveries_count'),
             ] : null,
@@ -477,11 +477,11 @@ class NotificationPageController extends Controller
             return null;
         }
 
-        if ((int) $notification->recipients_count === 0) {
+        if ($notification->recipients_count === 0) {
             return 'No se envió: ninguna persona del equipo tenía datos de contacto al momento de generarse.';
         }
 
-        if ((int) $notification->deliveries_count === 0) {
+        if ($notification->deliveries_count === 0) {
             return 'No se envió: no había ningún canal de notificación activo o permitido para este aviso.';
         }
 
@@ -507,7 +507,7 @@ class NotificationPageController extends Controller
         if (
             $notification->source_type === NotificationSourceType::Incident
             && $notification->source_reference_id !== null
-            && ctype_digit((string) $notification->source_reference_id)
+            && ctype_digit($notification->source_reference_id)
         ) {
             return route('incidents.show', [
                 'current_team' => $team->slug,

@@ -47,13 +47,13 @@ class AuthorizeAction
 
         $team = $team ?? currentTeam();
 
-        if (! $team) {
+        if ($team === null) {
             return false;
         }
 
         $permissions = $this->resolvePermissions($user, $team);
 
-        if (! in_array($permissionCode, $permissions)) {
+        if (! in_array($permissionCode, $permissions, true)) {
             return false;
         }
 
@@ -81,7 +81,7 @@ class AuthorizeAction
 
         $team = $team ?? currentTeam();
 
-        if (! $team) {
+        if ($team === null) {
             return [];
         }
 
@@ -90,7 +90,7 @@ class AuthorizeAction
         return Cache::remember($cacheKey, self::CACHE_TTL_SECONDS, function () use ($user, $team) {
             $role = $this->resolveRole($user, $team);
 
-            if (! $role) {
+            if ($role === null) {
                 return [];
             }
 
@@ -122,17 +122,18 @@ class AuthorizeAction
             ->where('user_id', $user->id)
             ->first();
 
-        if (! $membership) {
+        if ($membership === null) {
             return null;
         }
 
-        if ($membership->role_id) {
+        // role_id es FK a roles.id (secuencia): nunca vale 0.
+        if ($membership->role_id !== null) {
             return $membership->accessRole;
         }
 
         $fallbackCode = self::TEAM_ROLE_FALLBACK_MAP[$membership->getRawOriginal('role')] ?? null;
 
-        if (! $fallbackCode) {
+        if ($fallbackCode === null) {
             return null;
         }
 
@@ -143,13 +144,13 @@ class AuthorizeAction
     {
         $module = $this->extractModule($permissionCode);
 
-        if (! in_array($module, self::OPERATIONAL_MODULES)) {
+        if (! in_array($module, self::OPERATIONAL_MODULES, true)) {
             return true;
         }
 
         $subscription = $this->teamAccess($team)['subscription'];
 
-        if (! $subscription) {
+        if ($subscription === null) {
             return true;
         }
 
@@ -188,7 +189,7 @@ class AuthorizeAction
             'features' => TenantFeature::withoutGlobalScopes()
                 ->where('team_id', $team->id)
                 ->get(['feature_key', 'enabled'])
-                ->mapWithKeys(fn (TenantFeature $feature) => [$feature->feature_key => (bool) $feature->enabled])
+                ->mapWithKeys(fn (TenantFeature $feature) => [$feature->feature_key => $feature->enabled])
                 ->all(),
         ];
     }

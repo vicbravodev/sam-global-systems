@@ -134,8 +134,9 @@ class ApplyTwilioStatusUpdate
         string $source,
     ): void {
         $events = $charge->events_json ?? [];
-        $last = end($events) ?: null;
+        $last = end($events);
 
+        // Sin eventos end() devuelve false: no hay repetición.
         $isRepeat = is_array($last)
             && $last['status'] === $status
             && ($last['error_code'] ?? null) === $errorCode;
@@ -254,16 +255,16 @@ class ApplyTwilioStatusUpdate
         $channelType = $delivery->channel?->channel_type?->value ?? $charge->channel_type->value;
 
         if ($target === DeliveryStatus::Delivered) {
-            NotificationDelivered::dispatch((int) $delivery->team_id, (int) $delivery->notification_id, (int) $delivery->id, $channelType);
+            NotificationDelivered::dispatch($delivery->team_id, $delivery->notification_id, $delivery->id, $channelType);
         }
 
         if ($target === DeliveryStatus::Failed) {
             NotificationFailed::dispatch(
-                (int) $delivery->team_id,
-                (int) $delivery->notification_id,
-                (int) $delivery->id,
+                $delivery->team_id,
+                $delivery->notification_id,
+                $delivery->id,
                 $channelType,
-                (string) $changes['error_message'],
+                $changes['error_message'],
             );
         }
 

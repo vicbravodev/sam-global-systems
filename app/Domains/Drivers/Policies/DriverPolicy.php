@@ -16,14 +16,14 @@ class DriverPolicy
     {
         $team = currentTeam();
 
-        return $team && $this->authorizeAction->execute($user, 'drivers.view', $team);
+        return $team !== null && $this->authorizeAction->execute($user, 'drivers.view', $team);
     }
 
     public function view(User $user, Driver $driver): bool
     {
         $team = currentTeam();
 
-        return $team
+        return $team !== null
             && $driver->team_id === $team->id
             && $this->authorizeAction->execute($user, 'drivers.view', $team);
     }
@@ -32,7 +32,7 @@ class DriverPolicy
     {
         $team = currentTeam();
 
-        return $team
+        return $team !== null
             && $driver->team_id === $team->id
             && $this->authorizeAction->execute($user, 'drivers.manage', $team);
     }
@@ -41,7 +41,7 @@ class DriverPolicy
     {
         $team = currentTeam();
 
-        return $team
+        return $team !== null
             && $driver->team_id === $team->id
             && $this->authorizeAction->execute($user, 'drivers.manage', $team);
     }

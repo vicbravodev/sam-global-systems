@@ -83,7 +83,10 @@ class WhatsappNotificationDriver implements NotificationDriver
     /**
      * Twilio Content Variables expects string→string. Cast scalar values; drop arrays/objects.
      *
-     * @param  array<string, mixed>  $variables
+     * Claves numéricas ('1', '2'…) llegan como int en un array de PHP: de
+     * ahí el `(string) $key`.
+     *
+     * @param  array<array-key, mixed>  $variables
      * @return array<string, string>
      */
     private function stringifyVariables(array $variables): array

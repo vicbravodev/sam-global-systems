@@ -68,9 +68,9 @@ final class AssetResolver
     public function resolveFromPrompt(int $teamId, string $prompt): ?Asset
     {
         $normalized = CopilotText::normalize($prompt);
-        $tokens = preg_split('/[^a-z0-9]+/', $normalized, flags: PREG_SPLIT_NO_EMPTY) ?: [];
+        $tokens = preg_split('/[^a-z0-9]+/', $normalized, flags: PREG_SPLIT_NO_EMPTY);
 
-        if ($tokens === []) {
+        if ($tokens === false || $tokens === []) {
             return null;
         }
 
@@ -108,9 +108,9 @@ final class AssetResolver
                     $score = 60 + strlen($code);
                 }
 
-                $name = CopilotText::normalize((string) $asset->name);
+                $name = CopilotText::normalize($asset->name);
 
-                if ($score === 0 && strlen($name) >= 3 && preg_match('/\b'.preg_quote($name, '/').'\b/u', $normalized)) {
+                if ($score === 0 && strlen($name) >= 3 && preg_match('/\b'.preg_quote($name, '/').'\b/u', $normalized) === 1) {
                     $score = 40 + strlen($name);
                 }
 
@@ -131,11 +131,11 @@ final class AssetResolver
     {
         $normalized = CopilotText::normalize($prompt);
 
-        if (preg_match('/\b(remolques?|cajas?|trailers?|semirremolques?|plataformas?)\b/u', $normalized)) {
+        if (preg_match('/\b(remolques?|cajas?|trailers?|semirremolques?|plataformas?)\b/u', $normalized) === 1) {
             return AssetCategory::Trailer;
         }
 
-        if (preg_match('/\b(camion(es)?|tractos?|tractor(es)?|unidades|vehiculos?|pipas?)\b/u', $normalized)) {
+        if (preg_match('/\b(camion(es)?|tractos?|tractor(es)?|unidades|vehiculos?|pipas?)\b/u', $normalized) === 1) {
             return AssetCategory::Vehicle;
         }
 

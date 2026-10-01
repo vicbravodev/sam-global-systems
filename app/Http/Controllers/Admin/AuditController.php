@@ -37,14 +37,15 @@ class AuditController extends Controller
             ->pluck('name', 'id');
 
         $entries = $logs->map(fn (AuditLog $log) => [
-            'id' => (int) $log->id,
-            'action' => (string) $log->action,
+            'id' => $log->id,
+            'action' => $log->action,
             'actionLabel' => AuditActionPresenter::actionLabel($log->action),
             // La consulta filtra por categoría Security/Billing: nunca es null aquí.
             'category' => (string) $log->category?->value,
             'categoryLabel' => AuditActionPresenter::categoryLabel($log->category),
-            'summary' => (string) $log->summary,
-            'team' => $log->team_id ? ($teamNames[$log->team_id] ?? "Tenant eliminado #{$log->team_id}") : null,
+            'summary' => $log->summary,
+            // team_id es un id de secuencia (FK a teams): 0 es imposible.
+            'team' => $log->team_id !== null ? ($teamNames[$log->team_id] ?? "Tenant eliminado #{$log->team_id}") : null,
             'actorEmail' => ($log->metadata_json ?? [])['actor_email'] ?? null,
             'occurredAt' => $log->occurred_at?->toIso8601String(),
         ])->values()->all();

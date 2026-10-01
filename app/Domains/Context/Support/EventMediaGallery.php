@@ -45,7 +45,7 @@ final class EventMediaGallery
         $entries = $media
             ->reject($isFrame)
             ->map(function (EventMediaContext $item) use ($framesByClip): array {
-                $frames = $framesByClip->get((int) $item->id, collect());
+                $frames = $framesByClip->get($item->id, collect());
                 $firstFrame = $frames->first();
 
                 return [

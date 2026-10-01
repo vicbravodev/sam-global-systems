@@ -7,7 +7,7 @@ class PointInPolygon
     /**
      * Ray-casting algorithm for point-in-polygon containment.
      *
-     * @param  array<int, array{0: float, 1: float}>  $polygon  Ring of [lng, lat] coordinates (GeoJSON format). First and last vertices may coincide.
+     * @param  array<int, array{0: float|int, 1: float|int}>  $polygon  Ring of [lng, lat] coordinates (GeoJSON format; whole-degree vertices decode as int). First and last vertices may coincide.
      */
     public static function contains(array $polygon, float $lat, float $lng): bool
     {
@@ -26,8 +26,11 @@ class PointInPolygon
             $xj = $polygon[$j][0];
             $yj = $polygon[$j][1];
 
+            // Arista horizontal: se divide por un epsilon en vez de por cero.
+            $dy = (float) ($yj - $yi);
+
             $intersect = (($yi > $lat) !== ($yj > $lat))
-                && ($lng < ($xj - $xi) * ($lat - $yi) / (($yj - $yi) ?: 1e-12) + $xi);
+                && ($lng < ($xj - $xi) * ($lat - $yi) / ($dy === 0.0 ? 1e-12 : $dy) + $xi);
 
             if ($intersect) {
                 $inside = ! $inside;

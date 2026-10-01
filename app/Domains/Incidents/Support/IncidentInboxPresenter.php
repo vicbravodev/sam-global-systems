@@ -69,9 +69,9 @@ class IncidentInboxPresenter
 
         return [
             'id' => $incident->reference(),
-            'incidentId' => (int) $incident->id,
+            'incidentId' => $incident->id,
             'number' => $incident->number,
-            'title' => (string) ($incident->title ?? 'Incidente'),
+            'title' => $incident->title ?? 'Incidente',
             'severity' => $this->severity($incident),
             'status' => $status,
             'statusLabel' => IncidentStatusPresenter::UI_LABELS[$status],
@@ -108,7 +108,7 @@ class IncidentInboxPresenter
 
         return [
             ...$this->toRow($incident, $users, $now),
-            'aiEvaluationId' => $evaluation?->id !== null ? (int) $evaluation->id : null,
+            'aiEvaluationId' => $evaluation?->id,
             'model' => $this->model($evaluation),
             'latencyMs' => $this->latencyMs($evaluation),
             'summary' => $this->incidentSummary($incident),
@@ -116,7 +116,7 @@ class IncidentInboxPresenter
             'slaDueAt' => $incident->sla_due_at?->toIso8601String(),
             'eventOccurredAt' => $incident->relatedEvent?->occurred_at?->toIso8601String(),
             'aiRiskScore' => $evaluation?->risk_score !== null && ! $this->isPlaceholder($evaluation)
-                ? round((float) $evaluation->risk_score, 2)
+                ? round($evaluation->risk_score, 2)
                 : null,
             'aiMode' => $evaluation?->evaluation_mode?->value,
             'aiEvaluatedAt' => $evaluation?->evaluated_at?->toIso8601String(),
@@ -166,7 +166,7 @@ class IncidentInboxPresenter
 
     private function provider(?NormalizedEvent $event): string
     {
-        return (string) ($event?->provider?->name ?? '—');
+        return $event?->provider?->name ?? '—';
     }
 
     private function asset(Incident $incident): string
@@ -177,11 +177,12 @@ class IncidentInboxPresenter
             return '—';
         }
 
-        if ($asset->code && $asset->name) {
+        // Truthiness original de string: '' y '0' cuentan como vacíos.
+        if (! self::isBlank($asset->code) && ! self::isBlank($asset->name)) {
             return "{$asset->code} · {$asset->name}";
         }
 
-        return (string) ($asset->name ?? $asset->code ?? '—');
+        return $asset->name ?? $asset->code ?? '—';
     }
 
     private function driver(Incident $incident): string
@@ -192,9 +193,11 @@ class IncidentInboxPresenter
             return '—';
         }
 
-        return (string) ($driver->full_name
-            ?? trim("{$driver->first_name} {$driver->last_name}")
-            ?: '—');
+        // `(a ?? b) ?: '—'`: un nombre vacío ('' o '0') cae a '—'.
+        $name = $driver->full_name
+            ?? trim("{$driver->first_name} {$driver->last_name}");
+
+        return self::isBlank($name) ? '—' : $name;
     }
 
     /**
@@ -211,10 +214,10 @@ class IncidentInboxPresenter
             return null;
         }
 
-        $name = (string) ($users->get((int) $incident->claimed_by_user_id)?->name ?? 'Usuario');
+        $name = $users->get($incident->claimed_by_user_id)?->name ?? 'Usuario';
 
         return [
-            'id' => (int) $incident->claimed_by_user_id,
+            'id' => $incident->claimed_by_user_id,
             'name' => $name,
             'initials' => $this->initials($name),
         ];
@@ -236,11 +239,11 @@ class IncidentInboxPresenter
             return $this->claimedBy($incident, $users);
         }
 
-        $user = $users->get((int) $assignment->assigned_to_id);
-        $name = (string) ($user?->name ?? 'Usuario');
+        $user = $users->get($assignment->assigned_to_id);
+        $name = $user?->name ?? 'Usuario';
 
         return [
-            'id' => (int) $assignment->assigned_to_id,
+            'id' => $assignment->assigned_to_id,
             'name' => $name,
             'initials' => $this->initials($name),
         ];
@@ -267,7 +270,8 @@ class IncidentInboxPresenter
         $seconds = $incident->priority?->sla_seconds
             ?? $incident->relatedEvent?->eventSeverity?->response_sla_seconds;
 
-        return (int) ($seconds ?: self::DEFAULT_SLA_SECONDS);
+        // Un SLA de 0 (o ausente) cae al default, como el `?:` original.
+        return $seconds !== null && $seconds !== 0 ? $seconds : self::DEFAULT_SLA_SECONDS;
     }
 
     private function slaSeconds(Incident $incident, CarbonInterface $now): int
@@ -304,9 +308,9 @@ class IncidentInboxPresenter
 
     private function eventType(Incident $incident): string
     {
-        return (string) ($incident->relatedEvent?->eventType?->code
+        return $incident->relatedEvent?->eventType?->code
             ?? $incident->type?->code
-            ?? '—');
+            ?? '—';
     }
 
     private function location(?NormalizedEvent $event): string
@@ -357,7 +361,7 @@ class IncidentInboxPresenter
             return null;
         }
 
-        return round((float) $evaluation->confidence_score, 2);
+        return round($evaluation->confidence_score, 2);
     }
 
     private function aiDecision(?AIEventEvaluation $evaluation): string
@@ -388,7 +392,7 @@ class IncidentInboxPresenter
             return PlaceholderEvaluation::LABEL.'.';
         }
 
-        return (string) ($evaluation->explanation_text ?? PlaceholderEvaluation::LABEL.'.');
+        return $evaluation->explanation_text ?? PlaceholderEvaluation::LABEL.'.';
     }
 
     private function model(?AIEventEvaluation $evaluation): string
@@ -397,10 +401,11 @@ class IncidentInboxPresenter
             return '—';
         }
 
-        $model = $evaluation->model_used ?: '—';
+        $modelUsed = $evaluation->model_used;
+        $model = $modelUsed === null || $modelUsed === '' || $modelUsed === '0' ? '—' : $modelUsed;
         $version = $evaluation->evaluation_version;
 
-        return $version ? "{$model} · v{$version}" : (string) $model;
+        return $version !== 0 ? "{$model} · v{$version}" : $model;
     }
 
     private function latencyMs(?AIEventEvaluation $evaluation): int
@@ -446,11 +451,11 @@ class IncidentInboxPresenter
         return [
             'type' => $type,
             'entryType' => $entry->entry_type?->value,
-            'actor' => (string) $actor,
+            'actor' => $actor,
             'text' => $this->timelineText($entry, $payload),
             'tsIso' => $entry->occurred_at?->toIso8601String(),
             'sub' => $entry->description !== null
-                ? (self::LEGACY_DESCRIPTION_ES[$entry->description] ?? (string) $entry->description)
+                ? (self::LEGACY_DESCRIPTION_ES[$entry->description] ?? $entry->description)
                 : null,
             'meta' => $entry->entry_type === TimelineEntryType::MediaAssessed
                 ? [
@@ -493,12 +498,12 @@ class IncidentInboxPresenter
             TimelineEntryType::MediaAssessed => 'Media evaluada',
             TimelineEntryType::VerificationCall => 'Llamada de verificación',
             // El writer (CreateIncidentFromEvent) ya guarda el título en español.
-            TimelineEntryType::LateArrival => (string) ($entry->title ?? 'Evento recibido con retraso'),
+            TimelineEntryType::LateArrival => $entry->title ?? 'Evento recibido con retraso',
             default => null,
         };
 
         if ($base === null) {
-            return (string) ($entry->title ?? '');
+            return $entry->title ?? '';
         }
 
         if ($entry->entry_type === TimelineEntryType::MediaAssessed) {
@@ -523,7 +528,7 @@ class IncidentInboxPresenter
      */
     private function incidentSummary(Incident $incident): ?string
     {
-        $summary = trim((string) ($incident->summary ?? ''));
+        $summary = trim($incident->summary ?? '');
 
         return $summary !== '' ? $summary : null;
     }
@@ -577,9 +582,9 @@ class IncidentInboxPresenter
 
         return [
             'tsIso' => $event->occurred_at?->toIso8601String(),
-            'eventId' => (int) $event->id,
-            'eventType' => (string) ($event->eventType?->code ?? '—'),
-            'asset' => (string) ($event->asset?->code ?? $event->asset?->name ?? '—'),
+            'eventId' => $event->id,
+            'eventType' => $event->eventType?->code ?? '—',
+            'asset' => $event->asset?->code ?? $event->asset?->name ?? '—',
             'relationType' => $link->relation_type?->value,
             'severity' => $this->eventSeverity($event),
         ];
@@ -603,8 +608,8 @@ class IncidentInboxPresenter
      */
     private function comment(IncidentComment $comment, Collection $users, CarbonInterface $now): array
     {
-        $user = $users->get((int) $comment->user_id);
-        $name = (string) ($user?->name ?? 'Usuario');
+        $user = $users->get($comment->user_id);
+        $name = $user?->name ?? 'Usuario';
 
         $visibility = match ($comment->visibility) {
             CommentVisibility::TenantVisible => 'tenant',
@@ -616,7 +621,7 @@ class IncidentInboxPresenter
             'authorInitials' => $this->initials($name),
             'authorName' => $name,
             'visibility' => $visibility,
-            'body' => (string) ($comment->comment ?? ''),
+            'body' => $comment->comment ?? '',
             'relativeTime' => $this->relativeTime($comment->created_at, $now),
         ];
     }
@@ -634,11 +639,11 @@ class IncidentInboxPresenter
             default => 'payload',
         };
 
-        $label = (string) ($evidence->title ?? ucfirst(str_replace('_', ' ', $evidence->evidence_type->value)));
+        $label = $evidence->title ?? ucfirst(str_replace('_', ' ', $evidence->evidence_type->value));
 
         return [
             'label' => $label,
-            'sub' => (string) ($evidence->description ?? ''),
+            'sub' => $evidence->description ?? '',
             'type' => $type,
             'fileUrl' => $evidence->downloadUrl(),
         ];
@@ -694,10 +699,24 @@ class IncidentInboxPresenter
         return 'Fuera de geocercas';
     }
 
+    /**
+     * Truthiness de PHP para un string: null, '' y '0' cuentan como vacíos.
+     *
+     * @phpstan-assert-if-false non-falsy-string $value
+     */
+    private static function isBlank(?string $value): bool
+    {
+        return $value === null || $value === '' || $value === '0';
+    }
+
     private function initials(string $name): string
     {
-        $parts = preg_split('/\s+/', trim($name)) ?: [];
-        $parts = array_values(array_filter($parts));
+        $parts = preg_split('/\s+/', trim($name));
+        // Mismo descarte que el array_filter sin callback sobre strings ('' y '0').
+        $parts = $parts === false ? [] : array_values(array_filter(
+            $parts,
+            fn (string $part): bool => $part !== '' && $part !== '0',
+        ));
 
         if ($parts === []) {
             return '?';

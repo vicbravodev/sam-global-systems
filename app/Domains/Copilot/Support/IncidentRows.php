@@ -13,9 +13,9 @@ final class IncidentRows
     public static function row(Incident $incident, string $teamSlug): array
     {
         return [
-            'id' => (int) $incident->id,
+            'id' => $incident->id,
             'reference' => $incident->reference(),
-            'title' => (string) $incident->title,
+            'title' => $incident->title,
             'severity' => $incident->priority?->code ?? 'info',
             'statusLabel' => IncidentStatusPresenter::labelForIncident($incident),
             'assetCode' => $incident->asset?->code ?? $incident->asset?->name,
@@ -23,7 +23,7 @@ final class IncidentRows
             'openedAt' => $incident->opened_at?->toIso8601String(),
             'slaDueAt' => $incident->sla_due_at?->toIso8601String(),
             'slaBreached' => $incident->sla_due_at !== null && $incident->sla_due_at->isPast() && ! $incident->isTerminal(),
-            'href' => CopilotPresenter::incidentHref($teamSlug, (int) $incident->id),
+            'href' => CopilotPresenter::incidentHref($teamSlug, $incident->id),
         ];
     }
 
@@ -34,9 +34,9 @@ final class IncidentRows
     {
         return [
             'kind' => 'incident',
-            'id' => (int) $incident->id,
+            'id' => $incident->id,
             'label' => $incident->reference().' · '.$incident->title,
-            'href' => CopilotPresenter::incidentHref($teamSlug, (int) $incident->id),
+            'href' => CopilotPresenter::incidentHref($teamSlug, $incident->id),
         ];
     }
 }

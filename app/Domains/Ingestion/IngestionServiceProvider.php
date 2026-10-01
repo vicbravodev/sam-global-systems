@@ -19,7 +19,11 @@ class IngestionServiceProvider extends ServiceProvider
         $this->app->singleton(RawEventIngestion::class, RawEventIngestionService::class);
 
         $this->app->singletonIf(ObjectStorage::class, function () {
-            if (config('filesystems.disks.rustfs')) {
+            // La config de un disco es un array (o null si no existe): sólo
+            // un array no vacío equivale al truthy anterior.
+            $disk = config('filesystems.disks.rustfs');
+
+            if (is_array($disk) && $disk !== []) {
                 return new RustFsObjectStorage;
             }
 

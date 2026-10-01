@@ -46,7 +46,7 @@ final class ModelPricing
 
         $input = (float) ($entry['input'] ?? 0.0);
         $cached = (float) ($entry['cached_input'] ?? $input / 10);
-        $cachedTokens = (int) ($usage->cacheReadInputTokens ?? 0);
+        $cachedTokens = $usage->cacheReadInputTokens ?? 0;
 
         return round(
             ($usage->uncachedInputTokens() / self::TOKENS_PER_PRICE_UNIT) * $input
@@ -67,7 +67,12 @@ final class ModelPricing
             return null;
         }
 
-        /** @var array<string, array{input?: float|int, output?: float|int}> $pricing */
+        /**
+         * Las claves vienen del config: un id de modelo puramente numérico
+         * llega como int, por eso se castea a string al comparar prefijos.
+         *
+         * @var array<array-key, array{input?: float|int, output?: float|int, cached_input?: float|int}> $pricing
+         */
         $pricing = config('ai.pricing', []);
 
         if (isset($pricing[$model])) {

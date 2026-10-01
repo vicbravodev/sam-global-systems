@@ -14,7 +14,8 @@ class ResolveEscalationPath
     {
         $policy = null;
 
-        if ($sourceRule?->escalation_policy_id) {
+        // FK a escalation_policies.id (secuencia desde 1): nunca es 0.
+        if ($sourceRule?->escalation_policy_id !== null) {
             $policy = EscalationPolicy::query()
                 ->where('id', $sourceRule->escalation_policy_id)
                 ->where('team_id', $decision->team_id)

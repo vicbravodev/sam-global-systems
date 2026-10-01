@@ -582,7 +582,7 @@ class EvaluateEventWithAI
             AIDecisionSignal::create([
                 'evaluation_id' => $evaluation->id,
                 'signal_code' => 'reasoning_step_'.$index,
-                'signal_value' => (string) $step,
+                'signal_value' => $step,
                 'weight' => 1.0 / max(count($reasoningSteps), 1),
                 'description' => 'Reasoning step captured from pipeline.',
             ]);

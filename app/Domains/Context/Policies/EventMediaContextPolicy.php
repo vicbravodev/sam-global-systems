@@ -16,14 +16,14 @@ class EventMediaContextPolicy
     {
         $team = currentTeam();
 
-        return $team && $this->authorizeAction->execute($user, 'context.view', $team);
+        return $team !== null && $this->authorizeAction->execute($user, 'context.view', $team);
     }
 
     public function view(User $user, EventMediaContext $media): bool
     {
         $team = currentTeam();
 
-        return $team
+        return $team !== null
             && $media->team_id === $team->id
             && $this->authorizeAction->execute($user, 'context.view', $team);
     }
@@ -32,6 +32,6 @@ class EventMediaContextPolicy
     {
         $team = currentTeam();
 
-        return $team && $this->authorizeAction->execute($user, 'context.view', $team);
+        return $team !== null && $this->authorizeAction->execute($user, 'context.view', $team);
     }
 }

@@ -101,13 +101,13 @@ class TenantSubscriptionController extends Controller
 
         $this->audit->execute(
             actorType: AuditActorType::User,
-            actorId: (int) $actor->id,
+            actorId: $actor->id,
             action: $action,
             category: AuditCategory::Billing,
             entityType: Team::class,
-            entityId: (int) $team->id,
+            entityId: $team->id,
             summary: $summary,
-            teamId: (int) $team->id,
+            teamId: $team->id,
             metadata: ['actor_email' => $actor->email] + $metadata,
             signature: $action.':'.$team->id.':'.Str::uuid()->toString(),
             ipAddress: $request->ip(),

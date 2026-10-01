@@ -91,7 +91,7 @@ class FinalizeMessagingCharge
             $eventKey = "twilio_charge:{$charge->provider_sid}";
 
             $metered = $this->recordUsage->execute(
-                teamId: (int) $charge->team_id,
+                teamId: $charge->team_id,
                 meterCode: self::METER_CODE,
                 quantity: $priceMicros,
                 eventKey: $eventKey,

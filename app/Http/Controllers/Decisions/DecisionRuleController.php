@@ -54,7 +54,7 @@ class DecisionRuleController extends Controller
             'conditions_json' => (array) $request->input('conditions_json'),
             'outcome_override' => $request->input('outcome_override'),
             'escalation_policy_id' => $request->input('escalation_policy_id'),
-            'stop_processing' => (bool) $request->boolean('stop_processing'),
+            'stop_processing' => $request->boolean('stop_processing'),
             'is_active' => $request->boolean('is_active', true),
         ]);
 

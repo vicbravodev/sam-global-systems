@@ -38,7 +38,7 @@ class TwilioStatusCallbackController extends Controller
         $signedUrl = is_string($configured) && $configured !== '' ? $configured : $request->fullUrl();
 
         $isValid = (new RequestValidator($authToken))->validate(
-            (string) $request->header('X-Twilio-Signature', ''),
+            $request->header('X-Twilio-Signature', ''),
             $signedUrl,
             $request->post(),
         );

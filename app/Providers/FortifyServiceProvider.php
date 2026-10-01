@@ -140,11 +140,18 @@ class FortifyServiceProvider extends ServiceProvider
         });
 
         RateLimiter::for('api', function (Request $request) {
-            return Limit::perMinute(60)->by($request->route('current_team') ?: $request->ip());
+            // El parámetro llega como slug (string) o, si ya se resolvió el
+            // binding, como Team; misma truthiness que el `?:` previo.
+            $team = $request->route('current_team');
+            $hasTeam = is_object($team) || (is_string($team) && $team !== '' && $team !== '0');
+
+            return Limit::perMinute(60)->by($hasTeam ? $team : $request->ip());
         });
 
         RateLimiter::for('otp', function (Request $request) {
-            return Limit::perMinute(5)->by((string) ($request->user()?->id ?: $request->ip()));
+            $userId = $request->user()?->id;
+
+            return Limit::perMinute(5)->by((string) ($userId !== null && $userId !== 0 ? $userId : $request->ip()));
         });
     }
 }

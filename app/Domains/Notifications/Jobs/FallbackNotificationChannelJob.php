@@ -72,7 +72,7 @@ class FallbackNotificationChannelJob implements ShouldQueue
 
         $primary->load(['notification.team', 'recipient', 'channel']);
 
-        if (! $primary->notification || ! $primary->notification->team || ! $primary->recipient || ! $primary->channel) {
+        if ($primary->notification === null || $primary->notification->team === null || $primary->recipient === null || $primary->channel === null) {
             SystemLog::skipped('notifications.fallback.skipped', reason: 'relations_missing', input: $input);
 
             return;
@@ -102,7 +102,7 @@ class FallbackNotificationChannelJob implements ShouldQueue
             return;
         }
 
-        $teamId = (int) $primary->team_id;
+        $teamId = $primary->team_id;
         $policy = $policies->resolve($primary->notification->team);
         $usedTypes = $this->channelTypesAlreadyUsed($primary);
 

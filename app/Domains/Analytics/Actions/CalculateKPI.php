@@ -76,7 +76,7 @@ class CalculateKPI
                 'calculated_at' => now(),
             ];
 
-            if ($record) {
+            if ($record !== null) {
                 $record->forceFill($payload)->save();
 
                 return $record;
@@ -107,7 +107,7 @@ class CalculateKPI
             'incidents_total' => (float) $this->incidents->totalsForTenant($teamId, $from, $to)['total'],
             'incidents_resolved' => (float) $this->incidents->totalsForTenant($teamId, $from, $to)['resolved'],
             'incidents_open' => (float) $this->incidents->totalsForTenant($teamId, $from, $to)['open'],
-            'incidents_mttr_minutes' => (float) $this->incidents->totalsForTenant($teamId, $from, $to)['mean_resolution_time_minutes'],
+            'incidents_mttr_minutes' => $this->incidents->totalsForTenant($teamId, $from, $to)['mean_resolution_time_minutes'],
             'decisions_total' => (float) $this->decisions->totalsForTenant($teamId, $from, $to)['total'],
             'decisions_human_review_rate' => $this->humanReviewRate($teamId, $from, $to),
             'ai_evaluations_total' => $this->aiEvaluationsCount($teamId, $from, $to, $dimensionType, $dimensionReference),
@@ -149,7 +149,7 @@ class CalculateKPI
     private function humanReviewRate(int $teamId, CarbonInterface $from, CarbonInterface $to): float
     {
         $totals = $this->decisions->totalsForTenant($teamId, $from, $to);
-        $total = (int) $totals['total'];
+        $total = $totals['total'];
 
         if ($total === 0) {
             return 0.0;
@@ -174,7 +174,7 @@ class CalculateKPI
     ): float {
         $meter = UsageMeter::query()->where('code', $metric->code)->first();
 
-        if (! $meter) {
+        if ($meter === null) {
             return 0.0;
         }
 

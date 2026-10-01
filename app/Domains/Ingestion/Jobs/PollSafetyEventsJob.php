@@ -123,7 +123,7 @@ class PollSafetyEventsJob implements ShouldBeUnique, ShouldQueue
         }
 
         foreach ($result['events'] as $payload) {
-            $ingestSafetyEvent->execute($this->integration, (array) $payload);
+            $ingestSafetyEvent->execute($this->integration, $payload);
         }
 
         $state['safety_events'] = [

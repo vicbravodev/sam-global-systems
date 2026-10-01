@@ -46,16 +46,16 @@ final class DriverRankingTool implements CopilotTool
             }
 
             $rows[] = [
-                'id' => (int) $driver->id,
-                'name' => (string) $driver->full_name,
+                'id' => $driver->id,
+                'name' => $driver->full_name,
                 'employeeCode' => $driver->employee_code,
                 'score' => round((float) $profile->risk_score),
                 'level' => $profile->risk_level?->value,
                 'levelLabel' => self::LEVEL_LABELS[$profile->risk_level?->value ?? 'low'],
-                'incidents' => (int) $profile->incidents_count,
-                'harsh' => (int) $profile->harsh_events_count,
-                'fatigue' => (int) $profile->fatigue_flags_count,
-                'href' => CopilotPresenter::driverHref($context->teamSlug, (int) $driver->id),
+                'incidents' => $profile->incidents_count,
+                'harsh' => $profile->harsh_events_count,
+                'fatigue' => $profile->fatigue_flags_count,
+                'href' => CopilotPresenter::driverHref($context->teamSlug, $driver->id),
             ];
         }
 

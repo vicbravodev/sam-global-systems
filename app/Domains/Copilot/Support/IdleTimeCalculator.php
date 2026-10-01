@@ -97,7 +97,7 @@ final class IdleTimeCalculator
 
     public function forAsset(Asset $asset, CarbonImmutable $from, CarbonImmutable $to): IdleSummary
     {
-        return $this->forAssets((int) $asset->team_id, [(int) $asset->id], $from, $to)[(int) $asset->id]
+        return $this->forAssets($asset->team_id, [$asset->id], $from, $to)[$asset->id]
             ?? new IdleSummary(0.0, 'none', []);
     }
 
@@ -134,7 +134,7 @@ final class IdleTimeCalculator
 
             $start = CarbonImmutable::parse($reading->recorded_at)->max($from);
             $next = $series->get($i + 1);
-            $stop = ($next ? CarbonImmutable::parse($next->recorded_at) : $end)->min($end);
+            $stop = ($next !== null ? CarbonImmutable::parse($next->recorded_at) : $end)->min($end);
 
             if ($stop->gt($start)) {
                 $segments[] = $this->segment($start, $stop);
@@ -189,7 +189,7 @@ final class IdleTimeCalculator
             $next = $series->get($i + 1);
             $windows[] = [
                 CarbonImmutable::parse($reading->recorded_at)->max($from),
-                ($next ? CarbonImmutable::parse($next->recorded_at) : $end)->min($end),
+                ($next !== null ? CarbonImmutable::parse($next->recorded_at) : $end)->min($end),
             ];
         }
 
@@ -227,7 +227,7 @@ final class IdleTimeCalculator
             ->lazy(self::POINTS_CHUNK);
 
         foreach ($points as $point) {
-            $assetId = (int) $point->asset_id;
+            $assetId = $point->asset_id;
 
             if ($assetId !== $current) {
                 if ($current !== null) {

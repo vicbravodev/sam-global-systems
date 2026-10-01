@@ -26,7 +26,7 @@ class OpenEmergencyIncidentOnEventNormalized
     public function handle(EventNormalized $event): void
     {
         $normalized = $event->normalizedEvent;
-        $normalizedEventId = (int) $normalized->id;
+        $normalizedEventId = $normalized->id;
 
         $type = EventType::query()
             ->with('category:id,code')
@@ -40,7 +40,7 @@ class OpenEmergencyIncidentOnEventNormalized
         ];
 
         if (NormalizeRawEvent::isEmergencyCode($type?->category?->code, $type?->code)) {
-            OpenEmergencyIncidentJob::dispatch((int) $normalized->id, (int) $normalized->team_id)
+            OpenEmergencyIncidentJob::dispatch($normalized->id, $normalized->team_id)
                 ->afterCommit();
 
             DB::afterCommit(fn () => SystemLog::ok('incidents.emergency.fast_path',
@@ -64,7 +64,7 @@ class OpenEmergencyIncidentOnEventNormalized
         }
 
         if ($wasInMotion === true) {
-            OpenEmergencyIncidentJob::dispatch((int) $normalized->id, (int) $normalized->team_id, IncidentPriorityCode::High->value)
+            OpenEmergencyIncidentJob::dispatch($normalized->id, $normalized->team_id, IncidentPriorityCode::High->value)
                 ->afterCommit();
 
             DB::afterCommit(fn () => SystemLog::ok('incidents.emergency.fast_path',

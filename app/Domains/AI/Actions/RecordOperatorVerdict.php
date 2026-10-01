@@ -72,7 +72,7 @@ class RecordOperatorVerdict
             entityType: AIEventEvaluation::class,
             entityId: $evaluation->id,
             summary: 'Veredicto del operador sobre la evaluación de IA: '.$verdict->label(),
-            teamId: (int) $evaluation->team_id,
+            teamId: $evaluation->team_id,
             metadata: [
                 'normalized_event_id' => $normalizedEventId,
                 'evaluation_version' => $evaluation->evaluation_version,

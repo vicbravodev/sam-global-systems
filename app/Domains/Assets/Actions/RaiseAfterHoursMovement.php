@@ -140,7 +140,7 @@ class RaiseAfterHoursMovement
                 ],
             ],
             sourceType: EventSourceType::InternalMonitor->value,
-            teamId: (int) $asset->team_id,
+            teamId: $asset->team_id,
             providerId: null,
             deduplicationKey: $deduplicationKey,
             eventTypeRaw: self::EVENT_TYPE_CODE,
@@ -173,7 +173,7 @@ class RaiseAfterHoursMovement
      */
     private function log(Asset $asset, array $evaluation): void
     {
-        $input = ['team_id' => (int) $asset->team_id, 'asset_id' => $asset->id];
+        $input = ['team_id' => $asset->team_id, 'asset_id' => $asset->id];
 
         if ($evaluation['raised']) {
             SystemLog::ok('assets.after_hours.evaluated', input: $input, calc: $evaluation['calc'], result: [

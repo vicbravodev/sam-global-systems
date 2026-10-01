@@ -31,7 +31,7 @@ class UpdateSubscriptionStatus
         $subscription->save();
 
         TenantSubscriptionChanged::dispatch(
-            (int) $subscription->team_id,
+            $subscription->team_id,
             'status_changed:'.$status->value,
         );
 

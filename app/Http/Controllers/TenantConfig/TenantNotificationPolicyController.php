@@ -72,7 +72,7 @@ class TenantNotificationPolicyController extends Controller
         $userId = $request->user()?->id;
         $this->snapshotTenantConfig->execute(
             $current_team->id,
-            $userId ? SettingUpdatedByType::User : SettingUpdatedByType::System,
+            $userId !== null ? SettingUpdatedByType::User : SettingUpdatedByType::System,
             $userId,
         );
 

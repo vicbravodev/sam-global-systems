@@ -52,8 +52,8 @@ class EvaluateAIEffectiveness
                 ->avg('confidence_score');
 
             $decisionTotals = $this->decisions->totalsForTenant($teamId, $from, $to);
-            $decisionsCount = (int) $decisionTotals['total'];
-            $overrides = (int) $decisionTotals['human_overrides'];
+            $decisionsCount = $decisionTotals['total'];
+            $overrides = $decisionTotals['human_overrides'];
 
             $records['ai_total_evaluations'] = $this->upsert(
                 $teamId,
@@ -145,7 +145,7 @@ class EvaluateAIEffectiveness
             'calculated_at' => now(),
         ];
 
-        if ($record) {
+        if ($record !== null) {
             $record->forceFill($payload)->save();
 
             return $record;

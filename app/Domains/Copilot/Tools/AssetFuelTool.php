@@ -65,7 +65,7 @@ final class AssetFuelTool implements CopilotTool
 
         $block = [
             'type' => 'fuel',
-            'assetId' => (int) $asset->id,
+            'assetId' => $asset->id,
             'assetLabel' => $label,
             'period' => $context->period->label,
             'current' => $current,

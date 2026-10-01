@@ -56,7 +56,7 @@ class NotifyOnIncidentStatusChanged
             return;
         }
 
-        TenantContext::for((int) $incident->team_id, function () use ($incident, $newStatus, $actorUserId, $logInput): void {
+        TenantContext::for($incident->team_id, function () use ($incident, $newStatus, $actorUserId, $logInput): void {
             if ($newStatus === IncidentStatusCode::Escalated->value && $this->escalatedBySla($incident)) {
                 DB::afterCommit(fn () => SystemLog::skipped('notifications.status_change.skipped', reason: 'escalated_by_sla', input: $logInput));
 
@@ -84,7 +84,7 @@ class NotifyOnIncidentStatusChanged
             }
 
             $this->sendNotification->execute(
-                teamId: (int) $incident->team_id,
+                teamId: $incident->team_id,
                 notificationType: "incident.{$newStatus}",
                 sourceType: NotificationSourceType::Incident,
                 sourceReferenceId: (string) $incident->id,
@@ -121,11 +121,11 @@ class NotifyOnIncidentStatusChanged
         $assignment = $incident->currentAssignment()->first();
 
         if ($assignment !== null && $assignment->assigned_to_type === AssigneeType::User) {
-            $userIds[] = (int) $assignment->assigned_to_id;
+            $userIds[] = $assignment->assigned_to_id;
         }
 
         if ($incident->claimed_by_user_id !== null) {
-            $userIds[] = (int) $incident->claimed_by_user_id;
+            $userIds[] = $incident->claimed_by_user_id;
         }
 
         $candidates = array_values(array_unique(array_filter($userIds, fn (int $id): bool => $id > 0)));
@@ -146,8 +146,8 @@ class NotifyOnIncidentStatusChanged
             return ['recipients' => [], 'calc' => $calc];
         }
 
-        $members = TeamMembers::scope(User::query()->whereIn('id', $userIds), (int) $incident->team_id)->get();
-        $withEmail = $members->filter(fn (User $user): bool => (string) $user->email !== '');
+        $members = TeamMembers::scope(User::query()->whereIn('id', $userIds), $incident->team_id)->get();
+        $withEmail = $members->filter(fn (User $user): bool => $user->email !== '');
 
         $calc['non_member_dropped_count'] = count($userIds) - $members->count();
         $calc['without_email_dropped_count'] = $members->count() - $withEmail->count();
@@ -155,8 +155,8 @@ class NotifyOnIncidentStatusChanged
         $recipients = $withEmail
             ->map(fn (User $user): array => [
                 'recipient_type' => 'user',
-                'address' => (string) $user->email,
-                'email' => (string) $user->email,
+                'address' => $user->email,
+                'email' => $user->email,
                 'phone' => $user->verifiedPhone(),
                 'name' => $user->name,
                 'recipient_reference_id' => (string) $user->id,

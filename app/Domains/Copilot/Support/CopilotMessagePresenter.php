@@ -20,7 +20,7 @@ final class CopilotMessagePresenter
 
         if ($presented['blocks'] !== []) {
             $presented['blocks'] = app(CopilotMediaUrls::class)
-                ->refreshBlocks($presented['blocks'], (int) $message->team_id, (int) $message->id);
+                ->refreshBlocks($presented['blocks'], $message->team_id, $message->id);
         }
 
         return $presented;
@@ -32,9 +32,9 @@ final class CopilotMessagePresenter
     public static function message(CopilotMessage $message): array
     {
         return [
-            'id' => (int) $message->id,
+            'id' => $message->id,
             'role' => $message->role->value,
-            'content' => (string) $message->content,
+            'content' => $message->content,
             'intent' => $message->intent?->value,
             'intentLabel' => $message->intent?->label(),
             'blocks' => $message->blocks_json ?? [],
@@ -61,10 +61,10 @@ final class CopilotMessagePresenter
     public static function conversation(CopilotConversation $conversation): array
     {
         return [
-            'id' => (int) $conversation->id,
-            'title' => (string) $conversation->title,
-            'isPinned' => (bool) $conversation->is_pinned,
-            'messagesCount' => (int) $conversation->messages_count,
+            'id' => $conversation->id,
+            'title' => $conversation->title,
+            'isPinned' => $conversation->is_pinned,
+            'messagesCount' => $conversation->messages_count,
             'lastMessageAt' => $conversation->last_message_at?->toIso8601String(),
         ];
     }

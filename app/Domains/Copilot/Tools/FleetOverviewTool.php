@@ -38,9 +38,9 @@ final class FleetOverviewTool implements CopilotTool
             $motion = CopilotPresenter::motionState($asset->latestLocation);
 
             return [
-                'id' => (int) $asset->id,
+                'id' => $asset->id,
                 'code' => $asset->code,
-                'name' => (string) $asset->name,
+                'name' => $asset->name,
                 'category' => $asset->assetType?->category->value,
                 'status' => $asset->status->value,
                 'statusLabel' => CopilotPresenter::STATUS_LABELS[$asset->status->value],
@@ -48,13 +48,13 @@ final class FleetOverviewTool implements CopilotTool
                 'motionLabel' => CopilotPresenter::motionLabel($motion),
                 'driverName' => $asset->currentDriverAssignment?->driver?->full_name,
                 'location' => CopilotPresenter::location($asset->latestLocation),
-                'href' => CopilotPresenter::assetHref($context->teamSlug, (int) $asset->id),
+                'href' => CopilotPresenter::assetHref($context->teamSlug, $asset->id),
             ];
         });
 
         $counts = $rows->countBy('motion');
         $alerts = $rows->whereIn('status', ['alert', 'critical'])->count();
-        $scope = $context->category ? mb_strtolower($context->category->label()).'s' : 'unidades';
+        $scope = $context->category !== null ? mb_strtolower($context->category->label()).'s' : 'unidades';
 
         $ordered = $rows
             ->sortBy(fn (array $row) => [

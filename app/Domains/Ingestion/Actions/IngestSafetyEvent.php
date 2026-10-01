@@ -143,11 +143,13 @@ class IngestSafetyEvent
             $filename = sprintf('media-%d-%s.mp4', (int) $index, $this->mediaInputSlug($media['input'] ?? null));
 
             $found++;
+            // Valores del payload de Samsara (mixed): se descartan los
+            // "vacíos" de PHP igual que el array_filter sin callback.
             $this->storeMediaDownload($rawEvent, $url, $filename, array_filter([
                 'source_url_key' => "media.{$index}.url",
                 'input' => $media['input'] ?? null,
                 'camera_role' => $media['cameraRole'] ?? null,
-            ])) ? $downloaded++ : $failed++;
+            ], static fn (mixed $value): bool => ! in_array($value, [null, false, 0, 0.0, '', '0', []], true))) ? $downloaded++ : $failed++;
         }
 
         SystemLog::ok('ingestion.media.inline_collected', input: ['raw_event_id' => $rawEvent->id], calc: ['urls_found' => $found, 'downloaded' => $downloaded, 'failed' => $failed], debug: $found === 0);
@@ -170,7 +172,7 @@ class IngestSafetyEvent
         }
 
         $storagePath = "teams/{$rawEvent->team_id}/raw-events/{$rawEvent->id}/{$filename}";
-        $mimeType = $download->contentType ?: 'video/mp4';
+        $mimeType = self::isBlank($download->contentType) ? 'video/mp4' : $download->contentType;
 
         try {
             $stream = $download->stream();
@@ -206,8 +208,26 @@ class IngestSafetyEvent
         return match ($input) {
             'dashcamRoadFacing' => 'road-facing',
             'dashcamDriverFacing' => 'driver-facing',
-            default => preg_replace('/[^a-z0-9]+/', '-', strtolower((string) ($input ?: 'unknown'))) ?: 'unknown',
+            default => self::slugOrUnknown(self::isBlank($input) ? 'unknown' : $input),
         };
+    }
+
+    /**
+     * `null`, '' y '0' cuentan como "sin valor" (la truthiness de string que
+     * usaba el `?:` original).
+     *
+     * @phpstan-assert-if-false non-falsy-string $value
+     */
+    private static function isBlank(?string $value): bool
+    {
+        return $value === null || $value === '' || $value === '0';
+    }
+
+    private static function slugOrUnknown(string $input): string
+    {
+        $slug = preg_replace('/[^a-z0-9]+/', '-', strtolower($input));
+
+        return self::isBlank($slug) ? 'unknown' : $slug;
     }
 
     private function recordUsage(TenantIntegration $integration, string $externalEventId, string $eventState, RawEvent $rawEvent): void

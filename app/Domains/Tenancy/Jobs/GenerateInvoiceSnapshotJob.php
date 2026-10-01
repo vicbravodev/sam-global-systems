@@ -129,7 +129,7 @@ class GenerateInvoiceSnapshotJob implements ShouldQueue
                 return;
             }
 
-            $explained = $resolveTerms->explain((int) $team->id);
+            $explained = $resolveTerms->explain($team->id);
             $terms = $explained['terms'];
 
             SystemLog::ok('billing.terms.resolved',
@@ -137,7 +137,7 @@ class GenerateInvoiceSnapshotJob implements ShouldQueue
                 calc: ['values' => $terms->toArray(), 'sources' => $explained['sources']],
             );
 
-            $limit = $resolveAssetLimit->explain((int) $team->id);
+            $limit = $resolveAssetLimit->explain($team->id);
             $cap = $limit['cap'];
             $this->logAssetLimit($logInput, $limit);
 
@@ -219,7 +219,7 @@ class GenerateInvoiceSnapshotJob implements ShouldQueue
             $this->logLine($logInput, $aiLine, $aiRead['counter_found'], self::FAIR_USE_FORMULA, 'overage_total');
 
             // 3. Twilio a costo real + margen, en la moneda del tenant.
-            $messagingRate = $subscription
+            $messagingRate = $subscription !== null
                 ? BillingRate::query()
                     ->with('usageMeter')
                     ->where('plan_id', $subscription->plan_id)
@@ -238,13 +238,13 @@ class GenerateInvoiceSnapshotJob implements ShouldQueue
                     default => 'platform_default',
                 };
 
-                $messagingRead = $this->consumed($team, (string) $messagingMeter->code, $periodStart, $logInput);
+                $messagingRead = $this->consumed($team, $messagingMeter->code, $periodStart, $logInput);
                 $messagingLine = AssetDayPricing::messagingLine(
                     $terms,
                     (float) $messagingRead['consumed'],
                     $markup,
-                    (string) $messagingMeter->code,
-                    (string) $messagingMeter->name,
+                    $messagingMeter->code,
+                    $messagingMeter->name,
                 );
                 $breakdown[] = $messagingLine;
                 $overageTotal += (float) $messagingLine['amount'];
@@ -258,7 +258,7 @@ class GenerateInvoiceSnapshotJob implements ShouldQueue
             $planMetersBilled = 0;
             $planMetersSkipped = 0;
 
-            if ($subscription) {
+            if ($subscription !== null) {
                 $billingRates = BillingRate::query()
                     ->with('usageMeter')
                     ->where('plan_id', $subscription->plan_id)
@@ -276,7 +276,7 @@ class GenerateInvoiceSnapshotJob implements ShouldQueue
 
                     $planRead = $this->consumed($team, $code, $periodStart, $logInput);
                     $consumed = $planRead['consumed'];
-                    $included = (int) $rate->included_quantity;
+                    $included = $rate->included_quantity;
                     $overage = max(0, $consumed - $included);
                     $overageCost = round($overage * (float) $rate->overage_unit_price, 2);
                     $overageTotal += $overageCost;

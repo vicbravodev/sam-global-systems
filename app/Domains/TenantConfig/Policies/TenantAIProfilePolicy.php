@@ -16,7 +16,7 @@ class TenantAIProfilePolicy
     {
         $team = currentTeam();
 
-        if (! $team) {
+        if ($team === null) {
             return false;
         }
 
@@ -31,7 +31,7 @@ class TenantAIProfilePolicy
     {
         $team = currentTeam();
 
-        if (! $team) {
+        if ($team === null) {
             return false;
         }
 

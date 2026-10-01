@@ -64,9 +64,9 @@ class CommandPaletteController extends Controller
             ->limit(self::INCIDENT_LIMIT)
             ->get()
             ->map(fn (Incident $incident): array => [
-                'id' => (int) $incident->id,
+                'id' => $incident->id,
                 'reference' => $incident->reference(),
-                'title' => (string) $incident->title,
+                'title' => $incident->title,
                 'severity' => $incident->priority?->code,
                 'status' => $incident->status?->code,
                 // Same rendered string as the inbox/detail/asset surfaces.
@@ -93,8 +93,8 @@ class CommandPaletteController extends Controller
             ->limit(self::ENTITY_LIMIT)
             ->get(['id', 'name', 'code', 'metadata_json'])
             ->map(fn (Asset $asset): array => [
-                'id' => (int) $asset->id,
-                'name' => (string) $asset->name,
+                'id' => $asset->id,
+                'name' => $asset->name,
                 'code' => $asset->code,
                 'plate' => is_scalar($asset->metadata_json['license_plate'] ?? null)
                     ? (string) $asset->metadata_json['license_plate']
@@ -120,8 +120,8 @@ class CommandPaletteController extends Controller
             ->limit(self::ENTITY_LIMIT)
             ->get(['id', 'full_name', 'employee_code'])
             ->map(fn (Driver $driver): array => [
-                'id' => (int) $driver->id,
-                'name' => (string) $driver->full_name,
+                'id' => $driver->id,
+                'name' => $driver->full_name,
                 'employeeCode' => $driver->employee_code,
             ])
             ->all());

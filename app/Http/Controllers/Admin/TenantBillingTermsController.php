@@ -45,13 +45,13 @@ class TenantBillingTermsController extends Controller
 
         $this->audit->execute(
             actorType: AuditActorType::User,
-            actorId: (int) $user->id,
+            actorId: $user->id,
             action: 'tenant.billing_terms_updated',
             category: AuditCategory::Billing,
             entityType: Team::class,
-            entityId: (int) $team->id,
+            entityId: $team->id,
             summary: "Términos de facturación del tenant {$team->name} actualizados.",
-            teamId: (int) $team->id,
+            teamId: $team->id,
             metadata: ['actor_email' => $user->email, 'terms' => $terms->only([
                 'unit_price', 'currency', 'included_assets', 'min_billable_assets',
                 'ai_fair_use_per_asset', 'ai_overage_unit_price', 'messaging_markup_percent',

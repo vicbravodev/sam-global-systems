@@ -48,11 +48,12 @@ class NormalizeRawEvent
         $providerId = $rawEvent->provider_id;
         $payload = $rawEvent->payload_json ?? [];
 
-        $rule = $providerId
+        // provider_id es FK a providers.id (secuencia desde 1): nunca es 0.
+        $rule = $providerId !== null
             ? $this->mapExternalEventType->execute($providerId, $externalEventType, $payload)
             : null;
 
-        if (! $rule) {
+        if ($rule === null) {
             // Internal monitor events (Roadmap V2-C1) carry no provider and
             // need no mapping rule: their `event_type_raw` IS the event type
             // code and the asset comes pre-resolved in the payload.
@@ -67,7 +68,7 @@ class NormalizeRawEvent
                 return $this->createInternalNormalizedEvent($rawEvent, $internalType, $payload);
             }
 
-            if (! $providerId) {
+            if ($providerId === null) {
                 SystemLog::skipped('normalization.type.unmapped', reason: 'no_provider', input: [
                     'raw_event_id' => $rawEvent->id,
                     'external_event_type' => $externalEventType,
@@ -89,7 +90,7 @@ class NormalizeRawEvent
             return null;
         }
 
-        $code = (string) ($rawEvent->event_type_raw ?? '');
+        $code = $rawEvent->event_type_raw ?? '';
 
         if ($code === '') {
             return null;
@@ -247,7 +248,7 @@ class NormalizeRawEvent
             ?? throw new LogicException("EventMappingRule {$rule->id} sin EventType.");
         $severity = $this->resolveEventSeverity->execute($rule, $eventType);
         // mapped_category_id es nullOnDelete: sin categoría propia, la del tipo.
-        $category = ($rule->mapped_category_id ? $rule->mappedCategory : null)
+        $category = ($rule->mapped_category_id !== null ? $rule->mappedCategory : null)
             ?? $eventType->category
             ?? throw new LogicException("EventType {$eventType->id} sin EventCategory.");
 
@@ -439,11 +440,12 @@ class NormalizeRawEvent
         $rejection = null;
         $assetId = null;
 
-        if ($providerId && $teamId) {
+        // Ids de secuencia (FK): nunca son 0, así que `!== null` equivale al truthy.
+        if ($providerId !== null && $teamId !== null) {
             foreach (['asset.id', 'vehicle.id', 'vehicleId', 'data.conditions.0.details.panicButton.vehicle.id'] as $candidate) {
-                // First non-null value wins (as `??`); a falsy one means "no id".
+                // First non-null value wins (as `??`); a falsy one ('0', '', 0, false…) means "no id".
                 if (Arr::get($payload, $candidate) !== null) {
-                    $path = Arr::get($payload, $candidate) ? $candidate : null;
+                    $path = self::isFalsyPayloadId(Arr::get($payload, $candidate)) ? null : $candidate;
                     break;
                 }
             }
@@ -542,7 +544,7 @@ class NormalizeRawEvent
             return 'missing';
         }
 
-        if ((int) $row->team_id !== (int) $teamId) {
+        if ($row->team_id !== (int) $teamId) {
             return 'foreign';
         }
 
@@ -565,11 +567,12 @@ class NormalizeRawEvent
         $rejection = null;
         $driverId = null;
 
-        if ($providerId && $teamId) {
+        // Ids de secuencia (FK): nunca son 0, así que `!== null` equivale al truthy.
+        if ($providerId !== null && $teamId !== null) {
             foreach (['driver.id', 'data.conditions.0.details.panicButton.driver.id'] as $candidate) {
-                // First non-null value wins (as `??`); a falsy one means "no id".
+                // First non-null value wins (as `??`); a falsy one ('0', '', 0, false…) means "no id".
                 if (Arr::get($payload, $candidate) !== null) {
-                    $path = Arr::get($payload, $candidate) ? $candidate : null;
+                    $path = self::isFalsyPayloadId(Arr::get($payload, $candidate)) ? null : $candidate;
                     break;
                 }
             }
@@ -694,5 +697,14 @@ class NormalizeRawEvent
         }
 
         return $id ?? EventSeverity::query()->value('id');
+    }
+
+    /**
+     * Truthiness de PHP sobre un id del payload del proveedor (mixed): `'0'`,
+     * `''`, `0`, `0.0`, `false` y `[]` cuentan como "sin id".
+     */
+    private static function isFalsyPayloadId(mixed $value): bool
+    {
+        return in_array($value, [null, false, 0, 0.0, '', '0', []], true);
     }
 }

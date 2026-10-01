@@ -26,6 +26,6 @@ class UpdateTeamMemberRole
             ->firstOrFail()
             ->update(['role' => $role, 'role_id' => null]);
 
-        $this->authorizeAction->invalidateCache((int) $user->id, (int) $team->id);
+        $this->authorizeAction->invalidateCache($user->id, $team->id);
     }
 }

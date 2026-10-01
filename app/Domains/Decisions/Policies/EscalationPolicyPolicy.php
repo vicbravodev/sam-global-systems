@@ -16,21 +16,21 @@ class EscalationPolicyPolicy
     {
         $team = currentTeam();
 
-        return $team && $this->authorizeAction->execute($user, 'decisions.view', $team);
+        return $team !== null && $this->authorizeAction->execute($user, 'decisions.view', $team);
     }
 
     public function create(User $user): bool
     {
         $team = currentTeam();
 
-        return $team && $this->authorizeAction->execute($user, 'decisions.escalation.manage', $team);
+        return $team !== null && $this->authorizeAction->execute($user, 'decisions.escalation.manage', $team);
     }
 
     public function update(User $user, EscalationPolicy $policy): bool
     {
         $team = currentTeam();
 
-        return $team
+        return $team !== null
             && $policy->team_id === $team->id
             && $this->authorizeAction->execute($user, 'decisions.escalation.manage', $team);
     }

@@ -43,7 +43,7 @@ class RecordEntityChange
         $history->after_json = $after;
         $history->changed_fields_json = $changedFields;
         $history->reason = $reason;
-        $history->occurred_at = $occurredAt ? CarbonImmutable::instance($occurredAt) : CarbonImmutable::now();
+        $history->occurred_at = $occurredAt !== null ? CarbonImmutable::instance($occurredAt) : CarbonImmutable::now();
         $history->save();
 
         return $history;

@@ -25,7 +25,7 @@ class AccessServiceProvider extends ServiceProvider
 
         $forget = function (Subscription|TenantFeature $model): void {
             if ($this->app->resolved(AuthorizeAction::class)) {
-                $this->app->make(AuthorizeAction::class)->forgetTeamAccess((int) $model->team_id);
+                $this->app->make(AuthorizeAction::class)->forgetTeamAccess($model->team_id);
             }
         };
 

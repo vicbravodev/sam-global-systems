@@ -42,7 +42,7 @@ class SlackNotificationDriver implements NotificationDriver
             return DeliveryResult::failure('slack_webhook_url missing');
         }
 
-        $timeout = is_int($config['timeout'] ?? null) ? (int) $config['timeout'] : self::DEFAULT_TIMEOUT_SECONDS;
+        $timeout = is_int($config['timeout'] ?? null) ? $config['timeout'] : self::DEFAULT_TIMEOUT_SECONDS;
 
         $payload = $this->buildPayload($notification, $config);
 
@@ -60,7 +60,7 @@ class SlackNotificationDriver implements NotificationDriver
             ]);
         }
 
-        $responseBody = Str::limit((string) $response->body(), 500, '');
+        $responseBody = Str::limit($response->body(), 500, '');
         $trimmed = trim($responseBody);
 
         $responsePayload = [

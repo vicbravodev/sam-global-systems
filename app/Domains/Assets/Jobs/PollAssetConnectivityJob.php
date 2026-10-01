@@ -91,7 +91,7 @@ class PollAssetConnectivityJob implements ShouldBeUnique, ShouldQueue
 
         // Nunca el `health_status` crudo del proveedor: sólo conteos.
         TenantContext::for($this->integration->team_id, fn () => SystemLog::ok('assets.connectivity.polled', input: [
-            'team_id' => (int) $this->integration->team_id,
+            'team_id' => $this->integration->team_id,
             'integration_id' => $this->integration->id,
         ], result: [
             'readings_reported_count' => count($readings),

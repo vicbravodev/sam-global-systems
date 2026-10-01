@@ -16,14 +16,14 @@ class DecisionRulePolicy
     {
         $team = currentTeam();
 
-        return $team && $this->authorizeAction->execute($user, 'decisions.view', $team);
+        return $team !== null && $this->authorizeAction->execute($user, 'decisions.view', $team);
     }
 
     public function create(User $user): bool
     {
         $team = currentTeam();
 
-        return $team && $this->authorizeAction->execute($user, 'decisions.rules.manage', $team);
+        return $team !== null && $this->authorizeAction->execute($user, 'decisions.rules.manage', $team);
     }
 
     /**
@@ -39,8 +39,8 @@ class DecisionRulePolicy
 
         $team = currentTeam();
 
-        return $team
-            && (int) $rule->team_id === $team->id
+        return $team !== null
+            && $rule->team_id === $team->id
             && $this->authorizeAction->execute($user, 'decisions.rules.manage', $team);
     }
 

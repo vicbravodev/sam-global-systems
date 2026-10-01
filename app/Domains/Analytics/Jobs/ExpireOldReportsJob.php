@@ -39,7 +39,8 @@ class ExpireOldReportsJob implements ShouldQueue
                     ]);
             });
 
-        if ($this->teamId) {
+        // teams.id sale de una secuencia: 0 no es un id posible.
+        if ($this->teamId !== null) {
             $teamsQuery->where('id', $this->teamId);
         }
 

@@ -75,23 +75,33 @@ class BuildOperationalContextProfile
     {
         $boost = 0.0;
 
-        if (! empty($signals['is_in_sensitive_geofence'])) {
+        if ($this->signal($signals, 'is_in_sensitive_geofence')) {
             $boost += 10.0;
         }
 
-        if (! empty($signals['has_open_incident'])) {
+        if ($this->signal($signals, 'has_open_incident')) {
             $boost += 10.0;
         }
 
-        if (! empty($signals['driver_has_recent_risk_events'])) {
+        if ($this->signal($signals, 'driver_has_recent_risk_events')) {
             $boost += 5.0;
         }
 
-        if (! empty($signals['gps_signal_weak'])) {
+        if ($this->signal($signals, 'gps_signal_weak')) {
             $boost += 2.0;
         }
 
         return $boost;
+    }
+
+    /**
+     * Misma lectura que `! empty($signals[$key])`: ausente o falsy = apagada.
+     *
+     * @param  array<string, mixed>  $signals
+     */
+    private function signal(array $signals, string $key): bool
+    {
+        return (bool) ($signals[$key] ?? false);
     }
 
     private function riskLevelFromScore(float $score): RiskLevel
@@ -109,7 +119,7 @@ class BuildOperationalContextProfile
      */
     private function profileCodeFor(RiskLevel $riskLevel, array $signals): string
     {
-        if (! empty($signals['is_in_sensitive_geofence']) && $riskLevel === RiskLevel::Critical) {
+        if ($this->signal($signals, 'is_in_sensitive_geofence') && $riskLevel === RiskLevel::Critical) {
             return 'sensitive_zone_critical';
         }
 

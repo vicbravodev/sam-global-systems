@@ -57,7 +57,7 @@ class NotificationsShowcaseSeeder extends ShowcaseStep
         $this->channels = NotificationChannel::query()
             ->whereIn('code', ['sam_email', 'sam_web', 'sam_sms', 'sam_whatsapp', 'sam_voice'])
             ->get()
-            ->mapWithKeys(fn (NotificationChannel $c) => [$c->channel_type->value => (int) $c->id])
+            ->mapWithKeys(fn (NotificationChannel $c) => [$c->channel_type->value => $c->id])
             ->all();
 
         $this->existingKeys = Notification::query()
@@ -214,7 +214,7 @@ class NotificationsShowcaseSeeder extends ShowcaseStep
 
             $this->notify($incident, $isPanic ? 'incident.panic_emergency.created' : 'incident.created', 'created', $priority, $opened->addSeconds(3),
                 ($isPanic ? '🚨 Pánico: ' : 'Nuevo incidente: ').$incident->title,
-                (string) Str::limit((string) $incident->summary, 180),
+                Str::limit($incident->summary, 180),
                 [$operator, $supervisor], $channels, $random, withDriverContact: $isPanic && $incident->driver_id !== null);
 
             $this->notify($incident, 'incident.assigned.on_call', 'assigned', $priority, $opened->addSeconds(40),
@@ -232,7 +232,7 @@ class NotificationsShowcaseSeeder extends ShowcaseStep
             if ($incident->resolved_at !== null) {
                 $this->notify($incident, 'incident.status_changed', 'resolved', 'low', CarbonImmutable::parse($incident->resolved_at)->addSeconds(5),
                     'Incidente '.($incident->status?->code === 'false_positive' ? 'descartado' : 'resuelto').': '.$incident->title,
-                    (string) ($incident->resolution?->resolution_summary ?? 'Caso cerrado por el monitorista.'),
+                    $incident->resolution?->resolution_summary ?? 'Caso cerrado por el monitorista.',
                     [$supervisor], ['web', 'email'], $random);
             }
         }
@@ -486,13 +486,13 @@ class NotificationsShowcaseSeeder extends ShowcaseStep
             'failed_at' => $status === 'failed' ? $t['last_at'] : null,
             'last_provider_event_at' => $t['last_at'],
             'error_message' => $status === 'failed'
-                ? sprintf('twilio %s %s', $channel === 'voice' ? 'call' : 'message', $attempt['provider_status']).($attempt['error_code'] ? " (error {$attempt['error_code']})" : '')
+                ? sprintf('twilio %s %s', $channel === 'voice' ? 'call' : 'message', $attempt['provider_status']).($attempt['error_code'] !== null && $attempt['error_code'] !== '' ? " (error {$attempt['error_code']})" : '')
                 : null,
             'response_json' => json_encode(['sid' => $final['sid'], 'status' => $attempt['provider_status']]),
         ]);
 
         if (in_array($channel, ['sms', 'whatsapp'], true) && $status === 'delivered' && $random->chance(0.4)) {
-            $this->replyToken($incidentId, $notificationId, $recipientId, $channel, (string) $phone, $at, $t['delivered_at'] ?? $at, $random);
+            $this->replyToken($incidentId, $notificationId, $recipientId, $channel, $phone, $at, $t['delivered_at'] ?? $at, $random);
         }
 
         $fallback = $status === 'failed' && (TwilioErrorCatalog::isPermanent($attempt['error_code']) || $channel === 'voice')
@@ -669,7 +669,7 @@ class NotificationsShowcaseSeeder extends ShowcaseStep
         $estimated = $micros > 0 && $lastAt->diffInHours($this->ctx->now) > 24 && $random->chance(0.05);
         $finalizedAt = $terminal ? ($estimated ? $lastAt->addHours(24)->addMinutes(5) : $lastAt->addMinutes($random->int(2, 12))) : null;
 
-        if ($finalizedAt?->greaterThan($this->ctx->now)) {
+        if ($finalizedAt?->greaterThan($this->ctx->now) === true) {
             $finalizedAt = $this->ctx->now->subMinute();
         }
 
@@ -684,7 +684,7 @@ class NotificationsShowcaseSeeder extends ShowcaseStep
             'status' => $status,
             'error_code' => $attempt['error_code'],
             'segments' => $attempt['segments'],
-            'duration_seconds' => $isCall ? (int) ($attempt['duration'] ?? 0) : null,
+            'duration_seconds' => $isCall ? $attempt['duration'] ?? 0 : null,
             'price_micros' => $micros,
             'price_unit' => $micros > 0 ? 'USD' : null,
             'price_estimated' => $estimated,

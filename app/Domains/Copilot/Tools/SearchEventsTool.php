@@ -51,7 +51,7 @@ final class SearchEventsTool implements CopilotTool
             ->mapWithKeys(fn ($total, $id) => [($types->get($id)?->code ?? 'sin_tipo') => (int) $total])
             ->sortDesc();
         $byTypeNames = $typeCounts
-            ->map(fn ($total, $id) => ['label' => (string) ($types->get($id)?->name ?? 'Sin tipo'), 'value' => (int) $total])
+            ->map(fn ($total, $id) => ['label' => $types->get($id)?->name ?? 'Sin tipo', 'value' => (int) $total])
             ->sortByDesc('value')
             ->values();
         $bySeverity = $severityCounts
@@ -81,14 +81,14 @@ final class SearchEventsTool implements CopilotTool
             ->get();
 
         $rows = array_values($recent->map(fn (NormalizedEvent $event) => [
-            'id' => (int) $event->id,
-            'title' => (string) ($event->eventType?->name ?? 'Evento'),
+            'id' => $event->id,
+            'title' => $event->eventType?->name ?? 'Evento',
             'severity' => CopilotPresenter::severity($event->eventSeverity?->code),
             'assetCode' => $event->asset?->code ?? $event->asset?->name,
             'driverName' => $event->driver?->full_name,
             'occurredAt' => $event->occurred_at->toIso8601String(),
-            'statusLabel' => (string) ($event->eventType?->name ?? 'Evento'),
-            'href' => CopilotPresenter::eventHref($context->teamSlug, (int) $event->id),
+            'statusLabel' => $event->eventType?->name ?? 'Evento',
+            'href' => CopilotPresenter::eventHref($context->teamSlug, $event->id),
         ])->all());
 
         // $total > 0 garantiza al menos un tipo; el fallback sólo cubre el contrato.
@@ -132,11 +132,20 @@ final class SearchEventsTool implements CopilotTool
     private function describeScope(CopilotToolContext $context, ?string $typeCode, ?string $severityCode): string
     {
         $parts = array_filter([
-            $typeCode ? "de tipo {$typeCode}" : null,
-            $severityCode ? "de severidad {$severityCode}" : null,
-            $context->asset ? 'de '.CopilotPresenter::assetLabel($context->asset) : null,
+            self::filled($typeCode) ? "de tipo {$typeCode}" : null,
+            self::filled($severityCode) ? "de severidad {$severityCode}" : null,
+            $context->asset !== null ? 'de '.CopilotPresenter::assetLabel($context->asset) : null,
         ]);
 
         return $parts === [] ? '' : ' '.implode(' ', $parts);
+    }
+
+    /**
+     * Misma regla que el `when()` que filtra la consulta: un código null, ''
+     * o '0' no filtra, así que tampoco se describe.
+     */
+    private static function filled(?string $code): bool
+    {
+        return $code !== null && $code !== '' && $code !== '0';
     }
 }

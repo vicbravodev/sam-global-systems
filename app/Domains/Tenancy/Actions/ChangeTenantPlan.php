@@ -77,7 +77,7 @@ class ChangeTenantPlan
                 ->where('feature_key', $featureKey)
                 ->first();
 
-            if ($existing && $existing->source === FeatureSource::ManualOverride) {
+            if ($existing !== null && $existing->source === FeatureSource::ManualOverride) {
                 continue;
             }
 

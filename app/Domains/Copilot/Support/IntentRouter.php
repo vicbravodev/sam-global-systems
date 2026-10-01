@@ -41,7 +41,7 @@ final class IntentRouter
      */
     public function unitToken(string $prompt): ?string
     {
-        return preg_match('/\b([a-z]{1,3}-?\d{2,5})\b/u', CopilotText::normalize($prompt), $match)
+        return preg_match('/\b([a-z]{1,3}-?\d{2,5})\b/u', CopilotText::normalize($prompt), $match) === 1
             ? mb_strtoupper($match[1])
             : null;
     }
@@ -52,7 +52,7 @@ final class IntentRouter
         $aboutOneUnit = $hasAsset || $this->mentionsUnit($prompt);
 
         foreach (self::PATTERNS as $intent => $pattern) {
-            if (! preg_match($pattern, $normalized)) {
+            if (preg_match($pattern, $normalized) !== 1) {
                 continue;
             }
 

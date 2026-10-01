@@ -29,6 +29,11 @@ class TrustProxiesFromConfig extends TrustProxies
             return $configured;
         }
 
-        return array_values(array_filter(array_map('trim', explode(',', $configured))));
+        // Descarta entradas vacías (comas dobles o finales); '0' tampoco es un
+        // proxy válido y se seguía descartando con el array_filter sin callback.
+        return array_values(array_filter(
+            array_map('trim', explode(',', $configured)),
+            static fn (string $proxy): bool => $proxy !== '' && $proxy !== '0',
+        ));
     }
 }

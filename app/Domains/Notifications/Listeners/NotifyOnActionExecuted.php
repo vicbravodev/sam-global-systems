@@ -25,10 +25,10 @@ class NotifyOnActionExecuted
             return;
         }
 
-        $payload = (array) ($execution->payload_json ?? []);
+        $payload = $execution->payload_json ?? [];
 
         $this->sendNotification->execute(
-            teamId: (int) $execution->team_id,
+            teamId: $execution->team_id,
             notificationType: 'automation.'.$actionType,
             sourceType: NotificationSourceType::ActionExecution,
             sourceReferenceId: (string) $execution->id,

@@ -16,14 +16,14 @@ class AIEvaluationPolicy
     {
         $team = currentTeam();
 
-        return $team && $this->authorizeAction->execute($user, 'ai.analysis.view', $team);
+        return $team !== null && $this->authorizeAction->execute($user, 'ai.analysis.view', $team);
     }
 
     public function view(User $user, AIEventEvaluation $evaluation): bool
     {
         $team = currentTeam();
 
-        return $team
+        return $team !== null
             && $evaluation->team_id === $team->id
             && $this->authorizeAction->execute($user, 'ai.analysis.view', $team);
     }
@@ -32,7 +32,7 @@ class AIEvaluationPolicy
     {
         $team = currentTeam();
 
-        return $team
+        return $team !== null
             && $evaluation->team_id === $team->id
             && $this->authorizeAction->execute($user, 'ai.analysis.execute', $team);
     }

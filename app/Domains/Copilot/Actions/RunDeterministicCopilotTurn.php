@@ -21,7 +21,7 @@ class RunDeterministicCopilotTurn
 
     public function execute(CopilotTurn $turn): CopilotTurnOutcome
     {
-        $question = (string) $turn->question->content;
+        $question = $turn->question->content;
 
         $answer = $this->answer->execute(
             teamId: $turn->scope->teamId,

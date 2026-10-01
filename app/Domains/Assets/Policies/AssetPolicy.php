@@ -20,15 +20,15 @@ class AssetPolicy
     {
         $team = currentTeam();
 
-        return $team && $this->authorizeAction->execute($user, 'assets.view', $team);
+        return $team !== null && $this->authorizeAction->execute($user, 'assets.view', $team);
     }
 
     public function view(User $user, Asset $asset): bool
     {
         $team = currentTeam();
 
-        return $team
-            && (int) $asset->team_id === $team->id
+        return $team !== null
+            && $asset->team_id === $team->id
             && $this->authorizeAction->execute($user, 'assets.view', $team);
     }
 }

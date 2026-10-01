@@ -79,7 +79,7 @@ class ResolveDecisionOutcome
      */
     private function applyCriticalSeverityFloor(AIEventEvaluation $eval, array $resolved): array
     {
-        $code = DecisionOutcomeCode::tryFrom((string) $resolved['outcome']->code);
+        $code = DecisionOutcomeCode::tryFrom($resolved['outcome']->code);
 
         if ($code !== null && $code->createsIncident()) {
             $resolved['explain']['floor_check'] = 'outcome_creates_incident';
@@ -138,19 +138,19 @@ class ResolveDecisionOutcome
 
         $policy = $this->rulesResolver->resolve($eval->team_id);
 
-        $confidence = (float) ($eval->confidence_score ?? 0.0);
+        $confidence = $eval->confidence_score ?? 0.0;
         $requiresHumanReview = $confidence < $policy->humanReviewConfidenceThreshold;
 
         $explain = [
             'confidence' => $confidence,
             'human_review_threshold' => $policy->humanReviewConfidenceThreshold,
             'review_by_confidence' => $requiresHumanReview,
-            'risk' => (float) ($eval->risk_score ?? 0.0),
+            'risk' => $eval->risk_score ?? 0.0,
         ];
 
         $hardSafetyRule = $matchedRules->first(fn (DecisionRule $rule) => $rule->stop_processing && $rule->outcome_override !== null);
 
-        if ($hardSafetyRule !== null && $hardSafetyRule->outcomeOverride) {
+        if ($hardSafetyRule !== null && $hardSafetyRule->outcomeOverride !== null) {
             return [
                 'outcome' => $hardSafetyRule->outcomeOverride,
                 'sourceType' => DecisionSourceType::Rule,
@@ -164,7 +164,7 @@ class ResolveDecisionOutcome
 
         $tenantRule = $matchedRules->first(fn (DecisionRule $rule) => $rule->team_id !== null && $rule->outcome_override !== null);
 
-        if ($tenantRule !== null && $tenantRule->outcomeOverride) {
+        if ($tenantRule !== null && $tenantRule->outcomeOverride !== null) {
             return [
                 'outcome' => $tenantRule->outcomeOverride,
                 'sourceType' => DecisionSourceType::TenantPolicy,
@@ -177,7 +177,7 @@ class ResolveDecisionOutcome
 
         $globalRule = $matchedRules->first(fn (DecisionRule $rule) => $rule->outcome_override !== null);
 
-        if ($globalRule !== null && $globalRule->outcomeOverride) {
+        if ($globalRule !== null && $globalRule->outcomeOverride !== null) {
             return [
                 'outcome' => $globalRule->outcomeOverride,
                 'sourceType' => DecisionSourceType::Rule,
@@ -241,7 +241,7 @@ class ResolveDecisionOutcome
         $classification = $eval->classification;
 
         $confidence = $eval->confidence_score !== null
-            ? ' ('.(int) round((float) $eval->confidence_score * 100).' %)'
+            ? ' ('.(int) round($eval->confidence_score * 100).' %)'
             : '';
 
         return match ($classification) {
@@ -258,9 +258,9 @@ class ResolveDecisionOutcome
      */
     private function ruleLabel(DecisionRule $rule): string
     {
-        $name = trim((string) $rule->name);
+        $name = trim($rule->name);
 
-        return $name !== '' ? '«'.$name.'» ('.$rule->code.')' : (string) $rule->code;
+        return $name !== '' ? '«'.$name.'» ('.$rule->code.')' : $rule->code;
     }
 
     /**
@@ -274,7 +274,7 @@ class ResolveDecisionOutcome
      */
     private function guardMediaContradiction(AIEventEvaluation $eval, array $resolved): array
     {
-        $code = DecisionOutcomeCode::tryFrom((string) $resolved['outcome']->code);
+        $code = DecisionOutcomeCode::tryFrom($resolved['outcome']->code);
 
         if ($code === null || ! $code->isTerminal()) {
             $resolved['explain']['guard_check'] = 'outcome_not_terminal';
@@ -354,7 +354,7 @@ class ResolveDecisionOutcome
             return DecisionOutcomeCode::RequireHumanReview;
         }
 
-        $risk = (float) ($eval->risk_score ?? 0.0);
+        $risk = $eval->risk_score ?? 0.0;
 
         return match ($eval->classification) {
             EventClassification::RealEvent => $risk >= self::ESCALATE_RISK_THRESHOLD

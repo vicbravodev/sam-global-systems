@@ -83,7 +83,7 @@ class AttemptDelivery
             $chargeRecorded = $this->recordAcceptedResource($delivery, $channel->channel_type, $result);
 
             $usageMetered = $this->recordUsage->execute(
-                teamId: (int) $delivery->team_id,
+                teamId: $delivery->team_id,
                 meterCode: $channel->channel_type->usageMeterCode(),
                 quantity: $channel->channel_type === ChannelType::Sms ? max(1, (int) $result->segments) : 1,
                 eventKey: $usageEventKey,
@@ -119,16 +119,16 @@ class AttemptDelivery
 
         if ($delivery->status === DeliveryStatus::Delivered) {
             NotificationDelivered::dispatch(
-                (int) $delivery->team_id,
-                (int) $delivery->notification_id,
-                (int) $delivery->id,
+                $delivery->team_id,
+                $delivery->notification_id,
+                $delivery->id,
                 $channel->channel_type->value,
             );
         } elseif ($delivery->status === DeliveryStatus::Failed) {
             NotificationFailed::dispatch(
-                (int) $delivery->team_id,
-                (int) $delivery->notification_id,
-                (int) $delivery->id,
+                $delivery->team_id,
+                $delivery->notification_id,
+                $delivery->id,
                 $channel->channel_type->value,
                 $result->errorMessage ?? 'Unknown error',
             );
@@ -147,11 +147,11 @@ class AttemptDelivery
         }
 
         return $this->recordCharge->execute(
-            teamId: (int) $delivery->team_id,
+            teamId: $delivery->team_id,
             providerSid: $result->providerMessageId,
             resourceType: $result->resourceType,
             sourceType: MessagingChargeSource::NotificationDelivery,
-            sourceId: (int) $delivery->id,
+            sourceId: $delivery->id,
             channelType: $channelType,
             status: $result->providerStatus,
             segments: $result->segments,

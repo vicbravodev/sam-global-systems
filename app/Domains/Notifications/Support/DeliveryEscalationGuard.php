@@ -69,7 +69,7 @@ final class DeliveryEscalationGuard
             $calc['notification_age_seconds'] = (int) $notification->created_at->diffInSeconds(now());
         }
 
-        if (($blocked = TenantCanSend::blockedReason((int) $delivery->team_id)) !== null) {
+        if (($blocked = TenantCanSend::blockedReason($delivery->team_id)) !== null) {
             return ['reason' => $blocked, 'calc' => $calc];
         }
 
@@ -81,7 +81,7 @@ final class DeliveryEscalationGuard
         $handled = self::incidentHandledSince($notification->source_type, $notification->source_reference_id, $notification->created_at);
 
         // Sólo el id de un incidente del propio team de la entrega.
-        if ($handled['incident'] !== null && (int) $handled['incident']->team_id === (int) $delivery->team_id) {
+        if ($handled['incident'] !== null && $handled['incident']->team_id === $delivery->team_id) {
             $calc['incident_id'] = $handled['incident']->id;
             $calc['incident_handled_at_present'] = $handled['handled_at_present'];
         }

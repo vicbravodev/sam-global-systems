@@ -62,7 +62,7 @@ class BuildAnalyticsSnapshot
                 'snapshot_json' => $payload,
             ];
 
-            if ($existing) {
+            if ($existing !== null) {
                 $existing->forceFill($payload)->save();
 
                 return $existing;
@@ -91,9 +91,9 @@ class BuildAnalyticsSnapshot
         $accuracy = $this->aiAccuracyRate($teamId, $from, $to);
 
         return [
-            'total_incidents' => (int) $totals['total'],
-            'resolved_incidents' => (int) $totals['resolved'],
-            'mean_resolution_time_minutes' => (float) $totals['mean_resolution_time_minutes'],
+            'total_incidents' => $totals['total'],
+            'resolved_incidents' => $totals['resolved'],
+            'mean_resolution_time_minutes' => $totals['mean_resolution_time_minutes'],
             'ai_accuracy_rate' => $accuracy,
             'active_assets' => Asset::query()->where('team_id', $teamId)->activeDuring($from, $to)->count(),
             'active_integrations' => TenantIntegration::query()

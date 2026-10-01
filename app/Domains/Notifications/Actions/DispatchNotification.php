@@ -221,7 +221,7 @@ class DispatchNotification
                     ->where('channel_id', $channel->id)
                     ->first();
 
-                if ($existing) {
+                if ($existing !== null) {
                     return;
                 }
 
@@ -308,7 +308,7 @@ class DispatchNotification
                     ->where('channel_id', $channel->id)
                     ->first();
 
-                if ($existing) {
+                if ($existing !== null) {
                     return null;
                 }
 
@@ -361,7 +361,7 @@ class DispatchNotification
             priority: $notification->priority->value,
             subject: $notification->subject,
             bodyPreview: $notification->body_preview,
-            teamId: (int) $notification->team_id,
+            teamId: $notification->team_id,
         ));
     }
 }

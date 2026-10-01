@@ -26,9 +26,9 @@ class DbIncidentMetricsQuery implements IncidentMetricsQuery
             $base = Incident::query()
                 ->whereBetween('opened_at', [$from, $to]);
 
-            $total = (int) (clone $base)->count();
+            $total = (clone $base)->count();
 
-            $resolved = (int) (clone $base)
+            $resolved = (clone $base)
                 ->whereNotNull('resolved_at')
                 ->count();
 
@@ -38,7 +38,7 @@ class DbIncidentMetricsQuery implements IncidentMetricsQuery
 
             $open = $terminalStatusIds->isEmpty()
                 ? $total
-                : (int) (clone $base)
+                : (clone $base)
                     ->whereNotIn('incident_status_id', $terminalStatusIds)
                     ->count();
 
@@ -53,7 +53,7 @@ class DbIncidentMetricsQuery implements IncidentMetricsQuery
                     fn ($row) => $row->opened_at->diffInSeconds($row->resolved_at) / 60.0,
                 );
 
-            $escalations = (int) IncidentTimeline::query()
+            $escalations = IncidentTimeline::query()
                 ->where('entry_type', TimelineEntryType::Escalated->value)
                 ->whereBetween('occurred_at', [$from, $to])
                 ->whereIn(
@@ -79,9 +79,9 @@ class DbIncidentMetricsQuery implements IncidentMetricsQuery
             $base = Incident::query()
                 ->open();
 
-            $open = (int) (clone $base)->count();
+            $open = (clone $base)->count();
 
-            $criticalOpen = (int) (clone $base)
+            $criticalOpen = (clone $base)
                 ->whereHas('priority', fn ($query) => $query->where('code', 'critical'))
                 ->count();
 
@@ -184,7 +184,9 @@ class DbIncidentMetricsQuery implements IncidentMetricsQuery
             $candidates = $stillOpen->concat($closedLater)->map(fn (array $row) => [
                 'opened_at' => Carbon::parse($row[0]),
                 'ended_at' => $row[1] !== null ? Carbon::parse($row[1]) : null,
-                'critical' => in_array($row[2], $criticalPriorityIds, false),
+                // Fila cruda (toBase): el id llega como int (o string numérico
+                // según el driver); se normaliza para comparar estricto.
+                'critical' => is_numeric($row[2]) && in_array((int) $row[2], $criticalPriorityIds, true),
             ]);
 
             $buckets = [];
@@ -232,9 +234,10 @@ class DbIncidentMetricsQuery implements IncidentMetricsQuery
                 // Incidents predating the `sla_due_at` column (or with no SLA
                 // resolved at creation): same catalog chain as before —
                 // priority SLA, then event-severity response SLA, then default.
-                $slaSeconds = (int) ($incident->priority?->sla_seconds
-                    ?? $incident->relatedEvent?->eventSeverity?->response_sla_seconds
-                    ?: self::DEFAULT_SLA_SECONDS);
+                // Un SLA de 0 (o ausente) cae al default, como el `?:` original.
+                $catalogSla = $incident->priority?->sla_seconds
+                    ?? $incident->relatedEvent?->eventSeverity?->response_sla_seconds;
+                $slaSeconds = $catalogSla !== null && $catalogSla !== 0 ? $catalogSla : self::DEFAULT_SLA_SECONDS;
 
                 return $incident->opened_at->diffInSeconds($incident->resolved_at) <= $slaSeconds;
             });

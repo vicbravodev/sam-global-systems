@@ -40,7 +40,7 @@ class AssessPendingMediaOnEvaluationCompleted
     {
         $evaluation = $event->evaluation;
 
-        $eventId = (int) $evaluation->normalized_event_id;
+        $eventId = $evaluation->normalized_event_id;
 
         $assessedMediaIds = AIMediaAssessment::query()
             ->whereIn(

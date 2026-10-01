@@ -29,13 +29,13 @@ class ImpersonationController extends Controller
 
         $this->audit->execute(
             actorType: AuditActorType::User,
-            actorId: (int) $user->id,
+            actorId: $user->id,
             action: 'impersonation.started',
             category: AuditCategory::Security,
             entityType: Team::class,
-            entityId: (int) $team->id,
+            entityId: $team->id,
             summary: "Super-admin {$user->email} inició impersonación del tenant {$team->name}.",
-            teamId: (int) $team->id,
+            teamId: $team->id,
             metadata: ['actor_email' => $user->email, 'team_slug' => $team->slug],
             signature: 'impersonation:start:'.Str::uuid()->toString(),
             ipAddress: $request->ip(),
@@ -56,13 +56,13 @@ class ImpersonationController extends Controller
 
         $this->audit->execute(
             actorType: AuditActorType::User,
-            actorId: (int) $user->id,
+            actorId: $user->id,
             action: 'impersonation.stopped',
             category: AuditCategory::Security,
             entityType: Team::class,
-            entityId: $impersonated?->id !== null ? (int) $impersonated->id : null,
+            entityId: $impersonated?->id,
             summary: "Super-admin {$user->email} finalizó la impersonación.",
-            teamId: $impersonated?->id !== null ? (int) $impersonated->id : null,
+            teamId: $impersonated?->id,
             metadata: ['actor_email' => $user->email, 'team_slug' => $impersonated?->slug],
             signature: 'impersonation:stop:'.Str::uuid()->toString(),
             ipAddress: $request->ip(),

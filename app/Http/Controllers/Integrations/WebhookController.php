@@ -31,7 +31,7 @@ class WebhookController extends Controller
         $eventType = $resolveEventType->execute(
             $request->isJson() ? $request->json('eventType') : $request->request->get('eventType'),
             $request->input('event_type'),
-            (int) $endpoint->id,
+            $endpoint->id,
         );
         $payload = $request->all();
 
@@ -39,7 +39,7 @@ class WebhookController extends Controller
         // HMAC must be recomputed over the byte-for-byte body that Samsara
         // signed, so we cannot rely on the re-encoded parsed array.
         $rawPayload = $request->getContent();
-        $signature = (string) $request->header('X-Samsara-Signature', '');
+        $signature = $request->header('X-Samsara-Signature', '');
         $signatureTimestamp = $request->header('X-Samsara-Timestamp');
 
         $handleWebhook->execute(

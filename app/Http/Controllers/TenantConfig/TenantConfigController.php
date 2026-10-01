@@ -39,7 +39,7 @@ class TenantConfigController extends Controller
         $this->authorize('update', TenantSetting::class);
 
         $userId = $request->user()?->id;
-        $updatedByType = $userId ? SettingUpdatedByType::User : SettingUpdatedByType::System;
+        $updatedByType = $userId !== null ? SettingUpdatedByType::User : SettingUpdatedByType::System;
 
         $persisted = [];
 

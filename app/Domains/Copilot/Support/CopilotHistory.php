@@ -36,7 +36,7 @@ final class CopilotHistory
 
             return [
                 'role' => $m->role->value,
-                'content' => (string) $m->content.($m->role === CopilotMessageRole::Assistant && $digest ? "\n[datos consultados: {$digest}]" : ''),
+                'content' => $m->content.($m->role === CopilotMessageRole::Assistant && $digest ? "\n[datos consultados: {$digest}]" : ''),
             ];
         })->all();
 

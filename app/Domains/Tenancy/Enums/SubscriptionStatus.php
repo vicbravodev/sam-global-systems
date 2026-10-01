@@ -23,11 +23,11 @@ enum SubscriptionStatus: string
 
     public function grantsOperationalAccess(): bool
     {
-        return in_array($this, [self::Active, self::PastDue]);
+        return in_array($this, [self::Active, self::PastDue], true);
     }
 
     public function grantsBillingAccess(): bool
     {
-        return in_array($this, [self::Active, self::PastDue, self::Suspended]);
+        return in_array($this, [self::Active, self::PastDue, self::Suspended], true);
     }
 }

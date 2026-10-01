@@ -39,8 +39,8 @@ class SetAssetMonitoring
      */
     public function execute(Asset $asset, AssetMonitoringState $state, ?User $actor = null, ?string $reason = null): array
     {
-        return TenantContext::for((int) $asset->team_id, function () use ($asset, $state, $actor, $reason) {
-            $teamId = (int) $asset->team_id;
+        return TenantContext::for($asset->team_id, function () use ($asset, $state, $actor, $reason) {
+            $teamId = $asset->team_id;
             $limit = $this->resolveAssetLimit->explain($teamId);
             $cap = $limit['cap'];
             $this->logAssetLimit($teamId, $limit);
@@ -80,7 +80,7 @@ class SetAssetMonitoring
             foreach ($assets as $asset) {
                 // Only this tenant's assets: callers already filter, this is
                 // the last line (§2.1).
-                if ((int) $asset->team_id !== $teamId) {
+                if ($asset->team_id !== $teamId) {
                     // Nunca el id del activo ajeno ni su tenant.
                     SystemLog::skipped('assets.monitoring.changed', reason: 'other_tenant', input: ['team_id' => $teamId], calc: ['team_matches' => false]);
 
@@ -115,7 +115,7 @@ class SetAssetMonitoring
         $monitoredBefore = $monitored;
 
         if ($previous === $state) {
-            SystemLog::skipped('assets.monitoring.changed', reason: 'same_state', input: ['team_id' => (int) $asset->team_id, 'asset_id' => $asset->id], calc: ['state' => $state->value], debug: $batch);
+            SystemLog::skipped('assets.monitoring.changed', reason: 'same_state', input: ['team_id' => $asset->team_id, 'asset_id' => $asset->id], calc: ['state' => $state->value], debug: $batch);
 
             return [
                 'asset' => $asset,
@@ -142,7 +142,7 @@ class SetAssetMonitoring
 
             // Sólo cuando una unidad se enciende de verdad, y una vez por llamada.
             if ($blocked !== null && ! $blockedLogged) {
-                $this->logTenantBlocked((int) $asset->team_id, $blocked);
+                $this->logTenantBlocked($asset->team_id, $blocked);
                 $blockedLogged = true;
             }
 
@@ -156,16 +156,16 @@ class SetAssetMonitoring
             && $monitored > $cap;
 
         if ($overCap) {
-            UsageLimitExceeded::dispatch((int) $asset->team_id, ResolveAssetLimit::METER_CODE, $monitored, $cap);
+            UsageLimitExceeded::dispatch($asset->team_id, ResolveAssetLimit::METER_CODE, $monitored, $cap);
         }
 
         $this->audit->execute(
-            actorType: $actor ? AuditActorType::User : AuditActorType::System,
+            actorType: $actor !== null ? AuditActorType::User : AuditActorType::System,
             actorId: $actor?->id,
             action: 'asset.monitoring_changed',
             category: AuditCategory::Billing,
             entityType: Asset::class,
-            entityId: (int) $asset->id,
+            entityId: $asset->id,
             summary: sprintf(
                 'Unidad %s: %s → %s%s.',
                 $asset->name,
@@ -173,7 +173,7 @@ class SetAssetMonitoring
                 $state->label(),
                 $overCap ? " (por encima del tope de {$cap}, se cobra como extra)" : '',
             ),
-            teamId: (int) $asset->team_id,
+            teamId: $asset->team_id,
             metadata: [
                 'previous_state' => $previous->value,
                 'new_state' => $state->value,
@@ -187,8 +187,8 @@ class SetAssetMonitoring
         );
 
         AssetMonitoringChanged::dispatch(
-            (int) $asset->team_id,
-            (int) $asset->id,
+            $asset->team_id,
+            $asset->id,
             $previous->value,
             $state->value,
             $actor?->id,
@@ -196,16 +196,16 @@ class SetAssetMonitoring
         );
 
         broadcast(new AssetMonitoringChangedBroadcast(
-            (int) $asset->team_id,
-            (int) $asset->id,
-            (string) $asset->name,
+            $asset->team_id,
+            $asset->id,
+            $asset->name,
             $previous->value,
             $state->value,
         ));
 
         // Hecho persistido: solo si la transacción del llamador confirma. Nunca
         // `$reason` (texto libre), el email del actor ni el nombre del activo.
-        $logInput = ['team_id' => (int) $asset->team_id, 'asset_id' => $asset->id, 'actor_user_id' => $actor?->id];
+        $logInput = ['team_id' => $asset->team_id, 'asset_id' => $asset->id, 'actor_user_id' => $actor?->id];
         $logCalc = [
             'previous_state' => $previous->value,
             'new_state' => $state->value,

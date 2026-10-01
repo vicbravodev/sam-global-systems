@@ -126,18 +126,18 @@ class AuditPageController extends Controller
         return Inertia::render('audit/index', [
             'logs' => $items
                 ->map(fn (AuditLog $log): array => [
-                    'id' => (int) $log->id,
+                    'id' => $log->id,
                     'action' => $log->action,
                     'actionLabel' => AuditActionPresenter::actionLabel($log->action),
                     'category' => $log->category?->value,
                     'categoryLabel' => AuditActionPresenter::categoryLabel($log->category),
                     'actorType' => $log->actor_type?->value,
-                    'actorId' => $log->actor_id !== null ? (int) $log->actor_id : null,
+                    'actorId' => $log->actor_id,
                     'actorLabel' => $this->actorLabel($log, $actorNames),
                     'entityType' => $log->entity_type,
                     // The tenant itself is shown by name, not "Tenant #1".
                     'entityId' => $log->entity_id !== null && ! $this->isTeamEntity($log->entity_type)
-                        ? (int) $log->entity_id
+                        ? $log->entity_id
                         : null,
                     'entityLabel' => $this->isTeamEntity($log->entity_type)
                         ? $current_team->name
@@ -170,10 +170,10 @@ class AuditPageController extends Controller
                 ->limit(100)
                 ->get()
                 ->map(fn (DomainEventLog $event): array => [
-                    'id' => (int) $event->id,
+                    'id' => $event->id,
                     'eventName' => $event->event_name,
                     'aggregateType' => $event->aggregate_type,
-                    'aggregateId' => $event->aggregate_id !== null ? (int) $event->aggregate_id : null,
+                    'aggregateId' => $event->aggregate_id,
                     'correlationId' => $event->correlation_id,
                     'occurredAt' => $event->occurred_at?->toIso8601String(),
                 ])

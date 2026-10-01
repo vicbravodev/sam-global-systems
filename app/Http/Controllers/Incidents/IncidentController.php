@@ -199,7 +199,9 @@ class IncidentController extends Controller
             return response()->json(['message' => 'El incidente ya está escalado.'], 422);
         }
 
-        $reason = $request->string('reason')->toString() ?: null;
+        // Mismo criterio que el `?:` original: '' y '0' cuentan como sin motivo.
+        $reasonInput = $request->string('reason')->toString();
+        $reason = in_array($reasonInput, ['', '0'], true) ? null : $reasonInput;
 
         $updated = $escalate->execute(
             incident: $incident,

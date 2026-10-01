@@ -21,7 +21,7 @@ class CopilotPageController extends Controller
 
         return Inertia::render('copilot/index', [
             ...$catalog->forUser($current_team, $user),
-            'initialConversationId' => $request->integer('c') ?: null,
+            'initialConversationId' => $request->integer('c') !== 0 ? $request->integer('c') : null,
         ]);
     }
 

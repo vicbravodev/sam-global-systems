@@ -27,7 +27,7 @@ class TriggerAutomationOnIncidentCreated implements IncidentCreatedReaction
         $incident = $event->incident;
 
         $this->triggerEscalationWorkflow->execute(
-            teamId: (int) $incident->team_id,
+            teamId: $incident->team_id,
             triggerType: WorkflowTriggerType::IncidentCreated,
             sourceType: ActionExecutionSourceType::Incident,
             sourceReferenceId: (string) $incident->id,

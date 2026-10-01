@@ -265,8 +265,10 @@ final class RedactSensitiveLogData implements ProcessorInterface
     {
         $normalized = strtolower((string) preg_replace('/(?<=[a-z0-9])(?=[A-Z])/', '_', $key));
 
+        $words = preg_split('/[_\-.\s]+/', $normalized);
+
         return array_values(array_filter(
-            preg_split('/[_\-.\s]+/', $normalized) ?: [],
+            $words !== false ? $words : [],
             static fn (string $word): bool => $word !== '',
         ));
     }

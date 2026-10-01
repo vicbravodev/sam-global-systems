@@ -11,6 +11,7 @@ use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Illuminate\JsonSchema\Types\Type;
 use Illuminate\Validation\ValidationException;
 use Laravel\Ai\Contracts\Tool;
 use Laravel\Ai\Tools\Request;
@@ -48,7 +49,7 @@ abstract class SdkCopilotTool implements Tool
     abstract public function intent(): CopilotIntent;
 
     /**
-     * @return array<string, mixed>
+     * @return array<string, Type>
      */
     abstract public function schema(JsonSchema $schema): array;
 
@@ -74,7 +75,7 @@ abstract class SdkCopilotTool implements Tool
 
     public function handle(Request $request): Stringable|string
     {
-        $callId = (string) ($request->toolCallId() ?? 'call');
+        $callId = $request->toolCallId() ?? 'call';
         $log = ['team_id' => $this->scope->teamId, 'tool' => $this->name(), 'tool_call_id' => $callId];
 
         try {

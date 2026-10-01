@@ -294,13 +294,13 @@ class DriverPageController extends Controller
         $risk = $driver->riskProfile;
 
         return [
-            'id' => (int) $driver->id,
-            'fullName' => (string) $driver->full_name,
+            'id' => $driver->id,
+            'fullName' => $driver->full_name,
             'employeeCode' => $driver->employee_code,
             'status' => $driver->status->value,
-            'currentAsset' => $asset ? [
-                'id' => (int) $asset->id,
-                'name' => (string) $asset->name,
+            'currentAsset' => $asset !== null ? [
+                'id' => $asset->id,
+                'name' => $asset->name,
                 'code' => $asset->code,
             ] : null,
             'riskScore' => $risk?->risk_score !== null
@@ -308,8 +308,8 @@ class DriverPageController extends Controller
                 : null,
             'riskLevel' => $risk?->risk_level?->value,
             'riskTrend' => $risk?->metadata_json['trend'] ?? null,
-            'incidentsCount' => $risk ? (int) $risk->incidents_count : 0,
-            'harshEventsCount' => $risk ? (int) $risk->harsh_events_count : 0,
+            'incidentsCount' => $risk !== null ? $risk->incidents_count : 0,
+            'harshEventsCount' => $risk !== null ? $risk->harsh_events_count : 0,
             'phone' => $phone?->value ?? $driver->phone,
             'lastSeenAt' => $driver->last_seen_at?->toIso8601String(),
         ];
@@ -328,8 +328,8 @@ class DriverPageController extends Controller
         $risk = $driver->riskProfile;
 
         return [
-            'id' => (int) $driver->id,
-            'fullName' => (string) $driver->full_name,
+            'id' => $driver->id,
+            'fullName' => $driver->full_name,
             'firstName' => $driver->first_name,
             'lastName' => $driver->last_name,
             'employeeCode' => $driver->employee_code,
@@ -342,28 +342,28 @@ class DriverPageController extends Controller
             // — what the header shows as "visto". `last_seen_at` is the
             // roster-sync timestamp and lags hours behind the road.
             'lastSignalAt' => $this->lastSignalAt($driver),
-            'currentAsset' => $asset ? [
-                'id' => (int) $asset->id,
-                'name' => (string) $asset->name,
+            'currentAsset' => $asset !== null ? [
+                'id' => $asset->id,
+                'name' => $asset->name,
                 'code' => $asset->code,
             ] : null,
             'riskProfile' => $risk !== null ? $this->presentRiskProfile($driver, $risk) : null,
             'providerFields' => $this->providerFields($driver),
             'contacts' => $driver->contacts
                 ->map(fn (DriverContact $contact) => [
-                    'id' => (int) $contact->id,
+                    'id' => $contact->id,
                     'contactType' => $contact->contact_type->value,
                     'label' => $contact->label,
-                    'value' => (string) $contact->value,
-                    'isPrimary' => (bool) $contact->is_primary,
-                    'isEmergency' => (bool) $contact->is_emergency,
+                    'value' => $contact->value,
+                    'isPrimary' => $contact->is_primary,
+                    'isEmergency' => $contact->is_emergency,
                     'verifiedAt' => $contact->verified_at?->toIso8601String(),
                 ])
                 ->values()
                 ->all(),
             'documents' => $driver->documents
                 ->map(fn (DriverDocument $document) => [
-                    'id' => (int) $document->id,
+                    'id' => $document->id,
                     'documentType' => $document->document_type->value,
                     'documentNumber' => $document->document_number,
                     'status' => $document->status->value,
@@ -431,7 +431,7 @@ class DriverPageController extends Controller
             ->groupBy('event_types.code')
             ->pluck('total', 'code');
 
-        $sum = fn (array $codes): int => (int) collect($codes)->sum(fn (string $code) => (int) ($counts[$code] ?? 0));
+        $sum = fn (array $codes): int => collect($codes)->sum(fn (string $code) => (int) ($counts[$code] ?? 0));
 
         return [
             'incidents' => Incident::query()
@@ -460,7 +460,8 @@ class DriverPageController extends Controller
                 ->max('occurred_at'),
             $asset?->latestLocation?->recorded_at,
             $asset?->latestTelemetry?->recorded_at,
-        ]);
+            // MAX() de una columna datetime: null o un timestamp, nunca '0'.
+        ], fn (mixed $value): bool => $value !== null && $value !== '');
 
         $newest = null;
 
@@ -491,10 +492,11 @@ class DriverPageController extends Controller
             $value = $metadata[$key] ?? null;
 
             if (is_array($value)) {
+                // Igual que el array_filter() sin callback: fuera null, '' y '0'.
                 $value = implode(', ', array_filter(array_map(
                     fn ($item) => is_scalar($item) ? (string) $item : null,
                     $value,
-                )));
+                ), fn (?string $item): bool => ! in_array($item, [null, '', '0'], true)));
             }
 
             if ($value === null || $value === '' || ! is_scalar($value)) {
@@ -522,10 +524,10 @@ class DriverPageController extends Controller
             ->limit(self::ASSIGNMENTS_LIMIT)
             ->get()
             ->map(fn (DriverAssignment $assignment) => [
-                'id' => (int) $assignment->id,
-                'asset' => $assignment->asset ? [
-                    'id' => (int) $assignment->asset->id,
-                    'name' => (string) $assignment->asset->name,
+                'id' => $assignment->id,
+                'asset' => $assignment->asset !== null ? [
+                    'id' => $assignment->asset->id,
+                    'name' => $assignment->asset->name,
                     'code' => $assignment->asset->code,
                 ] : null,
                 'assignmentType' => $assignment->assignment_type->value,
@@ -550,8 +552,8 @@ class DriverPageController extends Controller
             ->limit(self::STATUS_LOG_LIMIT)
             ->get()
             ->map(fn (DriverStatusLog $log) => [
-                'id' => (int) $log->id,
-                'statusCode' => (string) $log->status_code,
+                'id' => $log->id,
+                'statusCode' => $log->status_code,
                 'statusLabel' => $log->status_label,
                 'severity' => $log->severity?->value,
                 'effectiveFrom' => $log->effective_from?->toIso8601String(),
@@ -577,14 +579,14 @@ class DriverPageController extends Controller
             ->limit(self::RECENT_EVENTS_LIMIT)
             ->get()
             ->map(fn (NormalizedEvent $event) => [
-                'id' => (int) $event->id,
+                'id' => $event->id,
                 'occurredAt' => $event->occurred_at?->toIso8601String(),
                 'eventType' => $event->eventType?->name ?? $event->eventType?->code,
                 'category' => $event->eventCategory?->name,
                 'severity' => $event->eventSeverity?->code,
-                'asset' => $event->asset ? [
-                    'id' => (int) $event->asset->id,
-                    'name' => (string) $event->asset->name,
+                'asset' => $event->asset !== null ? [
+                    'id' => $event->asset->id,
+                    'name' => $event->asset->name,
                 ] : null,
             ])
             ->all());
@@ -606,17 +608,17 @@ class DriverPageController extends Controller
             ->limit(self::INCIDENTS_LIMIT)
             ->get()
             ->map(fn (Incident $incident) => [
-                'id' => (int) $incident->id,
+                'id' => $incident->id,
                 'reference' => $incident->reference(),
-                'title' => (string) $incident->title,
-                'status' => $incident->status ? [
-                    'code' => (string) $incident->status->code,
+                'title' => $incident->title,
+                'status' => $incident->status !== null ? [
+                    'code' => $incident->status->code,
                     'uiStatus' => IncidentStatusPresenter::forIncident($incident),
                     'name' => IncidentStatusPresenter::labelForIncident($incident),
                 ] : null,
-                'priority' => $incident->priority ? [
-                    'code' => (string) $incident->priority->code,
-                    'name' => (string) $incident->priority->name,
+                'priority' => $incident->priority !== null ? [
+                    'code' => $incident->priority->code,
+                    'name' => $incident->priority->name,
                 ] : null,
                 'type' => $incident->type?->name,
                 'openedAt' => $incident->opened_at?->toIso8601String(),

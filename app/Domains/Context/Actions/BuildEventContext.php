@@ -72,7 +72,7 @@ class BuildEventContext
                 ...$this->getPriorSimilarIncidents->execute($normalizedEvent)->all(),
             ];
             $correlationMinutes = max(1, (int) $this->tenantConfigResolver->resolve(
-                (int) $normalizedEvent->team_id,
+                $normalizedEvent->team_id,
                 self::SETTING_SAFETY_CORRELATION,
                 self::DEFAULT_SAFETY_CORRELATION_MINUTES,
             ));
@@ -88,7 +88,7 @@ class BuildEventContext
             // profile can flag an event as outside operating hours — tenants
             // without one default to "always operating".
             $schedule = $this->tenantScheduleResolver->resolve(
-                (int) $normalizedEvent->team_id,
+                $normalizedEvent->team_id,
                 $normalizedEvent->occurred_at ?? now(),
             );
 
@@ -111,7 +111,7 @@ class BuildEventContext
             $existing = EventContextSnapshot::query()
                 ->where('normalized_event_id', $normalizedEvent->id)
                 ->first();
-            $nextVersion = $existing ? ((int) $existing->context_version + 1) : 1;
+            $nextVersion = $existing !== null ? ($existing->context_version + 1) : 1;
 
             $snapshot = EventContextSnapshot::query()->updateOrCreate(
                 ['normalized_event_id' => $normalizedEvent->id],

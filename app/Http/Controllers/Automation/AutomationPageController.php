@@ -57,7 +57,8 @@ class AutomationPageController extends Controller
         $statusFilter = $request->string('execution_status')->toString();
         $statusFilter = array_key_exists($statusFilter, self::STATUS_FILTERS) ? $statusFilter : null;
 
-        $workflowFilter = $request->integer('execution_workflow') ?: null;
+        $workflowFilter = $request->integer('execution_workflow');
+        $workflowFilter = $workflowFilter !== 0 ? $workflowFilter : null;
 
         if ($workflowFilter !== null && ! AutomationWorkflow::query()
             ->where('team_id', $current_team->id)
@@ -77,14 +78,14 @@ class AutomationPageController extends Controller
                 ->orderBy('name')
                 ->get()
                 ->map(fn (AutomationWorkflow $workflow): array => [
-                    'id' => (int) $workflow->id,
+                    'id' => $workflow->id,
                     'code' => $workflow->code,
                     'name' => $workflow->name,
                     'description' => $workflow->description,
                     'triggerType' => $workflow->trigger_type?->value,
                     'triggerConditions' => $workflow->trigger_conditions_json,
                     'status' => $workflow->status?->value,
-                    'steps' => (array) ($workflow->steps_json ?? []),
+                    'steps' => $workflow->steps_json ?? [],
                     // Etiqueta humana del destino de cada paso, en el mismo orden.
                     'stepTargets' => array_map(
                         fn ($step): string => is_array($step)
@@ -93,7 +94,7 @@ class AutomationPageController extends Controller
                                 isset($step['target_reference']) ? (string) $step['target_reference'] : null,
                             )
                             : '—',
-                        array_values((array) ($workflow->steps_json ?? [])),
+                        array_values($workflow->steps_json ?? []),
                     ),
                     // Sólo el nombre del destino, para frases "WhatsApp a Monitorista".
                     'stepRecipients' => array_map(
@@ -103,9 +104,9 @@ class AutomationPageController extends Controller
                                 isset($step['target_reference']) ? (string) $step['target_reference'] : null,
                             )
                             : null,
-                        array_values((array) ($workflow->steps_json ?? [])),
+                        array_values($workflow->steps_json ?? []),
                     ),
-                    'isActive' => (bool) $workflow->is_active,
+                    'isActive' => $workflow->is_active,
                 ])
                 ->all(),
             'runStats' => fn () => app(WorkflowRunStats::class)->forTeam($current_team->id),
@@ -133,8 +134,8 @@ class AutomationPageController extends Controller
                     ->get(['users.id', 'users.name', 'users.email'])
                     ->map(fn ($user): array => [
                         'value' => (string) $user->id,
-                        'label' => (string) $user->name,
-                        'description' => (string) $user->email,
+                        'label' => $user->name,
+                        'description' => $user->email,
                     ])
                     ->all(),
                 'roles' => array_map(fn (TeamRole $role): array => [
@@ -175,17 +176,20 @@ class AutomationPageController extends Controller
 
         $incidents = Incident::query()
             ->where('team_id', $team->id)
-            ->whereIn('id', array_values(array_unique(array_filter($incidentIds))))
+            ->whereIn('id', array_values(array_unique(array_filter(
+                $incidentIds,
+                static fn (?int $id): bool => $id !== null && $id !== 0,
+            ))))
             ->get(['id', 'number', 'title'])
             ->keyBy('id');
 
         return $executions
             ->map(function (ActionExecution $execution) use ($targets, $workflowNames, $incidentIds, $incidents): array {
                 $incident = $incidents->get($incidentIds[$execution->id] ?? 0);
-                $workflowId = $execution->automation_workflow_id !== null ? (int) $execution->automation_workflow_id : null;
+                $workflowId = $execution->automation_workflow_id;
 
                 return [
-                    'id' => (int) $execution->id,
+                    'id' => $execution->id,
                     'actionType' => $execution->action_type?->value,
                     'status' => $execution->status?->value,
                     'executionMode' => $execution->execution_mode?->value,
@@ -197,10 +201,10 @@ class AutomationPageController extends Controller
                     'sourceType' => $execution->source_type?->value,
                     'workflowId' => $workflowId,
                     'workflowName' => $workflowId !== null ? ($workflowNames[$workflowId] ?? null) : null,
-                    'incidentId' => $incident !== null ? (int) $incident->id : null,
+                    'incidentId' => $incident?->id,
                     'incidentReference' => $incident?->reference(),
                     'incidentTitle' => $incident?->title,
-                    'attempts' => (int) $execution->attempts,
+                    'attempts' => $execution->attempts,
                     'errorMessage' => $execution->error_message,
                     'isStub' => (bool) (($execution->response_json ?? [])['stub'] ?? false),
                     'executedAt' => $execution->executed_at?->toIso8601String(),
@@ -237,7 +241,7 @@ class AutomationPageController extends Controller
             ->whereIn('source_type', array_map(fn (ActionExecutionSourceType $case) => $case->value, $incidentSources))
             ->get(['id', 'source_reference_id'])
             ->mapWithKeys(fn (WorkflowExecution $run): array => [
-                (int) $run->id => ctype_digit((string) $run->source_reference_id) ? (int) $run->source_reference_id : null,
+                $run->id => ctype_digit((string) $run->source_reference_id) ? (int) $run->source_reference_id : null,
             ]);
 
         $ids = [];
@@ -245,8 +249,8 @@ class AutomationPageController extends Controller
         foreach ($executions as $execution) {
             $reference = (string) $execution->source_reference_id;
 
-            $ids[(int) $execution->id] = match (true) {
-                $execution->incident_id !== null => (int) $execution->incident_id,
+            $ids[$execution->id] = match (true) {
+                $execution->incident_id !== null => $execution->incident_id,
                 in_array($execution->source_type, $incidentSources, true) && ctype_digit($reference) => (int) $reference,
                 $execution->source_type === ActionExecutionSourceType::Workflow && ctype_digit($reference) => $runIncidents[(int) $reference] ?? null,
                 default => null,

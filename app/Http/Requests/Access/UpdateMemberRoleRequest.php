@@ -27,7 +27,7 @@ class UpdateMemberRoleRequest extends FormRequest
                 'string',
                 Rule::exists('roles', 'code')->where(function ($query) {
                     $team = $this->route('current_team');
-                    $teamId = $team instanceof Team ? (int) $team->id : 0;
+                    $teamId = $team instanceof Team ? $team->id : 0;
 
                     $query->where('scope', RoleScope::Tenant->value)
                         ->where(fn ($q) => $q

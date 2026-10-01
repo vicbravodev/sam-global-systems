@@ -74,7 +74,7 @@ class RetryIncidentCreatedReactionJob implements ShouldQueue
             return;
         }
 
-        PipelineTrace::adopt(null, (int) $incident->team_id, ['incident_id' => $incident->id]);
+        PipelineTrace::adopt(null, $incident->team_id, ['incident_id' => $incident->id]);
         TenantContext::set($incident->team_id);
 
         $incident->load(['type', 'status', 'priority']);

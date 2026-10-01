@@ -109,7 +109,7 @@ class CheckIncidentAcknowledgementJob implements ShouldQueue
             return;
         }
 
-        $steps = $notifyLevel->steps((int) $incident->team_id);
+        $steps = $notifyLevel->steps($incident->team_id);
         $statusBefore = $incident->status?->code;
         $escalatedNow = false;
 
