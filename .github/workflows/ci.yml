@@ -67,6 +67,16 @@ jobs:
       - name: Pint (PHP code style)
         run: vendor/bin/pint --test --parallel --cache-file=.pint.cache
 
+      - name: Cache Larastan
+        uses: actions/cache@v4
+        with:
+          path: storage/framework/cache/phpstan
+          key: ${{ runner.os }}-phpstan-${{ hashFiles('composer.lock', 'phpstan.neon', 'phpstan-baseline.neon') }}-${{ github.sha }}
+          restore-keys: ${{ runner.os }}-phpstan-${{ hashFiles('composer.lock', 'phpstan.neon', 'phpstan-baseline.neon') }}-
+
+      - name: Larastan (static analysis)
+        run: vendor/bin/phpstan analyse --memory-limit=2G --no-progress --error-format=github
+
       - name: Prettier (frontend format)
         run: npm run format:check
 

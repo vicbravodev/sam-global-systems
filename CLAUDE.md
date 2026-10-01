@@ -14,8 +14,9 @@ Reglas por zona (se cargan al trabajar ahí): [`app/CLAUDE.md`](app/CLAUDE.md) �
 | Tests filtrados | `php artisan test --compact --filter=Nombre` · `php artisan test --compact tests/Feature/Domains/{Dominio}` |
 | Suite completa | `php artisan test --compact` |
 | Frontend | `npm run types:check && npm run lint:check && npm run format:check` · `npm run build` |
+| Análisis estático | `composer analyse` (Larastan nivel 5, baseline en `phpstan-baseline.neon`) |
 | Wayfinder (tras cambiar rutas/controladores) | `php artisan wayfinder:generate --with-form` |
-| Gate antes de push | los cuatro de arriba (formato, suite, lint/format, types) o `composer ci:check` |
+| Gate antes de push | los cinco de arriba (formato, suite, lint/format, types, análisis estático) o `composer ci:check` |
 | Dev | `composer run dev` · servicios: `./vendor/bin/sail up -d pgsql valkey rustfs soketi mailpit` |
 | Worktree nuevo | skill `worktree-bootstrap` ANTES de cualquier gate (`vendor/`, `.env` y tipos Wayfinder no vienen en el checkout) |
 
@@ -54,6 +55,7 @@ Reglas por zona (se cargan al trabajar ahí): [`app/CLAUDE.md`](app/CLAUDE.md) �
 - Reemplazar `User`, `Team`, `Membership`, `TeamInvitation` (extenderlos).
 - Mockear la DB en tests de feature.
 - Borrar o debilitar tests existentes.
+- Agregar errores a `phpstan-baseline.neon` o usar `@phpstan-ignore` para pasar CI (arreglar la causa; el baseline sólo se achica).
 
 ## Git (reglas duras)
 
