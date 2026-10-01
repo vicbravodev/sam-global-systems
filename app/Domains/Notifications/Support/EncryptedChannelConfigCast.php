@@ -54,20 +54,24 @@ class EncryptedChannelConfigCast implements CastsAttributes
     }
 
     /**
+     * Lanza `JsonException` si la config no se puede codificar (p. ej. UTF-8
+     * inválido): guardar el `false` de `json_encode` borraba en silencio toda
+     * la config del canal, secretos incluidos.
+     *
      * @param  array<string, mixed>  $attributes
      * @return array<string, string>
      */
     public function set(Model $model, string $key, mixed $value, array $attributes): array
     {
         if ($value === null) {
-            return [$key => json_encode(null)];
+            return [$key => json_encode(null, JSON_THROW_ON_ERROR)];
         }
 
         if (! is_array($value)) {
-            return [$key => json_encode($value)];
+            return [$key => json_encode($value, JSON_THROW_ON_ERROR)];
         }
 
-        return [$key => json_encode($this->walk($value, decrypt: false))];
+        return [$key => json_encode($this->walk($value, decrypt: false), JSON_THROW_ON_ERROR)];
     }
 
     /**
