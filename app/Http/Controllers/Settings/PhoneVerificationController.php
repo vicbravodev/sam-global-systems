@@ -5,15 +5,16 @@ namespace App\Http\Controllers\Settings;
 use App\Domains\Access\Actions\SendPhoneOtp;
 use App\Domains\Access\Actions\VerifyPhoneOtp;
 use App\Http\Controllers\Controller;
+use App\Models\User;
+use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 
 class PhoneVerificationController extends Controller
 {
-    public function send(Request $request, SendPhoneOtp $sendPhoneOtp): RedirectResponse
+    public function send(SendPhoneOtp $sendPhoneOtp, #[CurrentUser] User $user): RedirectResponse
     {
-        $user = $request->user();
         $result = $sendPhoneOtp->execute($user, (int) $user->current_team_id);
 
         if (! $result->ok) {
@@ -23,13 +24,12 @@ class PhoneVerificationController extends Controller
         return back()->with('status', 'phone-otp-sent');
     }
 
-    public function verify(Request $request, VerifyPhoneOtp $verifyPhoneOtp): RedirectResponse
+    public function verify(Request $request, VerifyPhoneOtp $verifyPhoneOtp, #[CurrentUser] User $user): RedirectResponse
     {
         $validated = $request->validate([
             'code' => ['required', 'string', 'digits:6'],
         ]);
 
-        $user = $request->user();
         $result = $verifyPhoneOtp->execute($user, (int) $user->current_team_id, $validated['code']);
 
         if (! $result->ok) {

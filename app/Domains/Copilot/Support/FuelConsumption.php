@@ -20,12 +20,12 @@ final class FuelConsumption
      */
     public static function fromSeries(iterable $series): array
     {
-        $points = collect($series)->values();
+        $points = array_values(collect($series)->all());
         $consumed = 0.0;
         $refuels = [];
         $drops = [];
 
-        for ($i = 1; $i < $points->count(); $i++) {
+        for ($i = 1; $i < count($points); $i++) {
             $previous = (float) $points[$i - 1]->data_json['value'];
             $current = (float) $points[$i]->data_json['value'];
             $delta = $current - $previous;

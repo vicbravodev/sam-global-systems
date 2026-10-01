@@ -46,15 +46,6 @@ class ApplyReevaluationToIncident
         'urgent' => 'critical',
     ];
 
-    private const CLASSIFICATION_LABELS = [
-        'real_event' => 'evento real',
-        'false_positive' => 'falso positivo',
-        'noise' => 'ruido',
-        'duplicate' => 'duplicado',
-        'unclear' => 'no concluyente',
-        'pending_evidence' => 'pendiente de evidencia',
-    ];
-
     public function __construct(
         private readonly AppendTimelineEntry $appendTimelineEntry,
     ) {}
@@ -169,7 +160,9 @@ class ApplyReevaluationToIncident
                 title: sprintf(
                     'Reevaluación v%s: %s (%s%%)',
                     $version ?? '?',
-                    self::CLASSIFICATION_LABELS[$classification?->value] ?? ($classification?->value ?? 'sin clasificación'),
+                    $classification === null
+                        ? 'sin clasificación'
+                        : self::classificationLabel($classification),
                     $confidence ?? '—',
                 ),
                 description: $decision->decision_reason,
@@ -214,7 +207,7 @@ class ApplyReevaluationToIncident
                 );
             }
 
-            broadcast(IncidentUpdatedBroadcast::fromModel($incident->fresh(['status', 'priority'])));
+            broadcast(IncidentUpdatedBroadcast::fromModel($incident->freshOrFail(['status', 'priority'])));
 
             $decisionPriorityCode = $decision->priority_level?->value;
             $appliedLine = [
@@ -258,5 +251,21 @@ class ApplyReevaluationToIncident
             ?? (isset(self::PRIORITY_ALIASES[$code])
                 ? IncidentPriority::query()->where('code', self::PRIORITY_ALIASES[$code])->first()
                 : null);
+    }
+
+    /**
+     * `match` exhaustivo sobre el enum: un caso nuevo sin etiqueta lo marca
+     * Larastan (match.unhandled) en vez de reventar la reevaluación en runtime.
+     */
+    private static function classificationLabel(EventClassification $classification): string
+    {
+        return match ($classification) {
+            EventClassification::RealEvent => 'evento real',
+            EventClassification::FalsePositive => 'falso positivo',
+            EventClassification::Noise => 'ruido',
+            EventClassification::Duplicate => 'duplicado',
+            EventClassification::Unclear => 'no concluyente',
+            EventClassification::PendingEvidence => 'pendiente de evidencia',
+        };
     }
 }

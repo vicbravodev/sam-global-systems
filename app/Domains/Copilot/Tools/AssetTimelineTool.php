@@ -145,9 +145,10 @@ final class AssetTimelineTool implements CopilotTool
         $priority = $items->filter(fn (array $item) => $item['kind'] !== 'event');
         $room = max(0, self::BLOCK_ITEMS - $priority->count());
         $keep = $priority->keys()->take(-self::BLOCK_ITEMS)
-            ->concat($items->filter(fn (array $item) => $item['kind'] === 'event')->keys()->reverse()->take($room))
-            ->sort();
+            ->concat($items->filter(fn (array $item) => $item['kind'] === 'event')->keys()->reverse()->take($room));
 
-        return array_values($keep->map(fn (int $key): array => $items[$key])->all());
+        // `only` respeta el orden de $items (una lista cronológica), que es
+        // el mismo que el de las claves elegidas ordenadas.
+        return array_values($items->only($keep->all())->all());
     }
 }

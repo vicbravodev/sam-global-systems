@@ -15,6 +15,7 @@ use Database\Factories\Domains\Incidents\IncidentFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -55,6 +56,23 @@ class Incident extends Model
         'created_by_id',
         'metadata_json',
     ];
+
+    /**
+     * Copia recién leída de la fila (sin global scopes, como `fresh()`), con
+     * las relaciones pedidas. Tras escribir el incidente en la misma
+     * transacción la fila existe siempre (el soft-delete no la oculta a
+     * `fresh()`): si aun así desapareció, falla con un error claro en vez de
+     * propagar null a eventos y broadcasts.
+     *
+     * @param  array<int, string>|string  $with
+     *
+     * @throws ModelNotFoundException<self>
+     */
+    public function freshOrFail(array|string $with = []): self
+    {
+        return $this->fresh($with)
+            ?? throw (new ModelNotFoundException)->setModel(self::class, [$this->getKey()]);
+    }
 
     /**
      * @return BelongsTo<IncidentType, $this>

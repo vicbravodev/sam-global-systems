@@ -40,7 +40,8 @@ class AuditController extends Controller
             'id' => (int) $log->id,
             'action' => (string) $log->action,
             'actionLabel' => AuditActionPresenter::actionLabel($log->action),
-            'category' => $log->category->value,
+            // La consulta filtra por categoría Security/Billing: nunca es null aquí.
+            'category' => (string) $log->category?->value,
             'categoryLabel' => AuditActionPresenter::categoryLabel($log->category),
             'summary' => (string) $log->summary,
             'team' => $log->team_id ? ($teamNames[$log->team_id] ?? "Tenant eliminado #{$log->team_id}") : null,

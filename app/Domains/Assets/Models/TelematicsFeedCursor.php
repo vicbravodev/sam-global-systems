@@ -53,6 +53,9 @@ class TelematicsFeedCursor extends Model
             : null;
     }
 
+    /**
+     * @phpstan-assert-if-true !null $this->paused_until
+     */
     public function isPaused(): bool
     {
         return $this->paused_until !== null && $this->paused_until->isFuture();

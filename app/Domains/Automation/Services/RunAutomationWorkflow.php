@@ -65,9 +65,7 @@ class RunAutomationWorkflow
             return null;
         }
 
-        $narrative = null;
-
-        $execution = DB::transaction(function () use ($workflow, $teamId, $sourceType, $sourceReferenceId, &$narrative) {
+        [$execution, $narrative] = DB::transaction(function () use ($workflow, $teamId, $sourceType, $sourceReferenceId) {
             $workflowExecution = WorkflowExecution::create([
                 'team_id' => $teamId,
                 'automation_workflow_id' => $workflow->id,
@@ -124,7 +122,7 @@ class RunAutomationWorkflow
                 'template_resolved_count' => $templateResolvedCount,
             ];
 
-            return $workflowExecution;
+            return [$workflowExecution, $narrative];
         });
 
         // Nunca corre dentro de una transacción (job y endpoint manual): la

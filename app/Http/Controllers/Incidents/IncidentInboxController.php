@@ -29,6 +29,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Team;
 use App\Models\User;
 use App\Support\TeamMembers;
+use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\JsonResponse;
@@ -56,7 +57,7 @@ class IncidentInboxController extends Controller
         private readonly IncidentInboxPresenter $presenter,
     ) {}
 
-    public function index(Request $request, Team $current_team): Response
+    public function index(Request $request, Team $current_team, #[CurrentUser] User $user): Response
     {
         $this->authorize('viewAny', Incident::class);
 
@@ -103,7 +104,7 @@ class IncidentInboxController extends Controller
             'filterOptions' => fn () => $this->filterOptions($current_team),
             'members' => fn () => $this->members($current_team),
             'reclassifyOptions' => fn () => $this->reclassifyOptions(),
-            'can' => $this->abilities($request->user(), $current_team),
+            'can' => $this->abilities($user, $current_team),
         ]);
     }
 
@@ -299,7 +300,7 @@ class IncidentInboxController extends Controller
      * application/json), while a browser navigation renders the full-page
      * Inertia view with the media gallery (Roadmap F9).
      */
-    public function show(Request $request, Team $current_team, Incident $incident): JsonResponse|Response
+    public function show(Request $request, Team $current_team, Incident $incident, #[CurrentUser] User $user): JsonResponse|Response
     {
         $this->authorize('view', $incident);
 
@@ -355,7 +356,7 @@ class IncidentInboxController extends Controller
             'communications' => fn () => $this->communications($request, $incident),
             'members' => fn () => $this->members($current_team),
             'reclassifyOptions' => fn () => $this->reclassifyOptions(),
-            'can' => $this->abilities($request->user(), $current_team),
+            'can' => $this->abilities($user, $current_team),
         ]);
     }
 
@@ -546,21 +547,28 @@ class IncidentInboxController extends Controller
         $related = collect();
 
         if ($incident->related_event_id !== null) {
-            EventRelatedIncidentLink::query()
+            $links = EventRelatedIncidentLink::query()
                 ->where('team_id', $incident->team_id)
                 ->where('normalized_event_id', $incident->related_event_id)
                 ->where('incident_id', '!=', $incident->id)
                 ->with(['incident.status', 'incident.priority'])
                 ->orderByDesc('confidence_score')
                 ->limit(10)
-                ->get()
-                ->filter(fn (EventRelatedIncidentLink $link) => $link->incident !== null
-                    && (int) $link->incident->team_id === (int) $incident->team_id)
-                ->each(fn (EventRelatedIncidentLink $link) => $related->put($link->incident_id, $this->priorIncidentRow(
-                    $link->incident,
+                ->get();
+
+            foreach ($links as $link) {
+                $linked = $link->incident;
+
+                if ($linked === null || (int) $linked->team_id !== (int) $incident->team_id) {
+                    continue;
+                }
+
+                $related->put($link->incident_id, $this->priorIncidentRow(
+                    $linked,
                     $link->relation_type?->value,
                     $link->confidence_score !== null ? (float) $link->confidence_score : null,
-                )));
+                ));
+            }
         }
 
         if ($incident->asset_id !== null || $incident->driver_id !== null) {

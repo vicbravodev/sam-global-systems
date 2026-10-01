@@ -19,7 +19,9 @@ use App\Http\Requests\Incidents\ReclassifyIncidentRequest;
 use App\Http\Requests\Incidents\StoreIncidentRequest;
 use App\Http\Requests\Incidents\UpdateIncidentRequest;
 use App\Models\Team;
+use App\Models\User;
 use App\Support\Http\PerPage;
+use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
@@ -94,13 +96,13 @@ class IncidentController extends Controller
         return response()->json(['data' => $incident]);
     }
 
-    public function store(StoreIncidentRequest $request, Team $current_team, CreateManualIncident $create): JsonResponse
+    public function store(StoreIncidentRequest $request, Team $current_team, CreateManualIncident $create, #[CurrentUser] User $user): JsonResponse
     {
         $this->authorize('create', Incident::class);
 
         $incident = $create->execute(
             teamId: $current_team->id,
-            creator: $request->user(),
+            creator: $user,
             data: $request->validated(),
         );
 
@@ -127,6 +129,7 @@ class IncidentController extends Controller
         Team $current_team,
         Incident $incident,
         ReclassifyIncident $reclassify,
+        #[CurrentUser] User $user,
     ): JsonResponse {
         $this->authorize('reclassify', $incident);
 
@@ -140,17 +143,17 @@ class IncidentController extends Controller
             newType: $type,
             newPriority: $priority,
             actorType: IncidentCreatorType::User,
-            actorId: $request->user()->id,
+            actorId: $user->id,
         );
 
         return response()->json(['data' => $updated]);
     }
 
-    public function acknowledge(Request $request, Team $current_team, Incident $incident, AcknowledgeIncident $acknowledge): JsonResponse
+    public function acknowledge(Team $current_team, Incident $incident, AcknowledgeIncident $acknowledge, #[CurrentUser] User $user): JsonResponse
     {
         $this->authorize('update', $incident);
 
-        $updated = $acknowledge->execute($incident, $request->user()->id);
+        $updated = $acknowledge->execute($incident, $user->id);
 
         return response()->json(['data' => $updated]);
     }
@@ -160,11 +163,11 @@ class IncidentController extends Controller
      * fallo de permisos: el incidente existe y el usuario puede gestionarlo,
      * pero otro monitorista ganó la carrera.
      */
-    public function claim(Request $request, Team $current_team, Incident $incident, ClaimIncident $claim): JsonResponse
+    public function claim(Team $current_team, Incident $incident, ClaimIncident $claim, #[CurrentUser] User $user): JsonResponse
     {
         $this->authorize('update', $incident);
 
-        if (! $claim->execute($incident, $request->user())) {
+        if (! $claim->execute($incident, $user)) {
             return response()->json(
                 ['message' => 'Otro monitorista ya tomó este incidente.'],
                 SymfonyResponse::HTTP_CONFLICT,
@@ -174,11 +177,11 @@ class IncidentController extends Controller
         return response()->json(['data' => $incident->fresh()]);
     }
 
-    public function release(Request $request, Team $current_team, Incident $incident, ReleaseIncident $release): JsonResponse
+    public function release(Team $current_team, Incident $incident, ReleaseIncident $release, #[CurrentUser] User $user): JsonResponse
     {
         $this->authorize('update', $incident);
 
-        if (! $release->execute($incident, $request->user())) {
+        if (! $release->execute($incident, $user)) {
             return response()->json(
                 ['message' => 'Este incidente lo tiene otro monitorista.'],
                 SymfonyResponse::HTTP_CONFLICT,
@@ -188,7 +191,7 @@ class IncidentController extends Controller
         return response()->json(['data' => $incident->fresh()]);
     }
 
-    public function escalate(Request $request, Team $current_team, Incident $incident, EscalateIncident $escalate): JsonResponse
+    public function escalate(Request $request, Team $current_team, Incident $incident, EscalateIncident $escalate, #[CurrentUser] User $user): JsonResponse
     {
         $this->authorize('escalate', $incident);
 
@@ -202,7 +205,7 @@ class IncidentController extends Controller
             incident: $incident,
             reason: $reason,
             escalatedByType: IncidentCreatorType::User,
-            escalatedById: $request->user()->id,
+            escalatedById: $user->id,
         );
 
         return response()->json(['data' => $updated]);

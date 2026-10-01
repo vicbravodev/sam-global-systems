@@ -44,7 +44,8 @@ class CopilotUsageQuery
             ->selectRaw('COALESCE(AVG(latency_ms), 0) as avg_latency')
             ->selectRaw('SUM(CASE WHEN feedback = 1 THEN 1 ELSE 0 END) as positive')
             ->selectRaw('SUM(CASE WHEN feedback = -1 THEN 1 ELSE 0 END) as negative')
-            ->first();
+            // Un agregado sin GROUP BY siempre devuelve exactamente una fila.
+            ->sole();
 
         // Same identity as byUser(): the conversation owner of each metered
         // assistant turn, so the headline count matches the per-user table.

@@ -8,6 +8,8 @@ use App\Domains\Copilot\Models\CopilotConversation;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Copilot\StoreCopilotMessageRequest;
 use App\Models\Team;
+use App\Models\User;
+use Illuminate\Container\Attributes\CurrentUser;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -22,6 +24,7 @@ class CopilotStreamController extends Controller
         Team $current_team,
         StreamCopilotTurn $stream,
         AuthorizeAction $authorizeAction,
+        #[CurrentUser] User $user,
     ): Response {
         $this->authorize('create', CopilotConversation::class);
 
@@ -34,8 +37,6 @@ class CopilotStreamController extends Controller
 
             $this->authorize('update', $conversation);
         }
-
-        $user = $request->user();
 
         return $stream->execute(
             team: $current_team,

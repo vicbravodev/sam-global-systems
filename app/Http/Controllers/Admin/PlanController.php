@@ -10,6 +10,8 @@ use App\Domains\Tenancy\Models\BillingRate;
 use App\Domains\Tenancy\Models\Plan;
 use App\Domains\Tenancy\Models\UsageMeter;
 use App\Http\Controllers\Controller;
+use App\Models\User;
+use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -44,9 +46,9 @@ class PlanController extends Controller
                 'name' => (string) $plan->name,
                 'basePrice' => (float) $plan->base_price,
                 'isActive' => (bool) $plan->is_active,
+                // Las tarifas sin medidor se omiten.
                 'limits' => $plan->billingRates
-                    ->filter(fn (BillingRate $rate) => $rate->usageMeter !== null)
-                    ->mapWithKeys(fn (BillingRate $rate) => [
+                    ->mapWithKeys(fn (BillingRate $rate) => $rate->usageMeter === null ? [] : [
                         $rate->usageMeter->code => (int) $rate->included_quantity,
                     ])->all(),
             ])->values()->all();
@@ -57,7 +59,7 @@ class PlanController extends Controller
         ]);
     }
 
-    public function update(Request $request, Plan $plan, UpdatePlanLimits $updateLimits): RedirectResponse
+    public function update(Request $request, Plan $plan, UpdatePlanLimits $updateLimits, #[CurrentUser] User $user): RedirectResponse
     {
         $data = $request->validate([
             'limits' => ['required', 'array'],
@@ -68,8 +70,6 @@ class PlanController extends Controller
         $limits = $data['limits'];
 
         $updateLimits->execute($plan, $limits);
-
-        $user = $request->user();
 
         $this->audit->execute(
             actorType: AuditActorType::User,

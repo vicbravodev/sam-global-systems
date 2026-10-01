@@ -116,7 +116,7 @@ class IncidentsShowcaseSeeder extends ShowcaseStep
 
         $incident = Incident::query()->create([
             'team_id' => $this->ctx->team->id,
-            'incident_type_id' => $this->types[$s->incidentType] ?? $this->types['other'],
+            'incident_type_id' => $this->types[$s->incidentType ?? 'other'] ?? $this->types['other'],
             'incident_status_id' => $this->statuses[$life['status']],
             'incident_priority_id' => $this->priorities[$priority] ?? $this->priorities['medium'],
             'source_type' => $manual ? 'manual' : 'ai_decision',

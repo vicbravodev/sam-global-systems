@@ -8,6 +8,8 @@ use App\Domains\Notifications\Models\NotificationPreference;
 use App\Domains\Notifications\Support\NotificationTypeLabels;
 use App\Domains\Notifications\Support\ProvidedChannels;
 use App\Http\Controllers\Controller;
+use App\Models\User;
+use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -30,11 +32,10 @@ class NotificationPreferencesController extends Controller
     /**
      * Show the user's notification preferences for their current team.
      */
-    public function edit(Request $request): Response
+    public function edit(#[CurrentUser] User $user): Response
     {
         $this->authorize('viewAny', NotificationPreference::class);
 
-        $user = $request->user();
         $team = currentTeam();
 
         $preferences = NotificationPreference::query()
@@ -71,7 +72,7 @@ class NotificationPreferencesController extends Controller
      * user in their current team. Idempotent: repeating the same payload
      * keeps a single row per (user, type).
      */
-    public function update(Request $request): RedirectResponse
+    public function update(Request $request, #[CurrentUser] User $user): RedirectResponse
     {
         $validated = $request->validate([
             'notification_type' => ['required', 'string', 'max:128'],
@@ -79,8 +80,6 @@ class NotificationPreferencesController extends Controller
             'allowed_channels.*' => ['string', Rule::enum(ChannelType::class)],
             'muted' => ['nullable', 'boolean'],
         ]);
-
-        $user = $request->user();
 
         $preference = NotificationPreference::query()
             ->where('user_id', $user->id)

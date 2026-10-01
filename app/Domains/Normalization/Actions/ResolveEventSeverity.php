@@ -14,12 +14,17 @@ class ResolveEventSeverity
      */
     public function execute(EventMappingRule $rule, EventType $type): EventSeverity
     {
-        if ($rule->mapped_severity_id) {
+        // Las FK de severidad son nullOnDelete: si la fila no carga, la cascada
+        // sigue al siguiente nivel en vez de reventar.
+        $ruleSeverity = $rule->mapped_severity_id ? $rule->mappedSeverity : null;
+        $typeSeverity = $ruleSeverity === null && $type->default_severity_id ? $type->defaultSeverity : null;
+
+        if ($ruleSeverity !== null) {
             $source = 'rule_override';
-            $severity = $rule->mappedSeverity;
-        } elseif ($type->default_severity_id) {
+            $severity = $ruleSeverity;
+        } elseif ($typeSeverity !== null) {
             $source = 'type_default';
-            $severity = $type->defaultSeverity;
+            $severity = $typeSeverity;
         } else {
             $source = 'medium_fallback';
             $severity = EventSeverity::where('code', 'medium')->firstOrFail();

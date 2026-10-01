@@ -99,7 +99,7 @@ final class AssetEngineTool implements CopilotTool
 
         $moving = $positions->filter(fn (AssetLocationSnapshot $s) => (float) $s->speed > CopilotPresenter::MOVING_SPEED_KPH);
         $maxSpeed = $positions->max(fn (AssetLocationSnapshot $s) => (float) $s->speed);
-        $avgSpeed = $moving->isNotEmpty() ? round($moving->avg(fn (AssetLocationSnapshot $s) => (float) $s->speed), 1) : null;
+        $avgSpeed = $moving->isNotEmpty() ? round((float) $moving->avg(fn (AssetLocationSnapshot $s) => (float) $s->speed), 1) : null;
         $overSpeed = $positions->filter(fn (AssetLocationSnapshot $s) => (float) $s->speed > 100)->count();
 
         $idle = $this->idle->forAsset($asset, $context->period->from, $context->period->to);

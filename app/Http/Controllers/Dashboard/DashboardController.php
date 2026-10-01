@@ -217,7 +217,8 @@ class DashboardController extends Controller
             return $budget - $elapsed;
         });
 
-        return (int) round($remaining->avg());
+        // Never empty here (guarded above), so the mean is always defined.
+        return (int) round($remaining->sum() / $remaining->count());
     }
 
     /**

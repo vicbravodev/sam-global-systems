@@ -10,8 +10,8 @@ use App\Http\Requests\Teams\SaveTeamRequest;
 use App\Models\Membership;
 use App\Models\Team;
 use App\Models\User;
+use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
@@ -22,10 +22,8 @@ class TeamController extends Controller
     /**
      * Display a listing of the user's teams.
      */
-    public function index(Request $request): Response
+    public function index(#[CurrentUser] User $user): Response
     {
-        $user = $request->user();
-
         return Inertia::render('teams/index', [
             'teams' => $user->toUserTeams(includeCurrent: true),
             // C3: solo el superadmin puede crear equipos/tenants.
@@ -36,13 +34,13 @@ class TeamController extends Controller
     /**
      * Store a newly created team.
      */
-    public function store(SaveTeamRequest $request, CreateTeam $createTeam): RedirectResponse
+    public function store(SaveTeamRequest $request, CreateTeam $createTeam, #[CurrentUser] User $user): RedirectResponse
     {
         // C3: Team = tenant. La creación de equipos/tenants es exclusiva del
         // superadmin; un usuario normal ya no crea equipos desde su cuenta.
-        abort_unless($request->user()->isSuperAdmin(), 403);
+        abort_unless($user->isSuperAdmin(), 403);
 
-        $team = $createTeam->handle($request->user(), $request->validated('name'));
+        $team = $createTeam->handle($user, $request->validated('name'));
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Team created.')]);
 
@@ -52,10 +50,8 @@ class TeamController extends Controller
     /**
      * Show the team edit page.
      */
-    public function edit(Request $request, Team $team): Response
+    public function edit(Team $team, #[CurrentUser] User $user): Response
     {
-        $user = $request->user();
-
         return Inertia::render('teams/edit', [
             'team' => [
                 'id' => $team->id,
@@ -94,7 +90,7 @@ class TeamController extends Controller
                     'email' => $invitation->email,
                     'role' => $invitation->role->value,
                     'role_label' => $invitation->role->label(),
-                    'created_at' => $invitation->created_at->toISOString(),
+                    'created_at' => $invitation->created_at?->toISOString(),
                 ]),
             'permissions' => $user->toTeamPermissions($team),
             'availableRoles' => TeamRole::assignable(),
@@ -124,11 +120,11 @@ class TeamController extends Controller
     /**
      * Switch the user's current team.
      */
-    public function switch(Request $request, Team $team): RedirectResponse
+    public function switch(Team $team, #[CurrentUser] User $user): RedirectResponse
     {
-        abort_unless($request->user()->belongsToTeam($team), 403);
+        abort_unless($user->belongsToTeam($team), 403);
 
-        $request->user()->switchTeam($team);
+        $user->switchTeam($team);
 
         return back();
     }
@@ -136,9 +132,8 @@ class TeamController extends Controller
     /**
      * Delete the specified team.
      */
-    public function destroy(DeleteTeamRequest $request, Team $team): RedirectResponse
+    public function destroy(DeleteTeamRequest $request, Team $team, #[CurrentUser] User $user): RedirectResponse
     {
-        $user = $request->user();
         $fallbackTeam = $user->isCurrentTeam($team)
             ? $user->fallbackTeam($team)
             : null;

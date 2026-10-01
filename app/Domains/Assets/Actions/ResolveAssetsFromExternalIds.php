@@ -60,8 +60,10 @@ class ResolveAssetsFromExternalIds
                 ->keyBy('id');
 
             foreach ($assetIdsByExternalId as $externalId => $assetId) {
-                if ($assets->has($assetId)) {
-                    $resolved[(string) $externalId] = $assets->get($assetId);
+                $asset = $assets->get($assetId);
+
+                if ($asset !== null) {
+                    $resolved[(string) $externalId] = $asset;
                 }
             }
         }

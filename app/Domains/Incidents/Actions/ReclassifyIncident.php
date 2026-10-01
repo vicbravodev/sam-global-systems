@@ -49,7 +49,7 @@ class ReclassifyIncident
                 ],
             );
 
-            return $incident->fresh(['type', 'priority', 'status']);
+            return $incident->freshOrFail(['type', 'priority', 'status']);
         });
     }
 }

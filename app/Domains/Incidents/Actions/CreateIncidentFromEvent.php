@@ -162,7 +162,8 @@ class CreateIncidentFromEvent
 
                 $burstLine = [
                     'input' => ['normalized_event_id' => $event->id],
-                    'calc' => [...$burstCalc, 'branch' => 'linked_to_aggregate'],
+                    // Con agregado encontrado offlineBurst siempre trae calc.
+                    'calc' => [...($burstCalc ?? []), 'branch' => 'linked_to_aggregate'],
                     'result' => ['aggregate_incident_id' => $burst->id, 'link_created' => $link->wasRecentlyCreated],
                 ];
                 DB::afterCommit(fn () => SystemLog::ok('incidents.offline_burst.aggregated', ...$burstLine));
@@ -298,7 +299,7 @@ class CreateIncidentFromEvent
                 'normalized_event_id' => $event->id,
             ]);
 
-            $fresh = $incident->fresh(['type', 'status', 'priority']);
+            $fresh = $incident->freshOrFail(['type', 'status', 'priority']);
 
             PipelineTrace::add(['incident_id' => $fresh->id]);
 
@@ -613,8 +614,8 @@ class CreateIncidentFromEvent
         $candidates = array_values(array_unique(array_filter([
             $code,
             $eventTypeCode,
-            (self::EVENT_TYPE_INCIDENT_ALIASES[$eventTypeCode] ?? null)?->value,
-            (self::CATEGORY_INCIDENT_FALLBACKS[$eventType?->category?->code] ?? null)?->value,
+            self::aliasFor($eventTypeCode)?->value,
+            self::categoryBucketFor($eventType?->category?->code)?->value,
             IncidentTypeCode::Other->value,
         ])));
 
@@ -641,6 +642,20 @@ class CreateIncidentFromEvent
     }
 
     /**
+     * Un evento sin tipo (o tipo sin categoría) no tiene alias: se evita
+     * indexar con null, deprecado desde PHP 8.5.
+     */
+    private static function aliasFor(?string $eventTypeCode): ?IncidentTypeCode
+    {
+        return $eventTypeCode === null ? null : (self::EVENT_TYPE_INCIDENT_ALIASES[$eventTypeCode] ?? null);
+    }
+
+    private static function categoryBucketFor(?string $categoryCode): ?IncidentTypeCode
+    {
+        return $categoryCode === null ? null : (self::CATEGORY_INCIDENT_FALLBACKS[$categoryCode] ?? null);
+    }
+
+    /**
      * @param  list<string>  $candidates
      * @param  list<string>  $tried
      */
@@ -653,9 +668,9 @@ class CreateIncidentFromEvent
             calc: [
                 'requested_code' => LoggableCode::guard($code),
                 'event_type_code' => $eventTypeCode,
-                'alias_code' => (self::EVENT_TYPE_INCIDENT_ALIASES[$eventTypeCode] ?? null)?->value,
+                'alias_code' => self::aliasFor($eventTypeCode)?->value,
                 'category_code' => $eventType?->category?->code,
-                'category_bucket_code' => (self::CATEGORY_INCIDENT_FALLBACKS[$eventType?->category?->code] ?? null)?->value,
+                'category_bucket_code' => self::categoryBucketFor($eventType?->category?->code)?->value,
                 'candidates' => array_map(LoggableCode::guard(...), $candidates),
                 'tried' => array_map(LoggableCode::guard(...), $tried),
                 'used_last_resort' => $usedLastResort,

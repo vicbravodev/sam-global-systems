@@ -9,6 +9,7 @@ use App\Domains\Notifications\Models\MessagingCharge;
 use App\Domains\Notifications\Models\NotificationDelivery;
 use App\Models\Team;
 use Illuminate\Database\Eloquent\Factories\Factory;
+use LogicException;
 
 /**
  * @extends Factory<MessagingCharge>
@@ -41,7 +42,7 @@ class MessagingChargeFactory extends Factory
     public function forDelivery(NotificationDelivery $delivery): static
     {
         $delivery->loadMissing('channel');
-        $channelType = $delivery->channel->channel_type;
+        $channelType = ($delivery->channel ?? throw new LogicException("NotificationDelivery {$delivery->id} sin canal."))->channel_type;
 
         return $this->state(fn () => [
             'team_id' => $delivery->team_id,

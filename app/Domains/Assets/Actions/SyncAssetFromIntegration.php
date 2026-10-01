@@ -8,6 +8,7 @@ use App\Domains\Assets\Exceptions\AssetExternalReferenceConflictException;
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Assets\Models\AssetExternalReference;
 use App\Domains\Assets\Models\AssetType;
+use App\Domains\Integrations\Models\IntegrationProvider;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Support\SystemLog;
 use App\Support\TenantContext;
@@ -116,7 +117,9 @@ class SyncAssetFromIntegration
             ->where('external_id', $assetData['external_id'])
             ->update(['last_seen_at' => now()]);
 
-        return $asset->fresh();
+        // refresh() y no fresh(): misma relectura, pero si la fila
+        // desapareciera lanza ModelNotFound en vez de devolver null.
+        return $asset->refresh();
     }
 
     /**
@@ -156,7 +159,9 @@ class SyncAssetFromIntegration
             $teamId,
             $asset->id,
             $assetType->code,
-            $asset->provider->code,
+            // provider_id viene de la integración (FK con constraint, el
+            // proveedor no se soft-deletea): findOrFail sólo expresa ese contrato.
+            IntegrationProvider::query()->findOrFail($providerId)->code,
             $assetData['external_id'],
         );
 

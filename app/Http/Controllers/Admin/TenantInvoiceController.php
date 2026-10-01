@@ -13,6 +13,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Team;
 use App\Support\SystemLog;
 use App\Support\TenantContext;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Bus;
@@ -40,8 +41,10 @@ class TenantInvoiceController extends Controller
             'period' => ['nullable', 'string', Rule::date()->format('Y-m')],
         ]);
 
+        // `period` ya validó como Y-m: parse() nunca devuelve null (lanza si
+        // la fecha fuera inválida), a diferencia de createFromFormat().
         $periodStart = isset($data['period'])
-            ? now()->createFromFormat('Y-m-d', $data['period'].'-01')->startOfMonth()
+            ? CarbonImmutable::parse($data['period'].'-01')->startOfMonth()
             : now()->subMonthNoOverflow()->startOfMonth();
 
         $start = $periodStart->toDateString();

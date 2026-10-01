@@ -13,6 +13,7 @@ use App\Domains\Drivers\Models\Driver;
 use App\Domains\Drivers\Models\DriverAssignment;
 use App\Domains\Drivers\Models\DriverContact;
 use App\Domains\Drivers\Models\DriverDocument;
+use App\Domains\Drivers\Models\DriverRiskProfile;
 use App\Domains\Drivers\Models\DriverStatusLog;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Support\IncidentStatusPresenter;
@@ -154,7 +155,7 @@ class DriverPageController extends Controller
                 ->orderBy('id'),
         ]);
         // latestTelemetry without the one-of-many full-history scan.
-        app(LatestAssetTelemetry::class)->loadInto([$driver->currentAssignment?->asset]);
+        app(LatestAssetTelemetry::class)->loadInto(array_filter([$driver->currentAssignment?->asset]));
 
         return Inertia::render('drivers/show', [
             'driver' => $this->toDetail($driver),
@@ -325,7 +326,6 @@ class DriverPageController extends Controller
     {
         $asset = $driver->currentAssignment?->asset;
         $risk = $driver->riskProfile;
-        $live = $risk !== null ? $this->liveRiskCounts($driver) : null;
 
         return [
             'id' => (int) $driver->id,
@@ -347,25 +347,7 @@ class DriverPageController extends Controller
                 'name' => (string) $asset->name,
                 'code' => $asset->code,
             ] : null,
-            'riskProfile' => $risk ? [
-                'riskScore' => $risk->risk_score !== null ? (float) $risk->risk_score : null,
-                'riskLevel' => $risk->risk_level?->value,
-                'trend' => $risk->metadata_json['trend'] ?? null,
-                'previousScore' => isset($risk->metadata_json['previous_score'])
-                    ? (float) $risk->metadata_json['previous_score']
-                    : null,
-                'windowDays' => isset($risk->metadata_json['window_days'])
-                    ? (int) $risk->metadata_json['window_days']
-                    : null,
-                // Counters are live over the same window the nightly job uses,
-                // so a collision shows up right away; the score/level stay
-                // the nightly calculation (see `lastCalculatedAt`).
-                'incidentsCount' => $live['incidents'],
-                'harshEventsCount' => $live['harsh'],
-                'fatigueFlagsCount' => $live['fatigue'],
-                'severeEventsCount' => $live['severe'],
-                'lastCalculatedAt' => $risk->last_calculated_at?->toIso8601String(),
-            ] : null,
+            'riskProfile' => $risk !== null ? $this->presentRiskProfile($driver, $risk) : null,
             'providerFields' => $this->providerFields($driver),
             'contacts' => $driver->contacts
                 ->map(fn (DriverContact $contact) => [
@@ -395,6 +377,37 @@ class DriverPageController extends Controller
                 ])
                 ->values()
                 ->all(),
+        ];
+    }
+
+    /**
+     * Risk card: the nightly score/level plus live counters over the same
+     * window the nightly job uses.
+     *
+     * @return array<string, mixed>
+     */
+    private function presentRiskProfile(Driver $driver, DriverRiskProfile $risk): array
+    {
+        $live = $this->liveRiskCounts($driver);
+
+        return [
+            'riskScore' => $risk->risk_score !== null ? (float) $risk->risk_score : null,
+            'riskLevel' => $risk->risk_level?->value,
+            'trend' => $risk->metadata_json['trend'] ?? null,
+            'previousScore' => isset($risk->metadata_json['previous_score'])
+                ? (float) $risk->metadata_json['previous_score']
+                : null,
+            'windowDays' => isset($risk->metadata_json['window_days'])
+                ? (int) $risk->metadata_json['window_days']
+                : null,
+            // Counters are live over the same window the nightly job uses,
+            // so a collision shows up right away; the score/level stay
+            // the nightly calculation (see `lastCalculatedAt`).
+            'incidentsCount' => $live['incidents'],
+            'harshEventsCount' => $live['harsh'],
+            'fatigueFlagsCount' => $live['fatigue'],
+            'severeEventsCount' => $live['severe'],
+            'lastCalculatedAt' => $risk->last_calculated_at?->toIso8601String(),
         ];
     }
 
@@ -449,14 +462,17 @@ class DriverPageController extends Controller
             $asset?->latestTelemetry?->recorded_at,
         ]);
 
-        if ($candidates === []) {
-            return null;
+        $newest = null;
+
+        foreach ($candidates as $value) {
+            $at = Carbon::parse($value);
+
+            if ($newest === null || $at->gt($newest)) {
+                $newest = $at;
+            }
         }
 
-        return collect($candidates)
-            ->map(fn ($value) => Carbon::parse($value))
-            ->max()
-            ->toIso8601String();
+        return $newest?->toIso8601String();
     }
 
     /**

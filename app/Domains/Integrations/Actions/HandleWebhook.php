@@ -10,6 +10,7 @@ use App\Domains\Integrations\Models\WebhookEvent;
 use App\Support\LoggableCode;
 use App\Support\PipelineTrace;
 use App\Support\SystemLog;
+use LogicException;
 
 class HandleWebhook
 {
@@ -29,7 +30,9 @@ class HandleWebhook
         ?string $signature = null,
         ?string $signatureTimestamp = null,
     ): WebhookEvent {
-        $integration = $endpoint->tenantIntegration;
+        // FK NOT NULL con cascade: un endpoint vivo siempre tiene integración.
+        $integration = $endpoint->tenantIntegration
+            ?? throw new LogicException("WebhookEndpoint {$endpoint->id} sin TenantIntegration.");
 
         // Punto de entrada: un webhook es UN evento, y su traza la reclama el
         // RawEvent que se guarde al procesarlo (ProcessWebhookEventJob).

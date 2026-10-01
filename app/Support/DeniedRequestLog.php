@@ -31,7 +31,7 @@ final class DeniedRequestLog
             default => [null, null],
         };
 
-        if ($code === null) {
+        if ($code === null || $reason === null) {
             return;
         }
 

@@ -56,7 +56,7 @@ class EscalateIncident
                 ],
             );
 
-            $fresh = $incident->fresh(['status', 'priority', 'type']);
+            $fresh = $incident->freshOrFail(['status', 'priority', 'type']);
 
             IncidentStatusChanged::dispatch(
                 $fresh,

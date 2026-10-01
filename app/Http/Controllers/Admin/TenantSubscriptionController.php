@@ -11,7 +11,9 @@ use App\Domains\Tenancy\Enums\SubscriptionStatus;
 use App\Domains\Tenancy\Models\Subscription;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
+use App\Models\User;
 use App\Support\TenantContext;
+use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -25,7 +27,7 @@ class TenantSubscriptionController extends Controller
 {
     public function __construct(private readonly RecordAuditEntry $audit) {}
 
-    public function update(Request $request, Team $team, ChangeTenantPlan $changePlan): RedirectResponse
+    public function update(Request $request, Team $team, ChangeTenantPlan $changePlan, #[CurrentUser] User $actor): RedirectResponse
     {
         $data = $request->validate([
             'plan_code' => ['required', 'string', 'exists:plans,code'],
@@ -33,7 +35,7 @@ class TenantSubscriptionController extends Controller
 
         $changePlan->execute($team, $data['plan_code']);
 
-        $this->record($request, $team, 'tenant.plan_changed',
+        $this->record($request, $actor, $team, 'tenant.plan_changed',
             "Plan del tenant {$team->name} cambiado a {$data['plan_code']}.",
             ['plan_code' => $data['plan_code']],
         );
@@ -41,26 +43,27 @@ class TenantSubscriptionController extends Controller
         return $this->backToTenant($team, 'Plan actualizado.');
     }
 
-    public function suspend(Request $request, Team $team, UpdateSubscriptionStatus $updateStatus): RedirectResponse
+    public function suspend(Request $request, Team $team, UpdateSubscriptionStatus $updateStatus, #[CurrentUser] User $actor): RedirectResponse
     {
-        return $this->transition($request, $team, $updateStatus, SubscriptionStatus::Suspended,
+        return $this->transition($request, $actor, $team, $updateStatus, SubscriptionStatus::Suspended,
             'tenant.subscription_suspended', 'suspendido');
     }
 
-    public function reactivate(Request $request, Team $team, UpdateSubscriptionStatus $updateStatus): RedirectResponse
+    public function reactivate(Request $request, Team $team, UpdateSubscriptionStatus $updateStatus, #[CurrentUser] User $actor): RedirectResponse
     {
-        return $this->transition($request, $team, $updateStatus, SubscriptionStatus::Active,
+        return $this->transition($request, $actor, $team, $updateStatus, SubscriptionStatus::Active,
             'tenant.subscription_reactivated', 'reactivado');
     }
 
-    public function cancel(Request $request, Team $team, UpdateSubscriptionStatus $updateStatus): RedirectResponse
+    public function cancel(Request $request, Team $team, UpdateSubscriptionStatus $updateStatus, #[CurrentUser] User $actor): RedirectResponse
     {
-        return $this->transition($request, $team, $updateStatus, SubscriptionStatus::Canceled,
+        return $this->transition($request, $actor, $team, $updateStatus, SubscriptionStatus::Canceled,
             'tenant.subscription_canceled', 'cancelado');
     }
 
     private function transition(
         Request $request,
+        User $actor,
         Team $team,
         UpdateSubscriptionStatus $updateStatus,
         SubscriptionStatus $status,
@@ -75,7 +78,7 @@ class TenantSubscriptionController extends Controller
 
         $updateStatus->execute($subscription, $status);
 
-        $this->record($request, $team, $action,
+        $this->record($request, $actor, $team, $action,
             "Suscripción del tenant {$team->name} {$verb}.",
             ['status' => $status->value],
         );
@@ -93,20 +96,19 @@ class TenantSubscriptionController extends Controller
     /**
      * @param  array<string, mixed>  $metadata
      */
-    private function record(Request $request, Team $team, string $action, string $summary, array $metadata): void
+    private function record(Request $request, User $actor, Team $team, string $action, string $summary, array $metadata): void
     {
-        $user = $request->user();
 
         $this->audit->execute(
             actorType: AuditActorType::User,
-            actorId: (int) $user->id,
+            actorId: (int) $actor->id,
             action: $action,
             category: AuditCategory::Billing,
             entityType: Team::class,
             entityId: (int) $team->id,
             summary: $summary,
             teamId: (int) $team->id,
-            metadata: ['actor_email' => $user->email] + $metadata,
+            metadata: ['actor_email' => $actor->email] + $metadata,
             signature: $action.':'.$team->id.':'.Str::uuid()->toString(),
             ipAddress: $request->ip(),
             userAgent: $request->userAgent(),

@@ -74,7 +74,7 @@ class ReleaseIncident
 
         // Igual que en ClaimIncident: sólo se anuncia una liberación real.
         if ($released) {
-            broadcast(IncidentUpdatedBroadcast::fromModel($incident->fresh()));
+            broadcast(IncidentUpdatedBroadcast::fromModel($incident->freshOrFail()));
         }
 
         return $released;

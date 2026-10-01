@@ -145,10 +145,10 @@ class DispatchNotification
                     continue;
                 }
 
-                $delivery = $this->createDeliveryOrSkip($notification, $recipient, $channel, $skipReason);
+                $delivery = $this->createDeliveryOrSkip($notification, $recipient, $channel);
 
-                if ($delivery === null) {
-                    $skippedByReason[$skipReason] = ($skippedByReason[$skipReason] ?? 0) + 1;
+                if (is_string($delivery)) {
+                    $skippedByReason[$delivery] = ($skippedByReason[$delivery] ?? 0) + 1;
 
                     continue;
                 }
@@ -289,15 +289,15 @@ class DispatchNotification
     }
 
     /**
-     * @param-out 'delivery_exists'|'record_failed'|null $skipReason
+     * La entrega creada, o el motivo por el que se omitió.
+     *
+     * @return NotificationDelivery|'delivery_exists'|'record_failed'
      */
     private function createDeliveryOrSkip(
         Notification $notification,
         NotificationRecipient $recipient,
         NotificationChannel $channel,
-        ?string &$skipReason = null,
-    ): ?NotificationDelivery {
-        $skipReason = null;
+    ): NotificationDelivery|string {
         $input = ['notification_id' => $notification->id, 'recipient_id' => $recipient->id, 'channel_id' => $channel->id];
 
         try {
@@ -323,15 +323,15 @@ class DispatchNotification
             });
         } catch (\Throwable $e) {
             // Error de DB, sin texto de terceros: antes se tragaba sin rastro.
-            $skipReason = 'record_failed';
             SystemLog::degraded('notifications.delivery.create_failed', reason: 'record_failed', input: $input, error: $e);
 
-            return null;
+            return 'record_failed';
         }
 
         if ($delivery === null) {
-            $skipReason = 'delivery_exists';
             SystemLog::skipped('notifications.dedup.skipped', reason: 'delivery_exists', input: $input, debug: true);
+
+            return 'delivery_exists';
         }
 
         return $delivery;

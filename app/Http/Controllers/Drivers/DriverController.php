@@ -83,7 +83,7 @@ class DriverController extends Controller
         }
 
         return response()->json([
-            'data' => $driver->fresh()->load('contacts'),
+            'data' => $driver->refresh()->load('contacts'),
         ]);
     }
 
@@ -98,7 +98,7 @@ class DriverController extends Controller
         }
 
         return response()->json([
-            'data' => $driver->fresh()->load('documents'),
+            'data' => $driver->refresh()->load('documents'),
         ]);
     }
 }

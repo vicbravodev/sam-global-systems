@@ -9,6 +9,8 @@ use App\Domains\Incidents\Models\Incident;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Incidents\ResolveIncidentRequest;
 use App\Models\Team;
+use App\Models\User;
+use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -19,6 +21,7 @@ class IncidentResolutionController extends Controller
         Team $current_team,
         Incident $incident,
         CloseIncident $closeIncident,
+        #[CurrentUser] User $user,
     ): JsonResponse {
         $this->authorize('resolve', $incident);
 
@@ -30,13 +33,13 @@ class IncidentResolutionController extends Controller
             correctiveAction: $request->validated('corrective_action'),
             preventiveAction: $request->validated('preventive_action'),
             resolvedByType: IncidentCreatorType::User,
-            resolvedById: $request->user()->id,
+            resolvedById: $user->id,
         );
 
         return response()->json(['data' => $resolution], 201);
     }
 
-    public function close(Request $request, Team $current_team, Incident $incident, CloseIncident $closeIncident): JsonResponse
+    public function close(Request $request, Team $current_team, Incident $incident, CloseIncident $closeIncident, #[CurrentUser] User $user): JsonResponse
     {
         $this->authorize('close', $incident);
 
@@ -45,7 +48,7 @@ class IncidentResolutionController extends Controller
             resolutionCode: ResolutionCode::UnresolvedClosed,
             summary: $request->string('summary')->toString() ?: 'Closed without further action.',
             resolvedByType: IncidentCreatorType::User,
-            resolvedById: $request->user()->id,
+            resolvedById: $user->id,
         );
 
         return response()->json(['data' => $resolution], 200);
