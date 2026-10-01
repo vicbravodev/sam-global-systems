@@ -15,6 +15,7 @@ use Database\Factories\Domains\Incidents\IncidentFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -55,6 +56,23 @@ class Incident extends Model
         'created_by_id',
         'metadata_json',
     ];
+
+    /**
+     * Copia recién leída de la fila (sin global scopes, como `fresh()`), con
+     * las relaciones pedidas. Tras escribir el incidente en la misma
+     * transacción la fila existe siempre (el soft-delete no la oculta a
+     * `fresh()`): si aun así desapareció, falla con un error claro en vez de
+     * propagar null a eventos y broadcasts.
+     *
+     * @param  array<int, string>|string  $with
+     *
+     * @throws ModelNotFoundException<self>
+     */
+    public function freshOrFail(array|string $with = []): self
+    {
+        return $this->fresh($with)
+            ?? throw (new ModelNotFoundException)->setModel(self::class, [$this->getKey()]);
+    }
 
     /**
      * @return BelongsTo<IncidentType, $this>
@@ -184,7 +202,11 @@ class Incident extends Model
     protected static function booted(): void
     {
         static::creating(function (Incident $incident): void {
-            if ($incident->number === null && $incident->team_id !== null) {
+            // En `creating` el modelo aún no está guardado: si nadie (ni el
+            // TenantContext vía BelongsToTenant) le puso team_id, el atributo
+            // falta de verdad y no hay secuencia que avanzar (el INSERT fallará
+            // por NOT NULL). Por eso aquí se lee el atributo crudo.
+            if ($incident->number === null && $incident->getAttribute('team_id') !== null) {
                 $incident->number = IncidentNumberSequence::next((int) $incident->team_id);
             }
         });
@@ -192,13 +214,11 @@ class Incident extends Model
         // The inbox badge counts open incidents: a new one or a status change
         // moves it.
         static::created(function (Incident $incident): void {
-            if ($incident->team_id !== null) {
-                NavBadgeCache::forget((int) $incident->team_id);
-            }
+            NavBadgeCache::forget((int) $incident->team_id);
         });
 
         static::updated(function (Incident $incident): void {
-            if ($incident->team_id !== null && $incident->wasChanged('incident_status_id')) {
+            if ($incident->wasChanged('incident_status_id')) {
                 NavBadgeCache::forget((int) $incident->team_id);
             }
         });

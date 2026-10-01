@@ -35,10 +35,6 @@ class StartCallVerificationOnIncidentCreated implements IncidentCreatedReaction
     {
         $incident = $event->incident;
 
-        if ($incident->team_id === null) {
-            return;
-        }
-
         $incident->loadMissing('type');
 
         $logInput = ['incident_id' => $incident->id, 'incident_type_code' => $incident->type?->code];

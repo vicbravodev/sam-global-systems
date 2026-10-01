@@ -21,7 +21,7 @@ class NotifyOnActionExecuted
         $execution = $event->execution;
         $actionType = $execution->action_type?->value;
 
-        if ($execution->team_id === null || ! in_array($actionType, self::NOTIFICATION_ACTION_TYPES, true)) {
+        if (! in_array($actionType, self::NOTIFICATION_ACTION_TYPES, true)) {
             return;
         }
 

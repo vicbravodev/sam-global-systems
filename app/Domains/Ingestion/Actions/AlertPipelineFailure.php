@@ -309,7 +309,7 @@ class AlertPipelineFailure
                 $classification = $this->classify->fromNormalized($normalized);
 
                 return [
-                    'team_id' => $normalized->team_id !== null ? (int) $normalized->team_id : null,
+                    'team_id' => (int) $normalized->team_id,
                     'raw_event_id' => (int) $normalized->raw_event_id,
                     'normalized_event_id' => (int) $normalized->id,
                     'event_type_code' => $classification['event_type_code'],

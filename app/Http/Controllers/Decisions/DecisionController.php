@@ -7,7 +7,9 @@ use App\Domains\Decisions\Models\Decision;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Decisions\OverrideDecisionRequest;
 use App\Models\Team;
+use App\Models\User;
 use App\Support\Http\PerPage;
+use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -49,12 +51,13 @@ class DecisionController extends Controller
         Team $current_team,
         Decision $decision,
         OverrideDecision $overrideDecision,
+        #[CurrentUser] User $user,
     ): JsonResponse {
         $this->authorize('override', $decision);
 
         $override = $overrideDecision->execute(
             $decision,
-            $request->user(),
+            $user,
             (string) $request->input('new_outcome'),
             (string) $request->input('reason'),
         );

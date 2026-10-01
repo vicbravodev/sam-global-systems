@@ -105,6 +105,12 @@ class CheckIntegrationHealthJob implements ShouldQueue
 
         $anchor = $lastData ?? $integration->last_sync_at;
 
+        // handle() sólo recorre integraciones con last_sync_at: sin ancla no
+        // hay episodio que fechar, así que no se avisa.
+        if ($anchor === null) {
+            return;
+        }
+
         $this->alert(
             $sendNotification,
             $integration,

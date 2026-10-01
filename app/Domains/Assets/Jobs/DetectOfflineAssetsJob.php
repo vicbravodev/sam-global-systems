@@ -134,8 +134,16 @@ class DetectOfflineAssetsJob implements ShouldQueue
                 ->with('latestLocation')
                 ->chunkById(200, function ($assets) use ($tenantConfig, $storeRawEvent, $queueForProcessing, &$counts) {
                     foreach ($assets as $asset) {
-                        $wasInMotion = $this->wasInMotion($asset);
-                        $outcome = TenantContext::for($asset->team_id, fn () => $this->inspectAsset($asset, $wasInMotion, $tenantConfig, $storeRawEvent, $queueForProcessing));
+                        // El where de arriba ya excluye latidos nulos; el
+                        // narrowing deja ese contrato explícito en el tipo.
+                        $lastConnectedAt = $asset->device_last_connected_at;
+
+                        if ($lastConnectedAt === null) {
+                            continue;
+                        }
+
+                        $wasInMotion = $this->wasInMotion($asset, $lastConnectedAt);
+                        $outcome = TenantContext::for($asset->team_id, fn () => $this->inspectAsset($asset, $lastConnectedAt, $wasInMotion, $tenantConfig, $storeRawEvent, $queueForProcessing));
 
                         $counts['scanned']++;
                         $counts[$outcome]++;
@@ -157,13 +165,13 @@ class DetectOfflineAssetsJob implements ShouldQueue
      * único de movimiento (MovementCriterion): una velocidad fantasma de
      * 0.5 km/h de un tracto estacionado no baja el umbral.
      */
-    private function wasInMotion(Asset $asset): bool
+    private function wasInMotion(Asset $asset, CarbonInterface $lastConnectedAt): bool
     {
         $location = $asset->latestLocation;
 
         return $location?->speed !== null
             && MovementCriterion::isMoving($asset, (float) $location->speed)
-            && $location->recorded_at->gte($asset->device_last_connected_at->copy()->subMinutes(self::CONNECTIVITY_FRESHNESS_MINUTES));
+            && $location->recorded_at->gte($lastConnectedAt->copy()->subMinutes(self::CONNECTIVITY_FRESHNESS_MINUTES));
     }
 
     /**
@@ -171,12 +179,12 @@ class DetectOfflineAssetsJob implements ShouldQueue
      */
     private function inspectAsset(
         Asset $asset,
+        CarbonInterface $lastConnectedAt,
         bool $wasInMotion,
         TenantConfigResolver $tenantConfig,
         StoreRawEvent $storeRawEvent,
         QueueRawEventForProcessing $queueForProcessing,
     ): string {
-        $lastConnectedAt = $asset->device_last_connected_at;
         $location = $asset->latestLocation;
 
         $threshold = $this->thresholdMinutesFor($asset, $tenantConfig, $wasInMotion);
@@ -330,11 +338,12 @@ class DetectOfflineAssetsJob implements ShouldQueue
                     }
 
                     $proofOfLife = $this->lastProofOfLife($event->asset);
-                    $lastSeen = $proofOfLife['at'] ?? null;
 
-                    if ($lastSeen === null || ! $lastSeen->gt($event->occurred_at)) {
+                    if ($proofOfLife === null || ! $proofOfLife['at']->gt($event->occurred_at)) {
                         continue;
                     }
+
+                    $lastSeen = $proofOfLife['at'];
 
                     $payload = $event->payload_normalized_json ?? [];
                     $payload['is_resolved'] = true;

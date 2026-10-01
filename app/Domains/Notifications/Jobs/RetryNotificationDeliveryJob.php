@@ -7,8 +7,10 @@ use App\Domains\Notifications\Actions\RenderNotificationContent;
 use App\Domains\Notifications\Data\RenderedNotification;
 use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Enums\DeliveryStatus;
+use App\Domains\Notifications\Models\Notification;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Models\NotificationDelivery;
+use App\Domains\Notifications\Models\NotificationRecipient;
 use App\Domains\Notifications\Support\ChannelAddress;
 use App\Domains\Notifications\Support\DeliveryEscalationGuard;
 use App\Support\JobFailureReporter;
@@ -99,7 +101,11 @@ class RetryNotificationDeliveryJob implements ShouldQueue
 
         $delivery->load(['notification', 'recipient', 'channel']);
 
-        if ($delivery->notification === null || $delivery->recipient === null || $delivery->channel === null) {
+        $notification = $delivery->notification;
+        $recipient = $delivery->recipient;
+        $channel = $delivery->channel;
+
+        if ($notification === null || $recipient === null || $channel === null) {
             SystemLog::skipped('notifications.retry.skipped', reason: 'relations_missing', input: $input);
 
             return;
@@ -131,7 +137,7 @@ class RetryNotificationDeliveryJob implements ShouldQueue
         if (! $stillUsable) {
             $delivery->update([
                 'status' => DeliveryStatus::Cancelled,
-                'error_message' => "{$delivery->channel->channel_type->value} channel disabled for the tenant before the retry",
+                'error_message' => "{$channel->channel_type->value} channel disabled for the tenant before the retry",
             ]);
 
             FallbackNotificationChannelJob::dispatch($delivery->id);
@@ -144,12 +150,12 @@ class RetryNotificationDeliveryJob implements ShouldQueue
             return;
         }
 
-        $rendered = $this->originalPayload($delivery) ?? $this->rerender($delivery, $render);
+        $rendered = $this->originalPayload($delivery, $channel) ?? $this->rerender($notification, $recipient, $channel, $render);
 
         if ($rendered === null) {
             $delivery->update([
                 'status' => DeliveryStatus::Skipped,
-                'error_message' => "no valid {$delivery->channel->channel_type->value} address to retry",
+                'error_message' => "no valid {$channel->channel_type->value} address to retry",
             ]);
 
             SystemLog::skipped('notifications.retry.skipped', reason: 'no_valid_address', input: $input, result: ['delivery_status' => 'skipped']);
@@ -161,7 +167,7 @@ class RetryNotificationDeliveryJob implements ShouldQueue
 
         $attemptDelivery->execute(
             $delivery,
-            $delivery->channel,
+            $channel,
             $rendered,
             usageEventKey: "notif_retry_{$delivery->id}_{$delivery->attempt_number}",
         );
@@ -170,7 +176,7 @@ class RetryNotificationDeliveryJob implements ShouldQueue
     /**
      * The exact message the first attempt sent.
      */
-    private function originalPayload(NotificationDelivery $delivery): ?RenderedNotification
+    private function originalPayload(NotificationDelivery $delivery, NotificationChannel $channel): ?RenderedNotification
     {
         $payload = $delivery->payload_json ?? [];
         $address = $payload['address'] ?? null;
@@ -181,7 +187,7 @@ class RetryNotificationDeliveryJob implements ShouldQueue
         }
 
         return new RenderedNotification(
-            channelType: $delivery->channel->channel_type,
+            channelType: $channel->channel_type,
             address: $address,
             subject: is_string($payload['subject'] ?? null) ? $payload['subject'] : null,
             body: $body,
@@ -192,16 +198,20 @@ class RetryNotificationDeliveryJob implements ShouldQueue
      * Deliveries that failed before storing a payload (legacy rows): render
      * again against the channel-specific address, never the generic one.
      */
-    private function rerender(NotificationDelivery $delivery, RenderNotificationContent $render): ?RenderedNotification
-    {
-        $type = $delivery->channel->channel_type;
-        $address = $delivery->recipient->addressForChannel($type);
+    private function rerender(
+        Notification $notification,
+        NotificationRecipient $recipient,
+        NotificationChannel $channel,
+        RenderNotificationContent $render,
+    ): ?RenderedNotification {
+        $type = $channel->channel_type;
+        $address = $recipient->addressForChannel($type);
 
         if ($address === null || $address === '' || ChannelAddress::invalidReason($type, $address) !== null) {
             return null;
         }
 
-        return $render->execute($delivery->notification, $delivery->recipient, $type, null, $address);
+        return $render->execute($notification, $recipient, $type, null, $address);
     }
 
     public function failed(\Throwable $exception): void

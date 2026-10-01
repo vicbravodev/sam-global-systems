@@ -11,6 +11,7 @@ use App\Domains\Integrations\Models\IntegrationSyncJob;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Support\SystemLog;
 use App\Support\TenantContext;
+use LogicException;
 
 class SyncIntegration
 {
@@ -104,10 +105,14 @@ class SyncIntegration
      */
     private function forwardEvents(TenantIntegration $integration, array $events): void
     {
+        // provider_id es FK NOT NULL con cascade: el proveedor siempre existe.
+        $providerCode = $integration->provider?->code
+            ?? throw new LogicException("TenantIntegration {$integration->id} sin IntegrationProvider.");
+
         foreach ($events as $eventData) {
             $this->rawEventIngestion->ingest(
                 $integration->team_id,
-                $integration->provider->code,
+                $providerCode,
                 $eventData['event_type'] ?? 'unknown',
                 $eventData,
             );

@@ -55,7 +55,9 @@ class ReportExecutionController extends Controller
     {
         $this->authorize('download', $execution);
 
-        if (! $execution->file_path) {
+        $path = $execution->file_path;
+
+        if (! $path) {
             throw new NotFoundHttpException('Report has no stored file');
         }
 
@@ -64,13 +66,13 @@ class ReportExecutionController extends Controller
         $fileObject = $execution->outputFileObject;
 
         try {
-            if (! $disk->exists($execution->file_path)) {
+            if (! $disk->exists($path)) {
                 throw new NotFoundHttpException('Report file is no longer available');
             }
 
-            $contents = $disk->get($execution->file_path);
+            $contents = $disk->get($path);
             $mime = $fileObject?->content_type
-                ?: ($disk->mimeType($execution->file_path) ?: 'application/octet-stream');
+                ?: ($disk->mimeType($path) ?: 'application/octet-stream');
         } catch (Throwable $e) {
             if (! ObjectStorageFailure::matches($e)) {
                 throw $e;
@@ -84,7 +86,7 @@ class ReportExecutionController extends Controller
             return $this->storageUnavailable($request, $current_team);
         }
 
-        $filename = $fileObject?->original_filename ?: basename($execution->file_path);
+        $filename = $fileObject?->original_filename ?: basename($path);
 
         return response((string) $contents, 200, [
             'Content-Type' => $mime,

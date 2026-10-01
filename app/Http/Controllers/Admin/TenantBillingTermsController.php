@@ -8,6 +8,8 @@ use App\Domains\Audit\Enums\AuditCategory;
 use App\Domains\Tenancy\Actions\UpdateTenantBillingTerms;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
+use App\Models\User;
+use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -21,7 +23,7 @@ class TenantBillingTermsController extends Controller
 {
     public function __construct(private readonly RecordAuditEntry $audit) {}
 
-    public function update(Request $request, Team $team, UpdateTenantBillingTerms $updateTerms): RedirectResponse
+    public function update(Request $request, Team $team, UpdateTenantBillingTerms $updateTerms, #[CurrentUser] User $user): RedirectResponse
     {
         $data = $request->validate([
             'unit_price' => ['nullable', 'numeric', 'min:0', 'max:1000000'],
@@ -40,8 +42,6 @@ class TenantBillingTermsController extends Controller
         ]);
 
         $terms = $updateTerms->execute($team, $data);
-
-        $user = $request->user();
 
         $this->audit->execute(
             actorType: AuditActorType::User,

@@ -52,10 +52,6 @@ class NotifyOnIncidentCreated implements IncidentCreatedReaction
     {
         $incident = $event->incident;
 
-        if ($incident->team_id === null) {
-            return;
-        }
-
         $severity = $incident->priority?->code;
         $context = $this->contextSnapshot($incident);
 

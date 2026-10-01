@@ -210,7 +210,7 @@ class AssetPageController extends Controller
             ->with(['assetType', 'currentDriverAssignment.driver'])
             ->get();
 
-        [$positioned, $unpositioned] = $assets->partition(
+        $positioned = $assets->filter(
             fn (Asset $asset) => $this->hasLivePosition($asset),
         );
 
@@ -219,7 +219,7 @@ class AssetPageController extends Controller
                 ->map(fn (Asset $asset) => $this->toMarker($asset))
                 ->values()
                 ->all(),
-            'unpositionedCount' => $unpositioned->count(),
+            'unpositionedCount' => $assets->count() - $positioned->count(),
             'statusLabels' => self::STATUS_LABELS,
         ]);
     }
@@ -350,8 +350,10 @@ class AssetPageController extends Controller
     {
         $candidates = [];
 
-        if ($this->hasLivePosition($asset) && $asset->last_speed_kph !== null) {
-            $candidates[] = ['kph' => (float) $asset->last_speed_kph, 'at' => $asset->last_location_at, 'source' => 'location'];
+        $locationAt = $asset->last_location_at;
+
+        if ($locationAt !== null && $this->hasLivePosition($asset) && $asset->last_speed_kph !== null) {
+            $candidates[] = ['kph' => (float) $asset->last_speed_kph, 'at' => $locationAt, 'source' => 'location'];
         }
 
         $telemetry = $asset->latestSpeedTelemetry;
@@ -610,11 +612,14 @@ class AssetPageController extends Controller
             'longitude' => (float) $asset->last_longitude,
             'speed' => $asset->last_speed_kph !== null ? (float) $asset->last_speed_kph : null,
             'heading' => $asset->last_heading,
-            'recordedAt' => $asset->last_location_at->toIso8601String(),
+            'recordedAt' => $asset->last_location_at?->toIso8601String(),
             'driver' => $asset->currentDriverAssignment?->driver?->full_name,
         ];
     }
 
+    /**
+     * @phpstan-assert-if-true !null $asset->last_location_at
+     */
     private function hasLivePosition(Asset $asset): bool
     {
         return $asset->last_location_at !== null

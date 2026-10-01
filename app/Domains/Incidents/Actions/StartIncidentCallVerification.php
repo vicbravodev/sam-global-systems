@@ -53,7 +53,7 @@ class StartIncidentCallVerification
 
     public function execute(Incident $incident, int $attempt = 1): ?IncidentCallVerification
     {
-        if ($incident->team_id === null || $incident->isTerminal()) {
+        if ($incident->isTerminal()) {
             $terminalInput = ['incident_id' => $incident->id, 'attempt' => $attempt];
             DB::afterCommit(fn () => SystemLog::skipped('incidents.call_verification.skipped', reason: 'incident_terminal', input: $terminalInput));
 

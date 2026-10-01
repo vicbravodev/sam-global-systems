@@ -14,6 +14,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use LogicException;
 
 class ProcessWebhookEventJob implements ShouldQueue
 {
@@ -87,7 +88,9 @@ class ProcessWebhookEventJob implements ShouldQueue
         $this->endpoint->recordValidDelivery();
 
         try {
-            $integration = $this->endpoint->tenantIntegration;
+            // FK NOT NULL con cascade: un endpoint vivo siempre tiene integración.
+            $integration = $this->endpoint->tenantIntegration
+                ?? throw new LogicException("WebhookEndpoint {$this->endpoint->id} sin TenantIntegration.");
 
             $providerCode = $integration->provider->code ?? 'unknown';
 

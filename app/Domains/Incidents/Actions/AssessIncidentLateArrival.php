@@ -34,7 +34,9 @@ class AssessIncidentLateArrival
     ) {}
 
     /**
-     * @return array{late: bool, reason: 'within_threshold'|null, calc: array<string, mixed>, notice: array<string, mixed>|null}
+     * Unión discriminada por `late`: sólo un evento tardío trae `notice`.
+     *
+     * @return array{late: false, reason: 'within_threshold', calc: array<string, mixed>, notice: null}|array{late: true, reason: null, calc: array<string, mixed>, notice: array{delay_seconds: int, threshold_minutes: int, occurred_at: string, occurred_at_local: string, received_at: ?string, receive_delay_seconds: ?int, opened_at: string, timezone: string, timezone_source: 'schedule_profile'|'team'|'billing_default', cause: 'received_late'|'processed_late', rescued: bool, reprocess_attempts: int, ago: string, text: string, spoken: string, timeline_title: string, timeline_description: string}}
      */
     public function assess(NormalizedEvent $event, DateTimeInterface $openedAt): array
     {

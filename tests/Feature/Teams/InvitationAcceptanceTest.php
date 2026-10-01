@@ -10,6 +10,7 @@ use App\Notifications\Teams\TeamInvitation as TeamInvitationNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
 use Inertia\Testing\AssertableInertia as Assert;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 /**
@@ -19,6 +20,7 @@ use Tests\TestCase;
  */
 class InvitationAcceptanceTest extends TestCase
 {
+    use AssertsSystemLog;
     use RefreshDatabase;
 
     private function invitation(array $attributes = []): TeamInvitation
@@ -255,6 +257,25 @@ class InvitationAcceptanceTest extends TestCase
 
             return $mail->actionUrl === route('invitations.show', $invitation);
         });
+    }
+
+    public function test_invitation_email_is_not_sent_once_the_team_was_deleted(): void
+    {
+        // Regresión nivel 8: el correo va en cola; si la empresa se borra
+        // (soft-delete) antes de enviarlo, team es null y toMail() reventaba
+        // con "property name on null" en el worker.
+        Notification::fake();
+
+        $invitation = $this->invitation();
+        $invitation->team->delete();
+
+        Notification::route('mail', $invitation->email)
+            ->notify(new TeamInvitationNotification($invitation->fresh()));
+
+        Notification::assertNothingSent();
+        $this->assertSystemLogged('notifications.team_invitation.skipped', fn (array $c) => $c['reason'] === 'team_deleted');
+        $this->assertNoSensitiveDataLogged();
+        $this->assertStringNotContainsString($invitation->email, (string) json_encode($this->systemLogEntries()));
     }
 
     public function test_owner_role_cannot_be_granted_through_an_invitation(): void

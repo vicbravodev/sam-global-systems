@@ -9,6 +9,8 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Access\UpdateMemberRoleRequest;
 use App\Models\Membership;
 use App\Models\Team;
+use App\Models\User;
+use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\RedirectResponse;
 
 class MemberRoleController extends Controller
@@ -19,6 +21,7 @@ class MemberRoleController extends Controller
         Membership $membership,
         AssignRoleToMember $assignRoleToMember,
         GuardRoleDelegation $guard,
+        #[CurrentUser] User $user,
     ): RedirectResponse {
         $this->authorize('assignRole', Role::class);
 
@@ -34,8 +37,8 @@ class MemberRoleController extends Controller
 
         // Anti-escalada: ni propietarios, ni uno mismo, ni conceder más de
         // lo que el actor tiene.
-        $guard->assertCanChangeMembership($request->user(), $membership);
-        $guard->assertCanGrantRole($request->user(), $current_team, $role);
+        $guard->assertCanChangeMembership($user, $membership);
+        $guard->assertCanGrantRole($user, $current_team, $role);
 
         $assignRoleToMember->execute($membership, $request->validated('role_code'));
 

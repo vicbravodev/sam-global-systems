@@ -7,6 +7,8 @@ use App\Domains\Integrations\Models\TenantIntegration;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Integrations\UpdateWebhookSecretRequest;
 use App\Models\Team;
+use App\Models\User;
+use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\JsonResponse;
 
 /**
@@ -20,13 +22,14 @@ class WebhookSecretController extends Controller
         Team $current_team,
         TenantIntegration $integration,
         ConfigureWebhookSecret $configureWebhookSecret,
+        #[CurrentUser] User $user,
     ): JsonResponse {
         $this->authorize('update', $integration);
 
         $endpoint = $configureWebhookSecret->execute(
             $integration,
             (string) $request->validated('webhook_secret'),
-            $request->user(),
+            $user,
             $request->ip(),
             $request->userAgent(),
         );

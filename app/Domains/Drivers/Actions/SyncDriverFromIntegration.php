@@ -9,6 +9,7 @@ use App\Domains\Drivers\Models\DriverExternalReference;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Support\PhoneNumber;
 use App\Support\TenantContext;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
 
 class SyncDriverFromIntegration
@@ -108,7 +109,8 @@ class SyncDriverFromIntegration
             ->where('external_id', $driverData['external_id'])
             ->update(['last_seen_at' => now()]);
 
-        return $driver->fresh();
+        return $driver->fresh()
+            ?? throw (new ModelNotFoundException)->setModel(Driver::class, [$driver->id]);
     }
 
     /**

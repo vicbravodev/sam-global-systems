@@ -34,7 +34,32 @@ final class DriverRankingTool implements CopilotTool
             ->with('riskProfile')
             ->get();
 
-        if ($drivers->isEmpty()) {
+        $rows = [];
+
+        foreach ($drivers as $driver) {
+            // El join exige perfil; sólo una carrera (perfil borrado entre el
+            // join y el eager load) lo dejaría en null: esa fila se omite.
+            $profile = $driver->riskProfile;
+
+            if ($profile === null) {
+                continue;
+            }
+
+            $rows[] = [
+                'id' => (int) $driver->id,
+                'name' => (string) $driver->full_name,
+                'employeeCode' => $driver->employee_code,
+                'score' => round((float) $profile->risk_score),
+                'level' => $profile->risk_level?->value,
+                'levelLabel' => self::LEVEL_LABELS[$profile->risk_level?->value ?? 'low'],
+                'incidents' => (int) $profile->incidents_count,
+                'harsh' => (int) $profile->harsh_events_count,
+                'fatigue' => (int) $profile->fatigue_flags_count,
+                'href' => CopilotPresenter::driverHref($context->teamSlug, (int) $driver->id),
+            ];
+        }
+
+        if ($rows === []) {
             return new CopilotToolResult(
                 tool: 'driver_ranking',
                 label: 'Conductores',
@@ -43,19 +68,6 @@ final class DriverRankingTool implements CopilotTool
                 highlights: ['Aún no hay perfiles de riesgo de conductores.'],
             );
         }
-
-        $rows = $drivers->map(fn (Driver $driver) => [
-            'id' => (int) $driver->id,
-            'name' => (string) $driver->full_name,
-            'employeeCode' => $driver->employee_code,
-            'score' => round((float) $driver->riskProfile->risk_score),
-            'level' => $driver->riskProfile->risk_level?->value,
-            'levelLabel' => self::LEVEL_LABELS[$driver->riskProfile->risk_level?->value ?? 'low'],
-            'incidents' => (int) $driver->riskProfile->incidents_count,
-            'harsh' => (int) $driver->riskProfile->harsh_events_count,
-            'fatigue' => (int) $driver->riskProfile->fatigue_flags_count,
-            'href' => CopilotPresenter::driverHref($context->teamSlug, (int) $driver->id),
-        ])->all();
 
         $first = $rows[0];
 

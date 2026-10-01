@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Settings;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Settings\PasswordUpdateRequest;
 use App\Http\Requests\Settings\TwoFactorAuthenticationRequest;
+use App\Models\User;
+use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
@@ -29,7 +31,7 @@ class SecurityController extends Controller implements HasMiddleware
     /**
      * Show the user's security settings page.
      */
-    public function edit(TwoFactorAuthenticationRequest $request): Response
+    public function edit(TwoFactorAuthenticationRequest $request, #[CurrentUser] User $user): Response
     {
         $props = [
             'canManageTwoFactor' => Features::canManageTwoFactorAuthentication(),
@@ -38,7 +40,7 @@ class SecurityController extends Controller implements HasMiddleware
         if (Features::canManageTwoFactorAuthentication()) {
             $request->ensureStateIsValid();
 
-            $props['twoFactorEnabled'] = $request->user()->hasEnabledTwoFactorAuthentication();
+            $props['twoFactorEnabled'] = $user->hasEnabledTwoFactorAuthentication();
             $props['requiresConfirmation'] = Features::optionEnabled(Features::twoFactorAuthentication(), 'confirm');
         }
 
@@ -48,9 +50,9 @@ class SecurityController extends Controller implements HasMiddleware
     /**
      * Update the user's password.
      */
-    public function update(PasswordUpdateRequest $request): RedirectResponse
+    public function update(PasswordUpdateRequest $request, #[CurrentUser] User $user): RedirectResponse
     {
-        $request->user()->update([
+        $user->update([
             'password' => $request->password,
         ]);
 

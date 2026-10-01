@@ -71,15 +71,16 @@ final class ShowcaseEvents
     public function location(NormalizedEvent $event): array
     {
         $loc = $event->payload_normalized_json['location'] ?? null;
+        $home = $event->asset_id !== null ? ($this->ctx->homes[$event->asset_id] ?? null) : null;
 
         if (is_array($loc) && isset($loc['latitude'], $loc['longitude'])) {
             return [
-                (string) ($loc['formatted_location'] ?? $this->ctx->homes[$event->asset_id][0] ?? 'Sin dirección'),
+                (string) ($loc['formatted_location'] ?? $home[0] ?? 'Sin dirección'),
                 (float) $loc['latitude'],
                 (float) $loc['longitude'],
             ];
         }
 
-        return $this->ctx->homes[$event->asset_id] ?? ['Sin dirección', 25.6866, -100.3161];
+        return $home ?? ['Sin dirección', 25.6866, -100.3161];
     }
 }

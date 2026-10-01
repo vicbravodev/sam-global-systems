@@ -144,7 +144,7 @@ class TwilioVoiceController extends Controller
         // se escala y se avisa en ese momento al primer nivel. Antes sólo se
         // reconocía y el watchdog se apagaba sin avisar a nadie.
         $incident = $this->escalateIncident->execute(
-            incident: $incident->fresh(['status', 'priority', 'type']),
+            incident: $incident->refresh()->load(['status', 'priority', 'type']),
             reason: "Emergencia confirmada por verificación telefónica (DTMF 1) desde {$row->phone}.",
             escalatedByType: IncidentCreatorType::System,
         );

@@ -29,11 +29,14 @@ class ProfileUpdateRequest extends FormRequest
      */
     public function rules(): array
     {
-        $rules = $this->profileRules($this->user()->id);
+        // La ruta va tras `auth`: sin usuario no hay email actual que conservar,
+        // así que se trata como un cambio de email (exige contraseña).
+        $user = $this->user();
+        $rules = $this->profileRules($user?->id);
 
         // El email es la identidad de login: cambiarlo exige la contraseña
         // actual (una sesión robada no basta para secuestrar la cuenta).
-        if (User::normalizeEmail((string) $this->input('email')) !== User::normalizeEmail($this->user()->email)) {
+        if ($user === null || User::normalizeEmail((string) $this->input('email')) !== User::normalizeEmail($user->email)) {
             $rules['current_password'] = ['required', 'string', 'current_password'];
         }
 

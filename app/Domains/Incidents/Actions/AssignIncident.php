@@ -58,7 +58,7 @@ class AssignIncident
                 ],
             );
 
-            IncidentAssigned::dispatch($incident->fresh(), $assignment);
+            IncidentAssigned::dispatch($incident->freshOrFail(), $assignment);
 
             return $assignment;
         });

@@ -95,14 +95,20 @@ class IntegrationController extends Controller
 
         $integration->update($data);
 
-        return response()->json(['data' => $this->present($integration->fresh()->load('provider'))]);
+        // Recién actualizada: sólo falta si otra petición la borró entre medias.
+        $fresh = $integration->fresh(['provider']);
+        abort_if($fresh === null, 404);
+
+        return response()->json(['data' => $this->present($fresh)]);
     }
 
     public function destroy(Team $current_team, TenantIntegration $integration): JsonResponse
     {
         $this->authorize('delete', $integration);
 
-        $providerCode = $integration->provider->code;
+        // provider_id es NOT NULL con FK (sin soft-delete): firstOrFail sólo
+        // falla si el catálogo se corrompió.
+        $providerCode = $integration->provider()->firstOrFail()->code;
 
         $integration->update(['status' => TenantIntegrationStatus::Inactive]);
 

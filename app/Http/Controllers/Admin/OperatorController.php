@@ -8,6 +8,7 @@ use App\Domains\Audit\Enums\AuditCategory;
 use App\Domains\Tenancy\Actions\SetGlobalRole;
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -41,7 +42,7 @@ class OperatorController extends Controller
         ]);
     }
 
-    public function store(Request $request, SetGlobalRole $setGlobalRole): RedirectResponse
+    public function store(Request $request, SetGlobalRole $setGlobalRole, #[CurrentUser] User $actor): RedirectResponse
     {
         if (is_string($request->input('email'))) {
             $request->merge(['email' => User::normalizeEmail($request->input('email'))]);
@@ -67,15 +68,14 @@ class OperatorController extends Controller
 
         $setGlobalRole->execute($user, true);
 
-        $this->record($request, 'super-admin.promoted', $user,
+        $this->record($request, $actor, 'super-admin.promoted', $user,
             "{$user->email} promovido a super-admin.");
 
         return redirect()->route('admin.operators.index')->with('status', 'Operador promovido.');
     }
 
-    public function destroy(Request $request, User $user, SetGlobalRole $setGlobalRole): RedirectResponse
+    public function destroy(Request $request, User $user, SetGlobalRole $setGlobalRole, #[CurrentUser] User $actor): RedirectResponse
     {
-        $actor = $request->user();
 
         if ($actor->id === $user->id) {
             throw ValidationException::withMessages([
@@ -91,16 +91,14 @@ class OperatorController extends Controller
 
         $setGlobalRole->execute($user, false);
 
-        $this->record($request, 'super-admin.demoted', $user,
+        $this->record($request, $actor, 'super-admin.demoted', $user,
             "{$user->email} degradado de super-admin.");
 
         return redirect()->route('admin.operators.index')->with('status', 'Operador degradado.');
     }
 
-    private function record(Request $request, string $action, User $target, string $summary): void
+    private function record(Request $request, User $actor, string $action, User $target, string $summary): void
     {
-        $actor = $request->user();
-
         $this->audit->execute(
             actorType: AuditActorType::User,
             actorId: (int) $actor->id,

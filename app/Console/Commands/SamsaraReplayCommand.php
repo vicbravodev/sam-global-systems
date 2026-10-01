@@ -81,7 +81,10 @@ class SamsaraReplayCommand extends Command
             })
             ->first();
 
-        if (! $endpoint) {
+        // whereHas garantiza la integración, pero se re-verifica al cargarla.
+        $integration = $endpoint?->tenantIntegration;
+
+        if (! $endpoint || $integration === null) {
             $this->error("No active Samsara webhook endpoint for team [{$team->slug}]. Connect the integration in the UI first.");
 
             return self::FAILURE;
@@ -107,7 +110,7 @@ class SamsaraReplayCommand extends Command
             }
 
             if (($event['kind'] ?? 'webhook') === 'safety_event') {
-                $ingestSafetyEvent->execute($endpoint->tenantIntegration, $body);
+                $ingestSafetyEvent->execute($integration, $body);
                 $this->line('  ['.$i.'] '.($body['id'] ?? '?').'  '.($event['event_type'] ?? 'SafetyEvent'));
                 $sent++;
 

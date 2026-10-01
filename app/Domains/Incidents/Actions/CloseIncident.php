@@ -104,7 +104,7 @@ class CloseIncident
                 );
             }
 
-            $fresh = $incident->fresh(['status', 'priority']);
+            $fresh = $incident->freshOrFail(['status', 'priority']);
 
             IncidentStatusChanged::dispatch(
                 $fresh,

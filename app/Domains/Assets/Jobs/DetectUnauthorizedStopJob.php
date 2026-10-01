@@ -15,6 +15,7 @@ use App\Domains\Ingestion\Enums\EventSourceType;
 use App\Domains\Ingestion\Models\RawEvent;
 use App\Support\SystemLog;
 use App\Support\TenantContext;
+use Carbon\CarbonInterface;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -136,7 +137,15 @@ class DetectUnauthorizedStopJob implements ShouldQueue
         $geofences = $resolveGeofences->activeGeofences($teamId);
 
         foreach ($candidates as $asset) {
-            $counts[$this->inspectAsset($asset, $teamId, $stopMinutes, $geofences, $resolveGeofences, $storeRawEvent, $queueForProcessing)]++;
+            // El where de `last_moving_at` ya excluye anclas nulas; el
+            // narrowing deja ese contrato explícito en el tipo.
+            $anchor = $asset->last_moving_at;
+
+            if ($anchor === null) {
+                continue;
+            }
+
+            $counts[$this->inspectAsset($asset, $anchor, $teamId, $stopMinutes, $geofences, $resolveGeofences, $storeRawEvent, $queueForProcessing)]++;
         }
 
         $this->logSweep($teamId, $stopMinutes, $geofences->count(), $candidates->count(), $counts);
@@ -174,6 +183,7 @@ class DetectUnauthorizedStopJob implements ShouldQueue
      */
     private function inspectAsset(
         Asset $asset,
+        CarbonInterface $anchor,
         int $teamId,
         int $stopMinutes,
         Collection $geofences,
@@ -196,8 +206,6 @@ class DetectUnauthorizedStopJob implements ShouldQueue
         if ($insideKnownGeofence) {
             return 'inside_geofence';
         }
-
-        $anchor = $asset->last_moving_at;
 
         if ($this->isSamePlaceAsLastAlert($asset)) {
             // A unit shuffling around the place it was already alerted at:

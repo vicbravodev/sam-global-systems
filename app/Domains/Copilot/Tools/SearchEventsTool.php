@@ -91,7 +91,8 @@ final class SearchEventsTool implements CopilotTool
             'href' => CopilotPresenter::eventHref($context->teamSlug, (int) $event->id),
         ])->all());
 
-        $topName = $byTypeNames->first()['label'];
+        // $total > 0 garantiza al menos un tipo; el fallback sólo cubre el contrato.
+        $topName = $byTypeNames->first()['label'] ?? 'Sin tipo';
 
         return new CopilotToolResult(
             tool: 'search_events',

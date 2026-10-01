@@ -60,7 +60,7 @@ class CheckIncidentAcknowledgementJob implements ShouldQueue
         $incident = Incident::withoutGlobalScopes()->with(['status', 'priority', 'type'])->find($this->incidentId);
         $input = $this->logInput();
 
-        if ($incident === null || $incident->team_id === null) {
+        if ($incident === null) {
             SystemLog::skipped('incidents.ack_check.skipped', reason: 'incident_missing', input: $input);
 
             return;

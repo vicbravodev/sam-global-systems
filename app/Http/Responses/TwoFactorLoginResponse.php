@@ -13,7 +13,7 @@ class TwoFactorLoginResponse implements TwoFactorLoginResponseContract
         $user = $request->user();
         $team = $user?->currentTeam ?? $user?->personalTeam();
 
-        if (! $team) {
+        if ($user === null || ! $team) {
             abort(403);
         }
 

@@ -7,6 +7,7 @@ use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\AI\Models\AIReevaluationRequest;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use Illuminate\Support\Str;
+use LogicException;
 
 /**
  * Reúne el feedback humano sobre un evento para que llegue al modelo en la
@@ -38,7 +39,8 @@ class OperatorFeedbackCollector
             ->get()
             ->map(fn (AIEventEvaluation $evaluation): array => [
                 'evaluation_version' => (int) $evaluation->evaluation_version,
-                'verdict' => $evaluation->operator_verdict->value,
+                // whereNotNull('operator_verdict') arriba: siempre hay veredicto.
+                'verdict' => ($evaluation->operator_verdict ?? throw new LogicException("ai_event_evaluation {$evaluation->id} sin operator_verdict"))->value,
                 'ai_classification' => $evaluation->classification?->value,
                 'recorded_at' => $evaluation->operator_verdict_at?->toIso8601String(),
                 'note' => $this->clean($evaluation->operator_verdict_note),

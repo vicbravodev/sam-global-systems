@@ -14,8 +14,8 @@ use App\Http\Requests\Access\UpdateRoleRequest;
 use App\Models\Membership;
 use App\Models\Team;
 use App\Models\User;
+use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -23,11 +23,9 @@ class RoleController extends Controller
 {
     public function __construct(private readonly GuardRoleDelegation $guard) {}
 
-    public function index(Request $request, Team $current_team): Response
+    public function index(Team $current_team, #[CurrentUser] User $user): Response
     {
         $this->authorize('viewAny', Role::class);
-
-        $user = $request->user();
 
         return Inertia::render('settings/roles/index', [
             // Roles de sistema + los personalizados de ESTE tenant, nunca los
@@ -59,11 +57,11 @@ class RoleController extends Controller
         ]);
     }
 
-    public function store(StoreRoleRequest $request, Team $current_team, SyncRolePermissions $syncRolePermissions): RedirectResponse
+    public function store(StoreRoleRequest $request, Team $current_team, SyncRolePermissions $syncRolePermissions, #[CurrentUser] User $user): RedirectResponse
     {
         $this->authorize('create', Role::class);
 
-        $this->guard->assertCanGrantPermissions($request->user(), $current_team, $request->validated('permissions'));
+        $this->guard->assertCanGrantPermissions($user, $current_team, $request->validated('permissions'));
 
         $role = Role::create([
             'team_id' => $current_team->id,
@@ -79,7 +77,7 @@ class RoleController extends Controller
         return back(303);
     }
 
-    public function update(UpdateRoleRequest $request, Team $current_team, Role $role, SyncRolePermissions $syncRolePermissions): RedirectResponse
+    public function update(UpdateRoleRequest $request, Team $current_team, Role $role, SyncRolePermissions $syncRolePermissions, #[CurrentUser] User $user): RedirectResponse
     {
         // Un rol de otro tenant no existe para este (404, sin filtrar su id).
         abort_unless($role->isVisibleToTeam((int) $current_team->id), 404);
@@ -88,7 +86,7 @@ class RoleController extends Controller
 
         abort_if($role->is_system && $request->has('name'), 403, 'Cannot rename a system role.');
 
-        $this->guard->assertCanGrantPermissions($request->user(), $current_team, $request->validated('permissions'));
+        $this->guard->assertCanGrantPermissions($user, $current_team, $request->validated('permissions'));
 
         $role->update($request->safe()->only(['name', 'description']));
 

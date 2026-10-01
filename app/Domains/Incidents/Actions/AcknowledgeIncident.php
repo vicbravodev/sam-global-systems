@@ -46,7 +46,7 @@ class AcknowledgeIncident
                 ], static fn ($value): bool => $value !== null),
             );
 
-            $fresh = $incident->fresh(['status', 'priority', 'type']);
+            $fresh = $incident->freshOrFail(['status', 'priority', 'type']);
 
             broadcast(IncidentUpdatedBroadcast::fromModel($fresh));
 

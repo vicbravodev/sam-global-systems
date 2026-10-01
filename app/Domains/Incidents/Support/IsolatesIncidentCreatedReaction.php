@@ -38,16 +38,14 @@ trait IsolatesIncidentCreatedReaction
         $input = ['reaction' => class_basename(self::class), 'incident_id' => $incident->id, 'stage' => 'inline'];
         $dispatchError = null;
 
-        if ($incident->team_id !== null) {
-            try {
-                RetryIncidentCreatedReactionJob::dispatch(self::class, (int) $incident->id, (int) $incident->team_id, $queue);
-            } catch (Throwable $e) {
-                report($e);
-                $dispatchError = $e;
-            }
+        try {
+            RetryIncidentCreatedReactionJob::dispatch(self::class, (int) $incident->id, (int) $incident->team_id, $queue);
+        } catch (Throwable $e) {
+            report($e);
+            $dispatchError = $e;
         }
 
-        $retryRequested = $incident->team_id !== null && $dispatchError === null;
+        $retryRequested = $dispatchError === null;
 
         SystemLog::failed('incidents.created_reaction.failed',
             reason: 'exception',

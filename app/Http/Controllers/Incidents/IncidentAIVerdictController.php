@@ -9,6 +9,8 @@ use App\Domains\Incidents\Enums\CommentVisibility;
 use App\Domains\Incidents\Models\Incident;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
+use App\Models\User;
+use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -25,6 +27,7 @@ class IncidentAIVerdictController extends Controller
         Incident $incident,
         RecordOperatorVerdict $recordOperatorVerdict,
         AddIncidentComment $addComment,
+        #[CurrentUser] User $user,
     ): JsonResponse {
         $this->authorize('comment', $incident);
 
@@ -43,7 +46,7 @@ class IncidentAIVerdictController extends Controller
             teamId: (int) $incident->team_id,
             normalizedEventId: (int) $incident->related_event_id,
             verdict: $verdict,
-            userId: $request->user()?->id,
+            userId: $user->id,
             note: $validated['note'] ?? null,
         );
 
@@ -53,7 +56,7 @@ class IncidentAIVerdictController extends Controller
 
         $addComment->execute(
             incident: $incident,
-            user: $request->user(),
+            user: $user,
             comment: $verdict === OperatorVerdict::Confirmed
                 ? 'Evaluación de IA confirmada por el operador.'
                 : 'El operador marcó la evaluación de IA como falso positivo.',

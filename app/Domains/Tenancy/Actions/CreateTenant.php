@@ -15,6 +15,7 @@ use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Models\User;
 use App\Support\TenantContext;
+use LogicException;
 
 class CreateTenant
 {
@@ -65,12 +66,16 @@ class CreateTenant
 
     private function seedDefaultFeatures(Team $team, Plan $plan): void
     {
-        $billingRates = BillingRate::where('plan_id', $plan->id)->get();
+        $billingRates = BillingRate::where('plan_id', $plan->id)->with('usageMeter')->get();
 
         foreach ($billingRates as $rate) {
+            // usage_meter_id es FK NOT NULL con cascade y UsageMeter no usa
+            // soft-delete: la tarifa siempre tiene su medidor.
+            $meter = $rate->usageMeter ?? throw new LogicException("billing_rate {$rate->id} sin usage_meter");
+
             TenantFeature::query()->create([
                 'team_id' => $team->id,
-                'feature_key' => $rate->usageMeter->code,
+                'feature_key' => $meter->code,
                 'enabled' => true,
                 'source' => FeatureSource::DefaultPlan,
                 'limits_json' => $rate->included_quantity > 0

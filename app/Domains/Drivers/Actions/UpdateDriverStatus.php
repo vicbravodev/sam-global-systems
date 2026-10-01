@@ -7,6 +7,7 @@ use App\Domains\Drivers\Enums\StatusSeverity;
 use App\Domains\Drivers\Events\DriverStatusChanged;
 use App\Domains\Drivers\Models\Driver;
 use App\Domains\Drivers\Models\DriverStatusLog;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 
 class UpdateDriverStatus
 {
@@ -45,6 +46,7 @@ class UpdateDriverStatus
             $newStatus->value,
         );
 
-        return $driver->fresh();
+        return $driver->fresh()
+            ?? throw (new ModelNotFoundException)->setModel(Driver::class, [$driver->id]);
     }
 }

@@ -107,10 +107,18 @@ final class RankAssetsTool implements CopilotTool
         // Descending lists never show units at zero; they still weigh on the average.
         $sorted = $ascending ? $values->sort() : $values->sortDesc()->filter(fn (float $v) => $v > 0);
 
-        $items = array_values($sorted->take($limit)->map(function (float $value, int $id) use ($assets, $avg, $std, $context): array {
+        $items = [];
+
+        foreach ($sorted->take($limit) as $id => $value) {
+            // Toda clave de $values sale de $ids (las claves de $assets), así
+            // que el activo siempre está; el guard sólo hace explícito el contrato.
             $asset = $assets->get($id);
 
-            return [
+            if ($asset === null) {
+                continue;
+            }
+
+            $items[] = [
                 'assetId' => $id,
                 'code' => $asset->code,
                 'name' => (string) $asset->name,
@@ -118,7 +126,7 @@ final class RankAssetsTool implements CopilotTool
                 'outlier' => $std > 0 && $value > $avg + 1.5 * $std,
                 'href' => CopilotPresenter::assetHref($context->teamSlug, $id),
             ];
-        })->all());
+        }
 
         $average = round($avg, 2);
         $top = $items[0];

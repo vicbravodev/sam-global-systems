@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Teams\AcceptTeamInvitationRequest;
 use App\Models\TeamInvitation;
 use App\Models\User;
+use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -59,8 +60,9 @@ class InvitationAcceptanceController extends Controller
         AcceptTeamInvitationRequest $request,
         TeamInvitation $invitation,
         AcceptTeamInvitation $acceptTeamInvitation,
+        #[CurrentUser] User $user,
     ): RedirectResponse {
-        $team = $acceptTeamInvitation->handle($request->user(), $invitation);
+        $team = $acceptTeamInvitation->handle($user, $invitation);
 
         return to_route('dashboard', ['current_team' => $team->slug]);
     }

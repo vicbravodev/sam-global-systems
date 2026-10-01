@@ -25,6 +25,7 @@ use App\Models\Membership;
 use App\Models\Team;
 use App\Models\User;
 use App\Support\TenantContext;
+use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -228,7 +229,7 @@ class TenantController extends Controller
         });
     }
 
-    public function update(Request $request, Team $team, UpdateTenant $updateTenant, RecordAuditEntry $audit): RedirectResponse
+    public function update(Request $request, Team $team, UpdateTenant $updateTenant, RecordAuditEntry $audit, #[CurrentUser] User $user): RedirectResponse
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -243,7 +244,6 @@ class TenantController extends Controller
 
         $updateTenant->execute($team, $data);
 
-        $user = $request->user();
         $audit->execute(
             actorType: AuditActorType::User,
             actorId: (int) $user->id,
@@ -262,7 +262,7 @@ class TenantController extends Controller
         return redirect()->route('admin.tenants.show', $team)->with('status', 'Tenant actualizado.');
     }
 
-    public function destroy(Request $request, Team $team, DeleteTenant $deleteTenant, RecordAuditEntry $audit): RedirectResponse
+    public function destroy(Request $request, Team $team, DeleteTenant $deleteTenant, RecordAuditEntry $audit, #[CurrentUser] User $user): RedirectResponse
     {
         if ($team->is_personal) {
             throw ValidationException::withMessages([
@@ -270,7 +270,6 @@ class TenantController extends Controller
             ]);
         }
 
-        $user = $request->user();
         $name = $team->name;
         $teamId = (int) $team->id;
 

@@ -21,6 +21,7 @@ use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Support\PipelineTrace;
 use App\Support\SystemLog;
 use Illuminate\Support\Arr;
+use LogicException;
 
 class NormalizeRawEvent
 {
@@ -240,11 +241,15 @@ class NormalizeRawEvent
         EventMappingRule $rule,
         array $payload,
     ): ?NormalizedEvent {
-        $eventType = $rule->mappedEventType;
+        // mapped_event_type_id y event_types.category_id son FK NOT NULL con
+        // cascade: si no cargan, la regla está rota y debe fallar con claridad.
+        $eventType = $rule->mappedEventType
+            ?? throw new LogicException("EventMappingRule {$rule->id} sin EventType.");
         $severity = $this->resolveEventSeverity->execute($rule, $eventType);
-        $category = $rule->mapped_category_id
-            ? $rule->mappedCategory
-            : $eventType->category;
+        // mapped_category_id es nullOnDelete: sin categoría propia, la del tipo.
+        $category = ($rule->mapped_category_id ? $rule->mappedCategory : null)
+            ?? $eventType->category
+            ?? throw new LogicException("EventType {$eventType->id} sin EventCategory.");
 
         ['asset_id' => $assetId, 'unresolved_reason' => $unresolvedReason] = $this->resolveAssetId($rawEvent->provider_id, $rawEvent->team_id, $payload, $rawEvent->id);
 

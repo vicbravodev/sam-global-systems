@@ -12,6 +12,8 @@ use App\Domains\Copilot\Support\CopilotMessagePresenter;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Copilot\StoreCopilotMessageRequest;
 use App\Models\Team;
+use App\Models\User;
+use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -23,6 +25,7 @@ class CopilotMessageController extends Controller
         SendCopilotMessage $send,
         AuthorizeAction $authorizeAction,
         CopilotQuotaQuery $quota,
+        #[CurrentUser] User $user,
     ): JsonResponse {
         $this->authorize('create', CopilotConversation::class);
 
@@ -35,8 +38,6 @@ class CopilotMessageController extends Controller
 
             $this->authorize('update', $conversation);
         }
-
-        $user = $request->user();
 
         $result = $send->execute(
             team: $current_team,

@@ -7,6 +7,8 @@ use App\Domains\Audit\Enums\AuditActorType;
 use App\Domains\Audit\Enums\AuditCategory;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
+use App\Models\User;
+use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -21,10 +23,8 @@ class ImpersonationController extends Controller
 {
     public function __construct(private readonly RecordAuditEntry $audit) {}
 
-    public function store(Request $request, Team $team): RedirectResponse
+    public function store(Request $request, Team $team, #[CurrentUser] User $user): RedirectResponse
     {
-        $user = $request->user();
-
         $user->forceSwitchTeam($team);
 
         $this->audit->execute(
@@ -45,9 +45,8 @@ class ImpersonationController extends Controller
         return redirect()->route('dashboard', $team);
     }
 
-    public function destroy(Request $request): RedirectResponse
+    public function destroy(Request $request, #[CurrentUser] User $user): RedirectResponse
     {
-        $user = $request->user();
         $impersonated = $user->currentTeam;
         $personal = $user->personalTeam();
 

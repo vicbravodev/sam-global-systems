@@ -538,7 +538,7 @@ class NotificationsShowcaseSeeder extends ShowcaseStep
      * Ciclo de vida del envío en Twilio: intentos (con reintento tras un
      * fallo transitorio) y cómo termina cada uno.
      *
-     * @return array{attempts: array<int, array{provider_status: string, delivery_status: string, error_code: ?string, segments: ?int, duration: ?int, read: bool}>}
+     * @return array{attempts: non-empty-list<array{provider_status: string, delivery_status: string, error_code: ?string, segments: ?int, duration: ?int, read: bool}>}
      */
     private function twilioPlan(string $channel, CarbonImmutable $at, ShowcaseRandom $random): array
     {

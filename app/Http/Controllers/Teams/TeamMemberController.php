@@ -11,8 +11,8 @@ use App\Http\Requests\Teams\UpdateTeamMemberRequest;
 use App\Models\Membership;
 use App\Models\Team;
 use App\Models\User;
+use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
@@ -28,13 +28,14 @@ class TeamMemberController extends Controller
         User $user,
         GuardRoleDelegation $guard,
         UpdateTeamMemberRole $updateTeamMemberRole,
+        #[CurrentUser] User $actor,
     ): RedirectResponse {
         Gate::authorize('updateMember', $team);
 
         $newRole = TeamRole::from($request->validated('role'));
 
-        $guard->assertCanChangeMembership($request->user(), $this->membership($team, $user));
-        $guard->assertCanGrantTeamRole($request->user(), $team, $newRole);
+        $guard->assertCanChangeMembership($actor, $this->membership($team, $user));
+        $guard->assertCanGrantTeamRole($actor, $team, $newRole);
 
         $updateTeamMemberRole->handle($team, $user, $newRole);
 
@@ -47,16 +48,16 @@ class TeamMemberController extends Controller
      * Remove the specified team member.
      */
     public function destroy(
-        Request $request,
         Team $team,
         User $user,
         GuardRoleDelegation $guard,
         AuthorizeAction $authorizeAction,
+        #[CurrentUser] User $actor,
     ): RedirectResponse {
         Gate::authorize('removeMember', $team);
 
         // Ningún propietario (no sólo el primero) se quita desde el tenant.
-        $guard->assertCanChangeMembership($request->user(), $this->membership($team, $user));
+        $guard->assertCanChangeMembership($actor, $this->membership($team, $user));
 
         DB::transaction(function () use ($team, $user, $authorizeAction) {
             $team->memberships()

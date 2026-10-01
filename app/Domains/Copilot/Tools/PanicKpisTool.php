@@ -54,7 +54,7 @@ final class PanicKpisTool implements CopilotTool
 
         $acknowledged = $incidents->filter(fn (Incident $i) => $i->acknowledged_at !== null);
         $avgResponseSeconds = $acknowledged->isNotEmpty()
-            ? (int) round($acknowledged->avg(fn (Incident $i) => $i->opened_at->diffInSeconds($i->acknowledged_at)))
+            ? (int) round((float) $acknowledged->avg(fn (Incident $i) => $i->opened_at->diffInSeconds($i->acknowledged_at)))
             : null;
         $falseAlarms = $incidents->filter(fn (Incident $i) => $i->status?->code === IncidentStatusCode::FalsePositive->value)->count();
         $open = $incidents->filter(fn (Incident $i) => ! $i->isTerminal())->count();
@@ -74,10 +74,15 @@ final class PanicKpisTool implements CopilotTool
         $topAssets = $events
             ->filter(fn (NormalizedEvent $e) => $e->asset !== null)
             ->groupBy('asset_id')
-            ->map(fn (Collection $group) => [
-                'label' => $group->first()->asset->code ?? $group->first()->asset->name,
-                'value' => $group->count(),
-            ])
+            ->map(function (Collection $group): array {
+                // Filtrado arriba: cada grupo tiene al menos un evento con activo.
+                $asset = $group->first()?->asset;
+
+                return [
+                    'label' => $asset?->code ?? $asset?->name,
+                    'value' => $group->count(),
+                ];
+            })
             ->sortByDesc('value')
             ->take(4)
             ->values();

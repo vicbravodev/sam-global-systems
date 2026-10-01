@@ -72,7 +72,7 @@ final class CopilotPresenter
     }
 
     /**
-     * @return array<string, mixed>|null
+     * @return ($location is null ? null : array{latitude: float, longitude: float, formattedLocation: string|null, speed: float|null, heading: int|null, recordedAt: string, mapsUrl: string})
      */
     public static function location(?AssetLocationSnapshot $location): ?array
     {

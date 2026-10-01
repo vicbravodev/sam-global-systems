@@ -8,6 +8,8 @@ use App\Domains\Incidents\Models\Incident;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Incidents\StoreIncidentCommentRequest;
 use App\Models\Team;
+use App\Models\User;
+use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\JsonResponse;
 
 class IncidentCommentController extends Controller
@@ -17,6 +19,7 @@ class IncidentCommentController extends Controller
         Team $current_team,
         Incident $incident,
         AddIncidentComment $addComment,
+        #[CurrentUser] User $user,
     ): JsonResponse {
         $this->authorize('comment', $incident);
 
@@ -26,7 +29,7 @@ class IncidentCommentController extends Controller
 
         $comment = $addComment->execute(
             incident: $incident,
-            user: $request->user(),
+            user: $user,
             comment: $request->validated('comment'),
             visibility: $visibility,
         );

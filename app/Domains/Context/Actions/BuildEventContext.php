@@ -17,6 +17,7 @@ use App\Support\SystemLog;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use LogicException;
 
 class BuildEventContext
 {
@@ -48,11 +49,9 @@ class BuildEventContext
             $normalizedEvent->asset?->unsetRelation('latestLocation');
         }
 
-        // Filled inside the transaction, logged only once it has committed: a
+        // Built inside the transaction, logged only once it has committed: a
         // rolled-back snapshot must never be reported as built.
-        $built = null;
-
-        $snapshot = DB::transaction(function () use ($normalizedEvent, $liveFetch, &$built) {
+        [$snapshot, $built] = DB::transaction(function () use ($normalizedEvent, $liveFetch) {
             $location = $this->extractLocation($normalizedEvent, $liveFetch['location']);
             $lat = $location['latitude'] ?? null;
             $lng = $location['longitude'] ?? null;
@@ -188,15 +187,20 @@ class BuildEventContext
                 'signals' => array_keys(array_filter($signals, static fn ($value) => (bool) $value)),
             ]];
 
-            $profile = $this->buildOperationalContextProfile->execute($snapshot->fresh());
+            // Recién escrito dentro de esta transacción: si no se puede releer es
+            // un estado imposible y debe fallar (y revertir) con un mensaje claro.
+            $reload = static fn (EventContextSnapshot $snapshot): EventContextSnapshot => $snapshot->fresh()
+                ?? throw new LogicException("EventContextSnapshot {$snapshot->id} desapareció dentro de su propia transacción.");
+
+            $profile = $this->buildOperationalContextProfile->execute($reload($snapshot));
 
             $built['result']['risk_level'] = $profile->risk_level?->value;
 
             // Sync listeners (RequestPanicMediaOnContextBuilt) log inside this
             // transaction, before `context.snapshot.built`.
-            EventContextBuilt::dispatch($snapshot->fresh(), $profile);
+            EventContextBuilt::dispatch($reload($snapshot), $profile);
 
-            return $snapshot->fresh();
+            return [$reload($snapshot), $built];
         });
 
         SystemLog::ok('context.snapshot.built', input: [

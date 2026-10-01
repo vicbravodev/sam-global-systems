@@ -43,10 +43,6 @@ class NotifyOnIncidentStatusChanged
     {
         $incident = $event->incident;
 
-        if ($incident->team_id === null) {
-            return;
-        }
-
         $newStatus = $event instanceof IncidentStatusChanged ? $event->newStatus : IncidentStatusCode::Closed->value;
         $actorUserId = $event instanceof IncidentStatusChanged ? $event->actorUserId : null;
 

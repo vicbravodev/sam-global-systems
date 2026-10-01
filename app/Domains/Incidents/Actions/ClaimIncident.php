@@ -57,7 +57,7 @@ class ClaimIncident
         // nadie. Fuera de la transacción para no emitir un evento de una
         // escritura que todavía podría revertirse.
         if ($claimed) {
-            broadcast(IncidentUpdatedBroadcast::fromModel($incident->fresh()));
+            broadcast(IncidentUpdatedBroadcast::fromModel($incident->freshOrFail()));
         }
 
         return $claimed;

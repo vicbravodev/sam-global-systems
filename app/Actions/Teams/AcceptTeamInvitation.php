@@ -36,8 +36,11 @@ class AcceptTeamInvitation
         return DB::transaction(function () use ($user, $invitation) {
             $invitation = TeamInvitation::query()->whereKey($invitation->id)->lockForUpdate()->firstOrFail();
 
-            if (($problem = self::problem($invitation)) !== null) {
-                throw ValidationException::withMessages(['invitation' => $problem]);
+            $team = $invitation->team;
+
+            // problem() ya cubre el team borrado; el chequeo explícito lo hace visible al tipo.
+            if (($problem = self::problem($invitation)) !== null || $team === null) {
+                throw ValidationException::withMessages(['invitation' => $problem ?? 'La empresa de esta invitación ya no existe.']);
             }
 
             if (User::normalizeEmail($invitation->email) !== User::normalizeEmail($user->email)) {
@@ -45,8 +48,6 @@ class AcceptTeamInvitation
                     'invitation' => 'Esta invitación fue enviada a otro correo electrónico.',
                 ]);
             }
-
-            $team = $invitation->team;
 
             $team->memberships()->firstOrCreate(
                 ['user_id' => $user->id],

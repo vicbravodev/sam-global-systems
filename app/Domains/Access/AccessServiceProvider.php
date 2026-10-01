@@ -24,7 +24,7 @@ class AccessServiceProvider extends ServiceProvider
         Gate::policy(Role::class, RolePolicy::class);
 
         $forget = function (Subscription|TenantFeature $model): void {
-            if ($this->app->resolved(AuthorizeAction::class) && $model->team_id !== null) {
+            if ($this->app->resolved(AuthorizeAction::class)) {
                 $this->app->make(AuthorizeAction::class)->forgetTeamAccess((int) $model->team_id);
             }
         };

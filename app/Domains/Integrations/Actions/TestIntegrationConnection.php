@@ -6,6 +6,7 @@ use App\Domains\Integrations\Contracts\ProviderAdapter;
 use App\Domains\Integrations\Enums\TenantIntegrationStatus;
 use App\Domains\Integrations\Events\IntegrationStatusChanged;
 use App\Domains\Integrations\Models\TenantIntegration;
+use LogicException;
 
 class TestIntegrationConnection
 {
@@ -34,10 +35,14 @@ class TestIntegrationConnection
             ]);
         }
 
+        // provider_id es FK NOT NULL con cascade: el proveedor siempre existe.
+        $providerCode = $integration->provider?->code
+            ?? throw new LogicException("TenantIntegration {$integration->id} sin IntegrationProvider.");
+
         IntegrationStatusChanged::dispatch(
             $integration->team_id,
             $integration->id,
-            $integration->provider->code,
+            $providerCode,
             $integration->status->value,
         );
 

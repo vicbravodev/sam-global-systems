@@ -54,10 +54,6 @@ class AssignOnCallOnIncidentCreated implements IncidentCreatedReaction
     {
         $incident = $event->incident;
 
-        if ($incident->team_id === null) {
-            return;
-        }
-
         $input = ['incident_id' => $incident->id, 'stage' => 'on_call_listener'];
 
         if ($incident->currentAssignment()->exists()) {

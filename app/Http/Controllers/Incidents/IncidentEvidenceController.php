@@ -10,6 +10,8 @@ use App\Domains\Incidents\Models\Incident;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Incidents\StoreIncidentEvidenceRequest;
 use App\Models\Team;
+use App\Models\User;
+use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\JsonResponse;
 
 class IncidentEvidenceController extends Controller
@@ -19,6 +21,7 @@ class IncidentEvidenceController extends Controller
         Team $current_team,
         Incident $incident,
         AddIncidentEvidence $addEvidence,
+        #[CurrentUser] User $user,
     ): JsonResponse {
         $this->authorize('attachEvidence', $incident);
 
@@ -32,7 +35,7 @@ class IncidentEvidenceController extends Controller
             metadata: $request->validated('metadata'),
             file: $request->file('file'),
             addedByType: IncidentCreatorType::User,
-            addedById: $request->user()->id,
+            addedById: $user->id,
         );
 
         return response()->json([

@@ -17,6 +17,8 @@ use App\Domains\Notifications\Models\NotificationRecipient;
 use App\Domains\Notifications\Support\DeliveryFeedbackPresenter;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
+use App\Models\User;
+use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -33,11 +35,9 @@ class NotificationPageController extends Controller
      * Render the tenant notification center: every outbound notification of
      * the team, newest first, with per-user read markers.
      */
-    public function index(Request $request, Team $current_team): Response
+    public function index(Request $request, Team $current_team, #[CurrentUser] User $user): Response
     {
         $this->authorize('viewAny', Notification::class);
-
-        $user = $request->user();
 
         $status = NotificationStatus::tryFrom((string) $request->query('status'));
         $priority = NotificationPriority::tryFrom((string) $request->query('priority'));
@@ -89,14 +89,14 @@ class NotificationPageController extends Controller
      * failure reason) and the retry → fallback chain. Provider cost is never
      * exposed to the tenant here.
      */
-    public function show(Request $request, Team $current_team, Notification $notification): Response
+    public function show(Team $current_team, Notification $notification, #[CurrentUser] User $user): Response
     {
         $this->authorize('view', $notification);
 
         $notification->loadCount($this->deliveryCounts());
-        $notification->loadExists(['recipients as addressed_to_me' => fn ($query) => $this->addressedTo($query, $request->user()->id)]);
+        $notification->loadExists(['recipients as addressed_to_me' => fn ($query) => $this->addressedTo($query, $user->id)]);
         $notification->load([
-            'reads' => fn ($query) => $query->where('user_id', $request->user()->id),
+            'reads' => fn ($query) => $query->where('user_id', $user->id),
             'deliveries.channel',
         ]);
 
@@ -415,14 +415,14 @@ class NotificationPageController extends Controller
      * Mark a notification as read for the authenticated user. Idempotent.
      */
     public function read(
-        Request $request,
         Team $current_team,
         Notification $notification,
         MarkNotificationRead $markNotificationRead,
+        #[CurrentUser] User $user,
     ): RedirectResponse {
         $this->authorize('view', $notification);
 
-        $markNotificationRead->execute($notification, $request->user());
+        $markNotificationRead->execute($notification, $user);
 
         return back();
     }

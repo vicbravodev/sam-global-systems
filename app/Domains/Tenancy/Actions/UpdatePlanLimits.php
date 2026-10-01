@@ -6,6 +6,7 @@ use App\Domains\Tenancy\Enums\BillingModel;
 use App\Domains\Tenancy\Models\BillingRate;
 use App\Domains\Tenancy\Models\Plan;
 use App\Domains\Tenancy\Models\UsageMeter;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -55,7 +56,8 @@ class UpdatePlanLimits
                 ]);
             }
 
-            return $plan->fresh();
+            return $plan->fresh()
+                ?? throw (new ModelNotFoundException)->setModel(Plan::class, [$plan->id]);
         });
     }
 }

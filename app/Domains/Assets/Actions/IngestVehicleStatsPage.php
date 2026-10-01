@@ -253,14 +253,17 @@ class IngestVehicleStatsPage
                 // Stopped: only leaving the place ends the stop. A parked
                 // unit's GPS reads phantom speeds, so speed alone is not a
                 // departure.
-                if ($asset->stop_latitude === null || $asset->stop_longitude === null) {
-                    $asset->stop_latitude = $point['latitude'];
-                    $asset->stop_longitude = $point['longitude'];
+                $stopLatitude = $asset->stop_latitude;
+                $stopLongitude = $asset->stop_longitude;
+
+                if ($stopLatitude === null || $stopLongitude === null) {
+                    $stopLatitude = $asset->stop_latitude = $point['latitude'];
+                    $stopLongitude = $asset->stop_longitude = $point['longitude'];
                 }
 
                 $leftPlace = HaversineDistance::meters(
-                    $asset->stop_latitude,
-                    $asset->stop_longitude,
+                    $stopLatitude,
+                    $stopLongitude,
                     $point['latitude'],
                     $point['longitude'],
                 ) > $exitRadius;

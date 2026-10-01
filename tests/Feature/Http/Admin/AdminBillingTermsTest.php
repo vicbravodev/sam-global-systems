@@ -168,4 +168,25 @@ class AdminBillingTermsTest extends TestCase
         $this->assertStringNotContainsString(json_encode($team->name), $json);
         $this->assertNoSensitiveDataLogged();
     }
+
+    public function test_super_admin_generates_an_explicit_period_invoice_on_demand(): void
+    {
+        $this->travelTo(now()->setDate(2026, 10, 5)->setTime(12, 0));
+        $admin = $this->superAdmin();
+        $team = Team::factory()->create(['is_personal' => false]);
+        Subscription::factory()->create(['team_id' => $team->id]);
+
+        $this->actingAs($admin)
+            ->post(route('admin.tenants.invoices.generate', $team), ['period' => '2026-02'])
+            ->assertRedirect();
+
+        $invoice = InvoiceSnapshot::withoutGlobalScopes()->where('team_id', $team->id)->sole();
+        $this->assertSame('2026-02-01', $invoice->period_start->toDateString());
+        $this->assertSame('2026-02-28', $invoice->period_end->toDateString());
+
+        $requested = $this->assertSystemLogged('billing.invoice.generation_requested');
+        $this->assertSame('2026-02-01', $requested['input']['period_start']);
+        $this->assertSame('2026-02-28', $requested['input']['period_end']);
+        $this->assertNoSensitiveDataLogged();
+    }
 }

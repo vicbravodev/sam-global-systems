@@ -9,6 +9,8 @@ use App\Domains\Incidents\Models\Incident;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Incidents\AssignIncidentRequest;
 use App\Models\Team;
+use App\Models\User;
+use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\JsonResponse;
 
 class IncidentAssignmentController extends Controller
@@ -18,6 +20,7 @@ class IncidentAssignmentController extends Controller
         Team $current_team,
         Incident $incident,
         AssignIncident $assignIncident,
+        #[CurrentUser] User $user,
     ): JsonResponse {
         $this->authorize('assign', $incident);
 
@@ -27,7 +30,7 @@ class IncidentAssignmentController extends Controller
             assigneeId: (int) $request->validated('assigned_to_id'),
             role: $request->validated('role'),
             assignedByType: IncidentCreatorType::User,
-            assignedById: $request->user()->id,
+            assignedById: $user->id,
         );
 
         return response()->json(['data' => $assignment], 201);

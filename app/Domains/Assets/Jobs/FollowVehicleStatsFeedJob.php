@@ -147,8 +147,10 @@ class FollowVehicleStatsFeedJob implements ShouldBeUnique, ShouldQueue
             ]);
         }
 
+        $durationMs = (int) $startedAt->diffInMilliseconds(now());
+
         $cursor->forceFill(['last_cycle_json' => [
-            'duration_ms' => (int) $startedAt->diffInMilliseconds(now()),
+            'duration_ms' => $durationMs,
             'pages' => $pages,
             'locations' => $result->locationsStored,
             'readings' => $result->readingsStored,
@@ -190,9 +192,9 @@ class FollowVehicleStatsFeedJob implements ShouldBeUnique, ShouldQueue
         ];
 
         if ($failure === null) {
-            SystemLog::ok('telematics.cycle.completed', input: $cycleInput, calc: $cycleCalc, result: $cycleResult, durationMs: $cursor->last_cycle_json['duration_ms'], channel: 'telematics');
+            SystemLog::ok('telematics.cycle.completed', input: $cycleInput, calc: $cycleCalc, result: $cycleResult, durationMs: $durationMs, channel: 'telematics');
         } else {
-            SystemLog::degraded('telematics.cycle.failed', reason: $failureInfo['reason'], input: $cycleInput, calc: [...$cycleCalc, ...$failureInfo], result: $cycleResult, error: $failure, durationMs: $cursor->last_cycle_json['duration_ms'], channel: 'telematics');
+            SystemLog::degraded('telematics.cycle.failed', reason: $failureInfo['reason'], input: $cycleInput, calc: [...$cycleCalc, ...$failureInfo], result: $cycleResult, error: $failure, durationMs: $durationMs, channel: 'telematics');
         }
     }
 

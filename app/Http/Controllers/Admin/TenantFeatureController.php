@@ -8,6 +8,8 @@ use App\Domains\Audit\Enums\AuditCategory;
 use App\Domains\Tenancy\Actions\SetTenantFeature;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
+use App\Models\User;
+use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -25,6 +27,7 @@ class TenantFeatureController extends Controller
         Team $team,
         string $featureKey,
         SetTenantFeature $setFeature,
+        #[CurrentUser] User $user,
     ): RedirectResponse {
         $data = $request->validate([
             'enabled' => ['required', 'boolean'],
@@ -37,8 +40,6 @@ class TenantFeatureController extends Controller
                 : null;
 
         $setFeature->execute($team, $featureKey, (bool) $data['enabled'], $limits);
-
-        $user = $request->user();
 
         $this->audit->execute(
             actorType: AuditActorType::User,

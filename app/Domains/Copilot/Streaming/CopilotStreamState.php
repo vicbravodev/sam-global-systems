@@ -45,11 +45,16 @@ final class CopilotStreamState
     public array $pending = [];
 
     /**
+     * @var Closure(): bool
+     */
+    public Closure $aborted;
+
+    /**
      * @param  (Closure(): bool)|null  $aborted
      */
-    public function __construct(public ?Closure $aborted = null)
+    public function __construct(?Closure $aborted = null)
     {
-        $this->aborted ??= fn (): bool => connection_aborted() === 1;
+        $this->aborted = $aborted ?? fn (): bool => connection_aborted() === 1;
     }
 
     public function aborted(): bool

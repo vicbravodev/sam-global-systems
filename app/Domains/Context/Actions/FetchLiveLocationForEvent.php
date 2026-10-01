@@ -62,6 +62,19 @@ class FetchLiveLocationForEvent
             return $noFetch;
         }
 
+        // asset_id puesto pero el activo ya no carga: fue retirado (soft-delete).
+        // Sin activo no hay dónde guardar el fix, así que no se consulta al proveedor.
+        $asset = $normalizedEvent->asset;
+
+        if ($asset === null) {
+            SystemLog::skipped('context.live_location.skipped', reason: 'asset_missing', input: [
+                'normalized_event_id' => $normalizedEvent->id,
+                'asset_id' => $normalizedEvent->asset_id,
+            ]);
+
+            return $noFetch;
+        }
+
         $payloadLocation = Arr::get($normalizedEvent->payload_normalized_json ?? [], 'location');
 
         if (is_array($payloadLocation) && isset($payloadLocation['latitude'], $payloadLocation['longitude'])) {
@@ -76,7 +89,7 @@ class FetchLiveLocationForEvent
             self::DEFAULT_STALENESS_SECONDS,
         );
 
-        $latest = $normalizedEvent->asset?->latestLocation;
+        $latest = $asset->latestLocation;
         $age = $latest?->recorded_at !== null ? $this->ageSeconds($latest->recorded_at) : null;
 
         if ($latest?->recorded_at !== null && $latest->recorded_at->gt(now()->subSeconds($stalenessSeconds))) {
@@ -118,7 +131,7 @@ class FetchLiveLocationForEvent
 
         // Returns the existing row untouched when this fix is already stored.
         $stored = $this->updateAssetLocationSnapshot->execute(
-            asset: $normalizedEvent->asset,
+            asset: $asset,
             latitude: (float) $live['latitude'],
             longitude: (float) $live['longitude'],
             source: LocationSource::Provider,

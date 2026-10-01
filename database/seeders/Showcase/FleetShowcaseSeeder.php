@@ -342,9 +342,10 @@ class FleetShowcaseSeeder extends ShowcaseStep
     {
         if (! DriverAssignment::query()->where('team_id', $this->ctx->team->id)->exists()) {
             $random = $this->ctx->random('assignments');
-            $assets = $this->ctx->assets->filter(fn (Asset $a) => $a->status !== AssetStatus::Inactive)->values();
-            $drivers = $this->ctx->drivers->values();
-            $pairs = min($drivers->count(), (int) floor($assets->count() * 0.9));
+            $assets = $this->ctx->assets->filter(fn (Asset $a) => $a->status !== AssetStatus::Inactive)->values()->all();
+            $drivers = $this->ctx->drivers->values()->all();
+            $assetCount = count($assets);
+            $pairs = min(count($drivers), (int) floor($assetCount * 0.9));
             $rows = [];
 
             for ($i = 0; $i < $pairs; $i++) {
@@ -361,8 +362,8 @@ class FleetShowcaseSeeder extends ShowcaseStep
                 ];
 
                 // Historial: la unidad anterior del conductor.
-                if ($random->chance(0.35) && $assets->count() > 1) {
-                    $previous = $assets[($i + 7) % $assets->count()];
+                if ($random->chance(0.35) && $assetCount > 1) {
+                    $previous = $assets[($i + 7) % $assetCount];
                     $rows[] = [
                         'team_id' => $this->ctx->team->id,
                         'driver_id' => $drivers[$i]->id,
@@ -376,12 +377,12 @@ class FleetShowcaseSeeder extends ShowcaseStep
                 }
 
                 // Cobertura temporal de otra unidad durante un descanso.
-                if ($random->chance(0.12) && $assets->count() > 1) {
+                if ($random->chance(0.12) && $assetCount > 1) {
                     $covered = $this->ctx->now->subDays($random->int(3, 40));
                     $rows[] = [
                         'team_id' => $this->ctx->team->id,
                         'driver_id' => $drivers[$i]->id,
-                        'asset_id' => $assets[($i + 3) % $assets->count()]->id,
+                        'asset_id' => $assets[($i + 3) % $assetCount]->id,
                         'assignment_type' => AssignmentType::TemporaryOperator->value,
                         'started_at' => $covered,
                         'ended_at' => $covered->addHours(10),

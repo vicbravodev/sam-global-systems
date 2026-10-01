@@ -5,6 +5,7 @@ namespace App\Domains\Tenancy\Actions;
 use App\Domains\Tenancy\Models\TenantBranding;
 use App\Models\Team;
 use App\Support\TenantContext;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -35,7 +36,8 @@ class UpdateTenant
                 ));
             }
 
-            return $team->fresh();
+            return $team->fresh()
+                ?? throw (new ModelNotFoundException)->setModel(Team::class, [$team->id]);
         });
     }
 }
