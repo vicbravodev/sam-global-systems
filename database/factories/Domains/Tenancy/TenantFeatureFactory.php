@@ -32,6 +32,9 @@ class TenantFeatureFactory extends Factory
         ]);
     }
 
+    /**
+     * @param  array<string, mixed>  $limits  p. ej. `['included_quantity' => 2]`
+     */
     public function withLimits(array $limits): static
     {
         return $this->state(fn () => [

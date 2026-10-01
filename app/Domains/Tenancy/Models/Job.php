@@ -39,6 +39,9 @@ class Job extends Model
         return $this->belongsTo(User::class, 'owner_user_id');
     }
 
+    /**
+     * @return MorphTo<Model, $this>
+     */
     public function jobable(): MorphTo
     {
         return $this->morphTo();

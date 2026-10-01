@@ -106,6 +106,44 @@ class AnalyticsControllerTest extends TestCase
         });
     }
 
+    public function test_report_generate_rejects_non_array_filters_with_422(): void
+    {
+        Bus::fake();
+
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+        $definition = ReportDefinition::factory()->create(['team_id' => $team->id]);
+
+        $this->actingAs($user);
+
+        // Antes llegaba tal cual al constructor del job (`?array`) y el
+        // TypeError respondía 500 en vez de un error de validación.
+        $this->postJson(
+            "/api/{$team->slug}/analytics/reports/{$definition->id}/generate",
+            ['format' => 'json', 'filters' => 'no-es-un-array'],
+        )->assertStatus(422)->assertJsonValidationErrors('filters');
+
+        Bus::assertNotDispatched(GenerateReportJob::class);
+    }
+
+    public function test_report_generate_forwards_array_filters_to_the_job(): void
+    {
+        Bus::fake();
+
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+        $definition = ReportDefinition::factory()->create(['team_id' => $team->id]);
+
+        $this->actingAs($user);
+
+        $this->postJson(
+            "/api/{$team->slug}/analytics/reports/{$definition->id}/generate",
+            ['format' => 'json', 'filters' => ['asset_id' => 7]],
+        )->assertStatus(202);
+
+        Bus::assertDispatched(GenerateReportJob::class, fn (GenerateReportJob $job) => $job->filters === ['asset_id' => 7]);
+    }
+
     public function test_execution_download_streams_file_from_rustfs(): void
     {
         Storage::fake('rustfs');

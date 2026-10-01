@@ -32,6 +32,9 @@ final class TwilioSandbox
         return (bool) config('services.twilio.sandbox', false) && ! app()->isProduction();
     }
 
+    /**
+     * @param  array<string, mixed>  $params  Twilio `messages->create` params (`from`, `body`, `contentSid`, `statusCallback`, ...).
+     */
     public static function createMessage(string $to, array $params): object
     {
         $body = (string) ($params['body'] ?? '');

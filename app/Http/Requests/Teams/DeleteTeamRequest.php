@@ -31,6 +31,8 @@ class DeleteTeamRequest extends FormRequest
 
     /**
      * Configure the validator instance.
+     *
+     * @return list<\Closure(Validator): void>
      */
     public function after(): array
     {

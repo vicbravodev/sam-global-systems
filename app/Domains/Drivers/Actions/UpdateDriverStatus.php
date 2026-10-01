@@ -10,6 +10,9 @@ use App\Domains\Drivers\Models\DriverStatusLog;
 
 class UpdateDriverStatus
 {
+    /**
+     * @param  array<string, mixed>|null  $metadata
+     */
     public function execute(
         Driver $driver,
         DriverStatus $newStatus,

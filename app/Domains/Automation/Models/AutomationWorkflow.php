@@ -58,6 +58,7 @@ class AutomationWorkflow extends Model
 
     /**
      * @param  Builder<AutomationWorkflow>  $query
+     * @return Builder<AutomationWorkflow>
      */
     public function scopeAvailableToTeam(Builder $query, int $teamId): Builder
     {
@@ -68,6 +69,7 @@ class AutomationWorkflow extends Model
 
     /**
      * @param  Builder<AutomationWorkflow>  $query
+     * @return Builder<AutomationWorkflow>
      */
     public function scopeActive(Builder $query): Builder
     {

@@ -81,6 +81,8 @@ class MapExternalEventType
      * Evaluate all conditions in external_conditions_json as AND logic
      * against the raw payload using dot-notation path matching.
      *
+     *
+     * @param  array<string, mixed>|null  $payload
      * @return string|null null when every condition holds, else the first failed path
      *                     (`*` when there is no payload to evaluate against)
      */
