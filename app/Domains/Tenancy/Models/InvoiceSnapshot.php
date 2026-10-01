@@ -72,7 +72,7 @@ class InvoiceSnapshot extends Model
     {
         return match ($this->status) {
             InvoiceStatus::Finalized, InvoiceStatus::Invoiced, InvoiceStatus::Disputed => true,
-            InvoiceStatus::Draft => $this->period_end !== null && $this->period_end->endOfDay()->isPast(),
+            InvoiceStatus::Draft => $this->period_end->endOfDay()->isPast(),
             default => false,
         };
     }

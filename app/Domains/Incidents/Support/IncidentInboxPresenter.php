@@ -264,7 +264,7 @@ class IncidentInboxPresenter
         // over re-deriving from the catalog so the countdown never drifts
         // from the watchdog. Only incidents predating this column, or with
         // no SLA at all, fall back to the catalog chain.
-        if ($incident->sla_due_at !== null && $incident->opened_at !== null) {
+        if ($incident->sla_due_at !== null) {
             return max(0, (int) $this->slaClockStart($incident)->diffInSeconds($incident->sla_due_at, false));
         }
 
@@ -284,13 +284,7 @@ class IncidentInboxPresenter
             return (int) $now->diffInSeconds($incident->sla_due_at, false);
         }
 
-        $opened = $incident->opened_at;
-
-        if ($opened === null) {
-            return $this->slaTotal($incident);
-        }
-
-        return $this->slaTotal($incident) - (int) $opened->diffInSeconds($now);
+        return $this->slaTotal($incident) - (int) $incident->opened_at->diffInSeconds($now);
     }
 
     /**
@@ -309,13 +303,7 @@ class IncidentInboxPresenter
 
     private function ageMin(Incident $incident, CarbonInterface $now): int
     {
-        $opened = $incident->opened_at;
-
-        if ($opened === null) {
-            return 0;
-        }
-
-        return (int) $opened->diffInMinutes($now);
+        return (int) $incident->opened_at->diffInMinutes($now);
     }
 
     private function eventType(Incident $incident): string
@@ -453,7 +441,6 @@ class IncidentInboxPresenter
             TimelineActorType::Ai => 'SAM',
             TimelineActorType::Automation => 'Automatización',
             TimelineActorType::User => $users->get((int) $entry->actor_id)?->name ?? 'Usuario',
-            default => 'Sistema',
         };
 
         $payload = is_array($entry->payload_json) ? $entry->payload_json : [];

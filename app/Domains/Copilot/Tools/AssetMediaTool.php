@@ -163,13 +163,13 @@ final class AssetMediaTool implements CopilotTool
                 ], $items),
                 'assessed_count' => count(array_filter($items, fn (array $item): bool => $item['aiVerdict'] !== null)),
             ],
-            highlights: array_values(array_filter([
+            highlights: array_filter([
                 "La media más reciente de {$label} es {$kind}"
                     .($latest['eventType'] ? " del evento «{$latest['eventType']}»" : '')
                     .($latest['incident'] ? " ({$latest['incident']})" : '')
                     .', '.CopilotPresenter::describeAge($latest['capturedAt']).'.',
                 $latest['aiSummary'] ? 'Lo que la IA vio: '.$latest['aiSummary'] : null,
-            ])),
+            ]),
         );
     }
 
@@ -218,14 +218,14 @@ final class AssetMediaTool implements CopilotTool
      * Uploaded panic/safety footage keeps the camera in `metadata_json.input`;
      * the media role only says "primary evidence".
      */
-    private function cameraLabel(EventMediaContext $media): ?string
+    private function cameraLabel(EventMediaContext $media): string
     {
         $input = is_array($media->metadata_json) ? ($media->metadata_json['input'] ?? null) : null;
 
         return match ($input) {
             'dashcamRoadFacing' => self::ROLE_LABELS['road_facing'],
             'dashcamDriverFacing' => self::ROLE_LABELS['driver_facing'],
-            default => $media->media_role ? (self::ROLE_LABELS[$media->media_role->value] ?? $media->media_role->value) : null,
+            default => self::ROLE_LABELS[$media->media_role->value],
         };
     }
 }

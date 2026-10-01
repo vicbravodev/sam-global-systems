@@ -141,7 +141,7 @@ class PollSafetyEventsJob implements ShouldBeUnique, ShouldQueue
 
         $this->integration->update($attributes);
 
-        SystemLog::ok('ingestion.poll.cycle_completed', input: ['integration_id' => $this->integration->id], calc: ['start_time' => $startTime, 'had_cursor' => $cursor !== null], result: ['events' => count($result['events']), 'has_more' => $result['has_more'] ?? false, 'next_cursor_present' => $result['cursor'] !== null]);
+        SystemLog::ok('ingestion.poll.cycle_completed', input: ['integration_id' => $this->integration->id], calc: ['start_time' => $startTime, 'had_cursor' => $cursor !== null], result: ['events' => count($result['events']), 'has_more' => $result['has_more'], 'next_cursor_present' => $result['cursor'] !== null]);
     }
 
     public function failed(\Throwable $exception): void

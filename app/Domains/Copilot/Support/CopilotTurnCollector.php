@@ -55,7 +55,7 @@ final class CopilotTurnCollector
      */
     public function followups(array $questions): void
     {
-        $this->followups = array_values(array_slice($questions, 0, 3));
+        $this->followups = array_slice($questions, 0, 3);
     }
 
     public function hasResults(): bool
@@ -68,7 +68,7 @@ final class CopilotTurnCollector
      */
     public function blocks(): array
     {
-        return array_values(array_merge([], ...array_map(fn (array $e) => $e['result']->blocks, $this->entries)));
+        return array_merge([], ...array_map(fn (array $e) => $e['result']->blocks, $this->entries));
     }
 
     /**
@@ -108,10 +108,10 @@ final class CopilotTurnCollector
      */
     public function highlights(): array
     {
-        return array_values(array_merge([], ...array_map(
+        return array_merge([], ...array_map(
             fn (array $e) => $e['result']->highlights,
             array_filter($this->entries, fn (array $e) => $e['status'] !== 'error'),
-        )));
+        ));
     }
 
     /**

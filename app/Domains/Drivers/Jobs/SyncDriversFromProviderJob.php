@@ -35,7 +35,7 @@ class SyncDriversFromProviderJob implements ShouldQueue
     ): void {
         $result = $providerAdapter->sync($this->integration, 'drivers');
 
-        foreach ($result['drivers'] ?? [] as $driverData) {
+        foreach ($result['drivers'] as $driverData) {
             try {
                 $syncDriver->execute(
                     $this->integration->team_id,

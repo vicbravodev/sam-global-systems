@@ -46,7 +46,6 @@ class ExecuteAction
     private const WEBHOOK_MAX_BODY_BYTES = 2048;
 
     public function __construct(
-        private ResolveActionTemplate $resolveActionTemplate,
         private readonly SendNotification $sendNotificationAction,
         private readonly AssignIncident $assignIncidentAction,
         private readonly EscalateIncident $escalateIncidentAction,

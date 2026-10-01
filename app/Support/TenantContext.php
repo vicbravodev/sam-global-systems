@@ -111,7 +111,7 @@ class TenantContext
      *
      * @template TReturn
      *
-     * @param  Closure(): void  $apply
+     * @param  Closure(): mixed  $apply
      * @param  Closure(): TReturn  $callback
      * @return TReturn
      */

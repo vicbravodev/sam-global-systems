@@ -9,7 +9,6 @@ use Carbon\CarbonImmutable;
 use Database\Seeders\Concerns\DevelopmentOnly;
 use Database\Seeders\Showcase\Support\ShowcaseContext;
 use Database\Seeders\Showcase\Support\ShowcaseSandbox;
-use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
@@ -150,7 +149,7 @@ class ShowcaseSeeder extends Seeder
         $this->command?->info("Showcase → {$team->name} [{$team->slug}] · {$days} días".($light ? ' (ligero)' : ''));
 
         TenantContext::for($team->id, function () use ($team, $days, $light, $subscription) {
-            $ctx = new ShowcaseContext($team, $days, $light, $this->command instanceof Command ? $this->command : null, $this->now);
+            $ctx = new ShowcaseContext($team, $days, $light, $this->command, $this->now);
             $ctx->hasRealData = RawEvent::query()
                 ->where('team_id', $team->id)
                 ->where(fn ($q) => $q->whereNull('external_event_id')->orWhere('external_event_id', 'not like', 'showcase-%'))

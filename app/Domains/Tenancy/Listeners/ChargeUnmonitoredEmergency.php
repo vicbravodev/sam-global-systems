@@ -47,7 +47,7 @@ class ChargeUnmonitoredEmergency implements ShouldQueue
         }
 
         TenantContext::for($teamId, function () use ($normalized, $teamId, $assetId) {
-            $localDate = AssetDayPricing::localDate($normalized->occurred_at ?? now());
+            $localDate = AssetDayPricing::localDate($normalized->occurred_at);
             $eventKey = "unmonitored_emergency:{$teamId}:{$assetId}:{$localDate}";
             // Nunca el nombre ni la placa del activo, ni el asunto/cuerpo del aviso.
             $logInput = [
@@ -73,7 +73,8 @@ class ChargeUnmonitoredEmergency implements ShouldQueue
             if ($recorded) {
                 SystemLog::ok('billing.emergency_surcharge.charged', input: $logInput, calc: [
                     'local_date' => $localDate,
-                    'occurred_at_source' => $normalized->occurred_at !== null ? 'event' : 'now',
+                    // `occurred_at` es NOT NULL en normalized_events: la fecha siempre sale del evento.
+                    'occurred_at_source' => 'event',
                     'surcharge_percent' => AssetDayPricing::unmonitoredEmergencySurchargePercent(),
                     'meter_code' => AssetDayPricing::UNMONITORED_EMERGENCY_METER_CODE,
                 ], result: ['event_key' => $eventKey, 'recorded' => true]);

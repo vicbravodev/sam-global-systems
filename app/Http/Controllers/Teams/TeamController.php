@@ -7,6 +7,7 @@ use App\Enums\TeamRole;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Teams\DeleteTeamRequest;
 use App\Http\Requests\Teams\SaveTeamRequest;
+use App\Models\Membership;
 use App\Models\Team;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
@@ -62,14 +63,21 @@ class TeamController extends Controller
                 'slug' => $team->slug,
                 'isPersonal' => $team->is_personal,
             ],
-            'members' => $team->members()->get()->map(fn ($member) => [
-                'id' => $member->id,
-                'name' => $member->name,
-                'email' => $member->email,
-                'avatar' => $member->avatar ?? null,
-                'role' => $member->pivot->role->value,
-                'role_label' => $member->pivot->role?->label(),
-            ]),
+            'members' => $team->members()->get()->map(function (User $member) {
+                // El pivot (Membership) llega como relación hidratada por
+                // BelongsToMany::using(); se lee tipado en vez de vía $pivot.
+                $pivot = $member->getRelation('pivot');
+                $role = $pivot instanceof Membership ? $pivot->role : null;
+
+                return [
+                    'id' => $member->id,
+                    'name' => $member->name,
+                    'email' => $member->email,
+                    'avatar' => $member->avatar ?? null,
+                    'role' => $role?->value,
+                    'role_label' => $role?->label(),
+                ];
+            }),
             // Solo pendientes: una invitación expirada ya no se puede aceptar
             // (y UniqueTeamInvitation permite volver a invitar ese email).
             'invitations' => $team->invitations()

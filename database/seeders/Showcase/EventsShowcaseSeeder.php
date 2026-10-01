@@ -93,7 +93,7 @@ class EventsShowcaseSeeder extends ShowcaseStep
     }
 
     /**
-     * @return array<string, true>
+     * @return array<string, bool>
      */
     private function existingDays(): array
     {

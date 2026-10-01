@@ -24,14 +24,10 @@ class RequestReevaluationOnMediaAssessmentCompleted
     {
         $evaluation = $event->evaluation;
 
-        if ($evaluation->normalized_event_id === null) {
-            SystemLog::skipped('ai.reevaluation.not_requested', reason: 'no_normalized_event', input: ['evaluation_id' => $evaluation->id]);
-
-            return;
-        }
-
-        // El resto del listener corre dentro del tenant de la evaluación: la
-        // decisión, el incidente y el job son suyos. Ver §2.1.
+        // Toda evaluación persistida cuelga de un evento normalizado
+        // (`normalized_event_id` NOT NULL). El listener corre dentro del
+        // tenant de la evaluación: la decisión, el incidente y el job son
+        // suyos. Ver §2.1.
         TenantContext::for($evaluation->team_id, fn () => $this->reopenPipeline($event, $evaluation));
     }
 

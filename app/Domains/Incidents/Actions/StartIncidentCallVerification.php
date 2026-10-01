@@ -325,11 +325,6 @@ class StartIncidentCallVerification
         );
     }
 
-    private function isPhone(mixed $contact): bool
-    {
-        return is_string($contact) && preg_match('/^\+[0-9]{8,15}$/', trim($contact)) === 1;
-    }
-
     private function wasSuppressedByHumanControl(IncidentCallVerification $verification): bool
     {
         return $verification->status === CallVerificationStatus::Failed

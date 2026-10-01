@@ -2,7 +2,6 @@
 
 namespace App\Domains\Context\Actions;
 
-use App\Domains\Context\Enums\MediaAvailabilityStatus;
 use App\Domains\Context\Enums\MediaRetrievalStatus;
 use App\Domains\Context\Models\EventContextSnapshot;
 use App\Domains\Context\Models\EventMediaContext;
@@ -67,20 +66,18 @@ class RefreshContextMediaSnapshot
     {
         return $media->map(fn (EventMediaContext $row) => [
             'id' => $row->id,
-            'type' => $row->media_type instanceof \BackedEnum ? $row->media_type->value : $row->media_type,
-            'role' => $row->media_role instanceof \BackedEnum ? $row->media_role->value : $row->media_role,
+            'type' => $row->media_type->value,
+            'role' => $row->media_role->value,
             'storage_path' => $row->storage_path,
             'media_url' => $row->media_url,
             'thumbnail_url' => $row->thumbnail_url,
             'mime_type' => $row->mime_type,
             'size_bytes' => $row->size_bytes,
             'duration_seconds' => $row->duration_seconds,
-            'availability_status' => $row->availability_status instanceof MediaAvailabilityStatus
-                ? $row->availability_status->value
-                : $row->availability_status,
-            'retrieval_status' => $row->retrieval_status instanceof MediaRetrievalStatus
-                ? ($row->retrieval_status === MediaRetrievalStatus::Ready ? 'available' : $row->retrieval_status->value)
-                : $row->retrieval_status,
+            'availability_status' => $row->availability_status->value,
+            'retrieval_status' => $row->retrieval_status === MediaRetrievalStatus::Ready
+                ? 'available'
+                : $row->retrieval_status->value,
             'captured_at' => $row->captured_at?->toIso8601String(),
         ])->all();
     }

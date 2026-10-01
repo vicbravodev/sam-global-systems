@@ -240,10 +240,6 @@ class ResolveDecisionOutcome
     {
         $classification = $eval->classification;
 
-        if ($classification === null) {
-            return '';
-        }
-
         $confidence = $eval->confidence_score !== null
             ? ' ('.(int) round((float) $eval->confidence_score * 100).' %)'
             : '';

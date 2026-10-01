@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
+use Illuminate\Database\Eloquent\Relations\Pivot;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\URL;
@@ -21,7 +22,7 @@ trait HasTeams
     /**
      * Get all of the teams the user belongs to.
      *
-     * @return BelongsToMany<Team, $this>
+     * @return BelongsToMany<Team, $this, Pivot, 'pivot'>
      */
     public function teams(): BelongsToMany
     {
@@ -189,9 +190,10 @@ trait HasTeams
     {
         // Loaded through teams() the pivot already carries the role; querying
         // it again made the team switcher (shared on every page) N+1.
-        $pivotRole = $team->pivot?->getAttribute('role');
+        $pivot = $team->relationLoaded('pivot') ? $team->getRelation('pivot') : null;
+        $pivotRole = $pivot?->getAttribute('role');
 
-        $role = $pivotRole !== null && $team->pivot->getAttribute('user_id') == $this->getKey()
+        $role = $pivotRole !== null && $pivot->getAttribute('user_id') == $this->getKey()
             ? ($pivotRole instanceof TeamRole ? $pivotRole : TeamRole::tryFrom((string) $pivotRole))
             : $this->teamRole($team);
 

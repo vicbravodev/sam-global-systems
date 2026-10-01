@@ -28,12 +28,6 @@ class OpenEmergencyIncidentOnEventNormalized
         $normalized = $event->normalizedEvent;
         $normalizedEventId = (int) $normalized->id;
 
-        if ($normalized->event_type_id === null) {
-            DB::afterCommit(fn () => SystemLog::skipped('incidents.emergency.fast_path', reason: 'no_event_type', input: ['normalized_event_id' => $normalizedEventId], debug: true));
-
-            return;
-        }
-
         $type = EventType::query()
             ->with('category:id,code')
             ->select(['id', 'code', 'category_id'])

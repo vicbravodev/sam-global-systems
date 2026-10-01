@@ -25,7 +25,7 @@ final class MediaFileVerdicts
     public static function forFiles(Collection $assessments, array $filesToMediaIds): array
     {
         $latestPerMedia = $assessments
-            ->sortByDesc(fn (AIMediaAssessment $a): string => ($a->assessed_at?->toIso8601String() ?? '').'#'.str_pad((string) $a->id, 12, '0', STR_PAD_LEFT))
+            ->sortByDesc(fn (AIMediaAssessment $a): string => $a->assessed_at->toIso8601String().'#'.str_pad((string) $a->id, 12, '0', STR_PAD_LEFT))
             ->unique('event_media_context_id')
             ->keyBy('event_media_context_id');
 

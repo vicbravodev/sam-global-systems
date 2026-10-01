@@ -26,7 +26,9 @@ class ApplyReevaluationOnDecisionMade
     {
         $decision = $event->decision;
 
-        if ($decision->normalized_event_id === null) {
+        // NOT NULL en la tabla, pero DecisionMade puede llevar una decisión
+        // sólo en memoria (ver CreateIncidentOnDecisionMade): atributo crudo.
+        if ($decision->getAttribute('normalized_event_id') === null) {
             return;
         }
 

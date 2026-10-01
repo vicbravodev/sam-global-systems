@@ -163,7 +163,6 @@ class DetectOfflineAssetsJob implements ShouldQueue
 
         return $location?->speed !== null
             && MovementCriterion::isMoving($asset, (float) $location->speed)
-            && $location->recorded_at !== null
             && $location->recorded_at->gte($asset->device_last_connected_at->copy()->subMinutes(self::CONNECTIVITY_FRESHNESS_MINUTES));
     }
 
@@ -224,7 +223,7 @@ class DetectOfflineAssetsJob implements ShouldQueue
                 'silent_minutes' => $silentMinutes,
                 'threshold_minutes' => $threshold['minutes'],
                 // Last known position so geofence context still works.
-                'location' => $location !== null && $location->latitude !== null ? [
+                'location' => $location !== null ? [
                     'latitude' => (float) $location->latitude,
                     'longitude' => (float) $location->longitude,
                 ] : null,
@@ -333,7 +332,7 @@ class DetectOfflineAssetsJob implements ShouldQueue
                     $proofOfLife = $this->lastProofOfLife($event->asset);
                     $lastSeen = $proofOfLife['at'] ?? null;
 
-                    if ($lastSeen === null || $event->occurred_at === null || ! $lastSeen->gt($event->occurred_at)) {
+                    if ($lastSeen === null || ! $lastSeen->gt($event->occurred_at)) {
                         continue;
                     }
 
@@ -377,10 +376,6 @@ class DetectOfflineAssetsJob implements ShouldQueue
      */
     private function episodeLastConnectedAt(NormalizedEvent $event): ?CarbonInterface
     {
-        if ($event->raw_event_id === null) {
-            return null;
-        }
-
         $payload = RawEvent::query()
             ->where('team_id', $event->team_id)
             ->whereKey($event->raw_event_id)

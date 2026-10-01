@@ -21,6 +21,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Team;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Inertia\Inertia;
@@ -102,7 +103,7 @@ class DriverPageController extends Controller
                 'currentAssignment.asset',
                 'riskProfile',
                 // Only phone contacts; the roster shows the primary one first.
-                'contacts' => fn (HasMany $q) => $q
+                'contacts' => fn (Relation $q) => $q
                     ->where('contact_type', ContactType::MobilePhone)
                     ->orderByDesc('is_primary')
                     ->orderBy('id'),
@@ -272,7 +273,7 @@ class DriverPageController extends Controller
             'statuses' => array_map(
                 fn (DriverStatus $status) => [
                     'value' => $status->value,
-                    'label' => self::STATUS_LABELS[$status->value] ?? $status->value,
+                    'label' => self::STATUS_LABELS[$status->value],
                 ],
                 DriverStatus::cases(),
             ),

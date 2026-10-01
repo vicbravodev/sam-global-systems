@@ -70,7 +70,7 @@ final class SafeException
         $frames = [];
 
         foreach (array_slice($e->getTrace(), 0, self::MAX_FRAMES) as $frame) {
-            $call = ($frame['class'] ?? '').($frame['type'] ?? '').($frame['function'] ?? '');
+            $call = ($frame['class'] ?? '').($frame['type'] ?? '').$frame['function'];
             $frames[] = isset($frame['file'])
                 ? self::relative($frame['file']).':'.($frame['line'] ?? 0).' '.$call
                 : '[internal] '.$call;

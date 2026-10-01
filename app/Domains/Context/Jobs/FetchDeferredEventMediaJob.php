@@ -965,7 +965,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
 
         // Capture instant of uploaded media: lets the vision model know how
         // far from the event the frame was taken.
-        if (! empty($item['start_time']) && is_string($item['start_time'])) {
+        if (is_string($item['start_time'] ?? null) && $item['start_time'] !== '') {
             $metadata['start_time'] = $item['start_time'];
         }
 

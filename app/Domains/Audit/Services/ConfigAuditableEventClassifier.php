@@ -17,7 +17,7 @@ use Illuminate\Database\Eloquent\Model;
 class ConfigAuditableEventClassifier implements AuditableEventClassifier
 {
     /**
-     * @param  array<class-string, array{category: string, action: string, tenant_via: string}>  $allowlist
+     * @param  array<class-string, array{category: string, action: string, tenant_via?: string}>  $allowlist
      */
     public function __construct(
         private readonly array $allowlist,

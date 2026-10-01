@@ -23,7 +23,7 @@ class UserNotification extends DatabaseNotification
     protected static function booted(): void
     {
         static::creating(function (self $notification): void {
-            $data = is_array($notification->data) ? $notification->data : [];
+            $data = $notification->data;
 
             // Un aviso de plataforma (detalle técnico para super-admins) nunca
             // es de un tenant: con tenant activo no debe verse, aunque el

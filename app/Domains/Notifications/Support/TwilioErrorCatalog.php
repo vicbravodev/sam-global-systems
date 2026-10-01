@@ -16,7 +16,7 @@ namespace App\Domains\Notifications\Support;
 final class TwilioErrorCatalog
 {
     /**
-     * @var array<string, string> código => explicación para el tenant
+     * @var array<int, string> código => explicación para el tenant (PHP convierte las claves numéricas a int)
      */
     private const PERMANENT = [
         '21211' => 'El número de destino no es válido.',
@@ -40,7 +40,7 @@ final class TwilioErrorCatalog
     ];
 
     /**
-     * @var array<string, string>
+     * @var array<int, string>
      */
     private const TRANSIENT = [
         '30001' => 'La cola de envío de Twilio se saturó.',

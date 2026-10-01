@@ -43,7 +43,7 @@ class FreezeIncidentLocationTrailJob implements ShouldQueue
             ->where('team_id', $this->teamId)
             ->find($this->incidentId);
 
-        if ($incident === null || $incident->asset_id === null || $incident->opened_at === null) {
+        if ($incident === null || $incident->asset_id === null) {
             return;
         }
 

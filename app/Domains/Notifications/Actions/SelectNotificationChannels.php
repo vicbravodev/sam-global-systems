@@ -255,7 +255,7 @@ class SelectNotificationChannels
      */
     private function resolveAllowedTypes(?NotificationPreference $preference, TenantNotificationPolicy $policy): array
     {
-        if ($preference !== null && is_array($preference->allowed_channels_json) && count($preference->allowed_channels_json) > 0) {
+        if ($preference !== null && count($preference->allowed_channels_json) > 0) {
             return [
                 'types' => array_values(array_filter(
                     $preference->allowed_channels_json,

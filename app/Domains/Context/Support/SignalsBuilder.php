@@ -16,19 +16,18 @@ class SignalsBuilder
      * `media_delayed`, `visual_confirmation_possible`) are computed from `media_snapshot_json`
      * which lands in PR #2. In PR #1 they always return false / `no_media_available = true`.
      *
-     * @param  array<string, mixed>  $context  {
+     * Keys read from `$context` (all optional):
+     *  - `geofence_matches` (array<int, array<string, mixed>>): geofence match rows with `category` and `match_type`.
+     *  - `incidents` (array<int, array<string, mixed>>): related incident rows: open ones produced by `GetRelatedOpenIncidents` plus closed prior ones (marked `relation = prior_similar_incident`) produced by `GetPriorSimilarIncidents`.
+     *  - `recent_history` (array<string, mixed>): recent history snapshot counts.
+     *  - `driver` (array<string, mixed>): driver operational context.
+     *  - `asset` (array<string, mixed>): asset snapshot (for camera/operating hours signals).
+     *  - `telemetry` (array<string, mixed>): telemetry snapshot (speed, gps accuracy).
+     *  - `media` (array<int, array<string, mixed>>): media contexts (deferred, expect empty in PR #1).
+     *  - `outside_operating_hours` (bool|null): optional precomputed flag.
+     *  - `event` (array{is_resolved?: bool|null, asset_resolved?: bool|null, asset_unresolved_reason?: string|null}): event facts; `asset_resolved` false = the event has no unit of this tenant.
      *
-     * @var array<int, array<string, mixed>> $geofence_matches  Geofence match rows with `category` and `match_type`.
-     * @var array<int, array<string, mixed>> $incidents  Related incident rows: open ones produced by `GetRelatedOpenIncidents` plus closed prior ones (marked `relation = prior_similar_incident`) produced by `GetPriorSimilarIncidents`.
-     * @var array<string, mixed> $recent_history  Recent history snapshot counts.
-     * @var array<string, mixed> $driver  Driver operational context.
-     * @var array<string, mixed> $asset  Asset snapshot (for camera/operating hours signals).
-     * @var array<string, mixed> $telemetry  Telemetry snapshot (speed, gps accuracy).
-     * @var array<int, array<string, mixed>> $media  Media contexts (deferred, expect empty in PR #1).
-     * @var bool|null $outside_operating_hours  Optional precomputed flag.
-     * @var array{is_resolved?: bool|null, asset_resolved?: bool|null, asset_unresolved_reason?: string|null} $event  Event facts; `asset_resolved` false = the event has no unit of this tenant.
-     *                                                                                                        }
-     *
+     * @param  array<string, mixed>  $context
      * @return array<string, bool|string|null> Boolean flags plus `asset_unresolved_reason` (an `AssetUnresolvedReason` value or null).
      */
     public static function build(array $context): array

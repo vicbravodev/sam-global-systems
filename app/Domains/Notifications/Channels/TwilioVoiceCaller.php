@@ -39,6 +39,6 @@ class TwilioVoiceCaller
             return TwilioSandbox::fetchCall($sid);
         }
 
-        return $this->factory->make()->calls($sid)->fetch();
+        return $this->factory->make()->calls->getContext($sid)->fetch();
     }
 }

@@ -81,11 +81,8 @@ class SdkEventEvaluationAgent implements EventEvaluationAgent
 
     private function persistConversationLink(AIInputContext $context, AgentResponse $response): void
     {
+        // invocationId siempre existe (string tipado del SDK): siempre hay id.
         $conversationId = $response->conversationId ?? $response->invocationId;
-
-        if ($conversationId === null) {
-            return;
-        }
 
         if (! Schema::hasTable('ai_conversation_links')) {
             return;

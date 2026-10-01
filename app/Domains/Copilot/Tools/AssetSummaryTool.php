@@ -40,7 +40,7 @@ final class AssetSummaryTool implements CopilotTool
                 'categoryLabel' => $category?->label(),
                 'typeName' => $asset->assetType?->name,
                 'status' => $asset->status->value,
-                'statusLabel' => CopilotPresenter::STATUS_LABELS[$asset->status->value] ?? $asset->status->value,
+                'statusLabel' => CopilotPresenter::STATUS_LABELS[$asset->status->value],
                 'motion' => $motion,
                 'motionLabel' => CopilotPresenter::motionLabel($motion),
                 'provider' => $asset->provider?->name,

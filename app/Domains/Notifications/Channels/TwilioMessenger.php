@@ -39,6 +39,6 @@ class TwilioMessenger
             return TwilioSandbox::fetchMessage($sid);
         }
 
-        return $this->factory->make()->messages($sid)->fetch();
+        return $this->factory->make()->messages->getContext($sid)->fetch();
     }
 }

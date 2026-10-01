@@ -43,7 +43,7 @@ final class FleetOverviewTool implements CopilotTool
                 'name' => (string) $asset->name,
                 'category' => $asset->assetType?->category->value,
                 'status' => $asset->status->value,
-                'statusLabel' => CopilotPresenter::STATUS_LABELS[$asset->status->value] ?? $asset->status->value,
+                'statusLabel' => CopilotPresenter::STATUS_LABELS[$asset->status->value],
                 'motion' => $motion,
                 'motionLabel' => CopilotPresenter::motionLabel($motion),
                 'driverName' => $asset->currentDriverAssignment?->driver?->full_name,

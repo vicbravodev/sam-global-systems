@@ -72,7 +72,10 @@ final class ShowcaseRandom
     }
 
     /**
-     * @param  array<string, int|float>  $weights  valor => peso
+     * PHP convierte las claves numéricas (`'1'`) en enteros: se aceptan ambas
+     * y el valor elegido siempre se devuelve como string.
+     *
+     * @param  array<int|string, int|float>  $weights  valor => peso
      */
     public function weighted(array $weights): string
     {

@@ -125,10 +125,10 @@ class BillingPageController extends Controller
                         ? (float) $subscription->plan->base_price
                         : null,
                     'currency' => $subscription->plan?->currency,
-                    'billingCycle' => $subscription->billing_cycle?->value ?? (string) $subscription->billing_cycle,
-                    'billingCycleLabel' => $subscription->billing_cycle?->label(),
-                    'status' => $subscription->status?->value ?? (string) $subscription->status,
-                    'statusLabel' => $subscription->status?->label(),
+                    'billingCycle' => $subscription->billing_cycle->value,
+                    'billingCycleLabel' => $subscription->billing_cycle->label(),
+                    'status' => $subscription->status->value,
+                    'statusLabel' => $subscription->status->label(),
                     // Calendar date (Y-m-d): an ISO instant at 00:00 UTC
                     // renders as the previous day in Mexico.
                     'renewsAt' => $subscription->renews_at?->toDateString(),
@@ -145,8 +145,8 @@ class BillingPageController extends Controller
                 ->map(fn (TenantFeature $feature): array => [
                     'key' => $feature->feature_key,
                     'enabled' => (bool) $feature->enabled,
-                    'source' => $feature->source?->value ?? (string) $feature->source,
-                    'sourceLabel' => $feature->source?->label(),
+                    'source' => $feature->source->value,
+                    'sourceLabel' => $feature->source->label(),
                     'limits' => $feature->limits_json,
                 ])
                 ->all(),
@@ -197,8 +197,8 @@ class BillingPageController extends Controller
                     'overageTotal' => (float) $invoice->overage_total,
                     'total' => (float) $invoice->total,
                     'currency' => $invoice->currency,
-                    'status' => $invoice->status?->value ?? (string) $invoice->status,
-                    'statusLabel' => $invoice->status?->label(),
+                    'status' => $invoice->status->value,
+                    'statusLabel' => $invoice->status->label(),
                     'awaitsPayment' => $invoice->awaitsPayment(),
                     'paidAt' => $invoice->paid_at?->toIso8601String(),
                     'hasReceipt' => $invoice->payment_receipt_file_object_id !== null,

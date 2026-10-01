@@ -105,12 +105,12 @@ final class AssetEngineTool implements CopilotTool
         $idle = $this->idle->forAsset($asset, $context->period->from, $context->period->to);
 
         $label = CopilotPresenter::assetLabel($asset);
-        $stats = array_values(array_filter([
+        $stats = [
             ['label' => 'Recorrido', 'value' => $distance !== null ? number_format($distance, 1, '.', ',') : '—', 'unit' => $distance !== null ? 'km' : null, 'hint' => $context->period->label],
             ['label' => 'Vel. máxima', 'value' => $maxSpeed !== null ? round((float) $maxSpeed) : '—', 'unit' => $maxSpeed !== null ? 'km/h' : null, 'tone' => $maxSpeed !== null && $maxSpeed > 100 ? 'high' : null],
             ['label' => 'Vel. promedio', 'value' => $avgSpeed ?? '—', 'unit' => $avgSpeed !== null ? 'km/h' : null, 'hint' => 'en movimiento'],
             ['label' => 'Lecturas > 100 km/h', 'value' => $overSpeed, 'tone' => $overSpeed > 0 ? 'high' : null],
-        ]));
+        ];
 
         $block = [
             'type' => 'telemetry',

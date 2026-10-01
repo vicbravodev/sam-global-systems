@@ -50,7 +50,7 @@ class Team extends Model
     /**
      * Get the team owner.
      */
-    public function owner(): ?Model
+    public function owner(): ?User
     {
         return $this->members()
             ->wherePivot('role', TeamRole::Owner->value)
@@ -60,7 +60,7 @@ class Team extends Model
     /**
      * Get all members of this team.
      *
-     * @return BelongsToMany<Model, $this>
+     * @return BelongsToMany<User, $this, Membership, 'pivot'>
      */
     public function members(): BelongsToMany
     {

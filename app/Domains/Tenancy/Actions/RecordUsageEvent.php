@@ -118,7 +118,6 @@ class RecordUsageEvent
         return match ($meter->reset_period) {
             ResetPeriod::Monthly => $occurredAt->format('Y-m'),
             ResetPeriod::Daily => $occurredAt->format('Y-m-d'),
-            default => $occurredAt->format('Y-m'),
         };
     }
 }

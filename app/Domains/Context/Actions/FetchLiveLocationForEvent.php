@@ -47,7 +47,7 @@ class FetchLiveLocationForEvent
 
         $teamId = $normalizedEvent->team_id;
 
-        if ($teamId === null || $normalizedEvent->asset_id === null) {
+        if ($normalizedEvent->asset_id === null) {
             SystemLog::skipped('context.live_location.skipped', reason: 'no_asset', input: ['normalized_event_id' => $normalizedEvent->id]);
 
             return $noFetch;
@@ -113,7 +113,7 @@ class FetchLiveLocationForEvent
             return ['location' => null, 'position_stale' => true];
         }
 
-        $providerTime = isset($live['recorded_at']) && $live['recorded_at'] !== null;
+        $providerTime = isset($live['recorded_at']);
         $recordedAt = $providerTime ? Carbon::parse($live['recorded_at']) : now();
 
         // Returns the existing row untouched when this fix is already stored.

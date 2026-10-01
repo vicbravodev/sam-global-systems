@@ -57,11 +57,7 @@ class FcmMessenger
 
         $report = $messaging->sendMulticast($message, $tokens);
 
-        $invalid = $report->unknownTokens();
-
-        if (method_exists($report, 'invalidTokens')) {
-            $invalid = array_merge($invalid, $report->invalidTokens());
-        }
+        $invalid = array_merge($report->unknownTokens(), $report->invalidTokens());
 
         return new FcmSendReport(
             successes: $report->successes()->count(),

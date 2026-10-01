@@ -321,15 +321,16 @@ class IncidentInboxController extends Controller
             'eventLinks.normalizedEvent.asset',
         ]);
 
-        $userIds = collect()
-            ->push($incident->currentAssignment?->assigned_to_type === AssigneeType::User
+        $userIds = collect([
+            $incident->currentAssignment?->assigned_to_type === AssigneeType::User
                 ? (int) $incident->currentAssignment->assigned_to_id
-                : null)
+                : null,
+            $incident->claimed_by_user_id,
+        ])
             ->concat($incident->comments->map(fn ($comment) => (int) $comment->user_id))
             ->concat($incident->timeline
                 ->filter(fn ($entry) => $entry->actor_type === TimelineActorType::User)
-                ->map(fn ($entry) => (int) $entry->actor_id))
-            ->push($incident->claimed_by_user_id);
+                ->map(fn ($entry) => (int) $entry->actor_id));
 
         $users = $this->resolveUsers($userIds, (int) $incident->team_id);
 
@@ -683,8 +684,8 @@ class IncidentInboxController extends Controller
                     'subject' => (string) ($notification->subject ?? $notification->notification_type),
                     'createdAt' => $notification->created_at?->toIso8601String(),
                     'deliveries' => (int) $notification->deliveries_count,
-                    'delivered' => (int) $notification->delivered_count,
-                    'failed' => (int) $notification->failed_count,
+                    'delivered' => (int) $notification->getAttribute('delivered_count'),
+                    'failed' => (int) $notification->getAttribute('failed_count'),
                 ])
                 ->values()
                 ->all();
@@ -705,7 +706,7 @@ class IncidentInboxController extends Controller
     /**
      * Batch-load the users referenced by the given ids into an id-keyed map.
      *
-     * @param  Collection<int, int|null>  $ids
+     * @param  Collection<int, covariant int|null>  $ids
      * @return Collection<int, User>
      */
     private function resolveUsers(Collection $ids, int $teamId): Collection

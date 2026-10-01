@@ -50,7 +50,7 @@ final class DriverRankingTool implements CopilotTool
             'employeeCode' => $driver->employee_code,
             'score' => round((float) $driver->riskProfile->risk_score),
             'level' => $driver->riskProfile->risk_level?->value,
-            'levelLabel' => self::LEVEL_LABELS[$driver->riskProfile->risk_level?->value ?? 'low'] ?? null,
+            'levelLabel' => self::LEVEL_LABELS[$driver->riskProfile->risk_level?->value ?? 'low'],
             'incidents' => (int) $driver->riskProfile->incidents_count,
             'harsh' => (int) $driver->riskProfile->harsh_events_count,
             'fatigue' => (int) $driver->riskProfile->fatigue_flags_count,

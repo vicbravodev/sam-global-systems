@@ -10,7 +10,6 @@ use App\Domains\Decisions\Jobs\ReevaluateDecisionJob;
 use App\Domains\Decisions\Jobs\RunDecisionEngineJob;
 use App\Domains\Incidents\Jobs\AutoAssignIncidentJob;
 use App\Domains\Incidents\Jobs\CreateIncidentJob;
-use App\Domains\Incidents\Jobs\UpdateIncidentPriorityJob;
 use App\Domains\Ingestion\Actions\IngestSafetyEvent;
 use App\Domains\Ingestion\Jobs\ProcessRawEventJob;
 use App\Domains\Integrations\Actions\HandleWebhook;
@@ -26,6 +25,7 @@ use Illuminate\Bus\Dispatcher;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Testing\Fakes\QueueFake;
 use RuntimeException;
 use Throwable;
 
@@ -62,7 +62,6 @@ class ShowcaseReplayer
         ReevaluateDecisionJob::class,
         CreateIncidentJob::class,
         AutoAssignIncidentJob::class,
-        UpdateIncidentPriorityJob::class,
         WriteAuditLogJob::class,
     ];
 
@@ -85,7 +84,7 @@ class ShowcaseReplayer
         // Lo que ya capturó la cola falsa (p.ej. durante la siembra) no es del replay.
         $this->alreadyQueued = new \SplObjectStorage;
 
-        foreach (Queue::pushedJobs() as $pushes) {
+        foreach ($this->pushedJobs() as $pushes) {
             foreach ($pushes as $push) {
                 if (is_object($push['job'])) {
                     $this->alreadyQueued->attach($push['job']);
@@ -222,6 +221,22 @@ class ShowcaseReplayer
     }
 
     /**
+     * Jobs capturados por la cola falsa que instala `ShowcaseSandbox::enter()`.
+     *
+     * @return array<string, array<int, array{job: mixed, queue: mixed, data: mixed}>>
+     */
+    private function pushedJobs(): array
+    {
+        $queue = Queue::getFacadeRoot();
+
+        if (! $queue instanceof QueueFake) {
+            throw new RuntimeException('El replay del showcase necesita la cola falsa del sandbox (ShowcaseSandbox::enter()).');
+        }
+
+        return $queue->pushedJobs();
+    }
+
+    /**
      * Ejecuta en síncrono los jobs del pipeline que la cola falsa capturó,
      * hasta que no aparezcan nuevos.
      *
@@ -236,7 +251,7 @@ class ShowcaseReplayer
         do {
             $progress = false;
 
-            foreach (Queue::pushedJobs() as $pushes) {
+            foreach ($this->pushedJobs() as $pushes) {
                 foreach ($pushes as $push) {
                     $job = $push['job'];
 

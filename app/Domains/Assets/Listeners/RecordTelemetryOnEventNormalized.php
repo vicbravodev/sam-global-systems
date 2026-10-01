@@ -58,9 +58,7 @@ class RecordTelemetryOnEventNormalized
             type: TelemetryType::Speed,
             value: $speed,
             unit: 'km/h',
-            recordedAt: $normalizedEvent->occurred_at !== null
-                ? Carbon::instance($normalizedEvent->occurred_at)
-                : null,
+            recordedAt: Carbon::instance($normalizedEvent->occurred_at),
             sourceEventId: (string) $normalizedEvent->id,
         );
     }

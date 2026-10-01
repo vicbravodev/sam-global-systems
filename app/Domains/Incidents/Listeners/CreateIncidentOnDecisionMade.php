@@ -3,6 +3,7 @@
 namespace App\Domains\Incidents\Listeners;
 
 use App\Domains\Decisions\Enums\DecisionOutcomeCode;
+use App\Domains\Decisions\Enums\DecisionPriority;
 use App\Domains\Decisions\Events\DecisionMade;
 use App\Domains\Incidents\Enums\IncidentPriorityCode;
 use App\Domains\Incidents\Jobs\CreateIncidentJob;
@@ -43,11 +44,20 @@ class CreateIncidentOnDecisionMade
             return;
         }
 
-        if ($decision->normalized_event_id === null) {
+        // `normalized_event_id` y `priority_level` son NOT NULL en la tabla,
+        // pero DecisionMade puede llevar una decisión que sólo existe en
+        // memoria (construida antes de persistirla): se leen como atributo
+        // crudo para que la guarda contra null sea real y no código muerto.
+        $rawNormalizedEventId = $decision->getAttribute('normalized_event_id');
+
+        if ($rawNormalizedEventId === null) {
             DB::afterCommit(fn () => SystemLog::skipped('incidents.creation.skipped', reason: 'no_normalized_event', input: ['decision_id' => $decisionId], calc: ['outcome_code' => $outcome->value]));
 
             return;
         }
+
+        $normalizedEventId = (int) $rawNormalizedEventId;
+        $decisionPriority = $decision->getAttribute('priority_level');
 
         $context = match ($outcome) {
             DecisionOutcomeCode::RequireHumanReview => [
@@ -68,14 +78,13 @@ class CreateIncidentOnDecisionMade
             ],
             default => array_filter([
                 'decision_id' => $decision->id,
-                'priority_code' => $decision->priority_level?->value,
+                'priority_code' => $decisionPriority instanceof DecisionPriority ? $decisionPriority->value : null,
             ], static fn ($v): bool => $v !== null),
         };
 
-        CreateIncidentJob::dispatch((int) $decision->normalized_event_id, $context)
+        CreateIncidentJob::dispatch($normalizedEventId, $context)
             ->afterCommit();
 
-        $normalizedEventId = (int) $decision->normalized_event_id;
         $priorityCode = LoggableCode::guard($context['priority_code'] ?? null);
         $prioritySource = match ($outcome) {
             DecisionOutcomeCode::RequireHumanReview => 'review_default_medium',

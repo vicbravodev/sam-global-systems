@@ -23,22 +23,30 @@ class DbAuditLogQuery implements AuditLogQuery
             ->whereBetween('occurred_at', [$from, $to])
             ->orderBy('occurred_at')
             ->get()
-            ->map(fn (AuditLog $log): array => [
-                'id' => $log->id,
-                'team_id' => $log->team_id,
-                'actor_type' => $log->actor_type?->value,
-                'actor_id' => $log->actor_id,
-                'action' => $log->action,
-                'category' => $log->category?->value,
-                'entity_type' => $log->entity_type,
-                'entity_id' => $log->entity_id,
-                'source_type' => $log->source_type,
-                'source_reference_id' => $log->source_reference_id,
-                'signature' => $log->signature,
-                'summary' => $log->summary,
-                'metadata_json' => $log->metadata_json,
-                'occurred_at' => $log->occurred_at?->toIso8601String(),
-            ])
+            ->map(fn (AuditLog $log): array => $this->toRow($log))
             ->values());
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function toRow(AuditLog $log): array
+    {
+        return [
+            'id' => $log->id,
+            'team_id' => $log->team_id,
+            'actor_type' => $log->actor_type?->value,
+            'actor_id' => $log->actor_id,
+            'action' => $log->action,
+            'category' => $log->category?->value,
+            'entity_type' => $log->entity_type,
+            'entity_id' => $log->entity_id,
+            'source_type' => $log->source_type,
+            'source_reference_id' => $log->source_reference_id,
+            'signature' => $log->signature,
+            'summary' => $log->summary,
+            'metadata_json' => $log->metadata_json,
+            'occurred_at' => $log->occurred_at?->toIso8601String(),
+        ];
     }
 }

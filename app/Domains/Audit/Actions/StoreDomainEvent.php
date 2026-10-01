@@ -3,8 +3,8 @@
 namespace App\Domains\Audit\Actions;
 
 use App\Domains\Audit\Models\DomainEventLog;
+use Carbon\CarbonImmutable;
 use DateTimeInterface;
-use Illuminate\Support\Carbon;
 
 /**
  * Persists a single domain event into `domain_event_logs`. Called by the
@@ -31,7 +31,7 @@ class StoreDomainEvent
         $log->aggregate_type = $aggregateType;
         $log->aggregate_id = $aggregateId;
         $log->payload_json = $payloadJson;
-        $log->occurred_at = $occurredAt ? Carbon::instance($occurredAt) : Carbon::now();
+        $log->occurred_at = $occurredAt ? CarbonImmutable::instance($occurredAt) : CarbonImmutable::now();
         $log->correlation_id = $correlationId;
         $log->causation_id = $causationId;
         $log->save();

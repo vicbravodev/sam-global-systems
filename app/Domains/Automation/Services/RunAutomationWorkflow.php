@@ -2,7 +2,6 @@
 
 namespace App\Domains\Automation\Services;
 
-use App\Contracts\TenantConfig\TenantAutomationPoliciesResolver;
 use App\Domains\Automation\Actions\ResolveActionTemplate;
 use App\Domains\Automation\Enums\ActionExecutionSourceType;
 use App\Domains\Automation\Enums\ActionExecutionStatus;
@@ -25,7 +24,6 @@ class RunAutomationWorkflow
 {
     public function __construct(
         private ResolveActionTemplate $resolveActionTemplate,
-        private TenantAutomationPoliciesResolver $policiesResolver,
         private RecordUsageEvent $recordUsageEvent,
     ) {}
 

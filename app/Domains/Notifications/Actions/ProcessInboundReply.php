@@ -45,8 +45,23 @@ class ProcessInboundReply
             return null;
         }
 
-        $keyword = strtoupper($matches[1]);
-        $code = strtoupper($matches[2]);
+        // El patrón es /iu: el plegado Unicode deja pasar variantes como
+        // `ſ` (U+017F) por `S`. mb_strtoupper las devuelve a ASCII y lo que
+        // aun así no sea SI|NO|ESC se ignora como si no hubiera palabra clave.
+        $keyword = match (mb_strtoupper($matches[1])) {
+            'SI' => 'SI',
+            'NO' => 'NO',
+            'ESC' => 'ESC',
+            default => null,
+        };
+
+        if ($keyword === null) {
+            SystemLog::skipped('notifications.inbound_reply.ignored', reason: 'no_keyword');
+
+            return null;
+        }
+
+        $code = mb_strtoupper($matches[2]);
 
         return DB::transaction(function () use ($keyword, $code, $fromAddress, $body) {
             // Lookup de entrada: el webhook llega sin sesión y el tenant sale
