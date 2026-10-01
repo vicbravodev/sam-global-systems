@@ -10,7 +10,8 @@ return new class extends Migration
     {
         Schema::create('tenant_brandings', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('team_id')->constrained()->cascadeOnDelete()->unique();
+            // El índice único de team_id lo crea 2026_09_27_120000_add_unique_team_index_to_tenant_brandings_table.
+            $table->foreignId('team_id')->constrained()->cascadeOnDelete();
             $table->string('logo_url')->nullable();
             $table->string('primary_color', 7)->nullable();
             $table->string('secondary_color', 7)->nullable();
