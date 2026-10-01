@@ -94,8 +94,10 @@ final class AutomaticSystemLog
         self::listen(JobFailed::class, static function (JobFailed $event): void {
             self::$inTelematicsJob = false;
             $reason = match (true) {
-                $event->exception instanceof MaxAttemptsExceededException => 'max_attempts_exceeded',
+                // TimeoutExceededException hereda de MaxAttemptsExceededException:
+                // va primero o un timeout se reportaría como max_attempts_exceeded.
                 $event->exception instanceof TimeoutExceededException => 'timeout',
+                $event->exception instanceof MaxAttemptsExceededException => 'max_attempts_exceeded',
                 default => 'exception',
             };
 

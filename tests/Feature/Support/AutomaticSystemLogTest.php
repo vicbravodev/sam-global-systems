@@ -14,7 +14,11 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Request;
+use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\Jobs\SyncJob;
+use Illuminate\Queue\MaxAttemptsExceededException;
+use Illuminate\Queue\TimeoutExceededException;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 use Tests\Concerns\AssertsSystemLog;
@@ -188,6 +192,28 @@ class AutomaticSystemLogTest extends TestCase
         AutomaticSystemLogTelematicsHttpJob::dispatch()->onQueue('telematics');
 
         $this->artisan('queue:work', ['connection' => 'database', '--queue' => 'telematics', '--once' => true, '--tries' => 1])->assertSuccessful();
+    }
+
+    public function test_a_timed_out_job_is_logged_as_timeout_not_as_max_attempts(): void
+    {
+        // TimeoutExceededException hereda de MaxAttemptsExceededException: el
+        // orden del match decide si un timeout se reporta como tal.
+        $job = new SyncJob(app(), json_encode(['displayName' => AutomaticSystemLogOkJob::class, 'job' => 'Illuminate\\Queue\\CallQueuedHandler@call']), 'sync', 'default');
+
+        event(new JobFailed('sync', $job, TimeoutExceededException::forJob($job)));
+
+        $this->assertSystemLogged('queue.job.failed', fn (array $c) => $c['reason'] === 'timeout');
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_job_out_of_attempts_is_logged_as_max_attempts_exceeded(): void
+    {
+        $job = new SyncJob(app(), json_encode(['displayName' => AutomaticSystemLogOkJob::class, 'job' => 'Illuminate\\Queue\\CallQueuedHandler@call']), 'sync', 'default');
+
+        event(new JobFailed('sync', $job, MaxAttemptsExceededException::forJob($job)));
+
+        $this->assertSystemLogged('queue.job.failed', fn (array $c) => $c['reason'] === 'max_attempts_exceeded');
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_a_retried_attempt_logs_its_duration_and_frees_the_start_time(): void
