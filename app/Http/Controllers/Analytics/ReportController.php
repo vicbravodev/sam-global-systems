@@ -33,6 +33,9 @@ class ReportController extends Controller
     {
         $this->authorize('generate', $report);
 
+        /** @var array{filters?: array<string, mixed>|null} $validated */
+        $validated = $request->validate(['filters' => ['nullable', 'array']]);
+
         $format = ReportOutputFormat::tryFrom((string) $request->input('format', 'json'))
             ?? ReportOutputFormat::Json;
 
@@ -42,7 +45,7 @@ class ReportController extends Controller
             outputFormat: $format->value,
             requestedByType: ReportRequestedByType::User->value,
             requestedById: $request->user()?->id,
-            filters: $request->input('filters'),
+            filters: $validated['filters'] ?? null,
         );
 
         return response()->json([
