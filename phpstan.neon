@@ -1,0 +1,21 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+    - phpstan-baseline.neon
+
+parameters:
+    level: 5
+    paths:
+        - app
+        - routes
+        - config
+        - database
+    tmpDir: storage/framework/cache/phpstan
+
+    # Los modelos declaran `@return array<string, string>` en casts(); sin esto
+    # Larastan ignora los casts y ve fechas/enums como string.
+    parseModelCastsMethod: true
+
+    ignoreErrors:
+        # Larastan tipa las relaciones BelongsTo como no nulas aunque la fila
+        # relacionada pueda no existir; el `?->` defensivo es correcto aquí.
+        - identifier: nullsafe.neverNull
