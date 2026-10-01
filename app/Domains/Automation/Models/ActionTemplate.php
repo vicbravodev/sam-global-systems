@@ -42,6 +42,7 @@ class ActionTemplate extends Model
      * Templates accessible to a tenant: tenant-owned plus system-wide (team_id = null).
      *
      * @param  Builder<ActionTemplate>  $query
+     * @return Builder<ActionTemplate>
      */
     public function scopeAvailableToTeam(Builder $query, int $teamId): Builder
     {

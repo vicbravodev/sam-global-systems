@@ -70,6 +70,9 @@ final class ShowcaseEventCatalog
         return $weights;
     }
 
+    /**
+     * @param  array<int, string>  $skipCategories  códigos de categoría que no pasan por IA
+     */
     public static function scenarioFor(int $eventId, string $typeCode, string $categoryCode, array $skipCategories): EventScenario
     {
         $r = ShowcaseRandom::forKey("scenario:{$eventId}:{$typeCode}");

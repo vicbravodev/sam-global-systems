@@ -60,6 +60,7 @@ class RefreshContextMediaSnapshot
     }
 
     /**
+     * @param  Collection<int, EventMediaContext>  $media
      * @return array<int, array<string, mixed>>
      */
     private function serializeMedia(Collection $media): array

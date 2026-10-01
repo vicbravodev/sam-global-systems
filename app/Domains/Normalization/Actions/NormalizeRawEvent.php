@@ -232,6 +232,9 @@ class NormalizeRawEvent
         return $normalizedEvent;
     }
 
+    /**
+     * @param  array<string, mixed>  $payload
+     */
     private function createNormalizedEvent(
         RawEvent $rawEvent,
         EventMappingRule $rule,
@@ -421,6 +424,7 @@ class NormalizeRawEvent
      * payload, an id the tenant does not know (or whose asset it deleted), or
      * a reference owned by another tenant.
      *
+     * @param  array<string, mixed>  $payload
      * @return array{asset_id: int|null, unresolved_reason: AssetUnresolvedReason|null}
      */
     private function resolveAssetId(?int $providerId, ?int $teamId, array $payload, int $rawEventId): array
@@ -546,6 +550,8 @@ class NormalizeRawEvent
      * Priority chain:
      * 1. payload.driver.id (both formats at root)
      * 2. payload.data.conditions.0.details.panicButton.driver.id (AlertIncident nested)
+     *
+     * @param  array<string, mixed>  $payload
      */
     private function resolveDriverId(?int $providerId, ?int $teamId, array $payload, int $rawEventId): ?int
     {
@@ -592,7 +598,7 @@ class NormalizeRawEvent
      * @param  array<string, mixed>  $payload
      * @return array<string, mixed>
      */
-    private function buildNormalizedPayload(RawEvent $rawEvent, $eventType, EventSeverity $severity, array $payload): array
+    private function buildNormalizedPayload(RawEvent $rawEvent, EventType $eventType, EventSeverity $severity, array $payload): array
     {
         return [
             'event_type_code' => $eventType->code,

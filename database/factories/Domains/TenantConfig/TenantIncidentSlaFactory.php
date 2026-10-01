@@ -7,6 +7,9 @@ use App\Domains\TenantConfig\Models\TenantIncidentSla;
 use App\Models\Team;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
+/**
+ * @extends Factory<TenantIncidentSla>
+ */
 class TenantIncidentSlaFactory extends Factory
 {
     protected $model = TenantIncidentSla::class;

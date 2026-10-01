@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class TenantIncidentSla extends Model
 {
+    /** @use HasFactory<TenantIncidentSlaFactory> */
     use BelongsToTenant, HasFactory;
 
     protected $fillable = [

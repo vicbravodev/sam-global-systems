@@ -9,6 +9,9 @@ use App\Domains\Drivers\Models\DriverAssignment;
 
 class AssignDriverToAsset
 {
+    /**
+     * @param  array<string, mixed>|null  $metadata
+     */
     public function execute(
         int $teamId,
         int $driverId,

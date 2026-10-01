@@ -34,6 +34,9 @@ class GenerateReport
         private ReportSnapshotXlsxExport $xlsxExport,
     ) {}
 
+    /**
+     * @param  array<string, mixed>|null  $filters
+     */
     public function execute(
         ReportDefinition $definition,
         int $teamId,

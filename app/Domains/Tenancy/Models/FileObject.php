@@ -33,6 +33,11 @@ class FileObject extends Model
         'size_bytes' => 'integer',
     ];
 
+    /**
+     * Dueño polimórfico del archivo (p. ej. `EventMediaContext`, `ReportExecution`); puede no tener.
+     *
+     * @return MorphTo<Model, $this>
+     */
     public function fileable(): MorphTo
     {
         return $this->morphTo();

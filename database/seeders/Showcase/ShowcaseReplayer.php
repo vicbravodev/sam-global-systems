@@ -68,6 +68,7 @@ class ShowcaseReplayer
     /** @var array<int, string> */
     private array $failures = [];
 
+    /** @var \SplObjectStorage<object, null> */
     private \SplObjectStorage $alreadyQueued;
 
     /**

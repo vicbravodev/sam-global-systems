@@ -24,6 +24,9 @@ class GenerateReportJob implements ShouldQueue
     /** @var array<int, int> */
     public array $backoff = [10, 30, 90];
 
+    /**
+     * @param  array<string, mixed>|null  $filters
+     */
     public function __construct(
         public int $reportDefinitionId,
         public int $teamId,

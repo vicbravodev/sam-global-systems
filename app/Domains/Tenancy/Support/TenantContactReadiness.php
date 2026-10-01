@@ -32,6 +32,9 @@ final class TenantContactReadiness
         return ['ready' => $phone && $email, 'phone' => $phone, 'email' => $email];
     }
 
+    /**
+     * @param  array{ready: bool, phone: bool, email: bool}  $readiness  lo que devuelve `for()`
+     */
     public static function message(array $readiness): string
     {
         $missing = array_keys(array_filter([

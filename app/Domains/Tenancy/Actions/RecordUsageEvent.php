@@ -16,6 +16,9 @@ use Illuminate\Support\Facades\DB;
 
 class RecordUsageEvent
 {
+    /**
+     * @param  array<string, mixed>|null  $metadata  contexto libre que se guarda en `metadata_json`
+     */
     public function execute(
         int $teamId,
         string $meterCode,
@@ -31,6 +34,7 @@ class RecordUsageEvent
      * Igual que `execute()`, pero dice si ESTE llamado insertó la fila
      * (`insertOrIgnore > 0`) o si la `event_key` ya existía.
      *
+     * @param  array<string, mixed>|null  $metadata  contexto libre que se guarda en `metadata_json`
      * @param  bool  $debug  sólo baja a `debug` la línea `billing.usage.duplicate_ignored` (llamadores para los que repetir es rutina, como el cierre diario)
      */
     public function record(

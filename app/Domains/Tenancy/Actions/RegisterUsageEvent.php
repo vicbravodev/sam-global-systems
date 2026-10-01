@@ -10,6 +10,9 @@ class RegisterUsageEvent
         private RecordUsageEvent $recordUsageEvent,
     ) {}
 
+    /**
+     * @param  array<string, mixed>|null  $metadata
+     */
     public function execute(
         int $teamId,
         string $meterCode,

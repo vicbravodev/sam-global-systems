@@ -15,6 +15,7 @@ use App\Domains\Tenancy\Models\UsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
 use App\Support\TenantContext;
 use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 
@@ -192,7 +193,10 @@ class CalculateKPI
         };
     }
 
-    private function computeRate($query, CarbonInterface $from, CarbonInterface $to): float
+    /**
+     * @param  Builder<UsageEvent>  $query
+     */
+    private function computeRate(Builder $query, CarbonInterface $from, CarbonInterface $to): float
     {
         $total = (float) $query->sum('quantity');
         $hours = max(1, $from->diffInHours($to));
