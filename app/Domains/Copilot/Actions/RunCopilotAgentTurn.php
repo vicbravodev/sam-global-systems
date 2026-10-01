@@ -67,16 +67,24 @@ class RunCopilotAgentTurn
     public function prompt(CopilotTurn $turn): string
     {
         $hints = [];
+        $assetId = $turn->hints['asset_id'] ?? $turn->previousAssetId;
 
-        if ($assetId = $turn->hints['asset_id'] ?? $turn->previousAssetId) {
+        // Un asset_id 0 (request->integer de un valor no numérico) no es una unidad.
+        if ($assetId !== null && $assetId !== 0) {
             $code = Asset::query()->where('team_id', $turn->scope->teamId)->whereKey($assetId)->value('code');
-            $hints[] = $code ? "Unidad en contexto: {$code}." : null;
+
+            // "0" es un código de unidad válido: sólo null/'' significan "sin código".
+            if (is_string($code) && $code !== '') {
+                $hints[] = "Unidad en contexto: {$code}.";
+            }
         }
 
-        if (! empty($turn->hints['intent']) && ($intent = CopilotIntent::tryFrom((string) $turn->hints['intent']))) {
+        $intent = isset($turn->hints['intent']) ? CopilotIntent::tryFrom($turn->hints['intent']) : null;
+
+        if ($intent !== null) {
             $hints[] = "El usuario eligió: {$intent->label()}.";
         }
 
-        return trim($turn->question->content."\n\n".implode(' ', array_filter($hints)));
+        return trim($turn->question->content."\n\n".implode(' ', $hints));
     }
 }

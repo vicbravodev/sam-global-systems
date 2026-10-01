@@ -11,6 +11,7 @@ use App\Domains\Copilot\Support\AssetResolver;
 use App\Domains\Copilot\Support\CopilotTurnCollector;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Illuminate\JsonSchema\Types\Type;
 use Illuminate\Validation\Rule;
 use Stringable;
 
@@ -61,7 +62,7 @@ class DelegatingCopilotTool extends SdkCopilotTool
     }
 
     /**
-     * @return array<string, mixed>
+     * @return array<string, Type>
      */
     public function schema(JsonSchema $schema): array
     {
@@ -93,8 +94,11 @@ class DelegatingCopilotTool extends SdkCopilotTool
     {
         $asset = null;
 
-        if ($this->acceptsAssetCode() && ! empty($args['asset_code'])) {
-            $asset = $this->assets->resolveByCode($this->scope->teamId, (string) $args['asset_code']) ?? throw new CopilotAssetNotFound;
+        $assetCode = $args['asset_code'] ?? null;
+
+        // "0" es un código de unidad válido: sólo null/'' significan "sin unidad".
+        if ($this->acceptsAssetCode() && is_string($assetCode) && $assetCode !== '') {
+            $asset = $this->assets->resolveByCode($this->scope->teamId, $assetCode) ?? throw new CopilotAssetNotFound;
         }
 
         $args['__asset_id'] = $asset?->id;
