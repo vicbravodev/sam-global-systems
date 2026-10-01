@@ -498,7 +498,7 @@ class DriverPageController extends Controller
      */
     private function assignments(Driver $driver): array
     {
-        return DriverAssignment::query()
+        return array_values(DriverAssignment::query()
             ->with('asset')
             ->where('driver_id', $driver->id)
             ->orderByDesc('started_at')
@@ -518,7 +518,7 @@ class DriverPageController extends Controller
                 'endedAt' => $assignment->ended_at?->toIso8601String(),
                 'isCurrent' => $assignment->ended_at === null,
             ])
-            ->all();
+            ->all());
     }
 
     /**
@@ -528,7 +528,7 @@ class DriverPageController extends Controller
      */
     private function statusLog(Driver $driver): array
     {
-        return $driver->statusLogs()
+        return array_values($driver->statusLogs()
             ->orderByDesc('effective_from')
             ->orderByDesc('id')
             ->limit(self::STATUS_LOG_LIMIT)
@@ -541,7 +541,7 @@ class DriverPageController extends Controller
                 'effectiveFrom' => $log->effective_from?->toIso8601String(),
                 'effectiveTo' => $log->effective_to?->toIso8601String(),
             ])
-            ->all();
+            ->all());
     }
 
     /**
@@ -552,7 +552,7 @@ class DriverPageController extends Controller
      */
     private function recentEvents(Driver $driver): array
     {
-        return NormalizedEvent::query()
+        return array_values(NormalizedEvent::query()
             ->where('team_id', $driver->team_id)
             ->where('driver_id', $driver->id)
             ->with(['eventType', 'eventCategory', 'eventSeverity', 'asset'])
@@ -571,7 +571,7 @@ class DriverPageController extends Controller
                     'name' => (string) $event->asset->name,
                 ] : null,
             ])
-            ->all();
+            ->all());
     }
 
     /**
@@ -582,7 +582,7 @@ class DriverPageController extends Controller
      */
     private function incidents(Driver $driver): array
     {
-        return Incident::query()
+        return array_values(Incident::query()
             ->where('team_id', $driver->team_id)
             ->where('driver_id', $driver->id)
             ->with(['status', 'priority', 'type', 'currentAssignment'])
@@ -605,7 +605,7 @@ class DriverPageController extends Controller
                 'type' => $incident->type?->name,
                 'openedAt' => $incident->opened_at?->toIso8601String(),
             ])
-            ->all();
+            ->all());
     }
 
     /**

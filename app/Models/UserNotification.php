@@ -13,6 +13,8 @@ use Illuminate\Notifications\DatabaseNotification;
  * un usuario sólo ve los avisos de ese tenant. Los avisos con audiencia
  * `platform` se guardan siempre sin tenant (`team_id` null) y sólo se ven sin
  * tenant activo (consola de super-admin).
+ *
+ * @property int|null $team_id
  */
 class UserNotification extends DatabaseNotification
 {

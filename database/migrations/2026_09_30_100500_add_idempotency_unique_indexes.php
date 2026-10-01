@@ -29,7 +29,7 @@ return new class extends Migration
     /**
      * name => [table, columns, nulls not distinct (pgsql only), partial WHERE]
      *
-     * @return array<string, array{0: string, 1: list<string>, 2: bool, 3?: string}>
+     * @return array<string, array{0: string, 1: list<string>, 2: bool, 3?: literal-string}>
      */
     private function indexes(): array
     {
@@ -57,8 +57,13 @@ return new class extends Migration
             [$table, $columns, $nullsNotDistinct] = $index;
             $where = $index[3] ?? null;
 
-            $duplicates = DB::table($table)
-                ->when($where !== null, fn ($query) => $query->whereRaw($where))
+            $query = DB::table($table);
+
+            if ($where !== null) {
+                $query->whereRaw($where);
+            }
+
+            $duplicates = $query
                 ->select($columns)
                 ->groupBy($columns)
                 ->havingRaw('COUNT(*) > 1')

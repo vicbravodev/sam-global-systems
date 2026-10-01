@@ -153,7 +153,7 @@ class AnalyticsPageController extends Controller
         // Platform catalog (no team_id): human names for the seeded metrics.
         $names = MetricDefinition::query()->pluck('name', 'code');
 
-        return $byCode
+        return array_values($byCode
             ->map(function (Collection $daily, string $code) use ($names, $byCode, $fromDate): ?array {
                 $current = $daily->filter(fn (KpiRecord $row, string $date): bool => $date >= $fromDate);
                 $previous = $daily->filter(fn (KpiRecord $row, string $date): bool => $date < $fromDate);
@@ -192,8 +192,7 @@ class AnalyticsPageController extends Controller
             })
             ->filter()
             ->sortBy(fn (array $metric): string => array_search($metric['group'], self::GROUPS, true).'|'.$metric['code'])
-            ->values()
-            ->all();
+            ->all());
     }
 
     /**

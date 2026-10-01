@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Teams;
 
 use App\Enums\TeamRole;
+use App\Models\Team;
 use App\Models\User;
 use App\Rules\UniqueTeamInvitation;
 use Closure;
@@ -36,7 +37,7 @@ class CreateTeamInvitationRequest extends FormRequest
                 'email:rfc',
                 'regex:/^[^@\s]+@[^@\s]+\.[a-zA-Z]{2,}$/',
                 'max:255',
-                new UniqueTeamInvitation($this->route('team')),
+                new UniqueTeamInvitation($this->team()),
             ],
             // Nunca `owner`: la propiedad sólo la reasigna el super-admin. Y
             // nadie concede un rol por encima del suyo.
@@ -46,7 +47,7 @@ class CreateTeamInvitationRequest extends FormRequest
                 Rule::in(array_column(TeamRole::assignable(), 'value')),
                 function (string $attribute, mixed $value, Closure $fail): void {
                     $requested = TeamRole::tryFrom((string) $value);
-                    $own = $this->user()?->teamRole($this->route('team'));
+                    $own = $this->user()?->teamRole($this->team());
 
                     if ($requested !== null && ($own === null || ! $own->isAtLeast($requested))) {
                         $fail('No puedes invitar con un rol superior al tuyo.');
@@ -64,5 +65,17 @@ class CreateTeamInvitationRequest extends FormRequest
         return [
             'email.regex' => 'Ingresa un correo electrónico válido con dominio completo (por ejemplo, «nombre@empresa.com»).',
         ];
+    }
+
+    /**
+     * El equipo del binding implícito `{team}` (ya resuelto al validar).
+     */
+    private function team(): Team
+    {
+        $team = $this->route('team');
+
+        abort_unless($team instanceof Team, 404);
+
+        return $team;
     }
 }

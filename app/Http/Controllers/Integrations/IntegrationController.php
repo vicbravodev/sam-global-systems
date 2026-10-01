@@ -36,7 +36,7 @@ class IntegrationController extends Controller
     {
         $this->authorize('create', TenantIntegration::class);
 
-        $provider = IntegrationProvider::findOrFail($request->validated('provider_id'));
+        $provider = IntegrationProvider::query()->findOrFail($request->integer('provider_id'));
 
         abort_if(
             $provider->isDeprecated(),

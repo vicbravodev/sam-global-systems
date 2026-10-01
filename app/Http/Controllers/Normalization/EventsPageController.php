@@ -465,7 +465,7 @@ class EventsPageController extends Controller
     {
         $storage = app(ObjectStorage::class);
 
-        return EventMediaContext::query()
+        return array_values(EventMediaContext::query()
             ->where('normalized_event_id', $event->id)
             ->orderByDesc('id')
             ->get()
@@ -490,7 +490,7 @@ class EventsPageController extends Controller
                     'durationSeconds' => $media->duration_seconds !== null ? (int) $media->duration_seconds : null,
                 ];
             })
-            ->all();
+            ->all());
     }
 
     /**

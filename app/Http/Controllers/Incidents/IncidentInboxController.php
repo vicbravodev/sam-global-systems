@@ -206,6 +206,7 @@ class IncidentInboxController extends Controller
      * across PostgreSQL (production) and SQLite (tests).
      *
      * @param  Builder<Incident>  $query
+     * @return literal-string
      */
     private function hourExpression(Builder $query): string
     {
@@ -229,17 +230,18 @@ class IncidentInboxController extends Controller
             ->distinct()
             ->orderBy('integration_providers.name')
             ->pluck('integration_providers.name')
+            ->map(fn (mixed $name): string => (string) $name)
             ->all();
 
         return [
-            'severities' => IncidentPriority::query()
+            'severities' => array_values(IncidentPriority::query()
                 ->orderBy('id')
                 ->get(['code', 'name'])
                 ->map(fn (IncidentPriority $p) => ['value' => (string) $p->code, 'label' => (string) $p->name])
-                ->all(),
+                ->all()),
             // Real catalog statuses, labeled with the same Spanish strings the
             // rows render so the operator can always filter what they see (B5).
-            'statuses' => IncidentStatus::query()
+            'statuses' => array_values(IncidentStatus::query()
                 ->orderBy('sort_order')
                 ->orderBy('id')
                 ->get(['code', 'name'])
@@ -247,8 +249,8 @@ class IncidentInboxController extends Controller
                     'value' => (string) $s->code,
                     'label' => IncidentStatusPresenter::filterLabel((string) $s->code, (string) $s->name),
                 ])
-                ->all(),
-            'providers' => $providers,
+                ->all()),
+            'providers' => array_values($providers),
             'shifts' => [
                 ['value' => 'morning', 'label' => 'Mañana (06–14)'],
                 ['value' => 'afternoon', 'label' => 'Tarde (14–22)'],
@@ -264,11 +266,11 @@ class IncidentInboxController extends Controller
      */
     private function members(Team $current_team): array
     {
-        return $current_team->members()
+        return array_values($current_team->members()
             ->orderBy('users.name')
             ->get(['users.id', 'users.name'])
             ->map(fn (User $user) => ['id' => (int) $user->id, 'name' => (string) $user->name])
-            ->all();
+            ->all());
     }
 
     /**
@@ -279,16 +281,16 @@ class IncidentInboxController extends Controller
     private function reclassifyOptions(): array
     {
         return [
-            'types' => IncidentType::query()
+            'types' => array_values(IncidentType::query()
                 ->orderBy('name')
                 ->get(['id', 'code', 'name'])
                 ->map(fn (IncidentType $t) => ['id' => (int) $t->id, 'code' => (string) $t->code, 'name' => (string) $t->name])
-                ->all(),
-            'priorities' => IncidentPriority::query()
+                ->all()),
+            'priorities' => array_values(IncidentPriority::query()
                 ->orderBy('id')
                 ->get(['id', 'code', 'name'])
                 ->map(fn (IncidentPriority $p) => ['id' => (int) $p->id, 'code' => (string) $p->code, 'name' => (string) $p->name])
-                ->all(),
+                ->all()),
         ];
     }
 
@@ -488,7 +490,7 @@ class IncidentInboxController extends Controller
             ->where('normalized_event_id', $incident->related_event_id)
             ->select('id');
 
-        return AIMediaAssessment::query()
+        return array_values(AIMediaAssessment::query()
             ->whereIn('evaluation_id', $evaluationIds)
             ->orderByDesc('assessed_at')
             ->get()
@@ -502,7 +504,7 @@ class IncidentInboxController extends Controller
                 'modelUsed' => $assessment->model_used,
                 'assessedAt' => $assessment->assessed_at?->toIso8601String(),
             ])
-            ->all();
+            ->all());
     }
 
     /**
@@ -516,7 +518,7 @@ class IncidentInboxController extends Controller
             return [];
         }
 
-        return EventMediaRequest::query()
+        return array_values(EventMediaRequest::query()
             ->where('normalized_event_id', $incident->related_event_id)
             ->orderByDesc('id')
             ->limit(5)
@@ -527,7 +529,7 @@ class IncidentInboxController extends Controller
                 'requestType' => $request->request_type?->value,
                 'requestedAt' => ($request->requested_at ?? $request->created_at)?->toIso8601String(),
             ])
-            ->all();
+            ->all());
     }
 
     /**
@@ -583,7 +585,7 @@ class IncidentInboxController extends Controller
                 )));
         }
 
-        return $related->take(10)->values()->all();
+        return array_values($related->take(10)->all());
     }
 
     /**
@@ -646,7 +648,7 @@ class IncidentInboxController extends Controller
      */
     private function communications(Request $request, Incident $incident): array
     {
-        $calls = IncidentCallVerification::query()
+        $calls = array_values(IncidentCallVerification::query()
             ->where('team_id', $incident->team_id)
             ->where('incident_id', $incident->id)
             ->orderByDesc('id')
@@ -661,13 +663,12 @@ class IncidentInboxController extends Controller
                 'placedAt' => $call->placed_at?->toIso8601String(),
                 'respondedAt' => $call->responded_at?->toIso8601String(),
             ])
-            ->values()
-            ->all();
+            ->all());
 
         $notifications = [];
 
         if ($request->user()?->can('viewAny', Notification::class)) {
-            $notifications = Notification::query()
+            $notifications = array_values(Notification::query()
                 ->where('team_id', $incident->team_id)
                 ->where('source_type', NotificationSourceType::Incident)
                 ->where('source_reference_id', $incident->id)
@@ -687,8 +688,7 @@ class IncidentInboxController extends Controller
                     'delivered' => (int) $notification->getAttribute('delivered_count'),
                     'failed' => (int) $notification->getAttribute('failed_count'),
                 ])
-                ->values()
-                ->all();
+                ->all());
         }
 
         return ['verificationCalls' => $calls, 'notifications' => $notifications];

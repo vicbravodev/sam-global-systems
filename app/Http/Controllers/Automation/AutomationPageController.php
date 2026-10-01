@@ -154,10 +154,12 @@ class AutomationPageController extends Controller
      */
     private function executions(Team $team, AutomationTargetLabels $targets, ?string $status, ?int $workflowId): array
     {
+        $statuses = $status !== null ? (self::STATUS_FILTERS[$status] ?? null) : null;
+
         $executions = $this->windowQuery($team)
-            ->when($status !== null, fn (Builder $query) => $query->whereIn(
+            ->when($statuses !== null, fn (Builder $query) => $query->whereIn(
                 'status',
-                array_map(fn (ActionExecutionStatus $case) => $case->value, self::STATUS_FILTERS[$status]),
+                array_map(fn (ActionExecutionStatus $case) => $case->value, $statuses ?? []),
             ))
             ->when($workflowId !== null, fn (Builder $query) => $query->where('automation_workflow_id', $workflowId))
             ->orderByDesc('id')

@@ -198,16 +198,12 @@ class IncidentInboxPresenter
     }
 
     /**
-     * @param  Collection<int, User>  $users
-     * @return array{id: int, name: string, initials: string}|null
-     */
-    /**
      * Quién tiene tomado el incidente, con la misma forma que `assignee` para
      * que la bandeja pueda reutilizar el avatar de iniciales. El usuario sale
      * de la colección ya resuelta: no dispara consulta por fila.
      *
      * @param  Collection<int, User>  $users
-     * @return array<string, mixed>|null
+     * @return array{id: int, name: string, initials: string}|null
      */
     private function claimedBy(Incident $incident, Collection $users): ?array
     {

@@ -192,7 +192,7 @@ class FallbackNotificationChannelJob implements ShouldQueue
      */
     private function channelTypesAlreadyUsed(NotificationDelivery $primary): array
     {
-        return NotificationDelivery::query()
+        $types = NotificationDelivery::query()
             ->with('channel')
             ->where('notification_id', $primary->notification_id)
             ->where('recipient_id', $primary->recipient_id)
@@ -200,8 +200,9 @@ class FallbackNotificationChannelJob implements ShouldQueue
             ->map(fn (NotificationDelivery $delivery) => $delivery->channel?->channel_type)
             ->filter()
             ->unique()
-            ->values()
             ->all();
+
+        return array_values($types);
     }
 
     /**

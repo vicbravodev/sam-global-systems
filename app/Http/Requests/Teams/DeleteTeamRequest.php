@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Teams;
 
+use App\Models\Team;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Gate;
@@ -40,7 +41,7 @@ class DeleteTeamRequest extends FormRequest
             function (Validator $validator) {
                 $team = $this->route('team');
 
-                if ($this->input('name') !== $team->name) {
+                if (! $team instanceof Team || $this->input('name') !== $team->name) {
                     $validator->errors()->add('name', __('The team name does not match.'));
                 }
             },

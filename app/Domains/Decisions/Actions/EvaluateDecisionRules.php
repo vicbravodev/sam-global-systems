@@ -47,9 +47,7 @@ class EvaluateDecisionRules
             ->where('normalized_event_id', $eval->normalized_event_id)
             ->first();
 
-        $narrative = [];
-
-        $decision = DB::transaction(function () use ($eval, $context, &$narrative) {
+        [$decision, $narrative] = DB::transaction(function () use ($eval, $context) {
             $applied = $this->applyTenantRuleSet->execute($eval->team_id, $eval, $context);
             $matchedRules = $applied['matchedRules'];
             $ruleSet = $applied['ruleset'];
@@ -113,7 +111,7 @@ class EvaluateDecisionRules
                 'trace_steps_count' => count($steps),
             ];
 
-            return $decision;
+            return [$decision, $narrative];
         });
 
         // Todo después del commit: si la transacción revierte, nada de esto
@@ -198,7 +196,7 @@ class EvaluateDecisionRules
 
     private function narrateEscalation(Decision $decision, ?int $rulePolicyId, ?EscalationPolicy $policy): void
     {
-        $rulePolicy = $this->describeRulePolicy($decision, $rulePolicyId);
+        $rulePolicy = $rulePolicyId === null ? null : $this->describeRulePolicy($decision, $rulePolicyId);
 
         if ($policy !== null) {
             $ruleUsed = $rulePolicyId === $policy->id;
@@ -208,7 +206,7 @@ class EvaluateDecisionRules
             ], calc: [
                 'policy_source' => $ruleUsed ? 'source_rule' : 'team_default_for_escalate',
                 'rule_policy_used' => $ruleUsed,
-                ...$rulePolicy,
+                ...($rulePolicy ?? ['rule_policy_present' => false]),
             ], result: [
                 'escalation_policy_id' => $policy->id,
             ]);
@@ -220,7 +218,7 @@ class EvaluateDecisionRules
             // Un ESCALATE sin política activa no escala a nadie.
             SystemLog::degraded('decisions.escalation_policy.resolved', reason: 'no_active_team_policy', input: [
                 'decision_id' => $decision->id,
-            ], calc: $rulePolicyId !== null ? [
+            ], calc: $rulePolicy !== null ? [
                 'rule_policy_present' => true,
                 'rule_policy_scope' => $rulePolicy['rule_policy_scope'],
             ] : null);
@@ -228,7 +226,7 @@ class EvaluateDecisionRules
             return;
         }
 
-        if ($rulePolicyId !== null) {
+        if ($rulePolicy !== null) {
             SystemLog::degraded(
                 'decisions.escalation_policy.resolved',
                 reason: $rulePolicy['rule_policy_scope'] === 'own' ? 'rule_policy_inactive' : 'rule_policy_foreign',
@@ -249,14 +247,10 @@ class EvaluateDecisionRules
      * global puede apuntar a la política de otro team, y ese id no sale del
      * tenant del evento. Lectura después del commit, filtrada por el team.
      *
-     * @return array{rule_policy_present: bool, rule_policy_scope?: 'own'|'foreign', rule_policy_id?: int}
+     * @return array{rule_policy_present: true, rule_policy_scope: 'own'|'foreign', rule_policy_id?: int}
      */
-    private function describeRulePolicy(Decision $decision, ?int $rulePolicyId): array
+    private function describeRulePolicy(Decision $decision, int $rulePolicyId): array
     {
-        if ($rulePolicyId === null) {
-            return ['rule_policy_present' => false];
-        }
-
         $own = EscalationPolicy::query()
             ->where('id', $rulePolicyId)
             ->where('team_id', $decision->team_id)

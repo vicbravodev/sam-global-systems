@@ -180,7 +180,7 @@ class CopilotUsageQuery
 
         $users = User::query()->whereIn('id', $rows->pluck('user_id'))->get(['id', 'name', 'email'])->keyBy('id');
 
-        return $rows->map(fn ($row) => [
+        $byUser = $rows->map(fn ($row) => [
             'userId' => (int) $row->user_id,
             'name' => $users[$row->user_id]->name ?? 'Usuario eliminado',
             'email' => $users[$row->user_id]->email ?? null,
@@ -188,6 +188,8 @@ class CopilotUsageQuery
             'tokens' => (int) $row->tokens,
             'cost' => round((float) $row->cost, 4),
             'lastUsedAt' => $row->last_used_at ? CarbonImmutable::parse($row->last_used_at)->toIso8601String() : null,
-        ])->values()->all();
+        ])->all();
+
+        return array_values($byUser);
     }
 }

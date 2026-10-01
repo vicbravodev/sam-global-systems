@@ -10,6 +10,13 @@ use Database\Factories\Domains\Audit\ChangeHistoryFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * Ids de referencia (columnas sin signo en la base; nunca negativos).
+ *
+ * @property int|null $team_id
+ * @property int $entity_id
+ * @property int|null $changed_by_id
+ */
 class ChangeHistory extends Model
 {
     /** @use HasFactory<ChangeHistoryFactory> */

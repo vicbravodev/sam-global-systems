@@ -80,7 +80,7 @@ final class SearchEventsTool implements CopilotTool
             ->limit($limit)
             ->get();
 
-        $rows = $recent->map(fn (NormalizedEvent $event) => [
+        $rows = array_values($recent->map(fn (NormalizedEvent $event) => [
             'id' => (int) $event->id,
             'title' => (string) ($event->eventType?->name ?? 'Evento'),
             'severity' => CopilotPresenter::severity($event->eventSeverity?->code),
@@ -89,7 +89,7 @@ final class SearchEventsTool implements CopilotTool
             'occurredAt' => $event->occurred_at->toIso8601String(),
             'statusLabel' => (string) ($event->eventType?->name ?? 'Evento'),
             'href' => CopilotPresenter::eventHref($context->teamSlug, (int) $event->id),
-        ])->values()->all();
+        ])->all());
 
         $topName = $byTypeNames->first()['label'];
 

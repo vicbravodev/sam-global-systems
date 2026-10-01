@@ -121,6 +121,6 @@ final class CopilotPresenter
             return 'sin registro';
         }
 
-        return CarbonImmutable::parse($iso)->locale('es')->diffForHumans();
+        return CarbonImmutable::parse($iso)->settings(['locale' => 'es'])->diffForHumans();
     }
 }

@@ -20,8 +20,8 @@ class CopilotMessageFactory extends Factory
         return [
             'copilot_conversation_id' => CopilotConversation::factory(),
             // Same tenant and owner as the parent conversation.
-            'team_id' => fn (array $attributes) => CopilotConversation::withoutGlobalScopes()->findOrFail($attributes['copilot_conversation_id'])->team_id,
-            'user_id' => fn (array $attributes) => CopilotConversation::withoutGlobalScopes()->findOrFail($attributes['copilot_conversation_id'])->user_id,
+            'team_id' => fn (array $attributes) => CopilotConversation::withoutGlobalScopes()->findOrFail((int) $attributes['copilot_conversation_id'])->team_id,
+            'user_id' => fn (array $attributes) => CopilotConversation::withoutGlobalScopes()->findOrFail((int) $attributes['copilot_conversation_id'])->user_id,
             'role' => CopilotMessageRole::User,
             'content' => fake()->sentence(),
             'intent' => null,

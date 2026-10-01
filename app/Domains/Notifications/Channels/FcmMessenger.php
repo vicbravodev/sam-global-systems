@@ -46,7 +46,8 @@ class FcmMessenger
         if (isset($payload['data']) && is_array($payload['data'])) {
             $stringData = [];
             foreach ($payload['data'] as $k => $v) {
-                if (is_scalar($v)) {
+                // FCM sólo transporta pares string → string con clave no vacía.
+                if (is_scalar($v) && (string) $k !== '') {
                     $stringData[(string) $k] = (string) $v;
                 }
             }

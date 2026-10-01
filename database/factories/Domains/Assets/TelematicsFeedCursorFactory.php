@@ -20,7 +20,7 @@ class TelematicsFeedCursorFactory extends Factory
             'tenant_integration_id' => TenantIntegration::factory(),
             // Same tenant as its integration, never a team of its own (§2.1.9).
             'team_id' => fn (array $attributes) => TenantIntegration::withoutGlobalScopes()
-                ->findOrFail($attributes['tenant_integration_id'])->team_id,
+                ->findOrFail((int) $attributes['tenant_integration_id'])->team_id,
             'feed' => TelematicsFeed::Motion,
             'end_cursor' => null,
             'consecutive_failures' => 0,

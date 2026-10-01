@@ -247,6 +247,9 @@ class DbIncidentMetricsQuery implements IncidentMetricsQuery
      * SQL expression for the calendar day of `opened_at`, portable across
      * PostgreSQL (production) and SQLite (tests).
      */
+    /**
+     * @return literal-string
+     */
     private function dateExpression(): string
     {
         return (new Incident)->getConnection()->getDriverName() === 'sqlite'

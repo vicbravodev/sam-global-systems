@@ -11,6 +11,7 @@ use App\Domains\Copilot\Data\CopilotToolResult;
 use App\Domains\Copilot\Data\IdleSummary;
 use App\Domains\Copilot\Support\CopilotPresenter;
 use App\Domains\Copilot\Support\IdleTimeCalculator;
+use App\Domains\Copilot\Support\TelemetryValueSql;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Normalization\Models\EventType;
 use App\Domains\Normalization\Models\NormalizedEvent;
@@ -64,7 +65,7 @@ final class RankAssetsTool implements CopilotTool
         $period = $context->period;
 
         $values = $ids->isEmpty() ? collect() : match ($metric) {
-            'idle_hours' => collect($this->idle->forAssets($context->teamId, $ids->all(), $period->from, $period->to))
+            'idle_hours' => collect($this->idle->forAssets($context->teamId, array_values($ids->all()), $period->from, $period->to))
                 ->map(fn (IdleSummary $summary) => $summary->hours),
             'fuel_used_pct' => $this->fuel($ids, $period),
             'distance_km' => $this->distance($ids, $period),
@@ -106,7 +107,7 @@ final class RankAssetsTool implements CopilotTool
         // Descending lists never show units at zero; they still weigh on the average.
         $sorted = $ascending ? $values->sort() : $values->sortDesc()->filter(fn (float $v) => $v > 0);
 
-        $items = $sorted->take($limit)->map(function (float $value, int $id) use ($assets, $avg, $std, $context): array {
+        $items = array_values($sorted->take($limit)->map(function (float $value, int $id) use ($assets, $avg, $std, $context): array {
             $asset = $assets->get($id);
 
             return [
@@ -117,7 +118,7 @@ final class RankAssetsTool implements CopilotTool
                 'outlier' => $std > 0 && $value > $avg + 1.5 * $std,
                 'href' => CopilotPresenter::assetHref($context->teamSlug, $id),
             ];
-        })->values()->all();
+        })->all());
 
         $average = round($avg, 2);
         $top = $items[0];
@@ -176,7 +177,7 @@ final class RankAssetsTool implements CopilotTool
      */
     private function fuel(Collection $ids, CopilotPeriod $period): Collection
     {
-        $reading = $this->numericValue();
+        $reading = TelemetryValueSql::numeric();
 
         $series = AssetTelemetrySnapshot::query()
             ->toBase()
@@ -199,7 +200,7 @@ final class RankAssetsTool implements CopilotTool
      */
     private function distance(Collection $ids, CopilotPeriod $period): Collection
     {
-        $reading = $this->numericValue();
+        $reading = TelemetryValueSql::numeric();
 
         return AssetTelemetrySnapshot::query()
             ->toBase()
@@ -210,17 +211,6 @@ final class RankAssetsTool implements CopilotTool
             ->groupBy('asset_id')
             ->pluck('delta', 'asset_id')
             ->map(fn ($delta) => max(0.0, (float) $delta));
-    }
-
-    /**
-     * `data_json->value` as a number, in the connection's own JSON syntax
-     * (json_extract on SQLite, ->> on PostgreSQL).
-     */
-    private function numericValue(): string
-    {
-        $column = AssetTelemetrySnapshot::query()->getQuery()->getGrammar()->wrap('data_json->value');
-
-        return "cast({$column} as double precision)";
     }
 
     /**

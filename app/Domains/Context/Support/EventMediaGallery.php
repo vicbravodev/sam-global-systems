@@ -42,9 +42,8 @@ final class EventMediaGallery
             ->sortBy(fn (EventMediaContext $frame): float => (float) ($frame->metadata_json['offset_seconds'] ?? 0))
             ->groupBy(fn (EventMediaContext $frame): int => (int) self::parentClipId($frame));
 
-        return $media
+        $entries = $media
             ->reject($isFrame)
-            ->values()
             ->map(function (EventMediaContext $item) use ($framesByClip): array {
                 $frames = $framesByClip->get((int) $item->id, collect());
                 $firstFrame = $frames->first();
@@ -54,10 +53,12 @@ final class EventMediaGallery
                     'url' => $this->urlFor($item),
                     'thumbnailUrl' => $item->thumbnail_url
                         ?? ($firstFrame instanceof EventMediaContext ? $this->urlFor($firstFrame) : null),
-                    'frameIds' => $frames->pluck('id')->map(fn ($id): int => (int) $id)->values()->all(),
+                    'frameIds' => array_values($frames->pluck('id')->map(fn ($id): int => (int) $id)->all()),
                 ];
             })
             ->all();
+
+        return array_values($entries);
     }
 
     public static function isVideo(EventMediaContext $media): bool

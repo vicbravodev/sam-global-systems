@@ -24,6 +24,9 @@ use App\Domains\Normalization\Models\NormalizedEvent;
  *   evento REFUERZAN esa conclusión y las que lo confirman la DEBILITAN.
  * - En eventos críticos (severidad `critical` o categoría `emergency`) que
  *   las imágenes no confirmen nunca baja el riesgo: solo se anota.
+ *
+ * @phpstan-type Fusion array{step: string, sentence: string, confidenceDelta: float, riskDelta: float, keyFactors: array<string, int>}
+ * @phpstan-type Explanation array{branch: string, fusion: Fusion|null, assessed: int, confirms: int, contradicts: int, visible_threats: int, dismissive: bool}
  */
 class MediaVerdictFusion
 {
@@ -55,7 +58,7 @@ class MediaVerdictFusion
 
     /**
      * @param  list<array<string, mixed>>  $mediaAssessments
-     * @return array{step: string, sentence: string, confidenceDelta: float, riskDelta: float, keyFactors: array<string, int>}|null
+     * @return Fusion|null
      */
     public function fuse(array $mediaAssessments, EventClassification $classification, bool $isCriticalEvent = false): ?array
     {
@@ -68,24 +71,14 @@ class MediaVerdictFusion
      * o `contradicts`. Puro (solo arrays).
      *
      * @param  list<array<string, mixed>>  $mediaAssessments
-     * @return array{branch: string, fusion: array{step: string, sentence: string, confidenceDelta: float, riskDelta: float, keyFactors: array<string, int>}|null, assessed: int, confirms: int, contradicts: int, visible_threats: int, dismissive: bool}
+     * @return Explanation
      */
     public function explain(array $mediaAssessments, EventClassification $classification, bool $isCriticalEvent = false): array
     {
         $assessed = count($mediaAssessments);
 
-        $explain = fn (string $branch, ?array $fusion, int $confirms = 0, int $contradicts = 0, int $visibleThreats = 0, bool $dismissive = false): array => [
-            'branch' => $branch,
-            'fusion' => $fusion,
-            'assessed' => $assessed,
-            'confirms' => $confirms,
-            'contradicts' => $contradicts,
-            'visible_threats' => $visibleThreats,
-            'dismissive' => $dismissive,
-        ];
-
         if ($assessed === 0) {
-            return $explain('no_media', null);
+            return self::explanation($assessed, 'no_media', null);
         }
 
         $confirms = 0;
@@ -108,7 +101,7 @@ class MediaVerdictFusion
         }
 
         if ($contradicts === 0 && $confirms === 0) {
-            return $explain('no_verdict', null, $confirms, $contradicts, $visibleThreats);
+            return self::explanation($assessed, 'no_verdict', null, $confirms, $contradicts, $visibleThreats);
         }
 
         $keyFactors = [
@@ -142,7 +135,7 @@ class MediaVerdictFusion
                 $sentence .= ' Contradice la clasificación de la IA como '.mb_strtolower($classification->label()).'.';
             }
 
-            return $explain('confirms', [
+            return self::explanation($assessed, 'confirms', [
                 'step' => $sentence,
                 'sentence' => $sentence,
                 'confidenceDelta' => $dismissive ? -self::CONFIDENCE_DELTA_CONFIRMS : self::CONFIDENCE_DELTA_CONFIRMS,
@@ -160,7 +153,7 @@ class MediaVerdictFusion
                 $medias,
             );
 
-            return $explain('critical_no_reduce', [
+            return self::explanation($assessed, 'critical_no_reduce', [
                 'step' => $sentence,
                 'sentence' => $sentence,
                 'confidenceDelta' => 0.0,
@@ -177,12 +170,29 @@ class MediaVerdictFusion
             $contradicts === 1 ? 'contradice' : 'contradicen',
         );
 
-        return $explain('contradicts', [
+        return self::explanation($assessed, 'contradicts', [
             'step' => $sentence,
             'sentence' => $sentence,
             'confidenceDelta' => $dismissive ? self::CONFIDENCE_DELTA_CONTRADICTS : -self::CONFIDENCE_DELTA_CONTRADICTS,
             'riskDelta' => self::RISK_DELTA_CONTRADICTS,
             'keyFactors' => $keyFactors,
         ], $confirms, $contradicts, $visibleThreats, $dismissive);
+    }
+
+    /**
+     * @param  Fusion|null  $fusion
+     * @return Explanation
+     */
+    private static function explanation(int $assessed, string $branch, ?array $fusion, int $confirms = 0, int $contradicts = 0, int $visibleThreats = 0, bool $dismissive = false): array
+    {
+        return [
+            'branch' => $branch,
+            'fusion' => $fusion,
+            'assessed' => $assessed,
+            'confirms' => $confirms,
+            'contradicts' => $contradicts,
+            'visible_threats' => $visibleThreats,
+            'dismissive' => $dismissive,
+        ];
     }
 }

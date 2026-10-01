@@ -31,8 +31,10 @@ final class PlaceholderEvaluation
      */
     public static function excludeFrom(Builder $query, string $column = 'model_used'): Builder
     {
-        return $query->where(fn (Builder $inner) => $inner
+        $query->where(fn (Builder $inner) => $inner
             ->whereNull($column)
             ->orWhere($column, 'not like', self::MODEL_PREFIX.'%'));
+
+        return $query;
     }
 }

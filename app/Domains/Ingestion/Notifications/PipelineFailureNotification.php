@@ -19,6 +19,8 @@ use Illuminate\Notifications\Notification;
  * - `tenant` (owners/admins del team, sólo emergencias o alertas del
  *   proveedor sin clasificar): qué evento quedó sin procesar, sin detalles
  *   internos de SAM.
+ *
+ * @phpstan-type FailureDetails array{kind: string, stage: string, team_id: ?int, team_name: ?string, raw_event_id: ?int, normalized_event_id: ?int, event_type_code: ?string, external_event_type?: ?string, is_emergency: bool, asset_id: ?int, asset_name: ?string, occurred_at: ?string, failed_at: string, error_class: ?string, error_message: ?string, reprocess_attempts: ?int}
  */
 class PipelineFailureNotification extends Notification
 {
@@ -29,7 +31,7 @@ class PipelineFailureNotification extends Notification
     public const string AUDIENCE_TENANT = 'tenant';
 
     /**
-     * @param  array{kind: string, stage: string, team_id: ?int, team_name: ?string, raw_event_id: ?int, normalized_event_id: ?int, event_type_code: ?string, external_event_type?: ?string, is_emergency: bool, asset_id: ?int, asset_name: ?string, occurred_at: ?string, failed_at: string, error_class: ?string, error_message: ?string, reprocess_attempts: ?int}  $details
+     * @param  FailureDetails  $details
      */
     public function __construct(
         public readonly string $audience,

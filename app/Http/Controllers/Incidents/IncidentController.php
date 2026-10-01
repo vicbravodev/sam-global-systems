@@ -130,9 +130,10 @@ class IncidentController extends Controller
     ): JsonResponse {
         $this->authorize('reclassify', $incident);
 
-        $type = IncidentType::query()->findOrFail($request->validated('incident_type_id'));
-        $priorityId = $request->validated('incident_priority_id');
-        $priority = $priorityId !== null ? IncidentPriority::query()->find($priorityId) : null;
+        $type = IncidentType::query()->findOrFail($request->integer('incident_type_id'));
+        $priority = $request->validated('incident_priority_id') !== null
+            ? IncidentPriority::query()->find($request->integer('incident_priority_id'))
+            : null;
 
         $updated = $reclassify->execute(
             incident: $incident,

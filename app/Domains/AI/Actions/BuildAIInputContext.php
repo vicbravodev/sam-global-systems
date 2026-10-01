@@ -294,7 +294,7 @@ class BuildAIInputContext
             ->where('normalized_event_id', $event->id)
             ->select('id');
 
-        return AIMediaAssessment::query()
+        $verdicts = AIMediaAssessment::query()
             ->whereIn('evaluation_id', $evaluationIds)
             ->orderByDesc('assessed_at')
             ->orderByDesc('id')
@@ -310,8 +310,9 @@ class BuildAIInputContext
                 'summary' => $assessment->summary_text,
                 'extracted_signals' => $assessment->extracted_signals_json ?? [],
             ])
-            ->values()
             ->all();
+
+        return array_values($verdicts);
     }
 
     /**

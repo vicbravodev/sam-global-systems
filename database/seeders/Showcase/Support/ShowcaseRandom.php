@@ -103,7 +103,7 @@ final class ShowcaseRandom
     {
         $items = array_values($items);
 
-        if ($count >= count($items)) {
+        if ($items === [] || $count >= count($items)) {
             return $items;
         }
 

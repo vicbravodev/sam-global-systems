@@ -13,6 +13,7 @@ use App\Domains\Tenancy\Models\TenantFeature;
 use App\Domains\Tenancy\Models\TenantUsageCounter;
 use App\Domains\Tenancy\Models\UsageMeter;
 use Carbon\CarbonImmutable;
+use Illuminate\Contracts\Database\Query\Expression;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Facades\DB;
 
@@ -135,6 +136,16 @@ class BillingShowcaseSeeder extends ShowcaseStep
     }
 
     /**
+     * Columna de agrupación por día (`day`) sobre una columna de fecha.
+     *
+     * @param  literal-string  $column
+     */
+    private function day(string $column): Expression
+    {
+        return DB::raw("DATE({$column}) as day");
+    }
+
+    /**
      * Cantidad por medidor y día a partir de lo que el showcase sembró.
      *
      * @param  array<int, string>  $meterCodes
@@ -143,7 +154,6 @@ class BillingShowcaseSeeder extends ShowcaseStep
     private function dailyUsage(array $meterCodes): array
     {
         $team = $this->ctx->team->id;
-        $day = fn (string $column) => DB::raw("DATE({$column}) as day");
         $from = $this->ctx->startDay();
         $usage = [];
 
@@ -153,7 +163,7 @@ class BillingShowcaseSeeder extends ShowcaseStep
             ->where('event_sources.source_name', 'like', 'showcase-%')
             ->where('event_sources.source_name', '!=', 'showcase-internal-monitor')
             ->where('raw_events.received_at', '>=', $from)
-            ->groupBy('day')->select($day('raw_events.received_at'), DB::raw('count(*) as qty'))
+            ->groupBy('day')->select($this->day('raw_events.received_at'), DB::raw('count(*) as qty'))
             ->pluck('qty', 'day')->all();
 
         $inference = DB::table('ai_inference_logs')
@@ -162,13 +172,13 @@ class BillingShowcaseSeeder extends ShowcaseStep
             ->whereNotNull('ai_event_evaluations.signals_json->showcase')
             ->where('ai_inference_logs.created_at', '>=', $from)
             ->groupBy('day')
-            ->select($day('ai_inference_logs.created_at'), DB::raw('count(*) as calls'), DB::raw('sum(input_tokens) as tin'), DB::raw('sum(output_tokens) as tout'))
+            ->select($this->day('ai_inference_logs.created_at'), DB::raw('count(*) as calls'), DB::raw('sum(input_tokens) as tin'), DB::raw('sum(output_tokens) as tout'))
             ->get();
         $copilot = DB::table('copilot_messages')
             ->where('team_id', $team)->where('role', 'assistant')->whereNotNull('context_json->showcase')
             ->where('created_at', '>=', $from)
             ->groupBy('day')
-            ->select($day('created_at'), DB::raw('count(*) as queries'), DB::raw('sum(input_tokens) as tin'), DB::raw('sum(output_tokens) as tout'))
+            ->select($this->day('created_at'), DB::raw('count(*) as queries'), DB::raw('sum(input_tokens) as tin'), DB::raw('sum(output_tokens) as tout'))
             ->get();
 
         foreach ($inference as $row) {
@@ -185,13 +195,13 @@ class BillingShowcaseSeeder extends ShowcaseStep
 
         $usage['incident_workflows'] = DB::table('incidents')
             ->where('team_id', $team)->whereNotNull('metadata_json->showcase_key')->where('opened_at', '>=', $from)
-            ->groupBy('day')->select($day('opened_at'), DB::raw('count(*) as qty'))->pluck('qty', 'day')->all();
+            ->groupBy('day')->select($this->day('opened_at'), DB::raw('count(*) as qty'))->pluck('qty', 'day')->all();
 
         $usage['automation_actions'] = DB::table('action_executions')
             ->join('automation_workflows', 'automation_workflows.id', '=', 'action_executions.automation_workflow_id')
             ->where('action_executions.team_id', $team)->where('action_executions.status', 'completed')
             ->where('action_executions.created_at', '>=', $from)
-            ->groupBy('day')->select($day('action_executions.created_at'), DB::raw('count(*) as qty'))->pluck('qty', 'day')->all();
+            ->groupBy('day')->select($this->day('action_executions.created_at'), DB::raw('count(*) as qty'))->pluck('qty', 'day')->all();
 
         $deliveries = DB::table('notification_deliveries')
             ->join('notifications', 'notifications.id', '=', 'notification_deliveries.notification_id')
@@ -200,7 +210,7 @@ class BillingShowcaseSeeder extends ShowcaseStep
             ->where('notifications.event_key', 'like', 'showcase:%')
             ->whereNotIn('notification_deliveries.status', ['skipped', 'queued', 'pending', 'cancelled'])
             ->groupBy('day', 'notification_channels.channel_type')
-            ->select($day('notification_deliveries.created_at'), 'notification_channels.channel_type', DB::raw('count(*) as qty'))
+            ->select($this->day('notification_deliveries.created_at'), 'notification_channels.channel_type', DB::raw('count(*) as qty'))
             ->get();
 
         foreach ($deliveries as $row) {
@@ -215,11 +225,11 @@ class BillingShowcaseSeeder extends ShowcaseStep
 
         $usage['voice_calls'] = DB::table('incident_call_verifications')
             ->where('team_id', $team)->whereNotNull('metadata_json->showcase')->where('placed_at', '>=', $from)
-            ->groupBy('day')->select($day('placed_at'), DB::raw('count(*) as qty'))->pluck('qty', 'day')->all();
+            ->groupBy('day')->select($this->day('placed_at'), DB::raw('count(*) as qty'))->pluck('qty', 'day')->all();
 
         $usage['media_requests'] = DB::table('event_media_requests')
             ->where('team_id', $team)->whereNotNull('response_metadata_json->showcase')->where('requested_at', '>=', $from)
-            ->groupBy('day')->select($day('requested_at'), DB::raw('count(*) as qty'))->pluck('qty', 'day')->all();
+            ->groupBy('day')->select($this->day('requested_at'), DB::raw('count(*) as qty'))->pluck('qty', 'day')->all();
 
         // Medidores de activos: una foto diaria, igual que assets:record-usage-meters.
         EloquentCollection::make($this->ctx->assets->all())->loadMissing('assetType');
@@ -240,10 +250,10 @@ class BillingShowcaseSeeder extends ShowcaseStep
         // OTP y costo Twilio salen de los cargos que sembró NotificationsShowcaseSeeder.
         $usage['otp_sms_sent'] = DB::table('messaging_charges')
             ->where('team_id', $team)->where('source_type', 'otp')->where('created_at', '>=', $from)
-            ->groupBy('day')->select($day('created_at'), DB::raw('count(*) as qty'))->pluck('qty', 'day')->all();
+            ->groupBy('day')->select($this->day('created_at'), DB::raw('count(*) as qty'))->pluck('qty', 'day')->all();
         $usage['messaging_cost_micros'] = DB::table('messaging_charges')
             ->where('team_id', $team)->whereNotNull('metered_at')->where('metered_at', '>=', $from)
-            ->groupBy('day')->select($day('metered_at'), DB::raw('sum(price_micros) as qty'))->pluck('qty', 'day')->all();
+            ->groupBy('day')->select($this->day('metered_at'), DB::raw('sum(price_micros) as qty'))->pluck('qty', 'day')->all();
 
         return array_intersect_key($usage, array_flip($meterCodes));
     }

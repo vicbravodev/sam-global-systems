@@ -66,7 +66,7 @@ final class PanicKpisTool implements CopilotTool
         for ($i = $days - 1; $i >= 0; $i--) {
             $day = CarbonImmutable::parse($period->to)->subDays($i)->startOfDay();
             $bars[] = [
-                'label' => $day->locale('es')->isoFormat('dd D'),
+                'label' => $day->settings(['locale' => 'es'])->isoFormat('dd D'),
                 'value' => $events->filter(fn (NormalizedEvent $e) => $e->occurred_at->isSameDay($day))->count(),
             ];
         }
@@ -148,12 +148,12 @@ final class PanicKpisTool implements CopilotTool
             tool: 'panic_kpis',
             label: 'Botón de pánico',
             blocks: $blocks,
-            sources: $incidents->values()->take(8)->map(fn (Incident $i) => [
+            sources: array_values($incidents->take(8)->map(fn (Incident $i) => [
                 'kind' => 'incident',
                 'id' => (int) $i->id,
                 'label' => (string) $i->title,
                 'href' => CopilotPresenter::incidentHref($context->teamSlug, (int) $i->id),
-            ])->all(),
+            ])->all()),
             facts: [
                 'period' => $period->label,
                 'total' => $events->count(),

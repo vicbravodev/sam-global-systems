@@ -36,7 +36,7 @@ final class IdleTimeCalculator
             return [];
         }
 
-        $ids = $assets->keys()->all();
+        $ids = array_values($assets->keys()->map(fn ($id): int => (int) $id)->all());
 
         // State in force at `from`: the reading with the greatest recorded_at
         // before it, per asset (ids can be out of order after history backfills).
@@ -154,7 +154,7 @@ final class IdleTimeCalculator
      */
     private function assetsReportingIdle(array $ids): array
     {
-        $value = AssetTelemetrySnapshot::query()->getQuery()->getGrammar()->wrap('data_json->value');
+        $value = TelemetryValueSql::value();
 
         $assetIds = AssetTelemetrySnapshot::query()
             ->toBase()
@@ -285,7 +285,10 @@ final class IdleTimeCalculator
         return ['from' => $start->toIso8601String(), 'to' => $stop->toIso8601String(), 'minutes' => (int) round(abs($start->diffInMinutes($stop)))];
     }
 
-    /** @param list<array{from: string, to: string, minutes: int}> $segments */
+    /**
+     * @param  list<array{from: string, to: string, minutes: int}>  $segments
+     * @param  'engine_state'|'ignition_speed'  $source
+     */
     private function summary(array $segments, string $source): IdleSummary
     {
         $minutes = array_sum(array_column($segments, 'minutes'));

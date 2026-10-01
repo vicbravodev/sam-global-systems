@@ -153,7 +153,7 @@ class FleetShowcaseSeeder extends ShowcaseStep
      */
     private function seedLocations(): void
     {
-        $assetIds = $this->ctx->assets->pluck('id')->all();
+        $assetIds = array_values($this->ctx->assets->map(fn (Asset $asset): int => $asset->id)->all());
 
         $latestIds = DB::table('asset_location_snapshots')
             ->whereIn('asset_id', $assetIds)
@@ -415,7 +415,7 @@ class FleetShowcaseSeeder extends ShowcaseStep
 
             $random = $this->ctx->random('contacts', (string) $driver->id);
             $phone = $driver->phone ?: ShowcaseRandom::fictionalPhone($driver->id);
-            $slug = strtolower(preg_replace('/[^a-z]/i', '', iconv('UTF-8', 'ASCII//TRANSLIT', (string) $driver->first_name)) ?: 'operador');
+            $slug = strtolower(preg_replace('/[^a-z]/i', '', (string) iconv('UTF-8', 'ASCII//TRANSLIT', (string) $driver->first_name)) ?: 'operador');
 
             $rows[] = ['driver_id' => $driver->id, 'contact_type' => 'mobile_phone', 'label' => 'Celular de ruta', 'value' => $phone, 'is_primary' => true, 'is_emergency' => false, 'verified_at' => $random->chance(0.85) ? $this->ctx->now->subDays($random->int(5, 200)) : null];
             $rows[] = ['driver_id' => $driver->id, 'contact_type' => 'email', 'label' => 'Correo', 'value' => "{$slug}.{$driver->id}@operadores.{$this->ctx->team->slug}.test", 'is_primary' => false, 'is_emergency' => false, 'verified_at' => null];

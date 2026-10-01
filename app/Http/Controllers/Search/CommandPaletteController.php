@@ -51,7 +51,7 @@ class CommandPaletteController extends Controller
         // "INC-00036" / "36": the per-tenant number, never the global id.
         $number = preg_match('/^(?:inc-?)?0*(\d{1,9})$/i', $query, $matches) === 1 ? (int) $matches[1] : null;
 
-        return Incident::query()
+        return array_values(Incident::query()
             ->where('team_id', $team->id)
             ->with(['priority', 'status', 'currentAssignment'])
             ->when($query !== '', function ($builder) use ($query, $number) {
@@ -72,8 +72,7 @@ class CommandPaletteController extends Controller
                 // Same rendered string as the inbox/detail/asset surfaces.
                 'statusLabel' => IncidentStatusPresenter::labelForIncident($incident),
             ])
-            ->values()
-            ->all();
+            ->all());
     }
 
     /**
@@ -83,7 +82,7 @@ class CommandPaletteController extends Controller
     {
         $term = $this->likeTerm($query);
 
-        return Asset::query()
+        return array_values(Asset::query()
             ->where('team_id', $team->id)
             ->where(fn (Builder $q) => $q
                 ->whereLike('name', $term)
@@ -101,8 +100,7 @@ class CommandPaletteController extends Controller
                     ? (string) $asset->metadata_json['license_plate']
                     : null,
             ])
-            ->values()
-            ->all();
+            ->all());
     }
 
     /**
@@ -112,7 +110,7 @@ class CommandPaletteController extends Controller
     {
         $term = $this->likeTerm($query);
 
-        return Driver::query()
+        return array_values(Driver::query()
             ->where('team_id', $team->id)
             ->where(fn (Builder $q) => $q
                 ->whereLike('full_name', $term)
@@ -126,8 +124,7 @@ class CommandPaletteController extends Controller
                 'name' => (string) $driver->full_name,
                 'employeeCode' => $driver->employee_code,
             ])
-            ->values()
-            ->all();
+            ->all());
     }
 
     /**

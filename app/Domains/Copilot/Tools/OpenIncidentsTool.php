@@ -73,7 +73,7 @@ final class OpenIncidentsTool implements CopilotTool
             tool: 'open_incidents',
             label: 'Bandeja en vivo',
             blocks: $blocks,
-            sources: $top->map(fn (Incident $i) => IncidentRows::source($i, $context->teamSlug))->all(),
+            sources: array_values($top->map(fn (Incident $i) => IncidentRows::source($i, $context->teamSlug))->all()),
             facts: [
                 'open' => $open->count(),
                 'by_priority' => $byPriority->all(),
