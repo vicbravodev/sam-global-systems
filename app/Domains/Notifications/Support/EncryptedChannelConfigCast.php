@@ -17,7 +17,9 @@ use Illuminate\Support\Facades\Crypt;
  * Encrypted leaves are stored as `{"__enc": "<ciphertext>"}` so a reload
  * after a partial write still decrypts cleanly.
  *
- * @implements CastsAttributes<array<string, mixed>|null, array<string, mixed>|null>
+ * El set acepta cualquier valor (un escalar se guarda tal cual en JSON).
+ *
+ * @implements CastsAttributes<array<string, mixed>|null, mixed>
  */
 class EncryptedChannelConfigCast implements CastsAttributes
 {

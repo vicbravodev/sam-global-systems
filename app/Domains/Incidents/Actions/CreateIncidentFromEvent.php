@@ -126,7 +126,7 @@ class CreateIncidentFromEvent
                 // Derivado tras el match, sin repetir la query: qué rama del
                 // orWhere (activo/conductor) y de activeWithin lo sostiene.
                 $matchedOn = $event->asset_id !== null && $existing->asset_id === $event->asset_id ? 'asset' : 'driver';
-                $matchBasis = $existing->opened_at !== null && $existing->opened_at->between($dedupWindowStart, $dedupWindowEnd)
+                $matchBasis = $existing->opened_at->between($dedupWindowStart, $dedupWindowEnd)
                     ? 'opened_in_window'
                     : 'linked_event_in_window';
 
@@ -356,12 +356,7 @@ class CreateIncidentFromEvent
         $calc = $assessment['calc'];
 
         if (! $assessment['late']) {
-            if ($assessment['reason'] === 'within_threshold') {
-                DB::afterCommit(fn () => SystemLog::ok('incidents.late_arrival.assessed', input: $input, calc: $calc, result: ['late' => false], debug: true));
-            } else {
-                $reason = (string) $assessment['reason'];
-                DB::afterCommit(fn () => SystemLog::skipped('incidents.late_arrival.assessed', reason: $reason, input: $input, calc: $calc, result: ['late' => false]));
-            }
+            DB::afterCommit(fn () => SystemLog::ok('incidents.late_arrival.assessed', input: $input, calc: $calc, result: ['late' => false], debug: true));
 
             return;
         }

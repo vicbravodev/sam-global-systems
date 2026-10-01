@@ -26,7 +26,7 @@ class GetPriorSimilarIncidents
     {
         $teamId = $normalizedEvent->team_id;
 
-        if ($teamId === null || ($normalizedEvent->asset_id === null && $normalizedEvent->driver_id === null)) {
+        if ($normalizedEvent->asset_id === null && $normalizedEvent->driver_id === null) {
             return collect();
         }
 
@@ -55,17 +55,25 @@ class GetPriorSimilarIncidents
             ->orderByDesc('opened_at')
             ->limit(20)
             ->get()
-            ->map(fn (Incident $incident) => [
-                'incident_id' => $incident->id,
-                'title' => $incident->title,
-                'type_code' => $incident->type?->code,
-                'status_code' => $incident->status?->code,
-                'priority_code' => $incident->priority?->code,
-                'opened_at' => $incident->opened_at?->toIso8601String(),
-                'closed_at' => $incident->closed_at?->toIso8601String(),
-                'asset_id' => $incident->asset_id,
-                'driver_id' => $incident->driver_id,
-                'relation' => IncidentRelationType::PriorSimilarIncident->value,
-            ]);
+            ->map(fn (Incident $incident): array => $this->toRow($incident));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function toRow(Incident $incident): array
+    {
+        return [
+            'incident_id' => $incident->id,
+            'title' => $incident->title,
+            'type_code' => $incident->type?->code,
+            'status_code' => $incident->status?->code,
+            'priority_code' => $incident->priority?->code,
+            'opened_at' => $incident->opened_at?->toIso8601String(),
+            'closed_at' => $incident->closed_at?->toIso8601String(),
+            'asset_id' => $incident->asset_id,
+            'driver_id' => $incident->driver_id,
+            'relation' => IncidentRelationType::PriorSimilarIncident->value,
+        ];
     }
 }

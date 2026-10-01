@@ -180,6 +180,7 @@ class IntegrationPageController extends Controller
             ->whereNotNull('provider_id')
             ->selectRaw('provider_id, COUNT(*) AS total, SUM(CASE WHEN monitoring_state = ? THEN 1 ELSE 0 END) AS monitored', [AssetMonitoringState::Monitored->value])
             ->groupBy('provider_id')
+            ->toBase()
             ->get();
 
         $drivers = Driver::query()

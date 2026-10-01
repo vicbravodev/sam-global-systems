@@ -121,18 +121,14 @@ class DecisionFactsBuilder
             return null;
         }
 
-        $results = $assessments->map(function (AIMediaAssessment $assessment): ?string {
-            $result = $assessment->result;
-
+        // `result` es NOT NULL y se castea al enum (un valor desconocido lanza
+        // al hidratar), así que cada fila aporta siempre un veredicto.
+        $results = $assessments->map(function (AIMediaAssessment $assessment): string {
             if ((($assessment->extracted_signals_json ?? [])['visible_threat'] ?? null) === true) {
                 return MediaAssessmentResult::ConfirmsEvent->value;
             }
 
-            if ($result instanceof MediaAssessmentResult) {
-                return $result->value;
-            }
-
-            return is_string($result) && $result !== '' ? $result : null;
+            return $assessment->result->value;
         });
 
         foreach ([MediaAssessmentResult::ConfirmsEvent, MediaAssessmentResult::ContradictsEvent] as $dominant) {

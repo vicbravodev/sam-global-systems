@@ -92,7 +92,7 @@ class OutboundUrlGuard
             }
         }
 
-        return new OutboundTarget($url, $host, $port, array_values($addresses));
+        return new OutboundTarget($url, $host, $port, $addresses);
     }
 
     public function isSafe(string $url): bool

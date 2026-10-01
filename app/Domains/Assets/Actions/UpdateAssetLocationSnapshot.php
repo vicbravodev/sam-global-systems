@@ -50,9 +50,7 @@ class UpdateAssetLocationSnapshot
 
         $asset->update(['last_seen_at' => $recordedAt]);
 
-        $recordedAtString = $recordedAt instanceof DateTimeInterface
-            ? $recordedAt->format('Y-m-d\TH:i:s\Z')
-            : (string) $recordedAt;
+        $recordedAtString = $recordedAt->format('Y-m-d\TH:i:s\Z');
 
         AssetLocationUpdated::dispatch(
             $asset->team_id,

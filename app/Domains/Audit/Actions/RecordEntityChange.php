@@ -5,8 +5,8 @@ namespace App\Domains\Audit\Actions;
 use App\Domains\Audit\Enums\ChangeActorType;
 use App\Domains\Audit\Enums\ChangeType;
 use App\Domains\Audit\Models\ChangeHistory;
+use Carbon\CarbonImmutable;
 use DateTimeInterface;
-use Illuminate\Support\Carbon;
 
 /**
  * Persists a before/after snapshot for a critical entity mutation.
@@ -43,7 +43,7 @@ class RecordEntityChange
         $history->after_json = $after;
         $history->changed_fields_json = $changedFields;
         $history->reason = $reason;
-        $history->occurred_at = $occurredAt ? Carbon::instance($occurredAt) : Carbon::now();
+        $history->occurred_at = $occurredAt ? CarbonImmutable::instance($occurredAt) : CarbonImmutable::now();
         $history->save();
 
         return $history;

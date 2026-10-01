@@ -134,13 +134,7 @@ class AnalyticsShowcaseSeeder extends ShowcaseStep
             $this->ctx->count('report_executions');
         }
 
-        $history = [
-            ['executive_monthly', 'failed', 'pdf', 20, 'Timeout generando el PDF: la consulta de KPIs tardó más de 60 s.'],
-            ['asset_risk', 'expired', 'xlsx', 40, null],
-            ['cliente-semanal', 'running', 'pdf', 0, null],
-        ];
-
-        foreach ($history as [$code, $status, $format, $daysAgo, $error]) {
+        foreach ($this->executionHistory() as [$code, $status, $format, $daysAgo, $error]) {
             $definition = $definitions->get($code);
 
             if ($definition === null) {
@@ -166,5 +160,20 @@ class AnalyticsShowcaseSeeder extends ShowcaseStep
             ]);
             $this->ctx->count('report_executions');
         }
+    }
+
+    /**
+     * Ejecuciones históricas que no pasan por GenerateReport: código de
+     * definición, estado, formato, días atrás y error.
+     *
+     * @return list<array{string, string, string, int, string|null}>
+     */
+    private function executionHistory(): array
+    {
+        return [
+            ['executive_monthly', 'failed', 'pdf', 20, 'Timeout generando el PDF: la consulta de KPIs tardó más de 60 s.'],
+            ['asset_risk', 'expired', 'xlsx', 40, null],
+            ['cliente-semanal', 'running', 'pdf', 0, null],
+        ];
     }
 }

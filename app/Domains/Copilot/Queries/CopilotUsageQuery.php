@@ -33,7 +33,10 @@ class CopilotUsageQuery
             ->where('copilot_messages.role', CopilotMessageRole::Assistant)
             ->where('copilot_messages.created_at', '>=', $from);
 
+        // Aggregate rows, not messages: read them as plain rows (toBase keeps
+        // the tenant scope) so no aliased column goes through a model cast.
         $totals = $base()
+            ->toBase()
             ->selectRaw('COUNT(*) as queries')
             ->selectRaw('COALESCE(SUM(input_tokens), 0) as input_tokens')
             ->selectRaw('COALESCE(SUM(output_tokens), 0) as output_tokens')
@@ -52,6 +55,7 @@ class CopilotUsageQuery
             ->count('copilot_conversations.user_id');
 
         $daily = $base()
+            ->toBase()
             ->selectRaw('DATE(created_at) as day')
             ->selectRaw('COUNT(*) as queries')
             ->selectRaw('COALESCE(SUM(input_tokens + output_tokens), 0) as tokens')
@@ -78,7 +82,7 @@ class CopilotUsageQuery
             ->map(fn ($row) => [
                 'intent' => $row->intent?->value,
                 'label' => $row->intent instanceof CopilotIntent ? $row->intent->label() : 'Sin clasificar',
-                'queries' => (int) $row->queries,
+                'queries' => (int) $row->getAttribute('queries'),
             ])
             ->all();
 
@@ -164,6 +168,7 @@ class CopilotUsageQuery
             ->where('copilot_conversations.team_id', $teamId)
             ->where('copilot_messages.role', CopilotMessageRole::Assistant)
             ->where('copilot_messages.created_at', '>=', $from)
+            ->toBase()
             ->groupBy('copilot_conversations.user_id')
             ->selectRaw('copilot_conversations.user_id as user_id')
             ->selectRaw('COUNT(*) as queries')

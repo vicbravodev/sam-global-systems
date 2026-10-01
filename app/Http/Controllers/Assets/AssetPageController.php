@@ -21,6 +21,7 @@ use App\Models\Team;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -136,7 +137,7 @@ class AssetPageController extends Controller
                 'assetType',
                 'currentDriverAssignment.driver',
                 // Only devices currently attached (mirrors AssetDevice::isAttached()).
-                'devices' => fn (HasMany $q) => $q
+                'devices' => fn (Relation $q) => $q
                     ->whereNull('detached_at')
                     ->where('status', '!=', DeviceStatus::Detached)
                     ->orderBy('attached_at'),
@@ -502,7 +503,7 @@ class AssetPageController extends Controller
             'statuses' => array_map(
                 fn (AssetStatus $status) => [
                     'value' => $status->value,
-                    'label' => self::STATUS_LABELS[$status->value] ?? $status->value,
+                    'label' => self::STATUS_LABELS[$status->value],
                 ],
                 AssetStatus::cases(),
             ),
@@ -673,7 +674,7 @@ class AssetPageController extends Controller
 
                 return [
                     'type' => $type->value,
-                    'label' => self::TELEMETRY_LABELS[$type->value] ?? $type->value,
+                    'label' => self::TELEMETRY_LABELS[$type->value],
                     'data' => $this->localizeTelemetryData($type, $snapshot->data_json),
                     'recordedAt' => $snapshot->recorded_at->toIso8601String(),
                 ];

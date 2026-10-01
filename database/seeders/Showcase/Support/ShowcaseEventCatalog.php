@@ -15,7 +15,7 @@ final class ShowcaseEventCatalog
     /**
      * código => [peso, etiqueta del proveedor, forma del payload]
      *
-     * @var array<string, array{0: float, 1: string, 2: string}>
+     * @var array<string, array{0: int|float, 1: string, 2: string}>
      */
     public const TYPES = [
         // safety (Samsara las clasifica; SAM no gasta IA en ellas)

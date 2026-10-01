@@ -34,22 +34,14 @@ class AssessIncidentLateArrival
     ) {}
 
     /**
-     * @return array{late: bool, reason: string|null, calc: array<string, mixed>, notice: array<string, mixed>|null}
+     * @return array{late: bool, reason: 'within_threshold'|null, calc: array<string, mixed>, notice: array<string, mixed>|null}
      */
     public function assess(NormalizedEvent $event, DateTimeInterface $openedAt): array
     {
         $thresholdMinutes = max(0, (int) config('incidents.late_notice_after_minutes', self::DEFAULT_THRESHOLD_MINUTES));
         $opened = CarbonImmutable::instance($openedAt);
-
-        if ($event->occurred_at === null) {
-            return [
-                'late' => false,
-                'reason' => 'no_occurred_at',
-                'calc' => ['threshold_minutes' => $thresholdMinutes, 'opened_at' => $opened->toIso8601String()],
-                'notice' => null,
-            ];
-        }
-
+        // `occurred_at` es NOT NULL en normalized_events: siempre hay contra
+        // qué medir el retraso.
         $occurred = CarbonImmutable::instance($event->occurred_at);
         $delaySeconds = (int) $occurred->diffInSeconds($opened, false);
 
@@ -68,9 +60,7 @@ class AssessIncidentLateArrival
         $teamId = (int) $event->team_id;
         [$timezone, $timezoneSource] = $this->timezone($teamId, $opened);
 
-        $raw = $event->raw_event_id !== null
-            ? RawEvent::query()->where('team_id', $teamId)->whereKey($event->raw_event_id)->first()
-            : null;
+        $raw = RawEvent::query()->where('team_id', $teamId)->whereKey($event->raw_event_id)->first();
 
         $reprocessAttempts = (int) ($raw?->reprocess_attempts ?? 0);
         $receivedAt = $raw?->received_at !== null ? CarbonImmutable::instance($raw->received_at) : null;

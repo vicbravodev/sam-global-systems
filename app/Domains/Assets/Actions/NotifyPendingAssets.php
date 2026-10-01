@@ -7,7 +7,6 @@ use App\Domains\Assets\Notifications\AssetsPendingMonitoringNotification;
 use App\Domains\Tenancy\Actions\ResolveAssetLimit;
 use App\Enums\TeamRole;
 use App\Models\Team;
-use App\Models\User;
 use App\Support\TenantContext;
 use Illuminate\Support\Facades\Notification;
 
@@ -42,7 +41,7 @@ class NotifyPendingAssets
             $pending = Asset::query()->where('team_id', $teamId)->pendingMonitoring()->count();
 
             Notification::send(
-                $recipients->map(fn (User $user) => $user),
+                $recipients,
                 new AssetsPendingMonitoringNotification(
                     team: $team,
                     newlyPending: $newlyPending,

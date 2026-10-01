@@ -124,11 +124,11 @@ class NotificationPageController extends Controller
             $events = ($charges->get($delivery->id) ?? collect())
                 ->flatMap(fn (MessagingCharge $charge) => collect($charge->events_json ?? [])
                     ->map(fn (array $event) => [
-                        'status' => (string) ($event['status'] ?? ''),
-                        'label' => DeliveryFeedbackPresenter::providerEventLabel((string) ($event['status'] ?? '')),
-                        'errorCode' => $event['error_code'] ?? null,
-                        'at' => $event['at'] ?? null,
-                        'source' => $event['source'] ?? null,
+                        'status' => $event['status'],
+                        'label' => DeliveryFeedbackPresenter::providerEventLabel($event['status']),
+                        'errorCode' => $event['error_code'],
+                        'at' => $event['at'],
+                        'source' => $event['source'],
                     ]))
                 ->values()
                 ->all();
@@ -389,16 +389,13 @@ class NotificationPageController extends Controller
         $channels = [];
 
         foreach ($notification->deliveries as $delivery) {
-            $type = $delivery->channel?->channel_type;
-            $type = $type instanceof ChannelType ? $type->value : (is_string($type) ? $type : null);
+            $type = $delivery->channel?->channel_type->value;
 
             if ($type === null) {
                 continue;
             }
 
-            $status = $delivery->status instanceof DeliveryStatus
-                ? $delivery->status->value
-                : (string) $delivery->status;
+            $status = $delivery->status->value;
 
             if (! isset($channels[$type])) {
                 $channels[$type] = ['type' => $type, 'status' => $status, 'count' => 0];
@@ -406,7 +403,7 @@ class NotificationPageController extends Controller
 
             $channels[$type]['count']++;
 
-            if (($rank[$status] ?? 0) > ($rank[$channels[$type]['status']] ?? 0)) {
+            if ($rank[$status] > $rank[$channels[$type]['status']]) {
                 $channels[$type]['status'] = $status;
             }
         }
@@ -457,8 +454,8 @@ class NotificationPageController extends Controller
             'channels' => $this->channels($notification),
             'deliverySummary' => isset($notification->attempted_deliveries_count) ? [
                 'attempted' => (int) $notification->attempted_deliveries_count,
-                'delivered' => (int) $notification->delivered_deliveries_count,
-                'failed' => (int) $notification->failed_deliveries_count,
+                'delivered' => (int) $notification->getAttribute('delivered_deliveries_count'),
+                'failed' => (int) $notification->getAttribute('failed_deliveries_count'),
             ] : null,
             'detailUrl' => route('notifications.show', [
                 'current_team' => $team->slug,

@@ -39,7 +39,7 @@ class SyncAssetsFromProviderJob implements ShouldQueue
     ): void {
         $result = $providerAdapter->sync($this->integration, 'assets');
         $discovered = 0;
-        $assets = $result['assets'] ?? [];
+        $assets = $result['assets'];
         $counts = ['created' => 0, 'updated' => 0, 'conflict' => 0];
 
         foreach ($assets as $assetData) {

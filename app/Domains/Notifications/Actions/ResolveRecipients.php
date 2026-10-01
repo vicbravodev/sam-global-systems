@@ -37,7 +37,7 @@ class ResolveRecipients
     }
 
     /**
-     * @param  array<int, array<string, mixed>>  $explicit
+     * @param  array<array-key, mixed>  $explicit  Viene del payload: cada entrada se valida aquí.
      * @return array{descriptors: list<RecipientDescriptor>, source: 'explicit', candidates_count: int, dropped_count_by_reason: array<string, int>}
      */
     private function buildExplicit(array $explicit): array

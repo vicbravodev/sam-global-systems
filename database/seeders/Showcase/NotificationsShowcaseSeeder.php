@@ -49,7 +49,7 @@ class NotificationsShowcaseSeeder extends ShowcaseStep
     /** @var array<string, int> tipo de canal => id del canal de plataforma */
     private array $channels = [];
 
-    /** @var array<string, true> */
+    /** @var array<string, bool> */
     private array $existingKeys = [];
 
     public function run(): void
@@ -250,7 +250,7 @@ class NotificationsShowcaseSeeder extends ShowcaseStep
             return;
         }
 
-        $users = array_values(array_unique(array_filter($users), SORT_REGULAR));
+        $users = array_values(array_unique($users, SORT_REGULAR));
         $ageMinutes = $at->diffInMinutes($this->ctx->now);
         $inFlight = $ageMinutes < 2;
 
@@ -588,7 +588,7 @@ class NotificationsShowcaseSeeder extends ShowcaseStep
     /**
      * Marcas de tiempo y eventos de Twilio de un intento.
      *
-     * @param  array{provider_status: string, delivery_status: string, error_code: ?string, segments: ?int, duration: ?int, read: bool}  $attempt
+     * @param  array{provider_status: string, delivery_status?: string, error_code: ?string, segments?: ?int, duration: ?int, read?: bool}  $attempt
      * @return array{accepted_at: CarbonImmutable, sent_at: ?CarbonImmutable, delivered_at: ?CarbonImmutable, read_at: ?CarbonImmutable, answered_at: ?CarbonImmutable, last_at: CarbonImmutable, events: array<int, array<string, mixed>>}
      */
     private function providerTimeline(string $channel, array $attempt, CarbonImmutable $start, ShowcaseRandom $random): array

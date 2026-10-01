@@ -308,7 +308,7 @@ class AlertPipelineFailure
 
                 return [
                     'team_id' => $normalized->team_id !== null ? (int) $normalized->team_id : null,
-                    'raw_event_id' => $normalized->raw_event_id !== null ? (int) $normalized->raw_event_id : null,
+                    'raw_event_id' => (int) $normalized->raw_event_id,
                     'normalized_event_id' => (int) $normalized->id,
                     'event_type_code' => $classification['event_type_code'],
                     'emergency' => $classification['emergency'],

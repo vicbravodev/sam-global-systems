@@ -52,7 +52,7 @@ final class PanicKpisTool implements CopilotTool
             ->get()
             ->keyBy('related_event_id');
 
-        $acknowledged = $incidents->filter(fn (Incident $i) => $i->acknowledged_at !== null && $i->opened_at !== null);
+        $acknowledged = $incidents->filter(fn (Incident $i) => $i->acknowledged_at !== null);
         $avgResponseSeconds = $acknowledged->isNotEmpty()
             ? (int) round($acknowledged->avg(fn (Incident $i) => $i->opened_at->diffInSeconds($i->acknowledged_at)))
             : null;

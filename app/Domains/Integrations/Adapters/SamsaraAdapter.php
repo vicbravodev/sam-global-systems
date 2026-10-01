@@ -1110,7 +1110,7 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
 
         $raw = $integration->credentials_encrypted;
 
-        if (is_string($raw) && $raw !== '') {
+        if ($raw !== '') {
             $decoded = json_decode($raw, true);
 
             if (is_array($decoded)) {

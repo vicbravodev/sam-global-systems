@@ -85,7 +85,6 @@ class ResolveGeofenceContext
         return match ($geofence->geofence_type) {
             GeofenceType::Zone, GeofenceType::Route => $this->matchZone($geofence, $geometry, $lat, $lng),
             GeofenceType::Point => $this->matchPoint($geofence, $geometry, $lat, $lng),
-            default => null,
         };
     }
 

@@ -74,7 +74,64 @@ class AutomationShowcaseSeeder extends ShowcaseStep
         $live = ! $this->ctx->hasRealData;
         $monitor = (string) $this->ctx->user('monitor')->id;
 
-        $definitions = [
+        $definitions = $this->workflowDefinitions($monitor);
+
+        foreach ($definitions as $code => [$name, $description, $trigger, $conditions, $status, $steps]) {
+            $workflow = AutomationWorkflow::query()->where('team_id', $this->ctx->team->id)->where('code', $code)->first();
+
+            if ($workflow === null) {
+                $active = $live && $status === 'active';
+                $workflow = AutomationWorkflow::query()->create([
+                    'team_id' => $this->ctx->team->id,
+                    'code' => $code,
+                    'name' => $name,
+                    'description' => $description.($live ? '' : ' (Inactivo: sembrado por el showcase sobre un tenant con datos reales.)'),
+                    'trigger_type' => $trigger,
+                    'trigger_conditions_json' => $conditions,
+                    'status' => $active ? 'active' : ($status === 'draft' ? 'draft' : 'inactive'),
+                    'version' => 1,
+                    'steps_json' => $steps,
+                    'is_active' => $active,
+                    'created_at' => $this->ctx->startDay()->subDays(20),
+                ]);
+                $this->ctx->count('automation_workflows');
+
+                foreach ($steps as $step) {
+                    DB::table('escalation_steps')->insert([
+                        'automation_workflow_id' => $workflow->id,
+                        'step_order' => $step['order'],
+                        'step_type' => match ($step['action_type']) {
+                            'assign_incident' => 'assign',
+                            'escalate' => 'escalate',
+                            'create_ticket' => 'create_ticket',
+                            'request_human_review', 'update_asset_state' => 'request_confirmation',
+                            'call_webhook' => 'call_external_system',
+                            default => 'notify',
+                        },
+                        'target_type' => $step['target_type'],
+                        'target_reference' => $step['target_reference'],
+                        'delay_seconds' => $step['delay_seconds'],
+                        'conditions_json' => json_encode($conditions),
+                        'fallback_action' => $step['action_type'] === 'send_sms' ? 'send_email' : null,
+                        'created_at' => $this->ctx->now,
+                        'updated_at' => $this->ctx->now,
+                    ]);
+                    $this->ctx->count('escalation_steps');
+                }
+            }
+
+            $this->workflows[$code] = $workflow;
+        }
+    }
+
+    /**
+     * código => [nombre, descripción, trigger, condiciones, estado, pasos]
+     *
+     * @return array<string, array{string, string, string, array<string, string>, string, list<array{order: int, action_type: string, execution_mode: string, target_type: string, target_reference: string, delay_seconds: int, template_code?: string}>}>
+     */
+    private function workflowDefinitions(string $monitor): array
+    {
+        return [
             'protocolo-emergencia' => [
                 'Protocolo de emergencia', 'Pánico o colisión confirmados: SMS y llamada al supervisor, correo a dirección y escalamiento a los 5 min.',
                 'decision_outcome', ['decision_code' => 'ESCALATE'], 'active',
@@ -123,53 +180,6 @@ class AutomationShowcaseSeeder extends ShowcaseStep
                 ],
             ],
         ];
-
-        foreach ($definitions as $code => [$name, $description, $trigger, $conditions, $status, $steps]) {
-            $workflow = AutomationWorkflow::query()->where('team_id', $this->ctx->team->id)->where('code', $code)->first();
-
-            if ($workflow === null) {
-                $active = $live && $status === 'active';
-                $workflow = AutomationWorkflow::query()->create([
-                    'team_id' => $this->ctx->team->id,
-                    'code' => $code,
-                    'name' => $name,
-                    'description' => $description.($live ? '' : ' (Inactivo: sembrado por el showcase sobre un tenant con datos reales.)'),
-                    'trigger_type' => $trigger,
-                    'trigger_conditions_json' => $conditions,
-                    'status' => $active ? 'active' : ($status === 'draft' ? 'draft' : 'inactive'),
-                    'version' => 1,
-                    'steps_json' => $steps,
-                    'is_active' => $active,
-                    'created_at' => $this->ctx->startDay()->subDays(20),
-                ]);
-                $this->ctx->count('automation_workflows');
-
-                foreach ($steps as $step) {
-                    DB::table('escalation_steps')->insert([
-                        'automation_workflow_id' => $workflow->id,
-                        'step_order' => $step['order'],
-                        'step_type' => match ($step['action_type']) {
-                            'assign_incident' => 'assign',
-                            'escalate' => 'escalate',
-                            'create_ticket' => 'create_ticket',
-                            'request_human_review', 'update_asset_state' => 'request_confirmation',
-                            'call_webhook' => 'call_external_system',
-                            default => 'notify',
-                        },
-                        'target_type' => $step['target_type'],
-                        'target_reference' => $step['target_reference'],
-                        'delay_seconds' => $step['delay_seconds'],
-                        'conditions_json' => json_encode($conditions),
-                        'fallback_action' => $step['action_type'] === 'send_sms' ? 'send_email' : null,
-                        'created_at' => $this->ctx->now,
-                        'updated_at' => $this->ctx->now,
-                    ]);
-                    $this->ctx->count('escalation_steps');
-                }
-            }
-
-            $this->workflows[$code] = $workflow;
-        }
     }
 
     private function seedExecutions(): void

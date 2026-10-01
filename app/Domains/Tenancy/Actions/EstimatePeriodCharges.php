@@ -187,6 +187,7 @@ class EstimatePeriodCharges
             ->where('usage_meter_id', $meterId)
             ->where('occurred_at', '>=', $periodStart)
             ->where('occurred_at', '<=', $today->endOfDay())
+            ->toBase()
             // Una fila por unidad y día (cobro por uso): los días con cierre son
             // las fechas distintas, no las filas.
             ->selectRaw('COALESCE(SUM(quantity), 0) as days, COUNT(DISTINCT DATE(occurred_at)) as samples, MAX(occurred_at) as last_sample')
@@ -221,6 +222,7 @@ class EstimatePeriodCharges
             ->whereIn('usage_meter_id', $meters->keys())
             ->where('occurred_at', '>=', $periodStart)
             ->where('occurred_at', '<=', $today->endOfDay())
+            ->toBase()
             ->selectRaw('DATE(occurred_at) as day, usage_meter_id, SUM(quantity) as quantity')
             ->groupByRaw('DATE(occurred_at), usage_meter_id')
             ->get();

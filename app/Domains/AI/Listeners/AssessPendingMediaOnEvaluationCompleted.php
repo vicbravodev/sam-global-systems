@@ -40,10 +40,6 @@ class AssessPendingMediaOnEvaluationCompleted
     {
         $evaluation = $event->evaluation;
 
-        if ($evaluation->normalized_event_id === null) {
-            return;
-        }
-
         $eventId = (int) $evaluation->normalized_event_id;
 
         $assessedMediaIds = AIMediaAssessment::query()

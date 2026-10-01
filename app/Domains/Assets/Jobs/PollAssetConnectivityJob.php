@@ -53,7 +53,7 @@ class PollAssetConnectivityJob implements ShouldBeUnique, ShouldQueue
         $readings = [];
 
         foreach ($providerAdapter->fetchDeviceConnectivity($this->integration) as $reading) {
-            $externalId = (string) ($reading['external_id'] ?? '');
+            $externalId = $reading['external_id'];
 
             if ($externalId !== '') {
                 $readings[$externalId] = $reading;

@@ -18,7 +18,7 @@ class AuditServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->singleton(AuditableEventClassifier::class, function ($app): AuditableEventClassifier {
-            /** @var array<class-string, array{category: string, action: string, tenant_via: string}> $events */
+            /** @var array<class-string, array{category: string, action: string, tenant_via?: string}> $events */
             $events = (array) $app['config']->get('audit.events', []);
 
             return new ConfigAuditableEventClassifier($events);

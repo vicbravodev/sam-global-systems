@@ -184,7 +184,7 @@ class ReconcileMessagingChargesJob implements ShouldQueue
         }
 
         $status = strtolower((string) ($resource->status ?? ''));
-        $errorCode = isset($resource->errorCode) && $resource->errorCode !== null ? (string) $resource->errorCode : null;
+        $errorCode = isset($resource->errorCode) ? (string) $resource->errorCode : null;
         $duration = isset($resource->duration) && is_numeric($resource->duration) ? (int) $resource->duration : null;
         $segments = isset($resource->numSegments) && is_numeric($resource->numSegments) ? (int) $resource->numSegments : null;
 

@@ -212,9 +212,7 @@ class DashboardController extends Controller
                 ?? $incident->relatedEvent?->eventSeverity?->response_sla_seconds)
                 ?: 1800);
 
-            $elapsed = $incident->opened_at !== null
-                ? (int) $incident->opened_at->diffInSeconds($now)
-                : 0;
+            $elapsed = (int) $incident->opened_at->diffInSeconds($now);
 
             return $budget - $elapsed;
         });

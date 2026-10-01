@@ -99,7 +99,7 @@ class AnalyticsPageController extends Controller
                     'code' => $report->code,
                     'name' => $report->name,
                     'description' => $report->description,
-                    'reportType' => $report->report_type?->value ?? (string) $report->report_type,
+                    'reportType' => $report->report_type->value,
                     'frequency' => $report->schedule_config_json['frequency'] ?? null,
                 ])
                 ->all(),
@@ -111,12 +111,10 @@ class AnalyticsPageController extends Controller
                 ->get()
                 ->map(fn (ReportExecution $execution): array => [
                     'id' => (int) $execution->id,
-                    'reportId' => $execution->report_definition_id !== null
-                        ? (int) $execution->report_definition_id
-                        : null,
+                    'reportId' => (int) $execution->report_definition_id,
                     'reportName' => $execution->definition?->name,
                     'status' => $execution->status?->value,
-                    'format' => $execution->output_format?->value ?? (string) $execution->output_format,
+                    'format' => $execution->output_format->value,
                     'error' => $execution->error_message,
                     'requestedAt' => ($execution->started_at ?? $execution->created_at)?->toIso8601String(),
                     'finishedAt' => $execution->finished_at?->toIso8601String(),

@@ -156,7 +156,7 @@ final class IdleTimeCalculator
     {
         $value = AssetTelemetrySnapshot::query()->getQuery()->getGrammar()->wrap('data_json->value');
 
-        return AssetTelemetrySnapshot::query()
+        $assetIds = AssetTelemetrySnapshot::query()
             ->toBase()
             ->select('asset_id')
             ->whereIn('asset_id', $ids)
@@ -164,8 +164,10 @@ final class IdleTimeCalculator
             ->whereRaw("lower({$value}) = ?", ['idle'])
             ->groupBy('asset_id')
             ->pluck('asset_id')
-            ->mapWithKeys(fn ($id) => [(int) $id => true])
+            ->map(fn ($id): int => (int) $id)
             ->all();
+
+        return array_fill_keys($assetIds, true);
     }
 
     /**

@@ -34,13 +34,13 @@ class AnnotateIncidentOnMediaAssessmentCompleted
                 incident: $incident,
                 entryType: TimelineEntryType::MediaAssessed,
                 actorType: TimelineActorType::Ai,
-                title: 'Media evaluada: '.($assessment->result?->value ?? 'desconocido'),
+                title: 'Media evaluada: '.$assessment->result->value,
                 description: $assessment->summary_text,
                 payload: [
                     'assessment_id' => $assessment->id,
                     'event_media_context_id' => $assessment->event_media_context_id,
                     'media_type' => $assessment->media_type?->value,
-                    'result' => $assessment->result?->value,
+                    'result' => $assessment->result->value,
                     'confidence_score' => $assessment->confidence_score,
                 ],
                 occurredAt: $assessment->assessed_at,
@@ -53,10 +53,6 @@ class AnnotateIncidentOnMediaAssessmentCompleted
     private function resolveIncident(MediaAssessmentCompleted $event): ?Incident
     {
         $normalizedEventId = $event->evaluation->normalized_event_id;
-
-        if ($normalizedEventId === null) {
-            return null;
-        }
 
         $incident = Incident::query()
             ->where('related_event_id', $normalizedEventId)

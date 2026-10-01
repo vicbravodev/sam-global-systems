@@ -6,7 +6,6 @@ use App\Domains\Copilot\Support\CopilotTurnCollector;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Ai\Contracts\Tool;
 use Laravel\Ai\Tools\Request;
-use Stringable;
 
 /**
  * Lets the model propose the follow-up questions the UI shows as chips. It
@@ -21,7 +20,7 @@ final class SuggestFollowupsTool implements Tool
         return 'suggest_followups';
     }
 
-    public function description(): Stringable|string
+    public function description(): string
     {
         return 'Llama esto al final con 2 o 3 preguntas cortas que el gerente probablemente haría después, basadas en lo que encontraste.';
     }
@@ -33,7 +32,7 @@ final class SuggestFollowupsTool implements Tool
         ];
     }
 
-    public function handle(Request $request): Stringable|string
+    public function handle(Request $request): string
     {
         $questions = collect((array) ($request['questions'] ?? []))
             ->filter(fn ($q) => is_string($q) && trim($q) !== '')

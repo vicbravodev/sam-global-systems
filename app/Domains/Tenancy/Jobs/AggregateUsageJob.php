@@ -137,6 +137,7 @@ class AggregateUsageJob implements ShouldQueue
             ->where('usage_meter_id', $meter->id)
             ->where('occurred_at', '>=', $periodStart)
             ->where('occurred_at', '<=', $periodEnd)
+            ->toBase()
             ->select([
                 DB::raw('DATE(occurred_at) as day'),
                 DB::raw('SUM(quantity) as quantity_sum'),

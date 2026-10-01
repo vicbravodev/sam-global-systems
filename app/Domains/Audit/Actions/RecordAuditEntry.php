@@ -5,9 +5,9 @@ namespace App\Domains\Audit\Actions;
 use App\Domains\Audit\Enums\AuditActorType;
 use App\Domains\Audit\Enums\AuditCategory;
 use App\Domains\Audit\Models\AuditLog;
+use Carbon\CarbonImmutable;
 use DateTimeInterface;
 use Illuminate\Database\UniqueConstraintViolationException;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -48,7 +48,7 @@ class RecordAuditEntry
             $sourceReferenceId,
         );
 
-        $occurredAt = $occurredAt ? Carbon::instance($occurredAt) : Carbon::now();
+        $occurredAt = $occurredAt ? CarbonImmutable::instance($occurredAt) : CarbonImmutable::now();
 
         if ($teamId !== null) {
             $existing = AuditLog::withoutGlobalScopes()

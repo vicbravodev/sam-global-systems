@@ -197,6 +197,7 @@ class Asset extends Model
      * started. Status history is not kept, so the current status decides
      * whether the asset counts as active.
      *
+     * @param  Builder<Asset>  $query
      * @return Builder<Asset>
      */
     public function scopeActiveDuring(Builder $query, CarbonInterface $from, CarbonInterface $to): Builder

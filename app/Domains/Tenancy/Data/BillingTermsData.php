@@ -44,17 +44,17 @@ final readonly class BillingTermsData
         $assets = (int) ceil(max(0, $averageAssets));
 
         foreach ($this->volumeTiers as $index => $tier) {
-            $from = (int) ($tier['from'] ?? 0);
-            $to = $tier['to'] ?? null;
+            $from = $tier['from'];
+            $to = $tier['to'];
 
-            if ($assets >= $from && ($to === null || $assets <= (int) $to)) {
+            if ($assets >= $from && ($to === null || $assets <= $to)) {
                 return [
                     'unit_price' => (float) $tier['unit_price'],
                     'source' => 'volume_tier',
                     'tier_assets' => $assets,
                     'tier_index' => $index,
                     'tier_from' => $from,
-                    'tier_to' => $to === null ? null : (int) $to,
+                    'tier_to' => $to,
                     'tiers_count' => count($this->volumeTiers),
                 ];
             }

@@ -232,7 +232,7 @@ class BuildEventContext
 
         $latest = $event->asset?->latestLocation;
 
-        if ($latest && $latest->latitude !== null && $latest->longitude !== null) {
+        if ($latest !== null) {
             return [
                 'latitude' => (float) $latest->latitude,
                 'longitude' => (float) $latest->longitude,

@@ -36,7 +36,7 @@ class IncidentCreatedBroadcast implements ShouldBroadcast, ShouldRescue
             status: (string) ($incident->status?->code ?? ''),
             assetId: $incident->asset_id !== null ? (int) $incident->asset_id : null,
             driverId: $incident->driver_id !== null ? (int) $incident->driver_id : null,
-            openedAt: $incident->opened_at?->toIso8601String() ?? now()->toIso8601String(),
+            openedAt: $incident->opened_at->toIso8601String(),
         );
     }
 

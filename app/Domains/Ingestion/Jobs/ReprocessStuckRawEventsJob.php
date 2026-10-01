@@ -122,7 +122,7 @@ class ReprocessStuckRawEventsJob implements ShouldBeUnique, ShouldQueue
                         'team_id' => $teamId,
                         'raw_event_id' => (int) $event->id,
                         'emergency' => $classify->execute($event)['emergency'],
-                        'received_at' => $event->received_at?->getTimestamp() ?? 0,
+                        'received_at' => $event->received_at->getTimestamp(),
                     ];
                 }
             });

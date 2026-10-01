@@ -32,7 +32,7 @@ final readonly class CopilotTurnScope
         return new self(
             (int) $team->id,
             (string) $team->slug,
-            array_values($permissions),
+            $permissions,
             $isSuperAdmin,
             $team->timezone ?: (string) config('app.timezone'),
             CarbonImmutable::now(),

@@ -137,7 +137,7 @@ class ApplyTwilioStatusUpdate
         $last = end($events) ?: null;
 
         $isRepeat = is_array($last)
-            && ($last['status'] ?? null) === $status
+            && $last['status'] === $status
             && ($last['error_code'] ?? null) === $errorCode;
 
         if (! $isRepeat) {

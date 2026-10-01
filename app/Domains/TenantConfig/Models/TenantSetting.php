@@ -36,11 +36,7 @@ class TenantSetting extends Model
     {
         $raw = $this->value_json;
 
-        if ($raw === null) {
-            return null;
-        }
-
-        if (is_array($raw) && array_key_exists('value', $raw) && count($raw) === 1) {
+        if (array_key_exists('value', $raw) && count($raw) === 1) {
             return $raw['value'];
         }
 

@@ -212,16 +212,14 @@ class EventsPageController extends Controller
      */
     private function toRow(NormalizedEvent $event): array
     {
-        $payload = is_array($event->payload_normalized_json) ? $event->payload_normalized_json : [];
+        $payload = $event->payload_normalized_json;
         $description = $payload['description'] ?? null;
 
         return [
             'id' => (int) $event->id,
             'occurredAt' => $event->occurred_at?->toIso8601String(),
-            'status' => $event->status?->value,
-            'statusLabel' => $event->status !== null
-                ? (self::STATUS_LABELS[$event->status->value] ?? $event->status->value)
-                : null,
+            'status' => $event->status->value,
+            'statusLabel' => self::STATUS_LABELS[$event->status->value],
             'eventType' => $event->eventType?->name,
             'eventTypeCode' => $event->eventType?->code,
             'category' => $event->eventCategory?->name,
@@ -255,7 +253,7 @@ class EventsPageController extends Controller
             'payload' => $event->payload_normalized_json,
             'context' => $this->context($event),
             'rawPayload' => $event->rawEvent?->payload_json,
-            'rawEventId' => $event->raw_event_id !== null ? (int) $event->raw_event_id : null,
+            'rawEventId' => (int) $event->raw_event_id,
             'facts' => $this->facts($event),
         ];
     }
@@ -304,7 +302,7 @@ class EventsPageController extends Controller
      */
     private function facts(NormalizedEvent $event): array
     {
-        $payload = is_array($event->payload_normalized_json) ? $event->payload_normalized_json : [];
+        $payload = $event->payload_normalized_json;
 
         $location = null;
         $rawLocation = $payload['location'] ?? null;
@@ -424,9 +422,7 @@ class EventsPageController extends Controller
         return [
             'id' => (int) $decision->id,
             'code' => $decision->decision_code,
-            'outcomeLabel' => $decision->decision_code !== null
-                ? (DecisionOutcomeCode::tryFrom($decision->decision_code)?->label() ?? $decision->decision_code)
-                : null,
+            'outcomeLabel' => DecisionOutcomeCode::tryFrom($decision->decision_code)?->label() ?? $decision->decision_code,
             'reason' => $decision->decision_reason,
             'requiresHumanReview' => (bool) $decision->requires_human_review,
             'isAutomated' => (bool) $decision->is_automated,
@@ -523,7 +519,7 @@ class EventsPageController extends Controller
                 ])
                 ->all(),
             'statuses' => array_map(
-                fn (NormalizedEventStatus $status) => ['value' => $status->value, 'label' => self::STATUS_LABELS[$status->value] ?? $status->value],
+                fn (NormalizedEventStatus $status) => ['value' => $status->value, 'label' => self::STATUS_LABELS[$status->value]],
                 NormalizedEventStatus::cases(),
             ),
         ];

@@ -80,9 +80,7 @@ class BuildAIInputContext
     private function eventBlock(NormalizedEvent $event): array
     {
         $timezone = $this->timezoneFor((int) $event->team_id);
-        $local = $event->occurred_at !== null
-            ? Carbon::instance($event->occurred_at)->setTimezone($timezone)
-            : null;
+        $local = Carbon::instance($event->occurred_at)->setTimezone($timezone);
 
         return [
             'id' => $event->id,
@@ -91,10 +89,10 @@ class BuildAIInputContext
             'category' => $event->eventCategory?->code ?? $event->eventType?->category?->code,
             'severity' => $event->eventSeverity?->code,
             'severity_level' => $event->eventSeverity?->level,
-            'occurred_at' => $event->occurred_at?->toIso8601String(),
-            'occurred_at_local' => $local?->format('Y-m-d H:i:s'),
+            'occurred_at' => $event->occurred_at->toIso8601String(),
+            'occurred_at_local' => $local->format('Y-m-d H:i:s'),
             'local_timezone' => $timezone,
-            'local_day_of_week' => $local !== null ? strtolower($local->englishDayOfWeek) : null,
+            'local_day_of_week' => strtolower($local->englishDayOfWeek),
             'status' => $event->status->value,
             'payload' => $this->redact($event->payload_normalized_json ?? []),
         ];

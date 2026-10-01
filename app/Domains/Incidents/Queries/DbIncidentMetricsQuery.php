@@ -218,7 +218,7 @@ class DbIncidentMetricsQuery implements IncidentMetricsQuery
             }
 
             $withinSla = $resolved->filter(function (Incident $incident): bool {
-                if ($incident->opened_at === null || $incident->resolved_at === null) {
+                if ($incident->resolved_at === null) {
                     return false;
                 }
 

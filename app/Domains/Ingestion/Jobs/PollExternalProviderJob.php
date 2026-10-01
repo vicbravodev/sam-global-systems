@@ -41,7 +41,7 @@ class PollExternalProviderJob implements ShouldQueue
         }
 
         $result = $providerAdapter->sync($integration, 'incremental');
-        $events = $result['events'] ?? [];
+        $events = $result['events'];
 
         foreach ($events as $eventData) {
             $rawEvent = $storeRawEvent->execute(

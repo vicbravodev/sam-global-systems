@@ -20,8 +20,8 @@ use App\Domains\Tenancy\Models\TenantBranding;
 use App\Domains\Tenancy\Models\TenantFeature;
 use App\Domains\Tenancy\Models\TenantUsageCounter;
 use App\Domains\Tenancy\Support\CostPlusPricing;
-use App\Enums\TeamRole;
 use App\Http\Controllers\Controller;
+use App\Models\Membership;
 use App\Models\Team;
 use App\Models\User;
 use App\Support\TenantContext;
@@ -121,14 +121,18 @@ class TenantController extends Controller
                 ->orderByDesc('starts_at')
                 ->first();
 
-            $members = $team->members()->get()->map(fn (User $member) => [
-                'id' => (int) $member->id,
-                'name' => (string) $member->name,
-                'email' => (string) $member->email,
-                'role' => $member->pivot->role instanceof TeamRole
-                    ? $member->pivot->role->value
-                    : (string) $member->pivot->role,
-            ])->values()->all();
+            $members = $team->members()->get()->map(function (User $member): array {
+                // El pivot (Membership) llega como relación hidratada por
+                // BelongsToMany::using(); se lee tipado en vez de vía $pivot.
+                $pivot = $member->getRelation('pivot');
+
+                return [
+                    'id' => (int) $member->id,
+                    'name' => (string) $member->name,
+                    'email' => (string) $member->email,
+                    'role' => $pivot instanceof Membership ? $pivot->role->value : '',
+                ];
+            })->values()->all();
 
             $features = TenantFeature::query()
                 ->where('team_id', $team->id)
@@ -205,7 +209,7 @@ class TenantController extends Controller
                         'periodEnd' => $invoice->period_end?->toDateString(),
                         'total' => (float) $invoice->total,
                         'currency' => (string) $invoice->currency,
-                        'status' => $invoice->status?->value ?? (string) $invoice->status,
+                        'status' => $invoice->status->value,
                         'hasReceipt' => $invoice->payment_receipt_file_object_id !== null,
                         'paidAt' => $invoice->paid_at?->toDateString(),
                     ])->values()->all(),
