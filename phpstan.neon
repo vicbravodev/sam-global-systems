@@ -1,8 +1,17 @@
 includes:
     - vendor/larastan/larastan/extension.neon
+    - vendor/phpstan/phpstan-strict-rules/rules.neon
+    - vendor/phpstan/phpstan-deprecation-rules/rules.neon
     - phpstan-baseline.neon
 
 parameters:
+    # strict-rules: todas activas salvo `dynamicCallOnStaticMethod`, que en
+    # Laravel sólo da falsos positivos: el Builder de Eloquent reenvía a métodos
+    # de Query\Builder (orderByDesc, count, whereIn…) y las macros (Request::validate)
+    # se declaran estáticas aunque se llamen sobre una instancia.
+    strictRules:
+        dynamicCallOnStaticMethod: false
+
     level: 8
     paths:
         - app
