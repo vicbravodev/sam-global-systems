@@ -444,6 +444,7 @@ Después de abrir: `no_supervisors` (`incidents.escalation_level.notified`) y `n
 | `notifications.inbound_reply.applied` | ok | | `token_id`, `incident_id`, `channel_type`; calc `keyword` (`SI`/`NO`/`ESC`), `user_linked` (el token tiene usuario); result `action` (`acknowledge`/`dismiss`/`escalate`). Por `DB::afterCommit` (la transacción de `ProcessInboundReply`). Nunca el remitente, el cuerpo, el código del token ni su dirección |
 | `notifications.inbound_reply.rejected` | degraded | `unexpected_sender` | `token_id` |
 | `notifications.notification.cancelled` | skipped | `tenant_cannot_send` | `notification_id`, `team_id`, `blocked_reason` |
+| `notifications.team_invitation.skipped` | skipped | `team_deleted` | `invitation_id`, `team_id`, `channel`. El correo de invitación va en cola: si la empresa se borró (soft delete) antes del envío, `shouldSend()` lo descarta. Nunca el email invitado |
 
 `notifications.delivery.sent` = aceptado por el proveedor. En Twilio es `accepted` (hay SID): la línea lo dice con `awaiting_provider_confirmation: true` y `delivery_status: queued`, y la entrega real llega después (`notifications.provider_status.applied`). `delivered` sólo lo afirma ese callback (o un canal síncrono como email/web).
 
