@@ -40,7 +40,7 @@ final class AssetActivityTool implements CopilotTool
         for ($i = $days - 1; $i >= 0; $i--) {
             $day = CarbonImmutable::parse($period->to)->subDays($i)->startOfDay();
             $bars[] = [
-                'label' => $day->locale('es')->isoFormat('dd D'),
+                'label' => $day->settings(['locale' => 'es'])->isoFormat('dd D'),
                 'value' => $events->filter(fn (NormalizedEvent $e) => $e->occurred_at->isSameDay($day))->count(),
             ];
         }
@@ -92,7 +92,7 @@ final class AssetActivityTool implements CopilotTool
             tool: 'asset_activity',
             label: 'Eventos e incidentes',
             blocks: $blocks,
-            sources: $incidents->map(fn (Incident $i) => IncidentRows::source($i, $context->teamSlug))->all(),
+            sources: array_values($incidents->map(fn (Incident $i) => IncidentRows::source($i, $context->teamSlug))->all()),
             facts: [
                 'asset' => $label,
                 'period' => $period->label,

@@ -11,6 +11,7 @@ use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
 use Illuminate\Support\Collection;
+use LogicException;
 
 /**
  * Estado compartido por los pasos del showcase de UN tenant: el team, sus
@@ -88,7 +89,13 @@ final class ShowcaseContext
 
     public function user(string $role): User
     {
-        return $this->users[$role] ?? $this->users['admin'] ?? reset($this->users);
+        $user = $this->users[$role] ?? $this->users['admin'] ?? reset($this->users);
+
+        if ($user === false) {
+            throw new LogicException('El showcase aún no tiene usuarios: siembra el equipo antes de pedir uno.');
+        }
+
+        return $user;
     }
 
     /**

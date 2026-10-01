@@ -11,8 +11,8 @@ use App\Domains\Assets\Queries\LatestAssetTelemetry;
 use App\Domains\Context\Support\HaversineDistance;
 use App\Domains\Integrations\Data\VehicleStatsPage;
 use App\Domains\Integrations\Models\TenantIntegration;
+use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -33,6 +33,11 @@ use Illuminate\Support\Facades\DB;
  *
  * It does not broadcast or raise detections: the caller does that once the
  * surrounding transaction (which also advances the feed cursor) commits.
+ *
+ * @phpstan-type GpsPoint array{latitude: float, longitude: float, speed: float|null, heading: int|null, formatted_location: string|null, at: CarbonImmutable}
+ * @phpstan-type LivePosition array{asset_id: int, latitude: float, longitude: float, speed_kph: float|null, heading: int|null, recorded_at: string, moving: bool|null}
+ * @phpstan-type PendingReading array{asset_id: int, type: TelemetryType, value: float|string, unit: string|null, at: CarbonImmutable}
+ * @phpstan-type ChangedReading array{value: float|string, unit: string|null, recorded_at: string}
  */
 class IngestVehicleStatsPage
 {
@@ -128,14 +133,14 @@ class IngestVehicleStatsPage
     /**
      * @param  array<string, Asset>  $assets
      * @param  list<array<string, mixed>>  $locations
-     * @return array{0: int, 1: array<int, array<string, mixed>>, 2: CarbonInterface|null, 3: array<string, int>}
+     * @return array{0: int, 1: array<int, LivePosition>, 2: CarbonInterface|null, 3: array<string, int>}
      */
     private function storeLocations(array $assets, array $locations): array
     {
         $now = now();
         $rows = [];
         $dropped = [];
-        /** @var array<int, list<array<string, mixed>>> $pointsByAsset */
+        /** @var array<int, list<GpsPoint>> $pointsByAsset */
         $pointsByAsset = [];
         $newest = null;
 
@@ -161,7 +166,7 @@ class IngestVehicleStatsPage
                 'longitude' => (float) $location['longitude'],
                 'speed' => isset($location['speed']) ? (float) $location['speed'] : null,
                 'heading' => isset($location['heading']) ? (int) $location['heading'] : null,
-                'formatted_location' => $location['formatted_location'] ?? null,
+                'formatted_location' => is_string($location['formatted_location'] ?? null) ? $location['formatted_location'] : null,
                 'at' => $at,
             ];
 
@@ -218,8 +223,8 @@ class IngestVehicleStatsPage
      * points newer than what it holds. Older points (a backfill, a late page)
      * are history only: they never rewind the live state.
      *
-     * @param  list<array<string, mixed>>  $points
-     * @return array<string, mixed>|null the new current position, or null when nothing moved forward
+     * @param  list<GpsPoint>  $points
+     * @return LivePosition|null the new current position, or null when nothing moved forward
      */
     private function advanceLivePosition(Asset $asset, array $points): ?array
     {
@@ -305,22 +310,26 @@ class IngestVehicleStatsPage
     /**
      * @param  array<string, Asset>  $assets
      * @param  list<array<string, mixed>>  $readings
-     * @return array{0: int, 1: array<int, array<string, array<string, mixed>>>, 2: CarbonInterface|null, 3: array<string, int>}
+     * @return array{0: int, 1: array<int, array<string, ChangedReading>>, 2: CarbonInterface|null, 3: array<string, int>}
      */
     private function storeReadings(array $assets, array $readings): array
     {
-        /** @var array<string, list<array<string, mixed>>> $runs keyed "assetId|type" */
+        /** @var array<string, list<PendingReading>> $runs keyed "assetId|type" */
         $runs = [];
         $dropped = [];
 
         foreach ($readings as $reading) {
             $asset = $assets[(string) ($reading['external_id'] ?? '')] ?? null;
             $type = $reading['type'] ?? null;
+            $value = $reading['value'] ?? null;
+            $unit = $reading['unit'] ?? null;
 
+            // Adapters map a reading to a number (measurement) or a string
+            // (categorical stat); anything else carries no usable value.
             $reason = match (true) {
                 $asset === null => $this->unresolvedReason($reading),
                 ! $type instanceof TelemetryType => 'unsupported_type',
-                ! isset($reading['value']) => 'missing_value',
+                ! is_float($value) && ! is_int($value) && ! is_string($value) => 'missing_value',
                 default => null,
             };
 
@@ -333,8 +342,8 @@ class IngestVehicleStatsPage
             $runs[$asset->id.'|'.$type->value][] = [
                 'asset_id' => $asset->id,
                 'type' => $type,
-                'value' => $reading['value'],
-                'unit' => $reading['unit'] ?? null,
+                'value' => $value,
+                'unit' => is_string($unit) ? $unit : null,
                 'at' => $this->instant($reading['recorded_at'] ?? null),
             ];
         }
@@ -420,11 +429,11 @@ class IngestVehicleStatsPage
      * fresh point against a stored one never mistakes sub-second noise for a
      * newer point.
      */
-    private function instant(mixed $recordedAt): CarbonInterface
+    private function instant(mixed $recordedAt): CarbonImmutable
     {
         $at = $recordedAt !== null && $recordedAt !== ''
-            ? Carbon::parse($recordedAt)
-            : now();
+            ? CarbonImmutable::parse($recordedAt)
+            : now()->toImmutable();
 
         return $at->utc()->startOfSecond();
     }

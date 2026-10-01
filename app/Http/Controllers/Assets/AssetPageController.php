@@ -384,7 +384,7 @@ class AssetPageController extends Controller
      */
     private function recentEvents(Asset $asset): array
     {
-        return NormalizedEvent::query()
+        return array_values(NormalizedEvent::query()
             ->where('team_id', $asset->team_id)
             ->where('asset_id', $asset->id)
             ->with(['eventType', 'eventCategory', 'eventSeverity', 'driver'])
@@ -403,7 +403,7 @@ class AssetPageController extends Controller
                     'name' => (string) $event->driver->full_name,
                 ] : null,
             ])
-            ->all();
+            ->all());
     }
 
     /**
@@ -507,14 +507,14 @@ class AssetPageController extends Controller
                 ],
                 AssetStatus::cases(),
             ),
-            'types' => AssetType::query()
+            'types' => array_values(AssetType::query()
                 ->orderBy('name')
                 ->get(['code', 'name'])
                 ->map(fn (AssetType $type) => [
                     'value' => (string) $type->code,
                     'label' => (string) $type->name,
                 ])
-                ->all(),
+                ->all()),
         ];
     }
 
@@ -646,7 +646,7 @@ class AssetPageController extends Controller
      */
     private function telemetry(Asset $asset): array
     {
-        return collect(TelemetryType::cases())
+        return array_values(collect(TelemetryType::cases())
             ->map(function (TelemetryType $type) use ($asset): ?array {
                 // Speed shows the same "current speed" as the header tile
                 // (newest of position and telemetry), never a second number.
@@ -680,8 +680,7 @@ class AssetPageController extends Controller
                 ];
             })
             ->filter()
-            ->values()
-            ->all();
+            ->all());
     }
 
     /**
@@ -753,15 +752,14 @@ class AssetPageController extends Controller
         $count = $points->count();
         $step = max(1, (int) ceil($count / self::TRAIL_MAX_POINTS));
 
-        return $points
+        return array_values($points
             ->filter(fn ($snapshot, int $index) => $index % $step === 0 || $index === $count - 1)
             ->map(fn (AssetLocationSnapshot $snapshot) => [
                 'latitude' => (float) $snapshot->latitude,
                 'longitude' => (float) $snapshot->longitude,
                 'recordedAt' => $snapshot->recorded_at->toIso8601String(),
             ])
-            ->values()
-            ->all();
+            ->all());
     }
 
     /**
@@ -786,7 +784,7 @@ class AssetPageController extends Controller
      */
     private function incidents(Asset $asset): array
     {
-        return Incident::query()
+        return array_values(Incident::query()
             ->where('team_id', $asset->team_id)
             ->where('asset_id', $asset->id)
             ->with(['status', 'priority', 'type', 'currentAssignment'])
@@ -810,6 +808,6 @@ class AssetPageController extends Controller
                 'type' => $incident->type?->name,
                 'openedAt' => $incident->opened_at?->toIso8601String(),
             ])
-            ->all();
+            ->all());
     }
 }

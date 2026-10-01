@@ -306,7 +306,7 @@ class StartIncidentCallVerification
             return [];
         }
 
-        $driver = Driver::query()->where('team_id', $incident->team_id)->find($driverId);
+        $driver = Driver::query()->where('team_id', $incident->team_id)->find((int) $driverId);
 
         if ($driver === null) {
             return [];

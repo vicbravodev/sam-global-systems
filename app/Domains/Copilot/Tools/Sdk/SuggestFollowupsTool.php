@@ -34,12 +34,11 @@ final class SuggestFollowupsTool implements Tool
 
     public function handle(Request $request): string
     {
-        $questions = collect((array) ($request['questions'] ?? []))
+        $questions = array_values(collect((array) ($request['questions'] ?? []))
             ->filter(fn ($q) => is_string($q) && trim($q) !== '')
             ->map(fn (string $q) => mb_substr(trim($q), 0, 80))
             ->take(3)
-            ->values()
-            ->all();
+            ->all());
 
         $this->collector->followups($questions);
 

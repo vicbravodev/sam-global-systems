@@ -10,6 +10,13 @@ use Database\Factories\Domains\Audit\AuditLogFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * Ids de referencia (columnas sin signo en la base; nunca negativos).
+ *
+ * @property int|null $team_id
+ * @property int|null $actor_id
+ * @property int|null $entity_id
+ */
 class AuditLog extends Model
 {
     /** @use HasFactory<AuditLogFactory> */

@@ -95,35 +95,28 @@ class RaiseAfterHoursMovement
             'schedule_profile_code' => LoggableCode::guard($schedule->profileCode),
         ];
 
-        $outcome = fn (string $branch, array $extra = [], ?int $rawEventId = null): array => [
-            'raised' => $branch === 'raised',
-            'branch' => $branch,
-            'calc' => [...$calc, ...$extra],
-            'raw_event_id' => $rawEventId,
-        ];
-
         if (! $schedule->isPersisted || $schedule->withinOperatingHours) {
-            return $outcome('outside_schedule_gate');
+            return $this->outcome('outside_schedule_gate', $calc);
         }
 
         if (in_array($asset->status, [AssetStatus::Inactive, AssetStatus::Maintenance], true)) {
-            return $outcome('asset_inactive', ['asset_status' => $asset->status->value]);
+            return $this->outcome('asset_inactive', [...$calc, 'asset_status' => $asset->status->value]);
         }
 
         // Criterio único de movimiento: velocidad Y estado (un pico de GPS de
         // un tracto estacionado en el patio no es "movimiento fuera de horario").
         if (! MovementCriterion::isMoving($asset, $speedKph)) {
-            return $outcome('not_moving');
+            return $this->outcome('not_moving', $calc);
         }
 
         if ($recordedAt->lt(now()->subMinutes(self::FRESHNESS_MINUTES))) {
-            return $outcome('stale_position');
+            return $this->outcome('stale_position', $calc);
         }
 
         // One alert per unit per closed stretch: a night of driving crosses
         // local midnight, and a per-day key alerted it twice.
         if ($asset->after_hours_alerted_at !== null && $asset->after_hours_alerted_at->gt(now()->subHours($cooldownHours))) {
-            return $outcome('cooldown_active');
+            return $this->outcome('cooldown_active', $calc);
         }
 
         $deduplicationKey = sprintf('after_hours:%d:%d', $asset->id, now()->getTimestamp());
@@ -157,7 +150,22 @@ class RaiseAfterHoursMovement
 
         $asset->forceFill(['after_hours_alerted_at' => now()])->save();
 
-        return $outcome('raised', rawEventId: $rawEvent->id);
+        return $this->outcome('raised', $calc, $rawEvent->id);
+    }
+
+    /**
+     * @param  'outside_schedule_gate'|'asset_inactive'|'not_moving'|'stale_position'|'cooldown_active'|'raised'  $branch
+     * @param  array<string, mixed>  $calc
+     * @return array{raised: bool, branch: 'outside_schedule_gate'|'asset_inactive'|'not_moving'|'stale_position'|'cooldown_active'|'raised', calc: array<string, mixed>, raw_event_id: ?int}
+     */
+    private function outcome(string $branch, array $calc, ?int $rawEventId = null): array
+    {
+        return [
+            'raised' => $branch === 'raised',
+            'branch' => $branch,
+            'calc' => $calc,
+            'raw_event_id' => $rawEventId,
+        ];
     }
 
     /**

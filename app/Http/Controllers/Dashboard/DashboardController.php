@@ -272,9 +272,9 @@ class DashboardController extends Controller
 
         $users = $this->assigneeUsers($incidents, $team->id);
 
-        return $incidents
+        return array_values($incidents
             ->map(fn (Incident $incident) => $this->presenter->toRow($incident, $users, $now))
-            ->all();
+            ->all());
     }
 
     /**
@@ -324,12 +324,12 @@ class DashboardController extends Controller
             ->unique('normalized_event_id')
             ->keyBy('normalized_event_id');
 
-        return $events
+        return array_values($events
             ->map(fn (NormalizedEvent $event) => $this->presentStreamEvent(
                 $event,
                 $decisions->get($event->id),
             ))
-            ->all();
+            ->all());
     }
 
     /**
@@ -400,7 +400,7 @@ class DashboardController extends Controller
         // both show the provider-wide total (UI audit P1-3).
         $counts = $this->eventStats->countByIntegrationSince($team->id, $now->copy()->subDay());
 
-        return $integrations
+        return array_values($integrations
             ->map(fn (TenantIntegration $integration) => [
                 'id' => (int) $integration->id,
                 'key' => (string) ($integration->provider?->code ?? $integration->id),
@@ -412,7 +412,7 @@ class DashboardController extends Controller
                     ? $this->relativeTime($integration->last_sync_at, $now)
                     : null,
             ])
-            ->all();
+            ->all());
     }
 
     /**
@@ -430,7 +430,7 @@ class DashboardController extends Controller
     {
         $today = Carbon::today();
 
-        return TenantUsageCounter::query()
+        return array_values(TenantUsageCounter::query()
             ->where('team_id', $team->id)
             ->whereDate('period_start', '<=', $today)
             ->whereDate('period_end', '>=', $today)
@@ -458,7 +458,7 @@ class DashboardController extends Controller
                     : null,
                 'periodEnd' => $counter->period_end?->toDateString(),
             ])
-            ->all();
+            ->all());
     }
 
     private function relativeTime(CarbonInterface $time, CarbonInterface $now): string

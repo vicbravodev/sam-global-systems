@@ -3,6 +3,7 @@
 namespace App\Domains\Incidents\Support;
 
 use Illuminate\Support\Facades\DB;
+use LogicException;
 
 /**
  * Hands out the per-tenant incident number (`incidents.number`).
@@ -20,9 +21,12 @@ use Illuminate\Support\Facades\DB;
  */
 final class IncidentNumberSequence
 {
+    /**
+     * @return positive-int
+     */
     public static function next(int $teamId): int
     {
-        return (int) DB::transaction(function () use ($teamId): int {
+        $number = (int) DB::transaction(function () use ($teamId): int {
             $current = DB::table('teams')
                 ->where('id', $teamId)
                 ->lock(DB::getDriverName() === 'pgsql' ? 'for no key update' : true)
@@ -37,5 +41,13 @@ final class IncidentNumberSequence
 
             return $next;
         });
+
+        // El contador y los números existentes nunca son negativos: un número
+        // menor a 1 sólo puede venir de un contador corrompido fuera de banda.
+        if ($number < 1) {
+            throw new LogicException("Secuencia de incidentes inválida para el team {$teamId}: {$number}.");
+        }
+
+        return $number;
     }
 }

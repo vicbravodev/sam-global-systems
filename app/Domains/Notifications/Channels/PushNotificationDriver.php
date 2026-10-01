@@ -42,8 +42,10 @@ class PushNotificationDriver implements NotificationDriver
 
         $tokens = UserPushToken::query()
             ->where('user_id', $userId)
-            ->pluck('token')
+            ->get(['token'])
+            ->map(fn (UserPushToken $pushToken): string => $pushToken->token)
             ->all();
+        $tokens = array_values($tokens);
 
         if ($tokens === []) {
             return DeliveryResult::failure('no push tokens registered for user');

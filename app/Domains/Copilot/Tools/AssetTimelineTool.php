@@ -109,12 +109,12 @@ final class AssetTimelineTool implements CopilotTool
                 'total' => $items->count(),
                 'href' => CopilotPresenter::assetHref($context->teamSlug, (int) $asset->id),
             ]],
-            sources: $incidents->take(5)->map(fn (Incident $i) => [
+            sources: array_values($incidents->take(5)->map(fn (Incident $i) => [
                 'kind' => 'incident',
                 'id' => (int) $i->id,
                 'label' => $i->reference().' · '.$i->title,
                 'href' => CopilotPresenter::incidentHref($context->teamSlug, (int) $i->id),
-            ])->values()->all(),
+            ])->all()),
             facts: [
                 'asset' => $label,
                 'period' => $period->label,
@@ -139,7 +139,7 @@ final class AssetTimelineTool implements CopilotTool
     private function cardItems(Collection $items): array
     {
         if ($items->count() <= self::BLOCK_ITEMS) {
-            return $items->values()->all();
+            return array_values($items->all());
         }
 
         $priority = $items->filter(fn (array $item) => $item['kind'] !== 'event');
@@ -148,6 +148,6 @@ final class AssetTimelineTool implements CopilotTool
             ->concat($items->filter(fn (array $item) => $item['kind'] === 'event')->keys()->reverse()->take($room))
             ->sort();
 
-        return $keep->map(fn (int $key) => $items[$key])->values()->all();
+        return array_values($keep->map(fn (int $key): array => $items[$key])->all());
     }
 }

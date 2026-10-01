@@ -69,7 +69,7 @@ final class LatestAssetTelemetry
             return;
         }
 
-        $latest = $this->byType($assets->map(fn (Asset $asset) => (int) $asset->getKey())->values()->all());
+        $latest = $this->byType(array_values($assets->map(fn (Asset $asset) => (int) $asset->getKey())->all()));
         $byAsset = [];
 
         foreach ($latest as $snapshot) {
@@ -111,7 +111,7 @@ final class LatestAssetTelemetry
             ) AS s
             SQL, ['{'.implode(',', $assetIds).'}', '{'.implode(',', $typeValues).'}']);
 
-        return AssetTelemetrySnapshot::hydrate($rows)->all();
+        return array_values(AssetTelemetrySnapshot::hydrate($rows)->all());
     }
 
     /**
@@ -127,13 +127,13 @@ final class LatestAssetTelemetry
             ->whereIn('telemetry_type', $typeValues)
             ->groupBy('asset_id', 'telemetry_type');
 
-        return AssetTelemetrySnapshot::query()
+        return array_values(AssetTelemetrySnapshot::query()
             ->joinSub($newest, 'newest', fn ($join) => $join
                 ->on('asset_telemetry_snapshots.asset_id', '=', 'newest.asset_id')
                 ->on('asset_telemetry_snapshots.telemetry_type', '=', 'newest.telemetry_type')
                 ->on('asset_telemetry_snapshots.recorded_at', '=', 'newest.newest_at'))
             ->get(['asset_telemetry_snapshots.*'])
-            ->all();
+            ->all());
     }
 
     private function isNewer(AssetTelemetrySnapshot $candidate, AssetTelemetrySnapshot $current): bool

@@ -15,6 +15,7 @@ use Database\Seeders\Showcase\Support\ShowcaseEvents;
 use Database\Seeders\Showcase\Support\ShowcaseRandom;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
+use stdClass;
 
 /**
  * Incidentes con ciclo de vida completo para los eventos cuyo escenario lo
@@ -91,10 +92,10 @@ class IncidentsShowcaseSeeder extends ShowcaseStep
     }
 
     /**
-     * @param  \Illuminate\Support\Collection<int, object>  $media
+     * @param  \Illuminate\Support\Collection<int, stdClass>  $media
      * @param  array<string, array<int, array<string, mixed>>>  $rows
      */
-    private function createIncident(NormalizedEvent $event, EventScenario $s, ?object $decision, ?object $evaluation, $media, array &$rows): void
+    private function createIncident(NormalizedEvent $event, EventScenario $s, ?stdClass $decision, ?stdClass $evaluation, $media, array &$rows): void
     {
         $random = ShowcaseRandom::forKey('incident:'.$event->id);
         $manual = $decision === null;
@@ -501,7 +502,7 @@ class IncidentsShowcaseSeeder extends ShowcaseStep
      *
      * @param  array<string, mixed>  $life
      */
-    private function recordVerdict(?object $evaluation, array $life, User $by): void
+    private function recordVerdict(?stdClass $evaluation, array $life, User $by): void
     {
         if ($evaluation === null || in_array($life['status'], ['cancelled'], true)) {
             return;

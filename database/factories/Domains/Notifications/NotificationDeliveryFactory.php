@@ -26,7 +26,7 @@ class NotificationDeliveryFactory extends Factory
                 ])->id;
             },
             'channel_id' => fn () => NotificationChannel::factory()->create()->id,
-            'team_id' => fn (array $attributes) => Notification::withoutGlobalScopes()->find($attributes['notification_id'])->team_id,
+            'team_id' => fn (array $attributes) => Notification::withoutGlobalScopes()->findOrFail((int) $attributes['notification_id'])->team_id,
             'provider_message_id' => null,
             'status' => DeliveryStatus::Pending,
             'attempt_number' => 1,

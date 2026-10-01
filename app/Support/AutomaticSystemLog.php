@@ -63,7 +63,7 @@ final class AutomaticSystemLog
     public static function register(): void
     {
         self::listen(JobProcessing::class, static function (JobProcessing $event): void {
-            self::$startedAt[spl_object_id($event->job)] = hrtime(true);
+            self::$startedAt[spl_object_id($event->job)] = (int) hrtime(true);
             self::$inTelematicsJob = self::isHotQueue($event->job);
         });
 

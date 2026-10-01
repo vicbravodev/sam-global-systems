@@ -60,7 +60,7 @@ class StoreRawEvent
     ): RawEvent {
         $eventSource = $this->resolveEventSource($sourceType, $teamId, $providerId);
 
-        $payloadJson = json_encode($payload);
+        $payloadJson = json_encode($payload, JSON_THROW_ON_ERROR);
         $checksum = hash('sha256', $payloadJson);
         $strategy = $deduplicationKey !== null
             ? 'explicit'

@@ -105,7 +105,7 @@ class ApplyExternalResolutionJob implements ShouldQueue
 
             if ($incidents->isNotEmpty()) {
                 return [
-                    'incidents' => $incidents->all(),
+                    'incidents' => array_values($incidents->all()),
                     'strategy' => 'external_event_id',
                     'external_event_id_present' => true,
                     'window_minutes' => null,
@@ -137,7 +137,7 @@ class ApplyExternalResolutionJob implements ShouldQueue
             ->get();
 
         return [
-            'incidents' => $fallback->all(),
+            'incidents' => array_values($fallback->all()),
             'strategy' => $fallback->isNotEmpty() ? 'asset_window' : 'none',
             'external_event_id_present' => $externalEventIdPresent,
             'window_minutes' => $window,

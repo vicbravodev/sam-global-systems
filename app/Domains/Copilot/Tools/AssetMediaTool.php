@@ -129,7 +129,7 @@ final class AssetMediaTool implements CopilotTool
                 'items' => $items,
                 'href' => CopilotPresenter::assetHref($context->teamSlug, (int) $asset->id),
             ]],
-            sources: $media
+            sources: array_values($media
                 ->filter(fn (EventMediaContext $m) => $m->normalizedEvent !== null)
                 ->unique('normalized_event_id')
                 ->map(fn (EventMediaContext $m) => [
@@ -138,8 +138,7 @@ final class AssetMediaTool implements CopilotTool
                     'label' => ($m->normalizedEvent->eventType?->name ?? 'Evento').' · '.$m->captured_at?->format('d/m H:i'),
                     'href' => CopilotPresenter::eventHref($context->teamSlug, (int) $m->normalized_event_id),
                 ])
-                ->values()
-                ->all(),
+                ->all()),
             facts: [
                 'asset' => $label,
                 'media_count' => count($items),

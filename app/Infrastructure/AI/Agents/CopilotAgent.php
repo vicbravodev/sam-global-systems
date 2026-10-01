@@ -48,7 +48,7 @@ class CopilotAgent implements Agent, Conversational, HasMiddleware, HasTools
     public function instructions(): Stringable|string
     {
         $now = $this->scope->now->setTimezone($this->scope->timezone);
-        $readable = $now->locale('es_MX')->translatedFormat('l j \d\e F \d\e Y, H:i');
+        $readable = $now->settings(['locale' => 'es_MX'])->translatedFormat('l j \d\e F \d\e Y, H:i');
         $iso = $now->toIso8601String();
 
         return <<<INSTRUCTIONS

@@ -37,7 +37,7 @@ class RawEventFactory extends Factory
             'occurred_at' => null,
             'deduplication_key' => null,
             'status' => RawEventStatus::Received,
-            'checksum' => hash('sha256', json_encode($payload)),
+            'checksum' => hash('sha256', json_encode($payload, JSON_THROW_ON_ERROR)),
             'processing_attempts' => 0,
             'last_processing_attempt_at' => null,
         ];

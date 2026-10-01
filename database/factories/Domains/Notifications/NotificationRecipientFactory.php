@@ -18,7 +18,7 @@ class NotificationRecipientFactory extends Factory
     {
         return [
             'notification_id' => Notification::factory(),
-            'team_id' => fn (array $attributes) => Notification::withoutGlobalScopes()->find($attributes['notification_id'])->team_id,
+            'team_id' => fn (array $attributes) => Notification::withoutGlobalScopes()->findOrFail((int) $attributes['notification_id'])->team_id,
             'recipient_type' => RecipientType::User,
             'recipient_reference_id' => null,
             'name' => fake()->name(),

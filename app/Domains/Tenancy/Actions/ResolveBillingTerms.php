@@ -47,22 +47,29 @@ class ResolveBillingTerms
             explicit: $row !== null,
         );
 
-        $source = fn (mixed $value, string $fallback): string => $value !== null ? 'tenant' : $fallback;
-
         return [
             'terms' => $terms,
             'sources' => [
-                'unit_price' => $source($row?->unit_price, 'config'),
-                'currency' => $source($row?->currency, 'config'),
-                'included_assets' => $source($row?->included_assets, 'unset'),
-                'min_billable_assets' => $source($row?->min_billable_assets, 'config'),
-                'ai_fair_use_per_asset' => $source($row?->ai_fair_use_per_asset, 'config'),
-                'ai_overage_unit_price' => $source($row?->ai_overage_unit_price, 'config'),
-                'messaging_markup_percent' => $source($row?->messaging_markup_percent, 'unset'),
-                'fx_usd_rate' => $source($row?->fx_usd_rate, 'config'),
-                'volume_tiers' => $source($row?->volume_tiers_json, 'config'),
+                'unit_price' => self::source($row?->unit_price, 'config'),
+                'currency' => self::source($row?->currency, 'config'),
+                'included_assets' => self::source($row?->included_assets, 'unset'),
+                'min_billable_assets' => self::source($row?->min_billable_assets, 'config'),
+                'ai_fair_use_per_asset' => self::source($row?->ai_fair_use_per_asset, 'config'),
+                'ai_overage_unit_price' => self::source($row?->ai_overage_unit_price, 'config'),
+                'messaging_markup_percent' => self::source($row?->messaging_markup_percent, 'unset'),
+                'fx_usd_rate' => self::source($row?->fx_usd_rate, 'config'),
+                'volume_tiers' => self::source($row?->volume_tiers_json, 'config'),
             ],
         ];
+    }
+
+    /**
+     * @param  'config'|'unset'  $fallback
+     * @return 'tenant'|'config'|'unset'
+     */
+    private static function source(mixed $value, string $fallback): string
+    {
+        return $value !== null ? 'tenant' : $fallback;
     }
 
     /**

@@ -85,6 +85,36 @@ class EncryptedChannelConfigCastTest extends TestCase
         $this->assertNull($channel->fresh()->config_json);
     }
 
+    public function test_unencodable_config_is_rejected_instead_of_wiping_the_stored_config(): void
+    {
+        // Regresión: json_encode devolvía false con UTF-8 inválido y el cast lo
+        // guardaba tal cual; al releer, config_json quedaba en null y el canal
+        // perdía en silencio toda su configuración (incluidos los secretos).
+        $channel = NotificationChannel::factory()->create([
+            'channel_type' => ChannelType::Webhook,
+            'provider' => 'webhook',
+            'config_json' => [
+                'endpoint_url' => 'https://example.com/hook',
+                'secret' => 'kept-secret',
+            ],
+        ]);
+
+        try {
+            $channel->config_json = [
+                'endpoint_url' => 'https://example.com/hook',
+                'label' => "\xB1\x31",
+            ];
+            $channel->save();
+            $this->fail('Una config que no se puede codificar a JSON no debe guardarse.');
+        } catch (\JsonException) {
+            // esperado
+        }
+
+        $reloaded = NotificationChannel::query()->find($channel->id);
+        $this->assertSame('kept-secret', $reloaded->config_json['secret']);
+        $this->assertSame('https://example.com/hook', $reloaded->config_json['endpoint_url']);
+    }
+
     public function test_sensitive_key_list_is_complete(): void
     {
         // Twilio credentials are platform env only (TWILIO_*): no channel

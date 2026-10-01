@@ -65,8 +65,8 @@ class OperatorFeedbackCollector
             ->all();
 
         return array_filter([
-            'operator_verdicts' => $verdicts,
-            'manual_feedback' => $manual,
+            'operator_verdicts' => array_values($verdicts),
+            'manual_feedback' => array_values($manual),
         ], static fn (array $items): bool => $items !== []);
     }
 

@@ -30,9 +30,9 @@ class CreateManualIncident
     public function execute(int $teamId, User $creator, array $data): Incident
     {
         return DB::transaction(function () use ($teamId, $creator, $data) {
-            $type = IncidentType::query()->findOrFail($data['incident_type_id']);
+            $type = IncidentType::query()->findOrFail((int) $data['incident_type_id']);
             $priority = isset($data['incident_priority_id'])
-                ? IncidentPriority::query()->findOrFail($data['incident_priority_id'])
+                ? IncidentPriority::query()->findOrFail((int) $data['incident_priority_id'])
                 : ($type->default_priority_id !== null
                     ? IncidentPriority::query()->findOrFail($type->default_priority_id)
                     : IncidentPriority::query()->orderBy('level')->firstOrFail());

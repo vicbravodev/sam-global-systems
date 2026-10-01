@@ -40,7 +40,7 @@ class CopilotStreamController extends Controller
         return $stream->execute(
             team: $current_team,
             user: $user,
-            permissions: $authorizeAction->resolvePermissions($user, $current_team),
+            permissions: array_values($authorizeAction->resolvePermissions($user, $current_team)),
             content: trim((string) $request->string('content')),
             conversation: $conversation,
             hints: [

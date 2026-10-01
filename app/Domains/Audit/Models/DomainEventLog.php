@@ -8,6 +8,12 @@ use Database\Factories\Domains\Audit\DomainEventLogFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * Ids de referencia (columnas sin signo en la base; nunca negativos).
+ *
+ * @property int|null $team_id
+ * @property int|null $aggregate_id
+ */
 class DomainEventLog extends Model
 {
     /** @use HasFactory<DomainEventLogFactory> */

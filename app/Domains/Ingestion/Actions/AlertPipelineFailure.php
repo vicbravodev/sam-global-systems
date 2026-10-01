@@ -42,6 +42,8 @@ use Throwable;
  *   muchos reintentos, rescates o workers que coincidan. Si el envío falla se
  *   libera la reclamación para que un fallo posterior pueda volver a avisar.
  * - Nunca lanza: corre dentro de `failed()`.
+ *
+ * @phpstan-import-type FailureDetails from PipelineFailureNotification
  */
 class AlertPipelineFailure
 {
@@ -268,7 +270,7 @@ class AlertPipelineFailure
      * dentro del suyo.
      *
      * @param  Collection<int, User>  $recipients
-     * @param  array<string, mixed>  $details
+     * @param  FailureDetails  $details
      * @param  array<string, mixed>  $input
      */
     private function deliver(string $audience, Collection $recipients, ?int $teamId, array $details, array $input): bool

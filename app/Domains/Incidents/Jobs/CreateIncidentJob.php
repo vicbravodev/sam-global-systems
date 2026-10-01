@@ -75,7 +75,7 @@ class CreateIncidentJob implements ShouldBeUnique, ShouldQueue
 
         if ($existing !== null) {
             $decision = isset($this->context['decision_id'])
-                ? Decision::query()->where('team_id', $event->team_id)->find($this->context['decision_id'])
+                ? Decision::query()->where('team_id', $event->team_id)->find((int) $this->context['decision_id'])
                 : null;
 
             SystemLog::ok('incidents.creation.routed_to_existing',
