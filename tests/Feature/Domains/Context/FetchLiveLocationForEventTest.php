@@ -168,6 +168,27 @@ class FetchLiveLocationForEventTest extends TestCase
         $this->assertNoSensitiveDataLogged();
     }
 
+    public function test_critical_event_of_a_soft_deleted_asset_skips_fetch_instead_of_crashing(): void
+    {
+        // Regresión nivel 8: asset_id sigue puesto pero el activo fue retirado
+        // (soft-delete); antes se pedía la posición al proveedor y luego se
+        // pasaba null a UpdateAssetLocationSnapshot (TypeError en el job).
+        $this->makeStaleLocation();
+        $this->makeSamsaraIntegration();
+        $this->fakeLiveLocationResponse();
+        $event = $this->makeEvent(severityCode: 'critical');
+        $this->asset->delete();
+
+        $result = app(FetchLiveLocationForEvent::class)->execute($event->fresh());
+
+        $this->assertSame(['location' => null, 'position_stale' => false], $result);
+        Http::assertNothingSent();
+        $c = $this->assertSystemLogged('context.live_location.skipped', fn (array $c) => $c['reason'] === 'asset_missing');
+        $this->assertSame($event->id, $c['input']['normalized_event_id']);
+        $this->assertSame($this->asset->id, $c['input']['asset_id']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
     public function test_logs_skip_when_severity_is_not_critical(): void
     {
         $event = $this->makeEvent(severityCode: 'high');
