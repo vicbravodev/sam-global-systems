@@ -71,21 +71,35 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
     {
         $token = $this->resolveToken($integration);
 
+        $input = ['integration_id' => $integration->id, 'team_id' => $integration->team_id];
+
         if ($token === null) {
+            SystemLog::skipped('samsara.test_connection.failed', reason: 'no_token', input: $input);
+
             return ['success' => false, 'message' => 'No hay token de API configurado para esta integración de Samsara.'];
         }
 
         try {
             $response = $this->client($token)->get('/fleet/vehicles', ['limit' => 1]);
         } catch (\Throwable $e) {
+            SystemLog::degraded('samsara.test_connection.failed', reason: 'connection_failed', input: $input, error: $e);
+
             return ['success' => false, 'message' => 'Could not reach Samsara: '.SafeErrorMessage::from($e)];
         }
 
         if ($response->successful()) {
+            SystemLog::ok('samsara.test_connection.succeeded', input: $input);
+
             return ['success' => true, 'message' => 'Connected to Samsara successfully.'];
         }
 
-        if (in_array($response->status(), [401, 403], true)) {
+        $unauthorized = in_array($response->status(), [401, 403], true);
+
+        SystemLog::degraded('samsara.test_connection.failed', reason: $unauthorized ? 'unauthorized' : 'http_error', input: $input + [
+            'http_status' => $response->status(),
+        ]);
+
+        if ($unauthorized) {
             return ['success' => false, 'message' => 'Samsara rejected the API token (HTTP '.$response->status().').'];
         }
 
@@ -277,6 +291,8 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
         $token = $this->resolveToken($integration);
 
         if ($token === null) {
+            SystemLog::skipped('samsara.gateways.failed', reason: 'no_token', input: ['integration_id' => $integration->id]);
+
             return [];
         }
 
@@ -292,6 +308,11 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
             if (! $response->successful()) {
                 // A partial listing would make the missing assets look stale;
                 // report nothing so the watchdog keeps its last good reading.
+                SystemLog::degraded('samsara.gateways.failed', reason: 'http_error', input: [
+                    'integration_id' => $integration->id,
+                    'http_status' => $response->status(),
+                ], calc: ['pages_read' => $pages, 'gateways_discarded' => count($byAsset)]);
+
                 return [];
             }
 
@@ -431,19 +452,31 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
     {
         $token = $this->resolveToken($integration);
 
+        $input = ['integration_id' => $integration->id, 'vehicle_id' => $externalAssetId];
+
         if ($token === null || $externalAssetId === '') {
+            SystemLog::skipped('samsara.live_location.failed', reason: $token === null ? 'no_token' : 'no_vehicle_id', input: $input);
+
             return null;
         }
 
+        $timeout = (int) config('services.samsara.live_location_timeout', 3);
+
         try {
             $response = $this->client($token)
-                ->timeout((int) config('services.samsara.live_location_timeout', 3))
+                ->timeout($timeout)
                 ->get('/fleet/vehicles/locations', ['vehicleIds' => $externalAssetId]);
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            // Inline en el enriquecimiento de eventos críticos: se degrada a
+            // la ubicación guardada (context.live_location.failed lo narra).
+            SystemLog::degraded('samsara.live_location.failed', reason: 'connection_failed', input: $input, calc: ['timeout_seconds' => $timeout], error: $e);
+
             return null;
         }
 
         if (! $response->successful()) {
+            SystemLog::degraded('samsara.live_location.failed', reason: 'http_error', input: $input + ['http_status' => $response->status()]);
+
             return null;
         }
 
@@ -455,6 +488,8 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
         }
 
         if (! is_array($location)) {
+            SystemLog::skipped('samsara.live_location.failed', reason: 'no_position', input: $input, calc: ['record_present' => $record !== []]);
+
             return null;
         }
 
@@ -462,6 +497,8 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
         $longitude = Arr::get($location, 'longitude');
 
         if ($latitude === null || $longitude === null) {
+            SystemLog::skipped('samsara.live_location.failed', reason: 'no_coordinates', input: $input);
+
             return null;
         }
 

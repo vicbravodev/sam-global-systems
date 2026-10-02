@@ -210,6 +210,10 @@ Las líneas del listener síncrono `RequestPanicMediaOnContextBuilt` (`context.m
 | `samsara.media_retrieval.request_failed` | degraded | `connection_failed`, `provider_rejected` | `vehicle_id`, `media_type`, `http_status`, `provider_message`, `provider_request_id`, `error` |
 | `samsara.media_retrieval.poll_failed` | degraded | `connection_failed`, `provider_rejected` | `retrieval_id`, `http_status`, `provider_message`, `provider_request_id`, `error` |
 | `samsara.uploaded_media.listing_failed` | degraded | `connection_failed`, `provider_rejected` | `vehicle_id`, `http_status`, `provider_message`, `provider_request_id`, `error` |
+| `samsara.test_connection.succeeded` | ok | — | `integration_id`, `team_id`. "Probar conexión" de la integración |
+| `samsara.test_connection.failed` | skipped / degraded | `no_token` (skipped); `connection_failed` (con `error`), `unauthorized` (401/403: token rechazado), `http_error` (degraded) | `integration_id`, `team_id`, `http_status`. Nunca el token |
+| `samsara.gateways.failed` | skipped / degraded | `no_token` (skipped); `http_error` (degraded: `/gateways` respondió error y se descarta el listado parcial para que el vigilante de desconexión conserve su última lectura buena) | `integration_id`, `http_status`; calc `pages_read`, `gateways_discarded` |
+| `samsara.live_location.failed` | skipped / degraded | `no_token`, `no_vehicle_id`, `no_position` (calc `record_present`), `no_coordinates` (skipped); `connection_failed` (calc `timeout_seconds`, `error`), `http_error` (`http_status`) (degraded) | `integration_id`, `vehicle_id`. Antes se tragaba en silencio: el porqué detrás de `context.live_location.failed` / `provider_returned_nothing` |
 
 ### Media (`media`)
 
