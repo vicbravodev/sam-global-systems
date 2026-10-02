@@ -301,6 +301,20 @@ class CrossTenantRouteSweepTest extends TestCase
             [],
         );
         $this->assertSame("team_id {$this->teamB->id}", $leaked);
+
+        // Un texto de B cuenta como fuga cuando aparece como valor completo,
+        // en JSON o escapado en el data-page de Inertia…
+        $this->fingerprintsB = ['officia dolorum'];
+        $this->assertSame('officia dolorum', $this->leakedFingerprint(
+            TestResponse::fromBaseResponse(response()->json(['name' => 'officia dolorum'])), '/canary', [],
+        ));
+        $this->assertSame('officia dolorum', $this->leakedFingerprint(
+            TestResponse::fromBaseResponse(response('<div data-page="'.htmlspecialchars((string) json_encode(['title' => 'officia dolorum']), ENT_QUOTES).'"></div>')), '/canary', [],
+        ));
+        // …pero no cuando es subcadena casual de un texto de A.
+        $this->assertNull($this->leakedFingerprint(
+            TestResponse::fromBaseResponse(response()->json(['description' => 'Sunt officia dolorum quia'])), '/canary', [],
+        ));
     }
 
     public function test_every_current_team_route_enforces_membership(): void
@@ -700,6 +714,29 @@ class CrossTenantRouteSweepTest extends TestCase
     }
 
     /**
+     * El slug y los uuids se buscan como subcadena (viajan en URLs y claves).
+     * Un texto (nombre, título…) sólo cuenta si aparece como valor JSON
+     * completo: el lorem de faker de B puede ser subcadena de un texto de A
+     * («officia dolorum» dentro de una descripción) sin que haya fuga.
+     */
+    private function containsFingerprint(string $body, string $needle): bool
+    {
+        if ($needle === $this->teamB->slug || Str::isUuid($needle)) {
+            return str_contains($body, $needle);
+        }
+
+        foreach ([JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE, 0] as $flags) {
+            $quoted = (string) json_encode($needle, $flags);
+
+            if (str_contains($body, $quoted) || str_contains($body, htmlspecialchars($quoted, ENT_QUOTES))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * @param  array<string, string>  $urlValues
      */
     private function leakedFingerprint(TestResponse $response, string $uri, array $urlValues): ?string
@@ -713,7 +750,7 @@ class CrossTenantRouteSweepTest extends TestCase
         $body = str_replace($echoed, '', $body);
 
         foreach ([$this->teamB->slug, $this->teamB->name, ...$this->fingerprintsB] as $needle) {
-            if ($needle !== '' && str_contains($body, $needle)) {
+            if ($needle !== '' && $this->containsFingerprint($body, $needle)) {
                 return $needle;
             }
         }
