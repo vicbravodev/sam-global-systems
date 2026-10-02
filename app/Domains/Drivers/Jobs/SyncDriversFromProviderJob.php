@@ -6,6 +6,7 @@ use App\Domains\Drivers\Actions\SyncDriverFromIntegration;
 use App\Domains\Drivers\Exceptions\DriverExternalReferenceConflictException;
 use App\Domains\Integrations\Contracts\ProviderAdapter;
 use App\Domains\Integrations\Models\TenantIntegration;
+use App\Support\SafeErrorMessage;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -55,7 +56,7 @@ class SyncDriversFromProviderJob implements ShouldQueue
     {
         $this->integration->update([
             'last_error_at' => now(),
-            'last_error_message' => $exception->getMessage(),
+            'last_error_message' => SafeErrorMessage::from($exception),
         ]);
     }
 

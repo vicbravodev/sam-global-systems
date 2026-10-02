@@ -25,6 +25,7 @@ use App\Domains\Tenancy\Models\UsageMeter;
 use App\Domains\Tenancy\Support\TenantCanSend;
 use App\Support\JobFailureReporter;
 use App\Support\LoggableCode;
+use App\Support\SafeErrorMessage;
 use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
@@ -188,7 +189,7 @@ class PlaceVerificationCallJob implements ShouldQueue
                 SystemLog::degraded('incidents.call_verification.placement_failed', reason: 'provider_error', input: ['verification_id' => $verification->id], result: ['error_class' => class_basename($e), 'outcome_known' => $e instanceof RestException], durationMs: $durationMs);
 
                 $verification->forceFill(['notification_channel_id' => $channel->id])->save();
-                $handleFailure->execute($verification, 'placement_failed: '.$e->getMessage());
+                $handleFailure->execute($verification, 'placement_failed: '.SafeErrorMessage::from($e));
 
                 return;
             }

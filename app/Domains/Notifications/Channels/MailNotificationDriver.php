@@ -7,6 +7,7 @@ use App\Domains\Notifications\Data\DeliveryResult;
 use App\Domains\Notifications\Data\RenderedNotification;
 use App\Domains\Notifications\Mail\GenericNotificationMail;
 use App\Domains\Notifications\Models\NotificationChannel;
+use App\Support\SafeErrorMessage;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 
@@ -26,7 +27,7 @@ class MailNotificationDriver implements NotificationDriver
                 response: ['driver' => 'mail'],
             );
         } catch (\Throwable $exception) {
-            return DeliveryResult::failure($exception->getMessage());
+            return DeliveryResult::failure(SafeErrorMessage::from($exception));
         }
     }
 }

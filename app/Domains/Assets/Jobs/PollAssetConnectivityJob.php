@@ -5,6 +5,7 @@ namespace App\Domains\Assets\Jobs;
 use App\Domains\Assets\Actions\ResolveAssetsFromExternalIds;
 use App\Domains\Integrations\Contracts\ProviderAdapter;
 use App\Domains\Integrations\Models\TenantIntegration;
+use App\Support\SafeErrorMessage;
 use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
@@ -105,7 +106,7 @@ class PollAssetConnectivityJob implements ShouldBeUnique, ShouldQueue
     {
         $this->integration->update([
             'last_error_at' => now(),
-            'last_error_message' => $exception->getMessage(),
+            'last_error_message' => SafeErrorMessage::from($exception),
         ]);
     }
 

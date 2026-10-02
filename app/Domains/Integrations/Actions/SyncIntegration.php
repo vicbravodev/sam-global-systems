@@ -9,6 +9,7 @@ use App\Domains\Integrations\Contracts\ProviderAdapter;
 use App\Domains\Integrations\Events\IntegrationSyncCompleted;
 use App\Domains\Integrations\Models\IntegrationSyncJob;
 use App\Domains\Integrations\Models\TenantIntegration;
+use App\Support\SafeErrorMessage;
 use App\Support\SystemLog;
 use App\Support\TenantContext;
 use LogicException;
@@ -44,11 +45,11 @@ class SyncIntegration
                 $result['records_processed'],
             );
         } catch (\Throwable $e) {
-            $syncJob->markAsFailed($e->getMessage());
+            $syncJob->markAsFailed(SafeErrorMessage::from($e));
 
             $integration->update([
                 'last_error_at' => now(),
-                'last_error_message' => $e->getMessage(),
+                'last_error_message' => SafeErrorMessage::from($e),
             ]);
 
             throw $e;

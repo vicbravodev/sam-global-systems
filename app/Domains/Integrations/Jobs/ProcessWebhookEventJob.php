@@ -8,6 +8,7 @@ use App\Domains\Integrations\Models\WebhookEndpoint;
 use App\Domains\Integrations\Models\WebhookEvent;
 use App\Models\Team;
 use App\Support\LoggableCode;
+use App\Support\SafeErrorMessage;
 use App\Support\SystemLog;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -114,7 +115,7 @@ class ProcessWebhookEventJob implements ShouldQueue
                 'provider_code' => LoggableCode::guard($providerCode),
             ], result: ['provider_code_fallback' => $integration->provider?->code === null]);
         } catch (\Throwable $e) {
-            $this->webhookEvent->markAsFailed($e->getMessage());
+            $this->webhookEvent->markAsFailed(SafeErrorMessage::from($e));
 
             throw $e;
         }
@@ -143,6 +144,6 @@ class ProcessWebhookEventJob implements ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
-        $this->webhookEvent->markAsFailed($exception->getMessage());
+        $this->webhookEvent->markAsFailed(SafeErrorMessage::from($exception));
     }
 }

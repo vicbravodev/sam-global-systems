@@ -8,6 +8,7 @@ use App\Domains\Notifications\Data\FcmSendReport;
 use App\Domains\Notifications\Data\RenderedNotification;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Models\UserPushToken;
+use App\Support\SafeErrorMessage;
 
 /**
  * Firebase Cloud Messaging driver.
@@ -60,7 +61,7 @@ class PushNotificationDriver implements NotificationDriver
         try {
             $report = $this->messenger->sendMulticast($config, $payload, $tokens);
         } catch (\Throwable $e) {
-            return DeliveryResult::failure('fcm error: '.$e->getMessage(), [
+            return DeliveryResult::failure('fcm error: '.SafeErrorMessage::from($e), [
                 'driver' => 'push',
             ]);
         }

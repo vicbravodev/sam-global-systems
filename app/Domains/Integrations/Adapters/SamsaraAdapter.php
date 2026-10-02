@@ -15,6 +15,7 @@ use App\Domains\Integrations\Exceptions\ProviderUnauthorized;
 use App\Domains\Integrations\Exceptions\ProviderUnavailable;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Support\RedactSensitiveLogData;
+use App\Support\SafeErrorMessage;
 use App\Support\SystemLog;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
@@ -77,7 +78,7 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
         try {
             $response = $this->client($token)->get('/fleet/vehicles', ['limit' => 1]);
         } catch (\Throwable $e) {
-            return ['success' => false, 'message' => 'Could not reach Samsara: '.$e->getMessage()];
+            return ['success' => false, 'message' => 'Could not reach Samsara: '.SafeErrorMessage::from($e)];
         }
 
         if ($response->successful()) {
@@ -170,7 +171,7 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
                 ->timeout((int) config('telematics.http.timeout', 8))
                 ->get($path, $query);
         } catch (ConnectionException $e) {
-            throw new ProviderUnavailable('Could not reach Samsara: '.$e->getMessage(), previous: $e);
+            throw new ProviderUnavailable('Could not reach Samsara: '.SafeErrorMessage::from($e), previous: $e);
         }
 
         $status = $response->status();

@@ -7,6 +7,7 @@ use App\Domains\Assets\Actions\SyncAssetFromIntegration;
 use App\Domains\Assets\Exceptions\AssetExternalReferenceConflictException;
 use App\Domains\Integrations\Contracts\ProviderAdapter;
 use App\Domains\Integrations\Models\TenantIntegration;
+use App\Support\SafeErrorMessage;
 use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
@@ -90,7 +91,7 @@ class SyncAssetsFromProviderJob implements ShouldQueue
     {
         $this->integration->update([
             'last_error_at' => now(),
-            'last_error_message' => $exception->getMessage(),
+            'last_error_message' => SafeErrorMessage::from($exception),
         ]);
     }
 

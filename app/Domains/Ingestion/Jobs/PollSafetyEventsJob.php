@@ -10,6 +10,7 @@ use App\Domains\Integrations\Models\TenantIntegration;
 use App\Support\JobFailureReporter;
 use App\Support\PipelineTrace;
 use App\Support\RedactSensitiveLogData;
+use App\Support\SafeErrorMessage;
 use App\Support\SystemLog;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -217,7 +218,7 @@ class PollSafetyEventsJob implements ShouldBeUnique, ShouldQueue
     {
         $this->integration->update([
             'last_error_at' => now(),
-            'last_error_message' => self::ERROR_PREFIX.mb_substr($exception->getMessage(), 0, 500),
+            'last_error_message' => self::ERROR_PREFIX.mb_substr(SafeErrorMessage::from($exception), 0, 500),
         ]);
     }
 
