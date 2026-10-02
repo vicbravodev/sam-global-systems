@@ -13,6 +13,7 @@ enum TimelineEntryType: string
     case Claimed = 'claimed';
     case Released = 'released';
     case SlaBreached = 'sla_breached';
+    case EscalationExhausted = 'escalation_exhausted';
     case CommentAdded = 'comment_added';
     case EvidenceAdded = 'evidence_added';
     case ActionExecuted = 'action_executed';

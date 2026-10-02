@@ -11,6 +11,7 @@ use App\Domains\Assets\Jobs\PurgeOldAssetLocationsJob;
 use App\Domains\Assets\Jobs\PurgeOldAssetTelemetryJob;
 use App\Domains\Automation\Jobs\ExpireUnconfirmedActionsJob;
 use App\Domains\Drivers\Jobs\RecalculateDriverRiskProfilesJob;
+use App\Domains\Incidents\Jobs\SweepOverdueEscalationsJob;
 use App\Domains\Ingestion\Jobs\PollSamsaraSafetyEventsJob;
 use App\Domains\Ingestion\Jobs\PruneDeduplicationKeysJob;
 use App\Domains\Ingestion\Jobs\ReprocessStuckRawEventsJob;
@@ -110,6 +111,10 @@ Schedule::job(new DetectUnauthorizedStopJob)->everyMinute()->onOneServer();
 // `cancelled`. Cada minuto, para que el plazo se cumpla con ±1 min; el
 // endpoint de confirmar ya rechaza las vencidas aunque el barrido no haya pasado.
 Schedule::job(new ExpireUnconfirmedActionsJob)->everyMinute()->onOneServer();
+
+// Red de seguridad de la escalera de SLA: re-despacha los pasos vencidos cuyo
+// job diferido se perdió o falló (el estado vive en la fila del incidente).
+Schedule::job(new SweepOverdueEscalationsJob)->everyMinute()->withoutOverlapping()->onOneServer();
 
 // Telescope (sólo local, dependencia de desarrollo): poda diaria de entradas
 // de más de 48 h para que la tabla no crezca sin límite.

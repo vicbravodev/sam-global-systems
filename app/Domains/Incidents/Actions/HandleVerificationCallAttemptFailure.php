@@ -26,6 +26,7 @@ class HandleVerificationCallAttemptFailure
         private readonly EscalateIncident $escalateIncident,
         private readonly AppendTimelineEntry $appendTimelineEntry,
         private readonly NotifyEscalationLevel $notifyEscalationLevel,
+        private readonly ArmIncidentEscalation $armIncidentEscalation,
     ) {}
 
     public function execute(IncidentCallVerification $verification, string $reason): void
@@ -124,6 +125,10 @@ class HandleVerificationCallAttemptFailure
             subject: 'Emergencia sin respuesta del operador: '.$incident->title,
             body: "Nadie contestó la llamada de verificación tras {$verification->attempt} intentos. Atiéndela ahora.",
         );
+
+        // Ese aviso cuenta como el paso 0 de la escalera: el SLA no vuelve a
+        // avisar al mismo nivel, sigue con el siguiente.
+        $this->armIncidentEscalation->accelerate($incident, 'verification_no_answer');
 
         SystemLog::ok('incidents.call_verification.attempt_failed', input: $logInput, calc: $logCalc, result: ['next' => 'exhausted_escalated', 'outcome' => CallVerificationOutcome::NoAnswer->value]);
     }

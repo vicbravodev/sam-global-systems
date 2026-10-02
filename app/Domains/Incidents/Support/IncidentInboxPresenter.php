@@ -424,7 +424,7 @@ class IncidentInboxPresenter
     {
         $type = match ($entry->entry_type) {
             TimelineEntryType::Created, TimelineEntryType::Escalated => 'critical',
-            TimelineEntryType::SlaBreached, TimelineEntryType::LateArrival => 'sla',
+            TimelineEntryType::SlaBreached, TimelineEntryType::EscalationExhausted, TimelineEntryType::LateArrival => 'sla',
             TimelineEntryType::MediaAssessed => 'media',
             TimelineEntryType::Resolved,
             TimelineEntryType::ExternallyResolved,
@@ -486,6 +486,7 @@ class IncidentInboxPresenter
             TimelineEntryType::Claimed => 'Incidente tomado',
             TimelineEntryType::Released => 'Incidente liberado',
             TimelineEntryType::SlaBreached => 'SLA incumplido',
+            TimelineEntryType::EscalationExhausted => 'Escalación agotada sin atención',
             TimelineEntryType::CommentAdded => 'Comentario agregado',
             TimelineEntryType::EvidenceAdded => 'Evidencia adjuntada',
             TimelineEntryType::ActionExecuted => 'Acción ejecutada',

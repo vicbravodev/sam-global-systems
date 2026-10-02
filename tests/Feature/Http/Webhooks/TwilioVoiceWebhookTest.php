@@ -7,6 +7,7 @@ use App\Domains\Incidents\Enums\CallVerificationOutcome;
 use App\Domains\Incidents\Enums\CallVerificationStatus;
 use App\Domains\Incidents\Enums\IncidentStatusCode;
 use App\Domains\Incidents\Enums\ResolutionCode;
+use App\Domains\Incidents\Jobs\CheckIncidentAcknowledgementJob;
 use App\Domains\Incidents\Jobs\PlaceVerificationCallJob;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentCallVerification;
@@ -14,6 +15,7 @@ use App\Domains\Incidents\Models\IncidentTimeline;
 use App\Domains\Notifications\Enums\NotificationPriority;
 use App\Domains\Notifications\Models\Notification;
 use App\Domains\Notifications\Models\NotificationChannel;
+use App\Domains\TenantConfig\Models\TenantEscalationConfig;
 use App\Models\Team;
 use App\Models\User;
 use Database\Seeders\IncidentStatusSeeder;
@@ -109,7 +111,7 @@ class TwilioVoiceWebhookTest extends TestCase
         );
     }
 
-    public function test_digit_1_acknowledges_the_incident_as_real_emergency(): void
+    public function test_digit_1_confirms_the_emergency_without_acknowledging_it(): void
     {
         $verification = $this->makeVerification();
 
@@ -124,8 +126,10 @@ class TwilioVoiceWebhookTest extends TestCase
         $this->assertSame('1', $fresh->digits_received);
         $this->assertNotNull($fresh->responded_at);
 
+        // Quien contesta suele ser el chofer: confirmar no es atender. La
+        // escalera sigue viva hasta que alguien del equipo reconozca o tome.
         $incident = Incident::withoutGlobalScopes()->find($verification->incident_id);
-        $this->assertNotNull($incident->acknowledged_at);
+        $this->assertNull($incident->acknowledged_at);
 
         $this->assertSame(1, IncidentTimeline::query()
             ->where('incident_id', $incident->id)
@@ -139,7 +143,7 @@ class TwilioVoiceWebhookTest extends TestCase
 
         $this->assertSystemLogged('incidents.call_verification.answered', fn (array $c) => $c['outcome'] === 'ok'
             && $c['input'] === $this->inputOf($verification)
-            && $c['result'] === ['outcome' => CallVerificationOutcome::ConfirmedReal->value, 'acknowledged' => true, 'escalated' => true, 'level_requested' => 0]);
+            && $c['result'] === ['outcome' => CallVerificationOutcome::ConfirmedReal->value, 'acknowledged' => false, 'escalated' => true, 'level_requested' => 0]);
         $this->assertNoPhoneLogged();
     }
 
@@ -331,6 +335,34 @@ class TwilioVoiceWebhookTest extends TestCase
 
         $this->assertSame(NotificationPriority::Critical, $notice->priority);
         $this->assertSame((string) $incident->id, $notice->source_reference_id);
+    }
+
+    public function test_digit_1_keeps_the_ladder_running_from_the_next_step(): void
+    {
+        $verification = $this->makeVerification();
+        TenantEscalationConfig::factory()->create([
+            'team_id' => $this->team->id,
+            'is_active' => true,
+            'steps_json' => [
+                ['delay_minutes' => 0, 'contacts' => ['+5215500000001']],
+                ['delay_minutes' => 5, 'contacts' => ['+5215500000002']],
+            ],
+        ]);
+
+        $this->gather($verification, '1')->assertOk();
+
+        // El aviso inmediato cuenta como el nivel 0; el nivel 1 queda
+        // programado y sólo un humano del equipo lo detiene.
+        $incident = Incident::withoutGlobalScopes()->find($verification->incident_id);
+        $this->assertNull($incident->acknowledged_at);
+        $this->assertSame(1, $incident->escalation_level);
+        $this->assertNotNull($incident->next_escalation_at);
+        Queue::assertPushed(CheckIncidentAcknowledgementJob::class, fn (CheckIncidentAcknowledgementJob $job) => $job->incidentId === $incident->id
+            && $job->level === 1);
+
+        $this->assertSystemLogged('incidents.escalation.accelerated', fn (array $c) => $c['outcome'] === 'ok'
+            && $c['input'] === ['incident_id' => $incident->id, 'accelerate_reason' => 'emergency_confirmed']);
+        $this->assertNoPhoneLogged();
     }
 
     public function test_digit_2_closes_without_any_further_protocol(): void

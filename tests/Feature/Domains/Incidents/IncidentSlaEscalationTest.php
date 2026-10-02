@@ -126,9 +126,17 @@ class IncidentSlaEscalationTest extends TestCase
         $this->runWatchdog($incident);
 
         $this->assertSame(IncidentStatusCode::Open->value, $incident->fresh()->status->code);
+        $this->assertDatabaseMissing('incident_timelines', [
+            'incident_id' => $incident->id,
+            'entry_type' => TimelineEntryType::SlaBreached->value,
+        ]);
+
+        // Un aviso temprano nunca escala ni se re-encola (en una cola síncrona
+        // sería un bucle); el paso sigue persistido y el barrido lo rescata.
         Queue::assertNotPushed(CheckIncidentAcknowledgementJob::class);
 
         $c = $this->assertSystemLogged('incidents.ack_check.skipped', fn (array $c) => $c['reason'] === 'not_due_yet');
+        $this->assertSame($c['calc']['sla_due_at'], $c['calc']['due_at']);
         $this->assertGreaterThan(0, $c['calc']['seconds_until_due']);
         $this->assertSame(3600, $c['calc']['seconds_until_due']);
         $this->assertSame($incident->fresh()->sla_due_at->toIso8601String(), $c['calc']['sla_due_at']);
@@ -267,6 +275,7 @@ class IncidentSlaEscalationTest extends TestCase
                 && Carbon::instance($job->delay)->equalTo(now()->addMinutes($c['result']['delay_minutes'])),
         );
 
+        $this->travel($c['result']['delay_minutes'])->minutes();
         $this->runWatchdog($incident, level: 0, attempt: 2);
 
         $this->assertSystemLogged('incidents.ack_check.breached', fn (array $c) => $c['input']['attempt'] === 2

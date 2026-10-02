@@ -16,7 +16,6 @@ use App\Domains\Incidents\Enums\IncidentTypeCode;
 use App\Domains\Incidents\Enums\TimelineActorType;
 use App\Domains\Incidents\Enums\TimelineEntryType;
 use App\Domains\Incidents\Events\IncidentCreated;
-use App\Domains\Incidents\Jobs\CheckIncidentAcknowledgementJob;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentPriority;
 use App\Domains\Incidents\Models\IncidentStatus;
@@ -54,6 +53,7 @@ class CreateIncidentFromEvent
         private readonly ApplyExternalResolution $applyExternalResolution,
         private readonly ResolveIncidentSla $resolveIncidentSla,
         private readonly AssessIncidentLateArrival $assessIncidentLateArrival,
+        private readonly ArmIncidentEscalation $armIncidentEscalation,
     ) {}
 
     /**
@@ -221,12 +221,11 @@ class CreateIncidentFromEvent
 
             $slaInput = ['incident_id' => $incident->id, 'incident_priority_id' => $priority->id, 'team_id' => $teamId];
 
-            // SLA watchdog: one delayed job instead of a per-minute cron. It
-            // no-ops if the incident was acknowledged or closed by then.
+            // SLA watchdog: one delayed job instead of a per-minute cron, with
+            // its state persisted on the row (the sweep rescues a lost job).
+            // It no-ops if the incident was acknowledged or closed by then.
             if ($slaDueAt !== null) {
-                CheckIncidentAcknowledgementJob::dispatch($incident->id)
-                    ->delay($slaDueAt)
-                    ->afterCommit();
+                $this->armIncidentEscalation->arm($incident, $slaDueAt, 'incident_created');
 
                 // sla_due_at = max(opened_at, now_at) + sla_seconds.
                 $slaLine = [
@@ -433,6 +432,9 @@ class CreateIncidentFromEvent
                 'normalized_event_id' => $event->id,
             ],
         );
+
+        // Más grave = SLA más corto: si la escalera no empezó, se adelanta.
+        $this->armIncidentEscalation->tightenForPriority($incident);
 
         return ['raised' => true] + $outcome;
     }

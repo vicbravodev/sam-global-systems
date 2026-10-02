@@ -17,16 +17,23 @@ class IssueNotificationReplyToken
 {
     public const TTL_HOURS = 24;
 
+    /**
+     * `$address` es la dirección a la que de verdad sale el mensaje (el
+     * teléfono del canal), no `$recipient->address`: para un usuario esa es su
+     * correo, y la respuesta llega desde su teléfono — el webhook la
+     * rechazaba como remitente inesperado.
+     */
     public function execute(
         Notification $notification,
         NotificationRecipient $recipient,
         ChannelType $channelType,
         int $incidentId,
+        string $address,
     ): NotificationReplyToken {
         $existing = NotificationReplyToken::query()
             ->where('team_id', $notification->team_id)
             ->where('incident_id', $incidentId)
-            ->where('address', $recipient->address)
+            ->where('address', $address)
             ->whereNull('consumed_at')
             ->where('expires_at', '>', now())
             ->first();
@@ -43,7 +50,7 @@ class IssueNotificationReplyToken
                 ? (int) $recipient->recipient_reference_id
                 : null,
             'channel_type' => $channelType,
-            'address' => $recipient->address,
+            'address' => $address,
             'token' => $this->uniqueToken(),
             'expires_at' => now()->addHours(self::TTL_HOURS),
         ]);

@@ -4,7 +4,6 @@ namespace App\Domains\Incidents\Actions;
 
 use App\Domains\Incidents\Enums\TimelineActorType;
 use App\Domains\Incidents\Enums\TimelineEntryType;
-use App\Domains\Incidents\Jobs\CheckIncidentAcknowledgementJob;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Support\IncidentUpdatedBroadcast;
 use App\Models\User;
@@ -13,7 +12,10 @@ use Illuminate\Support\Facades\DB;
 
 class ReleaseIncident
 {
-    public function __construct(private readonly AppendTimelineEntry $appendTimelineEntry) {}
+    public function __construct(
+        private readonly AppendTimelineEntry $appendTimelineEntry,
+        private readonly ArmIncidentEscalation $armIncidentEscalation,
+    ) {}
 
     /**
      * Suelta el incidente. Sólo lo consigue quien lo tenía tomado.
@@ -63,13 +65,11 @@ class ReleaseIncident
             return true;
         });
 
-        // Dispatched after the transaction above has already resolved (not
-        // chained with ->afterCommit(): the release is committed by now, and
-        // deferring further would only wait on whatever transaction the
-        // caller happens to be inside — never in this action's own).
+        // Re-armed after the release committed, with a new generation: the
+        // chain starts over at level 0 and its notices go out again (with the
+        // same keys they would have been deduped against the first chain).
         if ($released && $rearmDueAt instanceof CarbonInterface) {
-            CheckIncidentAcknowledgementJob::dispatch($incident->id)
-                ->delay($rearmDueAt->isFuture() ? $rearmDueAt : null);
+            $this->armIncidentEscalation->arm($incident, $rearmDueAt->isFuture() ? $rearmDueAt : now(), 'released');
         }
 
         // Igual que en ClaimIncident: sólo se anuncia una liberación real.

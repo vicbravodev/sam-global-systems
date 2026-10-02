@@ -32,7 +32,7 @@ class AppendReplyInstructions
 
         if ($notification->source_type !== NotificationSourceType::Incident
             || ! is_numeric($notification->source_reference_id)
-            || ! $notification->priority->isCritical()) {
+            || ! $this->expectsReply($notification)) {
             return $rendered;
         }
 
@@ -41,6 +41,7 @@ class AppendReplyInstructions
             $recipient,
             $rendered->channelType,
             (int) $notification->source_reference_id,
+            $rendered->address,
         );
 
         $instructions = "\nResponde SI-{$token->token} confirma / NO-{$token->token} descarta / ESC-{$token->token} escala";
@@ -63,5 +64,16 @@ class AppendReplyInstructions
             variables: $rendered->variables,
             recipientName: $rendered->recipientName,
         );
+    }
+
+    /**
+     * Crítico, o un aviso de escalación (lleva `escalation_level`) de
+     * cualquier prioridad: quien recibe una escalación debe poder atenderla
+     * respondiendo, también en un incidente alto.
+     */
+    private function expectsReply(Notification $notification): bool
+    {
+        return $notification->priority->isCritical()
+            || is_numeric($notification->payload_json['escalation_level'] ?? null);
     }
 }

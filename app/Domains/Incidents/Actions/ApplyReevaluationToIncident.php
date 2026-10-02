@@ -48,6 +48,7 @@ class ApplyReevaluationToIncident
 
     public function __construct(
         private readonly AppendTimelineEntry $appendTimelineEntry,
+        private readonly ArmIncidentEscalation $armIncidentEscalation,
     ) {}
 
     /**
@@ -192,6 +193,10 @@ class ApplyReevaluationToIncident
                         'decision_id' => $decision->id,
                     ],
                 );
+
+                // Antes sólo se cambiaba la prioridad: un medio → crítico
+                // seguía con el SLA de una hora, un bajo nunca escalaba.
+                $this->armIncidentEscalation->tightenForPriority($incident);
             }
 
             if (! $isTerminal && $classification === EventClassification::FalsePositive) {

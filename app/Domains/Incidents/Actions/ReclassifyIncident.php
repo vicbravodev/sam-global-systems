@@ -14,6 +14,7 @@ class ReclassifyIncident
 {
     public function __construct(
         private readonly AppendTimelineEntry $appendTimelineEntry,
+        private readonly ArmIncidentEscalation $armIncidentEscalation,
     ) {}
 
     public function execute(
@@ -49,7 +50,17 @@ class ReclassifyIncident
                 ],
             );
 
-            return $incident->freshOrFail(['type', 'priority', 'status']);
+            $fresh = $incident->freshOrFail(['type', 'priority', 'status']);
+
+            if ($newPriority !== null && $newPriority->id !== $previousPriorityId) {
+                $previousLevel = IncidentPriority::query()->whereKey($previousPriorityId)->value('level');
+
+                if ($previousLevel === null || $newPriority->level > (int) $previousLevel) {
+                    $this->armIncidentEscalation->tightenForPriority($fresh);
+                }
+            }
+
+            return $fresh;
         });
     }
 }
