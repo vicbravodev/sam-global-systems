@@ -527,6 +527,7 @@ Selección de canales vacía (`notifications.channels.selected` skipped): antes 
 | `tenancy.billing_terms.updated` | ok | — | `team_id`, `actor_id`; result `terms_id`, `overridden_fields` (campos fijados para el tenant; el resto sale de `config/billing.php`), `notes_present`. Nunca las notas |
 | `tenancy.branding.updated` | ok | — | `team_id`, `user_id`; result `branding_id`, `changed_fields`. Nunca los valores (nombre visible y firma son texto libre) |
 | `tenancy.branding.logo_uploaded` | ok | — | `team_id`, `user_id`; result `file_object_id`, `size_bytes`, `content_type`. Nunca el nombre del archivo |
+| `tenancy.admin_access.denied` | skipped | `two_factor_required` (super-admin sin 2FA confirmado; activado sin confirmar cuenta como sin 2FA) | `user_id`, `surface` (`admin_console`: rutas `/admin`; `tenant_entry`: entrada a un cliente ajeno por `/{current_team}`), `route_name`, `pending_confirmation` (tiene secreto sin confirmar), `expects_json` (true = 403 JSON; false = redirección a `/settings/security`). Se apaga con `SAM_ADMIN_REQUIRE_2FA=false`. Nunca email |
 
 ### Billing (`billing`)
 

@@ -22,7 +22,7 @@ class AdminBillingTermsTest extends TestCase
 
     private function superAdmin(): User
     {
-        return User::factory()->create(['global_role' => 'super_admin']);
+        return User::factory()->superAdmin()->create();
     }
 
     public function test_platform_defaults_apply_until_the_operator_sets_terms(): void

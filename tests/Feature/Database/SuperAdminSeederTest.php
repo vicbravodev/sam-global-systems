@@ -23,7 +23,17 @@ class SuperAdminSeederTest extends TestCase
         $this->assertNotNull($operator->personalTeam());
         $this->assertSame($operator->personalTeam()->id, $operator->current_team_id);
 
+        // Sin 2FA confirmado la consola lo manda a activarlo; con 2FA entra.
         $this->actingAs($operator)
+            ->get(route('admin.tenants.index'))
+            ->assertRedirect(route('security.edit'));
+
+        $operator->forceFill([
+            'two_factor_secret' => encrypt('secret'),
+            'two_factor_confirmed_at' => now(),
+        ])->save();
+
+        $this->actingAs($operator->fresh())
             ->get(route('admin.tenants.index'))
             ->assertOk();
     }
