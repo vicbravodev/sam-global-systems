@@ -51,7 +51,7 @@ export function priorityLabel(code: string | null | undefined): string {
 
 // ── Tipos de evento e incidente ──────────────────────────────────────────
 
-export const EVENT_TYPE_LABELS: Record<string, string> = {
+const EVENT_TYPE_LABELS: Record<string, string> = {
     panic_button: 'Botón de pánico',
     collision: 'Colisión',
     rollover_protection: 'Protección por vuelco',
@@ -138,29 +138,12 @@ export function actionLabel(code: string | null | undefined): string {
 
 // ── Resultado de decisión ────────────────────────────────────────────────
 
-export const DECISION_OUTCOME_LABELS: Record<string, string> = {
-    IGNORE: 'Ignorar',
-    LOG_ONLY: 'Solo registrar',
-    ALERT: 'Alerta',
-    INCIDENT: 'Crear incidente',
-    ESCALATE: 'Escalar',
-    REQUIRE_HUMAN_REVIEW: 'Revisión humana',
-};
-
-export function decisionOutcomeLabel(code: string | null | undefined): string {
-    if (!code) {
-        return '—';
-    }
-
-    return DECISION_OUTCOME_LABELS[code.toUpperCase()] ?? humanizeCode(code);
-}
-
 /**
  * Qué le pasa al evento cuando una regla elige ese resultado, dicho como
  * efecto ("Abre un incidente") para leer la regla como frase. `null` = la
  * regla no fija resultado y decide la IA.
  */
-export const DECISION_OUTCOME_EFFECT_LABELS: Record<string, string> = {
+const DECISION_OUTCOME_EFFECT_LABELS: Record<string, string> = {
     IGNORE: 'Se ignora',
     LOG_ONLY: 'Solo se registra',
     ALERT: 'Avisa con urgencia baja',
@@ -183,7 +166,7 @@ export function decisionOutcomeEffectLabel(
 
 // ── Activos ──────────────────────────────────────────────────────────────
 
-export const ASSET_TYPE_LABELS: Record<string, string> = {
+const ASSET_TYPE_LABELS: Record<string, string> = {
     vehicle: 'Vehículo',
     trailer: 'Remolque',
     camera: 'Cámara',
@@ -230,7 +213,7 @@ export function sourceLabel(code: string | null | undefined): string {
 
 // ── Equipo y roles ───────────────────────────────────────────────────────
 
-export const TEAM_ROLE_LABELS: Record<string, string> = {
+const TEAM_ROLE_LABELS: Record<string, string> = {
     owner: 'Propietario',
     admin: 'Administrador',
     member: 'Miembro',
@@ -242,23 +225,7 @@ export function teamRoleLabel(code: string | null | undefined): string {
 
 // ── Planes y facturación ─────────────────────────────────────────────────
 
-export const PLAN_LABELS: Record<string, string> = {
-    starter: 'Starter',
-    pro: 'Pro',
-    enterprise: 'Enterprise',
-    default_plan: 'Incluido en el plan',
-    plan: 'Incluido en el plan',
-    promo: 'Promoción',
-    manual: 'Ajuste manual',
-    override: 'Ajuste manual',
-    trial: 'Prueba',
-};
-
-export function planLabel(code: string | null | undefined): string {
-    return lookup(PLAN_LABELS, code);
-}
-
-export const SUBSCRIPTION_STATUS_LABELS: Record<string, string> = {
+const SUBSCRIPTION_STATUS_LABELS: Record<string, string> = {
     active: 'Activa',
     trialing: 'En prueba',
     past_due: 'Pago vencido',
@@ -275,7 +242,7 @@ export function subscriptionStatusLabel(
     return lookup(SUBSCRIPTION_STATUS_LABELS, code);
 }
 
-export const BILLING_CYCLE_LABELS: Record<string, string> = {
+const BILLING_CYCLE_LABELS: Record<string, string> = {
     monthly: 'Mensual',
     yearly: 'Anual',
     annual: 'Anual',
@@ -286,7 +253,7 @@ export function billingCycleLabel(code: string | null | undefined): string {
     return lookup(BILLING_CYCLE_LABELS, code);
 }
 
-export const INVOICE_STATUS_LABELS: Record<string, string> = {
+const INVOICE_STATUS_LABELS: Record<string, string> = {
     draft: 'Borrador',
     // Para el cliente una factura emitida es una factura por pagar.
     finalized: 'Por pagar',
@@ -300,7 +267,7 @@ export function invoiceStatusLabel(code: string | null | undefined): string {
     return lookup(INVOICE_STATUS_LABELS, code);
 }
 
-export const METER_LABELS: Record<string, string> = {
+const METER_LABELS: Record<string, string> = {
     monitored_assets: 'Activos monitoreados',
     active_cameras: 'Cámaras activas',
     ai_calls: 'Evaluaciones de IA',
@@ -326,39 +293,6 @@ export function meterLabel(
     fallback?: string | null,
 ): string {
     return lookup(METER_LABELS, code, fallback);
-}
-
-const METER_UNIT_LABELS: Record<string, [string, string]> = {
-    count: ['evento', 'eventos'],
-    call: ['llamada', 'llamadas'],
-    asset: ['activo', 'activos'],
-    camera: ['cámara', 'cámaras'],
-    tokens: ['token', 'tokens'],
-    token: ['token', 'tokens'],
-    query: ['consulta', 'consultas'],
-    report: ['reporte', 'reportes'],
-    workflow: ['flujo', 'flujos'],
-    action: ['acción', 'acciones'],
-    message: ['mensaje', 'mensajes'],
-    usd_micros: ['USD', 'USD'],
-};
-
-/** Unidad de un medidor, en singular o plural según la cantidad. */
-export function meterUnitLabel(
-    unit: string | null | undefined,
-    quantity = 2,
-): string {
-    if (!unit) {
-        return '';
-    }
-
-    const forms = METER_UNIT_LABELS[unit];
-
-    if (!forms) {
-        return humanizeCode(unit).toLowerCase();
-    }
-
-    return quantity === 1 ? forms[0] : forms[1];
 }
 
 // ── Notificaciones ───────────────────────────────────────────────────────
@@ -404,7 +338,7 @@ export function delayLabel(seconds: number | null | undefined): string {
 
 // ── Funcionalidades (módulos) del plan y analítica — F1 ─────────────────
 
-export const FEATURE_LABELS: Record<string, string> = {
+const FEATURE_LABELS: Record<string, string> = {
     ai: 'Evaluación con IA',
     assets: 'Flota',
     audit: 'Auditoría',
@@ -432,21 +366,8 @@ export function featureLabel(code: string | null | undefined): string {
     return lookup(FEATURE_LABELS, code);
 }
 
-export const REPORT_STATUS_LABELS: Record<string, string> = {
-    pending: 'En cola',
-    queued: 'En cola',
-    running: 'Generando',
-    processing: 'Generando',
-    completed: 'Listo',
-    succeeded: 'Listo',
-    failed: 'Falló',
-    cancelled: 'Cancelado',
-    canceled: 'Cancelado',
-    expired: 'Expirado',
-};
-
 /** Nombres de KPI sin fila en metric_definitions (los calcula EvaluateAIEffectiveness). */
-export const KPI_LABELS: Record<string, string> = {
+const KPI_LABELS: Record<string, string> = {
     incidents_total: 'Incidentes abiertos en el periodo',
     incidents_resolved: 'Incidentes resueltos',
     incidents_open: 'Incidentes aún abiertos',
@@ -483,13 +404,9 @@ export function kpiLabel(
     return lookup(KPI_LABELS, code, fallback);
 }
 
-export function reportStatusLabel(code: string | null | undefined): string {
-    return lookup(REPORT_STATUS_LABELS, code);
-}
-
 // ── Evidencia multimedia y descripciones de proveedor (F4) ──────────────
 
-export const MEDIA_ROLE_LABELS: Record<string, string> = {
+const MEDIA_ROLE_LABELS: Record<string, string> = {
     primary_evidence: 'evidencia principal',
     driver_facing: 'cámara interior',
     road_facing: 'cámara frontal',

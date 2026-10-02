@@ -15,7 +15,7 @@ export function CellEmpty({
 }) {
     if (variant === 'person') {
         return (
-            <span className={cn('text-[12px] text-fg-3 italic', className)}>
+            <span className={cn('text-xs text-fg-3 italic', className)}>
                 Sin asignar
             </span>
         );
