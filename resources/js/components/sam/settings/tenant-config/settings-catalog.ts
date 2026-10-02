@@ -71,7 +71,7 @@ export const SETTING_TOPICS: {
     },
 ];
 
-export const KNOWN_SETTINGS: Record<string, KnownSetting> = {
+const KNOWN_SETTINGS: Record<string, KnownSetting> = {
     'media.clip_window_seconds': {
         label: 'Duración del video',
         help: 'Segundos de video antes y después del momento del evento.',

@@ -27,7 +27,7 @@ export const OPERATOR_LABELS: Record<string, string> = {
     is_not_null: 'tiene valor',
 };
 
-export const KNOWN_OPERATORS = Object.keys(OPERATOR_LABELS);
+const KNOWN_OPERATORS = Object.keys(OPERATOR_LABELS);
 
 export const NO_VALUE_OPERATORS = ['is_null', 'is_not_null'];
 

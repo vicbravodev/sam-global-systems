@@ -7,7 +7,7 @@
 export const APP_LOCALE = 'es-MX';
 
 /** Moneda por defecto del producto (billing local por transferencia). */
-export const DEFAULT_CURRENCY = 'MXN';
+const DEFAULT_CURRENCY = 'MXN';
 
 /** 1,234.5 — número con separador de miles y decimales opcionales. */
 export function formatNumber(
@@ -15,14 +15,6 @@ export function formatNumber(
     options?: Intl.NumberFormatOptions,
 ): string {
     return value.toLocaleString(APP_LOCALE, options);
-}
-
-/** Número compacto para contadores grandes: 223.3 mil, 1.2 M. */
-export function formatCompact(value: number): string {
-    return value.toLocaleString(APP_LOCALE, {
-        notation: 'compact',
-        maximumFractionDigits: 1,
-    });
 }
 
 /**

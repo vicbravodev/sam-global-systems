@@ -350,7 +350,7 @@ export interface StatusCopy {
     dot: string;
 }
 
-export const EXECUTION_STATUS: Record<string, StatusCopy> = {
+const EXECUTION_STATUS: Record<string, StatusCopy> = {
     completed: {
         label: 'Hecha',
         text: 'text-severity-low',
