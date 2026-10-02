@@ -32,6 +32,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
 use Mockery;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\Concerns\AssertsTenantIsolation;
 use Tests\TestCase;
 
@@ -41,7 +42,7 @@ use Tests\TestCase;
  */
 class TenantCanSendGateTest extends TestCase
 {
-    use AssertsTenantIsolation, RefreshDatabase;
+    use AssertsSystemLog, AssertsTenantIsolation, RefreshDatabase;
 
     public function test_policy_per_subscription_status(): void
     {
@@ -151,6 +152,13 @@ class TenantCanSendGateTest extends TestCase
         $fresh = $verification->fresh();
         $this->assertSame(CallVerificationStatus::Calling, $fresh->status);
         $this->assertSame('CA-expired', $fresh->call_sid);
+
+        $this->assertSystemLogged('incidents.call_verification.emergency_override', fn (array $c) => $c['outcome'] === 'degraded'
+            && $c['reason'] === 'tenant_blocked'
+            && $c['input']['verification_id'] === $verification->id
+            && $c['input']['team_id'] === $team->id
+            && $c['input']['blocked_reason'] === TenantCanSend::blockedReason($team->id));
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_phone_otp_is_blocked_for_inactive_tenant_non_member_and_already_verified_numbers(): void

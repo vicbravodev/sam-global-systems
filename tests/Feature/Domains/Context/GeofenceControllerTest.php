@@ -8,11 +8,12 @@ use App\Domains\Context\Models\Geofence;
 use App\Models\User;
 use Database\Seeders\AccessSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\AssertsTenantIsolation;
 use Tests\TestCase;
 
 class GeofenceControllerTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsTenantIsolation, RefreshDatabase;
 
     protected function setUp(): void
     {
@@ -113,5 +114,52 @@ class GeofenceControllerTest extends TestCase
 
         $response = $this->putJson("/api/{$userA->currentTeam->slug}/geofences/{$geofence->id}", ['name' => 'Hijack']);
         $this->assertContains($response->status(), [403, 404]);
+    }
+
+    public function test_user_cannot_update_a_foreign_geofence_through_its_own_slug(): void
+    {
+        $owner = User::factory()->create();
+        $intruder = User::factory()->create();
+        $geofence = Geofence::factory()->create([
+            'team_id' => $owner->currentTeam->id,
+            'name' => 'Patio A',
+            'is_active' => true,
+        ]);
+
+        $url = "/api/{$intruder->currentTeam->slug}/geofences/{$geofence->id}";
+
+        $plain = $this->actingAs($intruder)->putJson($url, ['name' => 'Hijack', 'is_active' => false]);
+        $this->assertContains($plain->status(), [403, 404]);
+
+        $response = $this->assertNoTenantLeak(
+            $intruder->currentTeam,
+            fn () => $this->actingAs($intruder)->putJson($url, ['name' => 'Hijack', 'is_active' => false]),
+        );
+
+        $this->assertContains($response->status(), [403, 404]);
+        $fresh = $geofence->fresh();
+        $this->assertSame('Patio A', $fresh->name);
+        $this->assertTrue((bool) $fresh->is_active);
+        $this->assertSame($owner->currentTeam->id, $fresh->team_id);
+    }
+
+    public function test_user_cannot_destroy_a_foreign_geofence_through_its_own_slug(): void
+    {
+        $owner = User::factory()->create();
+        $intruder = User::factory()->create();
+        $geofence = Geofence::factory()->create(['team_id' => $owner->currentTeam->id]);
+
+        $url = "/api/{$intruder->currentTeam->slug}/geofences/{$geofence->id}";
+
+        $plain = $this->actingAs($intruder)->deleteJson($url);
+        $this->assertContains($plain->status(), [403, 404]);
+
+        $response = $this->assertNoTenantLeak(
+            $intruder->currentTeam,
+            fn () => $this->actingAs($intruder)->deleteJson($url),
+        );
+
+        $this->assertContains($response->status(), [403, 404]);
+        $this->assertDatabaseHas('geofences', ['id' => $geofence->id, 'team_id' => $owner->currentTeam->id]);
     }
 }

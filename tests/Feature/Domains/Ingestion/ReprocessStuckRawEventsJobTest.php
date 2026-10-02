@@ -13,6 +13,7 @@ use App\Domains\Ingestion\Models\EventSource;
 use App\Domains\Ingestion\Models\PipelineFailureAlert;
 use App\Domains\Ingestion\Models\RawEvent;
 use App\Domains\Ingestion\Notifications\PipelineFailureNotification;
+use App\Domains\Normalization\Actions\ClassifyRawEventEmergency;
 use App\Domains\Normalization\Jobs\NormalizeEventJob;
 use App\Domains\Normalization\Models\EventCategory;
 use App\Domains\Normalization\Models\EventType;
@@ -23,6 +24,7 @@ use Database\Seeders\IncidentsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Queue;
+use Mockery\MockInterface;
 use Tests\Concerns\AssertsSystemLog;
 use Tests\Concerns\AssertsTenantIsolation;
 use Tests\TestCase;
@@ -249,5 +251,33 @@ class ReprocessStuckRawEventsJobTest extends TestCase
         $this->assertSame(1, Incident::withoutGlobalScopes()->count(), 'El rescate no abre un segundo incidente.');
         $this->assertSystemLogged('ingestion.dedup.own_key', fn (array $c) => $c['input']['raw_event_id'] === $raw->id);
         $this->assertSystemLogged('incidents.emergency.job_skipped', fn (array $c) => ($c['reason'] ?? null) === 'incident_exists');
+    }
+
+    public function test_an_event_that_another_worker_moved_meanwhile_is_skipped_and_logged(): void
+    {
+        Queue::fake();
+        $raw = $this->stuck($this->teamA);
+
+        // Entre el descubrimiento y el reproceso otro worker lo toca: ya no
+        // está atascado y el barrido no debe reencolarlo.
+        $this->partialMock(ClassifyRawEventEmergency::class, function (MockInterface $mock) {
+            $mock->shouldReceive('execute')->once()->andReturnUsing(function (RawEvent $event): array {
+                RawEvent::withoutGlobalScopes()->whereKey($event->id)->update(['updated_at' => now()]);
+
+                return ['emergency' => false, 'event_type_code' => null, 'normalized_event_id' => null, 'asset_id' => null];
+            });
+        });
+
+        $this->sweep();
+
+        $this->assertSame(0, $raw->fresh()->reprocess_attempts);
+        Queue::assertNotPushed(ProcessRawEventJob::class);
+        $this->assertSystemLogged('ingestion.reprocess.skipped', fn (array $c) => $c['outcome'] === 'skipped'
+            && $c['reason'] === 'no_longer_stuck'
+            && $c['input']['raw_event_id'] === $raw->id);
+        $this->assertSystemNotLogged('ingestion.reprocess.dispatched');
+        $this->assertSystemLogged('ingestion.reprocess_sweep.completed', fn (array $c) => $c['result']['candidates_count'] === 1
+            && $c['result']['dispatched_count'] === 0);
+        $this->assertNoSensitiveDataLogged();
     }
 }

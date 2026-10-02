@@ -86,6 +86,7 @@ class AssetUnresolvedSignalTest extends TestCase
         $this->assertFalse($ctx['calc']['asset_resolved']);
         $this->assertSame('unknown_external_id', $ctx['calc']['asset_unresolved_reason']);
         $this->assertStringNotContainsString('ext-not-synced', json_encode($this->systemLogEntries()));
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_payload_without_vehicle_yields_no_vehicle_in_payload(): void
@@ -200,6 +201,7 @@ class AssetUnresolvedSignalTest extends TestCase
         ]);
         $this->assertStringNotContainsString('ext-victim-unit', $visible);
         $this->assertStringNotContainsString((string) $foreignAsset->name, $visible);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_media_refresh_keeps_the_signal(): void

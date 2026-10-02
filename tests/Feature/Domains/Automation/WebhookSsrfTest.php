@@ -11,6 +11,7 @@ use App\Models\Team;
 use App\Models\User;
 use Database\Seeders\AccessSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Tests\Concerns\AssertsSystemLog;
@@ -129,6 +130,21 @@ class WebhookSsrfTest extends TestCase
 
         $this->assertSame(ActionExecutionStatus::Failed, $result->status);
         Http::assertSentCount(1);
+    }
+
+    public function test_connection_failure_is_logged_and_the_tenant_gets_a_generic_message(): void
+    {
+        Http::fake(fn () => throw new ConnectionException('cURL error 7: Failed to connect to 93.184.216.34 port 443'));
+
+        $result = $this->execute('https://hooks.example.com/hook');
+
+        $this->assertSame(ActionExecutionStatus::Failed, $result->status);
+        $this->assertStringNotContainsString('93.184.216.34', (string) json_encode($result->only(['error_message', 'response_json'])));
+        $this->assertSystemLogged('automation.webhook.connection_failed', fn (array $c): bool => $c['outcome'] === 'degraded'
+            && $c['reason'] === 'connection_failed'
+            && $c['input']['action_execution_id'] === $result->id
+            && isset($c['error']));
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_only_a_truncated_body_is_stored(): void

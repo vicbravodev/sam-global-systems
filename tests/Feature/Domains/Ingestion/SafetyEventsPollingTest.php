@@ -442,6 +442,13 @@ class SafetyEventsPollingTest extends TestCase
 
         $this->assertSystemLogged('ingestion.media.inline_collected', fn (array $c): bool => $c['input']['raw_event_id'] === $rawEvent->id
             && $c['calc'] === ['urls_found' => 2, 'downloaded' => 1, 'failed' => 1]);
+        $this->assertSystemLogged('ingestion.media.inline_download_failed', fn (array $c): bool => $c['outcome'] === 'degraded'
+            && $c['reason'] === 'download_failed'
+            && $c['input']['raw_event_id'] === $rawEvent->id
+            && $c['input']['url_key'] === 'media.1.url'
+            && isset($c['error']));
+        $this->assertCount(1, $this->systemLogEntries('ingestion.media.inline_download_failed'));
+        $this->assertStringNotContainsString('media.samsara.com', (string) json_encode($this->systemLogEntries('ingestion.media.inline_download_failed')));
         $this->assertNoSensitiveDataLogged();
     }
 
