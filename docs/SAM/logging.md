@@ -508,6 +508,7 @@ Selección de canales vacía (`notifications.channels.selected` skipped): antes 
 | `tenancy.access_link.skipped` | skipped | `team_deleted`, `already_activated`, `not_a_user` | `team_id`, `user_id`, `channel` |
 | `tenancy.access_link.rejected` | skipped | `token`, `user`, `throttled` (status del broker `onboarding` sin prefijo) | — |
 | `tenancy.access_link.activated` | ok | — | `user_id`; result `landing_team_id` (la empresa del enlace si es miembro; si no, la más reciente; null si no tiene), `requires_two_factor` (true = no inicia sesión: entra por login con 2FA) |
+| `tenancy.admin_access.denied` | skipped | `two_factor_required` (super-admin sin 2FA confirmado; activado sin confirmar cuenta como sin 2FA) | `user_id`, `surface` (`admin_console`: rutas `/admin`; `tenant_entry`: entrada a un cliente ajeno por `/{current_team}`), `route_name`, `pending_confirmation` (tiene secreto sin confirmar), `expects_json` (true = 403 JSON; false = redirección a `/settings/security`). Se apaga con `SAM_ADMIN_REQUIRE_2FA=false`. Nunca email |
 
 ### Billing (`billing`)
 

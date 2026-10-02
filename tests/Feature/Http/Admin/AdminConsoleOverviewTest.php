@@ -25,7 +25,7 @@ class AdminConsoleOverviewTest extends TestCase
 
     private function superAdmin(): User
     {
-        return User::factory()->create(['global_role' => 'super_admin']);
+        return User::factory()->superAdmin()->create();
     }
 
     private function tenantWithOwner(bool $activated = true): Team

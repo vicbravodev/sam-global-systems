@@ -110,7 +110,7 @@ class MappingRuleAuthorizationTest extends TestCase
     public function test_super_admin_can_create_update_and_delete_mapping_rules(): void
     {
         $existing = EventMappingRule::factory()->create();
-        $admin = User::factory()->create(['global_role' => 'super_admin']);
+        $admin = User::factory()->superAdmin()->create();
 
         $this->actingAs($admin)->postJson(
             route('rules.mapping.store', ['current_team' => $this->team->slug]),
@@ -148,7 +148,7 @@ class MappingRuleAuthorizationTest extends TestCase
                 ->component('rules/index')
                 ->where('canManageMappingRules', false));
 
-        $admin = User::factory()->create(['global_role' => 'super_admin']);
+        $admin = User::factory()->superAdmin()->create();
 
         $this->actingAs($admin)
             ->get(route('rules.show', ['current_team' => $this->team->slug]))

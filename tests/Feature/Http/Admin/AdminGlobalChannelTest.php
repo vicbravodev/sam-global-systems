@@ -29,7 +29,7 @@ class AdminGlobalChannelTest extends TestCase
 
     private function superAdmin(): User
     {
-        return User::factory()->create(['global_role' => 'super_admin']);
+        return User::factory()->superAdmin()->create();
     }
 
     public function test_index_lists_platform_channels(): void

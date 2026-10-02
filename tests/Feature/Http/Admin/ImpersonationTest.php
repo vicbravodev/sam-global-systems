@@ -13,7 +13,7 @@ class ImpersonationTest extends TestCase
 
     private function superAdmin(): User
     {
-        return User::factory()->create(['global_role' => 'super_admin']);
+        return User::factory()->superAdmin()->create();
     }
 
     public function test_super_admin_can_impersonate_a_tenant(): void

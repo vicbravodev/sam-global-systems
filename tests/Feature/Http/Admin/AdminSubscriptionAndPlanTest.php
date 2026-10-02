@@ -20,7 +20,7 @@ class AdminSubscriptionAndPlanTest extends TestCase
 
     private function superAdmin(): User
     {
-        return User::factory()->create(['global_role' => 'super_admin']);
+        return User::factory()->superAdmin()->create();
     }
 
     private function tenantWithSubscription(SubscriptionStatus $status = SubscriptionStatus::Active): Team
