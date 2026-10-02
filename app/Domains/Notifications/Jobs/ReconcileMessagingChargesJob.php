@@ -78,7 +78,9 @@ class ReconcileMessagingChargesJob implements ShouldQueue
 
     public function __construct()
     {
-        $this->onQueue('notifications');
+        // Cobranza, no un aviso: fuera de la cola de notificaciones para no
+        // ocupar un worker de SMS/llamadas hasta 220 s.
+        $this->onQueue('billing');
     }
 
     public function handle(
