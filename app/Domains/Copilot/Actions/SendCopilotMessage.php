@@ -25,6 +25,7 @@ class SendCopilotMessage
         private readonly RunCopilotAgentTurn $agent,
         private readonly RunDeterministicCopilotTurn $deterministic,
         private readonly FinishCopilotTurn $finish,
+        private readonly RecordCopilotUsage $recordUsage,
     ) {}
 
     /**
@@ -65,7 +66,10 @@ class SendCopilotMessage
         try {
             return $this->agent->execute($turn);
         } catch (Throwable $e) {
-            SystemLog::degraded('copilot.turn.fallback', 'agent_error_before_output', ['team_id' => $turn->team->id], error: $e);
+            SystemLog::degraded('copilot.turn.fallback', 'agent_error_before_output', ['team_id' => $turn->team->id], calc: ['tokens_so_far' => $turn->spent->tokens()], error: $e);
+
+            // What the abandoned agent already spent is billed apart.
+            $this->recordUsage->executeAbandoned($turn);
 
             // Start over: nothing a half-run agent collected reaches the answer.
             $turn->collector = new CopilotTurnCollector;
