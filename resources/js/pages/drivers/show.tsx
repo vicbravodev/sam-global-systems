@@ -9,6 +9,10 @@ import {
     ShieldAlert,
     Truck,
 } from 'lucide-react';
+import {
+    DescriptionItem,
+    DescriptionList,
+} from '@/components/sam/description-list';
 import { DriverStatusBadge } from '@/components/sam/drivers/driver-status-badge';
 import { EntityAvatar } from '@/components/sam/entity-avatar';
 import { LinkedIncidentsCard } from '@/components/sam/linked-incidents-card';
@@ -393,27 +397,6 @@ function RiskCard({
 
 // ---- Profile ----
 
-function ProfileField({
-    label,
-    children,
-    mono = false,
-}: {
-    label: string;
-    children: React.ReactNode;
-    mono?: boolean;
-}) {
-    return (
-        <div className="flex flex-col gap-0.5">
-            <dt className="text-2xs tracking-caps text-fg-3 uppercase">
-                {label}
-            </dt>
-            <dd className={cn('text-sm text-fg-1', mono && 'font-mono')}>
-                {children}
-            </dd>
-        </div>
-    );
-}
-
 function ProfileCard({ driver }: { driver: DriverDetail }) {
     return (
         <Card className="gap-0 overflow-hidden py-0">
@@ -423,35 +406,35 @@ function ProfileCard({ driver }: { driver: DriverDetail }) {
                 </CardTitle>
             </CardHeader>
             <CardContent className="p-4">
-                <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
-                    <ProfileField label="Nombre">
+                <DescriptionList>
+                    <DescriptionItem label="Nombre">
                         {driver.firstName ?? driver.fullName}
-                    </ProfileField>
-                    <ProfileField label="Apellidos">
+                    </DescriptionItem>
+                    <DescriptionItem label="Apellidos">
                         {driver.lastName ?? '—'}
-                    </ProfileField>
-                    <ProfileField label="Código de empleado" mono>
+                    </DescriptionItem>
+                    <DescriptionItem label="Código de empleado" mono>
                         {driver.employeeCode ?? '—'}
-                    </ProfileField>
-                    <ProfileField label="ID en proveedor" mono>
+                    </DescriptionItem>
+                    <DescriptionItem label="ID en proveedor" mono>
                         {driver.externalPrimaryId ?? '—'}
-                    </ProfileField>
+                    </DescriptionItem>
                     {driver.providerFields.map((field) => (
-                        <ProfileField
+                        <DescriptionItem
                             key={field.key}
                             label={field.label}
                             mono={field.key === 'license_number'}
                         >
                             {field.value}
-                        </ProfileField>
+                        </DescriptionItem>
                     ))}
-                    <ProfileField label="Primera conexión">
+                    <DescriptionItem label="Primera conexión">
                         {formatDate(driver.firstSeenAt)}
-                    </ProfileField>
-                    <ProfileField label="Última conexión">
+                    </DescriptionItem>
+                    <DescriptionItem label="Última conexión">
                         {formatDate(driver.lastSeenAt)}
-                    </ProfileField>
-                </dl>
+                    </DescriptionItem>
+                </DescriptionList>
             </CardContent>
         </Card>
     );

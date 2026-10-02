@@ -23,6 +23,10 @@ import { AssetSignal } from '@/components/sam/assets/asset-signal';
 import { AssetStatusBadge } from '@/components/sam/assets/asset-status-badge';
 import { MonitoringSwitch } from '@/components/sam/assets/monitoring-switch';
 import { PlateChip, vehicleTitle } from '@/components/sam/assets/vehicle-line';
+import {
+    DescriptionItem,
+    DescriptionList,
+} from '@/components/sam/description-list';
 import { EntityAvatar } from '@/components/sam/entity-avatar';
 import { PointMap } from '@/components/sam/lazy-point-map';
 import { LinkedIncidentsCard } from '@/components/sam/linked-incidents-card';
@@ -632,16 +636,13 @@ function VehicleCard({ asset }: { asset: AssetShowProps['asset'] }) {
                         VIN llegan con la sincronización del proveedor.
                     </p>
                 ) : (
-                    <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
+                    <DescriptionList>
                         {known.map(([label, value]) => (
-                            <div key={label} className="flex flex-col gap-0.5">
-                                <dt className="text-2xs tracking-caps text-fg-3 uppercase">
-                                    {label}
-                                </dt>
-                                <dd className="text-sm text-fg-1">{value}</dd>
-                            </div>
+                            <DescriptionItem key={label} label={label}>
+                                {value}
+                            </DescriptionItem>
                         ))}
-                    </dl>
+                    </DescriptionList>
                 )}
             </CardContent>
         </Card>

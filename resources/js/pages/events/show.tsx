@@ -18,6 +18,10 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { ConfidenceBar } from '@/components/sam/confidence-bar';
+import {
+    DescriptionItem,
+    DescriptionList,
+} from '@/components/sam/description-list';
 import { toSeverity } from '@/components/sam/event-severity';
 import { EventCategoryIcon } from '@/components/sam/events/event-category-icon';
 import { PipelineStatusPill } from '@/components/sam/events/pipeline-status';
@@ -393,23 +397,6 @@ function PipelineStepper({
 
 // ---- Facts ----
 
-function FactRow({
-    label,
-    children,
-}: {
-    label: string;
-    children: React.ReactNode;
-}) {
-    return (
-        <div className="flex flex-col gap-0.5">
-            <dt className="text-2xs tracking-caps text-fg-3 uppercase">
-                {label}
-            </dt>
-            <dd className="text-sm text-fg-1">{children}</dd>
-        </div>
-    );
-}
-
 function FactsCard({ event }: { event: EventDetail }) {
     const facts = event.facts;
     const severity = toSeverity(event.severity);
@@ -442,26 +429,26 @@ function FactsCard({ event }: { event: EventDetail }) {
                         />
                     </div>
                 )}
-                <dl className="grid grid-cols-2 gap-x-4 gap-y-3 p-4">
-                    <FactRow label="Cuándo">
+                <DescriptionList className="p-4">
+                    <DescriptionItem label="Cuándo">
                         {formatDateTime(event.occurredAt)}
-                    </FactRow>
-                    <FactRow label="Procesado">
+                    </DescriptionItem>
+                    <DescriptionItem label="Procesado">
                         {event.processedAt
                             ? formatDateTime(event.processedAt)
                             : '—'}
-                    </FactRow>
+                    </DescriptionItem>
                     {facts.location && (
-                        <FactRow label="Dónde">
+                        <DescriptionItem label="Dónde">
                             {facts.location.formatted ?? 'Sin geocodificar'}
                             <span className="ml-2 font-mono text-2xs text-fg-3 tabular-nums">
                                 {facts.location.latitude.toFixed(5)},{' '}
                                 {facts.location.longitude.toFixed(5)}
                             </span>
-                        </FactRow>
+                        </DescriptionItem>
                     )}
                     {facts.labels.length > 0 && (
-                        <FactRow label="Etiquetas del proveedor">
+                        <DescriptionItem label="Etiquetas del proveedor">
                             <span className="flex flex-wrap gap-1">
                                 {facts.labels.map((label) => (
                                     <span
@@ -473,17 +460,17 @@ function FactsCard({ event }: { event: EventDetail }) {
                                     </span>
                                 ))}
                             </span>
-                        </FactRow>
+                        </DescriptionItem>
                     )}
                     {facts.externalEventType && (
-                        <FactRow label="Tipo en el proveedor">
+                        <DescriptionItem label="Tipo en el proveedor">
                             <span className="font-mono text-xs">
                                 {facts.externalEventType}
                             </span>
-                        </FactRow>
+                        </DescriptionItem>
                     )}
                     {(facts.isResolved !== null || facts.eventState) && (
-                        <FactRow label="Estado en el proveedor">
+                        <DescriptionItem label="Estado en el proveedor">
                             {facts.isResolved === true ? (
                                 <span className="text-severity-low">
                                     Resuelto en origen
@@ -496,9 +483,9 @@ function FactsCard({ event }: { event: EventDetail }) {
                             ) : (
                                 'Abierto en origen'
                             )}
-                        </FactRow>
+                        </DescriptionItem>
                     )}
-                </dl>
+                </DescriptionList>
             </CardContent>
         </Card>
     );
@@ -576,47 +563,42 @@ function EvaluationCard({
                                 </span>
                             )}
                         </div>
-                        <dl className="grid grid-cols-2 gap-3">
-                            <div>
-                                <dt className="text-2xs tracking-caps text-fg-3 uppercase">
-                                    Confianza
-                                </dt>
-                                <dd className="mt-1">
-                                    {evaluation.confidenceScore !== null ? (
-                                        <ConfidenceBar
-                                            value={evaluation.confidenceScore}
-                                        />
-                                    ) : (
-                                        '—'
-                                    )}
-                                </dd>
-                            </div>
-                            <div>
-                                <dt className="text-2xs tracking-caps text-fg-3 uppercase">
-                                    Riesgo estimado
-                                </dt>
-                                <dd className="mt-1 font-mono text-sm text-fg-1 tabular-nums">
-                                    {evaluation.riskScore !== null
-                                        ? `${Math.round(evaluation.riskScore * 100)} / 100`
-                                        : '—'}
-                                </dd>
-                            </div>
+                        <DescriptionList className="gap-3">
+                            <DescriptionItem
+                                label="Confianza"
+                                valueClassName="mt-0.5"
+                            >
+                                {evaluation.confidenceScore !== null ? (
+                                    <ConfidenceBar
+                                        value={evaluation.confidenceScore}
+                                    />
+                                ) : (
+                                    '—'
+                                )}
+                            </DescriptionItem>
+                            <DescriptionItem
+                                label="Riesgo estimado"
+                                mono
+                                valueClassName="mt-0.5 tabular-nums"
+                            >
+                                {evaluation.riskScore !== null
+                                    ? `${Math.round(evaluation.riskScore * 100)} / 100`
+                                    : '—'}
+                            </DescriptionItem>
                             {evaluation.recommendedAction && (
-                                <div className="col-span-2">
-                                    <dt className="text-2xs tracking-caps text-fg-3 uppercase">
-                                        Acción recomendada
-                                    </dt>
-                                    <dd className="mt-0.5 text-sm text-fg-1">
-                                        {ACTION_LABELS[
-                                            evaluation.recommendedAction
-                                        ] ??
-                                            actionLabel(
-                                                evaluation.recommendedAction,
-                                            )}
-                                    </dd>
-                                </div>
+                                <DescriptionItem
+                                    label="Acción recomendada"
+                                    className="col-span-2"
+                                >
+                                    {ACTION_LABELS[
+                                        evaluation.recommendedAction
+                                    ] ??
+                                        actionLabel(
+                                            evaluation.recommendedAction,
+                                        )}
+                                </DescriptionItem>
                             )}
-                        </dl>
+                        </DescriptionList>
                         {evaluation.explanation && (
                             <p className="rounded-md border border-ai-accent/30 bg-ai-accent-bg/60 p-3 text-xs leading-relaxed text-fg-2">
                                 {evaluation.explanation}
