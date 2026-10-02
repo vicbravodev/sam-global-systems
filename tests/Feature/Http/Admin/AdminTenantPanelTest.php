@@ -20,7 +20,7 @@ class AdminTenantPanelTest extends TestCase
 
     private function superAdmin(): User
     {
-        return User::factory()->create(['global_role' => 'super_admin']);
+        return User::factory()->superAdmin()->create();
     }
 
     public function test_non_super_admin_cannot_reach_the_panel(): void

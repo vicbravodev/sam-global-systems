@@ -100,9 +100,10 @@ Route::post('bienvenida', [TenantAccessController::class, 'store'])
 // `/admin/...` never gets swallowed by `/{current_team}/...` routes.
 // SaaS operator (super-admin) control panel. Lives OUTSIDE the {current_team}
 // group because it is cross-tenant: it lists/creates tenants and starts
-// impersonation. Guarded by the global-role check in EnsureSuperAdmin.
+// impersonation. Guarded by the global-role check in EnsureSuperAdmin and by
+// RequireSuperAdminTwoFactor (2FA confirmado obligatorio para operar).
 Route::prefix('admin')
-    ->middleware(['auth', 'verified', 'ensure.super_admin'])
+    ->middleware(['auth', 'verified', 'ensure.super_admin', 'super_admin.two_factor'])
     ->name('admin.')
     ->group(function () {
         Route::get('tenants', [TenantController::class, 'index'])->name('tenants.index');
