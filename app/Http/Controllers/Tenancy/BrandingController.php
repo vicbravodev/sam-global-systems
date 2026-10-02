@@ -2,13 +2,16 @@
 
 namespace App\Http\Controllers\Tenancy;
 
+use App\Contracts\ObjectStorage;
 use App\Domains\Tenancy\Models\FileObject;
 use App\Domains\Tenancy\Models\TenantBranding;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
+use App\Support\ObjectStorageFailure;
+use App\Support\SystemLog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
+use Throwable;
 
 /**
  * Tenant branding (Roadmap F7): display name, colors and the logo stored as a
@@ -35,7 +38,7 @@ class BrandingController extends Controller
         return response()->json(['data' => $branding->refresh()]);
     }
 
-    public function uploadLogo(Request $request, Team $current_team): JsonResponse
+    public function uploadLogo(Request $request, Team $current_team, ObjectStorage $storage): JsonResponse
     {
         $branding = $this->brandingFor($current_team);
 
@@ -48,7 +51,27 @@ class BrandingController extends Controller
         $file = $request->file('logo');
         $key = "branding/{$current_team->id}/".$file->hashName();
 
-        Storage::disk('rustfs')->put($key, (string) $file->get());
+        try {
+            $storage->put($key, (string) $file->get());
+        } catch (Throwable $e) {
+            if (! ObjectStorageFailure::matches($e)) {
+                throw $e;
+            }
+
+            SystemLog::degraded('tenancy.branding.logo_upload_failed', reason: 'storage_unavailable', input: [
+                'team_id' => $current_team->id,
+            ], error: $e);
+
+            // 503 with a readable message on the `logo` field instead of a raw
+            // 500: nothing was persisted, the previous logo stays and the
+            // tenant can simply retry.
+            $message = 'No se pudo subir el logo. '.ObjectStorageFailure::USER_MESSAGE;
+
+            return response()->json([
+                'message' => $message,
+                'errors' => ['logo' => [$message]],
+            ], 503);
+        }
 
         FileObject::query()->create([
             'team_id' => $current_team->id,

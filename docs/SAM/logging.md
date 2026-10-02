@@ -522,6 +522,7 @@ Selección de canales vacía (`notifications.channels.selected` skipped): antes 
 | `tenancy.web_access.billing_allowed` | ok (nivel `debug`) | — | `team_id`, `user_id`, `route_name`, `status`. Un miembro de un tenant suspendido entró a Facturación (ver facturas o subir el comprobante de la transferencia) porque `SubscriptionStatus::grantsBillingAccess()` lo permite |
 | `tenancy.access_link.activated` | ok | — | `user_id`; result `landing_team_id` (la empresa del enlace si es miembro; si no, la más reciente; null si no tiene), `requires_two_factor` (true = no inicia sesión: entra por login con 2FA) |
 | `tenancy.admin_access.denied` | skipped | `two_factor_required` (super-admin sin 2FA confirmado; activado sin confirmar cuenta como sin 2FA) | `user_id`, `surface` (`admin_console`: rutas `/admin`; `tenant_entry`: entrada a un cliente ajeno por `/{current_team}`), `route_name`, `pending_confirmation` (tiene secreto sin confirmar), `expects_json` (true = 403 JSON; false = redirección a `/settings/security`). Se apaga con `SAM_ADMIN_REQUIRE_2FA=false`. Nunca email |
+| `tenancy.branding.logo_upload_failed` | degraded | `storage_unavailable` | `team_id`, `error` (clase + mensaje redactado; nunca la URL prefirmada). RustFS/S3 falló al subir el logo de la marca (`BrandingController::uploadLogo`): el tenant recibe 503 con el mensaje legible en el campo `logo`, no se crea `FileObject` y el logo anterior queda intacto |
 
 ### Billing (`billing`)
 
