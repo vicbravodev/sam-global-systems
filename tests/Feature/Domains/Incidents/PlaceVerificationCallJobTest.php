@@ -24,6 +24,8 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Queue;
 use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
+use Twilio\Exceptions\EnvironmentException;
+use Twilio\Exceptions\RestException;
 
 class PlaceVerificationCallJobTest extends TestCase
 {
@@ -319,6 +321,49 @@ class PlaceVerificationCallJobTest extends TestCase
             && $c['result'] === ['next' => 'next_attempt', 'next_attempt' => 2, 'next_attempt_created' => true]);
         $this->assertStringNotContainsString('twilio down', json_encode($this->systemLogEntries()));
         $this->assertNoSensitiveDataLogged();
+    }
+
+    /**
+     * Un timeout tras mandar la petición: la llamada pudo haberse creado.
+     * Antes se marcaba otra de inmediato (dos teléfonos sonando, dos cobros);
+     * ahora se busca en Twilio y, si existe, se adopta.
+     */
+    public function test_a_timed_out_placement_that_twilio_did_create_is_adopted_not_repeated(): void
+    {
+        NotificationChannel::factory()->voice()->create();
+        $verification = $this->makeVerification();
+
+        $this->mock(TwilioVoiceCaller::class, function ($mock) {
+            $mock->shouldReceive('createCall')->once()->andThrow(new EnvironmentException('Operation timed out'));
+            $mock->shouldReceive('findRecentCalls')->once()->andReturn([(object) ['sid' => 'CA'.str_repeat('7', 32), 'status' => 'ringing', 'dateCreated' => now()]]);
+        });
+
+        $this->runJob($verification);
+
+        $fresh = $verification->fresh();
+        $this->assertSame(CallVerificationStatus::Calling, $fresh->status);
+        $this->assertSame('CA'.str_repeat('7', 32), $fresh->call_sid);
+        $this->assertSame(0, IncidentCallVerification::withoutGlobalScopes()->where('incident_id', $verification->incident_id)->where('attempt', 2)->count());
+        Queue::assertPushed(EvaluateVerificationCallOutcomeJob::class, fn (EvaluateVerificationCallOutcomeJob $job) => $job->verificationId === $verification->id);
+
+        $this->assertSystemLogged('incidents.call_verification.placement_adopted', fn (array $c) => $c['input'] === ['verification_id' => $verification->id]
+            && $c['result']['error_class'] === 'EnvironmentException');
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_twilio_error_response_never_searches_for_a_created_call(): void
+    {
+        NotificationChannel::factory()->voice()->create();
+        $verification = $this->makeVerification();
+
+        $this->mock(TwilioVoiceCaller::class, function ($mock) {
+            $mock->shouldReceive('createCall')->once()->andThrow(new RestException('invalid', 21211, 400));
+            $mock->shouldNotReceive('findRecentCalls');
+        });
+
+        $this->runJob($verification);
+
+        $this->assertSystemLogged('incidents.call_verification.placement_failed', fn (array $c) => $c['result']['outcome_known'] === true);
     }
 
     public function test_exhausted_attempts_escalate_the_incident_with_no_answer_outcome(): void

@@ -13,6 +13,8 @@ use App\Domains\Notifications\Models\NotificationDelivery;
  * - Proveedor que confirma después (Twilio) → `Queued` + `accepted_at`: la
  *   API aceptó el envío, NO que llegó. El estado final lo fijan el status
  *   callback o el reconciliador ({@see ApplyTwilioStatusUpdate}).
+ * - Resultado incierto (timeout) → sigue `Sending` con `provider_status`
+ *   `uncertain`, sin NotificationFailed.
  * - Fallo → `Failed`, con el código de proveedor y si es permanente.
  *
  * Cada intento limpia el feedback del intento anterior (un reintento es un
@@ -20,6 +22,9 @@ use App\Domains\Notifications\Models\NotificationDelivery;
  */
 class RecordDeliveryAttempt
 {
+    /** `provider_status` de una entrega con resultado incierto. */
+    public const string UNCERTAIN = 'uncertain';
+
     public function execute(NotificationDelivery $delivery, DeliveryResult $result): NotificationDelivery
     {
         $now = now();
@@ -58,6 +63,17 @@ class RecordDeliveryAttempt
                 'response_json' => $result->response,
                 'sent_at' => $delivery->sent_at ?? $now,
                 'delivered_at' => $now,
+            ]);
+        } elseif ($result->uncertain) {
+            // Ni aceptado ni fallido: sigue en vuelo hasta que
+            // ResolveUncertainDeliveryJob lo encuentre (o no) en el proveedor.
+            $delivery->fill([
+                ...$reset,
+                'status' => DeliveryStatus::Sending,
+                'provider_message_id' => null,
+                'provider_status' => self::UNCERTAIN,
+                'response_json' => $result->response,
+                'error_message' => $result->errorMessage,
             ]);
         } else {
             $delivery->fill([

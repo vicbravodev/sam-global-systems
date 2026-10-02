@@ -41,4 +41,28 @@ class TwilioMessenger
 
         return $this->factory->make()->messages->getContext($sid)->fetch();
     }
+
+    /**
+     * Mensajes de `from` a `to` creados desde `$since`, del más reciente al
+     * más viejo. El número de plataforma es compartido: quien los use debe
+     * descartar los que ya pertenecen a otro envío.
+     *
+     * @return list<object>
+     */
+    public function findRecentMessages(string $to, string $from, \DateTimeInterface $since): array
+    {
+        if (TwilioSandbox::enabled()) {
+            return [];
+        }
+
+        $found = [];
+
+        foreach ($this->factory->make()->messages->read(['to' => $to, 'from' => $from], 20) as $resource) {
+            if ($resource->dateCreated instanceof \DateTimeInterface && $resource->dateCreated >= $since) {
+                $found[] = $resource;
+            }
+        }
+
+        return $found;
+    }
 }
