@@ -9,11 +9,12 @@ use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Enums\MessagingResourceType;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Support\PlatformTwilioConfig;
+use App\Domains\Notifications\Support\SmsText;
 use App\Domains\Notifications\Support\TwilioStatusCallbackUrl;
 
 /**
- * Twilio SMS driver. Body is truncated to 160 chars (155 + " (ver portal)")
- * so it always fits in a single segment.
+ * Twilio SMS driver. Body is converted to GSM-7 (SmsText) and truncated to
+ * 160 chars so it always fits in a single segment.
  *
  * Credentials are SAM's platform Twilio account (env TWILIO_*). The channel
  * `config_json` may only override the sender (`from`: E.164 number or a
@@ -24,7 +25,7 @@ use App\Domains\Notifications\Support\TwilioStatusCallbackUrl;
  */
 class SmsNotificationDriver implements NotificationDriver
 {
-    public const SUFFIX = '…(ver portal)';
+    public const SUFFIX = '...(ver portal)';
 
     public const MAX_LENGTH = 160;
 
@@ -45,7 +46,9 @@ class SmsNotificationDriver implements NotificationDriver
             return TwilioDeliveryResults::misconfigured('sms twilio credentials missing', 'sms');
         }
 
-        $body = $this->truncate($notification->body);
+        // GSM-7 antes de medir: un acento o un emoji pasaría todo el mensaje
+        // a UCS-2 (70 caracteres por segmento) y lo cobraría hasta 3 veces.
+        $body = $this->truncate(SmsText::gsm7($notification->body));
 
         $params = [
             'body' => $body,
