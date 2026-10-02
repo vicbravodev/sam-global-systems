@@ -22,6 +22,7 @@ use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Infrastructure\Storage\MediaDownloadException;
 use App\Infrastructure\Storage\SecureMediaDownloader;
 use App\Support\JobFailureReporter;
+use App\Support\SafeErrorMessage;
 use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
@@ -1106,7 +1107,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
                 'completed_at' => now(),
             ])->save();
 
-            EventMediaFailed::dispatch($request, $exception->getMessage());
+            EventMediaFailed::dispatch($request, SafeErrorMessage::from($exception));
         }
 
         JobFailureReporter::report(static::class, $exception, ['event_media_request_id' => $this->eventMediaRequestId]);

@@ -15,6 +15,7 @@ use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Domains\Tenancy\Models\FileObject;
 use App\Domains\Tenancy\Models\TenantBranding;
 use App\Models\Team;
+use App\Support\SafeErrorMessage;
 use App\Support\TenantContext;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Facades\Storage;
@@ -72,7 +73,7 @@ class GenerateReport
                 $execution->forceFill([
                     'status' => ReportExecutionStatus::Failed->value,
                     'finished_at' => now(),
-                    'error_message' => $e->getMessage(),
+                    'error_message' => SafeErrorMessage::from($e),
                 ])->save();
 
                 throw $e;

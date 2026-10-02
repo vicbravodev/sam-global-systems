@@ -31,6 +31,7 @@ use App\Models\User;
 use App\Support\Http\OutboundUrlGuard;
 use App\Support\Http\UnsafeOutboundUrlException;
 use App\Support\LoggableCode;
+use App\Support\SafeErrorMessage;
 use App\Support\SystemLog;
 use App\Support\TeamMembers;
 use App\Support\Templates\TemplateInterpolator;
@@ -111,18 +112,20 @@ class ExecuteAction
         } catch (Throwable $exception) {
             $durationMs = SystemLog::elapsedMs($started);
 
+            $errorMessage = SafeErrorMessage::from($exception);
+
             $execution->status = ActionExecutionStatus::Failed;
-            $execution->error_message = $exception->getMessage();
+            $execution->error_message = $errorMessage;
             $execution->save();
 
             ActionExecutionLog::create([
                 'action_execution_id' => $execution->id,
                 'log_type' => ActionLogType::Error,
-                'message' => $exception->getMessage(),
+                'message' => $errorMessage,
                 'payload_json' => null,
             ]);
 
-            ActionFailed::dispatch($execution, $exception->getMessage());
+            ActionFailed::dispatch($execution, $errorMessage);
 
             // Nunca `error: $exception`: el mensaje interpola target_reference
             // (teléfono, email o URL) e ids ajenos; ya queda en error_message.
