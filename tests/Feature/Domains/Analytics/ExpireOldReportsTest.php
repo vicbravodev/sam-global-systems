@@ -8,10 +8,12 @@ use App\Domains\Analytics\Models\ReportExecution;
 use App\Models\Team;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class ExpireOldReportsTest extends TestCase
 {
+    use AssertsSystemLog;
     use RefreshDatabase;
 
     public function test_expires_completed_reports_older_than_retention_window(): void
@@ -49,5 +51,16 @@ class ExpireOldReportsTest extends TestCase
             $freshExecution->refresh()->status,
         );
         Storage::disk('rustfs')->assertExists("reports/{$team->id}/fresh.json");
+
+        $ctx = $this->assertSystemLogged('analytics.reports.expired');
+        $this->assertSame(['team_id' => $team->id], $ctx['input']);
+        $this->assertSame(['expired_count' => 1, 'files_deleted' => 1], $ctx['result']);
+        $this->assertArrayHasKey('retention_days', $ctx['calc']);
+        $this->assertSame('info', $this->systemLogEntries('analytics.reports.expired')[0]['level']);
+
+        // Nada más que expirar: la misma línea, a debug.
+        app(ExpireOldReports::class)->execute($team->id);
+        $this->assertSame('debug', $this->systemLogEntries('analytics.reports.expired')[1]['level']);
+        $this->assertNoSensitiveDataLogged();
     }
 }

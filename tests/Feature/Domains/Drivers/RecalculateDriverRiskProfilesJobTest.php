@@ -14,6 +14,7 @@ use App\Domains\Notifications\Models\Notification;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 /**
@@ -22,6 +23,7 @@ use Tests\TestCase;
  */
 class RecalculateDriverRiskProfilesJobTest extends TestCase
 {
+    use AssertsSystemLog;
     use RefreshDatabase;
 
     private int $teamId;
@@ -86,6 +88,22 @@ class RecalculateDriverRiskProfilesJobTest extends TestCase
         $this->assertSame(RiskLevel::Medium, $profile->risk_level);
         $this->assertSame('baseline', $profile->metadata_json['trend']);
         $this->assertNotNull($profile->last_calculated_at);
+
+        // El score se rehace a mano desde la línea: términos × pesos.
+        $ctx = $this->assertSystemLogged('drivers.risk_profile.recalculated', fn (array $c) => $c['input']['driver_id'] === $driver->id);
+        $this->assertSame(['harsh_events' => 3, 'fatigue_events' => 2, 'severe_events' => 0, 'other_events' => 4, 'incidents' => 0], array_intersect_key($ctx['calc'], array_flip(['harsh_events', 'fatigue_events', 'severe_events', 'other_events', 'incidents'])));
+        $w = $ctx['calc']['weights'];
+        $this->assertEquals($ctx['result']['risk_score'], 3 * $w['harsh'] + 2 * $w['fatigue'] + 4 * $w['other']);
+        $this->assertSame('medium', $ctx['result']['risk_level']);
+        $this->assertSame('baseline', $ctx['result']['trend']);
+        $this->assertFalse($ctx['result']['alert_raised']);
+        // Primer cálculo: el nivel pasa de null a medium → info, no debug.
+        $this->assertSame('info', $this->systemLogEntries('drivers.risk_profile.recalculated')[0]['level']);
+
+        $sweep = $this->assertSystemLogged('drivers.risk_sweep.completed');
+        $this->assertSame(1, $sweep['result']['recalculated']);
+        $this->assertSame(1, $sweep['result']['drivers_scanned']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_score_decays_and_trend_improves_when_events_age_out(): void
@@ -128,6 +146,16 @@ class RecalculateDriverRiskProfilesJobTest extends TestCase
 
         // The second run sees high → high with no score increase: no re-alert.
         $this->assertCount(1, $notifications);
+
+        $lines = $this->systemLogEntries('drivers.risk_profile.recalculated');
+        $this->assertCount(2, $lines);
+        $this->assertTrue($lines[0]['context']['result']['alert_raised']);
+        $this->assertSame('info', $lines[0]['level']);
+        // Mismo nivel en la segunda corrida: a debug y sin aviso.
+        $this->assertFalse($lines[1]['context']['result']['alert_raised']);
+        $this->assertSame('debug', $lines[1]['level']);
+        $this->assertSame(1, $this->systemLogEntries('drivers.risk_sweep.completed')[0]['context']['result']['alerts_raised']);
+        $this->assertStringNotContainsString((string) $driver->full_name, (string) json_encode($this->systemLogEntries()));
         $this->assertSame((string) $driver->id, $notifications->first()->source_reference_id);
 
         // Aviso de seguimiento: sólo a quien opera la flota, en la app y por
@@ -143,6 +171,8 @@ class RecalculateDriverRiskProfilesJobTest extends TestCase
         $this->runJob();
 
         $this->assertSame(0, DriverRiskProfile::query()->count());
+        $this->assertSystemNotLogged('drivers.risk_profile.recalculated');
+        $this->assertSystemLogged('drivers.risk_sweep.completed', fn (array $c) => $c['result']['skipped_no_activity'] === 1 && $c['result']['recalculated'] === 0);
     }
 
     public function test_events_of_another_driver_do_not_leak(): void

@@ -11,6 +11,7 @@ use App\Http\Requests\Teams\UpdateTeamMemberRequest;
 use App\Models\Membership;
 use App\Models\Team;
 use App\Models\User;
+use App\Support\SystemLog;
 use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
@@ -68,6 +69,13 @@ class TeamMemberController extends Controller
 
             $authorizeAction->invalidateCache($user->id, $team->id);
         });
+
+        SystemLog::ok('access.member.removed', input: [
+            'team_id' => $team->id,
+            'user_id' => $user->id,
+            'actor_id' => $actor->id,
+            'via' => 'tenant_settings',
+        ]);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Member removed.')]);
 

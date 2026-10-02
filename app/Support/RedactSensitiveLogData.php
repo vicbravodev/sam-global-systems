@@ -33,7 +33,22 @@ final class RedactSensitiveLogData implements ProcessorInterface
     private const array SENSITIVE_WORDS = [
         'phone', 'email', 'password', 'secret', 'token', 'signature', 'authorization',
         'cookie', 'apikey', 'otp', 'payload', 'body', 'raw', 'prompt', 'address',
-        'name', 'credential', 'credentials',
+        'name', 'filename', 'credential', 'credentials',
+    ];
+
+    /**
+     * Calificadores que hacen de un `*_name` el nombre de una pieza técnica
+     * (`route_name`, `job_name`, `model_name`, `meter_name`) y no el de una
+     * persona, una empresa o algo que escribió un usuario (`driver_name`,
+     * `team_name`, `report_name`, `display_name` siguen redactados).
+     *
+     * @var list<string>
+     */
+    private const array TECHNICAL_NAME_QUALIFIERS = [
+        'route', 'event', 'agent', 'job', 'queue', 'connection', 'channel', 'guard',
+        'model', 'tool', 'meter', 'feature', 'permission', 'class', 'method', 'table',
+        'column', 'disk', 'bucket', 'host', 'feed', 'provider', 'metric', 'type',
+        'command', 'middleware', 'policy', 'listener', 'notification',
     ];
 
     /**
@@ -99,7 +114,8 @@ final class RedactSensitiveLogData implements ProcessorInterface
         );
         $text = (string) preg_replace('/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i', '[email]', $text);
         $text = (string) preg_replace('~(https?://[^\s?#"\']+)\?[^\s"\'#]*~i', '$1?'.self::MASK, $text);
-        $text = (string) preg_replace('/\b(Bearer|Basic)\s+[A-Za-z0-9._~+\/=-]+/i', '$1 '.self::MASK, $text);
+        $text = (string) preg_replace('/\bBearer\s+[A-Za-z0-9._~+\/=-]+/i', 'Bearer '.self::MASK, $text);
+        $text = self::maskBasicCredentials($text);
 
         return (string) preg_replace_callback(
             '/(?<![\w.:\/-])\+?\d[\d\s()-]{7,}\d(?![\w\/-]|[.:]\w)/',
@@ -121,6 +137,26 @@ final class RedactSensitiveLogData implements ProcessorInterface
                 }
 
                 return '[phone]';
+            },
+            $text,
+        );
+    }
+
+    /**
+     * `Basic <base64(usuario:clave)>`. Sólo se enmascara lo que ES una
+     * credencial (tras `Authorization:` o un base64 que decodifica a algo con
+     * `:`): "basic" es también una palabra común ("Basic plan", "basic
+     * checks") y antes se comía la palabra siguiente del texto.
+     */
+    private static function maskBasicCredentials(string $text): string
+    {
+        return (string) preg_replace_callback(
+            '/(\bAuthorization\s*[:=]\s*)?\b(Basic)\s+([A-Za-z0-9+\/]+={0,2})(?![A-Za-z0-9+\/=._~-])/i',
+            static function (array $match): string {
+                $decoded = base64_decode($match[3], true);
+                $isCredential = $match[1] !== '' || (is_string($decoded) && str_contains($decoded, ':'));
+
+                return $isCredential ? $match[1].$match[2].' '.self::MASK : $match[0];
             },
             $text,
         );
@@ -282,7 +318,9 @@ final class RedactSensitiveLogData implements ProcessorInterface
         $words = self::words($key);
 
         // `key` es sufijo técnico (`event_key`), salvo `api_key` o `secret_key`.
-        if (in_array(implode('_', $words), ['api_key', 'code_hash'], true)) {
+        // El id de una sesión tampoco es un id técnico: con él se secuestra la
+        // sesión (`session_id`, `sessionId`, `laravel_session`).
+        if (in_array(implode('_', $words), ['api_key', 'code_hash', 'session', 'session_id', 'laravel_session', 'session_token'], true)) {
             return true;
         }
 
@@ -291,6 +329,13 @@ final class RedactSensitiveLogData implements ProcessorInterface
         }
 
         if ($words === [] || in_array(end($words), self::TECHNICAL_SUFFIXES, true) || in_array($words[0], ['has', 'is'], true)) {
+            return false;
+        }
+
+        // `route_name`, `event_type_name`: todas las palabras previas a `name`
+        // son técnicas. Basta una que no lo sea (`driver_name`) para redactar.
+        if (count($words) > 1 && end($words) === 'name'
+            && array_diff(array_slice($words, 0, -1), self::TECHNICAL_NAME_QUALIFIERS) === []) {
             return false;
         }
 

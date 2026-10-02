@@ -8,6 +8,7 @@ use App\Domains\Audit\Enums\AuditCategory;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
 use App\Models\User;
+use App\Support\SystemLog;
 use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -26,6 +27,8 @@ class ImpersonationController extends Controller
     public function store(Request $request, Team $team, #[CurrentUser] User $user): RedirectResponse
     {
         if ($team->is_personal) {
+            SystemLog::skipped('access.impersonation.started', reason: 'personal_team', input: ['user_id' => $user->id, 'team_id' => $team->id]);
+
             $this->toast('Un espacio personal no es un cliente: no se puede entrar a él.', 'error');
 
             return redirect()->route('admin.tenants.index');
@@ -48,6 +51,10 @@ class ImpersonationController extends Controller
             userAgent: $request->userAgent(),
         );
 
+        SystemLog::ok('access.impersonation.started', input: ['user_id' => $user->id, 'team_id' => $team->id], result: [
+            'is_member' => $user->belongsToTeam($team),
+        ]);
+
         return redirect()->route('dashboard', $team);
     }
 
@@ -58,6 +65,8 @@ class ImpersonationController extends Controller
 
         if ($personal === null) {
             // Sin team personal al que volver: no fingimos que salió.
+            SystemLog::degraded('access.impersonation.stopped', reason: 'no_personal_team', input: ['user_id' => $user->id, 'team_id' => $impersonated?->id]);
+
             $this->toast('No tienes un espacio personal al que volver; ejecuta sam:create-super-admin para repararlo.', 'error');
 
             return redirect()->route('admin.tenants.index');
@@ -79,6 +88,10 @@ class ImpersonationController extends Controller
             ipAddress: $request->ip(),
             userAgent: $request->userAgent(),
         );
+
+        SystemLog::ok('access.impersonation.stopped', input: ['user_id' => $user->id, 'team_id' => $impersonated?->id], result: [
+            'returned_to_team_id' => $personal->id,
+        ]);
 
         return redirect()->route('admin.tenants.index');
     }

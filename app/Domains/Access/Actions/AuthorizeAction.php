@@ -9,6 +9,7 @@ use App\Domains\Tenancy\Models\TenantFeature;
 use App\Models\Membership;
 use App\Models\Team;
 use App\Models\User;
+use App\Support\SystemLog;
 use Illuminate\Support\Facades\Cache;
 
 class AuthorizeAction
@@ -48,24 +49,46 @@ class AuthorizeAction
         $team = $team ?? currentTeam();
 
         if ($team === null) {
-            return false;
+            return $this->deny('no_team', $user, null, $permissionCode);
         }
 
         $permissions = $this->resolvePermissions($user, $team);
 
         if (! in_array($permissionCode, $permissions, true)) {
-            return false;
+            return $this->deny('permission', $user, $team, $permissionCode);
         }
 
         if (! $this->checkSubscriptionAccess($team, $permissionCode)) {
-            return false;
+            return $this->deny('subscription', $user, $team, $permissionCode, [
+                'subscription_status' => $this->teamAccess($team)['subscription']?->status->value,
+            ]);
         }
 
         if (! $this->checkFeatureAccess($team, $permissionCode)) {
-            return false;
+            return $this->deny('feature', $user, $team, $permissionCode, [
+                'feature_key' => $this->extractModule($permissionCode),
+            ]);
         }
 
         return true;
+    }
+
+    /**
+     * Una negación de permiso. Va a `debug`: las policies también se evalúan
+     * para pintar la UI (botones, menú), así que una negación no siempre es un
+     * intento bloqueado; el 403 real lo registra `http.request.denied`.
+     *
+     * @param  array<string, mixed>  $calc
+     */
+    private function deny(string $reason, User $user, ?Team $team, string $permissionCode, array $calc = []): bool
+    {
+        SystemLog::skipped('access.check.denied', reason: $reason, input: [
+            'user_id' => $user->id,
+            'team_id' => $team?->id,
+            'permission' => $permissionCode,
+        ], calc: $calc === [] ? null : $calc, debug: true);
+
+        return false;
     }
 
     /**

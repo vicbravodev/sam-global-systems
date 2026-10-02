@@ -85,6 +85,14 @@ class CopilotAgentTurnTest extends TestCase
             && $c['result']['model'] === 'gpt-test');
         // The step guard narrates every step under the turn's tenant.
         $this->assertSystemLogged('copilot.step.started', fn (array $c) => $c['input']['team_id'] === $team->id);
+        // Una línea por invocación del agente: modelo, tokens y herramientas,
+        // nunca el prompt ni la respuesta.
+        $agent = $this->assertSystemLogged('ai.agent.called', fn (array $c) => $c['outcome'] === 'ok' && $c['input']['agent'] === 'CopilotAgent');
+        $this->assertSame('gpt-test', $agent['result']['model']);
+        $this->assertSame('openai', $agent['result']['provider']);
+        $this->assertGreaterThan(0, $agent['result']['tool_calls']);
+        $this->assertArrayHasKey('duration_ms', $agent);
+        $this->assertStringNotContainsString('consumió más combustible', (string) json_encode($this->systemLogEntries('ai.agent.called')));
         $this->assertNoSensitiveDataLogged();
         $this->assertQuestionNeverLogged($question);
     }
@@ -135,6 +143,15 @@ class CopilotAgentTurnTest extends TestCase
             && $c['reason'] === 'agent_error_before_output'
             && isset($c['error']));
         $this->assertSystemLogged('copilot.turn.completed', fn (array $c) => $c['input']['mode'] === 'deterministic');
+        $this->assertSystemLogged('ai.agent.called', fn (array $c) => $c['outcome'] === 'degraded' && $c['reason'] === 'agent_error' && isset($c['error']));
+        // El camino determinista narra cómo enrutó la pregunta (sin el texto
+        // ni el código de unidad escrito).
+        $routed = $this->assertSystemLogged('copilot.intent.routed');
+        $this->assertSame(CopilotIntent::AssetLocation->value, $routed['input']['intent']);
+        $this->assertSame('router', $routed['input']['intent_source']);
+        $this->assertSame('named_in_question', $routed['input']['asset_source']);
+        $this->assertNotNull($routed['input']['asset_id']);
+        $this->assertStringNotContainsString('T555', (string) json_encode($this->systemLogEntries('copilot.intent.routed')));
         $this->assertNoSensitiveDataLogged();
         $this->assertQuestionNeverLogged($question);
     }

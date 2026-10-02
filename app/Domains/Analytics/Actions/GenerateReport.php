@@ -16,6 +16,7 @@ use App\Domains\Tenancy\Models\FileObject;
 use App\Domains\Tenancy\Models\TenantBranding;
 use App\Models\Team;
 use App\Support\SafeErrorMessage;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Facades\Storage;
@@ -76,8 +77,29 @@ class GenerateReport
                     'error_message' => SafeErrorMessage::from($e),
                 ])->save();
 
+                SystemLog::failed('analytics.report.failed', reason: 'exception', input: [
+                    'team_id' => $teamId,
+                    'report_definition_id' => $definition->id,
+                    'report_execution_id' => $execution->id,
+                    'output_format' => $format->value,
+                ], error: $e);
+
                 throw $e;
             }
+
+            // Ni el nombre del reporte (lo escribe el tenant) ni los filtros.
+            SystemLog::ok('analytics.report.generated', input: [
+                'team_id' => $teamId,
+                'report_definition_id' => $definition->id,
+                'report_type' => $definition->report_type->value,
+                'output_format' => $format->value,
+                'requested_by_type' => $requestedBy->value,
+                'requested_by_id' => $requestedById,
+                'filters_present' => $filters !== null && $filters !== [],
+            ], result: [
+                'report_execution_id' => $execution->id,
+                'file_object_id' => $execution->output_file_object_id,
+            ]);
 
             $this->recordUsageEvent->execute(
                 teamId: $teamId,

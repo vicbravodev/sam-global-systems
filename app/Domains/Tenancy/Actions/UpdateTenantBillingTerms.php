@@ -5,6 +5,7 @@ namespace App\Domains\Tenancy\Actions;
 use App\Domains\Tenancy\Events\TenantSubscriptionChanged;
 use App\Domains\Tenancy\Models\TenantBillingTerms;
 use App\Models\Team;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 
 /**
@@ -36,6 +37,20 @@ class UpdateTenantBillingTerms
             );
 
             TenantSubscriptionChanged::dispatch($team->id, 'billing_terms_updated');
+
+            // Qué campos quedaron fijados por tenant (el resto sale de
+            // config/billing.php); nunca las notas.
+            SystemLog::ok('tenancy.billing_terms.updated', input: [
+                'team_id' => $team->id,
+                'actor_id' => auth()->id(),
+            ], result: [
+                'terms_id' => $terms->id,
+                'overridden_fields' => array_keys(array_filter(
+                    $terms->only(['unit_price', 'currency', 'included_assets', 'min_billable_assets', 'ai_fair_use_per_asset', 'ai_overage_unit_price', 'messaging_markup_percent', 'fx_usd_rate', 'volume_tiers_json']),
+                    static fn (mixed $value): bool => $value !== null,
+                )),
+                'notes_present' => ($attributes['notes'] ?? null) !== null,
+            ]);
 
             return $terms;
         });

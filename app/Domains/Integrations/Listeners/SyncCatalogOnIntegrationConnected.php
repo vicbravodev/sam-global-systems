@@ -20,10 +20,7 @@ class SyncCatalogOnIntegrationConnected
         $integration = TenantIntegration::withoutGlobalScopes()->find($event->integrationId);
 
         if ($integration === null) {
-            SystemLog::skipped('integrations.catalog_sync.skipped', reason: 'integration_not_found', input: [
-                'team_id' => $event->teamId,
-                'integration_id' => $event->integrationId,
-            ]);
+            SystemLog::skipped('integrations.catalog_sync.requested', reason: 'integration_missing', input: ['integration_id' => $event->integrationId]);
 
             return;
         }
@@ -31,7 +28,7 @@ class SyncCatalogOnIntegrationConnected
         // El evento trae su team_id: si no es el dueño de la integración, no
         // se sincroniza el catálogo de otro tenant en su nombre.
         if ($integration->team_id !== $event->teamId) {
-            SystemLog::skipped('integrations.catalog_sync.skipped', reason: 'team_mismatch', input: [
+            SystemLog::skipped('integrations.catalog_sync.requested', reason: 'team_mismatch', input: [
                 'team_id' => $event->teamId,
                 'integration_id' => $integration->id,
             ]);
@@ -51,11 +48,12 @@ class SyncCatalogOnIntegrationConnected
 
             SyncIntegrationJob::dispatch($integration, $syncJob);
 
-            SystemLog::ok('integrations.catalog_sync.queued', input: [
+            SystemLog::ok('integrations.catalog_sync.requested', input: [
                 'team_id' => $integration->team_id,
                 'integration_id' => $integration->id,
             ], result: [
-                'sync_job_id' => $syncJob->id,
+                'integration_sync_job_id' => $syncJob->id,
+                'type' => SyncType::Full->value,
             ]);
         });
     }

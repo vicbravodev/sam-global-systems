@@ -21,7 +21,7 @@ use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentCallVerification;
 use App\Domains\Incidents\Support\VerificationCallTwiml;
 use App\Domains\Notifications\Enums\NotificationPriority;
-use App\Domains\Notifications\Support\PlatformTwilioConfig;
+use App\Domains\Notifications\Support\TwilioWebhookSignature;
 use App\Domains\Notifications\Support\TwilioWebhookUrl;
 use App\Http\Controllers\Controller;
 use App\Support\LoggableCode;
@@ -29,7 +29,6 @@ use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
-use Twilio\Security\RequestValidator;
 
 /**
  * Twilio Voice webhooks for the operator verification call (Roadmap V2-A3).
@@ -258,21 +257,7 @@ class TwilioVoiceController extends Controller
 
         // Las llamadas salen siempre de la cuenta Twilio de plataforma (env
         // TWILIO_*): su auth token es el único que firma estos webhooks.
-        $authToken = PlatformTwilioConfig::authToken();
-
-        if ($authToken === null) {
-            abort(403, 'Twilio is not configured.');
-        }
-
-        $validator = new RequestValidator($authToken);
-
-        $isValid = $validator->validate(
-            $request->header('X-Twilio-Signature', ''),
-            TwilioWebhookUrl::forSignature($request),
-            TwilioWebhookUrl::signedParams($request),
-        );
-
-        abort_unless($isValid, 403, 'Invalid Twilio signature.');
+        TwilioWebhookSignature::verify($request, 'call_verification');
 
         // Validada la firma, el resto de la petición corre dentro del tenant de
         // la verificación: el webhook entra sin sesión, así que hasta aquí no

@@ -3,6 +3,7 @@
 namespace Tests\Feature\Support;
 
 use App\Models\User;
+use App\Support\DeniedRequestLog;
 use App\Support\SystemLog;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
@@ -36,6 +37,35 @@ class DeniedRequestLogTest extends TestCase
         $this->assertSame('test.forbidden', $ctx['input']['route_name']);
         $this->assertSame($user->id, $ctx['input']['user_id']);
         $this->assertSame(403, $ctx['input']['status']);
+    }
+
+    public function test_a_flood_of_denials_is_capped_per_window_and_the_next_line_reports_the_suppressed(): void
+    {
+        $user = User::factory()->create();
+        $max = DeniedRequestLog::MAX_PER_WINDOW;
+
+        for ($i = 0; $i < $max + 3; $i++) {
+            $this->actingAs($user)->get('/_test/forbidden')->assertForbidden();
+        }
+
+        $this->assertCount($max, $this->systemLogEntries('http.request.denied'));
+        $this->assertArrayNotHasKey('calc', $this->systemLogEntries('http.request.denied')[0]['context']);
+
+        // Otro actor tiene su propia cubeta: no lo calla la ráfaga del primero.
+        $this->actingAs(User::factory()->create())->get('/_test/forbidden')->assertForbidden();
+        $this->assertCount($max + 1, $this->systemLogEntries('http.request.denied'));
+
+        $this->travel(DeniedRequestLog::WINDOW_SECONDS + 1)->seconds();
+        $this->actingAs($user)->get('/_test/forbidden')->assertForbidden();
+
+        $entries = $this->systemLogEntries('http.request.denied');
+        $last = end($entries)['context'];
+        $this->assertSame($user->id, $last['input']['user_id']);
+        $this->assertSame([
+            'suppressed_since_last' => 3,
+            'max_per_window' => DeniedRequestLog::MAX_PER_WINDOW,
+            'window_seconds' => DeniedRequestLog::WINDOW_SECONDS,
+        ], $last['calc']);
     }
 
     public function test_throttled_requests_are_logged(): void

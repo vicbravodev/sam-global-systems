@@ -69,10 +69,11 @@ class SyncCatalogOnIntegrationConnectedTenantTest extends TestCase
         );
 
         $this->assertSystemLogged(
-            'integrations.catalog_sync.queued',
-            fn (array $c) => $c['input']['team_id'] === $team->id
+            'integrations.catalog_sync.requested',
+            fn (array $c) => $c['outcome'] === 'ok'
+                && $c['input']['team_id'] === $team->id
                 && $c['input']['integration_id'] === $integration->id
-                && $c['result']['sync_job_id'] === $syncJob->id,
+                && $c['result']['integration_sync_job_id'] === $syncJob->id,
         );
         $this->assertNoSensitiveDataLogged();
     }
@@ -113,7 +114,7 @@ class SyncCatalogOnIntegrationConnectedTenantTest extends TestCase
         Bus::assertNotDispatched(SyncIntegrationJob::class);
 
         $this->assertSystemLogged(
-            'integrations.catalog_sync.skipped',
+            'integrations.catalog_sync.requested',
             fn (array $c) => $c['reason'] === 'team_mismatch'
                 && $c['input']['team_id'] === $teamB->id
                 && $c['input']['integration_id'] === $integrationA->id,
@@ -133,8 +134,8 @@ class SyncCatalogOnIntegrationConnectedTenantTest extends TestCase
         Bus::assertNotDispatched(SyncIntegrationJob::class);
 
         $this->assertSystemLogged(
-            'integrations.catalog_sync.skipped',
-            fn (array $c) => $c['reason'] === 'integration_not_found'
+            'integrations.catalog_sync.requested',
+            fn (array $c) => $c['reason'] === 'integration_missing'
                 && $c['input']['integration_id'] === 999_999,
         );
     }

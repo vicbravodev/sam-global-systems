@@ -16,10 +16,12 @@ use App\Models\User;
 use Database\Seeders\AccessSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class TenantConfigApiTest extends TestCase
 {
+    use AssertsSystemLog;
     use RefreshDatabase;
 
     protected function setUp(): void
@@ -78,6 +80,14 @@ class TenantConfigApiTest extends TestCase
         ]);
 
         $put->assertOk();
+
+        $ctx = $this->assertSystemLogged('tenant_config.ai_profile.updated');
+        $this->assertSame($team->id, $ctx['input']['team_id']);
+        $this->assertSame('custom', $ctx['input']['profile_code']);
+        $this->assertSame('semi_automatic', $ctx['result']['automation_level']);
+        $this->assertTrue($ctx['result']['created']);
+        $this->assertStringNotContainsString('Custom Profile', (string) json_encode($this->systemLogEntries()));
+        $this->assertNoSensitiveDataLogged();
 
         $show = $this->actingAs($user)->getJson("/api/{$team->slug}/settings/ai-profile");
         $show->assertOk()
