@@ -18,6 +18,7 @@ use App\Domains\Normalization\Models\EventMappingRule;
 use App\Domains\Normalization\Models\EventSeverity;
 use App\Domains\Normalization\Models\EventType;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Domains\Tenancy\Models\Subscription;
 use App\Models\Team;
 use App\Models\User;
 use App\Support\PipelineTrace;
@@ -112,6 +113,22 @@ class PipelineTraceTest extends TestCase
             $this->assertSame($team->id, $job['team_id'], "{$job['job']} vio otro team_id en la traza.");
             $this->assertSame($team->id, $job['tenant_id'], "{$job['job']} corrió fuera del tenant del evento.");
         }
+    }
+
+    /**
+     * Decisión 2026-09-30: un tenant suspendido pierde la consola, pero SAM
+     * sigue vigilando sus pánicos. El webhook y el pipeline de emergencias no
+     * miran la suscripción.
+     */
+    public function test_a_panic_from_a_suspended_tenant_still_opens_an_incident(): void
+    {
+        [$team, $endpoint] = $this->tenantWithEndpoint('a');
+        Subscription::factory()->suspended()->create(['team_id' => $team->id]);
+
+        $this->postPanic($endpoint, 'evt-suspended')->assertStatus(202);
+
+        $this->assertSame(1, Incident::withoutGlobalScopes()->where('team_id', $team->id)->count());
+        $this->assertSame(1, NormalizedEvent::withoutGlobalScopes()->where('team_id', $team->id)->count());
     }
 
     public function test_two_tenants_in_the_same_worker_never_share_trace_or_team(): void
