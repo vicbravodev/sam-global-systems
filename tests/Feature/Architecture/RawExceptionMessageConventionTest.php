@@ -28,10 +28,8 @@ class RawExceptionMessageConventionTest extends TestCase
         'app/Domains/AI/Support/RetryableAIError.php' => 1,
         // ActionFailure('invalid_assignee'): el texto del guard de AssignIncident es fijo (enum + ids enteros).
         'app/Domains/Automation/Actions/ExecuteAction.php' => 1,
-        // Envuelven y re-lanzan como RuntimeException, que no está en la allowlist de SafeErrorMessage.
+        // Envuelve y re-lanza como RuntimeException, que no está en la allowlist de SafeErrorMessage.
         'app/Infrastructure/AI/Agents/StructuredOutputParser.php' => 1,
-        'app/Infrastructure/AI/Agents/SdkEventEvaluationAgent.php' => 1,
-        'app/Infrastructure/AI/Agents/SdkMediaAssessmentAgent.php' => 1,
         // Salida de consola de comandos de operador (nada se persiste).
         'app/Console/Commands/EvalAIPromptsCommand.php' => 3,
         'app/Console/Commands/EnsureStorageBucketCommand.php' => 1,

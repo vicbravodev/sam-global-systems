@@ -40,7 +40,9 @@ class SdkMediaAssessmentAgent implements MediaAssessmentAgent
         try {
             $response = $this->inspector->prompt($payload, attachments: $attachments);
         } catch (Throwable $exception) {
-            throw new RuntimeException('Laravel AI SDK media invocation failed: '.$exception->getMessage(), previous: $exception);
+            // Nunca el mensaje del proveedor: puede traer la clave, el prompt o
+            // datos del evento. Queda en `previous` para RetryableAIError.
+            throw new RuntimeException('Laravel AI SDK media invocation failed ('.class_basename($exception).')', previous: $exception);
         }
 
         $latencyMs = intdiv(hrtime(true) - $startedAt, 1_000_000);

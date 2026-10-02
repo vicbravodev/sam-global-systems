@@ -26,14 +26,19 @@ class WebhookController extends Controller
         // ingesta viaje ya dentro del tenant correcto. Ver §2.1.
         TenantContext::set($endpoint->tenantIntegration?->team_id);
 
+        // Sólo el cuerpo: es lo que cubre el HMAC. La query string queda fuera
+        // de la firma, así que ni el tipo ni el payload se leen de ella
+        // (`$request->all()`/`input()` la mezclarían con el cuerpo firmado).
+        $body = $request->isJson() ? $request->json()->all() : $request->request->all();
+
         // Informativo y sin autenticar hasta validar la firma: nunca decide
         // tenant ni nada de seguridad (ver ResolveWebhookEventType).
         $eventType = $resolveEventType->execute(
-            $request->isJson() ? $request->json('eventType') : $request->request->get('eventType'),
-            $request->input('event_type'),
+            $body['eventType'] ?? null,
+            $body['event_type'] ?? null,
             $endpoint->id,
         );
-        $payload = $request->all();
+        $payload = $body;
 
         // Capture the exact raw body bytes and Samsara's signature headers. The
         // HMAC must be recomputed over the byte-for-byte body that Samsara

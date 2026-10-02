@@ -47,6 +47,30 @@ class WebhookProcessingTest extends TestCase
         return [$user, $team, $provider, $integration, $endpoint];
     }
 
+    /**
+     * Evento firmado como lo firma Samsara: HMAC sobre `v1:{timestamp}:{cuerpo}`
+     * con el cuerpo crudo y las cabeceras capturadas al recibirlo.
+     *
+     * @param  array<string, mixed>  $body
+     */
+    private function signedEvent(WebhookEndpoint $endpoint, array $body, string $eventType, ?string $secret = null): WebhookEvent
+    {
+        $rawPayload = (string) json_encode($body);
+        $timestamp = (string) now()->getTimestamp();
+
+        return WebhookEvent::withoutGlobalScopes()->create([
+            'team_id' => $endpoint->tenantIntegration->team_id,
+            'provider_id' => $endpoint->tenantIntegration->provider_id,
+            'event_type' => $eventType,
+            'payload_json' => $body,
+            'signature' => 'v1='.hash_hmac('sha256', 'v1:'.$timestamp.':'.$rawPayload, $secret ?? $endpoint->secret),
+            'signature_timestamp' => $timestamp,
+            'raw_payload' => $rawPayload,
+            'received_at' => now(),
+            'status' => WebhookEventStatus::Received,
+        ]);
+    }
+
     public function test_it_persists_webhook_event_before_processing(): void
     {
         Queue::fake();
@@ -259,12 +283,17 @@ class WebhookProcessingTest extends TestCase
         $this->assertNoSensitiveDataLogged();
     }
 
-    public function test_it_logs_ingested_webhook_with_legacy_body_signature_mode(): void
+    /**
+     * El antiguo modo "firma dentro del cuerpo" no llevaba hora: aceptarlo
+     * dejaba reenviar para siempre un cuerpo firmado. Sin cuerpo crudo no hay
+     * nada que verificar y el evento se rechaza sin ingerirse.
+     */
+    public function test_an_event_without_raw_body_is_rejected_even_with_a_valid_body_signature(): void
     {
         [, , , , $endpoint] = $this->createEndpointWithIntegration();
 
         $payload = ['event_type' => 'vehicle.updated', 'data' => ['id' => 42]];
-        $payload['signature'] = hash_hmac('sha256', json_encode(['event_type' => 'vehicle.updated', 'data' => ['id' => 42]]), $endpoint->secret);
+        $payload['signature'] = hash_hmac('sha256', (string) json_encode(['event_type' => 'vehicle.updated', 'data' => ['id' => 42]]), $endpoint->secret);
 
         $webhookEvent = WebhookEvent::withoutGlobalScopes()->create([
             'team_id' => $endpoint->tenantIntegration->team_id,
@@ -276,36 +305,34 @@ class WebhookProcessingTest extends TestCase
         ]);
 
         $mockIngestion = Mockery::mock(RawEventIngestion::class);
-        $mockIngestion->shouldReceive('ingest')->once();
+        $mockIngestion->shouldNotReceive('ingest');
 
         (new ProcessWebhookEventJob($webhookEvent, $endpoint))->handle(app(ValidateWebhookSignature::class), $mockIngestion);
 
-        $this->assertSystemLogged('webhook.event.ingested', fn (array $c) => $c['input']['signature_mode'] === 'legacy_body');
+        $this->assertSame(WebhookEventStatus::InvalidSignature, $webhookEvent->refresh()->status);
+        $this->assertSystemLogged('webhook.event.rejected', fn (array $c) => $c['reason'] === 'invalid_signature'
+            && $c['input']['signature_mode'] === 'missing_raw_body');
+        $this->assertSystemNotLogged('webhook.event.ingested');
+        $this->assertStringNotContainsString($payload['signature'], (string) json_encode($this->systemLogEntries()));
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_it_logs_rejected_webhook_with_invalid_signature(): void
     {
         [, , , , $endpoint] = $this->createEndpointWithIntegration();
 
-        $webhookEvent = WebhookEvent::withoutGlobalScopes()->create([
-            'team_id' => $endpoint->tenantIntegration->team_id,
-            'provider_id' => $endpoint->tenantIntegration->provider_id,
-            'event_type' => 'alert.triggered',
-            'payload_json' => ['event_type' => 'alert.triggered', 'signature' => 'bad-hash'],
-            'received_at' => now(),
-            'status' => WebhookEventStatus::Received,
-        ]);
+        $webhookEvent = $this->signedEvent($endpoint, ['eventType' => 'alert.triggered'], 'alert.triggered', secret: 'wrong-secret');
 
         (new ProcessWebhookEventJob($webhookEvent, $endpoint))->handle(app(ValidateWebhookSignature::class), app(RawEventIngestion::class));
 
         $this->assertSystemLogged('webhook.event.rejected', fn (array $c) => $c['reason'] === 'invalid_signature'
             && $c['input']['webhook_event_id'] === $webhookEvent->id
-            && $c['input']['signature_mode'] === 'legacy_body'
+            && $c['input']['signature_mode'] === 'raw_header'
             && $c['input']['event_type'] === 'alert.triggered'
             && $c['input']['event_type_valid'] === true);
         $this->assertSystemLogged('webhook.signature.rejected', fn (array $c) => $c['reason'] === 'hmac_mismatch');
         $this->assertSystemNotLogged('webhook.event.ingested');
-        $this->assertStringNotContainsString('bad-hash', json_encode($this->systemLogEntries()));
+        $this->assertStringNotContainsString((string) $webhookEvent->signature, (string) json_encode($this->systemLogEntries()));
         $this->assertNoSensitiveDataLogged();
     }
 
@@ -342,18 +369,9 @@ class WebhookProcessingTest extends TestCase
     {
         [, , , , $endpoint] = $this->createEndpointWithIntegration();
 
-        $payload = ['data' => ['id' => 42]];
-        $payload['signature'] = hash_hmac('sha256', json_encode(['data' => ['id' => 42]]), $endpoint->secret);
-
-        $webhookEvent = WebhookEvent::withoutGlobalScopes()->create([
-            'team_id' => $endpoint->tenantIntegration->team_id,
-            'provider_id' => $endpoint->tenantIntegration->provider_id,
-            // Viene de la query string, fuera del HMAC.
-            'event_type' => "x\ninjected",
-            'payload_json' => $payload,
-            'received_at' => now(),
-            'status' => WebhookEventStatus::Received,
-        ]);
+        // event_type resuelto antes de validar la firma: aunque no parezca un
+        // código, nunca llega al log tal cual.
+        $webhookEvent = $this->signedEvent($endpoint, ['data' => ['id' => 42]], "x\ninjected");
 
         $mockIngestion = Mockery::mock(RawEventIngestion::class);
         $mockIngestion->shouldReceive('ingest')->once();
@@ -389,19 +407,7 @@ class WebhookProcessingTest extends TestCase
     {
         [, , , , $endpoint] = $this->createEndpointWithIntegration();
 
-        $validPayload = ['event_type' => 'vehicle.updated', 'data' => ['id' => 42]];
-        $rawJson = json_encode($validPayload);
-        $validSignature = hash_hmac('sha256', $rawJson, $endpoint->secret);
-        $validPayload['signature'] = $validSignature;
-
-        $webhookEvent = WebhookEvent::withoutGlobalScopes()->create([
-            'team_id' => $endpoint->tenantIntegration->team_id,
-            'provider_id' => $endpoint->tenantIntegration->provider_id,
-            'event_type' => 'vehicle.updated',
-            'payload_json' => $validPayload,
-            'received_at' => now(),
-            'status' => WebhookEventStatus::Received,
-        ]);
+        $webhookEvent = $this->signedEvent($endpoint, ['event_type' => 'vehicle.updated', 'data' => ['id' => 42]], 'vehicle.updated');
 
         $mockIngestion = Mockery::mock(RawEventIngestion::class);
         $mockIngestion->shouldReceive('ingest')
