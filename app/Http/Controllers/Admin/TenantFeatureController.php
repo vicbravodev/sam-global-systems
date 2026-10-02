@@ -29,6 +29,8 @@ class TenantFeatureController extends Controller
         SetTenantFeature $setFeature,
         #[CurrentUser] User $user,
     ): RedirectResponse {
+        abort_unless(preg_match('/^[a-z0-9_]{1,64}$/', $featureKey) === 1, 404);
+
         $data = $request->validate([
             'enabled' => ['required', 'boolean'],
             'included_quantity' => ['nullable', 'integer', 'min:0'],
@@ -45,7 +47,9 @@ class TenantFeatureController extends Controller
             actorType: AuditActorType::User,
             actorId: $user->id,
             action: 'tenant.feature_updated',
-            category: AuditCategory::Domain,
+            // Billing: los topes y features son condiciones comerciales y así
+            // aparecen en el visor de auditoría de la consola.
+            category: AuditCategory::Billing,
             entityType: Team::class,
             entityId: $team->id,
             summary: "Feature {$featureKey} del tenant {$team->name} actualizada.",
@@ -61,8 +65,9 @@ class TenantFeatureController extends Controller
             userAgent: $request->userAgent(),
         );
 
+        $this->toast($limits === null && $featureKey === 'monitored_assets' ? 'Tope de unidades quitado.' : 'Función actualizada.');
+
         return redirect()
-            ->route('admin.tenants.show', $team)
-            ->with('status', 'Feature actualizada.');
+            ->route('admin.tenants.show', $team);
     }
 }

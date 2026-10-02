@@ -31,6 +31,9 @@ class TenantAccessInvitation extends Notification implements ShouldQueue
         public readonly ?int $invitedById = null,
     ) {
         $this->afterCommit();
+        // Producto sólo en español (PRODUCT.md): el pie estándar del correo
+        // ("Si tienes problemas para hacer clic…") no depende de APP_LOCALE.
+        $this->locale('es');
     }
 
     /**

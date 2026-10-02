@@ -24,6 +24,10 @@ class UpdateTenant
                 $team->update(['name' => $attrs['name']]);
             }
 
+            if (array_key_exists('timezone', $attrs)) {
+                $team->update(['timezone' => $attrs['timezone'] !== '' ? $attrs['timezone'] : null]);
+            }
+
             $brandingKeys = ['display_name', 'primary_color', 'secondary_color', 'logo_url'];
             $branding = array_intersect_key($attrs, array_flip($brandingKeys));
 

@@ -20,6 +20,8 @@ interface ConfirmDialogProps {
     /** Acción a ejecutar al confirmar. Puede ser async; se muestra spinner. */
     onConfirm: () => void | Promise<void>;
     onOpenChange: (open: boolean) => void;
+    /** `default` para confirmaciones no destructivas (p.ej. generar factura). */
+    tone?: 'destructive' | 'default';
 }
 
 /**
@@ -35,6 +37,7 @@ export function ConfirmDialog({
     cancelLabel = 'Cancelar',
     onConfirm,
     onOpenChange,
+    tone = 'destructive',
 }: ConfirmDialogProps) {
     const [submitting, setSubmitting] = useState(false);
 
@@ -75,7 +78,9 @@ export function ConfirmDialog({
                         {cancelLabel}
                     </Button>
                     <Button
-                        variant="destructive"
+                        variant={
+                            tone === 'destructive' ? 'destructive' : 'default'
+                        }
                         onClick={confirm}
                         disabled={submitting}
                     >

@@ -20,7 +20,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
-use Inertia\Inertia;
 
 /**
  * Cross-tenant member management for the SaaS operator. Reuses the Team
@@ -219,7 +218,7 @@ class TenantMemberController extends Controller
 
     private function back(Team $team, string $message): RedirectResponse
     {
-        Inertia::flash('toast', ['type' => 'success', 'message' => $message]);
+        $this->toast($message);
 
         return redirect()->route('admin.tenants.show', $team);
     }

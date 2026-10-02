@@ -71,7 +71,9 @@ class OperatorController extends Controller
         $this->record($request, $actor, 'super-admin.promoted', $user,
             "{$user->email} promovido a super-admin.");
 
-        return redirect()->route('admin.operators.index')->with('status', 'Operador promovido.');
+        $this->toast('Operador promovido.');
+
+        return redirect()->route('admin.operators.index');
     }
 
     public function destroy(Request $request, User $user, SetGlobalRole $setGlobalRole, #[CurrentUser] User $actor): RedirectResponse
@@ -94,7 +96,9 @@ class OperatorController extends Controller
         $this->record($request, $actor, 'super-admin.demoted', $user,
             "{$user->email} degradado de super-admin.");
 
-        return redirect()->route('admin.operators.index')->with('status', 'Operador degradado.');
+        $this->toast('Operador degradado.');
+
+        return redirect()->route('admin.operators.index');
     }
 
     private function record(Request $request, User $actor, string $action, User $target, string $summary): void

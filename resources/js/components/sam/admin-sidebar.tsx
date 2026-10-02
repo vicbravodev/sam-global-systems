@@ -18,6 +18,10 @@ import {
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { dashboard } from '@/routes';
+import { index as adminAuditIndex } from '@/routes/admin/audit';
+import { index as adminChannelsIndex } from '@/routes/admin/channels';
+import { index as adminOperatorsIndex } from '@/routes/admin/operators';
+import { index as adminPlansIndex } from '@/routes/admin/plans';
 import { index as adminTenantsIndex } from '@/routes/admin/tenants';
 
 interface NavItemConfig {
@@ -112,10 +116,10 @@ export function AdminSidebar({
 
     const navGroups: NavGroup[] = [
         {
-            title: 'Consola SaaS',
+            title: 'Consola SAM',
             items: [
                 {
-                    label: 'Tenants',
+                    label: 'Clientes',
                     icon: Building2,
                     href: adminTenantsIndex().url,
                     badge: badges?.tenantsPastDue ?? 0,
@@ -124,22 +128,22 @@ export function AdminSidebar({
                 {
                     label: 'Planes',
                     icon: CreditCard,
-                    href: '/admin/plans',
+                    href: adminPlansIndex().url,
                 },
                 {
                     label: 'Operadores',
                     icon: UsersRound,
-                    href: '/admin/operators',
+                    href: adminOperatorsIndex().url,
                 },
                 {
                     label: 'Canales',
                     icon: Radio,
-                    href: '/admin/channels',
+                    href: adminChannelsIndex().url,
                 },
                 {
                     label: 'Auditoría',
                     icon: FileClock,
-                    href: '/admin/audit',
+                    href: adminAuditIndex().url,
                 },
             ],
         },
@@ -167,10 +171,10 @@ export function AdminSidebar({
                     <>
                         <div className="min-w-0 flex-1">
                             <div className="truncate text-sm font-semibold text-fg-1">
-                                SAM · Operador
+                                SAM · Consola
                             </div>
                             <div className="mt-0.5 font-mono text-2xs text-fg-3">
-                                consola saas
+                                operación
                             </div>
                         </div>
                         {!mobile && (
