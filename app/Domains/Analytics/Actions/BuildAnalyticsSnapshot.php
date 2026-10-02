@@ -12,6 +12,7 @@ use App\Domains\Integrations\Enums\TenantIntegrationStatus;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Domains\Tenancy\Models\UsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Carbon\CarbonInterface;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -62,8 +63,17 @@ class BuildAnalyticsSnapshot
                 'snapshot_json' => $payload,
             ];
 
+            $logInput = [
+                'team_id' => $teamId,
+                'snapshot_type' => $type->value,
+                'period_start' => $periodStart->toDateString(),
+                'period_end' => $periodEnd->toDateString(),
+            ];
+
             if ($existing !== null) {
                 $existing->forceFill($payload)->save();
+
+                SystemLog::ok('analytics.snapshot.built', input: $logInput, result: ['snapshot_id' => $existing->id, 'path' => 'updated']);
 
                 return $existing;
             }
@@ -71,10 +81,16 @@ class BuildAnalyticsSnapshot
             try {
                 // Savepoint: a concurrent run may insert the same key first
                 // (unique with NULLS NOT DISTINCT on pgsql); then update it.
-                return DB::transaction(fn () => AnalyticsSnapshot::query()->create($payload));
+                $created = DB::transaction(fn () => AnalyticsSnapshot::query()->create($payload));
+
+                SystemLog::ok('analytics.snapshot.built', input: $logInput, result: ['snapshot_id' => $created->id, 'path' => 'created']);
+
+                return $created;
             } catch (UniqueConstraintViolationException) {
                 $existing = $find() ?? throw new \RuntimeException('Analytics snapshot vanished after a unique violation.');
                 $existing->forceFill($payload)->save();
+
+                SystemLog::ok('analytics.snapshot.built', input: $logInput, result: ['snapshot_id' => $existing->id, 'path' => 'lost_insert_race']);
 
                 return $existing;
             }

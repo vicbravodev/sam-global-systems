@@ -3,6 +3,7 @@
 namespace App\Infrastructure\Storage;
 
 use App\Support\SafeErrorMessage;
+use App\Support\SystemLog;
 use GuzzleHttp\Exception\RequestException as GuzzleRequestException;
 use Illuminate\Support\Facades\Http;
 use Psr\Http\Message\RequestInterface;
@@ -34,7 +35,37 @@ class SecureMediaDownloader
     /** @var list<string> */
     public const array DEFAULT_ALLOWED_HOSTS = ['samsara.com', 'samsara-*.s3.amazonaws.com', 'amazonaws.com', 'cloudfront.net'];
 
+    /**
+     * Descarga y narra: `media.download.completed` (bytes, duración) o
+     * `media.download.rejected` con su motivo. Sólo el host, nunca el path
+     * ni la query (la URL pre-firmada ES la credencial).
+     */
     public function download(string $url): DownloadedMedia
+    {
+        $started = hrtime(true);
+        $input = ['host' => strtolower((string) parse_url($url, PHP_URL_HOST))];
+
+        try {
+            $media = $this->fetch($url);
+        } catch (MediaDownloadException $e) {
+            SystemLog::degraded('media.download.rejected', reason: $e->reason, input: $input, calc: [
+                'http_status' => $e->status,
+                'max_bytes' => $this->maxBytes(),
+                'timeout_seconds' => $this->timeout(),
+            ], error: $e->getPrevious(), durationMs: SystemLog::elapsedMs($started));
+
+            throw $e;
+        }
+
+        SystemLog::ok('media.download.completed', input: $input, result: [
+            'bytes' => $media->size,
+            'content_type' => $media->contentType,
+        ], durationMs: SystemLog::elapsedMs($started));
+
+        return $media;
+    }
+
+    private function fetch(string $url): DownloadedMedia
     {
         $this->assertAllowed($url);
 
@@ -42,7 +73,7 @@ class SecureMediaDownloader
         $tempPath = tempnam(sys_get_temp_dir(), 'sam-media-');
 
         if ($tempPath === false) {
-            throw new MediaDownloadException('No se pudo crear el archivo temporal de descarga.');
+            throw new MediaDownloadException('No se pudo crear el archivo temporal de descarga.', reason: 'temp_file_failed');
         }
 
         try {
@@ -61,12 +92,12 @@ class SecureMediaDownloader
                         $length = $response->getHeaderLine('Content-Length');
 
                         if ($length !== '' && is_numeric($length) && (int) $length > $maxBytes) {
-                            throw new MediaDownloadException(sprintf('Content-Length %d excede el máximo de %d bytes.', (int) $length, $maxBytes));
+                            throw new MediaDownloadException(sprintf('Content-Length %d excede el máximo de %d bytes.', (int) $length, $maxBytes), reason: 'too_large');
                         }
                     },
                     'progress' => function (int $downloadTotal, int $downloaded) use ($maxBytes): void {
                         if ($downloaded > $maxBytes) {
-                            throw new MediaDownloadException(sprintf('La descarga excede el máximo de %d bytes.', $maxBytes));
+                            throw new MediaDownloadException(sprintf('La descarga excede el máximo de %d bytes.', $maxBytes), reason: 'too_large');
                         }
                     },
                 ])
@@ -81,7 +112,7 @@ class SecureMediaDownloader
         if (! $response->successful()) {
             @unlink($tempPath);
 
-            throw new MediaDownloadException('El proveedor respondió HTTP '.$response->status().'.', status: $response->status());
+            throw new MediaDownloadException('El proveedor respondió HTTP '.$response->status().'.', status: $response->status(), reason: 'http_error');
         }
 
         $length = $response->header('Content-Length');
@@ -89,7 +120,7 @@ class SecureMediaDownloader
         if ($length !== '' && is_numeric($length) && (int) $length > $maxBytes) {
             @unlink($tempPath);
 
-            throw new MediaDownloadException(sprintf('Content-Length %d excede el máximo de %d bytes.', (int) $length, $maxBytes));
+            throw new MediaDownloadException(sprintf('Content-Length %d excede el máximo de %d bytes.', (int) $length, $maxBytes), reason: 'too_large');
         }
 
         clearstatcache(true, $tempPath);
@@ -109,13 +140,13 @@ class SecureMediaDownloader
         if ($size === 0) {
             @unlink($tempPath);
 
-            throw new MediaDownloadException('El proveedor devolvió un cuerpo vacío.');
+            throw new MediaDownloadException('El proveedor devolvió un cuerpo vacío.', reason: 'empty_body');
         }
 
         if ($size > $maxBytes) {
             @unlink($tempPath);
 
-            throw new MediaDownloadException(sprintf('La descarga pesa %d bytes y excede el máximo de %d bytes.', $size, $maxBytes));
+            throw new MediaDownloadException(sprintf('La descarga pesa %d bytes y excede el máximo de %d bytes.', $size, $maxBytes), reason: 'too_large');
         }
 
         $contentType = $response->header('Content-Type');
@@ -141,11 +172,11 @@ class SecureMediaDownloader
         $host = strtolower($parts['host'] ?? '');
 
         if ($scheme !== 'https') {
-            throw new MediaDownloadException('Solo se permiten descargas de media por https.');
+            throw new MediaDownloadException('Solo se permiten descargas de media por https.', reason: 'ssrf_blocked');
         }
 
         if ($host === '' || ! $this->hostAllowed($host)) {
-            throw new MediaDownloadException('Host de descarga no permitido: '.($host !== '' ? $host : '(vacío)'));
+            throw new MediaDownloadException('Host de descarga no permitido: '.($host !== '' ? $host : '(vacío)'), reason: 'ssrf_blocked');
         }
     }
 
@@ -215,6 +246,6 @@ class SecureMediaDownloader
 
         $status = $exception instanceof GuzzleRequestException ? $exception->getResponse()?->getStatusCode() : null;
 
-        return new MediaDownloadException('Falló la descarga de media: '.SafeErrorMessage::from($exception), status: $status, previous: $exception);
+        return new MediaDownloadException('Falló la descarga de media: '.SafeErrorMessage::from($exception), status: $status, previous: $exception, reason: $status !== null ? 'http_error' : 'transport_failed');
     }
 }
