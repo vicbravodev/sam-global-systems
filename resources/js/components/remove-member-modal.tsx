@@ -1,15 +1,6 @@
 import { router } from '@inertiajs/react';
 import { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import {
-    Dialog,
-    DialogClose,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-} from '@/components/ui/dialog';
+import { ConfirmDialog } from '@/components/sam/confirm-dialog';
 import { destroy as destroyMember } from '@/routes/teams/members';
 import type { Team, TeamMember } from '@/types';
 
@@ -41,31 +32,21 @@ export default function RemoveMemberModal({
     };
 
     return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent>
-                <DialogHeader>
-                    <DialogTitle>Quitar miembro del equipo</DialogTitle>
-                    <DialogDescription>
-                        ¿Seguro que quieres quitar a{' '}
-                        <strong>{member?.name}</strong> de este equipo?
-                    </DialogDescription>
-                </DialogHeader>
-
-                <DialogFooter className="gap-2">
-                    <DialogClose asChild>
-                        <Button variant="secondary">Cancelar</Button>
-                    </DialogClose>
-
-                    <Button
-                        variant="destructive"
-                        data-test="remove-member-confirm"
-                        disabled={processing}
-                        onClick={removeMember}
-                    >
-                        Quitar miembro
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
+        <ConfirmDialog
+            open={open}
+            onOpenChange={onOpenChange}
+            title="Quitar miembro del equipo"
+            description={
+                <>
+                    ¿Seguro que quieres quitar a <strong>{member?.name}</strong>{' '}
+                    de este equipo?
+                </>
+            }
+            confirmLabel="Quitar miembro"
+            cancelLabel="Cancelar"
+            onConfirm={removeMember}
+            processing={processing}
+            confirmTestId="remove-member-confirm"
+        />
     );
 }

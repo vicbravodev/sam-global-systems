@@ -1,15 +1,6 @@
 import { router } from '@inertiajs/react';
 import { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import {
-    Dialog,
-    DialogClose,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-} from '@/components/ui/dialog';
+import { ConfirmDialog } from '@/components/sam/confirm-dialog';
 import { destroy as destroyInvitation } from '@/routes/teams/invitations';
 import type { Team, TeamInvitation } from '@/types';
 
@@ -41,31 +32,21 @@ export default function CancelInvitationModal({
     };
 
     return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent>
-                <DialogHeader>
-                    <DialogTitle>Cancelar invitación</DialogTitle>
-                    <DialogDescription>
-                        ¿Seguro que quieres cancelar la invitación para{' '}
-                        <strong>{invitation?.email}</strong>?
-                    </DialogDescription>
-                </DialogHeader>
-
-                <DialogFooter className="gap-2">
-                    <DialogClose asChild>
-                        <Button variant="secondary">Mantener invitación</Button>
-                    </DialogClose>
-
-                    <Button
-                        variant="destructive"
-                        data-test="cancel-invitation-confirm"
-                        disabled={processing}
-                        onClick={cancelInvitation}
-                    >
-                        Cancelar invitación
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
+        <ConfirmDialog
+            open={open}
+            onOpenChange={onOpenChange}
+            title="Cancelar invitación"
+            description={
+                <>
+                    ¿Seguro que quieres cancelar la invitación para{' '}
+                    <strong>{invitation?.email}</strong>?
+                </>
+            }
+            confirmLabel="Cancelar invitación"
+            cancelLabel="Mantener invitación"
+            onConfirm={cancelInvitation}
+            processing={processing}
+            confirmTestId="cancel-invitation-confirm"
+        />
     );
 }

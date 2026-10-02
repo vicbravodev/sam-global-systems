@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import { ConfirmDialog } from '@/components/sam/confirm-dialog';
 import {
     SettingsPage,
     SettingsSection,
@@ -535,20 +536,14 @@ function DeleteRoleDialog({
     onOpenChange,
     teamSlug,
 }: DeleteRoleDialogProps) {
-    const [submitting, setSubmitting] = useState(false);
-
-    const confirm = useCallback(async () => {
+    const confirm = async () => {
         if (role === null || teamSlug === null) {
             return;
         }
 
-        setSubmitting(true);
-
         const response = await deleteJson(
             `/${teamSlug}/settings/roles/${role.id}`,
         );
-
-        setSubmitting(false);
 
         if (response.ok || response.redirected) {
             toast.success('Rol eliminado.');
@@ -567,47 +562,20 @@ function DeleteRoleDialog({
         toast.error(
             (await readErrorMessage(response)) ?? 'No se pudo eliminar el rol.',
         );
-    }, [role, teamSlug, onOpenChange]);
+    };
 
     return (
-        <Dialog
+        <ConfirmDialog
             open={role !== null}
-            onOpenChange={(next) => {
-                if (!next) {
-                    onOpenChange(false);
-                }
-            }}
-        >
-            <DialogContent>
-                <DialogHeader>
-                    <DialogTitle>Eliminar rol</DialogTitle>
-                    <DialogDescription>
-                        {role
-                            ? `¿Seguro que deseas eliminar el rol "${role.name}"? Los miembros que lo tengan asignado perderán sus permisos.`
-                            : ''}
-                    </DialogDescription>
-                </DialogHeader>
-                <DialogFooter>
-                    <Button
-                        variant="ghost"
-                        onClick={() => onOpenChange(false)}
-                        disabled={submitting}
-                    >
-                        Cancelar
-                    </Button>
-                    <Button
-                        variant="destructive"
-                        onClick={confirm}
-                        disabled={submitting}
-                    >
-                        {submitting ? (
-                            <Loader2 size={14} className="animate-spin" />
-                        ) : null}
-                        Eliminar
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
+            onOpenChange={onOpenChange}
+            title="Eliminar rol"
+            description={
+                role
+                    ? `¿Seguro que deseas eliminar el rol "${role.name}"? Los miembros que lo tengan asignado perderán sus permisos.`
+                    : ''
+            }
+            onConfirm={confirm}
+        />
     );
 }
 
