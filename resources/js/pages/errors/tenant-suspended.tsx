@@ -12,11 +12,13 @@ interface OtherTeam {
 interface TenantSuspendedProps {
     teamName: string;
     otherTeams: OtherTeam[];
+    billingUrl: string | null;
 }
 
 export default function TenantSuspended({
     teamName,
     otherTeams,
+    billingUrl,
 }: TenantSuspendedProps) {
     return (
         <div className="grid min-h-dvh place-items-center bg-background p-6">
@@ -32,8 +34,15 @@ export default function TenantSuspended({
                     flota, pero la consola no está disponible.
                 </p>
                 <p className="mt-2 text-base leading-relaxed text-fg-2">
-                    Para reactivarla, contacta a SAM.
+                    Para reactivarla, paga tus facturas pendientes o contacta a
+                    SAM.
                 </p>
+
+                {billingUrl !== null && (
+                    <Button asChild className="mt-6">
+                        <Link href={billingUrl}>Ver y pagar facturas</Link>
+                    </Button>
+                )}
 
                 {otherTeams.length > 0 && (
                     <div className="mt-8 w-full">

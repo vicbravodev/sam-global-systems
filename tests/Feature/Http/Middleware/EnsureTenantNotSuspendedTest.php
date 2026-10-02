@@ -2,14 +2,20 @@
 
 namespace Tests\Feature\Http\Middleware;
 
+use App\Domains\Access\Models\Role;
+use App\Domains\Tenancy\Enums\InvoiceStatus;
 use App\Domains\Tenancy\Enums\SubscriptionStatus;
+use App\Domains\Tenancy\Models\InvoiceSnapshot;
 use App\Domains\Tenancy\Models\Subscription;
 use App\Enums\TeamRole;
 use App\Http\Middleware\EnsureTenantNotSuspended;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Models\Team;
 use App\Models\User;
+use Database\Seeders\AccessSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Concerns\AssertsSystemLog;
 use Tests\Concerns\AssertsTenantIsolation;
@@ -226,6 +232,59 @@ class EnsureTenantNotSuspendedTest extends TestCase
 
         $this->actingAs($this->owner)->post(route('logout'))->assertRedirect();
         $this->assertGuest();
+    }
+
+    public function test_a_suspended_tenant_can_see_its_invoices_and_upload_the_receipt(): void
+    {
+        $this->seed(AccessSeeder::class);
+        Storage::fake('rustfs');
+
+        $this->actingAs($this->owner)
+            ->get(route('billing.show', ['current_team' => $this->suspended->slug]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->component('billing/index'));
+
+        $invoice = InvoiceSnapshot::factory()->create([
+            'team_id' => $this->suspended->id,
+            'status' => InvoiceStatus::Invoiced,
+        ]);
+
+        $this->actingAs($this->owner)
+            ->post(route('billing.invoices.receipt', [
+                'current_team' => $this->suspended->slug,
+                'invoice' => $invoice->id,
+            ]), ['receipt' => UploadedFile::fake()->create('transferencia.pdf', 120, 'application/pdf')])
+            ->assertCreated();
+
+        $this->assertNotNull($invoice->refresh()->payment_receipt_file_object_id);
+
+        $this->assertSystemLogged('tenancy.web_access.billing_allowed', fn (array $c): bool => $c['input']['route_name'] === 'billing.invoices.receipt'
+            && $c['input']['team_id'] === $this->suspended->id
+            && $c['input']['status'] === 'suspended');
+        $this->assertSystemNotLogged('tenancy.web_access.denied');
+        $this->assertNoSensitiveDataLogged();
+
+        // El resto de la consola sigue cerrada.
+        $this->actingAs($this->owner)
+            ->get(route('dashboard', ['current_team' => $this->suspended->slug]))
+            ->assertStatus(423)
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('billingUrl', route('billing.show', ['current_team' => $this->suspended->slug])));
+    }
+
+    public function test_the_billing_link_is_hidden_from_members_without_billing_permission(): void
+    {
+        $this->seed(AccessSeeder::class);
+        $viewer = User::factory()->create();
+        $this->suspended->members()->attach($viewer, [
+            'role' => TeamRole::Member->value,
+            'role_id' => Role::query()->where('code', 'monitorista')->value('id'),
+        ]);
+
+        $this->actingAs($viewer)
+            ->get(route('dashboard', ['current_team' => $this->suspended->slug]))
+            ->assertStatus(423)
+            ->assertInertia(fn (Assert $page) => $page->where('billingUrl', null));
     }
 
     public function test_reactivating_the_subscription_restores_access(): void

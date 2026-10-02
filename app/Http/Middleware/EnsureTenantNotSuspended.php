@@ -2,12 +2,15 @@
 
 namespace App\Http\Middleware;
 
+use App\Domains\Tenancy\Enums\SubscriptionStatus;
+use App\Domains\Tenancy\Models\Subscription;
 use App\Domains\Tenancy\Support\CurrentSubscription;
 use App\Models\Team;
 use App\Models\User;
 use App\Support\SystemLog;
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -25,6 +28,9 @@ use Symfony\Component\HttpFoundation\Response;
  * - Responde 423 Locked: el recurso existe y el usuario es miembro, pero está
  *   bloqueado por su estado (reversible al reactivar); 403 lo confundiría con
  *   un problema de permisos del rol.
+ * - Las rutas `billing.*` pasan mientras el estado conceda acceso de cobro
+ *   ({@see SubscriptionStatus::grantsBillingAccess()}): el suspendido ve sus
+ *   facturas y sube el comprobante de la transferencia para reactivarse.
  * - `canceled` y `expired` no se tocan aquí: no hay decisión del usuario para
  *   ellos (siguen el criterio por módulo de AuthorizeAction).
  */
@@ -44,7 +50,22 @@ class EnsureTenantNotSuspended
             return $next($request);
         }
 
-        if (! CurrentSubscription::isSuspended($team->id)) {
+        $status = CurrentSubscription::status($team->id);
+
+        if ($status !== SubscriptionStatus::Suspended) {
+            return $next($request);
+        }
+
+        // El cobro es por transferencia con comprobante: el suspendido debe
+        // poder ver sus facturas y subir el comprobante para reactivarse.
+        if ($request->routeIs('billing.*') && $status->grantsBillingAccess()) {
+            SystemLog::ok('tenancy.web_access.billing_allowed', input: [
+                'team_id' => $team->id,
+                'user_id' => $user->id,
+                'route_name' => $request->route()?->getName(),
+                'status' => $status->value,
+            ], debug: true);
+
             return $next($request);
         }
 
@@ -68,6 +89,9 @@ class EnsureTenantNotSuspended
         return Inertia::render('errors/tenant-suspended', [
             'teamName' => $team->name,
             'otherTeams' => $this->otherAvailableTeams($user, $team),
+            'billingUrl' => Gate::forUser($user)->allows('viewAny', Subscription::class)
+                ? route('billing.show', ['current_team' => $team->slug])
+                : null,
         ])->toResponse($request)->setStatusCode(Response::HTTP_LOCKED);
     }
 
