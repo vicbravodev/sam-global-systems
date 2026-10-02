@@ -432,7 +432,7 @@ Sin `decision_trace_id`: `GenerateDecisionTrace` crea una fila por paso; las tra
 | `incident_not_in_team` | el incidente no existe o no es del team (sin su id) | |
 | `unexpected_exception` | cualquier otra excepción (incluido un `InvalidArgumentException` ajeno al guard de asignación) | |
 
-Un workflow sin pasos no es un "skip": crea la ejecución, mide `incident_workflows` y termina; `automation.workflow.started` lo dice con `steps_count = 0` y `status: completed`. `RetryActionExecutionJob` no está en `routes/console.php`: hoy sólo reintenta el endpoint manual (`ActionExecutionController::retry` → `RetryFailedAction`).
+Un workflow sin pasos no es un "skip": crea la ejecución, mide `incident_workflows` y termina; `automation.workflow.started` lo dice con `steps_count = 0` y `status: completed`. El reintento de una acción fallida es manual: `ActionExecutionController::retry` → `RetryFailedAction`.
 
 ### Incidentes (`incidents`)
 
@@ -687,7 +687,7 @@ Los importes del log son los mismos `float` de `breakdown_json`; `subtotal`, `ov
 | `assets.connectivity.dispatched` | ok | — | recorrido de plataforma, sin ids: result `dispatched_count`, `sync_disabled_count` (`config_json.sync.enabled = false`) |
 | `assets.sync.asset_applied` | ok | — | debug, una por activo: `team_id`, `asset_id`, `integration_id`; calc `branch` (`created` \| `updated`), `devices_reported` (el proveedor mandó `devices`). Nunca `name`, `code`, `metadata` ni `external_type` |
 | `assets.sync.external_id_conflict` | skipped | `owned_by_other_tenant` | como `drivers.sync.external_id_conflict`: `team_id` (el tenant que **pidió** el id; el dueño nunca se consulta ni se registra), `provider_id`, `external_id` (vía `LoggableCode`) |
-| `assets.sync.completed` | ok | — | `team_id`, `integration_id`, `stage` (`integration_sync`: `SyncIntegration` vía `AssetSyncHandler`; `provider_job`: `SyncAssetsFromProviderJob`, sin despachador hoy); result `assets_reported_count`, `created_count`, `updated_count`, `conflict_count`, `not_handled_count` (el handler devolvió null: implementación que no sincroniza), y en `provider_job` `discovered_count` (activos nuevos notificados) |
+| `assets.sync.completed` | ok | — | `team_id`, `integration_id`, `stage` (`integration_sync`: `SyncIntegration` vía `AssetSyncHandler`); result `assets_reported_count`, `created_count`, `updated_count`, `conflict_count`, `not_handled_count` (el handler devolvió null: implementación que no sincroniza) |
 | `assets.purge.completed` | ok | — | recorrido de plataforma, sin tenant: `table` (`asset_location_snapshots` \| `asset_telemetry_snapshots`); calc `retention_days`, `retention_source` (`argument` \| `config` para ubicaciones, `argument` \| `constant` para telemetría), `cutoff` (= `now - retention_days`), `chunk_size`; result `removed_count`, `batches_count` (vueltas que borraron algo) |
 
 Branches de `assets.after_hours.evaluated` (el resultado de `execute()` es `evaluate()['raised']`):
