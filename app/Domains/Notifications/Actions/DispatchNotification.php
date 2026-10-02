@@ -2,9 +2,11 @@
 
 namespace App\Domains\Notifications\Actions;
 
+use App\Domains\Incidents\Models\Incident;
 use App\Domains\Notifications\Data\RecipientDescriptor;
 use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Enums\DeliveryStatus;
+use App\Domains\Notifications\Enums\NotificationSourceType;
 use App\Domains\Notifications\Enums\NotificationStatus;
 use App\Domains\Notifications\Events\NotificationCreated;
 use App\Domains\Notifications\Events\NotificationPushedBroadcast;
@@ -36,6 +38,20 @@ class DispatchNotification
 
         // Corre en SendNotificationJob, sin transacción: las líneas van directas.
         $input = ['notification_id' => $notification->id];
+
+        // Un aviso de escalación que esperó en cola mientras alguien del equipo
+        // atendía el incidente ya no tiene a quién despertar: no sale (y no se
+        // paga). El watchdog lo comprobó al crearlo; esto cubre el hueco entre
+        // ese momento y el envío.
+        $handled = self::escalationNoticeForHandledIncident($notification);
+
+        if ($handled !== null) {
+            $notification->update(['status' => NotificationStatus::Cancelled]);
+
+            SystemLog::skipped('notifications.escalation_notice.cancelled', reason: 'incident_handled', input: $input, calc: $handled);
+
+            return $notification;
+        }
 
         $explain = $this->resolveRecipients->explain($notification);
         $descriptors = $explain['descriptors'];
@@ -363,5 +379,38 @@ class DispatchNotification
             bodyPreview: $notification->body_preview,
             teamId: $notification->team_id,
         ));
+    }
+
+    /**
+     * Términos de por qué el incidente ya está atendido, o null si el aviso no
+     * es de escalación o el incidente sigue sin atender.
+     *
+     * @return array{incident_id: int, acknowledged: bool, claimed: bool, terminal: bool}|null
+     */
+    private static function escalationNoticeForHandledIncident(Notification $notification): ?array
+    {
+        if ($notification->source_type !== NotificationSourceType::Incident
+            || ! is_numeric($notification->source_reference_id)
+            || ! is_numeric($notification->payload_json['escalation_level'] ?? null)) {
+            return null;
+        }
+
+        $incident = Incident::query()
+            ->where('team_id', $notification->team_id)
+            ->with('status')
+            ->find((int) $notification->source_reference_id);
+
+        if ($incident === null) {
+            return null;
+        }
+
+        $terms = [
+            'incident_id' => $incident->id,
+            'acknowledged' => $incident->acknowledged_at !== null,
+            'claimed' => $incident->claimed_by_user_id !== null,
+            'terminal' => $incident->isTerminal(),
+        ];
+
+        return $terms['acknowledged'] || $terms['claimed'] || $terms['terminal'] ? $terms : null;
     }
 }
