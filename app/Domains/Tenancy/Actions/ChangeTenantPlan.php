@@ -11,6 +11,7 @@ use App\Domains\Tenancy\Models\Plan;
 use App\Domains\Tenancy\Models\Subscription;
 use App\Domains\Tenancy\Models\TenantFeature;
 use App\Models\Team;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Support\Facades\DB;
 
@@ -44,10 +45,23 @@ class ChangeTenantPlan
                 ]);
             }
 
+            $previousPlanId = $subscription->plan_id;
+            $created = ! $subscription->exists;
             $subscription->plan_id = $plan->id;
             $subscription->save();
 
             $this->reconcileFeatures($team, $plan);
+
+            DB::afterCommit(fn () => TenantContext::for($team->id, fn () => SystemLog::ok('tenancy.plan.changed', input: [
+                'team_id' => $team->id,
+                'plan_code' => $plan->code,
+                'actor_id' => auth()->id(),
+            ], result: [
+                'subscription_id' => $subscription->id,
+                'subscription_created' => $created,
+                'previous_plan_id' => $previousPlanId,
+                'plan_id' => $plan->id,
+            ])));
 
             TenantSubscriptionChanged::dispatch($team->id, 'plan_changed', $plan->code);
 

@@ -6,6 +6,7 @@ use App\Domains\Tenancy\Models\FileObject;
 use App\Domains\Tenancy\Models\TenantBranding;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
+use App\Support\SystemLog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -30,7 +31,19 @@ class BrandingController extends Controller
             'email_signature' => ['nullable', 'string', 'max:2000'],
         ]);
 
-        $branding->fill($validated)->save();
+        $branding->fill($validated);
+        $changed = array_keys($branding->getDirty());
+        $branding->save();
+
+        // Qué campos cambiaron, nunca sus valores (nombre visible y firma
+        // son texto libre del tenant).
+        SystemLog::ok('tenancy.branding.updated', input: [
+            'team_id' => $current_team->id,
+            'user_id' => $request->user()?->getAuthIdentifier(),
+        ], result: [
+            'branding_id' => $branding->id,
+            'changed_fields' => array_values(array_diff($changed, ['team_id'])),
+        ]);
 
         return response()->json(['data' => $branding->refresh()]);
     }
@@ -50,7 +63,7 @@ class BrandingController extends Controller
 
         Storage::disk('rustfs')->put($key, (string) $file->get());
 
-        FileObject::query()->create([
+        $fileObject = FileObject::query()->create([
             'team_id' => $current_team->id,
             'bucket' => (string) config('filesystems.disks.rustfs.bucket', 'sam'),
             'object_key' => $key,
@@ -62,6 +75,15 @@ class BrandingController extends Controller
         ]);
 
         $branding->forceFill(['logo_url' => $key])->save();
+
+        SystemLog::ok('tenancy.branding.logo_uploaded', input: [
+            'team_id' => $current_team->id,
+            'user_id' => $request->user()?->getAuthIdentifier(),
+        ], result: [
+            'file_object_id' => $fileObject->id,
+            'size_bytes' => $fileObject->size_bytes,
+            'content_type' => $fileObject->content_type,
+        ]);
 
         return response()->json(['data' => ['logoKey' => $key]], 201);
     }

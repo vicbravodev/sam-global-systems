@@ -6,6 +6,8 @@ use App\Domains\Tenancy\Enums\FeatureSource;
 use App\Domains\Tenancy\Events\TenantFeatureChanged;
 use App\Domains\Tenancy\Models\TenantFeature;
 use App\Models\Team;
+use App\Support\LoggableCode;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 
 /**
@@ -28,6 +30,7 @@ class SetTenantFeature
             'feature_key' => $featureKey,
         ]));
 
+        $previous = $feature->exists ? $feature->enabled : null;
         $feature->enabled = $enabled;
         $feature->source = FeatureSource::ManualOverride;
 
@@ -38,6 +41,17 @@ class SetTenantFeature
         $feature->save();
 
         TenantFeatureChanged::dispatch($team->id, $featureKey, $enabled);
+
+        TenantContext::for($team->id, fn () => SystemLog::ok('tenancy.feature.changed', input: [
+            'team_id' => $team->id,
+            'feature_key' => LoggableCode::guard($featureKey),
+            'actor_id' => auth()->id(),
+        ], result: [
+            'previous_enabled' => $previous,
+            'enabled' => $enabled,
+            'limits_changed' => $limits !== null,
+            'source' => FeatureSource::ManualOverride->value,
+        ]));
 
         return $feature;
     }
