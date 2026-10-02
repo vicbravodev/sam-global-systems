@@ -265,9 +265,11 @@ class ApplyDefaultTenantConfig
             'escalation_type' => 'incident_critical',
             'trigger_conditions_json' => [],
             'steps_json' => [
-                ['delay_minutes' => 0, 'channels' => ['voice', 'push', 'web'], 'attempts' => 2, 'retry_minutes' => 3, 'contacts' => []],
-                ['delay_minutes' => 5, 'channels' => ['sms', 'whatsapp', 'email'], 'attempts' => 1, 'contacts' => []],
-                ['delay_minutes' => 15, 'channels' => ['voice', 'sms'], 'attempts' => 2, 'retry_minutes' => 5, 'contacts' => []],
+                // Decisión 2026-10-01: en turno → supervisores → admins, SMS o
+                // WhatsApp (nunca ambos) por paso.
+                ['delay_minutes' => 0, 'audience' => 'on_call', 'channels' => ['voice', 'push', 'web'], 'attempts' => 2, 'retry_minutes' => 3, 'contacts' => []],
+                ['delay_minutes' => 5, 'audience' => 'operations', 'channels' => ['sms', 'push', 'email'], 'attempts' => 1, 'contacts' => []],
+                ['delay_minutes' => 15, 'audience' => 'admins', 'channels' => ['voice', 'sms'], 'attempts' => 2, 'retry_minutes' => 5, 'contacts' => []],
             ],
             'time_constraints_json' => null,
             'is_active' => true,

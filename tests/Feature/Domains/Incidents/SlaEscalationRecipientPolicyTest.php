@@ -74,7 +74,12 @@ class SlaEscalationRecipientPolicyTest extends TestCase
 
         $c = $this->assertSystemLogged('incidents.escalation_level.notified', fn (array $c) => $c['outcome'] === 'ok');
         $this->assertSame(['incident_id' => $incident->id, 'level' => 0, 'notification_type' => 'incident.sla_breached'], $c['input']);
-        $this->assertSame('supervisors', $c['calc']['recipients_source']);
+        // Nivel 0 sin persona en turno configurada: cae a quien gestiona
+        // incidentes (aquí sólo owner/admin, el escalón `admins`).
+        $this->assertSame('audience', $c['calc']['recipients_source']);
+        $this->assertSame('on_call', $c['calc']['audience_requested']);
+        $this->assertSame('admins', $c['calc']['audience']);
+        $this->assertTrue($c['calc']['audience_fallback']);
         $this->assertFalse($c['calc']['step_present']);
         $this->assertSame(0, $c['calc']['contacts_count']);
         $this->assertSame(2, $c['calc']['recipients_count']);
@@ -176,7 +181,7 @@ class SlaEscalationRecipientPolicyTest extends TestCase
         $this->assertSystemLogged('incidents.escalation_level.notified', fn (array $c) => $c['outcome'] === 'skipped'
             && $c['reason'] === 'no_supervisors'
             && $c['input'] === ['incident_id' => $incident->id, 'level' => 0, 'notification_type' => 'incident.sla_breached']
-            && $c['calc'] === ['step_present' => false, 'contacts_count' => 0]);
+            && $c['calc'] === ['step_present' => false, 'contacts_count' => 0, 'audience' => 'admins', 'audience_fallback' => true]);
         $this->assertNoSensitiveDataLogged();
     }
 

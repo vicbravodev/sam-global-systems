@@ -18,25 +18,44 @@ final class IncidentSupervisors
 {
     public const string PERMISSION = 'incidents.manage';
 
+    public const string ADMIN_PERMISSION = 'tenancy.manage';
+
     /**
      * @return array<int, array<string, mixed>> Entradas de `payload.recipients`.
      */
     public static function recipients(int $teamId): array
     {
+        return self::recipientsFor(self::users($teamId));
+    }
+
+    /**
+     * @param  iterable<User>  $users
+     * @return array<int, array<string, mixed>> Entradas de `payload.recipients`.
+     */
+    public static function recipientsFor(iterable $users): array
+    {
         $recipients = [];
 
-        foreach (self::users($teamId) as $user) {
-            $recipients[] = [
-                'recipient_type' => 'user',
-                'address' => $user->email,
-                'email' => $user->email,
-                'phone' => $user->verifiedPhone(),
-                'name' => $user->name,
-                'recipient_reference_id' => (string) $user->id,
-            ];
+        foreach ($users as $user) {
+            $recipients[] = self::recipientFor($user);
         }
 
         return $recipients;
+    }
+
+    /**
+     * @return array<string, mixed> Entrada de `payload.recipients`.
+     */
+    public static function recipientFor(User $user): array
+    {
+        return [
+            'recipient_type' => 'user',
+            'address' => $user->email,
+            'email' => $user->email,
+            'phone' => $user->verifiedPhone(),
+            'name' => $user->name,
+            'recipient_reference_id' => (string) $user->id,
+        ];
     }
 
     /**
@@ -46,10 +65,25 @@ final class IncidentSupervisors
      */
     public static function users(int $teamId): array
     {
+        $tiers = self::tiers($teamId);
+
+        return [...$tiers['operations'], ...$tiers['admins']];
+    }
+
+    /**
+     * Los mismos miembros, separados en dos escalones de la escalera:
+     * `operations` (supervisores/monitoristas: gestionan incidentes pero no el
+     * tenant) y `admins` (owner/admin del equipo o permiso `tenancy.manage`).
+     *
+     * @return array{operations: list<User>, admins: list<User>}
+     */
+    public static function tiers(int $teamId): array
+    {
+        $tiers = ['operations' => [], 'admins' => []];
         $team = Team::query()->find($teamId);
 
         if ($team === null) {
-            return [];
+            return $tiers;
         }
 
         $authorize = app(AuthorizeAction::class);
@@ -57,9 +91,8 @@ final class IncidentSupervisors
         $memberships = TenantContext::for($teamId, fn () => Membership::query()
             ->with('user')
             ->where('team_id', $teamId)
+            ->orderBy('id')
             ->get());
-
-        $users = [];
 
         foreach ($memberships as $membership) {
             $user = $membership->user;
@@ -68,20 +101,23 @@ final class IncidentSupervisors
                 continue;
             }
 
-            if (! self::canManageIncidents($authorize, $membership, $user, $team)) {
+            $permissions = $authorize->resolvePermissions($user, $team);
+
+            if (! self::canManageIncidents($permissions, $membership)) {
                 continue;
             }
 
-            $users[] = $user;
+            $tiers[self::isAdmin($permissions, $membership) ? 'admins' : 'operations'][] = $user;
         }
 
-        return $users;
+        return $tiers;
     }
 
-    private static function canManageIncidents(AuthorizeAction $authorize, Membership $membership, User $user, Team $team): bool
+    /**
+     * @param  array<int, string>  $permissions
+     */
+    private static function canManageIncidents(array $permissions, Membership $membership): bool
     {
-        $permissions = $authorize->resolvePermissions($user, $team);
-
         if ($permissions !== []) {
             return in_array(self::PERMISSION, $permissions, true);
         }
@@ -90,5 +126,14 @@ final class IncidentSupervisors
         // equipo decide (owner/admin gestionan incidentes).
         return $membership->role_id === null
             && in_array($membership->role, [TeamRole::Owner, TeamRole::Admin], true);
+    }
+
+    /**
+     * @param  array<int, string>  $permissions
+     */
+    private static function isAdmin(array $permissions, Membership $membership): bool
+    {
+        return in_array($membership->role, [TeamRole::Owner, TeamRole::Admin], true)
+            || in_array(self::ADMIN_PERMISSION, $permissions, true);
     }
 }

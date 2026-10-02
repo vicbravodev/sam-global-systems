@@ -8,6 +8,7 @@ use App\Domains\Access\Models\Role;
 use App\Domains\Decisions\Models\DecisionRule;
 use App\Domains\Decisions\Models\RuleSet;
 use App\Domains\TenantConfig\Models\TenantConfigVersion;
+use App\Domains\TenantConfig\Models\TenantEscalationConfig;
 use App\Domains\TenantConfig\Models\TenantScheduleProfile;
 use App\Enums\TeamRole;
 use App\Models\Team;
@@ -185,6 +186,32 @@ class TenantConfigApiTest extends TestCase
         $this->actingAs($user)->putJson("/api/{$team->slug}/settings/escalation/{$configId}", [
             'is_active' => false,
         ])->assertOk();
+    }
+
+    public function test_escalation_steps_only_accept_known_audiences(): void
+    {
+        [$user, $team] = $this->createUserWithRole('cfg_esc_aud', ['config.view', 'config.manage']);
+
+        $this->actingAs($user)->postJson("/api/{$team->slug}/settings/escalation", [
+            'escalation_type' => 'incident_critical',
+            'trigger_conditions' => ['priority' => 'critical'],
+            'steps' => [['delay_minutes' => 0, 'audience' => 'everyone', 'channels' => ['sms']]],
+        ])->assertUnprocessable()->assertJsonValidationErrors('steps');
+
+        $created = $this->actingAs($user)->postJson("/api/{$team->slug}/settings/escalation", [
+            'escalation_type' => 'incident_critical',
+            'trigger_conditions' => ['priority' => 'critical'],
+            'steps' => [
+                ['delay_minutes' => 0, 'audience' => 'on_call', 'channels' => ['voice']],
+                ['delay_minutes' => 5, 'audience' => 'admins', 'channels' => ['sms'], 'attempts' => 2],
+            ],
+        ])->assertCreated();
+
+        // El resto de cada paso se conserva completo.
+        $this->assertSame(
+            [['delay_minutes' => 0, 'audience' => 'on_call', 'channels' => ['voice']], ['delay_minutes' => 5, 'audience' => 'admins', 'channels' => ['sms'], 'attempts' => 2]],
+            TenantEscalationConfig::withoutGlobalScopes()->findOrFail($created->json('data.id'))->steps_json,
+        );
     }
 
     public function test_schedule_profile_can_be_listed_and_updated(): void
