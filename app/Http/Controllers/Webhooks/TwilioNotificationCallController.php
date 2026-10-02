@@ -117,7 +117,7 @@ class TwilioNotificationCallController extends Controller
         $isValid = (new RequestValidator($authToken))->validate(
             $request->header('X-Twilio-Signature', ''),
             TwilioWebhookUrl::forSignature($request),
-            $request->post(),
+            TwilioWebhookUrl::signedParams($request),
         );
 
         abort_unless($isValid, 403, 'Invalid Twilio signature.');
