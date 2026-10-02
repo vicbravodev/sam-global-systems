@@ -135,7 +135,7 @@ class AccessSystemLogTest extends TestCase
 
     public function test_a_super_admin_entering_a_foreign_tenant_by_url_is_a_warning(): void
     {
-        $admin = User::factory()->create(['global_role' => 'super_admin', 'email' => 'ops@sam.mx']);
+        $admin = User::factory()->superAdmin()->create(['email' => 'ops@sam.mx']);
 
         $this->actingAs($admin)->get(route('dashboard', ['current_team' => $this->team->slug]))->assertOk();
 
@@ -147,7 +147,7 @@ class AccessSystemLogTest extends TestCase
 
     public function test_impersonation_start_and_stop_are_logged(): void
     {
-        $admin = User::factory()->create(['global_role' => 'super_admin']);
+        $admin = User::factory()->superAdmin()->create();
         $personal = $admin->currentTeam;
 
         $this->actingAs($admin)->post(route('admin.impersonate.store', $this->team))->assertRedirect();
@@ -353,7 +353,7 @@ class AccessSystemLogTest extends TestCase
     public function test_console_member_add_and_remove_are_logged(): void
     {
         Notification::fake();
-        $admin = User::factory()->create(['global_role' => 'super_admin']);
+        $admin = User::factory()->superAdmin()->create();
 
         $this->actingAs($admin)->post(route('admin.tenants.members.store', $this->team), [
             'email' => 'alta@empresa.mx',
@@ -378,7 +378,7 @@ class AccessSystemLogTest extends TestCase
 
     public function test_operator_grants_revocations_and_refusals_are_logged(): void
     {
-        $admin = User::factory()->create(['global_role' => 'super_admin', 'email' => 'ops@sam.mx']);
+        $admin = User::factory()->superAdmin()->create(['email' => 'ops@sam.mx']);
         $target = User::factory()->create(['email' => 'nuevo-op@sam.mx']);
 
         $this->actingAs($admin)->post(route('admin.operators.store'), ['email' => 'nuevo-op@sam.mx'])->assertRedirect();
