@@ -944,7 +944,7 @@ function UsageTab({ usage }: { usage: UsageRow[] }) {
             <div className="overflow-x-auto">
                 <table className="w-full min-w-[560px] text-sm">
                     <thead>
-                        <tr className="border-b border-border text-left text-3xs font-semibold tracking-caps text-fg-3 uppercase">
+                        <tr className="sam-caps border-b border-border text-left">
                             <th className="py-2 pr-3">Periodo</th>
                             <th className="py-2 pr-3">Medidor</th>
                             <th className="py-2 pr-3 text-right">Consumido</th>

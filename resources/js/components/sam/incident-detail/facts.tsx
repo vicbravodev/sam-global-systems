@@ -36,11 +36,7 @@ const RELATION_LABEL: Record<string, string> = {
 };
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
-    return (
-        <h3 className="mb-2 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
-            {children}
-        </h3>
-    );
+    return <h3 className="sam-caps mb-2">{children}</h3>;
 }
 
 function FactRows({

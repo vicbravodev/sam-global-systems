@@ -238,7 +238,7 @@ export function MappingRulesTab({
                                     )}
                                 >
                                     <div className="flex min-w-0 flex-col gap-0.5">
-                                        <span className="text-3xs font-semibold tracking-caps text-fg-3 uppercase">
+                                        <span className="sam-caps">
                                             Alerta de{' '}
                                             {rule.provider ?? 'proveedor'}
                                         </span>
@@ -259,7 +259,7 @@ export function MappingRulesTab({
                                         aria-label="se trata como"
                                     />
                                     <div className="flex min-w-0 flex-col gap-0.5">
-                                        <span className="text-3xs font-semibold tracking-caps text-fg-3 uppercase">
+                                        <span className="sam-caps">
                                             Se trata como
                                         </span>
                                         <span className="flex flex-wrap items-center gap-1.5">

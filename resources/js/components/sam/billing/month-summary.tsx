@@ -239,12 +239,12 @@ export function MonthSummary({ estimate }: { estimate: PeriodEstimate }) {
 
             {/* Desglose: las líneas de la factura. */}
             <div className="border-t border-border">
-                <div className="hidden items-center gap-4 px-5 py-2 text-3xs font-semibold tracking-caps text-fg-3 uppercase sm:flex">
+                <div className="sam-caps hidden items-center gap-4 px-5 py-2 sm:flex">
                     <span className="flex-1">Cómo se forma tu factura</span>
                     <span className="w-32 text-right">A hoy</span>
                     <span className="w-32 text-right">Al cierre</span>
                 </div>
-                <div className="px-4 py-2 text-3xs font-semibold tracking-caps text-fg-3 uppercase sm:hidden">
+                <div className="sam-caps px-4 py-2 sm:hidden">
                     Cómo se forma tu factura
                 </div>
                 <ul className="divide-y divide-border border-t border-border">

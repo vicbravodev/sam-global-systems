@@ -270,7 +270,7 @@ export function MediaStrip({
     return (
         <section>
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-3xs font-semibold tracking-caps text-fg-3 uppercase">
+                <h3 className="sam-caps">
                     Media del evento
                     {media.length > 0 && (
                         <span className="ml-1.5 font-mono text-fg-2 normal-case">

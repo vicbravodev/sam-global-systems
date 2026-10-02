@@ -125,7 +125,7 @@ export default function CopilotIndex() {
                             </span>
                         </button>
                     </div>
-                    <div className="px-4 pt-1 pb-1.5 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
+                    <div className="sam-caps px-4 pt-1 pb-1.5">
                         Conversaciones
                     </div>
                     <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-2">

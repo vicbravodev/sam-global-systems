@@ -132,7 +132,7 @@ export function CommentsSection({ incident }: { incident: IncidentDetail }) {
 
     return (
         <section>
-            <h3 className="mb-3 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
+            <h3 className="sam-caps mb-3">
                 Comentarios
                 {incident.comments.length > 0 && (
                     <span className="ml-1.5 font-mono text-fg-3 normal-case">

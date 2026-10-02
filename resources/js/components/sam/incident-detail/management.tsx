@@ -234,9 +234,7 @@ export function Management({ incident }: ManagementProps) {
 
     return (
         <section>
-            <h3 className="mb-2 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
-                Gestión
-            </h3>
+            <h3 className="sam-caps mb-2">Gestión</h3>
             <div className="rounded-lg border border-border bg-surface-1">
                 {/* Assignee */}
                 <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 p-3">

@@ -320,9 +320,7 @@ function Fact({
                 className,
             )}
         >
-            <dt className="truncate text-3xs font-semibold tracking-caps text-fg-3 uppercase">
-                {label}
-            </dt>
+            <dt className="sam-caps truncate">{label}</dt>
             <dd className="truncate text-sm font-semibold text-fg-1 tabular-nums">
                 {value}
             </dd>

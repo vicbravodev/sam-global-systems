@@ -355,7 +355,7 @@ export function OpsSidebar({ navBadges, mobile = false }: OpsSidebarProps) {
                 {navGroups.map((group) => (
                     <div key={group.title}>
                         {!collapsed && (
-                            <div className="px-2.5 pt-4 pb-1.5 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
+                            <div className="sam-caps px-2.5 pt-4 pb-1.5">
                                 {group.title}
                             </div>
                         )}

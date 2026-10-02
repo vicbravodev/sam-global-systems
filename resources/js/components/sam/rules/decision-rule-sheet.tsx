@@ -273,7 +273,7 @@ function DecisionRuleForm({
                 )}
 
                 <div className="rounded-md border border-border bg-surface-1 px-3 py-2.5">
-                    <span className="mb-1.5 block text-3xs font-semibold tracking-caps text-fg-3 uppercase">
+                    <span className="sam-caps mb-1.5 block">
                         Así se lee la regla
                     </span>
                     <RuleSentence

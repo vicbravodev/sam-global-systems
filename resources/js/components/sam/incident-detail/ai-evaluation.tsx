@@ -315,7 +315,7 @@ export function AiEvaluationCard({
                     compact ? 'p-3' : 'p-4',
                 )}
             >
-                <span className="mb-1.5 inline-flex items-center gap-1.5 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
+                <span className="sam-caps mb-1.5 inline-flex items-center gap-1.5">
                     <Sparkles size={11} strokeWidth={1.75} />
                     Sin evaluación IA
                 </span>
@@ -393,7 +393,7 @@ export function AiEvaluationCard({
                 evaluación en vez de perdida en el timeline. */}
             {summary && summary.total > 0 && (
                 <div className="mb-3 rounded-md border border-border bg-surface-2 p-2.5">
-                    <div className="mb-1.5 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
+                    <div className="sam-caps mb-1.5">
                         Análisis visual · {summary.assessed} de {summary.total}{' '}
                         medias evaluadas
                     </div>

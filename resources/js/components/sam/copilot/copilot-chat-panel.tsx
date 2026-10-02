@@ -518,7 +518,7 @@ function EmptyHero({
             <div className="grid w-full max-w-3xl grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-2">
                 {catalog.suggestions.map((group) => (
                     <div key={group.group} className="flex flex-col gap-1">
-                        <div className="px-1 pb-0.5 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
+                        <div className="sam-caps px-1 pb-0.5">
                             {group.group}
                         </div>
                         {group.prompts.map((prompt) => (

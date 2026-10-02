@@ -304,7 +304,7 @@ function NowTile({
 
     return (
         <div className="flex min-w-0 flex-col gap-0.5 bg-surface-1 px-4 py-3">
-            <span className="flex items-center gap-1.5 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
+            <span className="sam-caps flex items-center gap-1.5">
                 <Icon
                     className="size-3"
                     strokeWidth={1.75}
@@ -753,7 +753,7 @@ function LocationHistoryCard({
                     <div className="max-h-80 overflow-auto">
                         <table className="w-full border-collapse">
                             <thead>
-                                <tr className="sticky top-0 z-10 border-b border-border bg-surface-3 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
+                                <tr className="sam-caps sticky top-0 z-10 border-b border-border bg-surface-3">
                                     <th className="w-32 px-4 py-2 text-left">
                                         Cuándo
                                     </th>

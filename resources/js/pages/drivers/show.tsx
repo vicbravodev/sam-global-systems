@@ -664,7 +664,7 @@ function AssignmentsCard({
                     <div className="max-h-96 overflow-auto">
                         <table className="w-full border-collapse">
                             <thead>
-                                <tr className="sticky top-0 z-10 border-b border-border bg-surface-3 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
+                                <tr className="sam-caps sticky top-0 z-10 border-b border-border bg-surface-3">
                                     <th className="px-4 py-2 text-left">
                                         Unidad
                                     </th>

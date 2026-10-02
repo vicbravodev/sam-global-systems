@@ -54,7 +54,7 @@ export function InboxTable({
             </div>
             <table className="hidden w-full min-w-[1080px] table-fixed border-collapse md:table">
                 <thead>
-                    <tr className="sticky top-0 z-10 border-b border-border bg-surface-3 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
+                    <tr className="sam-caps sticky top-0 z-10 border-b border-border bg-surface-3">
                         <th className="w-[34px] px-2.5 py-2 text-left">
                             <span
                                 className="inline-grid cursor-pointer place-items-center rounded-sm border border-border-strong select-none"

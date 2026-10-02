@@ -276,7 +276,7 @@ export function Activity({ incident, limit, className }: ActivityProps) {
 
     return (
         <section className={className}>
-            <h3 className="mb-2 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
+            <h3 className="sam-caps mb-2">
                 Actividad
                 {incident.timeline.length > 0 && (
                     <span className="ml-1.5 font-mono text-fg-3 normal-case">
