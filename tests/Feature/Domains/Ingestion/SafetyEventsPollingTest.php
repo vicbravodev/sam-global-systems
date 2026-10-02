@@ -2,6 +2,9 @@
 
 namespace Tests\Feature\Domains\Ingestion;
 
+use App\Domains\Assets\Enums\AssetMonitoringState;
+use App\Domains\Assets\Models\Asset;
+use App\Domains\Assets\Models\AssetExternalReference;
 use App\Domains\Incidents\Actions\ApplyExternalResolution;
 use App\Domains\Incidents\Enums\EventRelationType;
 use App\Domains\Incidents\Jobs\ApplyExternalResolutionJob;
@@ -278,6 +281,77 @@ class SafetyEventsPollingTest extends TestCase
 
         $this->assertSame(0, RawEventAttachment::where('raw_event_id', $duplicate->id)->count());
         Http::assertSentCount(1);
+    }
+
+    private function assetFor(TenantIntegration $integration, string $externalId, AssetMonitoringState $state, ?Team $owner = null): Asset
+    {
+        $asset = Asset::factory()->create([
+            'team_id' => $owner?->id ?? $integration->team_id,
+            'provider_id' => $integration->provider_id,
+            'monitoring_state' => $state,
+        ]);
+
+        AssetExternalReference::factory()->create([
+            'asset_id' => $asset->id,
+            'provider_id' => $integration->provider_id,
+            'external_id' => $externalId,
+        ]);
+
+        return $asset;
+    }
+
+    public function test_media_of_a_switched_off_unit_is_not_downloaded(): void
+    {
+        Queue::fake();
+        Http::fake(['media.samsara.com/*' => Http::response('bytes', 200, ['Content-Type' => 'video/mp4'])]);
+        $integration = $this->makeIntegration();
+        $this->assetFor($integration, 'vehicle-9', AssetMonitoringState::Pending);
+
+        $rawEvent = app(IngestSafetyEvent::class)->execute($integration, $this->safetyEventPayload([
+            'downloadForwardVideoUrl' => 'https://media.samsara.com/evt-1/forward.mp4',
+        ]));
+
+        // Se guarda y sigue al pipeline (la normalización lo descarta y lo
+        // narra), pero la media de una unidad apagada no se baja a S3.
+        Http::assertNothingSent();
+        $this->assertSame(0, RawEventAttachment::where('raw_event_id', $rawEvent->id)->count());
+        Queue::assertPushed(ProcessRawEventJob::class);
+        $this->assertSystemLogged('ingestion.media.inline_skipped', fn (array $c): bool => $c['reason'] === 'asset_not_monitored'
+            && $c['input']['raw_event_id'] === $rawEvent->id);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_media_of_a_monitored_unit_is_downloaded(): void
+    {
+        Queue::fake();
+        Http::fake(['media.samsara.com/*' => Http::response('bytes', 200, ['Content-Type' => 'video/mp4'])]);
+        $integration = $this->makeIntegration();
+        $this->assetFor($integration, 'vehicle-9', AssetMonitoringState::Monitored);
+
+        $rawEvent = app(IngestSafetyEvent::class)->execute($integration, $this->safetyEventPayload([
+            'downloadForwardVideoUrl' => 'https://media.samsara.com/evt-1/forward.mp4',
+        ]));
+
+        $this->assertSame(1, RawEventAttachment::where('raw_event_id', $rawEvent->id)->count());
+        $this->assertSystemNotLogged('ingestion.media.inline_skipped');
+    }
+
+    public function test_another_tenants_switched_off_unit_never_decides_this_tenants_media(): void
+    {
+        Queue::fake();
+        Http::fake(['media.samsara.com/*' => Http::response('bytes', 200, ['Content-Type' => 'video/mp4'])]);
+        $integration = $this->makeIntegration();
+        $other = User::factory()->create()->currentTeam;
+        // La referencia (única por proveedor) apunta a un activo de otro
+        // tenant: no se resuelve, así que la media se conserva por si acaso.
+        $this->assetFor($integration, 'vehicle-9', AssetMonitoringState::Pending, owner: $other);
+
+        $rawEvent = app(IngestSafetyEvent::class)->execute($integration, $this->safetyEventPayload([
+            'downloadForwardVideoUrl' => 'https://media.samsara.com/evt-1/forward.mp4',
+        ]));
+
+        $this->assertSame(1, RawEventAttachment::where('raw_event_id', $rawEvent->id)->count());
+        $this->assertSystemNotLogged('ingestion.media.inline_skipped');
     }
 
     public function test_stream_v2_media_array_is_downloaded_into_attachments(): void

@@ -2,6 +2,9 @@
 
 namespace App\Domains\Ingestion\Actions;
 
+use App\Domains\Assets\Enums\AssetMonitoringState;
+use App\Domains\Assets\Models\Asset;
+use App\Domains\Assets\Models\AssetExternalReference;
 use App\Domains\Ingestion\Enums\EventSourceType;
 use App\Domains\Ingestion\Jobs\ArchiveRawEventMediaJob;
 use App\Domains\Ingestion\Models\RawEvent;
@@ -68,13 +71,17 @@ class IngestSafetyEvent
 
         // El resto (descarga de media, encolado, uso) va en la traza del evento
         // recién guardado: el poll procesa muchos eventos en el mismo job.
-        return PipelineTrace::within($rawEvent->trace_id, $rawEvent->team_id, function () use ($rawEvent, $integration, $isKnownDuplicate, $externalEventId, $eventState): RawEvent {
+        return PipelineTrace::within($rawEvent->trace_id, $rawEvent->team_id, function () use ($rawEvent, $integration, $payload, $isKnownDuplicate, $externalEventId, $eventState): RawEvent {
             // Duplicates are still stored (full audit trail) and still flow through
             // ProcessRawEventJob, which marks them and stops the pipeline — but
             // their media was already captured by the first delivery, so the
             // expiring URLs are not re-downloaded.
             if ($isKnownDuplicate) {
                 SystemLog::skipped('ingestion.media.inline_skipped', reason: 'known_duplicate', input: ['raw_event_id' => $rawEvent->id, 'event_state' => $eventState]);
+            } elseif ($this->isSwitchedOffUnit($integration, $payload)) {
+                // Un safety event nunca es emergencia: la normalización lo
+                // descartará por la unidad apagada. Su media no se baja a S3.
+                SystemLog::skipped('ingestion.media.inline_skipped', reason: 'asset_not_monitored', input: ['raw_event_id' => $rawEvent->id, 'event_state' => $eventState]);
             } else {
                 $this->archiveInlineMedia($rawEvent, $integration->team_id);
             }
@@ -85,6 +92,37 @@ class IngestSafetyEvent
 
             return $rawEvent;
         }, $integration->provider?->code);
+    }
+
+    /**
+     * La unidad del evento es de este tenant y no está vigilada. Una referencia
+     * desconocida o de otro tenant no decide nada: la media se conserva y la
+     * normalización resuelve como siempre.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function isSwitchedOffUnit(TenantIntegration $integration, array $payload): bool
+    {
+        $externalId = Arr::get($payload, 'asset.id') ?? Arr::get($payload, 'vehicle.id') ?? Arr::get($payload, 'vehicleId');
+
+        if (! is_scalar($externalId) || (string) $externalId === '') {
+            return false;
+        }
+
+        $assetId = AssetExternalReference::query()
+            ->where('provider_id', $integration->provider_id)
+            ->where('external_id', (string) $externalId)
+            ->value('asset_id');
+
+        if ($assetId === null) {
+            return false;
+        }
+
+        return Asset::query()
+            ->whereKey($assetId)
+            ->where('team_id', $integration->team_id)
+            ->where('monitoring_state', '!=', AssetMonitoringState::Monitored)
+            ->exists();
     }
 
     /**
