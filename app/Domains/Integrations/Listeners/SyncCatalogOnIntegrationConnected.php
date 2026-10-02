@@ -8,6 +8,8 @@ use App\Domains\Integrations\Events\IntegrationConnected;
 use App\Domains\Integrations\Jobs\SyncIntegrationJob;
 use App\Domains\Integrations\Models\IntegrationSyncJob;
 use App\Domains\Integrations\Models\TenantIntegration;
+use App\Support\SystemLog;
+use App\Support\TenantContext;
 
 class SyncCatalogOnIntegrationConnected
 {
@@ -18,6 +20,8 @@ class SyncCatalogOnIntegrationConnected
         $integration = TenantIntegration::withoutGlobalScopes()->find($event->integrationId);
 
         if ($integration === null) {
+            SystemLog::skipped('integrations.catalog_sync.requested', reason: 'integration_missing', input: ['integration_id' => $event->integrationId]);
+
             return;
         }
 
@@ -28,5 +32,13 @@ class SyncCatalogOnIntegrationConnected
         ]);
 
         SyncIntegrationJob::dispatch($integration, $syncJob);
+
+        TenantContext::for($integration->team_id, fn () => SystemLog::ok('integrations.catalog_sync.requested', input: [
+            'team_id' => $integration->team_id,
+            'integration_id' => $integration->id,
+        ], result: [
+            'integration_sync_job_id' => $syncJob->id,
+            'type' => SyncType::Full->value,
+        ]));
     }
 }

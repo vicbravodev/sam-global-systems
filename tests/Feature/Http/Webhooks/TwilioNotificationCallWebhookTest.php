@@ -154,6 +154,9 @@ class TwilioNotificationCallWebhookTest extends TestCase
 
         $this->press($this->delivery($incident, $this->operator), '1', authToken: null)->assertForbidden();
 
+        $this->assertSystemLogged('webhook.twilio.signature_rejected', fn (array $c) => $c['reason'] === 'hmac_mismatch' && $c['input']['endpoint'] === 'notification_call');
+        $this->assertNoSensitiveDataLogged();
+
         $this->assertNull($incident->fresh()->acknowledged_at);
     }
 

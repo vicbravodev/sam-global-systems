@@ -7,11 +7,11 @@ use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Support\MessagingSuppressions;
 use App\Domains\Notifications\Support\PlatformTwilioConfig;
-use App\Domains\Notifications\Support\TwilioWebhookUrl;
+use App\Domains\Notifications\Support\TwilioWebhookSignature;
 use App\Http\Controllers\Controller;
+use App\Support\SystemLog;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
-use Twilio\Security\RequestValidator;
 
 /**
  * Inbound Twilio webhook (Roadmap B9): the operator answers the critical
@@ -24,27 +24,19 @@ class TwilioInboundController extends Controller
 {
     public function handle(Request $request, ProcessInboundReply $processInboundReply): Response
     {
-        if (! $this->isPlatformNumber((string) $request->input('To', ''))) {
+        $to = (string) $request->input('To', '');
+
+        if (! $this->isPlatformNumber($to)) {
+            // Nunca el número: sólo si venía y su canal (sms/whatsapp).
+            SystemLog::skipped('webhook.twilio.unknown_number', reason: 'not_platform_sender', calc: [
+                'to_present' => trim($to) !== '',
+                'to_channel' => str_starts_with(strtolower(trim($to)), 'whatsapp:') ? 'whatsapp' : 'sms',
+            ]);
+
             abort(403, 'Unknown Twilio number.');
         }
 
-        $authToken = PlatformTwilioConfig::authToken();
-
-        if ($authToken === null) {
-            abort(403, 'Twilio is not configured.');
-        }
-
-        $validator = new RequestValidator($authToken);
-
-        $isValid = $validator->validate(
-            $request->header('X-Twilio-Signature', ''),
-            TwilioWebhookUrl::forSignature($request),
-            TwilioWebhookUrl::signedParams($request),
-        );
-
-        if (! $isValid) {
-            abort(403, 'Invalid Twilio signature.');
-        }
+        TwilioWebhookSignature::verify($request, 'inbound');
 
         $from = (string) $request->input('From', '');
         $body = (string) $request->input('Body', '');

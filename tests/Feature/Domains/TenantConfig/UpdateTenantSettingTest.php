@@ -15,10 +15,12 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use InvalidArgumentException;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class UpdateTenantSettingTest extends TestCase
 {
+    use AssertsSystemLog;
     use RefreshDatabase;
 
     public function test_creates_a_new_setting_with_version_one(): void
@@ -68,6 +70,33 @@ class UpdateTenantSettingTest extends TestCase
         $this->assertSame(2, $second->version);
         $this->assertSame(10, $second->typed_value);
         $this->assertSame(1, TenantSetting::withoutGlobalScopes()->count());
+
+        $lines = $this->systemLogEntries('tenant_config.setting.updated');
+        $this->assertCount(2, $lines);
+        $this->assertTrue($lines[0]['context']['result']['created']);
+        $this->assertSame(['team_id' => $team->id, 'setting_key' => 'operational.max', 'setting_group' => 'operational', 'value_type' => 'number', 'updated_by_type' => 'system', 'updated_by_id' => null], $lines[1]['context']['input']);
+        $this->assertSame(5, $lines[1]['context']['result']['previous_value']);
+        $this->assertSame(10, $lines[1]['context']['result']['value']);
+        $this->assertSame(2, $lines[1]['context']['result']['version']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_text_values_are_never_logged(): void
+    {
+        $team = User::factory()->create()->currentTeam;
+
+        app(UpdateTenantSetting::class)->execute(
+            teamId: $team->id,
+            settingKey: 'notifications.contact_note',
+            settingGroup: SettingGroup::Operational,
+            valueType: SettingValueType::String,
+            value: 'Llamar a Ana al 5512345678',
+        );
+
+        $ctx = $this->assertSystemLogged('tenant_config.setting.updated');
+        $this->assertSame('[not_logged]', $ctx['result']['value']);
+        $this->assertStringNotContainsString('Ana', (string) json_encode($this->systemLogEntries()));
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_invalid_value_type_is_rejected(): void
@@ -75,15 +104,22 @@ class UpdateTenantSettingTest extends TestCase
         $team = User::factory()->create()->currentTeam;
         $action = app(UpdateTenantSetting::class);
 
-        $this->expectException(InvalidArgumentException::class);
+        try {
+            $action->execute(
+                teamId: $team->id,
+                settingKey: 'feature.threshold',
+                settingGroup: SettingGroup::Operational,
+                valueType: SettingValueType::Number,
+                value: 'not_a_number',
+            );
+            $this->fail('Debió rechazarse.');
+        } catch (InvalidArgumentException) {
+        }
 
-        $action->execute(
-            teamId: $team->id,
-            settingKey: 'feature.threshold',
-            settingGroup: SettingGroup::Operational,
-            valueType: SettingValueType::Number,
-            value: 'not_a_number',
-        );
+        $this->assertSystemLogged('tenant_config.setting.updated', fn (array $c) => $c['reason'] === 'type_mismatch'
+            && $c['input']['setting_key'] === 'feature.threshold'
+            && $c['input']['value_type'] === 'number');
+        $this->assertStringNotContainsString('not_a_number', (string) json_encode($this->systemLogEntries()));
     }
 
     public function test_critical_groups_trigger_config_snapshot(): void

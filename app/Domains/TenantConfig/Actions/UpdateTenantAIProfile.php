@@ -10,6 +10,8 @@ use App\Domains\TenantConfig\Enums\SettingUpdatedByType;
 use App\Domains\TenantConfig\Events\TenantAIProfileChanged;
 use App\Domains\TenantConfig\Models\TenantAIProfile;
 use App\Domains\TenantConfig\Support\CacheKeys;
+use App\Support\LoggableCode;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Support\Facades\Cache;
 
@@ -56,6 +58,23 @@ class UpdateTenantAIProfile
                 );
 
             Cache::forget(CacheKeys::aiProfile($teamId));
+
+            // Nunca el nombre, la descripción ni los overrides del prompt.
+            SystemLog::ok('tenant_config.ai_profile.updated', input: [
+                'team_id' => $teamId,
+                'profile_code' => LoggableCode::guard($profileCode),
+                'updated_by_type' => $updatedByType->value,
+                'updated_by_id' => $updatedById,
+            ], result: [
+                'profile_id' => $profile->id,
+                'created' => $profile->wasRecentlyCreated,
+                'risk_tolerance' => $riskTolerance->value,
+                'false_positive_tolerance' => $falsePositiveTolerance->value,
+                'automation_level' => $automationLevel->value,
+                'media_strategy' => $mediaStrategy->value,
+                'prompt_overrides_present' => $promptOverrides !== null && $promptOverrides !== [],
+                'human_review_policy_present' => $humanReviewPolicy !== null && $humanReviewPolicy !== [],
+            ]);
 
             TenantAIProfileChanged::dispatch(
                 $teamId,

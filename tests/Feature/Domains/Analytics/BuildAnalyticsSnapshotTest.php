@@ -12,10 +12,12 @@ use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Models\Team;
 use Carbon\CarbonInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class BuildAnalyticsSnapshotTest extends TestCase
 {
+    use AssertsSystemLog;
     use RefreshDatabase;
 
     public function test_tenant_overview_snapshot_aggregates_incidents_and_ai_metrics(): void
@@ -108,5 +110,13 @@ class BuildAnalyticsSnapshotTest extends TestCase
                 ->where('snapshot_type', SnapshotType::TenantOverview->value)
                 ->count(),
         );
+
+        $lines = $this->systemLogEntries('analytics.snapshot.built');
+        $this->assertCount(2, $lines);
+        $this->assertSame('created', $lines[0]['context']['result']['path']);
+        $this->assertSame('updated', $lines[1]['context']['result']['path']);
+        $this->assertSame($lines[0]['context']['result']['snapshot_id'], $lines[1]['context']['result']['snapshot_id']);
+        $this->assertSame(SnapshotType::TenantOverview->value, $lines[0]['context']['input']['snapshot_type']);
+        $this->assertNoSensitiveDataLogged();
     }
 }

@@ -6,6 +6,9 @@ use App\Domains\Access\Actions\AuthorizeAction;
 use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Models\User;
+use App\Support\SystemLog;
+use App\Support\TenantContext;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Cambia el rol "de equipo" (owner/admin/member) de una membresía.
@@ -21,11 +24,27 @@ class UpdateTeamMemberRole
 
     public function handle(Team $team, User $user, TeamRole $role): void
     {
-        $team->memberships()
+        $membership = $team->memberships()
             ->where('user_id', $user->id)
-            ->firstOrFail()
-            ->update(['role' => $role, 'role_id' => null]);
+            ->firstOrFail();
+
+        $previousRole = $membership->getRawOriginal('role');
+        $previousRoleId = $membership->role_id;
+
+        $membership->update(['role' => $role, 'role_id' => null]);
 
         $this->authorizeAction->invalidateCache($user->id, $team->id);
+
+        // Tras el commit: el cambio de propietario corre en la transacción del
+        // llamador y no debe narrarse si se revierte.
+        DB::afterCommit(fn () => TenantContext::for($team->id, fn () => SystemLog::ok('access.member.role_changed', input: [
+            'team_id' => $team->id,
+            'user_id' => $user->id,
+            'actor_id' => auth()->id(),
+        ], result: [
+            'previous_role' => $previousRole,
+            'role' => $role->value,
+            'rbac_role_cleared' => $previousRoleId !== null,
+        ])));
     }
 }

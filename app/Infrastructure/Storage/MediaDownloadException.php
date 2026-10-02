@@ -11,7 +11,10 @@ use Throwable;
  */
 class MediaDownloadException extends RuntimeException
 {
-    public function __construct(string $message, public readonly ?int $status = null, ?Throwable $previous = null)
+    /**
+     * @param  string  $reason  código estable para el log: `ssrf_blocked`, `too_large`, `http_error`, `empty_body`, `transport_failed`, `temp_file_failed`
+     */
+    public function __construct(string $message, public readonly ?int $status = null, ?Throwable $previous = null, public readonly string $reason = 'transport_failed')
     {
         parent::__construct($message, 0, $previous);
     }

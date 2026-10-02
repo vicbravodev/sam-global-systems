@@ -56,6 +56,26 @@ class TwilioStatusCallbackTest extends TestCase
             ->assertForbidden();
 
         $this->assertSame(DeliveryStatus::Queued, $delivery->fresh()->status);
+
+        $ctx = $this->assertSystemLogged('webhook.twilio.signature_rejected', fn (array $c) => $c['reason'] === 'hmac_mismatch');
+        $this->assertSame('status_callback', $ctx['input']['endpoint']);
+        $this->assertSame('request_url', $ctx['calc']['signed_url_source']);
+        $this->assertStringNotContainsString('forged', (string) json_encode($ctx));
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_missing_signature_and_a_missing_platform_token_are_logged_apart(): void
+    {
+        $this->post(self::PATH, ['MessageSid' => 'SM_SIG', 'MessageStatus' => 'delivered'])->assertForbidden();
+        $this->assertSystemLogged('webhook.twilio.signature_rejected', fn (array $c) => $c['reason'] === 'empty_signature');
+
+        config()->set('services.twilio.auth_token', null);
+        config()->set('services.twilio.status_callback_url', 'https://hooks.example.test/api/webhooks/twilio/status');
+
+        $this->post(self::PATH, ['MessageSid' => 'SM_SIG', 'MessageStatus' => 'delivered'], ['X-Twilio-Signature' => 'x'])->assertForbidden();
+        $this->assertSystemLogged('webhook.twilio.signature_rejected', fn (array $c) => $c['reason'] === 'not_configured'
+            && $c['calc']['signed_url_source'] === 'configured_callback_url');
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_unknown_sid_answers_200_without_effects(): void

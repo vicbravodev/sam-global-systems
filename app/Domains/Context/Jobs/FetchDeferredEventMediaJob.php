@@ -2,6 +2,7 @@
 
 namespace App\Domains\Context\Jobs;
 
+use App\Concerns\DefersOnObjectStorageOutage;
 use App\Contracts\Integrations\MediaRetrievalAdapter;
 use App\Contracts\ObjectStorage;
 use App\Contracts\TenantConfig\TenantConfigResolver;
@@ -22,6 +23,7 @@ use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Infrastructure\Storage\MediaDownloadException;
 use App\Infrastructure\Storage\SecureMediaDownloader;
 use App\Support\JobFailureReporter;
+use App\Support\ObjectStorageFailure;
 use App\Support\SafeErrorMessage;
 use App\Support\SystemLog;
 use App\Support\TenantContext;
@@ -31,6 +33,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Carbon;
+use Throwable;
 
 /**
  * Drive a deferred media request through the provider's retrieval cycle
@@ -65,7 +68,7 @@ use Illuminate\Support\Carbon;
  */
 class FetchDeferredEventMediaJob implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use DefersOnObjectStorageOutage, Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public const int POLL_DELAY_SECONDS = 60;
 
@@ -109,7 +112,11 @@ class FetchDeferredEventMediaJob implements ShouldQueue
     /** Past this event age the SD footage is gone and every retrieval 400s. */
     public const int DEFAULT_RETRIEVAL_MAX_AGE_HOURS = 72;
 
-    public int $tries = 5;
+    /**
+     * Con `retryUntil()` (de {@see DefersOnObjectStorageOutage}) Laravel
+     * ignora `$tries`: los fallos que no son de storage siguen acotados aquí.
+     */
+    public int $maxExceptions = 5;
 
     /** @var array<int, int> */
     public array $backoff = [30, 60, 120, 300, 600];
@@ -142,14 +149,25 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         // El job entra por su propio id: resuelve el tenant de la petición y
         // procesa dentro de él, para que la búsqueda de integración, activo y
         // media quede scopeada. Ver §2.1.
-        TenantContext::for($request->team_id, fn () => $this->process(
-            $request,
-            $mediaAdapter,
-            $storage,
-            $attachImmediate,
-            $refreshSnapshot,
-            $tenantConfig,
-        ));
+        try {
+            TenantContext::for($request->team_id, fn () => $this->process(
+                $request,
+                $mediaAdapter,
+                $storage,
+                $attachImmediate,
+                $refreshSnapshot,
+                $tenantConfig,
+            ));
+        } catch (Throwable $e) {
+            if (! ObjectStorageFailure::matches($e)) {
+                throw $e;
+            }
+
+            // RustFS/S3 caído: la petición sigue en vuelo y el mismo ciclo se
+            // reintenta cuando vuelva; el `expires_at` de la petición acota
+            // la espera igual que acota el polling normal.
+            $this->deferForObjectStorageOutage('media.deferred.storage_unavailable', ['event_media_request_id' => $request->id, 'normalized_event_id' => $request->normalized_event_id], $e);
+        }
     }
 
     private function process(
@@ -1097,7 +1115,7 @@ class FetchDeferredEventMediaJob implements ShouldQueue
         };
     }
 
-    public function failed(\Throwable $exception): void
+    public function failed(Throwable $exception): void
     {
         $request = EventMediaRequest::withoutGlobalScopes()->find($this->eventMediaRequestId);
 

@@ -8,6 +8,8 @@ use App\Domains\TenantConfig\Enums\SettingValueType;
 use App\Domains\TenantConfig\Events\TenantSettingUpdated;
 use App\Domains\TenantConfig\Models\TenantSetting;
 use App\Domains\TenantConfig\Support\CacheKeys;
+use App\Support\LoggableCode;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Support\Facades\Cache;
 use InvalidArgumentException;
@@ -32,6 +34,12 @@ class UpdateTenantSetting
     ): TenantSetting {
         return TenantContext::for($teamId, function () use ($teamId, $settingKey, $settingGroup, $valueType, $value, $updatedByType, $updatedById) {
             if (! $valueType->accepts($value)) {
+                SystemLog::skipped('tenant_config.setting.updated', reason: 'type_mismatch', input: [
+                    'team_id' => $teamId,
+                    'setting_key' => LoggableCode::guard($settingKey),
+                    'value_type' => $valueType->value,
+                ]);
+
                 throw new InvalidArgumentException(
                     "Value for setting '{$settingKey}' is not compatible with declared type {$valueType->value}.",
                 );
@@ -82,9 +90,29 @@ class UpdateTenantSetting
                 $updatedById,
             );
 
-            if ($this->shouldSnapshot($settingGroup)) {
+            $snapshotted = $this->shouldSnapshot($settingGroup);
+
+            if ($snapshotted) {
                 $this->snapshotTenantConfig->execute($teamId, $updatedByType, $updatedById);
             }
+
+            // El valor sólo si es número o booleano: un texto o un JSON puede
+            // llevar contactos o texto libre del tenant.
+            SystemLog::ok('tenant_config.setting.updated', input: [
+                'team_id' => $teamId,
+                'setting_key' => LoggableCode::guard($settingKey),
+                'setting_group' => $settingGroup->value,
+                'value_type' => $valueType->value,
+                'updated_by_type' => $updatedByType->value,
+                'updated_by_id' => $updatedById,
+            ], result: [
+                'setting_id' => $setting->id,
+                'version' => $setting->version,
+                'created' => $existing === null,
+                'previous_value' => self::loggableValue($previousTypedValue),
+                'value' => self::loggableValue($value),
+                'snapshotted' => $snapshotted,
+            ]);
 
             return $setting->refresh();
         });
@@ -100,6 +128,14 @@ class UpdateTenantSetting
         }
 
         return ['value' => $value];
+    }
+
+    private static function loggableValue(mixed $value): int|float|bool|string|null
+    {
+        return match (true) {
+            is_bool($value), is_int($value), is_float($value), $value === null => $value,
+            default => '[not_logged]',
+        };
     }
 
     private function shouldSnapshot(SettingGroup $group): bool

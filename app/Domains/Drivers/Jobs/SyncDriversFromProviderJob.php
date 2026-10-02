@@ -7,6 +7,7 @@ use App\Domains\Drivers\Exceptions\DriverExternalReferenceConflictException;
 use App\Domains\Integrations\Contracts\ProviderAdapter;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Support\SafeErrorMessage;
+use App\Support\SystemLog;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -34,7 +35,10 @@ class SyncDriversFromProviderJob implements ShouldQueue
         ProviderAdapter $providerAdapter,
         SyncDriverFromIntegration $syncDriver,
     ): void {
+        $started = hrtime(true);
         $result = $providerAdapter->sync($this->integration, 'drivers');
+        $synced = 0;
+        $conflicts = 0;
 
         foreach ($result['drivers'] as $driverData) {
             try {
@@ -43,13 +47,24 @@ class SyncDriversFromProviderJob implements ShouldQueue
                     $this->integration->id,
                     $driverData,
                 );
+                $synced++;
             } catch (DriverExternalReferenceConflictException $e) {
                 // The provider handed us an external id another tenant already
                 // owns: skip that driver rather than touching their data, and
                 // keep syncing the rest of the batch.
                 $e->logSkipped();
+                $conflicts++;
             }
         }
+
+        SystemLog::ok('drivers.sync.completed', input: [
+            'team_id' => $this->integration->team_id,
+            'integration_id' => $this->integration->id,
+        ], result: [
+            'received' => count($result['drivers']),
+            'synced' => $synced,
+            'external_id_conflicts' => $conflicts,
+        ], durationMs: SystemLog::elapsedMs($started));
     }
 
     public function failed(\Throwable $exception): void

@@ -6,10 +6,13 @@ use App\Infrastructure\Storage\MediaDownloadException;
 use App\Infrastructure\Storage\SecureMediaDownloader;
 use Illuminate\Support\Facades\Http;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class SecureMediaDownloaderTest extends TestCase
 {
+    use AssertsSystemLog;
+
     public function test_downloads_allowlisted_https_media_to_a_temp_file(): void
     {
         Http::fake(['media.samsara.com/*' => Http::response('clip-bytes', 200, ['Content-Type' => 'video/mp4'])]);
@@ -107,6 +110,50 @@ class SecureMediaDownloaderTest extends TestCase
         }
 
         $this->assertSame(2, $failures);
+    }
+
+    public function test_a_completed_download_is_logged_with_host_bytes_and_duration_never_the_signed_url(): void
+    {
+        Http::fake(['media.samsara.com/*' => Http::response('clip-bytes', 200, ['Content-Type' => 'video/mp4'])]);
+
+        app(SecureMediaDownloader::class)->download('https://media.samsara.com/evt-1/road.mp4?X-Amz-Signature=s3cr3t')->cleanup();
+
+        $ctx = $this->assertSystemLogged('media.download.completed');
+        $this->assertSame(['host' => 'media.samsara.com'], $ctx['input']);
+        $this->assertSame(['bytes' => 10, 'content_type' => 'video/mp4'], $ctx['result']);
+        $this->assertArrayHasKey('duration_ms', $ctx);
+
+        $this->assertStringNotContainsString('s3cr3t', (string) json_encode($this->systemLogEntries()));
+        // El path lo conserva sólo la línea automática http.client de un host
+        // de la allowlist; la de la descarga lleva sólo el host.
+        $this->assertStringNotContainsString('evt-1', (string) json_encode($this->systemLogEntries('media.download.completed')));
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_each_rejection_is_logged_with_its_reason(): void
+    {
+        Http::fake([
+            'media.samsara.com/big*' => Http::response('x', 200, ['Content-Length' => '999999999']),
+            'media.samsara.com/err*' => Http::response('nope', 403),
+            'media.samsara.com/empty*' => Http::response('', 200),
+        ]);
+
+        $downloader = app(SecureMediaDownloader::class);
+
+        foreach (['https://evil.example.com/x.mp4', 'https://media.samsara.com/big.mp4', 'https://media.samsara.com/err.mp4', 'https://media.samsara.com/empty.mp4'] as $url) {
+            try {
+                $downloader->download($url);
+                $this->fail("Debió rechazar {$url}");
+            } catch (MediaDownloadException) {
+            }
+        }
+
+        $this->assertSystemLogged('media.download.rejected', fn (array $c) => $c['reason'] === 'ssrf_blocked' && $c['input']['host'] === 'evil.example.com');
+        $this->assertSystemLogged('media.download.rejected', fn (array $c) => $c['reason'] === 'too_large' && $c['calc']['max_bytes'] > 0);
+        $this->assertSystemLogged('media.download.rejected', fn (array $c) => $c['reason'] === 'http_error' && $c['calc']['http_status'] === 403);
+        $this->assertSystemLogged('media.download.rejected', fn (array $c) => $c['reason'] === 'empty_body');
+        $this->assertSystemNotLogged('media.download.completed');
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_allowlist_is_config_driven(): void

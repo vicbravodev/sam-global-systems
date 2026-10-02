@@ -14,6 +14,7 @@ use App\Http\Requests\Access\UpdateRoleRequest;
 use App\Models\Membership;
 use App\Models\Team;
 use App\Models\User;
+use App\Support\SystemLog;
 use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
@@ -106,6 +107,12 @@ class RoleController extends Controller
         abort_if($role->is_system, 403, 'System roles cannot be deleted.');
 
         $role->delete();
+
+        SystemLog::ok('access.role.deleted', input: [
+            'team_id' => $current_team->id,
+            'role_id' => $role->id,
+            'actor_id' => auth()->id(),
+        ]);
 
         return back(303);
     }

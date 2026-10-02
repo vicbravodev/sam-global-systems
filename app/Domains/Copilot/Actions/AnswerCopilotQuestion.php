@@ -25,6 +25,7 @@ use App\Domains\Copilot\Tools\FleetOverviewTool;
 use App\Domains\Copilot\Tools\OpenIncidentsTool;
 use App\Domains\Copilot\Tools\PanicKpisTool;
 use App\Domains\Copilot\Tools\SearchEventsTool;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Contracts\Container\Container;
 
@@ -111,9 +112,35 @@ class AnswerCopilotQuestion
                 'period' => $period->label,
             ];
 
+            // Cómo se enrutó la pregunta (camino determinista). Nunca el texto
+            // de la pregunta ni el código de la unidad que escribió.
+            $routing = [
+                'team_id' => $teamId,
+                'intent' => $intent->value,
+                'intent_source' => $explicit !== null ? 'explicit_hint' : 'router',
+                'asset_source' => match (true) {
+                    ! $intent->requiresAsset() && $namedAsset === null => null,
+                    $namedAsset !== null => 'named_in_question',
+                    $pinnedAsset !== null => 'pinned_in_composer',
+                    $asset !== null => 'previous_turn',
+                    default => 'none',
+                },
+                'asset_id' => $asset?->id,
+                'category' => $category?->value,
+                'period_days' => $period->days,
+            ];
+
             if ($intent->requiresAsset() && $asset === null) {
+                SystemLog::skipped('copilot.intent.routed', reason: 'asset_required', input: $routing, result: [
+                    'tools' => ['asset_picker'],
+                ]);
+
                 return new CopilotAnswer($intent, [$this->assetPicker($teamId, $intent, $category, $this->router->unitToken($question))], $resolved);
             }
+
+            SystemLog::ok('copilot.intent.routed', input: $routing, result: [
+                'tools' => array_map(class_basename(...), self::PLAN[$intent->value]),
+            ]);
 
             $results = array_map(
                 fn (string $tool) => $this->container->make($tool)->run($context),
