@@ -7,6 +7,7 @@ use App\Domains\Analytics\Models\MetricDefinition;
 use App\Domains\Analytics\Models\ReportDefinition;
 use App\Domains\Tenancy\Models\Plan;
 use App\Domains\Tenancy\Models\UsageMeter;
+use App\Models\Team;
 use App\Models\User;
 use Database\Seeders\DatabaseSeeder;
 use Database\Seeders\SamsaraTestSeeder;
@@ -15,6 +16,10 @@ use Database\Seeders\SuperAdminSeeder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Seeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
+use RuntimeException;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 /**
@@ -24,7 +29,10 @@ use Tests\TestCase;
  */
 class ProductionSeedingTest extends TestCase
 {
+    use AssertsSystemLog;
     use RefreshDatabase;
+
+    private const string STRONG_PASSWORD = 'Sam-Operador-2026!x';
 
     /**
      * @param  class-string<Seeder>  $class
@@ -38,6 +46,70 @@ class ProductionSeedingTest extends TestCase
     {
         $this->app->detectEnvironment(fn () => 'production');
         $this->assertTrue($this->app->isProduction());
+        // Password::defaults() de producción incluye uncompromised() (HIBP).
+        Http::fake(['api.pwnedpasswords.com/*' => Http::response('')]);
+    }
+
+    private function configureSuperAdmin(?string $email = 'victor@sam.example', ?string $password = self::STRONG_PASSWORD): void
+    {
+        config(['auth.super_admin' => ['email' => $email, 'name' => 'Victor Bravo', 'password' => $password]]);
+    }
+
+    public function test_database_seeder_in_production_creates_only_the_configured_super_admin(): void
+    {
+        $this->inProduction();
+        $this->configureSuperAdmin();
+
+        $this->runSeeder(DatabaseSeeder::class);
+
+        $this->assertSame(1, User::count(), 'Producción sólo debe sembrar la cuenta del operador.');
+        $operator = User::sole();
+        $this->assertSame('victor@sam.example', $operator->email);
+        $this->assertTrue($operator->isSuperAdmin());
+        $this->assertNotNull($operator->email_verified_at);
+        $this->assertTrue(Hash::check(self::STRONG_PASSWORD, $operator->password));
+
+        // Su único team es el personal (para volver tras impersonar): ningún tenant cliente.
+        $this->assertSame(0, Team::where('is_personal', false)->count());
+        $this->assertNotNull($operator->personalTeam());
+        $this->assertSame($operator->personalTeam()?->id, $operator->current_team_id);
+
+        $this->assertSystemLogged('tenancy.super_admin.bootstrapped', fn (array $e): bool => $e['result']['created'] === true);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_reseeding_production_never_changes_the_operator_password_nor_duplicates_it(): void
+    {
+        $this->inProduction();
+        $this->configureSuperAdmin();
+        $this->runSeeder(DatabaseSeeder::class);
+
+        $this->configureSuperAdmin(password: 'Otra-Contrasena-2026!y');
+        $this->runSeeder(DatabaseSeeder::class);
+
+        $this->assertSame(1, User::count());
+        $this->assertSame(1, Team::count());
+        $this->assertTrue(Hash::check(self::STRONG_PASSWORD, User::sole()->password));
+    }
+
+    public function test_production_seed_without_password_does_not_create_the_operator(): void
+    {
+        $this->inProduction();
+        $this->configureSuperAdmin(password: null);
+
+        $this->runSeeder(DatabaseSeeder::class);
+
+        $this->assertSame(0, User::count());
+    }
+
+    public function test_production_seed_rejects_a_weak_operator_password(): void
+    {
+        $this->inProduction();
+        $this->configureSuperAdmin(password: 'password');
+
+        $this->expectException(RuntimeException::class);
+
+        $this->runSeeder(DatabaseSeeder::class);
     }
 
     public function test_database_seeder_in_production_seeds_catalogs_but_no_demo_accounts(): void

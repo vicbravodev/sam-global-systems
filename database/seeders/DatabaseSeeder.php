@@ -41,9 +41,11 @@ class DatabaseSeeder extends Seeder
         $this->call(NormalizationSeeder::class);
 
         // Todo lo de abajo es de desarrollo/prueba (cuentas con contraseña
-        // conocida y un super-admin): nunca en producción. Los catálogos de
-        // arriba sí se siembran en producción.
+        // conocida y un super-admin): nunca en producción. En producción la
+        // ÚNICA cuenta sembrada es el operador SaaS de SAM_SUPER_ADMIN_*; los
+        // clientes se dan de alta desde su consola (/admin/tenants).
         if (app()->isProduction()) {
+            $this->call(PlatformSuperAdminSeeder::class);
             $this->command?->warn('Producción: se omiten los seeders de demo/prueba (SamsaraTest*, SuperAdmin).');
 
             return;
