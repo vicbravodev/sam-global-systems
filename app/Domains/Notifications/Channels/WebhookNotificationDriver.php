@@ -6,6 +6,7 @@ use App\Contracts\Notifications\NotificationDriver;
 use App\Domains\Notifications\Data\DeliveryResult;
 use App\Domains\Notifications\Data\RenderedNotification;
 use App\Domains\Notifications\Models\NotificationChannel;
+use App\Domains\Notifications\Support\OutboundChannelUrl;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
@@ -29,6 +30,10 @@ class WebhookNotificationDriver implements NotificationDriver
 {
     public const DEFAULT_TIMEOUT_SECONDS = 10;
 
+    public function __construct(
+        private readonly OutboundChannelUrl $outboundUrl,
+    ) {}
+
     public function send(RenderedNotification $notification, NotificationChannel $channel): DeliveryResult
     {
         $config = $channel->config_json ?? [];
@@ -42,6 +47,15 @@ class WebhookNotificationDriver implements NotificationDriver
 
         if (! is_string($secret) || $secret === '') {
             return DeliveryResult::failure('webhook secret missing');
+        }
+
+        // URL configurable: SSRF. Si apunta a la red interna la entrega falla
+        // definitivamente sin hacer la petición; si no, la conexión queda fijada
+        // a las IPs validadas y sin redirecciones.
+        $target = $this->outboundUrl->guard($endpoint, $channel, 'webhook');
+
+        if ($target instanceof DeliveryResult) {
+            return $target;
         }
 
         $eventKey = (string) Str::uuid();
@@ -77,7 +91,9 @@ class WebhookNotificationDriver implements NotificationDriver
 
         try {
             /** @var PendingRequest $request */
-            $request = Http::withHeaders($headers)->timeout($timeout);
+            $request = Http::withOptions($target->httpOptions())
+                ->withHeaders($headers)
+                ->timeout($timeout);
 
             /** @var Response $response */
             $response = $request->withBody($body, 'application/json')->post($endpoint);
@@ -99,6 +115,10 @@ class WebhookNotificationDriver implements NotificationDriver
             'status_code' => $response->status(),
             'body' => Str::limit($response->body(), 500, ''),
         ];
+
+        if ($response->redirect()) {
+            return OutboundChannelUrl::redirectFailure('webhook', $response->status(), $responsePayload);
+        }
 
         if ($response->successful()) {
             // Primera cabecera con valor (vacía o "0" no cuentan, como el `?:` de antes).
