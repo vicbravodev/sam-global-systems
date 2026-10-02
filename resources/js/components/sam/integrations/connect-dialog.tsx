@@ -3,6 +3,7 @@ import { Check, ChevronDown, Loader2 } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
 import { RadioCard, RadioCardGroup } from '@/components/sam/radio-card-group';
+import { Step } from '@/components/sam/step';
 import { Button } from '@/components/ui/button';
 import {
     Collapsible,
@@ -32,7 +33,6 @@ import type { AuthTypeOption, IntegrationProviderOption } from '@/types/sam';
 import { capabilityLabel } from './integration-state';
 import { KeyHelp } from './key-help';
 import { ProviderTile } from './provider-tile';
-import { StepSection } from './step-section';
 
 interface Props {
     open: boolean;
@@ -194,7 +194,7 @@ export function ConnectDialog({
                 </DialogHeader>
 
                 <div className="flex flex-col gap-5 py-1">
-                    <StepSection
+                    <Step
                         step={1}
                         title="¿Qué proveedor usas?"
                         done={provider !== null}
@@ -256,12 +256,12 @@ export function ConnectDialog({
                                 })}
                             </RadioCardGroup>
                         )}
-                    </StepSection>
+                    </Step>
 
-                    <StepSection
+                    <Step
                         step={2}
                         title="Pega la clave de acceso"
-                        description="Es la llave que permite a SAM leer los datos de tu flota. Se guarda cifrada y nadie puede volver a verla."
+                        help="Es la llave que permite a SAM leer los datos de tu flota. Se guarda cifrada y nadie puede volver a verla."
                         done={credentials.trim() !== ''}
                     >
                         <KeyHelp
@@ -282,12 +282,12 @@ export function ConnectDialog({
                             placeholder="Pega aquí la clave"
                             autoComplete="off"
                         />
-                    </StepSection>
+                    </Step>
 
-                    <StepSection
+                    <Step
                         step={3}
                         title="Ponle un nombre"
-                        description="Para reconocerla en SAM, sobre todo si conectas más de una cuenta (p. ej. «Samsara — flota norte»)."
+                        help="Para reconocerla en SAM, sobre todo si conectas más de una cuenta (p. ej. «Samsara — flota norte»)."
                         done={name.trim() !== ''}
                     >
                         <Label htmlFor="connect-name" className="sr-only">
@@ -302,7 +302,7 @@ export function ConnectDialog({
                             }}
                             placeholder="Mi cuenta de Samsara"
                         />
-                    </StepSection>
+                    </Step>
 
                     <p className="rounded-md bg-surface-2 px-3 py-2 text-xs leading-relaxed text-fg-2">
                         Al conectar, SAM trae tus unidades y conductores

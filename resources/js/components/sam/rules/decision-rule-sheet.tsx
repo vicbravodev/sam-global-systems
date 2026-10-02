@@ -4,6 +4,7 @@ import { ConditionBuilder } from '@/components/sam/condition-builder';
 import type { ConditionFieldDef } from '@/components/sam/condition-builder';
 import { FormField } from '@/components/sam/form-field';
 import { RadioCard, RadioCardGroup } from '@/components/sam/radio-card-group';
+import { Step } from '@/components/sam/step';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -41,7 +42,7 @@ import {
     submitRuleChange,
     useRulesBase,
 } from './lib';
-import { EditorStep, ReadOnlyNote } from './rule-editor-parts';
+import { ReadOnlyNote } from './rule-editor-parts';
 import { RuleSentence } from './rule-sentence';
 import { RuleTester } from './rule-tester';
 import type { DecisionRuleRow, OutcomeOption, RulesetOption } from './types';
@@ -285,7 +286,7 @@ function DecisionRuleForm({
                     />
                 </div>
 
-                <EditorStep
+                <Step
                     step={1}
                     title="¿Cuándo aplica?"
                     help="Elige qué debe cumplir el evento. Puedes sumar varias condiciones: «todas» exige que se cumplan todas; «alguna», con una basta."
@@ -305,9 +306,9 @@ function DecisionRuleForm({
                         message={errors.conditions_json}
                         className="text-xs"
                     />
-                </EditorStep>
+                </Step>
 
-                <EditorStep
+                <Step
                     step={2}
                     title="¿Qué debe pasar?"
                     help="Lo que SAM hará con el evento cuando la regla se cumpla."
@@ -338,9 +339,9 @@ function DecisionRuleForm({
                         message={errors.outcome_override}
                         className="text-xs"
                     />
-                </EditorStep>
+                </Step>
 
-                <EditorStep
+                <Step
                     step={3}
                     title="¿En qué orden se revisa?"
                     help="Las reglas se revisan de arriba abajo. Pon primero las más importantes, como las de seguridad."
@@ -413,9 +414,9 @@ function DecisionRuleForm({
                             </span>
                         </span>
                     </label>
-                </EditorStep>
+                </Step>
 
-                <EditorStep step={4} title="¿Cómo se llama?">
+                <Step step={4} title="¿Cómo se llama?">
                     <FormField
                         label="Nombre"
                         htmlFor="rule-name"
@@ -446,10 +447,10 @@ function DecisionRuleForm({
                             onChange={(e) => setDescription(e.target.value)}
                         />
                     </div>
-                </EditorStep>
+                </Step>
 
                 {base !== null && (
-                    <EditorStep
+                    <Step
                         step={5}
                         title="Pruébala"
                         help="Comprueba si la regla se habría cumplido con el último evento que evaluó SAM. No cambia nada."
@@ -460,7 +461,7 @@ function DecisionRuleForm({
                             fields={fields}
                             outcomeCode={outcomeCode}
                         />
-                    </EditorStep>
+                    </Step>
                 )}
 
                 <details className="group text-xs text-fg-3">

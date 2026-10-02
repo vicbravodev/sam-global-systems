@@ -4,6 +4,7 @@ import InputError from '@/components/input-error';
 import { ConditionBuilder } from '@/components/sam/condition-builder';
 import type { ConditionFieldDef } from '@/components/sam/condition-builder';
 import { RadioCard, RadioCardGroup } from '@/components/sam/radio-card-group';
+import { Step } from '@/components/sam/step';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -259,7 +260,7 @@ function EditorBody({
                     </div>
                 </section>
 
-                <Section number={1} title="Cuándo se activa">
+                <Step step={1} title="Cuándo se activa">
                     <RadioCardGroup
                         label="Cuándo se activa"
                         className="grid gap-2 sm:grid-cols-2"
@@ -312,9 +313,9 @@ function EditorBody({
                             />
                         </div>
                     )}
-                </Section>
+                </Step>
 
-                <Section number={2} title="Qué hace, y a quién">
+                <Step step={2} title="Qué hace, y a quién">
                     <ol className="flex flex-col gap-2">
                         {state.steps.map((step, index) => (
                             <StepEditor
@@ -358,7 +359,7 @@ function EditorBody({
                         incidente antes, los pasos que estaban esperando ya no
                         se hacen.
                     </p>
-                </Section>
+                </Step>
 
                 {otherErrors.length > 0 && (
                     <ul className="flex flex-col gap-0.5">
@@ -408,27 +409,5 @@ function EditorBody({
                 </div>
             </DialogFooter>
         </DialogContent>
-    );
-}
-
-function Section({
-    number,
-    title,
-    children,
-}: {
-    number: number;
-    title: string;
-    children: React.ReactNode;
-}) {
-    return (
-        <section className="flex flex-col gap-3">
-            <h3 className="flex items-center gap-2 text-sm font-semibold text-fg-1">
-                <span className="grid size-5 place-items-center rounded-full bg-fg-1 text-2xs text-background tabular-nums">
-                    {number}
-                </span>
-                {title}
-            </h3>
-            {children}
-        </section>
     );
 }

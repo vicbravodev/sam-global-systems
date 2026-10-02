@@ -2,6 +2,7 @@ import { useState } from 'react';
 import InputError from '@/components/input-error';
 import { ConditionBuilder } from '@/components/sam/condition-builder';
 import { FormField } from '@/components/sam/form-field';
+import { Step } from '@/components/sam/step';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -23,7 +24,6 @@ import {
 import { priorityLabel } from '@/lib/labels';
 import { postJson, putJson } from '@/lib/sam-fetch';
 import { submitRuleChange, useRulesBase } from './lib';
-import { EditorStep } from './rule-editor-parts';
 import { RuleTester } from './rule-tester';
 import type { MappingOptions, MappingRuleRow } from './types';
 
@@ -157,7 +157,7 @@ function MappingRuleForm({
             </SheetHeader>
 
             <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-5 py-5">
-                <EditorStep step={1} title="¿Qué alerta llega?">
+                <Step step={1} title="¿Qué alerta llega?">
                     <FormField
                         label="Proveedor"
                         htmlFor="mapping-provider"
@@ -234,9 +234,9 @@ function MappingRuleForm({
                             className="text-xs"
                         />
                     </div>
-                </EditorStep>
+                </Step>
 
-                <EditorStep
+                <Step
                     step={2}
                     title="¿Cómo la trata SAM?"
                     help="El tipo de evento decide qué reglas le aplican y cómo se muestra en la bandeja."
@@ -301,10 +301,10 @@ function MappingRuleForm({
                             </SelectContent>
                         </Select>
                     </FormField>
-                </EditorStep>
+                </Step>
 
                 {base !== null && hasConditions && (
-                    <EditorStep
+                    <Step
                         step={3}
                         title="Pruébala"
                         help="Comprueba si la última alerta que recibió tu cuenta trae esos datos."
@@ -317,7 +317,7 @@ function MappingRuleForm({
                             fields={[]}
                             subject="alert"
                         />
-                    </EditorStep>
+                    </Step>
                 )}
 
                 <details className="text-xs text-fg-3">
