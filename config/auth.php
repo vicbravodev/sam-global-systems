@@ -114,4 +114,22 @@ return [
 
     'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Primer super-admin (operador SaaS)
+    |--------------------------------------------------------------------------
+    |
+    | En producción `db:seed` siembra los catálogos y SÓLO esta cuenta (si hay
+    | email y contraseña). Re-sembrar nunca cambia la contraseña de una cuenta
+    | existente. Alternativa sin poner la contraseña en env (recomendada):
+    | `php artisan sam:create-super-admin`, que la pide sin eco.
+    |
+    */
+
+    'super_admin' => [
+        'email' => env('SAM_SUPER_ADMIN_EMAIL'),
+        'name' => env('SAM_SUPER_ADMIN_NAME', 'Operador SAM'),
+        'password' => env('SAM_SUPER_ADMIN_PASSWORD'),
+    ],
+
 ];

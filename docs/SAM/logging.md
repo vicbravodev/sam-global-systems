@@ -496,6 +496,12 @@ Después de abrir: `no_supervisors` (`incidents.escalation_level.notified`) y `n
 
 Selección de canales vacía (`notifications.channels.selected` skipped): antes no quedaba rastro ni en la DB (no se crea ninguna entrega). Las claves de los mapas por motivo llevan sufijo `_count` porque `no_address`/`no_email` como clave las enmascararía el redactor.
 
+### Plataforma / tenants (`tenancy`)
+
+| Código | Outcome | Reason posibles | Campos clave |
+|---|---|---|---|
+| `tenancy.super_admin.bootstrapped` | ok | — | `user_id`; result `created` (false = ya existía: sólo rol/verificación/team), `personal_team_id`. Nunca email ni contraseña |
+
 ### Billing (`billing`)
 
 `billing.usage.recorded` es el libro mayor (una fila insertada en `usage_events`); `ingestion.usage.*` y `context.usage.*` explican por qué se pidió medir.
