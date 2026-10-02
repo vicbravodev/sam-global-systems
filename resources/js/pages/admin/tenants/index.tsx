@@ -20,12 +20,12 @@ import { DataTable } from '@/components/sam/data-table/data-table';
 import type { DataTableColumn } from '@/components/sam/data-table/data-table';
 import { EntityAvatar } from '@/components/sam/entity-avatar';
 import { ClearFiltersButton, SearchInput } from '@/components/sam/list';
+import { ListPage } from '@/components/sam/list-page';
 import { PulseStat, PulseStrip } from '@/components/sam/pulse-strip';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { PageHeader } from '@/components/ui/page-header';
 import {
     Select,
     SelectContent,
@@ -483,26 +483,23 @@ export default function AdminTenantsIndex({
     return (
         <>
             <Head title="Clientes" />
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                <PageHeader
-                    title="Clientes"
-                    meta={
-                        <span className="text-xs text-fg-3">
-                            <span className="font-medium text-fg-1">
-                                {stats.total}
-                            </span>{' '}
-                            {stats.total === 1 ? 'cliente' : 'clientes'}
-                        </span>
-                    }
-                    actions={
-                        <Button size="sm" onClick={() => setCreateOpen(true)}>
-                            <Plus className="size-3.5" />
-                            Nuevo cliente
-                        </Button>
-                    }
-                    className="shrink-0 border-b border-border bg-surface-1 px-5 py-3"
-                />
-
+            <ListPage
+                title="Clientes"
+                meta={
+                    <span className="text-xs text-fg-3">
+                        <span className="font-medium text-fg-1">
+                            {stats.total}
+                        </span>{' '}
+                        {stats.total === 1 ? 'cliente' : 'clientes'}
+                    </span>
+                }
+                actions={
+                    <Button size="sm" onClick={() => setCreateOpen(true)}>
+                        <Plus className="size-3.5" />
+                        Nuevo cliente
+                    </Button>
+                }
+            >
                 {stats.total > 0 ? (
                     <>
                         <PulseStrip>
@@ -602,7 +599,7 @@ export default function AdminTenantsIndex({
                         )
                     }
                 />
-            </div>
+            </ListPage>
 
             <CreateTenantSheet
                 open={createOpen}
