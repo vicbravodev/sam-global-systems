@@ -4,6 +4,7 @@ import { ConditionBuilder } from '@/components/sam/condition-builder';
 import type { ConditionFieldDef } from '@/components/sam/condition-builder';
 import { FormField } from '@/components/sam/form-field';
 import { RadioCard, RadioCardGroup } from '@/components/sam/radio-card-group';
+import { ReadOnlyNotice } from '@/components/sam/read-only-notice';
 import { Step } from '@/components/sam/step';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -42,7 +43,6 @@ import {
     submitRuleChange,
     useRulesBase,
 } from './lib';
-import { ReadOnlyNote } from './rule-editor-parts';
 import { RuleSentence } from './rule-sentence';
 import { RuleTester } from './rule-tester';
 import type { DecisionRuleRow, OutcomeOption, RulesetOption } from './types';
@@ -268,11 +268,11 @@ function DecisionRuleForm({
 
             <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-5 py-5">
                 {!editable && rule && (
-                    <ReadOnlyNote>
+                    <ReadOnlyNotice>
                         {rule.isGlobal
                             ? 'Esta regla la mantiene SAM y aplica a todas las cuentas. Puedes verla y probarla, pero no cambiarla.'
                             : 'No tienes permiso para cambiar reglas. Puedes verla y probarla.'}
-                    </ReadOnlyNote>
+                    </ReadOnlyNotice>
                 )}
 
                 <div className="rounded-md border border-border bg-surface-1 px-3 py-2.5">

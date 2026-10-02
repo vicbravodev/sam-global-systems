@@ -1,5 +1,4 @@
 import { router, usePage } from '@inertiajs/react';
-import { Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import { readErrorPayload } from '@/lib/sam-fetch';
 
@@ -110,16 +109,5 @@ export function JsonField({
             spellCheck={false}
             className="w-full rounded-md border border-border bg-surface-2 p-2 font-mono text-2xs leading-relaxed text-fg-2"
         />
-    );
-}
-
-/** Aviso de sólo lectura para quien no puede editar la configuración. */
-export function ReadOnlyNotice() {
-    return (
-        <div className="flex items-center gap-2 rounded-md border border-border bg-surface-2 px-3 py-2 text-xs text-fg-2">
-            <Lock className="size-3.5 shrink-0 text-fg-3" aria-hidden />
-            Puedes consultar esta configuración, pero sólo un administrador
-            puede cambiarla.
-        </div>
     );
 }
