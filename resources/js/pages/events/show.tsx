@@ -1,6 +1,5 @@
 import { Head, Link, usePage } from '@inertiajs/react';
 import {
-    ArrowLeft,
     Check,
     ChevronRight,
     Copy,
@@ -22,6 +21,7 @@ import {
     DescriptionItem,
     DescriptionList,
 } from '@/components/sam/description-list';
+import { DetailHeader } from '@/components/sam/detail-header';
 import { toSeverity } from '@/components/sam/event-severity';
 import { EventCategoryIcon } from '@/components/sam/events/event-category-icon';
 import { PipelineStatusPill } from '@/components/sam/events/pipeline-status';
@@ -126,103 +126,90 @@ function EventHero({
     const severity = toSeverity(event.severity);
 
     return (
-        <header className="flex flex-wrap items-start justify-between gap-4">
-            <div className="flex min-w-0 items-start gap-3">
-                <Button variant="ghost" size="sm" asChild className="mt-1">
-                    <Link
-                        href={teamSlug ? `/${teamSlug}/events` : '#'}
-                        aria-label="Volver a eventos"
-                    >
-                        <ArrowLeft size={15} />
-                    </Link>
-                </Button>
+        <DetailHeader
+            backHref={teamSlug ? `/${teamSlug}/events` : '#'}
+            backLabel="Volver a eventos"
+            media={
                 <span className="grid size-12 shrink-0 place-items-center rounded-md border border-border bg-surface-2">
                     <EventCategoryIcon code={event.categoryCode} size={22} />
                 </span>
-                <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                        {event.severity && <SeverityBadge level={severity} />}
-                        <PipelineStatusPill
-                            status={event.status}
-                            label={event.statusLabel}
-                        />
-                        {event.category && (
-                            <span className="text-2xs text-fg-3">
-                                {event.category}
-                            </span>
-                        )}
-                    </div>
-                    <h1 className="sam-h1 mt-1 truncate">
-                        {event.eventType ??
-                            event.eventTypeCode ??
-                            `Evento #${event.id}`}
-                    </h1>
-                    {providerDescriptionLabel(
-                        event.description,
-                        event.eventType,
-                    ) && (
-                        <p className="mt-0.5 text-sm text-fg-2">
-                            {providerDescriptionLabel(
-                                event.description,
-                                event.eventType,
-                            )}
-                        </p>
+            }
+            eyebrow={
+                <>
+                    {event.severity && <SeverityBadge level={severity} />}
+                    <PipelineStatusPill
+                        status={event.status}
+                        label={event.statusLabel}
+                    />
+                    {event.category && (
+                        <span className="text-2xs text-fg-3">
+                            {event.category}
+                        </span>
                     )}
-                    <p className="sam-meta mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5">
-                        {event.occurredAt && (
-                            <span title={event.occurredAt}>
-                                {formatDateTime(event.occurredAt)} ·{' '}
-                                <RelativeTime
-                                    minutes={minutesSince(event.occurredAt)}
-                                />
-                            </span>
-                        )}
-                        {event.asset && (
-                            <Link
-                                href={
-                                    teamSlug && event.assetId !== null
-                                        ? `/${teamSlug}/assets/${event.assetId}`
-                                        : '#'
-                                }
-                                className="inline-flex items-center gap-1 text-fg-2 hover:text-primary hover:underline"
-                            >
-                                <Truck size={12} strokeWidth={1.75} />
-                                {event.asset}
-                            </Link>
-                        )}
-                        {event.driver && (
-                            <Link
-                                href={
-                                    teamSlug && event.driverId !== null
-                                        ? `/${teamSlug}/drivers/${event.driverId}`
-                                        : '#'
-                                }
-                                className="inline-flex items-center gap-1 text-fg-2 hover:text-primary hover:underline"
-                            >
-                                <User size={12} strokeWidth={1.75} />
-                                {event.driver}
-                            </Link>
-                        )}
-                        {event.provider && (
-                            <ProviderTag name={event.provider} />
-                        )}
-                        <span className="font-mono text-3xs">#{event.id}</span>
-                    </p>
-                </div>
-            </div>
-            {event.facts.externalUrl && (
-                <Button variant="outline" size="sm" asChild>
-                    <a
-                        href={event.facts.externalUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                    >
-                        <ExternalLink size={13} />
-                        Ver en {event.provider ?? 'el proveedor'}
-                    </a>
-                </Button>
+                </>
+            }
+            title={
+                event.eventType ?? event.eventTypeCode ?? `Evento #${event.id}`
+            }
+            subtitle={providerDescriptionLabel(
+                event.description,
+                event.eventType,
             )}
-        </header>
+            meta={
+                <>
+                    {event.occurredAt && (
+                        <span title={event.occurredAt}>
+                            {formatDateTime(event.occurredAt)} ·{' '}
+                            <RelativeTime
+                                minutes={minutesSince(event.occurredAt)}
+                            />
+                        </span>
+                    )}
+                    {event.asset && (
+                        <Link
+                            href={
+                                teamSlug && event.assetId !== null
+                                    ? `/${teamSlug}/assets/${event.assetId}`
+                                    : '#'
+                            }
+                            className="inline-flex items-center gap-1 text-fg-2 hover:text-primary hover:underline"
+                        >
+                            <Truck size={12} strokeWidth={1.75} />
+                            {event.asset}
+                        </Link>
+                    )}
+                    {event.driver && (
+                        <Link
+                            href={
+                                teamSlug && event.driverId !== null
+                                    ? `/${teamSlug}/drivers/${event.driverId}`
+                                    : '#'
+                            }
+                            className="inline-flex items-center gap-1 text-fg-2 hover:text-primary hover:underline"
+                        >
+                            <User size={12} strokeWidth={1.75} />
+                            {event.driver}
+                        </Link>
+                    )}
+                    {event.provider && <ProviderTag name={event.provider} />}
+                    <span className="font-mono text-3xs">#{event.id}</span>
+                </>
+            }
+            actions={
+                event.facts.externalUrl && (
+                    <Button variant="outline" size="sm" asChild>
+                        <a
+                            href={event.facts.externalUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                        >
+                            <ExternalLink size={13} />
+                            Ver en {event.provider ?? 'el proveedor'}
+                        </a>
+                    </Button>
+                )
+            }
+        />
     );
 }
 

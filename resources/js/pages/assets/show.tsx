@@ -1,7 +1,6 @@
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import {
     Camera,
-    ChevronLeft,
     Cpu,
     Flame,
     Gauge,
@@ -27,6 +26,7 @@ import {
     DescriptionItem,
     DescriptionList,
 } from '@/components/sam/description-list';
+import { DetailHeader } from '@/components/sam/detail-header';
 import { EntityAvatar } from '@/components/sam/entity-avatar';
 import { PointMap } from '@/components/sam/lazy-point-map';
 import { LinkedIncidentsCard } from '@/components/sam/linked-incidents-card';
@@ -192,98 +192,90 @@ function AssetHero({
     const title = vehicleTitle(asset.vehicle);
 
     return (
-        <header className="flex flex-wrap items-start justify-between gap-4">
-            <div className="flex min-w-0 items-start gap-3">
-                <Button variant="ghost" size="sm" asChild className="mt-1">
-                    <Link
-                        href={teamSlug ? `/${teamSlug}/assets` : '#'}
-                        aria-label="Volver a la flota"
-                    >
-                        <ChevronLeft size={15} />
-                    </Link>
-                </Button>
+        <DetailHeader
+            backHref={teamSlug ? `/${teamSlug}/assets` : '#'}
+            backLabel="Volver a la flota"
+            media={
                 <EntityAvatar
                     name={asset.name}
                     size={52}
                     shape="square"
                     icon={Truck}
                 />
-                <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2.5">
-                        <h1 className="sam-h1 truncate">{asset.name}</h1>
-                        <AssetStatusBadge status={asset.status} />
-                        {asset.vehicle?.plate && (
-                            <PlateChip plate={asset.vehicle.plate} />
-                        )}
-                        <MonitoringSwitch
-                            assetId={asset.id}
-                            assetName={asset.name}
-                            state={asset.monitoringState}
-                            teamSlug={teamSlug}
-                            withLabel
-                            className="ml-1"
-                        />
-                    </div>
-                    <p className="sam-meta mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                        {asset.code && (
-                            <span className="font-mono">{asset.code}</span>
-                        )}
-                        {title && <span className="text-fg-2">{title}</span>}
-                        {asset.type && (
-                            <span>
-                                {assetTypeLabel(
-                                    asset.type.code,
-                                    asset.type.name,
-                                )}
-                            </span>
-                        )}
-                        {asset.provider && (
-                            <span>
-                                vía{' '}
-                                <span className="text-fg-2">
-                                    {asset.provider}
-                                </span>
-                            </span>
-                        )}
-                        {asset.vehicle?.vin && (
-                            <span className="font-mono text-3xs">
-                                VIN {asset.vehicle.vin}
-                            </span>
-                        )}
-                    </p>
-                </div>
-            </div>
-
-            <div className="flex flex-col items-end gap-2">
-                <span className="sam-meta">
-                    <AssetSignal
-                        lastSignalAt={asset.lastSignalAt}
-                        hasDevice={asset.devices.length > 0}
-                        withPrefix
+            }
+            title={asset.name}
+            badges={
+                <>
+                    <AssetStatusBadge status={asset.status} />
+                    {asset.vehicle?.plate && (
+                        <PlateChip plate={asset.vehicle.plate} />
+                    )}
+                    <MonitoringSwitch
+                        assetId={asset.id}
+                        assetName={asset.name}
+                        state={asset.monitoringState}
+                        teamSlug={teamSlug}
+                        withLabel
+                        className="ml-1"
                     />
-                </span>
-                <div className="flex flex-wrap items-center gap-2">
-                    {teamSlug && asset.lastLocation && (
-                        <Button variant="outline" size="sm" asChild>
-                            <Link href={`/${teamSlug}/assets/map`}>
-                                <MapIcon size={13} />
-                                Ver en el mapa
-                            </Link>
-                        </Button>
+                </>
+            }
+            meta={
+                <>
+                    {asset.code && (
+                        <span className="font-mono">{asset.code}</span>
                     )}
-                    {teamSlug && asset.driver && (
-                        <Button variant="outline" size="sm" asChild>
-                            <Link
-                                href={`/${teamSlug}/drivers/${asset.driver.id}`}
-                            >
-                                <User size={13} />
-                                Ver conductor
-                            </Link>
-                        </Button>
+                    {title && <span className="text-fg-2">{title}</span>}
+                    {asset.type && (
+                        <span>
+                            {assetTypeLabel(asset.type.code, asset.type.name)}
+                        </span>
                     )}
+                    {asset.provider && (
+                        <span>
+                            vía{' '}
+                            <span className="text-fg-2">{asset.provider}</span>
+                        </span>
+                    )}
+                    {asset.vehicle?.vin && (
+                        <span className="font-mono text-3xs">
+                            VIN {asset.vehicle.vin}
+                        </span>
+                    )}
+                </>
+            }
+            actions={
+                <div className="flex flex-col items-end gap-2">
+                    <span className="sam-meta">
+                        <AssetSignal
+                            lastSignalAt={asset.lastSignalAt}
+                            hasDevice={asset.devices.length > 0}
+                            withPrefix
+                        />
+                    </span>
+                    <div className="flex flex-wrap items-center gap-2">
+                        {teamSlug && asset.lastLocation && (
+                            <Button variant="outline" size="sm" asChild>
+                                <Link href={`/${teamSlug}/assets/map`}>
+                                    <MapIcon size={13} />
+                                    Ver en el mapa
+                                </Link>
+                            </Button>
+                        )}
+                        {teamSlug && asset.driver && (
+                            <Button variant="outline" size="sm" asChild>
+                                <Link
+                                    href={`/${teamSlug}/drivers/${asset.driver.id}`}
+                                >
+                                    <User size={13} />
+                                    Ver conductor
+                                </Link>
+                            </Button>
+                        )}
+                    </div>
                 </div>
-            </div>
-        </header>
+            }
+        />
     );
 }
 

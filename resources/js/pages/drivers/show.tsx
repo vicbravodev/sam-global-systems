@@ -1,7 +1,6 @@
 import { Head, Link, usePage } from '@inertiajs/react';
 import {
     Calendar,
-    ChevronLeft,
     FileText,
     IdCard,
     MessageCircle,
@@ -13,6 +12,7 @@ import {
     DescriptionItem,
     DescriptionList,
 } from '@/components/sam/description-list';
+import { DetailHeader } from '@/components/sam/detail-header';
 import { DriverStatusBadge } from '@/components/sam/drivers/driver-status-badge';
 import { EntityAvatar } from '@/components/sam/entity-avatar';
 import { LinkedIncidentsCard } from '@/components/sam/linked-incidents-card';
@@ -114,108 +114,100 @@ function DriverHero({
     const fresh = isFresh(seenAt);
 
     return (
-        <header className="flex flex-wrap items-start justify-between gap-4">
-            <div className="flex min-w-0 items-start gap-3">
-                <Button variant="ghost" size="sm" asChild className="mt-1">
-                    <Link
-                        href={teamSlug ? `/${teamSlug}/drivers` : '#'}
-                        aria-label="Volver a conductores"
-                    >
-                        <ChevronLeft size={15} />
-                    </Link>
-                </Button>
-                <EntityAvatar name={driver.fullName} size={52} />
-                <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2.5">
-                        <h1 className="sam-h1 truncate">{driver.fullName}</h1>
-                        <DriverStatusBadge status={driver.status} />
-                        {riskLevel &&
-                            (riskLevel === 'high' ||
-                                riskLevel === 'critical') && (
-                                <SeverityBadge level={riskLevel} />
-                            )}
-                    </div>
-                    <p className="sam-meta mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                        {driver.employeeCode && (
-                            <span className="font-mono">
-                                {driver.employeeCode}
-                            </span>
+        <DetailHeader
+            backHref={teamSlug ? `/${teamSlug}/drivers` : '#'}
+            backLabel="Volver a conductores"
+            media={<EntityAvatar name={driver.fullName} size={52} />}
+            title={driver.fullName}
+            badges={
+                <>
+                    <DriverStatusBadge status={driver.status} />
+                    {riskLevel &&
+                        (riskLevel === 'high' || riskLevel === 'critical') && (
+                            <SeverityBadge level={riskLevel} />
                         )}
-                        {driver.currentAsset ? (
-                            <Link
-                                href={
-                                    teamSlug
-                                        ? `/${teamSlug}/assets/${driver.currentAsset.id}`
-                                        : '#'
-                                }
-                                className="inline-flex items-center gap-1 text-fg-2 hover:text-primary hover:underline"
-                            >
-                                <Truck size={12} strokeWidth={1.75} />
-                                {driver.currentAsset.name}
-                                {driver.currentAsset.code && (
-                                    <span className="font-mono text-fg-3">
-                                        {driver.currentAsset.code}
-                                    </span>
-                                )}
-                            </Link>
-                        ) : (
-                            <span className="italic">Sin unidad asignada</span>
-                        )}
-                        {seenAt && (
-                            <span
-                                className="inline-flex items-center gap-1.5"
-                                title={formatDateTime(seenAt)}
-                            >
-                                <span
-                                    className={cn(
-                                        'size-1.5 rounded-full',
-                                        fresh
-                                            ? 'bg-severity-low'
-                                            : 'bg-fg-disabled',
-                                    )}
-                                    aria-hidden="true"
-                                />
-                                visto{' '}
-                                <RelativeTime minutes={minutesSince(seenAt)} />
-                            </span>
-                        )}
-                    </p>
-                </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-                {phone && (
-                    <>
-                        <Button variant="outline" size="sm" asChild>
-                            <a href={`tel:${digits(phone)}`}>
-                                <Phone size={13} />
-                                Llamar
-                            </a>
-                        </Button>
-                        <Button variant="outline" size="sm" asChild>
-                            <a
-                                href={`https://wa.me/${digits(phone).replace('+', '')}`}
-                                target="_blank"
-                                rel="noreferrer"
-                            >
-                                <MessageCircle size={13} />
-                                WhatsApp
-                            </a>
-                        </Button>
-                    </>
-                )}
-                {driver.currentAsset && teamSlug && (
-                    <Button variant="outline" size="sm" asChild>
+                </>
+            }
+            meta={
+                <>
+                    {driver.employeeCode && (
+                        <span className="font-mono">{driver.employeeCode}</span>
+                    )}
+                    {driver.currentAsset ? (
                         <Link
-                            href={`/${teamSlug}/assets/${driver.currentAsset.id}`}
+                            href={
+                                teamSlug
+                                    ? `/${teamSlug}/assets/${driver.currentAsset.id}`
+                                    : '#'
+                            }
+                            className="inline-flex items-center gap-1 text-fg-2 hover:text-primary hover:underline"
                         >
-                            <Truck size={13} />
-                            Ver unidad
+                            <Truck size={12} strokeWidth={1.75} />
+                            {driver.currentAsset.name}
+                            {driver.currentAsset.code && (
+                                <span className="font-mono text-fg-3">
+                                    {driver.currentAsset.code}
+                                </span>
+                            )}
                         </Link>
-                    </Button>
-                )}
-            </div>
-        </header>
+                    ) : (
+                        <span className="italic">Sin unidad asignada</span>
+                    )}
+                    {seenAt && (
+                        <span
+                            className="inline-flex items-center gap-1.5"
+                            title={formatDateTime(seenAt)}
+                        >
+                            <span
+                                className={cn(
+                                    'size-1.5 rounded-full',
+                                    fresh
+                                        ? 'bg-severity-low'
+                                        : 'bg-fg-disabled',
+                                )}
+                                aria-hidden="true"
+                            />
+                            visto{' '}
+                            <RelativeTime minutes={minutesSince(seenAt)} />
+                        </span>
+                    )}
+                </>
+            }
+            actions={
+                <div className="flex flex-wrap items-center gap-2">
+                    {phone && (
+                        <>
+                            <Button variant="outline" size="sm" asChild>
+                                <a href={`tel:${digits(phone)}`}>
+                                    <Phone size={13} />
+                                    Llamar
+                                </a>
+                            </Button>
+                            <Button variant="outline" size="sm" asChild>
+                                <a
+                                    href={`https://wa.me/${digits(phone).replace('+', '')}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                >
+                                    <MessageCircle size={13} />
+                                    WhatsApp
+                                </a>
+                            </Button>
+                        </>
+                    )}
+                    {driver.currentAsset && teamSlug && (
+                        <Button variant="outline" size="sm" asChild>
+                            <Link
+                                href={`/${teamSlug}/assets/${driver.currentAsset.id}`}
+                            >
+                                <Truck size={13} />
+                                Ver unidad
+                            </Link>
+                        </Button>
+                    )}
+                </div>
+            }
+        />
     );
 }
 
