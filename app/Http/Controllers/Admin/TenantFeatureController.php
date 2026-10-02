@@ -52,7 +52,7 @@ class TenantFeatureController extends Controller
             category: AuditCategory::Billing,
             entityType: Team::class,
             entityId: $team->id,
-            summary: "Feature {$featureKey} del tenant {$team->name} actualizada.",
+            summary: "Función {$featureKey} del cliente {$team->name} actualizada.",
             teamId: $team->id,
             metadata: [
                 'actor_email' => $user->email,

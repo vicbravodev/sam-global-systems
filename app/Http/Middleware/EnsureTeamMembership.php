@@ -2,12 +2,16 @@
 
 namespace App\Http\Middleware;
 
+use App\Domains\Audit\Actions\RecordAuditEntry;
+use App\Domains\Audit\Enums\AuditActorType;
+use App\Domains\Audit\Enums\AuditCategory;
 use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Models\User;
 use App\Support\TenantContext;
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 
 class EnsureTeamMembership
@@ -26,8 +30,18 @@ class EnsureTeamMembership
         // the BelongsToTenant global scope transparently scopes every query to
         // the impersonated tenant — no membership or role check applies.
         if ($user?->isSuperAdmin() === true && $team !== null) {
+            // El espacio personal de otro usuario no es un cliente: nada que
+            // operar ahí, y entrar sería leer su espacio privado.
+            abort_if($team->is_personal && ! $user->belongsToTeam($team), 404);
+
             if ($request->route('current_team') !== null && ! $user->isCurrentTeam($team)) {
                 $user->forceSwitchTeam($team);
+
+                // Entrar por URL directa también es impersonar: queda en la
+                // auditoría igual que el botón "Entrar a su consola".
+                if (! $user->belongsToTeam($team)) {
+                    $this->recordImplicitImpersonation($request, $user, $team);
+                }
             }
 
             TenantContext::set($team);
@@ -49,6 +63,24 @@ class EnsureTeamMembership
         TenantContext::set($team);
 
         return $next($request);
+    }
+
+    private function recordImplicitImpersonation(Request $request, User $user, Team $team): void
+    {
+        app(RecordAuditEntry::class)->execute(
+            actorType: AuditActorType::User,
+            actorId: $user->id,
+            action: 'impersonation.started',
+            category: AuditCategory::Security,
+            entityType: Team::class,
+            entityId: $team->id,
+            summary: "Super-admin {$user->email} entró al cliente {$team->name} por URL directa.",
+            teamId: $team->id,
+            metadata: ['actor_email' => $user->email, 'team_slug' => $team->slug, 'via' => 'direct_url'],
+            signature: 'impersonation:start:'.Str::uuid()->toString(),
+            ipAddress: $request->ip(),
+            userAgent: $request->userAgent(),
+        );
     }
 
     /**
