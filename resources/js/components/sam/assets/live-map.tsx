@@ -7,11 +7,11 @@ import {
     MapUnavailable,
 } from '@/components/sam/map/map-controls';
 import {
-    cardinal,
     clusterSignature,
     createClusterMarker,
     createUnitMarker,
-    MOVING_MIN_KPH,
+    isMoving,
+    speedLine,
     STATUS_URGENCY,
     unitSignature,
     updateClusterMarker,
@@ -75,14 +75,6 @@ function easeOutCubic(t: number): number {
     return 1 - Math.pow(1 - t, 3);
 }
 
-export function isMoving(asset: AssetMarker): boolean {
-    if (asset.moving !== undefined && asset.moving !== null) {
-        return asset.moving;
-    }
-
-    return (asset.speed ?? 0) >= MOVING_MIN_KPH;
-}
-
 function unitState(
     asset: AssetMarker,
     statusLabels: Record<string, string>,
@@ -98,17 +90,6 @@ function unitState(
         ariaLabel: `${asset.code ? `${asset.code} · ` : ''}${asset.name} · ${status}`,
         selected,
     };
-}
-
-function speedLine(asset: AssetMarker): string {
-    if (!isMoving(asset)) {
-        return 'Detenido';
-    }
-
-    const speed = asset.speed !== null ? `${Math.round(asset.speed)} km/h` : '';
-    const heading = asset.heading !== null ? cardinal(asset.heading) : '';
-
-    return [speed, heading].filter(Boolean).join(' · ') || 'En movimiento';
 }
 
 interface LiveMapProps {
@@ -711,5 +692,3 @@ export function LiveMap({
         </div>
     );
 }
-
-export { speedLine };

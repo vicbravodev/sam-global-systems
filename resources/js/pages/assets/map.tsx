@@ -1,9 +1,22 @@
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { ArrowUpRight, RefreshCw, Search, User, X } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+    lazy,
+    Suspense,
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+} from 'react';
 import { DataFreshness } from '@/components/sam/assets/data-freshness';
-import { isMoving, LiveMap, speedLine } from '@/components/sam/assets/live-map';
-import { STATUS_COLOR, STATUS_URGENCY } from '@/components/sam/map/markers';
+import { MapLoading } from '@/components/sam/map/map-controls';
+import {
+    isMoving,
+    speedLine,
+    STATUS_COLOR,
+    STATUS_URGENCY,
+} from '@/components/sam/map/markers';
 import { RealtimeStatus } from '@/components/sam/realtime-status';
 import type { RealtimeState } from '@/components/sam/realtime-status';
 import { Button } from '@/components/ui/button';
@@ -17,6 +30,14 @@ import type {
     AssetsMapProps,
     AssetStatusValue,
 } from '@/types/assets';
+
+// maplibre-gl loads in its own chunk: the header and the roster paint first,
+// the map area shows its loading frame meanwhile.
+const LiveMap = lazy(() =>
+    import('@/components/sam/assets/live-map').then((module) => ({
+        default: module.LiveMap,
+    })),
+);
 
 // Reload (to pick up brand-new positioned assets) at most this often.
 const RELOAD_DEBOUNCE_MS = 5000;
@@ -610,21 +631,29 @@ export default function AssetsMap() {
                     </aside>
 
                     <div className="relative min-h-0 min-w-0 flex-1">
-                        <LiveMap
-                            markers={visible}
-                            statusLabels={statusLabels}
-                            selectedId={selectedId}
-                            onSelect={setSelectedId}
-                            focusRequest={focusRequest}
-                            renderCallout={(asset) => (
-                                <UnitCallout
-                                    asset={asset}
-                                    statusLabels={statusLabels}
-                                    teamSlug={teamSlug}
-                                    onClose={() => setSelectedId(null)}
-                                />
-                            )}
-                        />
+                        <Suspense
+                            fallback={
+                                <div className="relative h-full w-full overflow-hidden bg-surface-2">
+                                    <MapLoading />
+                                </div>
+                            }
+                        >
+                            <LiveMap
+                                markers={visible}
+                                statusLabels={statusLabels}
+                                selectedId={selectedId}
+                                onSelect={setSelectedId}
+                                focusRequest={focusRequest}
+                                renderCallout={(asset) => (
+                                    <UnitCallout
+                                        asset={asset}
+                                        statusLabels={statusLabels}
+                                        teamSlug={teamSlug}
+                                        onClose={() => setSelectedId(null)}
+                                    />
+                                )}
+                            />
+                        </Suspense>
 
                         {/* Small screens: the roster is hidden, the status
                             filter floats on the map. */}
