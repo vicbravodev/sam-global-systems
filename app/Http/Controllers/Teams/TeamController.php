@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers\Teams;
 
-use App\Actions\Teams\CreateTeam;
+use App\Domains\Tenancy\Actions\CreateTenant;
 use App\Enums\TeamRole;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Teams\DeleteTeamRequest;
@@ -34,13 +34,16 @@ class TeamController extends Controller
     /**
      * Store a newly created team.
      */
-    public function store(SaveTeamRequest $request, CreateTeam $createTeam, #[CurrentUser] User $user): RedirectResponse
+    public function store(SaveTeamRequest $request, CreateTenant $createTenant, #[CurrentUser] User $user): RedirectResponse
     {
         // C3: Team = tenant. La creación de equipos/tenants es exclusiva del
         // superadmin; un usuario normal ya no crea equipos desde su cuenta.
         abort_unless($user->isSuperAdmin(), 403);
 
-        $team = $createTeam->handle($user, $request->validated('name'));
+        // Mismo alta que la consola (paquete por defecto, branding,
+        // TenantCreated): un team no personal siempre es un tenant completo.
+        $team = $createTenant->execute(name: (string) $request->validated('name'), owner: $user);
+        $user->switchTeam($team);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Team created.')]);
 

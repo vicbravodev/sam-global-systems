@@ -15,6 +15,7 @@ use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Models\User;
 use App\Support\TenantContext;
+use Illuminate\Support\Facades\DB;
 use LogicException;
 
 class CreateTenant
@@ -23,10 +24,21 @@ class CreateTenant
         string $name,
         User $owner,
         ?string $planCode = null,
+        ?string $timezone = null,
     ): Team {
+        // Atómica: equipo, membresía, suscripción, features, branding y el
+        // paquete por defecto de TenantCreated quedan todos o ninguno.
+        return DB::transaction(fn (): Team => $this->create($name, $owner, $planCode, $timezone));
+    }
+
+    private function create(string $name, User $owner, ?string $planCode, ?string $timezone): Team
+    {
         $team = Team::create([
             'name' => $name,
             'is_personal' => false,
+            // La zona horaria rige horario silencioso, contexto de IA y el
+            // Copiloto; sin ella todo cae en la del servidor (UTC).
+            'timezone' => $timezone !== null && $timezone !== '' ? $timezone : null,
         ]);
 
         $team->members()->attach($owner, [

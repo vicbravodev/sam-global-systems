@@ -2,14 +2,13 @@
 
 namespace App\Http\Controllers\Admin;
 
-use App\Actions\Teams\CreateTeam;
 use App\Domains\Assets\Enums\AssetMonitoringState;
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Audit\Actions\RecordAuditEntry;
 use App\Domains\Audit\Enums\AuditActorType;
 use App\Domains\Audit\Enums\AuditCategory;
-use App\Domains\Tenancy\Actions\CreateTenant;
 use App\Domains\Tenancy\Actions\DeleteTenant;
+use App\Domains\Tenancy\Actions\OnboardTenant;
 use App\Domains\Tenancy\Actions\ResolveAssetLimit;
 use App\Domains\Tenancy\Actions\ResolveBillingTerms;
 use App\Domains\Tenancy\Actions\UpdateTenant;
@@ -30,8 +29,6 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection as BaseCollection;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -45,11 +42,6 @@ use Inertia\Response;
  */
 class TenantController extends Controller
 {
-    public function __construct(
-        private readonly CreateTenant $createTenant,
-        private readonly CreateTeam $createTeam,
-    ) {}
-
     public function index(): Response
     {
         // Personal teams are a per-user workspace invariant, not customers:
@@ -84,31 +76,33 @@ class TenantController extends Controller
         ]);
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request, OnboardTenant $onboardTenant, #[CurrentUser] User $actor): RedirectResponse
     {
         if (is_string($request->input('owner_email'))) {
             $request->merge(['owner_email' => User::normalizeEmail($request->input('owner_email'))]);
         }
 
+        /** @var array{name: string, owner_email: string, owner_name?: string|null, plan_code?: string|null, timezone?: string|null} $data */
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'plan_code' => ['nullable', 'string', 'exists:plans,code'],
             'owner_email' => ['required', 'email', 'max:255'],
             'owner_name' => ['nullable', 'string', 'max:255'],
+            'timezone' => ['nullable', 'string', 'timezone:all'],
         ]);
 
-        $owner = User::findByEmail($data['owner_email'])
-            ?? $this->provisionOwner($data);
+        $team = $onboardTenant->execute($data, $actor, $request->ip(), $request->userAgent());
 
-        $team = $this->createTenant->execute(
-            name: $data['name'],
-            owner: $owner,
-            planCode: $data['plan_code'] ?? null,
-        );
+        $owner = $team->owner();
 
-        return redirect()
-            ->route('admin.tenants.show', $team)
-            ->with('status', 'Tenant creado correctamente.');
+        Inertia::flash('toast', [
+            'type' => 'success',
+            'message' => $owner !== null && $owner->email_verified_at === null
+                ? "Cliente {$team->name} creado. Enviamos a {$owner->email} su enlace de acceso."
+                : "Cliente {$team->name} creado.",
+        ]);
+
+        return redirect()->route('admin.tenants.show', $team);
     }
 
     public function show(Team $team, ResolveAssetLimit $resolveAssetLimit, ResolveBillingTerms $resolveBillingTerms): Response
@@ -132,6 +126,8 @@ class TenantController extends Controller
                     'name' => $member->name,
                     'email' => $member->email,
                     'role' => $pivot instanceof Membership ? $pivot->role->value : '',
+                    // Dado de alta desde la consola y aún sin usar su enlace.
+                    'pendingAccess' => $member->email_verified_at === null,
                 ];
             })->values()->all();
 
@@ -365,36 +361,5 @@ class TenantController extends Controller
                 'code' => $plan->code,
                 'name' => $plan->name,
             ])->all();
-    }
-
-    /**
-     * Provision a brand-new owner when the given email is unknown. Keeps the
-     * "every user has a personal team" invariant and emails a password-reset
-     * link so the owner can set their own credentials.
-     *
-     * @param  array{owner_email: string, owner_name?: string|null}  $data
-     */
-    private function provisionOwner(array $data): User
-    {
-        // Mismo criterio que el empty() original: ausente, null, '' o '0'.
-        if (in_array($data['owner_name'] ?? null, [null, '', '0'], true)) {
-            throw ValidationException::withMessages([
-                'owner_name' => 'El nombre del propietario es obligatorio para crear un usuario nuevo.',
-            ]);
-        }
-
-        return DB::transaction(function () use ($data) {
-            $user = User::create([
-                'name' => $data['owner_name'],
-                'email' => $data['owner_email'],
-                'password' => Str::password(32),
-            ]);
-
-            $this->createTeam->handle($user, $data['owner_name']."'s Team", isPersonal: true);
-
-            Password::sendResetLink(['email' => $user->email]);
-
-            return $user;
-        });
     }
 }

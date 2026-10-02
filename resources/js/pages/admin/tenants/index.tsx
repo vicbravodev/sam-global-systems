@@ -20,6 +20,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { formatDate } from '@/lib/format';
+import { DEFAULT_TENANT_TIMEZONE, TENANT_TIMEZONES } from '@/lib/timezones';
 import { store as impersonateStore } from '@/routes/admin/impersonate';
 import {
     show as adminTenantShow,
@@ -87,6 +88,7 @@ function CreateTenantDialog({
         plan_code: '',
         owner_email: '',
         owner_name: '',
+        timezone: DEFAULT_TENANT_TIMEZONE,
     });
 
     const submit = () => {
@@ -105,9 +107,10 @@ function CreateTenantDialog({
                 <DialogHeader>
                     <DialogTitle>Crear tenant</DialogTitle>
                     <DialogDescription>
-                        Da de alta una organización nueva y asigna a su
-                        propietario. Si el email no existe, se crea el usuario y
-                        se le envía un enlace para definir su contraseña.
+                        Da de alta la empresa y a su responsable. Si el correo
+                        no tiene cuenta, se crea y recibe un enlace (válido 7
+                        días) para definir su contraseña y entrar directo a su
+                        empresa.
                     </DialogDescription>
                 </DialogHeader>
 
@@ -152,6 +155,30 @@ function CreateTenantDialog({
                         {form.errors.plan_code ? (
                             <p className="text-xs text-health-down">
                                 {form.errors.plan_code}
+                            </p>
+                        ) : null}
+                    </div>
+
+                    <div className="grid gap-1.5">
+                        <Label htmlFor="tenant-timezone">Zona horaria</Label>
+                        <Select
+                            value={form.data.timezone}
+                            onValueChange={(v) => form.setData('timezone', v)}
+                        >
+                            <SelectTrigger id="tenant-timezone">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {TENANT_TIMEZONES.map((tz) => (
+                                    <SelectItem key={tz.value} value={tz.value}>
+                                        {tz.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        {form.errors.timezone ? (
+                            <p className="text-xs text-health-down">
+                                {form.errors.timezone}
                             </p>
                         ) : null}
                     </div>
