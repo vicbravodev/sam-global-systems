@@ -9,14 +9,14 @@ import {
     useState,
 } from 'react';
 import {
-    CopilotBubbleConnecting,
-    CopilotBubbleFrame,
-} from './copilot-bubble-frame';
-import {
     Tooltip,
     TooltipContent,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
+import {
+    CopilotBubbleConnecting,
+    CopilotBubbleFrame,
+} from './copilot-bubble-frame';
 
 // The chat panel (blocks, composer, stream reader) only ships once the bubble
 // opens; hovering or focusing the launcher starts the download early.

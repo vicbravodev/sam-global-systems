@@ -2,17 +2,17 @@ import { usePage } from '@inertiajs/react';
 import { Maximize2, MessageSquarePlus, Sparkles, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-    CopilotBubbleConnecting,
-    CopilotBubbleFrame,
-} from './copilot-bubble-frame';
-import { CopilotChatPanel } from './copilot-chat-panel';
-import { useCopilotChat } from './use-copilot-chat';
-import {
     Tooltip,
     TooltipContent,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
 import type { CopilotCatalog, CopilotQuota } from '@/types/copilot';
+import {
+    CopilotBubbleConnecting,
+    CopilotBubbleFrame,
+} from './copilot-bubble-frame';
+import { CopilotChatPanel } from './copilot-chat-panel';
+import { useCopilotChat } from './use-copilot-chat';
 
 type CatalogState =
     | { status: 'idle' | 'loading' | 'failed' }
