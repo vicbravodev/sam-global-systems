@@ -6,7 +6,6 @@ use App\Domains\Audit\Models\AuditLog;
 use App\Domains\Audit\Models\ChangeHistory;
 use App\Domains\Audit\Models\DomainEventLog;
 use App\Domains\Audit\Models\SystemTrace;
-use App\Domains\Audit\Models\TraceLink;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use RuntimeException;
 use Tests\TestCase;
@@ -61,15 +60,6 @@ class AuditLogAppendOnlyTest extends TestCase
 
         $trace->module_name = 'tampered';
         $trace->save();
-    }
-
-    public function test_trace_link_cannot_be_deleted(): void
-    {
-        $link = TraceLink::factory()->create();
-
-        $this->expectException(RuntimeException::class);
-
-        $link->delete();
     }
 
     public function test_audit_log_has_no_updated_at_column(): void

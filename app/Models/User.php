@@ -2,9 +2,7 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
 use App\Concerns\HasTeams;
-use App\Domains\Access\Models\UserPreference;
 use App\Domains\Notifications\Models\UserPushToken;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -76,14 +74,6 @@ class User extends Authenticatable
     public function notifications(): MorphMany
     {
         return $this->morphMany(UserNotification::class, 'notifiable')->latest();
-    }
-
-    /**
-     * @return HasMany<UserPreference, $this>
-     */
-    public function preferences(): HasMany
-    {
-        return $this->hasMany(UserPreference::class);
     }
 
     /**
