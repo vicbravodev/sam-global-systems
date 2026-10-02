@@ -11,6 +11,7 @@ use App\Domains\Notifications\Enums\MessagingChargeSource;
 use App\Domains\Notifications\Enums\NotificationSourceType;
 use App\Domains\Notifications\Events\NotificationDelivered;
 use App\Domains\Notifications\Events\NotificationFailed;
+use App\Domains\Notifications\Jobs\ResolveUncertainDeliveryJob;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Models\NotificationDelivery;
 use App\Support\LoggableCode;
@@ -65,6 +66,22 @@ class AttemptDelivery
         $result = $this->drivers->driverFor($channel->channel_type)->send($rendered, $channel);
         $durationMs = SystemLog::elapsedMs($started);
 
+        return $this->applyResult($delivery, $channel, $result, $usageEventKey, $durationMs, $refreshNotificationStatus);
+    }
+
+    /**
+     * Persiste y anuncia el resultado de un intento: el del driver recién
+     * llamado o el que ResolveUncertainDeliveryJob averiguó después en el
+     * proveedor para un intento con resultado incierto.
+     */
+    public function applyResult(
+        NotificationDelivery $delivery,
+        NotificationChannel $channel,
+        DeliveryResult $result,
+        string $usageEventKey,
+        ?int $durationMs = null,
+        bool $refreshNotificationStatus = true,
+    ): DeliveryResult {
         $this->recordAttempt->execute($delivery, $result);
         $delivery->refresh();
 
@@ -107,6 +124,18 @@ class AttemptDelivery
                 'charge_recorded' => $chargeRecorded,
                 'usage_meter_code' => $channel->channel_type->usageMeterCode(),
                 'usage_metered' => $usageMetered,
+            ], durationMs: $durationMs);
+        } elseif ($result->uncertain) {
+            // Timeout/red: no se sabe si Twilio lo creó. Nada de reintento a
+            // ciegas (sería un duplicado cobrado): se consulta al proveedor.
+            ResolveUncertainDeliveryJob::dispatch($delivery->id)
+                ->delay(now()->addSeconds(ResolveUncertainDeliveryJob::DELAY_SECONDS));
+
+            SystemLog::degraded('notifications.delivery.uncertain', reason: 'provider_outcome_unknown', input: $logInput, calc: [
+                'resolve_delay_seconds' => ResolveUncertainDeliveryJob::DELAY_SECONDS,
+            ], result: [
+                'delivery_status' => $delivery->status->value,
+                'resolve_job_requested' => true,
             ], durationMs: $durationMs);
         } else {
             // degraded: la cadena sigue con reintento o fallback; el fracaso
