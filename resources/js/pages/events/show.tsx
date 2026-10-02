@@ -779,6 +779,8 @@ function MediaCard({ media }: { media: EventMediaItem[] }) {
                                             <img
                                                 src={item.thumbnailUrl}
                                                 alt={`${label} #${item.id}`}
+                                                loading="lazy"
+                                                decoding="async"
                                                 className="h-full w-full object-cover transition-transform group-hover:scale-[1.02]"
                                             />
                                         ) : (
