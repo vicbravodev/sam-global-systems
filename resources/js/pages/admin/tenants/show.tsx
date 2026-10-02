@@ -12,7 +12,6 @@ import type { FormEvent } from 'react';
 import { toast } from 'sonner';
 import InputError from '@/components/input-error';
 import {
-    AdminSection,
     AdminTenantBilling,
     CapMeterBar,
 } from '@/components/sam/admin-tenant-billing';
@@ -29,6 +28,7 @@ import { BillingPill } from '@/components/sam/billing/panel';
 import { ConfirmDialog } from '@/components/sam/confirm-dialog';
 import { EntityAvatar } from '@/components/sam/entity-avatar';
 import { MetaChip } from '@/components/sam/meta-chip';
+import { Panel } from '@/components/sam/panel';
 import { TabBar } from '@/components/sam/tab-bar';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -218,14 +218,16 @@ function SetupChecklist({
     const ready = setup.completed === setup.total;
 
     return (
-        <AdminSection
+        <Panel
+            size="lg"
+            bodyClassName="p-4"
             title={ready ? 'Listo para operar' : 'Puesta en marcha'}
             description={
                 ready
                     ? 'Todo lo necesario para que su monitoreo funcione está en su lugar.'
                     : 'Lo que falta para que este cliente opere de punta a punta.'
             }
-            actions={
+            action={
                 <span className="flex items-center gap-2 text-xs text-fg-3 tabular-nums">
                     <span
                         className="h-1.5 w-20 overflow-hidden rounded-full bg-surface-3"
@@ -295,7 +297,7 @@ function SetupChecklist({
                     </li>
                 ))}
             </ol>
-        </AdminSection>
+        </Panel>
     );
 }
 
@@ -429,7 +431,11 @@ export default function AdminTenantShow({
                         <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
                             <SetupChecklist setup={setup} onGo={setTab} />
                             <div className="grid content-start gap-4">
-                                <AdminSection title="Responsable">
+                                <Panel
+                                    size="lg"
+                                    bodyClassName="p-4"
+                                    title="Responsable"
+                                >
                                     {owner ? (
                                         <div className="flex items-center gap-2.5">
                                             <EntityAvatar name={owner.name} />
@@ -455,10 +461,12 @@ export default function AdminTenantShow({
                                             Sin responsable asignado.
                                         </p>
                                     )}
-                                </AdminSection>
-                                <AdminSection
+                                </Panel>
+                                <Panel
+                                    size="lg"
+                                    bodyClassName="p-4"
                                     title="Unidades vigiladas"
-                                    actions={
+                                    action={
                                         <Button
                                             size="sm"
                                             variant="ghost"
@@ -469,7 +477,7 @@ export default function AdminTenantShow({
                                     }
                                 >
                                     <CapMeterBar usage={assetUsage} />
-                                </AdminSection>
+                                </Panel>
                             </div>
                         </div>
                     ) : null}
@@ -601,7 +609,9 @@ function MembersTab({
 
     return (
         <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-            <AdminSection
+            <Panel
+                size="lg"
+                bodyClassName="p-4"
                 title="Miembros"
                 description="Quién entra a la consola de este cliente."
             >
@@ -755,10 +765,12 @@ function MembersTab({
                         })}
                     </ul>
                 )}
-            </AdminSection>
+            </Panel>
 
             {tenant.isPersonal ? null : (
-                <AdminSection
+                <Panel
+                    size="lg"
+                    bodyClassName="p-4"
                     title="Añadir miembro"
                     description="Si el correo no tiene cuenta, se crea y recibe su enlace de acceso (7 días)."
                     className="self-start"
@@ -815,7 +827,7 @@ function MembersTab({
                             Añadir miembro
                         </Button>
                     </form>
-                </AdminSection>
+                </Panel>
             )}
         </div>
     );
@@ -841,7 +853,9 @@ function FeaturesTab({
     }
 
     return (
-        <AdminSection
+        <Panel
+            size="lg"
+            bodyClassName="p-4"
             title="Funciones y topes"
             description="Lo que este cliente tiene encendido. Apagar una función la bloquea para todo su equipo."
         >
@@ -905,7 +919,7 @@ function FeaturesTab({
                     );
                 })}
             </ul>
-        </AdminSection>
+        </Panel>
     );
 }
 
@@ -921,7 +935,9 @@ function UsageTab({ usage }: { usage: UsageRow[] }) {
     }
 
     return (
-        <AdminSection
+        <Panel
+            size="lg"
+            bodyClassName="p-4"
             title="Consumo por periodo"
             description="Últimos 20 contadores, del periodo más reciente al más antiguo."
         >
@@ -988,7 +1004,7 @@ function UsageTab({ usage }: { usage: UsageRow[] }) {
                     </tbody>
                 </table>
             </div>
-        </AdminSection>
+        </Panel>
     );
 }
 
@@ -1041,7 +1057,9 @@ function SettingsTab({
 
     return (
         <div className="grid max-w-3xl gap-4">
-            <AdminSection
+            <Panel
+                size="lg"
+                bodyClassName="p-4"
                 title="Identidad"
                 description="Cómo se llama y se ve este cliente dentro de SAM."
             >
@@ -1173,7 +1191,7 @@ function SettingsTab({
                         </Button>
                     </div>
                 </form>
-            </AdminSection>
+            </Panel>
 
             {tenant.isPersonal ? null : (
                 <section className="rounded-lg border border-destructive/30 bg-destructive/5">

@@ -1,8 +1,9 @@
 import { Link } from '@inertiajs/react';
 import { ChevronRight } from 'lucide-react';
+import { Panel } from '@/components/sam/panel';
 import { formatNumber } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { BillingPanel, money } from './panel';
+import { money } from './panel';
 import type { BillingTerms, FleetCounts, PeriodEstimate } from './types';
 
 /**
@@ -27,7 +28,7 @@ export function CapMeter({
     const ratio = cap !== null && cap > 0 ? Math.min(1, monitored / cap) : 0;
 
     return (
-        <BillingPanel
+        <Panel
             title="Unidades vigiladas"
             description="Sólo se cobran las unidades que tú decides vigilar."
             bodyClassName="gap-4 px-4 py-4"
@@ -138,7 +139,7 @@ export function CapMeter({
                     }
                 />
             </dl>
-        </BillingPanel>
+        </Panel>
     );
 }
 

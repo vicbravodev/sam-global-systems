@@ -2,13 +2,14 @@ import { router } from '@inertiajs/react';
 import { ChevronDown, FileText, Upload } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { Panel } from '@/components/sam/panel';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { APP_LOCALE, formatDate, formatNumber, toDate } from '@/lib/format';
 import { meterLabel } from '@/lib/labels';
 import { cn } from '@/lib/utils';
 import type { BillingTone } from './panel';
-import { BillingPanel, BillingPill, money } from './panel';
+import { BillingPill, money } from './panel';
 import type { InvoiceLine, InvoiceRow } from './types';
 
 const VISIBLE_INVOICES = 4;
@@ -324,7 +325,7 @@ export function InvoiceHistory({
     ).length;
 
     return (
-        <BillingPanel
+        <Panel
             title="Facturas"
             description={
                 pending > 0
@@ -361,6 +362,6 @@ export function InvoiceHistory({
                         : `Ver ${hidden === 1 ? 'la factura anterior' : `las ${hidden} facturas anteriores`}`}
                 </button>
             )}
-        </BillingPanel>
+        </Panel>
     );
 }

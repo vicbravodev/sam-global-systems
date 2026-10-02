@@ -6,6 +6,7 @@ import { SubscriptionPill } from '@/components/sam/admin-tenant-status';
 import { BillingPill } from '@/components/sam/billing/panel';
 import type { BillingTone } from '@/components/sam/billing/panel';
 import { ConfirmDialog } from '@/components/sam/confirm-dialog';
+import { Panel } from '@/components/sam/panel';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
@@ -119,44 +120,6 @@ const INVOICE_TONE: Record<string, BillingTone> = {
     paid: 'ok',
     void: 'neutral',
 };
-
-function Section({
-    title,
-    description,
-    actions,
-    children,
-    className,
-}: {
-    title: string;
-    description?: string;
-    actions?: React.ReactNode;
-    children: React.ReactNode;
-    className?: string;
-}) {
-    return (
-        <section
-            className={cn(
-                'rounded-lg border border-border bg-surface-1',
-                className,
-            )}
-        >
-            <header className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3">
-                <div className="min-w-0">
-                    <h2 className="sam-h3">{title}</h2>
-                    {description ? (
-                        <p className="mt-0.5 text-xs text-fg-3">
-                            {description}
-                        </p>
-                    ) : null}
-                </div>
-                {actions}
-            </header>
-            <div className="p-4">{children}</div>
-        </section>
-    );
-}
-
-export { Section as AdminSection };
 
 export function CapMeterBar({ usage }: { usage: AssetUsage }) {
     const limit = usage.limit;
@@ -363,10 +326,12 @@ export function AdminTenantBilling({
 
     return (
         <div className="grid gap-4 xl:grid-cols-2">
-            <Section
+            <Panel
+                size="lg"
+                bodyClassName="p-4"
                 title="Suscripción"
                 description="Estado comercial del cliente. Suspender corta su acceso operativo."
-                actions={<SubscriptionPill status={status} />}
+                action={<SubscriptionPill status={status} />}
             >
                 {subscription ? (
                     <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 text-sm">
@@ -520,9 +485,11 @@ export function AdminTenantBilling({
                         </div>
                     ) : null}
                 </div>
-            </Section>
+            </Panel>
 
-            <Section
+            <Panel
+                size="lg"
+                bodyClassName="p-4"
                 title="Unidades vigiladas"
                 description="Lo que se cobra: sólo las unidades vigiladas, por día."
             >
@@ -560,9 +527,11 @@ export function AdminTenantBilling({
                         </Button>
                     </form>
                 ) : null}
-            </Section>
+            </Panel>
 
-            <Section
+            <Panel
+                size="lg"
+                bodyClassName="p-4"
                 title="Términos de cobro"
                 description={
                     billingTerms.explicit
@@ -620,13 +589,15 @@ export function AdminTenantBilling({
                         </Button>
                     </div>
                 </form>
-            </Section>
+            </Panel>
 
-            <Section
+            <Panel
+                size="lg"
+                bodyClassName="p-4"
                 title="Facturas"
                 description="Cobro por transferencia. El día 1 se cierra el mes anterior en automático."
                 className="xl:col-span-2"
-                actions={
+                action={
                     <Button
                         size="sm"
                         variant="outline"
@@ -756,7 +727,7 @@ export function AdminTenantBilling({
                         })}
                     </ul>
                 )}
-            </Section>
+            </Panel>
 
             <ConfirmDialog
                 open={pending !== null}
