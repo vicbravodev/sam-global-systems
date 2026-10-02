@@ -198,10 +198,11 @@ class SyncIntegrationTest extends TestCase
             'Sync job should be marked as failed when the provider throws an exception',
         );
 
+        // Mensaje de una excepción ajena: sólo su clase (SafeErrorMessage).
         $this->assertEquals(
-            'Provider API returned 503',
+            'RuntimeException',
             $syncJob->error_message,
-            'Sync job error message should contain the exception message from the provider',
+            'Sync job error message should name the failure without the raw exception message',
         );
 
         $integration->refresh();
@@ -212,7 +213,7 @@ class SyncIntegrationTest extends TestCase
         );
 
         $this->assertEquals(
-            'Provider API returned 503',
+            'RuntimeException',
             $integration->last_error_message,
             'Integration last_error_message should reflect the sync failure',
         );

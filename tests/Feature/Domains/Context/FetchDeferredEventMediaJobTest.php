@@ -1165,7 +1165,7 @@ class FetchDeferredEventMediaJobTest extends TestCase
 
         Event::assertDispatched(
             EventMediaFailed::class,
-            fn (EventMediaFailed $e) => $e->request->id === $fresh->id && str_contains($e->reason, 'provider down'),
+            fn (EventMediaFailed $e) => $e->request->id === $fresh->id && $e->reason === 'RuntimeException',
         );
     }
 }

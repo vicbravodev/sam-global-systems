@@ -16,6 +16,8 @@ use App\Domains\Integrations\Models\TenantIntegration;
 use App\Domains\Integrations\Models\WebhookEndpoint;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
+use App\Models\User;
+use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -33,7 +35,7 @@ class IntegrationPageController extends Controller
      * integrations, a tenant-wide pulse and the catalog of providers
      * available for connection.
      */
-    public function index(Team $current_team): Response
+    public function index(Team $current_team, #[CurrentUser] User $user): Response
     {
         $this->authorize('viewAny', TenantIntegration::class);
 
@@ -57,6 +59,7 @@ class IntegrationPageController extends Controller
             'integrations' => $integrations
                 ->map(fn (TenantIntegration $integration) => $this->presentIntegration(
                     $integration,
+                    $user->can('update', $integration),
                     $events24h[$integration->id] ?? 0,
                     $liveData[$integration->id] ?? null,
                     ($integrationsPerProvider[$integration->provider_id] ?? 0) === 1
@@ -74,7 +77,7 @@ class IntegrationPageController extends Controller
      * @param  array{assets: int, monitored: int, drivers: int}|null  $fleet
      * @return array<string, mixed>
      */
-    private function presentIntegration(TenantIntegration $integration, int $events24h, ?string $liveDataAt, ?array $fleet): array
+    private function presentIntegration(TenantIntegration $integration, bool $canUpdate, int $events24h, ?string $liveDataAt, ?array $fleet): array
     {
         $endpoint = $integration->webhookEndpoint;
         $problem = IntegrationProblem::classify($integration->last_error_message);
@@ -102,6 +105,10 @@ class IntegrationPageController extends Controller
             'events24h' => $events24h,
             'fleet' => $fleet,
             'webhook' => $endpoint !== null ? $this->presentWebhook($endpoint) : null,
+            // Gobierna el formulario de la Secret Key del webhook (y el resto
+            // de acciones de gestión) por integración, con la misma Policy
+            // que autoriza el PUT.
+            'canUpdate' => $canUpdate,
         ];
     }
 
@@ -135,11 +142,14 @@ class IntegrationPageController extends Controller
     private function summary(Collection $integrations, array $events24h, array $fleet): array
     {
         $byStatus = $integrations->countBy(fn (TenantIntegration $i) => $i->status->value);
+        // Una Samsara que sincroniza pero rechaza (o no puede validar) los
+        // webhooks no está funcionando: los pánicos no entran.
+        $panicsBlocked = $integrations->filter(fn (TenantIntegration $i) => $this->panicsBlocked($i))->count();
 
         return [
             'total' => $integrations->count(),
-            'working' => (int) ($byStatus[TenantIntegrationStatus::Active->value] ?? 0),
-            'attention' => (int) ($byStatus[TenantIntegrationStatus::Error->value] ?? 0),
+            'working' => (int) ($byStatus[TenantIntegrationStatus::Active->value] ?? 0) - $panicsBlocked,
+            'attention' => (int) ($byStatus[TenantIntegrationStatus::Error->value] ?? 0) + $panicsBlocked,
             'pending' => (int) ($byStatus[TenantIntegrationStatus::Pending->value] ?? 0),
             'inactive' => (int) ($byStatus[TenantIntegrationStatus::Inactive->value] ?? 0),
             'events24h' => array_sum($events24h),
@@ -147,6 +157,21 @@ class IntegrationPageController extends Controller
             'monitored' => array_sum(array_column($fleet, 'monitored')),
             'drivers' => array_sum(array_column($fleet, 'drivers')),
         ];
+    }
+
+    /**
+     * Activa, de Samsara, y con la firma del webhook sin configurar o
+     * rechazando: el mismo criterio que la tarjeta usa para «Pánicos sin
+     * recibir».
+     */
+    private function panicsBlocked(TenantIntegration $integration): bool
+    {
+        $endpoint = $integration->webhookEndpoint;
+
+        return $integration->status === TenantIntegrationStatus::Active
+            && $integration->provider?->code === 'samsara'
+            && $endpoint !== null
+            && in_array($endpoint->signatureHealth(), [WebhookEndpoint::HEALTH_PENDING_SECRET, WebhookEndpoint::HEALTH_REJECTING], true);
     }
 
     /**
