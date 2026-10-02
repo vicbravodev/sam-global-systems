@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import InputError from '@/components/input-error';
 import { ConditionBuilder } from '@/components/sam/condition-builder';
 import type { ConditionFieldDef } from '@/components/sam/condition-builder';
+import { RadioCard, RadioCardGroup } from '@/components/sam/radio-card-group';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -310,9 +311,8 @@ function DecisionRuleForm({
                     title="¿Qué debe pasar?"
                     help="Lo que SAM hará con el evento cuando la regla se cumpla."
                 >
-                    <div
-                        role="radiogroup"
-                        aria-label="Resultado de la regla"
+                    <RadioCardGroup
+                        label="Resultado de la regla"
                         className="grid grid-cols-1 gap-2 sm:grid-cols-2"
                     >
                         {outcomeChoices.map((outcome) => (
@@ -332,7 +332,7 @@ function DecisionRuleForm({
                             disabled={!editable}
                             onSelect={() => setOutcomeId(NO_OUTCOME)}
                         />
-                    </div>
+                    </RadioCardGroup>
                     <InputError
                         message={errors.outcome_override}
                         className="text-xs"
@@ -526,32 +526,29 @@ function OutcomeChoice({
     const tone = OUTCOME_TONE[outcomeGroup(code)];
 
     return (
-        <button
-            type="button"
-            role="radio"
-            aria-checked={selected}
+        <RadioCard
+            selected={selected}
             disabled={disabled}
-            onClick={onSelect}
+            onSelect={onSelect}
             className={cn(
-                'flex flex-col gap-0.5 rounded-md border px-3 py-2 text-left transition-colors disabled:cursor-not-allowed',
-                selected
-                    ? 'border-primary bg-primary/5 ring-1 ring-primary'
-                    : 'border-border hover:bg-surface-2',
+                'px-3 py-2',
+                selected && 'ring-1 ring-primary',
                 disabled && !selected && 'opacity-60',
             )}
-        >
-            <span className="flex items-center gap-1.5 text-sm font-medium text-fg-1">
-                <span
-                    className={cn('size-2 shrink-0 rounded-full', tone.dot)}
-                    aria-hidden="true"
-                />
-                {decisionOutcomeEffectLabel(code)}
-            </span>
-            <span className="text-xs leading-snug text-fg-3">
-                {code === null
+            label={
+                <>
+                    <span
+                        className={cn('size-2 shrink-0 rounded-full', tone.dot)}
+                        aria-hidden="true"
+                    />
+                    {decisionOutcomeEffectLabel(code)}
+                </>
+            }
+            description={
+                code === null
                     ? 'La regla no fija el resultado: lo decide la IA.'
-                    : OUTCOME_HELP[code]}
-            </span>
-        </button>
+                    : OUTCOME_HELP[code]
+            }
+        />
     );
 }

@@ -3,6 +3,7 @@ import { useState } from 'react';
 import InputError from '@/components/input-error';
 import { ConditionBuilder } from '@/components/sam/condition-builder';
 import type { ConditionFieldDef } from '@/components/sam/condition-builder';
+import { RadioCard, RadioCardGroup } from '@/components/sam/radio-card-group';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -17,7 +18,6 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { postJson, putJson } from '@/lib/sam-fetch';
-import { cn } from '@/lib/utils';
 import { codeFromName, submit, useAutomationBase } from './api';
 import { HIDDEN_CONDITION_FIELDS, TRIGGER_ORDER, TRIGGERS } from './copy';
 import {
@@ -260,23 +260,18 @@ function EditorBody({
                 </section>
 
                 <Section number={1} title="Cuándo se activa">
-                    <div
-                        role="radiogroup"
-                        aria-label="Cuándo se activa"
+                    <RadioCardGroup
+                        label="Cuándo se activa"
                         className="grid gap-2 sm:grid-cols-2"
                     >
                         {triggers.map((value) => {
                             const copy = TRIGGERS[value];
-                            const Icon = copy.icon;
-                            const selected = state.triggerType === value;
 
                             return (
-                                <button
+                                <RadioCard
                                     key={value}
-                                    type="button"
-                                    role="radio"
-                                    aria-checked={selected}
-                                    onClick={() =>
+                                    selected={state.triggerType === value}
+                                    onSelect={() =>
                                         setState((prev) => ({
                                             ...prev,
                                             triggerType: value,
@@ -286,34 +281,13 @@ function EditorBody({
                                                     : {},
                                         }))
                                     }
-                                    className={cn(
-                                        'flex items-start gap-2.5 rounded-lg border p-3 text-left transition-colors',
-                                        selected
-                                            ? 'border-primary/50 bg-primary/5'
-                                            : 'border-border hover:border-border-strong hover:bg-surface-2',
-                                    )}
-                                >
-                                    <Icon
-                                        className={cn(
-                                            'mt-0.5 size-4 shrink-0',
-                                            selected
-                                                ? 'text-primary'
-                                                : 'text-fg-3',
-                                        )}
-                                        aria-hidden="true"
-                                    />
-                                    <span className="flex flex-col gap-0.5">
-                                        <span className="text-sm font-medium text-fg-1">
-                                            {copy.title}
-                                        </span>
-                                        <span className="text-2xs leading-relaxed text-fg-3">
-                                            {copy.help}
-                                        </span>
-                                    </span>
-                                </button>
+                                    icon={copy.icon}
+                                    label={copy.title}
+                                    description={copy.help}
+                                />
                             );
                         })}
-                    </div>
+                    </RadioCardGroup>
 
                     {(conditionFields.length > 0 || hasUnknownCondition) && (
                         <div className="flex flex-col gap-1.5 rounded-lg border border-dashed border-border p-3">

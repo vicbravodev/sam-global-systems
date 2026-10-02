@@ -2,6 +2,7 @@ import { router } from '@inertiajs/react';
 import { Check, ChevronDown, Loader2 } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
+import { RadioCard, RadioCardGroup } from '@/components/sam/radio-card-group';
 import { Button } from '@/components/ui/button';
 import {
     Collapsible,
@@ -204,9 +205,8 @@ export function ConnectDialog({
                                 Contacta a soporte.
                             </p>
                         ) : (
-                            <div
-                                role="radiogroup"
-                                aria-label="Proveedor"
+                            <RadioCardGroup
+                                label="Proveedor"
                                 className="grid gap-2 sm:grid-cols-2"
                             >
                                 {providers.map((option) => {
@@ -214,25 +214,21 @@ export function ConnectDialog({
                                         String(option.id) === providerId;
 
                                     return (
-                                        <button
+                                        <RadioCard
                                             key={option.id}
-                                            type="button"
-                                            role="radio"
-                                            aria-checked={selected}
-                                            onClick={() => pickProvider(option)}
-                                            className={cn(
-                                                'flex items-start gap-2.5 rounded-md border p-2.5 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                                                selected
-                                                    ? 'border-primary bg-primary/10'
-                                                    : 'border-border bg-surface-2 hover:bg-surface-3',
-                                            )}
-                                        >
-                                            <ProviderTile
-                                                name={option.name}
-                                                size="sm"
-                                            />
-                                            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                                                <span className="flex items-center gap-1 text-sm font-medium text-fg-1">
+                                            selected={selected}
+                                            onSelect={() =>
+                                                pickProvider(option)
+                                            }
+                                            className="gap-2.5 p-2.5"
+                                            leading={
+                                                <ProviderTile
+                                                    name={option.name}
+                                                    size="sm"
+                                                />
+                                            }
+                                            label={
+                                                <>
                                                     {option.name}
                                                     {selected ? (
                                                         <Check
@@ -241,22 +237,24 @@ export function ConnectDialog({
                                                             aria-hidden
                                                         />
                                                     ) : null}
-                                                </span>
-                                                {option.capabilities.length >
+                                                </>
+                                            }
+                                            description={
+                                                option.capabilities.length >
                                                 0 ? (
-                                                    <span className="line-clamp-2 text-2xs text-fg-3">
+                                                    <span className="line-clamp-2 text-2xs">
                                                         {option.capabilities
                                                             .map(
                                                                 capabilityLabel,
                                                             )
                                                             .join(' · ')}
                                                     </span>
-                                                ) : null}
-                                            </span>
-                                        </button>
+                                                ) : null
+                                            }
+                                        />
                                     );
                                 })}
-                            </div>
+                            </RadioCardGroup>
                         )}
                     </StepSection>
 
