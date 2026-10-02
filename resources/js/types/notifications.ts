@@ -1,3 +1,5 @@
+import type { ListPagination } from '@/types/pagination';
+
 export type NotificationPriorityValue = 'low' | 'normal' | 'high' | 'critical';
 
 export type NotificationStatusValue =
@@ -129,13 +131,6 @@ export interface NotificationFilterOptions {
     priorities: { value: string; label: string }[];
 }
 
-export interface NotificationsPagination {
-    page: number;
-    perPage: number;
-    total: number;
-    lastPage: number;
-}
-
 /** Pulso del centro de notificaciones (ignora filtros). */
 export interface NotificationsSummary {
     unread: number;
@@ -146,7 +141,7 @@ export interface NotificationsSummary {
 
 export interface NotificationsIndexProps {
     notifications: NotificationRow[];
-    pagination: NotificationsPagination;
+    pagination: ListPagination;
     filters: NotificationFilters;
     filterOptions: NotificationFilterOptions;
     summary?: NotificationsSummary;
