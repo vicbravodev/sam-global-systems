@@ -3,14 +3,30 @@
 namespace App\Http\Requests\Access;
 
 use App\Domains\Access\Enums\RoleScope;
+use App\Http\Requests\Concerns\ResolvesCurrentTeam;
+use App\Models\Membership;
 use App\Models\Team;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 class UpdateMemberRoleRequest extends FormRequest
 {
+    use ResolvesCurrentTeam;
+
+    /**
+     * La pertenencia al tenant se comprueba ANTES de validar: una membresía de
+     * otro team responde 404 igual que una inexistente (con payload válido o
+     * vacío), así no hay oráculo de existencia cross-tenant vía 422.
+     */
     public function authorize(): bool
     {
+        $membership = $this->route('membership');
+
+        abort_unless(
+            $membership instanceof Membership && $membership->team_id === $this->currentTeamId(),
+            404,
+        );
+
         return true;
     }
 
