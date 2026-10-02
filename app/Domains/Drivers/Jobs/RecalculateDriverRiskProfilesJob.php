@@ -14,6 +14,7 @@ use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Enums\NotificationPriority;
 use App\Domains\Notifications\Enums\NotificationSourceType;
 use App\Domains\Notifications\Enums\NotificationTriggeredByType;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -52,8 +53,17 @@ class RecalculateDriverRiskProfilesJob implements ShouldQueue
         $this->onQueue('analytics');
     }
 
+    /**
+     * Resumen del barrido: conteos por tenant y en total.
+     *
+     * @var array{tenants: int, drivers_scanned: int, skipped_no_activity: int, recalculated: int, alerts_raised: int}
+     */
+    private array $summary = ['tenants' => 0, 'drivers_scanned' => 0, 'skipped_no_activity' => 0, 'recalculated' => 0, 'alerts_raised' => 0];
+
     public function handle(SendNotification $sendNotification): void
     {
+        $started = hrtime(true);
+
         // Recorre todos los tenants a propósito, pero recalcula cada conductor
         // dentro del contexto de SU tenant. Ver §2.1. Los conteos se agregan
         // por lote de conductores (2 queries por tenant y chunk, no 2 por
@@ -63,6 +73,7 @@ class RecalculateDriverRiskProfilesJob implements ShouldQueue
             ->with('riskProfile')
             ->chunkById(200, function ($drivers) use ($sendNotification) {
                 foreach ($drivers->groupBy('team_id') as $teamId => $teamDrivers) {
+                    $this->summary['tenants']++;
                     TenantContext::for((int) $teamId, function () use ($teamDrivers, $sendNotification) {
                         $since = now()->subDays(self::WINDOW_DAYS);
                         $driverIds = $teamDrivers->modelKeys();
@@ -84,6 +95,7 @@ class RecalculateDriverRiskProfilesJob implements ShouldQueue
                             ->pluck('total', 'driver_id');
 
                         foreach ($teamDrivers as $driver) {
+                            $this->summary['drivers_scanned']++;
                             $counts = ($eventCounts->get($driver->id) ?? collect())
                                 ->mapWithKeys(fn ($row) => [$row->code => (int) $row->total]);
 
@@ -97,6 +109,12 @@ class RecalculateDriverRiskProfilesJob implements ShouldQueue
                     });
                 }
             }));
+
+        // `tenants` cuenta grupos por lote: un tenant con más de 200
+        // conductores suma una vez por lote.
+        SystemLog::ok('drivers.risk_sweep.completed', calc: [
+            'window_days' => self::WINDOW_DAYS,
+        ], result: $this->summary, durationMs: SystemLog::elapsedMs($started));
     }
 
     /**
@@ -105,6 +123,8 @@ class RecalculateDriverRiskProfilesJob implements ShouldQueue
     private function recalculate(Driver $driver, Collection $counts, int $incidentsCount, SendNotification $sendNotification): void
     {
         if ($counts->isEmpty() && $incidentsCount === 0 && $driver->riskProfile === null) {
+            $this->summary['skipped_no_activity']++;
+
             return;
         }
 
@@ -149,13 +169,43 @@ class RecalculateDriverRiskProfilesJob implements ShouldQueue
             ],
         );
 
-        $this->notifyOnDeterioration($driver, $score, $level, $previousScore, $previousLevel, $sendNotification);
+        $this->summary['recalculated']++;
+
+        $alerted = $this->notifyOnDeterioration($driver, $score, $level, $previousScore, $previousLevel, $sendNotification);
+
+        if ($alerted) {
+            $this->summary['alerts_raised']++;
+        }
+
+        // El score se rehace a mano: cada término con su peso. Una línea por
+        // conductor y día: a debug salvo que el nivel cambie.
+        SystemLog::ok('drivers.risk_profile.recalculated', input: [
+            'team_id' => $driver->team_id,
+            'driver_id' => $driver->id,
+        ], calc: [
+            'window_days' => self::WINDOW_DAYS,
+            'harsh_events' => $harsh,
+            'fatigue_events' => $fatigue,
+            'severe_events' => $severe,
+            'other_events' => $other,
+            'incidents' => $incidentsCount,
+            'weights' => ['harsh' => 4.0, 'fatigue' => 8.0, 'severe' => 15.0, 'other' => 2.0, 'incident' => 10.0],
+            'cap' => 100.0,
+            'level_thresholds' => ['low' => 25.0, 'medium' => 50.0, 'high' => 75.0],
+            'previous_score' => $previousScore,
+        ], result: [
+            'risk_score' => $score,
+            'risk_level' => $level->value,
+            'previous_level' => $previousLevel?->value,
+            'trend' => $trend,
+            'alert_raised' => $alerted,
+        ], debug: $previousLevel === $level);
     }
 
     /**
      * Alert only when the driver CROSSES into high/critical (not while
      * staying there): the operations team gets one heads-up per degradation,
-     * idempotent per driver per day.
+     * idempotent per driver per day. Devuelve si pidió el aviso.
      */
     private function notifyOnDeterioration(
         Driver $driver,
@@ -164,9 +214,9 @@ class RecalculateDriverRiskProfilesJob implements ShouldQueue
         ?float $previousScore,
         ?RiskLevel $previousLevel,
         SendNotification $sendNotification,
-    ): void {
+    ): bool {
         if (! in_array($level, [RiskLevel::High, RiskLevel::Critical], true)) {
-            return;
+            return false;
         }
 
         $wasAlreadyThere = in_array($previousLevel, [RiskLevel::High, RiskLevel::Critical], true)
@@ -174,7 +224,7 @@ class RecalculateDriverRiskProfilesJob implements ShouldQueue
             && $score <= $previousScore;
 
         if ($wasAlreadyThere) {
-            return;
+            return false;
         }
 
         $sendNotification->execute(
@@ -207,6 +257,8 @@ class RecalculateDriverRiskProfilesJob implements ShouldQueue
                 self::WINDOW_DAYS,
             ),
         );
+
+        return true;
     }
 
     /**

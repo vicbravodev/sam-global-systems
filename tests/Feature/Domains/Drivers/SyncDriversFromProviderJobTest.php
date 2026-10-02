@@ -11,10 +11,12 @@ use App\Domains\Integrations\Models\TenantIntegration;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class SyncDriversFromProviderJobTest extends TestCase
 {
+    use AssertsSystemLog;
     use RefreshDatabase;
 
     private function makeSamsaraIntegration(): TenantIntegration
@@ -86,5 +88,11 @@ class SyncDriversFromProviderJobTest extends TestCase
             $ownedDriver->id,
             DriverExternalReference::query()->where('external_id', 'd-1')->sole()->driver_id,
         );
+
+        $ctx = $this->assertSystemLogged('drivers.sync.completed');
+        $this->assertSame(['team_id' => $intruder->team_id, 'integration_id' => $intruder->id], $ctx['input']);
+        $this->assertSame(['received' => 2, 'synced' => 1, 'external_id_conflicts' => 1], $ctx['result']);
+        $this->assertStringNotContainsString('Tenant B Driver', (string) json_encode($this->systemLogEntries()));
+        $this->assertNoSensitiveDataLogged();
     }
 }
