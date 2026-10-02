@@ -12,6 +12,7 @@ use App\Domains\Incidents\Enums\IncidentCreatorType;
 use App\Domains\Incidents\Enums\ResolutionCode;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Notifications\Models\NotificationReplyToken;
+use App\Domains\Notifications\Support\DeliveryFeedbackPresenter;
 use App\Support\LoggableCode;
 use App\Support\SystemLog;
 use App\Support\TenantContext;
@@ -63,7 +64,7 @@ class ProcessInboundReply
 
         $code = mb_strtoupper($matches[2]);
 
-        return DB::transaction(function () use ($keyword, $code, $fromAddress, $body) {
+        return DB::transaction(function () use ($keyword, $code, $fromAddress) {
             // Lookup de entrada: el webhook llega sin sesión y el tenant sale
             // del propio token, así que aquí no puede haber scope todavía.
             $token = NotificationReplyToken::withoutGlobalScopes()
@@ -135,7 +136,9 @@ class ProcessInboundReply
             $token->update([
                 'consumed_at' => now(),
                 'consumed_action' => $keyword,
-                'reply_payload_json' => ['from' => $fromAddress, 'body' => mb_substr($body, 0, 500)],
+                // Traza mínima: qué se hizo, por qué canal y quién. Nunca el
+                // teléfono ni el texto libre (los ven los admins del tenant).
+                'reply_payload_json' => ['action' => $keyword, 'channel_type' => $via, 'user_id' => $token->user_id],
             ]);
 
             $this->recordAuditEntry->execute(
@@ -145,7 +148,7 @@ class ProcessInboundReply
                 category: AuditCategory::Domain,
                 entityType: 'incident',
                 entityId: $incident->id,
-                summary: "Respuesta {$keyword} vía {$via} de {$fromAddress} para el incidente {$incident->reference()}.",
+                summary: "Respuesta {$keyword} vía {$via} de {$this->replierLabel($token)} para el incidente {$incident->reference()}.",
                 teamId: $token->team_id,
                 metadata: ['token_id' => $token->id, 'channel_type' => $via],
                 sourceType: 'twilio_inbound',
@@ -181,7 +184,7 @@ class ProcessInboundReply
         $this->closeIncident->execute(
             incident: $incident,
             resolutionCode: ResolutionCode::FalsePositive,
-            summary: "Descartado como falsa alarma vía {$via} por {$token->address}.",
+            summary: "Descartado como falsa alarma vía {$via} por {$this->replierLabel($token)}.",
             resolvedByType: $token->user_id !== null ? IncidentCreatorType::User : IncidentCreatorType::System,
             resolvedById: $token->user_id,
         );
@@ -193,12 +196,29 @@ class ProcessInboundReply
     {
         $this->escalateIncident->execute(
             incident: $incident,
-            reason: "Escalado vía {$via} por {$token->address}.",
+            reason: "Escalado vía {$via} por {$this->replierLabel($token)}.",
             escalatedByType: $token->user_id !== null ? IncidentCreatorType::User : IncidentCreatorType::System,
             escalatedById: $token->user_id,
         );
 
         return "▲ Incidente {$incident->reference()} escalado.";
+    }
+
+    /**
+     * Quién respondió, tal como lo leen los admins del tenant en auditoría,
+     * resolución y timeline: el nombre del miembro al que se emitió el token
+     * o, sin usuario vinculado, el teléfono enmascarado. Nunca el número
+     * completo.
+     */
+    private function replierLabel(NotificationReplyToken $token): string
+    {
+        $name = $token->user_id !== null ? $token->user()->value('name') : null;
+
+        if (is_string($name) && $name !== '') {
+            return $name;
+        }
+
+        return DeliveryFeedbackPresenter::maskAddress($token->address) ?? 'un destinatario';
     }
 
     private function normalizeAddress(string $address): string
