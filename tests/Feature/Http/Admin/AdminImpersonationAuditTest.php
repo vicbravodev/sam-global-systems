@@ -67,16 +67,11 @@ class AdminImpersonationAuditTest extends TestCase
         $this->assertCount(1, $this->impersonations());
     }
 
-    public function test_an_operator_cannot_open_another_users_personal_workspace(): void
+    public function test_the_impersonate_button_refuses_a_personal_workspace(): void
     {
         $admin = $this->superAdmin();
-        $someone = User::factory()->create();
-        $personal = $someone->personalTeam();
+        $personal = User::factory()->create()->personalTeam();
         $this->assertNotNull($personal);
-
-        $this->actingAs($admin)
-            ->get(route('dashboard', ['current_team' => $personal->slug]))
-            ->assertNotFound();
 
         $this->actingAs($admin)
             ->post(route('admin.impersonate.store', $personal))
@@ -85,6 +80,21 @@ class AdminImpersonationAuditTest extends TestCase
 
         $this->assertSame([], $this->impersonations());
         $this->assertNotSame($personal->id, $admin->fresh()?->current_team_id);
+    }
+
+    public function test_opening_another_users_personal_workspace_by_url_is_audited(): void
+    {
+        $admin = $this->superAdmin();
+        $personal = User::factory()->create()->personalTeam();
+        $this->assertNotNull($personal);
+
+        $this->actingAs($admin)
+            ->get(route('dashboard', ['current_team' => $personal->slug]))
+            ->assertOk();
+
+        $entries = $this->impersonations();
+        $this->assertCount(1, $entries);
+        $this->assertSame($personal->id, $entries[0]['team_id']);
     }
 
     public function test_the_operator_still_opens_their_own_personal_workspace(): void

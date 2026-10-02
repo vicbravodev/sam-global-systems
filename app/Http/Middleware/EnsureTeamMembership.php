@@ -30,10 +30,6 @@ class EnsureTeamMembership
         // the BelongsToTenant global scope transparently scopes every query to
         // the impersonated tenant — no membership or role check applies.
         if ($user?->isSuperAdmin() === true && $team !== null) {
-            // El espacio personal de otro usuario no es un cliente: nada que
-            // operar ahí, y entrar sería leer su espacio privado.
-            abort_if($team->is_personal && ! $user->belongsToTeam($team), 404);
-
             if ($request->route('current_team') !== null && ! $user->isCurrentTeam($team)) {
                 $user->forceSwitchTeam($team);
 
