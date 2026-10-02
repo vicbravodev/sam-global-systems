@@ -9,6 +9,7 @@ use App\Domains\Ingestion\Actions\IngestAlertIncident;
 use App\Domains\Ingestion\Enums\EventSourceType;
 use App\Domains\Ingestion\Enums\RawEventStatus;
 use App\Domains\Ingestion\Jobs\PollAlertIncidentsJob;
+use App\Domains\Ingestion\Jobs\PollSafetyEventsJob;
 use App\Domains\Ingestion\Jobs\PollSamsaraAlertIncidentsJob;
 use App\Domains\Ingestion\Models\PipelineFailureAlert;
 use App\Domains\Ingestion\Models\RawEvent;
@@ -294,6 +295,29 @@ class AlertIncidentsPollingTest extends TestCase
         $this->assertSystemLogged('ingestion.duplicate.detected', fn (array $c): bool => $c['reason'] === 'cross_source_key'
             && $c['input']['raw_event_id'] === $webhookRaw->id);
         $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_same_incident_url_with_a_different_happened_at_is_two_panics(): void
+    {
+        $integration = $this->makeIntegration();
+        $team = $integration->team;
+        $first = $this->incident();
+        // Mismo incidentUrl (visto en simulaciones reales), otro instante: es otro pánico.
+        $second = $this->incident(['incidentUrl' => $first['incidentUrl']], happenedAt: '2026-10-02T11:57:00Z');
+
+        $this->webhook($team, $first, 'wh-1');
+        $this->webhook($team, $second, 'wh-2');
+
+        $raws = RawEvent::withoutGlobalScopes()->where('team_id', $team->id)->orderBy('id')->get();
+        $this->assertCount(2, $raws);
+        $this->assertNotSame($raws[0]->deduplication_key, $raws[1]->deduplication_key);
+        $this->assertNotSame(RawEventStatus::DuplicateDetected, $raws[1]->fresh()->status);
+
+        // El poll ve los dos: ambos ya están, no guarda copias.
+        $this->fakeSamsara([$first, $second]);
+        $this->poll($integration);
+
+        $this->assertSame(2, RawEvent::withoutGlobalScopes()->where('team_id', $team->id)->count());
     }
 
     public function test_a_redelivered_webhook_with_a_new_event_id_is_still_a_duplicate(): void
@@ -624,5 +648,42 @@ class AlertIncidentsPollingTest extends TestCase
         }
 
         return $out;
+    }
+
+    public function test_the_alert_incidents_poll_does_not_clobber_the_safety_events_state(): void
+    {
+        $integration = $this->makeIntegration();
+        $this->fakeSamsara([]);
+
+        // Otro poller escribió su sub-clave después de que este job cargara la integración.
+        $stale = $integration->fresh();
+        TenantIntegration::withoutGlobalScopes()->whereKey($integration->id)->update([
+            'sync_state_json' => json_encode(['safety_events' => ['cursor' => 'safety-c', 'start_time' => 'x', 'last_polled_at' => 'y']]),
+        ]);
+
+        $this->poll($stale);
+
+        $state = $integration->fresh()->sync_state_json;
+        $this->assertSame('safety-c', $state['safety_events']['cursor']);
+        $this->assertArrayHasKey('alert_incidents', $state);
+    }
+
+    public function test_the_safety_events_poll_does_not_clobber_the_alert_incidents_state(): void
+    {
+        $integration = $this->makeIntegration();
+        Http::fake([
+            'api.samsara.com/safety-events/stream*' => Http::response(['data' => [], 'pagination' => ['endCursor' => 'safety-c2', 'hasNextPage' => false]]),
+        ]);
+
+        $stale = $integration->fresh();
+        TenantIntegration::withoutGlobalScopes()->whereKey($integration->id)->update([
+            'sync_state_json' => json_encode(['alert_incidents' => ['configuration_ids' => ['cfg-panic'], 'cursor' => 'alert-c']]),
+        ]);
+
+        app()->call([new PollSafetyEventsJob($stale), 'handle']);
+
+        $state = $integration->fresh()->sync_state_json;
+        $this->assertSame('alert-c', $state['alert_incidents']['cursor']);
+        $this->assertSame('safety-c2', $state['safety_events']['cursor']);
     }
 }

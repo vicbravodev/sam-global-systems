@@ -335,17 +335,16 @@ class PollAlertIncidentsJob implements ShouldBeUnique, ShouldQueue
      */
     private function persist(array $feed, bool $clearError = false): void
     {
-        $fresh = $this->integration->fresh();
-        $state = $fresh?->sync_state_json ?? [];
-        $state['alert_incidents'] = $feed;
-        $attributes = ['sync_state_json' => $state];
+        $attributes = [];
 
-        if ($clearError && str_starts_with((string) $fresh?->last_error_message, self::ERROR_PREFIX)) {
+        if ($clearError && str_starts_with((string) $this->integration->fresh()?->last_error_message, self::ERROR_PREFIX)) {
             $attributes['last_error_at'] = null;
             $attributes['last_error_message'] = null;
         }
 
-        $this->integration->update($attributes);
+        // Sólo su sub-clave, releída bajo lock: el poller de safety events
+        // escribe la suya en paralelo.
+        $this->integration->mergeSyncState('alert_incidents', $feed, $attributes);
     }
 
     private function recordError(\Throwable $exception): void
