@@ -99,6 +99,8 @@ Lo emite `App\Support\DeniedRequestLog` (outcome `degraded`); sólo la plantilla
 | `http.request.throttled` | degraded | `rate_limited` (429) | igual |
 | `http.request.not_found` | degraded | `unknown_endpoint` (404 en `api/webhooks/*`) | igual |
 
+Límite de volumen (`DeniedRequestLog::MAX_PER_WINDOW` = 20 por `WINDOW_SECONDS` = 60): por cubeta código + reason + `route_uri` + `user_id` (o invitado) sólo se escriben las primeras 20 líneas de cada minuto; el resto se cuenta y la primera línea de la ventana siguiente lo dice en `calc.suppressed_since_last` (con `max_per_window` y `window_seconds`). Si la caché falla, se escribe siempre.
+
 ### Autenticación (`auth`) — automático
 
 | Código | Outcome | Reason posibles | Campos clave |
