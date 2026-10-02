@@ -161,6 +161,21 @@ class DispatchNotification
                     continue;
                 }
 
+                // Anti-ruido: la misma persona ya recibió hace segundos un SMS,
+                // WhatsApp o llamada de ESTE incidente por otro aviso (creado +
+                // emergencia confirmada, verificación + SLA...). No se repite
+                // por canal pagado; la app, el correo y el push siguen.
+                $cooldown = $this->recentPaidContact($notification, $channel, $recipient, $targetAddress);
+
+                if ($cooldown !== null) {
+                    $this->recordSkippedDelivery($notification, $recipient, $channel, "paid cooldown: this incident already reached this address {$cooldown['seconds_ago']}s ago");
+
+                    SystemLog::skipped('notifications.delivery.skipped', reason: 'paid_cooldown', input: $channelInput, calc: $cooldown);
+                    $skippedByReason['paid_cooldown'] = ($skippedByReason['paid_cooldown'] ?? 0) + 1;
+
+                    continue;
+                }
+
                 $delivery = $this->createDeliveryOrSkip($notification, $recipient, $channel);
 
                 if (is_string($delivery)) {
@@ -412,5 +427,62 @@ class DispatchNotification
         ];
 
         return $terms['acknowledged'] || $terms['claimed'] || $terms['terminal'] ? $terms : null;
+    }
+
+    /**
+     * Ventana anti-ruido entre avisos distintos del mismo incidente por canal
+     * pagado (SMS, WhatsApp, voz) a la misma dirección. Más corta que el
+     * reintento mínimo de un paso de la escalera (EscalationLadder), así que
+     * nunca se come un re-aviso deliberado.
+     */
+    public const int PAID_COOLDOWN_SECONDS = 90;
+
+    /** @var list<string> */
+    private const array PAID_CHANNEL_TYPES = ['sms', 'whatsapp', 'voice'];
+
+    /**
+     * Términos del contacto reciente que activa la ventana, o null.
+     *
+     * @return array{incident_id: int, cooldown_seconds: int, seconds_ago: int, previous_notification_id: int}|null
+     */
+    private function recentPaidContact(Notification $notification, NotificationChannel $channel, NotificationRecipient $recipient, string $targetAddress): ?array
+    {
+        if (! in_array($channel->channel_type->value, self::PAID_CHANNEL_TYPES, true)
+            || $notification->source_type !== NotificationSourceType::Incident
+            || ! is_numeric($notification->source_reference_id)) {
+            return null;
+        }
+
+        $since = now()->subSeconds(self::PAID_COOLDOWN_SECONDS);
+
+        $previous = NotificationDelivery::query()
+            ->where('team_id', $notification->team_id)
+            ->where('notification_id', '!=', $notification->id)
+            ->where('created_at', '>=', $since)
+            ->whereNotIn('status', [DeliveryStatus::Failed, DeliveryStatus::Skipped, DeliveryStatus::Cancelled, DeliveryStatus::Bounced])
+            ->whereHas('channel', fn ($query) => $query->whereIn('channel_type', self::PAID_CHANNEL_TYPES))
+            ->whereHas('notification', fn ($query) => $query
+                ->where('source_type', NotificationSourceType::Incident->value)
+                ->where('source_reference_id', $notification->source_reference_id))
+            ->whereHas('recipient', fn ($query) => $query->where(fn ($match) => $match
+                ->where('phone', $targetAddress)
+                ->orWhere('address', $targetAddress)
+                ->when($recipient->recipient_reference_id !== null && $recipient->recipient_type->value === 'user', fn ($user) => $user
+                    ->orWhere(fn ($same) => $same
+                        ->where('recipient_type', 'user')
+                        ->where('recipient_reference_id', $recipient->recipient_reference_id)))))
+            ->latest('created_at')
+            ->first();
+
+        if ($previous === null || $previous->created_at === null) {
+            return null;
+        }
+
+        return [
+            'incident_id' => (int) $notification->source_reference_id,
+            'cooldown_seconds' => self::PAID_COOLDOWN_SECONDS,
+            'seconds_ago' => (int) $previous->created_at->diffInSeconds(now()),
+            'previous_notification_id' => $previous->notification_id,
+        ];
     }
 }

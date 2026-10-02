@@ -24,6 +24,7 @@ use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Models\NotificationDelivery;
 use App\Domains\Notifications\Models\NotificationRecipient;
 use App\Domains\Notifications\Models\TenantChannelToggle;
+use App\Domains\Notifications\Support\DeliveryEscalationGuard;
 use App\Domains\Tenancy\Enums\SubscriptionStatus;
 use App\Domains\Tenancy\Models\Subscription;
 use App\Domains\Tenancy\Models\UsageEvent;
@@ -605,14 +606,15 @@ class RetryAndFallbackTest extends TestCase
     {
         $primary = $this->channel(ChannelType::Sms);
         $email = $this->channel(ChannelType::Email);
-        $web = $this->channel(ChannelType::Web);
+        $whatsapp = $this->channel(ChannelType::Whatsapp);
 
         $failed = $this->failedDelivery($primary, attemptNumber: 5);
 
+        // Otro canal que interrumpe (WhatsApp entregado) sí cuenta como alcanzado.
         NotificationDelivery::factory()->delivered()->create([
             'notification_id' => $failed->notification_id,
             'recipient_id' => $failed->recipient_id,
-            'channel_id' => $web->id,
+            'channel_id' => $whatsapp->id,
             'team_id' => $this->team->id,
         ]);
 
@@ -624,6 +626,50 @@ class RetryAndFallbackTest extends TestCase
             && $c['input']['stage'] === 'fallback_job'
             && $c['calc']['reached_elsewhere'] === true);
         $this->assertSystemNotLogged('notifications.fallback.chosen');
+    }
+
+    /**
+     * La app y el correo se marcan entregados al instante: antes bloqueaban
+     * el reintento/fallback de un SMS crítico que falló, como si la persona
+     * ya se hubiera enterado.
+     */
+    public function test_an_in_app_or_email_delivery_never_counts_as_reached(): void
+    {
+        $primary = $this->channel(ChannelType::Sms);
+        $web = $this->channel(ChannelType::Web);
+        $email = $this->channel(ChannelType::Email);
+
+        $failed = $this->failedDelivery($primary, attemptNumber: 5);
+
+        foreach ([$web, $email] as $quiet) {
+            NotificationDelivery::factory()->delivered()->create([
+                'notification_id' => $failed->notification_id,
+                'recipient_id' => $failed->recipient_id,
+                'channel_id' => $quiet->id,
+                'team_id' => $this->team->id,
+            ]);
+        }
+
+        $this->assertNull(DeliveryEscalationGuard::blockReason($failed->fresh()));
+        $this->assertFalse(DeliveryEscalationGuard::explain($failed->fresh())['calc']['reached_elsewhere']);
+    }
+
+    public function test_an_unanswered_call_never_counts_as_reached(): void
+    {
+        $primary = $this->channel(ChannelType::Sms);
+        $voice = $this->channel(ChannelType::Voice);
+
+        $failed = $this->failedDelivery($primary, attemptNumber: 5);
+
+        NotificationDelivery::factory()->create([
+            'notification_id' => $failed->notification_id,
+            'recipient_id' => $failed->recipient_id,
+            'channel_id' => $voice->id,
+            'team_id' => $this->team->id,
+            'status' => DeliveryStatus::Queued,
+        ]);
+
+        $this->assertNull(DeliveryEscalationGuard::blockReason($failed->fresh()));
     }
 
     public function test_fallback_without_an_address_for_the_channel_is_recorded_as_skipped(): void

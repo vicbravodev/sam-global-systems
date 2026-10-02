@@ -180,6 +180,18 @@ class CheckIncidentAcknowledgementJob implements ShouldQueue
             return 'skipped';
         }
 
+        // Paso de comprobación tras el último nivel: nadie atendió en el
+        // margen que se le dio, la escalera se agota (sin otro aviso).
+        if ($this->level >= EscalationLadder::exhaustionLevel($steps)) {
+            SystemLog::skipped('incidents.ack_check.chain_exhausted',
+                reason: 'no_next_level',
+                input: $input,
+                calc: ['steps_count' => count($steps), 'exhaustion_grace_minutes' => EscalationLadder::EXHAUSTION_GRACE_MINUTES],
+            );
+
+            return 'exhausted';
+        }
+
         $statusBefore = $locked->status?->code;
         $escalatedNow = false;
 
@@ -258,14 +270,6 @@ class CheckIncidentAcknowledgementJob implements ShouldQueue
         $next = EscalationLadder::next($steps, $this->level, $this->attempt);
 
         if ($next === null) {
-            $step = $steps[$this->level] ?? null;
-
-            SystemLog::skipped('incidents.ack_check.chain_exhausted',
-                reason: 'no_next_level',
-                input: $input,
-                calc: ['steps_count' => count($steps), 'step_attempts' => max(1, (int) ($step['attempts'] ?? 1))],
-            );
-
             return 'exhausted';
         }
 

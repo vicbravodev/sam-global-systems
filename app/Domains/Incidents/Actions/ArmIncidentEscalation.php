@@ -2,6 +2,7 @@
 
 namespace App\Domains\Incidents\Actions;
 
+use App\Domains\Incidents\Enums\IncidentPriorityCode;
 use App\Domains\Incidents\Enums\TimelineActorType;
 use App\Domains\Incidents\Enums\TimelineEntryType;
 use App\Domains\Incidents\Jobs\CheckIncidentAcknowledgementJob;
@@ -13,6 +14,7 @@ use App\Domains\TenantConfig\Actions\ResolveIncidentSla;
 use App\Models\Team;
 use App\Models\User;
 use App\Support\SystemLog;
+use App\Support\TenantContext;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification as LaravelNotification;
@@ -106,8 +108,9 @@ class ArmIncidentEscalation
 
             $locked->forceFill(['sla_due_at' => $candidateDueAt])->save();
             $epoch = $this->armLocked($locked, $candidateDueAt);
+            $locked->load('priority');
 
-            return ['reason' => null, 'calc' => $calc, 'epoch' => $epoch, 'due_at' => $candidateDueAt];
+            return ['reason' => null, 'calc' => $calc, 'epoch' => $epoch, 'due_at' => $candidateDueAt, 'critical' => $locked->priority?->code === IncidentPriorityCode::Critical->value];
         });
 
         if ($outcome['reason'] !== null) {
@@ -120,7 +123,25 @@ class ArmIncidentEscalation
         $this->syncArmed($incident, $outcome['epoch'], $outcome['due_at']);
         $this->logArmed($incident->id, 'priority_raised', $outcome['epoch'], $outcome['due_at']);
 
-        DB::afterCommit(fn () => SystemLog::ok('incidents.escalation.tightened', input: $input, calc: $outcome['calc'], result: ['epoch' => $outcome['epoch']]));
+        DB::afterCommit(fn () => SystemLog::ok('incidents.escalation.tightened', input: $input, calc: $outcome['calc'], result: ['epoch' => $outcome['epoch'], 'paged_now' => $outcome['critical']]));
+
+        // Ahora es crítico: la persona en turno se entera ya (no al vencer el
+        // SLA) y ese aviso cuenta como el nivel 0 de la escalera.
+        if ($outcome['critical']) {
+            // Sin depender del contexto del llamador (puede ser un job).
+            $fresh = TenantContext::for($incident->team_id, fn () => $incident->freshOrFail(['priority', 'type']));
+
+            $this->notifyEscalationLevel->execute(
+                incident: $fresh,
+                level: 0,
+                eventKey: "incident_priority_raised:{$incident->id}:e{$outcome['epoch']}",
+                notificationType: 'incident.priority_raised',
+                subject: 'Incidente ahora CRÍTICO: '.$fresh->title,
+                body: "El incidente {$fresh->reference()} subió a prioridad crítica. Atiéndelo ahora.",
+            );
+
+            $this->accelerate($fresh, 'priority_raised_critical');
+        }
     }
 
     /**
@@ -172,7 +193,7 @@ class ArmIncidentEscalation
      * como disparado y se programa el siguiente. Si la escalera ya había
      * avanzado, no se toca.
      *
-     * @param  string  $reason  código: `emergency_confirmed` | `verification_no_answer` | `verification_unavailable`
+     * @param  string  $reason  código: `emergency_confirmed` | `verification_no_answer` | `verification_unavailable` | `priority_raised_critical`
      */
     public function accelerate(Incident $incident, string $reason): void
     {
@@ -186,10 +207,12 @@ class ArmIncidentEscalation
                 return ['skipped' => 'already_running', 'locked' => $locked, 'next' => null];
             }
 
+            // Desde el nivel 0 siempre hay un paso siguiente (otro nivel o la
+            // comprobación final), así que null no ocurre.
             $next = EscalationLadder::next($steps, 0, 1);
 
             if ($next === null) {
-                return ['skipped' => null, 'locked' => $locked, 'next' => null];
+                return ['skipped' => 'no_next_level', 'locked' => $locked, 'next' => null];
             }
 
             $nextAt = now()->addMinutes($next['delay_minutes']);
@@ -219,18 +242,13 @@ class ArmIncidentEscalation
             return;
         }
 
-        if ($outcome['next'] === null) {
-            $this->exhaust($outcome['locked'], count($steps));
-
-            DB::afterCommit(fn () => SystemLog::skipped('incidents.escalation.accelerated', reason: 'no_next_level', input: $input, calc: $calc));
-
-            return;
-        }
+        $next = $outcome['next'];
 
         $result = [
-            'next_level' => $outcome['next']['level'],
-            'next_attempt' => $outcome['next']['attempt'],
-            'delay_minutes' => $outcome['next']['delay_minutes'],
+            'mode' => $next['mode'],
+            'next_level' => $next['level'],
+            'next_attempt' => $next['attempt'],
+            'delay_minutes' => $next['delay_minutes'],
         ];
         DB::afterCommit(fn () => SystemLog::ok('incidents.escalation.accelerated', input: $input, calc: $calc, result: $result));
     }
