@@ -136,12 +136,17 @@ return [
     | existente. Alternativa sin poner la contraseña en env (recomendada):
     | `php artisan sam:create-super-admin`, que la pide sin eco.
     |
+    | `require_two_factor`: la consola `/admin` y la entrada a clientes ajenos
+    | exigen 2FA confirmado al super-admin (RequireSuperAdminTwoFactor). Sólo
+    | apágalo (SAM_ADMIN_REQUIRE_2FA=false) para un primer arranque.
+    |
     */
 
     'super_admin' => [
         'email' => env('SAM_SUPER_ADMIN_EMAIL'),
         'name' => env('SAM_SUPER_ADMIN_NAME', 'Operador SAM'),
         'password' => env('SAM_SUPER_ADMIN_PASSWORD'),
+        'require_two_factor' => (bool) env('SAM_ADMIN_REQUIRE_2FA', true),
     ],
 
 ];

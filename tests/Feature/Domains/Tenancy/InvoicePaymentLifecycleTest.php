@@ -187,7 +187,7 @@ class InvoicePaymentLifecycleTest extends TestCase
 
     public function test_super_admin_marks_invoice_paid_with_audit(): void
     {
-        $admin = User::factory()->create(['global_role' => 'super_admin']);
+        $admin = User::factory()->superAdmin()->create();
 
         $invoice = InvoiceSnapshot::factory()->create([
             'team_id' => $this->team->id,
@@ -227,7 +227,7 @@ class InvoicePaymentLifecycleTest extends TestCase
 
     public function test_paid_invoice_cannot_be_voided(): void
     {
-        $admin = User::factory()->create(['global_role' => 'super_admin']);
+        $admin = User::factory()->superAdmin()->create();
 
         $invoice = InvoiceSnapshot::factory()->create([
             'team_id' => $this->team->id,
@@ -246,7 +246,7 @@ class InvoicePaymentLifecycleTest extends TestCase
 
     public function test_super_admin_voids_invoice_and_the_change_is_logged(): void
     {
-        $admin = User::factory()->create(['global_role' => 'super_admin']);
+        $admin = User::factory()->superAdmin()->create();
 
         $invoice = InvoiceSnapshot::factory()->create([
             'team_id' => $this->team->id,
@@ -271,7 +271,7 @@ class InvoicePaymentLifecycleTest extends TestCase
 
     public function test_void_invoice_cannot_be_marked_paid_nor_voided_again(): void
     {
-        $admin = User::factory()->create(['global_role' => 'super_admin']);
+        $admin = User::factory()->superAdmin()->create();
 
         $invoice = InvoiceSnapshot::factory()->create([
             'team_id' => $this->team->id,

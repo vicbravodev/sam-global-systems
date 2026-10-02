@@ -50,4 +50,39 @@ return [
         explode(',', (string) env('PIPELINE_UNMAPPED_ALERT_TYPES', 'AlertIncident')),
     ), static fn (string $type): bool => $type !== '' && $type !== '0')),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Retención de datos operativos
+    |--------------------------------------------------------------------------
+    |
+    | Filas transitorias que el pipeline deja atrás y que ya no alimentan nada:
+    | se purgan cada noche (routes/console.php) en lotes. Un valor < 1 apaga la
+    | purga de esa tabla (se registra como `skipped`, nunca borra todo).
+    |
+    | - webhook_events_days: webhooks ya resueltos (`processed`, `failed`,
+    |   `invalid_signature`). De los `processed` el cuerpo útil ya vive en
+    |   `raw_events`; los rechazados nadie los reintenta. Aquí sólo queda la
+    |   copia cruda con su firma. Los `received`/`processing` no se tocan: si
+    |   quedaron así, alguien debe mirarlos.
+    | - integration_sync_jobs_days: corridas de sync terminadas (`completed`,
+    |   `failed`). Sólo se consultan las en vuelo y la del aviso de activos
+    |   pendientes, que es de minutos atrás.
+    | - reply_tokens_days: días DESPUÉS de vencer (24 h de vida) para borrar
+    |   un token de respuesta por SMS/WhatsApp. Guarda el teléfono del
+    |   destinatario; lo que el token decidió ya quedó en el incidente.
+    | - failed_jobs_days: jobs fallidos de la cola (`failed_jobs`). Horizon
+    |   guarda su propia copia 7 días; esto acota la tabla de Laravel.
+    |
+    | Lo facturable y lo de auditoría (usage_events, messaging_charges,
+    | audit_logs, domain_event_logs, …) NO se purga aquí.
+    |
+    */
+
+    'retention' => [
+        'webhook_events_days' => (int) env('PIPELINE_RETENTION_WEBHOOK_EVENTS_DAYS', 30),
+        'integration_sync_jobs_days' => (int) env('PIPELINE_RETENTION_INTEGRATION_SYNC_JOBS_DAYS', 30),
+        'reply_tokens_days' => (int) env('PIPELINE_RETENTION_REPLY_TOKENS_DAYS', 30),
+        'failed_jobs_days' => (int) env('PIPELINE_RETENTION_FAILED_JOBS_DAYS', 30),
+    ],
+
 ];

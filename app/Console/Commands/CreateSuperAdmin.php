@@ -42,6 +42,7 @@ class CreateSuperAdmin extends Command
         if ($existing !== null) {
             $bootstrap->execute($email, $existing->name, '');
             $this->info("{$existing->email} ya existía: ahora es super-admin (contraseña sin cambios).");
+            $this->remindTwoFactor();
 
             return self::SUCCESS;
         }
@@ -71,9 +72,23 @@ class CreateSuperAdmin extends Command
 
         ['user' => $user] = $bootstrap->execute($email, $name, $secret);
 
-        $this->info("Super-admin creado: {$user->email}. Entra en /login → consola en /admin/tenants y activa 2FA.");
+        $this->info("Super-admin creado: {$user->email}. Entra en /login → consola en /admin/tenants.");
+        $this->remindTwoFactor();
 
         return self::SUCCESS;
+    }
+
+    /**
+     * La consola /admin exige 2FA confirmado (RequireSuperAdminTwoFactor):
+     * sin él, el primer login termina en la página de seguridad.
+     */
+    private function remindTwoFactor(): void
+    {
+        if (config('auth.super_admin.require_two_factor') !== true) {
+            return;
+        }
+
+        $this->warn('Recuerda: la consola /admin exige verificación en dos pasos. Actívala en /settings/security al entrar por primera vez.');
     }
 
     private function passwordError(string $value): ?string

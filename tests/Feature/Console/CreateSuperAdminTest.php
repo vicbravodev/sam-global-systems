@@ -18,6 +18,7 @@ class CreateSuperAdminTest extends TestCase
         $this->artisan('sam:create-super-admin', ['email' => 'Victor@Sam.Example', '--name' => 'Victor'])
             ->expectsQuestion('Contraseña', 'Sam-Operador-2026!x')
             ->expectsQuestion('Confirma la contraseña', 'Sam-Operador-2026!x')
+            ->expectsOutputToContain('la consola /admin exige verificación en dos pasos')
             ->assertSuccessful();
 
         $user = User::sole();
@@ -46,7 +47,9 @@ class CreateSuperAdminTest extends TestCase
         $user = User::factory()->create(['email' => 'victor@sam.example', 'global_role' => null]);
         $hash = $user->password;
 
-        $this->artisan('sam:create-super-admin', ['email' => 'victor@sam.example'])->assertSuccessful();
+        $this->artisan('sam:create-super-admin', ['email' => 'victor@sam.example'])
+            ->expectsOutputToContain('la consola /admin exige verificación en dos pasos')
+            ->assertSuccessful();
 
         $user->refresh();
         $this->assertTrue($user->isSuperAdmin());
@@ -59,5 +62,15 @@ class CreateSuperAdminTest extends TestCase
         $this->artisan('sam:create-super-admin', ['email' => 'no-es-email'])->assertFailed();
 
         $this->assertSame(0, User::count());
+    }
+
+    public function test_it_skips_the_two_factor_reminder_when_the_console_does_not_require_it(): void
+    {
+        config(['auth.super_admin.require_two_factor' => false]);
+        User::factory()->create(['email' => 'victor@sam.example', 'global_role' => null]);
+
+        $this->artisan('sam:create-super-admin', ['email' => 'victor@sam.example'])
+            ->doesntExpectOutputToContain('verificación en dos pasos')
+            ->assertSuccessful();
     }
 }

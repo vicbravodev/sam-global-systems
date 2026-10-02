@@ -28,7 +28,7 @@ class AdminConsolePagesTest extends TestCase
 
     private function superAdmin(array $attributes = []): User
     {
-        return User::factory()->create(['global_role' => 'super_admin'] + $attributes);
+        return User::factory()->superAdmin()->create($attributes);
     }
 
     private function audit(Team $team, string $action, AuditCategory $category, string $summary, ?User $actor = null, array $metadata = []): void
@@ -49,17 +49,18 @@ class AdminConsolePagesTest extends TestCase
 
     public function test_operators_show_who_is_you_and_who_lacks_two_factor(): void
     {
+        // La consola exige 2FA a quien la usa: el operador sin 2FA es otro.
         $me = $this->superAdmin();
-        $secured = User::factory()->withTwoFactor()->create(['global_role' => 'super_admin']);
+        $unsecured = User::factory()->create(['global_role' => 'super_admin']);
 
         $this->actingAs($me)
             ->get(route('admin.operators.index'))
-            ->assertInertia(function (Assert $page) use ($me, $secured) {
+            ->assertInertia(function (Assert $page) use ($me, $unsecured) {
                 $rows = collect($page->toArray()['props']['operators'])->keyBy('id');
                 $this->assertTrue($rows[$me->id]['isYou']);
-                $this->assertFalse($rows[$me->id]['twoFactor']);
-                $this->assertFalse($rows[$secured->id]['isYou']);
-                $this->assertTrue($rows[$secured->id]['twoFactor']);
+                $this->assertTrue($rows[$me->id]['twoFactor']);
+                $this->assertFalse($rows[$unsecured->id]['isYou']);
+                $this->assertFalse($rows[$unsecured->id]['twoFactor']);
             });
     }
 

@@ -53,7 +53,9 @@ class LoggingChannelsTest extends TestCase
     public function test_the_default_stack_includes_json(): void
     {
         // El default del archivo, no el del .env local de quien corre el test.
-        $this->assertStringContainsString("env('LOG_STACK', 'single,json')", (string) File::get(config_path('logging.php')));
+        $source = (string) File::get(config_path('logging.php'));
+        $this->assertStringContainsString("env('LOG_STACK', \$defaultStack)", $source);
+        $this->assertStringContainsString("\$defaultStack = \$isProduction ? 'daily,json' : 'single,json';", $source);
         $this->assertSame(storage_path('logs/system.json'), config('logging.channels.json.path'));
     }
 

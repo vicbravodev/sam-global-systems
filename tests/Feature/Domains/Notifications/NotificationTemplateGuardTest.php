@@ -87,7 +87,7 @@ class NotificationTemplateGuardTest extends TestCase
 
     public function test_super_admin_can_update_a_global_template(): void
     {
-        $admin = User::factory()->create(['global_role' => 'super_admin']);
+        $admin = User::factory()->superAdmin()->create();
         $global = NotificationTemplate::factory()->create(['team_id' => null]);
 
         $this->actingAs($admin)->putJson(

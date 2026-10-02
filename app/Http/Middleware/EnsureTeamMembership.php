@@ -31,6 +31,12 @@ class EnsureTeamMembership
         // the BelongsToTenant global scope transparently scopes every query to
         // the impersonated tenant — no membership or role check applies.
         if ($user?->isSuperAdmin() === true && $team !== null) {
+            // Entrar a un cliente ajeno es acceso cross-tenant: exige el mismo
+            // 2FA confirmado que la consola /admin. Sus propios teams no.
+            if (! $user->belongsToTeam($team) && RequireSuperAdminTwoFactor::mustSetUpTwoFactor($user)) {
+                return RequireSuperAdminTwoFactor::deny($request, $user, 'tenant_entry');
+            }
+
             if ($request->route('current_team') !== null && ! $user->isCurrentTeam($team)) {
                 $user->forceSwitchTeam($team);
 
