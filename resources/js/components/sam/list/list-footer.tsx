@@ -1,13 +1,10 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import type { ListPagination } from '@/types/pagination';
 
-export interface ListPagination {
-    page: number;
-    perPage: number;
-    total: number;
-    lastPage: number;
-}
+export type { ListPagination };
+export { EMPTY_PAGINATION } from '@/types/pagination';
 
 interface Props {
     pagination: ListPagination;
