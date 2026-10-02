@@ -46,7 +46,7 @@ class TwilioStatusCallbackController extends Controller
         $isValid = (new RequestValidator($authToken))->validate(
             $request->header('X-Twilio-Signature', ''),
             $signedUrl,
-            $request->post(),
+            TwilioWebhookUrl::signedParams($request),
         );
 
         abort_unless($isValid, 403, 'Invalid Twilio signature.');

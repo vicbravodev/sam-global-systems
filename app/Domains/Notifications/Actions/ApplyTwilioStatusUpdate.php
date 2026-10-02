@@ -9,6 +9,7 @@ use App\Domains\Notifications\Events\NotificationDelivered;
 use App\Domains\Notifications\Events\NotificationFailed;
 use App\Domains\Notifications\Models\MessagingCharge;
 use App\Domains\Notifications\Models\NotificationDelivery;
+use App\Domains\Notifications\Support\MessagingSuppressions;
 use App\Domains\Notifications\Support\TwilioErrorCatalog;
 use App\Support\LoggableCode;
 use App\Support\SystemLog;
@@ -270,6 +271,11 @@ class ApplyTwilioStatusUpdate
 
         if ($target === DeliveryStatus::Delivered) {
             NotificationDelivered::dispatch($delivery->team_id, $delivery->notification_id, $delivery->id, $channelType);
+        }
+
+        if ($target === DeliveryStatus::Failed && $delivery->channel !== null) {
+            $address = $delivery->payload_json['address'] ?? null;
+            MessagingSuppressions::recordFromError($delivery->channel->channel_type, is_string($address) ? $address : null, $errorCode);
         }
 
         if ($target === DeliveryStatus::Failed) {

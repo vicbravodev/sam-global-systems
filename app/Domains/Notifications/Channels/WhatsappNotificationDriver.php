@@ -17,9 +17,10 @@ use App\Domains\Notifications\Support\TwilioStatusCallbackUrl;
  * Credentials are SAM's platform Twilio account (env TWILIO_*). The channel
  * `config_json` may only override non-secret values:
  *   - from        — Twilio WhatsApp sender (e.g. "whatsapp:+14155238886").
- *   - content_sid — Twilio pre-approved Content template SID. When set,
- *                   variables are forwarded as `content_variables`
- *                   (JSON-encoded) and the body is ignored. Without it, the
+ *   - content_sid — Twilio pre-approved Content template SID (SAM's generic
+ *                   alert template: {{1}} subject, {{2}} body). When set, the
+ *                   rendered subject/body go as positional
+ *                   `contentVariables`, reply token included. Without it, the
  *                   rendered body is sent as a free-form message, which
  *                   Twilio rejects outside the 24 h session window (63016,
  *                   permanent → fallback channel).
@@ -53,9 +54,15 @@ class WhatsappNotificationDriver implements NotificationDriver
         if ($config['content_sid'] !== null) {
             $params['contentSid'] = $config['content_sid'];
 
-            if ($notification->variables !== []) {
-                $params['contentVariables'] = (string) json_encode($this->stringifyVariables($notification->variables));
-            }
+            // Plantilla genérica de SAM con dos variables posicionales:
+            // {{1}} = asunto, {{2}} = cuerpo ya renderizado (con el token de
+            // respuesta SI-/NO-/ESC-). Antes se mandaba el payload crudo
+            // ({"incident_id":…}), que no casa con {{1}}/{{2}}, y el token se
+            // perdía: nadie podía atender respondiendo por WhatsApp.
+            $params['contentVariables'] = (string) json_encode([
+                '1' => $this->templateParam($notification->subject ?? 'Aviso de SAM'),
+                '2' => $this->templateParam($notification->body),
+            ], JSON_UNESCAPED_UNICODE);
         } else {
             $params['body'] = $notification->body;
         }
@@ -81,23 +88,14 @@ class WhatsappNotificationDriver implements NotificationDriver
     }
 
     /**
-     * Twilio Content Variables expects string→string. Cast scalar values; drop arrays/objects.
-     *
-     * Claves numéricas ('1', '2'…) llegan como int en un array de PHP: de
-     * ahí el `(string) $key`.
-     *
-     * @param  array<array-key, mixed>  $variables
-     * @return array<string, string>
+     * WhatsApp rechaza variables de plantilla con saltos de línea, tabuladores
+     * o más de 4 espacios seguidos, y de más de 1024 caracteres.
      */
-    private function stringifyVariables(array $variables): array
+    private function templateParam(string $value): string
     {
-        $out = [];
-        foreach ($variables as $key => $value) {
-            if (is_scalar($value)) {
-                $out[(string) $key] = (string) $value;
-            }
-        }
+        $flat = (string) preg_replace('/\s*\R\s*/u', ' · ', trim($value));
+        $flat = (string) preg_replace('/[\t ]{2,}/', ' ', $flat);
 
-        return $out;
+        return mb_substr($flat, 0, 1024);
     }
 }
