@@ -48,4 +48,25 @@ final class TwilioWebhookUrl
 
         return rtrim(trim($base), '/').route($name, $parameters, false);
     }
+
+    /**
+     * Los parámetros POST tal como Twilio los firmó. TrimStrings y
+     * ConvertEmptyStringsToNull son globales: una respuesta "SI-W4K9 " o con
+     * salto de línea final llegaba recortada a la validación y la firma
+     * fallaba (403, respuesta perdida). Se parsea el cuerpo crudo.
+     *
+     * @return array<int|string, mixed>
+     */
+    public static function signedParams(Request $request): array
+    {
+        $raw = $request->getContent();
+
+        if ($raw === '') {
+            return $request->post();
+        }
+
+        parse_str($raw, $params);
+
+        return $params;
+    }
 }

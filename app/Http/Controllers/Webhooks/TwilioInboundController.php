@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Webhooks;
 use App\Domains\Notifications\Actions\ProcessInboundReply;
 use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Models\NotificationChannel;
+use App\Domains\Notifications\Support\MessagingSuppressions;
 use App\Domains\Notifications\Support\PlatformTwilioConfig;
 use App\Domains\Notifications\Support\TwilioWebhookUrl;
 use App\Http\Controllers\Controller;
@@ -38,16 +39,25 @@ class TwilioInboundController extends Controller
         $isValid = $validator->validate(
             $request->header('X-Twilio-Signature', ''),
             TwilioWebhookUrl::forSignature($request),
-            $request->post(),
+            TwilioWebhookUrl::signedParams($request),
         );
 
         if (! $isValid) {
             abort(403, 'Invalid Twilio signature.');
         }
 
+        $from = (string) $request->input('From', '');
+        $body = (string) $request->input('Body', '');
+
+        $optOut = $this->handleOptKeyword($from, $body);
+
+        if ($optOut !== false) {
+            return response($this->twiml($optOut), 200)->header('Content-Type', 'text/xml');
+        }
+
         $reply = $processInboundReply->execute(
-            fromAddress: (string) $request->input('From', ''),
-            body: (string) $request->input('Body', ''),
+            fromAddress: $from,
+            body: $body,
         );
 
         return response($this->twiml($reply), 200)->header('Content-Type', 'text/xml');
@@ -77,6 +87,38 @@ class TwilioInboundController extends Controller
 
                 return $from !== null && $this->normalize($from) === $normalized;
             });
+    }
+
+    /**
+     * STOP/BAJA dan de baja al remitente para ese canal; START/ALTA lo
+     * levantan. Devuelve false si el mensaje no es una de esas palabras (sigue
+     * el flujo de respuestas), o el texto a contestar (null = sin respuesta:
+     * Twilio ya contesta solo las palabras estándar en inglés).
+     */
+    private function handleOptKeyword(string $from, string $body): string|false|null
+    {
+        $keyword = strtoupper(trim($body));
+        $channel = str_starts_with(strtolower(trim($from)), 'whatsapp:') ? ChannelType::Whatsapp : ChannelType::Sms;
+
+        if ($from === '') {
+            return false;
+        }
+
+        if (in_array($keyword, MessagingSuppressions::OPT_OUT_KEYWORDS, true)) {
+            MessagingSuppressions::suppress($channel, $from, 'opted_out', 'inbound_keyword');
+
+            return $keyword === 'BAJA'
+                ? 'Listo: ya no recibirás avisos de SAM por este medio. Responde ALTA para volver a recibirlos.'
+                : null;
+        }
+
+        if (in_array($keyword, MessagingSuppressions::OPT_IN_KEYWORDS, true)) {
+            MessagingSuppressions::lift($channel, $from);
+
+            return $keyword === 'ALTA' ? 'Listo: volverás a recibir avisos de SAM por este medio.' : null;
+        }
+
+        return false;
     }
 
     private function normalize(string $address): string

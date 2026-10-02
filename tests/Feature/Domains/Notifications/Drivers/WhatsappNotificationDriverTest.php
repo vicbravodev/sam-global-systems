@@ -83,7 +83,12 @@ class WhatsappNotificationDriverTest extends TestCase
         $this->assertSame('queued', $result->response['status']);
     }
 
-    public function test_uses_content_template_when_configured(): void
+    /**
+     * La plantilla genérica de SAM tiene {{1}} = asunto y {{2}} = cuerpo.
+     * Antes se mandaba el payload crudo como variables (no casaba con la
+     * plantilla) y el token de respuesta se perdía.
+     */
+    public function test_uses_content_template_with_positional_subject_and_body(): void
     {
         $messenger = $this->bindMessenger();
         $messenger->shouldReceive('createMessage')
@@ -93,8 +98,10 @@ class WhatsappNotificationDriverTest extends TestCase
                 $this->assertSame('HX_TEMPLATE', $params['contentSid']);
                 $this->assertArrayNotHasKey('body', $params);
                 $vars = json_decode($params['contentVariables'], true);
-                $this->assertSame('speeding', $vars['incident_type']);
-                $this->assertSame('Truck-12', $vars['asset_name']);
+                $this->assertSame(['1', '2'], array_map('strval', array_keys($vars)));
+                $this->assertSame('Hello', $vars['1']);
+                // Sin saltos de línea (WhatsApp los rechaza) y con el token.
+                $this->assertSame('Pánico en Truck-12 · Responde SI-W4K9 confirma', $vars['2']);
 
                 return true;
             })
@@ -104,10 +111,7 @@ class WhatsappNotificationDriverTest extends TestCase
         $channel = $this->channel($team, ['content_sid' => 'HX_TEMPLATE']);
 
         $result = app(WhatsappNotificationDriver::class)->send(
-            $this->rendered([
-                'incident_type' => 'speeding',
-                'asset_name' => 'Truck-12',
-            ]),
+            $this->rendered(['incident_type' => 'speeding'], "Pánico en Truck-12\nResponde SI-W4K9 confirma"),
             $channel,
         );
 
