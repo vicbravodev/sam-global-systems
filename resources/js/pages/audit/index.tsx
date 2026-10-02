@@ -1,12 +1,18 @@
-import { Head, router, usePage } from '@inertiajs/react';
-import { ChevronLeft, ChevronRight, ScrollText, Search, X } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { Head, usePage } from '@inertiajs/react';
+import { ScrollText } from 'lucide-react';
+import { useState } from 'react';
 import { DataTable } from '@/components/sam/data-table';
 import type { DataTableColumn } from '@/components/sam/data-table';
+import {
+    ClearFiltersButton,
+    ListFooter,
+    SearchInput,
+} from '@/components/sam/list';
+import { ListPage } from '@/components/sam/list-page';
+import { TabBar } from '@/components/sam/tab-bar';
+import type { TabItem } from '@/components/sam/tab-bar';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
-import { PageHeader } from '@/components/ui/page-header';
 import {
     Select,
     SelectContent,
@@ -14,7 +20,9 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { useServerList } from '@/hooks/use-server-list';
 import { formatDateTime } from '@/lib/format';
+import type { ListPagination } from '@/types/pagination';
 
 // Sentinel para representar "sin filtro" en los <Select> del DS: Radix no
 // permite SelectItem con value="", así que el filtro vacío (todas/todos) se
@@ -61,12 +69,7 @@ interface FilterOption {
 
 interface AuditPageProps {
     logs: AuditLogRow[];
-    pagination: {
-        page: number;
-        perPage: number;
-        total: number;
-        lastPage: number;
-    };
+    pagination: ListPagination;
     filters: AuditFilters;
     filterOptions: {
         categories: FilterOption[];
@@ -75,12 +78,12 @@ interface AuditPageProps {
     events: DomainEventRow[];
 }
 
-const TABS = [
+type TabKey = 'logs' | 'events';
+
+const TABS: TabItem[] = [
     { key: 'logs', label: 'Auditoría' },
     { key: 'events', label: 'Eventos de dominio' },
-] as const;
-
-type TabKey = (typeof TABS)[number]['key'];
+];
 
 const EMPTY_FILTERS: AuditFilters = {
     q: null,
@@ -190,57 +193,19 @@ const EVENT_COLUMNS: DataTableColumn<DomainEventRow>[] = [
 
 export default function AuditIndex() {
     const page = usePage();
-    const { logs, pagination, filterOptions, events } =
-        page.props as unknown as AuditPageProps;
-    const serverFilters = (page.props as unknown as AuditPageProps).filters;
+    const pageProps = page.props as unknown as AuditPageProps;
+    const { logs, pagination, filterOptions, events } = pageProps;
 
     const [tab, setTab] = useState<TabKey>('logs');
-    const [filters, setFilters] = useState<AuditFilters>(serverFilters);
-    const [search, setSearch] = useState(serverFilters.q ?? '');
+    const list = useServerList({
+        only: ['logs', 'pagination'],
+        filters: pageProps.filters,
+        emptyFilters: EMPTY_FILTERS,
+    });
+    const { filters, apply } = list;
 
-    const applyFilters = useCallback((next: AuditFilters) => {
-        setFilters(next);
-        router.reload({
-            only: ['logs', 'pagination', 'filters'],
-            data: {
-                q: next.q ?? undefined,
-                category: next.category ?? undefined,
-                actor_type: next.actor_type ?? undefined,
-                from: next.from ?? undefined,
-                to: next.to ?? undefined,
-                system: next.system ? 1 : undefined,
-                page: undefined,
-            },
-        });
-    }, []);
-
-    useEffect(() => {
-        setSearch(serverFilters.q ?? '');
-
-        setFilters(serverFilters);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [JSON.stringify(serverFilters)]);
-
-    useEffect(() => {
-        const current = filters.q ?? '';
-        const next = search.trim();
-
-        if (next === current) {
-            return;
-        }
-
-        const timer = setTimeout(() => {
-            applyFilters({ ...filters, q: next === '' ? null : next });
-        }, 350);
-
-        return () => clearTimeout(timer);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [search]);
-
-    const goToPage = useCallback((target: number) => {
-        router.reload({ only: ['logs', 'pagination'], data: { page: target } });
-    }, []);
-
+    // "Mostrar actividad del sistema" es una preferencia de vista, no un
+    // filtro: ni cuenta para "Limpiar" ni se borra con él.
     const hasActive = (
         ['q', 'category', 'actor_type', 'from', 'to'] as const
     ).some((key) => filters[key] !== null);
@@ -248,53 +213,33 @@ export default function AuditIndex() {
     return (
         <>
             <Head title="Auditoría" />
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                <PageHeader
-                    title="Auditoría"
-                    description="Registro de acciones y eventos de dominio del tenant."
-                    className="shrink-0 border-b border-border bg-background px-5 py-3"
+            <ListPage
+                title="Auditoría"
+                description="Registro de acciones y eventos de dominio del tenant."
+            >
+                <TabBar
+                    aria-label="Secciones de auditoría"
+                    items={TABS}
+                    value={tab}
+                    onChange={(key) => setTab(key as TabKey)}
+                    className="shrink-0 px-5"
                 />
-
-                <div className="flex shrink-0 gap-1 border-b border-border bg-background px-5">
-                    {TABS.map((item) => (
-                        <button
-                            key={item.key}
-                            type="button"
-                            onClick={() => setTab(item.key)}
-                            className={`px-3 py-2 text-sm transition-colors ${
-                                tab === item.key
-                                    ? 'border-b-2 border-primary font-medium text-fg-1'
-                                    : 'text-fg-3 hover:text-fg-1'
-                            }`}
-                        >
-                            {item.label}
-                        </button>
-                    ))}
-                </div>
 
                 {tab === 'logs' && (
                     <>
                         <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-background px-5 py-2">
-                            <div className="flex items-center gap-1.5 rounded-md border border-border bg-surface-1 px-2.5 py-1.5">
-                                <Search size={12} className="text-fg-3" />
-                                <input
-                                    type="text"
-                                    value={search}
-                                    onChange={(event) =>
-                                        setSearch(event.target.value)
-                                    }
-                                    placeholder="Buscar acción, entidad…"
-                                    className="w-48 border-none bg-transparent text-xs text-fg-1 outline-none"
-                                />
-                            </div>
+                            <SearchInput
+                                value={filters.q}
+                                onApply={(q) => list.setFilter('q', q)}
+                                placeholder="Buscar acción, entidad…"
+                            />
                             <Select
                                 value={filters.category ?? ALL_OPTION}
                                 onValueChange={(value) =>
-                                    applyFilters({
-                                        ...filters,
-                                        category:
-                                            value === ALL_OPTION ? null : value,
-                                    })
+                                    list.setFilter(
+                                        'category',
+                                        value === ALL_OPTION ? null : value,
+                                    )
                                 }
                             >
                                 <SelectTrigger
@@ -322,11 +267,10 @@ export default function AuditIndex() {
                             <Select
                                 value={filters.actor_type ?? ALL_OPTION}
                                 onValueChange={(value) =>
-                                    applyFilters({
-                                        ...filters,
-                                        actor_type:
-                                            value === ALL_OPTION ? null : value,
-                                    })
+                                    list.setFilter(
+                                        'actor_type',
+                                        value === ALL_OPTION ? null : value,
+                                    )
                                 }
                             >
                                 <SelectTrigger
@@ -354,13 +298,12 @@ export default function AuditIndex() {
                                 aria-label="Desde"
                                 value={filters.from ?? ''}
                                 onChange={(event) =>
-                                    applyFilters({
-                                        ...filters,
-                                        from:
-                                            event.target.value === ''
-                                                ? null
-                                                : event.target.value,
-                                    })
+                                    list.setFilter(
+                                        'from',
+                                        event.target.value === ''
+                                            ? null
+                                            : event.target.value,
+                                    )
                                 }
                                 className="rounded-md border border-border bg-surface-1 px-2 py-1 text-xs text-fg-2"
                             />
@@ -369,13 +312,12 @@ export default function AuditIndex() {
                                 aria-label="Hasta"
                                 value={filters.to ?? ''}
                                 onChange={(event) =>
-                                    applyFilters({
-                                        ...filters,
-                                        to:
-                                            event.target.value === ''
-                                                ? null
-                                                : event.target.value,
-                                    })
+                                    list.setFilter(
+                                        'to',
+                                        event.target.value === ''
+                                            ? null
+                                            : event.target.value,
+                                    )
                                 }
                                 className="rounded-md border border-border bg-surface-1 px-2 py-1 text-xs text-fg-2"
                             />
@@ -384,30 +326,24 @@ export default function AuditIndex() {
                                     type="checkbox"
                                     checked={filters.system}
                                     onChange={(event) =>
-                                        applyFilters({
-                                            ...filters,
-                                            system: event.target.checked,
-                                        })
+                                        list.setFilter(
+                                            'system',
+                                            event.target.checked,
+                                        )
                                     }
                                     className="accent-primary"
                                 />
                                 Mostrar actividad automática del sistema
                             </label>
                             {hasActive && (
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setSearch('');
-                                        applyFilters({
+                                <ClearFiltersButton
+                                    onClick={() =>
+                                        apply({
                                             ...EMPTY_FILTERS,
                                             system: filters.system,
-                                        });
-                                    }}
-                                    className="flex items-center gap-1 text-xs text-fg-3 hover:text-fg-1"
-                                >
-                                    <X size={11} />
-                                    Limpiar
-                                </button>
+                                        })
+                                    }
+                                />
                             )}
                         </div>
 
@@ -425,38 +361,12 @@ export default function AuditIndex() {
                             }
                         />
 
-                        <div className="flex shrink-0 items-center justify-between border-t border-border bg-background px-5 py-2 text-xs text-fg-3">
-                            <span>
-                                {logs.length} de {pagination.total} registros
-                            </span>
-                            <div className="flex items-center gap-2">
-                                <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    disabled={pagination.page <= 1}
-                                    onClick={() =>
-                                        goToPage(pagination.page - 1)
-                                    }
-                                >
-                                    <ChevronLeft size={13} />
-                                </Button>
-                                <span className="tabular-nums">
-                                    {pagination.page} / {pagination.lastPage}
-                                </span>
-                                <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    disabled={
-                                        pagination.page >= pagination.lastPage
-                                    }
-                                    onClick={() =>
-                                        goToPage(pagination.page + 1)
-                                    }
-                                >
-                                    <ChevronRight size={13} />
-                                </Button>
-                            </div>
-                        </div>
+                        <ListFooter
+                            pagination={pagination}
+                            shown={logs.length}
+                            onPage={list.goToPage}
+                            noun={['registro', 'registros']}
+                        />
                     </>
                 )}
 
@@ -475,7 +385,7 @@ export default function AuditIndex() {
                         }
                     />
                 )}
-            </div>
+            </ListPage>
         </>
     );
 }
