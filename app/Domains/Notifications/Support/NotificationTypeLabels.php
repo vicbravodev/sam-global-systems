@@ -17,6 +17,7 @@ class NotificationTypeLabels
     private const FIXED = [
         'incident.created' => 'Incidente nuevo (cualquier tipo)',
         'incident.sla_breached' => 'Incidente sin atender a tiempo (SLA vencido)',
+        'incident.priority_raised' => 'Incidente elevado a prioridad crítica',
         'incident.assigned.on_call' => 'Incidente asignado a la guardia',
         'incident.status_changed' => 'Cambio de estado de un incidente',
         'driver.risk_deteriorated' => 'Riesgo de conductor en aumento',

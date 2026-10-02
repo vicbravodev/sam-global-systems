@@ -17,6 +17,7 @@ use App\Domains\Incidents\Models\IncidentPriority;
 use App\Domains\Incidents\Models\IncidentStatus;
 use App\Domains\Incidents\Models\IncidentType;
 use App\Domains\Incidents\Support\EscalationExhaustedNotification;
+use App\Domains\Incidents\Support\EscalationLadder;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\Notifications\Models\Notification;
 use App\Domains\TenantConfig\Models\TenantEscalationConfig;
@@ -369,7 +370,7 @@ class EscalationReliabilityTest extends TestCase
 
         $this->assertSystemLogged('incidents.escalation.accelerated', fn (array $c) => $c['outcome'] === 'ok'
             && $c['input'] === ['incident_id' => $incident->id, 'accelerate_reason' => 'emergency_confirmed']
-            && $c['result'] === ['next_level' => 1, 'next_attempt' => 1, 'delay_minutes' => 5]);
+            && $c['result'] === ['mode' => 'next_level', 'next_level' => 1, 'next_attempt' => 1, 'delay_minutes' => 5]);
 
         // Una segunda aceleración no toca una escalera que ya avanzó.
         app(ArmIncidentEscalation::class)->accelerate($incident->fresh(), 'verification_no_answer');
@@ -384,7 +385,14 @@ class EscalationReliabilityTest extends TestCase
         $this->makeEscalationConfig([['delay_minutes' => 0, 'contacts' => ['oncall@example.com']]]);
         $incident = $this->makeOpenIncident(['escalation_epoch' => 1, 'next_escalation_at' => now()->subMinute()]);
 
+        // Se avisa al único nivel; la escalera no se agota hasta que pase el
+        // margen sin que nadie atienda.
         $this->runJob($incident, epoch: 1);
+        $this->assertNull($incident->fresh()->escalation_exhausted_at);
+        LaravelNotification::assertNothingSent();
+
+        $this->travel(EscalationLadder::EXHAUSTION_GRACE_MINUTES)->minutes();
+        $this->runJob($incident, level: 1, epoch: 1);
 
         $fresh = $incident->fresh();
         $this->assertNotNull($fresh->escalation_exhausted_at);
@@ -405,6 +413,54 @@ class EscalationReliabilityTest extends TestCase
             && $c['result'] === ['super_admins_notified' => 1]);
         $this->assertSystemLogged('incidents.escalation.exhausted', fn (array $c) => ($c['reason'] ?? null) === 'already_exhausted');
         $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_acknowledging_within_the_grace_never_exhausts(): void
+    {
+        Queue::fake();
+        LaravelNotification::fake();
+        User::factory()->create(['global_role' => 'super_admin']);
+        $this->makeEscalationConfig([['delay_minutes' => 0, 'contacts' => ['oncall@example.com']]]);
+        $incident = $this->makeOpenIncident(['escalation_epoch' => 1, 'next_escalation_at' => now()->subMinute()]);
+
+        $this->runJob($incident, epoch: 1);
+        $incident->forceFill(['acknowledged_at' => now()])->save();
+
+        $this->travel(EscalationLadder::EXHAUSTION_GRACE_MINUTES)->minutes();
+        $this->runJob($incident, level: 1, epoch: 1);
+
+        $this->assertNull($incident->fresh()->escalation_exhausted_at);
+        LaravelNotification::assertNothingSent();
+    }
+
+    public function test_raising_to_critical_pages_the_first_level_now_without_exhausting(): void
+    {
+        Queue::fake();
+        LaravelNotification::fake();
+        User::factory()->create(['global_role' => 'super_admin']);
+        $critical = $this->criticalPriority();
+        $medium = IncidentPriority::query()->updateOrCreate(['code' => 'medium'], ['name' => 'Medium', 'level' => 2, 'sla_seconds' => 3600, 'color' => '#eab308']);
+        $incident = $this->makeOpenIncident(['incident_priority_id' => $medium->id, 'escalation_epoch' => 1, 'sla_due_at' => now()->addHour(), 'next_escalation_at' => now()->addHour()]);
+        $type = IncidentType::query()->findOrFail($incident->incident_type_id);
+
+        app(ReclassifyIncident::class)->execute($incident, $type, $critical);
+
+        $notice = Notification::withoutGlobalScopes()->where('event_key', "incident_priority_raised:{$incident->id}:e2")->sole();
+        $this->assertSame('incident.priority_raised', $notice->notification_type);
+        $this->assertSame(0, $notice->payload_json['escalation_level']);
+
+        // El aviso cuenta como el nivel 0: lo siguiente es la comprobación
+        // final con margen, no un agotamiento inmediato.
+        $fresh = $incident->fresh();
+        $this->assertSame(2, $fresh->escalation_epoch);
+        $this->assertSame(1, $fresh->escalation_level);
+        $this->assertNull($fresh->escalation_exhausted_at);
+        LaravelNotification::assertNothingSent();
+
+        $this->assertSystemLogged('incidents.escalation.tightened', fn (array $c) => $c['outcome'] === 'ok' && $c['result']['paged_now'] === true);
+        $this->assertSystemLogged('incidents.escalation.accelerated', fn (array $c) => $c['outcome'] === 'ok'
+            && $c['input']['accelerate_reason'] === 'priority_raised_critical'
+            && $c['result']['mode'] === 'exhaustion_check');
     }
 
     public function test_exhaustion_without_super_admins_is_logged_as_degraded(): void

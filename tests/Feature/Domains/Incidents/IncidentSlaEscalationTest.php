@@ -10,6 +10,7 @@ use App\Domains\Incidents\Jobs\CheckIncidentAcknowledgementJob;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentPriority;
 use App\Domains\Incidents\Models\IncidentStatus;
+use App\Domains\Incidents\Support\EscalationLadder;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\Notifications\Models\Notification;
 use App\Domains\TenantConfig\Models\TenantEscalationConfig;
@@ -321,13 +322,22 @@ class IncidentSlaEscalationTest extends TestCase
             ->sole();
         $this->assertSame('boss@example.com', $notification->payload_json['recipients'][0]['address']);
 
-        Queue::assertNotPushed(CheckIncidentAcknowledgementJob::class);
+        // Tras el último nivel queda un paso de comprobación con margen: no
+        // se agota en el mismo instante en que se avisa al último nivel.
+        Queue::assertPushed(CheckIncidentAcknowledgementJob::class, fn (CheckIncidentAcknowledgementJob $job) => $job->level === 2 && $job->attempt === 1);
+        $this->assertSystemLogged('incidents.ack_check.rearmed', fn (array $c) => $c['calc']['mode'] === 'exhaustion_check'
+            && $c['calc']['exhaustion_grace_minutes'] === EscalationLadder::EXHAUSTION_GRACE_MINUTES
+            && $c['result'] === ['next_level' => 2, 'next_attempt' => 1, 'delay_minutes' => EscalationLadder::EXHAUSTION_GRACE_MINUTES]);
+        $this->assertSystemNotLogged('incidents.ack_check.chain_exhausted');
+
+        $this->travel(EscalationLadder::EXHAUSTION_GRACE_MINUTES)->minutes();
+        $this->runWatchdog($incident, level: 2);
 
         $this->assertSystemLogged('incidents.ack_check.chain_exhausted', fn (array $c) => $c['reason'] === 'no_next_level'
-            && $c['input'] === ['incident_id' => $incident->id, 'level' => 1, 'attempt' => 1]
-            && $c['calc']['steps_count'] === 2
-            && $c['calc']['step_attempts'] === 1);
-        $this->assertSystemNotLogged('incidents.ack_check.rearmed');
+            && $c['input'] === ['incident_id' => $incident->id, 'level' => 2, 'attempt' => 1]
+            && $c['calc']['steps_count'] === 2);
+        $this->assertNotNull($incident->fresh()->escalation_exhausted_at);
+        $this->assertSame(1, Notification::withoutGlobalScopes()->where('source_reference_id', (string) $incident->id)->count(), 'la comprobación final no vuelve a avisar');
     }
 
     public function test_acknowledging_after_first_breach_cancels_the_next_level(): void

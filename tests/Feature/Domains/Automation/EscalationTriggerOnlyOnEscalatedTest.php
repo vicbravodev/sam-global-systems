@@ -98,7 +98,7 @@ class EscalationTriggerOnlyOnEscalatedTest extends TestCase
         IncidentStatusChanged::dispatch($incident, 'open', IncidentStatusCode::Escalated->value);
 
         $this->assertFalse(Notification::withoutGlobalScopes()
-            ->where('event_key', "incident_status:{$incident->id}:escalated")
+            ->where('event_key', 'like', "incident_status:{$incident->id}:escalated:%")
             ->exists());
 
         $this->assertSystemLogged('notifications.status_change.skipped', fn (array $c) => $c['reason'] === 'escalated_by_sla'
@@ -165,7 +165,7 @@ class EscalationTriggerOnlyOnEscalatedTest extends TestCase
         ));
 
         $notification = Notification::withoutGlobalScopes()
-            ->where('event_key', "incident_status:{$incident->id}:escalated")
+            ->where('event_key', 'like', "incident_status:{$incident->id}:escalated:%")
             ->sole();
 
         $this->assertSame($team->id, $notification->team_id);

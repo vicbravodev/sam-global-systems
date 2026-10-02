@@ -73,7 +73,7 @@ class CrossDomainListenersTest extends TestCase
 
         $this->assertFalse(Notification::withoutGlobalScopes()
             ->where('team_id', $team->id)
-            ->where('event_key', "incident_status:{$incident->id}:in_review")
+            ->where('event_key', 'like', "incident_status:{$incident->id}:in_review:%")
             ->exists());
     }
 
@@ -95,7 +95,7 @@ class CrossDomainListenersTest extends TestCase
 
         $notification = Notification::withoutGlobalScopes()
             ->where('team_id', $team->id)
-            ->where('event_key', "incident_status:{$incident->id}:resolved")
+            ->where('event_key', 'like', "incident_status:{$incident->id}:resolved:%")
             ->first();
 
         $this->assertNotNull($notification);
@@ -124,7 +124,43 @@ class CrossDomainListenersTest extends TestCase
         $this->assertSame(0, Notification::withoutGlobalScopes()->where('team_id', $team->id)->count());
     }
 
-    public function test_incident_closed_listener_creates_notification_in_spanish(): void
+    /**
+     * IncidentClosed ya no se escucha: CloseIncident lo dispara siempre detrás
+     * de IncidentStatusChanged(closed) y sin actor, así que quien cerraba su
+     * propio incidente recibía un aviso de su propio cierre. Antes este test
+     * afirmaba ese aviso — era el bug. El aviso de cierre sale por
+     * IncidentStatusChanged, en español, a quien lleva el incidente.
+     */
+    public function test_closing_notifies_the_owner_once_and_never_the_closer(): void
+    {
+        Bus::fake();
+
+        $closer = User::factory()->create();
+        $team = $closer->currentTeam;
+        $owner = User::factory()->create();
+        $team->members()->attach($owner, ['role' => 'member']);
+        $this->actingAs($closer);
+
+        $incident = $this->incidentWithSeverity($team->id, 'high', ['claimed_by_user_id' => $owner->id]);
+
+        IncidentStatusChanged::dispatch($incident, 'resolved', 'closed', $closer->id);
+        IncidentClosed::dispatch($incident);
+
+        $notification = Notification::withoutGlobalScopes()
+            ->where('team_id', $team->id)
+            ->where('event_key', 'like', "incident_status:{$incident->id}:closed:%")
+            ->sole();
+
+        $this->assertSame('Estado del incidente actualizado', $notification->subject);
+        $this->assertSame(
+            "El incidente {$incident->fresh()->reference()} pasó a ".IncidentStatusPresenter::label('closed').'.',
+            $notification->body_preview,
+        );
+        $this->assertSame([(string) $owner->id], collect($notification->payload_json['recipients'])->pluck('recipient_reference_id')->all());
+        $this->assertSame(['web', 'email'], $notification->payload_json['force_channels']);
+    }
+
+    public function test_the_closer_alone_is_never_notified_of_their_own_close(): void
     {
         Bus::fake();
 
@@ -132,21 +168,12 @@ class CrossDomainListenersTest extends TestCase
         $team = $user->currentTeam;
         $this->actingAs($user);
 
-        $incident = $this->incidentWithSeverity($team->id, 'high', ['claimed_by_user_id' => $user->id]);
+        $incident = $this->incidentWithSeverity($team->id, 'critical', ['claimed_by_user_id' => $user->id]);
 
+        IncidentStatusChanged::dispatch($incident, 'resolved', 'closed', $user->id);
         IncidentClosed::dispatch($incident);
 
-        $notification = Notification::withoutGlobalScopes()
-            ->where('team_id', $team->id)
-            ->where('event_key', "incident_status:{$incident->id}:closed")
-            ->first();
-
-        $this->assertNotNull($notification);
-        $this->assertSame('Estado del incidente actualizado', $notification->subject);
-        $this->assertSame(
-            "El incidente {$incident->fresh()->reference()} pasó a ".IncidentStatusPresenter::label('closed').'.',
-            $notification->body_preview,
-        );
+        $this->assertSame(0, Notification::withoutGlobalScopes()->where('team_id', $team->id)->count());
     }
 
     /**

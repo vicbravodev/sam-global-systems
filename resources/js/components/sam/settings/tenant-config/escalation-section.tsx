@@ -145,8 +145,26 @@ interface EscalationStepDraft {
     /** Campo heredado que el vigilante de SLA no lee; se conserva tal cual. */
     recipient: string;
     contacts: string;
+    /** '' = el escalón por defecto del nivel (ResolveEscalationAudience). */
+    audience: string;
     attempts: string;
     retryMinutes: string;
+}
+
+/** Escalones de ResolveEscalationAudience. */
+const AUDIENCE_OPTIONS: Option[] = [
+    { value: 'on_call', label: 'Persona en turno' },
+    { value: 'operations', label: 'Supervisores' },
+    { value: 'admins', label: 'Administradores' },
+];
+
+/** ResolveEscalationAudience::defaultFor(): 0 → en turno, 1 → supervisores, 2+ → admins. */
+function defaultAudienceFor(index: number): string {
+    if (index <= 0) {
+        return 'on_call';
+    }
+
+    return index === 1 ? 'operations' : 'admins';
 }
 
 let escalationStepId = 0;
@@ -156,6 +174,7 @@ const KNOWN_STEP_KEYS = [
     'channels',
     'recipient',
     'contacts',
+    'audience',
     'attempts',
     'retry_minutes',
 ];
@@ -184,12 +203,14 @@ function parseEscalationSteps(steps: unknown[]): EscalationStepDraft[] | null {
 
         const channels = record.channels ?? [];
         const contacts = record.contacts ?? [];
+        const audience = record.audience ?? '';
 
         if (
             !Array.isArray(channels) ||
             channels.some((channel) => typeof channel !== 'string') ||
             !Array.isArray(contacts) ||
-            contacts.some((contact) => typeof contact !== 'string')
+            contacts.some((contact) => typeof contact !== 'string') ||
+            typeof audience !== 'string'
         ) {
             return null;
         }
@@ -201,6 +222,7 @@ function parseEscalationSteps(steps: unknown[]): EscalationStepDraft[] | null {
             recipient:
                 typeof record.recipient === 'string' ? record.recipient : '',
             contacts: (contacts as string[]).join(', '),
+            audience,
             attempts: String(Number(record.attempts ?? 1) || 1),
             retryMinutes:
                 record.retry_minutes === undefined ||
@@ -233,6 +255,10 @@ function serializeEscalationSteps(
 
         if (draft.recipient !== '') {
             out.recipient = draft.recipient;
+        }
+
+        if (draft.audience !== '') {
+            out.audience = draft.audience;
         }
 
         return out;
@@ -321,9 +347,51 @@ function EscalationStepsEditor({
                                 <span className="text-2xs text-fg-3">
                                     {hasContacts
                                         ? 'Separa varios con comas.'
-                                        : 'Vacío: se avisa a supervisores y administradores del equipo, en la app y por correo.'}
+                                        : 'Vacío: se avisa a las personas del equipo que elijas abajo.'}
                                 </span>
                             </label>
+                            {!hasContacts ? (
+                                <div className="flex flex-col gap-1 text-xs text-fg-2 sm:col-span-2">
+                                    A quién del equipo
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {AUDIENCE_OPTIONS.map((option) => {
+                                            const effective =
+                                                step.audience !== ''
+                                                    ? step.audience
+                                                    : defaultAudienceFor(index);
+
+                                            return (
+                                                <ChipToggle
+                                                    key={option.value}
+                                                    active={
+                                                        effective ===
+                                                        option.value
+                                                    }
+                                                    disabled={disabled}
+                                                    onToggle={() =>
+                                                        replace(index, {
+                                                            ...step,
+                                                            audience:
+                                                                option.value ===
+                                                                defaultAudienceFor(
+                                                                    index,
+                                                                )
+                                                                    ? ''
+                                                                    : option.value,
+                                                        })
+                                                    }
+                                                >
+                                                    {option.label}
+                                                </ChipToggle>
+                                            );
+                                        })}
+                                    </div>
+                                    <span className="text-2xs text-fg-3">
+                                        Sin nadie en turno, el aviso va a los
+                                        supervisores.
+                                    </span>
+                                </div>
+                            ) : null}
                             <div className="flex flex-col gap-1 text-xs text-fg-2 sm:col-span-2">
                                 Por
                                 <div className="flex flex-wrap gap-1.5">
@@ -360,8 +428,9 @@ function EscalationStepsEditor({
                                 </div>
                                 {!hasContacts ? (
                                     <span className="text-2xs text-fg-3">
-                                        Las vías sólo se usan con los contactos
-                                        que escribas arriba.
+                                        Sin contactos, las vías se usan en
+                                        incidentes altos y críticos; en los
+                                        demás, app y correo.
                                     </span>
                                 ) : null}
                             </div>
@@ -456,6 +525,7 @@ function EscalationStepsEditor({
                                     channels: [],
                                     recipient: '',
                                     contacts: '',
+                                    audience: '',
                                     attempts: '1',
                                     retryMinutes: '',
                                 },

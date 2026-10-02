@@ -129,6 +129,11 @@ class RecalculateDriverRiskProfilesJobTest extends TestCase
         // The second run sees high → high with no score increase: no re-alert.
         $this->assertCount(1, $notifications);
         $this->assertSame((string) $driver->id, $notifications->first()->source_reference_id);
+
+        // Aviso de seguimiento: sólo a quien opera la flota, en la app y por
+        // correo (antes: equipo entero, por todos los canales de la política).
+        $this->assertSame(['web', 'email'], $notifications->first()->payload_json['force_channels']);
+        $this->assertNotEmpty($notifications->first()->payload_json['recipients']);
     }
 
     public function test_drivers_without_events_or_profile_are_skipped(): void

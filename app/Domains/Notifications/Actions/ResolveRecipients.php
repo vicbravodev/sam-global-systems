@@ -102,11 +102,24 @@ class ResolveRecipients
             ->where('team_id', $notification->team_id)
             ->get();
 
+        // Quienes ya reciben su propio aviso (p. ej. la persona en turno, que
+        // va por canales pagados en otra notificación) no se repiten aquí.
+        $excluded = array_map('intval', array_filter(
+            (array) ($notification->payload_json['exclude_user_ids'] ?? []),
+            'is_numeric',
+        ));
+
         $descriptors = [];
         $dropped = [];
 
         foreach ($memberships as $membership) {
             $user = $membership->user;
+
+            if ($user !== null && in_array($user->id, $excluded, true)) {
+                $dropped['excluded'] = ($dropped['excluded'] ?? 0) + 1;
+
+                continue;
+            }
 
             if ($user === null || in_array($user->email, ['', '0'], true)) {
                 $reason = $user !== null ? 'no_email' : 'no_user';

@@ -3,7 +3,6 @@
 namespace App\Domains\Notifications;
 
 use App\Contracts\Notifications\ChannelDriverRegistry as ChannelDriverRegistryContract;
-use App\Domains\Incidents\Events\IncidentClosed;
 use App\Domains\Incidents\Events\IncidentCreated;
 use App\Domains\Incidents\Events\IncidentStatusChanged;
 use App\Domains\Notifications\Channels\ChannelDriverRegistry;
@@ -42,7 +41,6 @@ class NotificationsServiceProvider extends ServiceProvider
 
         Event::listen(IncidentCreated::class, NotifyOnIncidentCreated::class);
         Event::listen(IncidentStatusChanged::class, NotifyOnIncidentStatusChanged::class);
-        Event::listen(IncidentClosed::class, NotifyOnIncidentStatusChanged::class);
         Event::listen(NotificationFailed::class, RetryOrFallbackOnNotificationFailed::class);
 
         // NotifyOnActionExecuted no se registra: las acciones de tipo envío ya

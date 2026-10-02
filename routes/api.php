@@ -47,6 +47,7 @@ use App\Http\Controllers\TenantConfig\TenantNotificationPolicyController;
 use App\Http\Controllers\TenantConfig\TenantRuleOverrideController;
 use App\Http\Controllers\TenantConfig\TenantScheduleProfileController;
 use App\Http\Controllers\Webhooks\TwilioInboundController;
+use App\Http\Controllers\Webhooks\TwilioNotificationCallController;
 use App\Http\Controllers\Webhooks\TwilioStatusCallbackController;
 use App\Http\Controllers\Webhooks\TwilioVoiceController;
 use App\Http\Middleware\EnsureTeamMembership;
@@ -219,6 +220,13 @@ Route::post('webhooks/twilio/voice/{verification}/status', [TwilioVoiceControlle
     ->whereNumber('verification')
     ->middleware('throttle:webhooks')
     ->name('webhooks.twilio.voice.status');
+
+// Tecla de una llamada de aviso de incidente (1 = lo atiendo). Antes de la
+// ruta genérica.
+Route::post('webhooks/twilio/voice/notification/{delivery}/gather', [TwilioNotificationCallController::class, 'gather'])
+    ->whereNumber('delivery')
+    ->middleware('throttle:webhooks')
+    ->name('webhooks.twilio.voice.notification.gather');
 
 Route::post('webhooks/{endpoint_url}', [WebhookController::class, 'handle'])
     ->middleware('throttle:webhooks')

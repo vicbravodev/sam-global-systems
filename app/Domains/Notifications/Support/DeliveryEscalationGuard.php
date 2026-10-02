@@ -3,6 +3,7 @@
 namespace App\Domains\Notifications\Support;
 
 use App\Domains\Incidents\Models\Incident;
+use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Enums\DeliveryStatus;
 use App\Domains\Notifications\Enums\NotificationSourceType;
 use App\Domains\Notifications\Models\NotificationDelivery;
@@ -21,8 +22,8 @@ use App\Support\SystemLog;
  *   - el incidente origen ya lo atendió alguien (reconocido, tomado,
  *     resuelto o cerrado) DESPUÉS de crearse la notificación — los avisos
  *     posteriores (p.ej. "incidente cerrado") sí se siguen reintentando;
- *   - el destinatario ya fue alcanzado por otra entrega (otro canal llegó,
- *     aunque sea tarde).
+ *   - el destinatario ya fue alcanzado por otro canal que interrumpe (SMS o
+ *     WhatsApp aceptado, llamada contestada); la app y el correo no cuentan.
  *
  * Lo consultan el listener que programa el reintento/fallback y los propios
  * jobs al ejecutarse (van con retardo y el mundo pudo cambiar entretanto).
@@ -90,11 +91,23 @@ final class DeliveryEscalationGuard
             return ['reason' => 'incident_handled', 'calc' => $calc];
         }
 
+        // Sólo cuenta un canal que interrumpe: el aviso en la app o el correo
+        // se marcan entregados al instante y bloqueaban el reintento de un SMS
+        // o una llamada críticos que fallaron. Una llamada cuenta sólo si se
+        // contestó; un mensaje, en cuanto Twilio lo aceptó.
         $reachedElsewhere = NotificationDelivery::query()
             ->where('notification_id', $delivery->notification_id)
             ->where('recipient_id', $delivery->recipient_id)
             ->where('id', '!=', $delivery->id)
-            ->whereIn('status', [DeliveryStatus::Queued, DeliveryStatus::Sent, DeliveryStatus::Delivered])
+            ->where(function ($query): void {
+                $query
+                    ->where(fn ($messaging) => $messaging
+                        ->whereHas('channel', fn ($channel) => $channel->whereIn('channel_type', [ChannelType::Sms->value, ChannelType::Whatsapp->value]))
+                        ->whereIn('status', [DeliveryStatus::Queued, DeliveryStatus::Sent, DeliveryStatus::Delivered]))
+                    ->orWhere(fn ($voice) => $voice
+                        ->whereHas('channel', fn ($channel) => $channel->where('channel_type', ChannelType::Voice->value))
+                        ->where('status', DeliveryStatus::Delivered));
+            })
             ->exists();
 
         $calc['reached_elsewhere'] = $reachedElsewhere;
