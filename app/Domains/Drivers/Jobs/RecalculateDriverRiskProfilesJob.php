@@ -7,8 +7,10 @@ use App\Domains\Drivers\Enums\RiskLevel;
 use App\Domains\Drivers\Models\Driver;
 use App\Domains\Drivers\Models\DriverRiskProfile;
 use App\Domains\Incidents\Models\Incident;
+use App\Domains\Incidents\Support\IncidentSupervisors;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\Notifications\Actions\SendNotification;
+use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Enums\NotificationPriority;
 use App\Domains\Notifications\Enums\NotificationSourceType;
 use App\Domains\Notifications\Enums\NotificationTriggeredByType;
@@ -184,7 +186,12 @@ class RecalculateDriverRiskProfilesJob implements ShouldQueue
             triggeredByType: NotificationTriggeredByType::System,
             triggeredById: null,
             eventKey: sprintf('driver_risk_deteriorated:%d:%s', $driver->id, now()->toDateString()),
+            // A quien opera la flota (supervisores/admins), en la app y por
+            // correo: es un aviso de seguimiento, no una emergencia. Antes iba
+            // al equipo entero, uno por conductor y día.
             payload: [
+                ...$this->operationsAudience($driver->team_id),
+                'force_channels' => [ChannelType::Web->value, ChannelType::Email->value],
                 'driver_id' => $driver->id,
                 'driver_name' => $driver->full_name ?? trim(($driver->first_name ?? '').' '.($driver->last_name ?? '')),
                 'risk_score' => $score,
@@ -200,6 +207,16 @@ class RecalculateDriverRiskProfilesJob implements ShouldQueue
                 self::WINDOW_DAYS,
             ),
         );
+    }
+
+    /**
+     * @return array{recipients?: array<int, array<string, mixed>>}
+     */
+    private function operationsAudience(int $teamId): array
+    {
+        $recipients = IncidentSupervisors::recipients($teamId);
+
+        return $recipients !== [] ? ['recipients' => $recipients] : [];
     }
 
     /**
