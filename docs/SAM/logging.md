@@ -108,6 +108,17 @@ Lo emite `App\Support\DeniedRequestLog` (outcome `degraded`); sólo la plantilla
 | `auth.login.locked_out` | degraded | `too_many_attempts` | `route_name`, `login_fingerprint` |
 | `auth.logout.succeeded` | ok | — | `user_id`, `guard` |
 | `auth.password.reset` | ok | — | `user_id` |
+| `auth.password.changed` | ok | — | `user_id`; result `other_sessions_logged_out` (siempre true: cambiarla en Seguridad cierra las demás sesiones). Nunca la contraseña ni su hash |
+| `auth.two_factor.enabled` | ok | — | `user_id`; result `confirmed=false` (el secreto existe pero falta confirmarlo con un código) |
+| `auth.two_factor.confirmed` | ok | — | `user_id`. Desde aquí el login pide el segundo factor |
+| `auth.two_factor.disabled` | ok | — | `user_id` |
+| `auth.two_factor.recovery_codes_generated` | ok | — | `user_id`. Nunca los códigos |
+| `auth.two_factor.recovery_code_used` | ok | — | `user_id`. Entró con un código de recuperación (queda reemplazado). Nunca el código |
+| `auth.two_factor.challenged` | ok | — | `user_id`. Contraseña correcta: se le pidió el segundo factor |
+| `auth.two_factor.challenge_passed` | ok | — | `user_id` |
+| `auth.two_factor.challenge_failed` | skipped | `invalid_code` | `user_id`. Nunca el código tecleado |
+
+Los `auth.two_factor.*` salen de los eventos de Fortify (`AutomaticSystemLog`); `auth.password.changed` de `Settings\SecurityController`.
 
 ### Acceso (`access`)
 
