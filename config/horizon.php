@@ -222,9 +222,25 @@ return [
         ],
         'supervisor-medium' => [
             'connection' => 'redis',
-            'queue' => ['context', 'ai-evaluation', 'automation', 'notifications', 'billing'],
+            'queue' => ['context', 'ai-evaluation', 'automation', 'billing'],
             'balance' => 'auto',
             'autoScalingStrategy' => 'time',
+            'maxProcesses' => 2,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 128,
+            'tries' => 3,
+            'timeout' => 120,
+            'nice' => 0,
+        ],
+        // Avisos a personas (SMS, llamadas, verificación de pánico). Su propio
+        // pool: antes compartía 2 procesos con IA, contexto y billing, y un
+        // SMS de emergencia podía esperar detrás de evaluaciones lentas.
+        'supervisor-notifications' => [
+            'connection' => 'redis',
+            'queue' => ['notifications'],
+            'balance' => 'auto',
+            'autoScalingStrategy' => 'size',
             'maxProcesses' => 2,
             'maxTime' => 0,
             'maxJobs' => 0,
@@ -317,6 +333,11 @@ return [
                 'balanceMaxShift' => 2,
                 'balanceCooldown' => 3,
             ],
+            'supervisor-notifications' => [
+                'maxProcesses' => 6,
+                'balanceMaxShift' => 2,
+                'balanceCooldown' => 1,
+            ],
             'supervisor-long' => [
                 'maxProcesses' => 4,
                 'balanceMaxShift' => 1,
@@ -345,6 +366,9 @@ return [
                 'maxProcesses' => 3,
             ],
             'supervisor-medium' => [
+                'maxProcesses' => 2,
+            ],
+            'supervisor-notifications' => [
                 'maxProcesses' => 2,
             ],
             'supervisor-long' => [

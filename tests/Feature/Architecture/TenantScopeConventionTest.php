@@ -64,6 +64,7 @@ use App\Domains\Normalization\Models\EventCategory;
 use App\Domains\Normalization\Models\EventMappingRule;
 use App\Domains\Normalization\Models\EventSeverity;
 use App\Domains\Normalization\Models\EventType;
+use App\Domains\Notifications\Models\MessagingAddressSuppression;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Models\NotificationTemplate;
 use App\Domains\Tenancy\Models\BillingRate;
@@ -176,6 +177,10 @@ class TenantScopeConventionTest extends TestCase
         // con credenciales de env). El tenant sólo los apaga para su equipo vía
         // TenantChannelToggle, que sí es tenant-scoped.
         NotificationChannel::class,
+        // Supresión por dirección: el remitente Twilio es de SAM y compartido,
+        // un STOP a ese número vale para todos los tenants. No guarda a qué
+        // tenant ni qué aviso lo originó.
+        MessagingAddressSuppression::class,
         Team::class,
         User::class,
     ];

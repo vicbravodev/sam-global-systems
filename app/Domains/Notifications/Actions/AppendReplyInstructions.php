@@ -7,6 +7,7 @@ use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Enums\NotificationSourceType;
 use App\Domains\Notifications\Models\Notification;
 use App\Domains\Notifications\Models\NotificationRecipient;
+use App\Domains\Notifications\Support\SmsText;
 
 /**
  * Critical incident SMS/WhatsApp carry a reply token (Roadmap B9) so the
@@ -49,10 +50,13 @@ class AppendReplyInstructions
         $body = $rendered->body;
 
         if ($rendered->channelType === ChannelType::Sms) {
+            // Medido ya en GSM-7 (lo que el driver mandará): así las
+            // instrucciones nunca se recortan ni el mensaje pasa de un segmento.
+            $body = SmsText::gsm7($body);
             $maxBase = 160 - mb_strlen($instructions);
 
             if (mb_strlen($body) > $maxBase) {
-                $body = mb_substr($body, 0, $maxBase - 1).'…';
+                $body = mb_substr($body, 0, $maxBase - 3).'...';
             }
         }
 

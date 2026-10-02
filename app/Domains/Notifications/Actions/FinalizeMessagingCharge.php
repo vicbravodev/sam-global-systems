@@ -31,7 +31,18 @@ class FinalizeMessagingCharge
 
     public function withProviderPrice(MessagingCharge $charge, string $price, ?string $priceUnit): void
     {
-        $unit = $priceUnit ?? 'USD';
+        $unit = strtoupper($priceUnit ?? 'USD');
+
+        // El medidor es en micro-USD: un precio en otra moneda (cuenta Twilio
+        // configurada en MXN, p. ej.) se cobraría mal. Se usa la estimación en
+        // USD y queda a la vista.
+        if ($unit !== 'USD') {
+            SystemLog::degraded('billing.messaging_charge.non_usd_price', reason: 'currency_mismatch', input: ['charge_id' => $charge->id], calc: ['price_unit' => LoggableCode::guard($unit)]);
+
+            $this->withEstimate($charge);
+
+            return;
+        }
 
         $this->finalize($charge, (int) round(abs((float) $price) * 1_000_000), $unit, estimated: false, priceCalc: [
             'price_source' => 'provider',

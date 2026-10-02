@@ -16,6 +16,7 @@ use App\Domains\Notifications\Models\NotificationDelivery;
 use App\Domains\Notifications\Models\NotificationRecipient;
 use App\Domains\Notifications\Support\CancelBlockedNotification;
 use App\Domains\Notifications\Support\ChannelAddress;
+use App\Domains\Notifications\Support\MessagingSuppressions;
 use App\Support\SystemLog;
 use Illuminate\Support\Facades\DB;
 
@@ -157,6 +158,19 @@ class DispatchNotification
                     // El texto de invalidReason no se registra.
                     SystemLog::skipped('notifications.delivery.skipped', reason: 'invalid_address', input: $channelInput);
                     $skippedByReason['invalid_address'] = ($skippedByReason['invalid_address'] ?? 0) + 1;
+
+                    continue;
+                }
+
+                // Dirección dada de baja para este canal (STOP, fijo, sin
+                // WhatsApp): no se intenta; los demás canales siguen.
+                $suppressed = MessagingSuppressions::reasonFor($channel->channel_type, $targetAddress);
+
+                if ($suppressed !== null) {
+                    $this->recordSkippedDelivery($notification, $recipient, $channel, "address unavailable for {$channel->channel_type->value}");
+
+                    SystemLog::skipped('notifications.delivery.skipped', reason: 'suppressed', input: $channelInput, calc: ['suppression_reason' => $suppressed]);
+                    $skippedByReason['suppressed'] = ($skippedByReason['suppressed'] ?? 0) + 1;
 
                     continue;
                 }

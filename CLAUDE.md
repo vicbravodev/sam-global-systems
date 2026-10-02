@@ -44,7 +44,7 @@ Reglas por zona (se cargan al trabajar ahí): [`app/CLAUDE.md`](app/CLAUDE.md) �
 
 ## Convenciones no obvias
 
-- Jobs en colas con nombre por dominio. Supervisores: `high` = ingestion/normalization/decisions/incidents · `medium` = context/ai-evaluation/automation/notifications/billing · `long` = sync · `telematics` · `realtime` = broadcasts · `low` = default/audit/analytics.
+- Jobs en colas con nombre por dominio. Supervisores: `high` = ingestion/normalization/decisions/incidents · `medium` = context/ai-evaluation/automation/billing · `notifications` = notifications (avisos y llamadas, pool propio) · `long` = sync · `telematics` · `realtime` = broadcasts · `low` = default/audit/analytics.
 - Broadcasts tenant-scoped en `private-accounts.{teamId}`; todo `ShouldBroadcast` usa el trait `QueuesRealtimeBroadcast` + `ShouldRescue` (los del feed de telemática: `ShouldBroadcastNow` + `ShouldRescue`).
 - `TenantConfigServiceProvider` bindea TODOS los contratos `TenantConfig`; los dominios consumidores no bindean sus propios `Null...Resolver`.
 - `Integrations` rompe dependencias circulares con `Null*` bindeados vía `singletonIf`; los `NullImplementations/` son para tests o contratos sin implementación real.
