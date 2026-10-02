@@ -6,11 +6,14 @@ use App\Domains\Audit\Actions\RecordAuditEntry;
 use App\Domains\Audit\Enums\AuditActorType;
 use App\Domains\Audit\Enums\AuditCategory;
 use App\Domains\Tenancy\Actions\UpdatePlanLimits;
+use App\Domains\Tenancy\Enums\SubscriptionStatus;
 use App\Domains\Tenancy\Models\BillingRate;
 use App\Domains\Tenancy\Models\Plan;
+use App\Domains\Tenancy\Models\Subscription;
 use App\Domains\Tenancy\Models\UsageMeter;
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Support\TenantContext;
 use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -36,11 +39,21 @@ class PlanController extends Controller
                 'name' => $meter->name,
             ])->values()->all();
 
+        // Clientes por plan (suscripción vigente): la consola cruza tenants a
+        // propósito (§2.1) para avisar a cuántos afecta un cambio de topes.
+        $tenantsByPlan = TenantContext::withoutTenant(fn () => Subscription::query()
+            ->whereIn('status', [SubscriptionStatus::Active, SubscriptionStatus::PastDue, SubscriptionStatus::Suspended])
+            ->whereHas('team')
+            ->selectRaw('plan_id, COUNT(DISTINCT team_id) as aggregate')
+            ->groupBy('plan_id')
+            ->pluck('aggregate', 'plan_id'));
+
         $plans = Plan::query()
             ->with(['billingRates.usageMeter'])
             ->orderBy('base_price')
             ->get()
             ->map(fn (Plan $plan) => [
+                'tenantsCount' => (int) ($tenantsByPlan[$plan->id] ?? 0),
                 'id' => $plan->id,
                 'code' => $plan->code,
                 'name' => $plan->name,

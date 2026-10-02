@@ -59,7 +59,7 @@ class OnboardTenant
                 category: AuditCategory::Security,
                 entityType: Team::class,
                 entityId: $team->id,
-                summary: "Tenant {$team->name} creado; dueño {$owner->email}".($ownerCreated ? ' (cuenta nueva).' : ' (cuenta existente).'),
+                summary: "Cliente {$team->name} creado; dueño {$owner->email}".($ownerCreated ? ' (cuenta nueva).' : ' (cuenta existente).'),
                 teamId: $team->id,
                 metadata: [
                     'actor_email' => $actor->email,

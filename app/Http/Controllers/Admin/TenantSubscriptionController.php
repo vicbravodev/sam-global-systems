@@ -36,7 +36,7 @@ class TenantSubscriptionController extends Controller
         $changePlan->execute($team, $data['plan_code']);
 
         $this->record($request, $actor, $team, 'tenant.plan_changed',
-            "Plan del tenant {$team->name} cambiado a {$data['plan_code']}.",
+            "Plan del cliente {$team->name} cambiado a {$data['plan_code']}.",
             ['plan_code' => $data['plan_code']],
         );
 
@@ -79,7 +79,7 @@ class TenantSubscriptionController extends Controller
         $updateStatus->execute($subscription, $status);
 
         $this->record($request, $actor, $team, $action,
-            "Suscripción del tenant {$team->name} {$verb}.",
+            "Suscripción del cliente {$team->name} {$verb}.",
             ['status' => $status->value],
         );
 

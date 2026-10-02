@@ -1,7 +1,22 @@
 import { Head, router } from '@inertiajs/react';
 import { ScrollText } from 'lucide-react';
+import { useState } from 'react';
+import { BillingPill } from '@/components/sam/billing/panel';
+import type { BillingTone } from '@/components/sam/billing/panel';
+import { DataTable } from '@/components/sam/data-table/data-table';
+import type { DataTableColumn } from '@/components/sam/data-table/data-table';
+import {
+    ClearFiltersButton,
+    FilterDropdown,
+    ListFooter,
+    SearchInput,
+} from '@/components/sam/list';
+import type { ListPagination } from '@/components/sam/list';
 import { EmptyState } from '@/components/ui/empty-state';
+import { PageHeader } from '@/components/ui/page-header';
+import { Switch } from '@/components/ui/switch';
 import { formatDateTime } from '@/lib/format';
+import { index as auditIndex } from '@/routes/admin/audit';
 
 interface AuditEntry {
     id: number;
@@ -15,112 +30,210 @@ interface AuditEntry {
     occurredAt: string | null;
 }
 
+interface Filters {
+    system: boolean;
+    category: string | null;
+    tenant: string | null;
+    q: string | null;
+}
+
 interface AdminAuditIndexProps {
     entries: AuditEntry[];
-    filters?: { system: boolean };
+    pagination: ListPagination;
+    filters: Filters;
+    tenants?: { value: string; label: string }[];
 }
+
+const CATEGORY_TONE: Record<string, BillingTone> = {
+    security: 'info',
+    billing: 'warn',
+};
 
 export default function AdminAuditIndex({
     entries,
+    pagination,
     filters,
+    tenants,
 }: AdminAuditIndexProps) {
-    const showSystem = filters?.system ?? false;
+    const [loading, setLoading] = useState(false);
+
+    const apply = (next: Partial<Filters>, page?: number) => {
+        const merged = { ...filters, ...next };
+
+        router.get(
+            auditIndex().url,
+            {
+                system: merged.system ? 1 : undefined,
+                category: merged.category ?? undefined,
+                tenant: merged.tenant ?? undefined,
+                q: merged.q ?? undefined,
+                page: page && page > 1 ? page : undefined,
+            },
+            {
+                preserveState: true,
+                preserveScroll: page === undefined,
+                replace: true,
+                onStart: () => setLoading(true),
+                onFinish: () => setLoading(false),
+            },
+        );
+    };
+
+    const filtered =
+        filters.category !== null ||
+        filters.tenant !== null ||
+        filters.q !== null;
+
+    const columns: DataTableColumn<AuditEntry>[] = [
+        {
+            key: 'when',
+            header: 'Cuándo',
+            width: 'w-40',
+            cell: (row) => (
+                <span className="text-xs whitespace-nowrap text-fg-3 tabular-nums">
+                    {formatDateTime(row.occurredAt)}
+                </span>
+            ),
+        },
+        {
+            key: 'action',
+            header: 'Acción',
+            width: 'w-64',
+            cell: (row) => (
+                <span className="flex flex-col items-start gap-1">
+                    <span className="text-fg-1" title={row.action}>
+                        {row.actionLabel}
+                    </span>
+                    {row.categoryLabel ? (
+                        <BillingPill
+                            tone={CATEGORY_TONE[row.category] ?? 'neutral'}
+                        >
+                            {row.categoryLabel}
+                        </BillingPill>
+                    ) : null}
+                </span>
+            ),
+        },
+        {
+            key: 'tenant',
+            header: 'Cliente',
+            width: 'w-48',
+            cell: (row) => (
+                <span className="text-fg-2">{row.team ?? 'Plataforma'}</span>
+            ),
+        },
+        {
+            key: 'actor',
+            header: 'Quién',
+            width: 'w-56',
+            cell: (row) => (
+                <span className="break-all text-fg-2">
+                    {row.actorEmail ?? 'Sistema'}
+                </span>
+            ),
+        },
+        {
+            key: 'summary',
+            header: 'Detalle',
+            cell: (row) => <span className="text-fg-2">{row.summary}</span>,
+        },
+    ];
 
     return (
-        <div className="flex h-full flex-col overflow-hidden">
+        <>
             <Head title="Auditoría" />
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                <PageHeader
+                    title="Auditoría"
+                    description="Seguridad y cobro de todos los clientes: entradas a consolas, altas, miembros, planes, facturas y operadores."
+                    meta={
+                        <span className="text-xs text-fg-3 tabular-nums">
+                            <span className="font-medium text-fg-1">
+                                {pagination.total}
+                            </span>{' '}
+                            {pagination.total === 1 ? 'evento' : 'eventos'}
+                        </span>
+                    }
+                    className="shrink-0 border-b border-border bg-surface-1 px-5 py-3"
+                />
 
-            <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-surface-1 px-5 py-3">
-                <div className="flex items-center gap-3">
-                    <h1 className="sam-h2 m-0">Auditoría</h1>
-                    <span className="sam-meta">
-                        seguridad y facturación · todos los tenants
-                    </span>
+                <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-background px-5 py-2">
+                    <SearchInput
+                        value={filters.q}
+                        onApply={(q) => apply({ q })}
+                        placeholder="Buscar en el detalle…"
+                        className="w-full sm:w-72"
+                    />
+                    <FilterDropdown
+                        label="Categoría"
+                        value={filters.category}
+                        options={[
+                            { value: 'security', label: 'Seguridad' },
+                            { value: 'billing', label: 'Cobro' },
+                        ]}
+                        onChange={(category) => apply({ category })}
+                        allLabel="Todas"
+                    />
+                    <FilterDropdown
+                        label="Cliente"
+                        value={filters.tenant}
+                        options={tenants ?? []}
+                        onChange={(tenant) => apply({ tenant })}
+                        allLabel="Todos"
+                    />
+                    {filtered ? (
+                        <ClearFiltersButton
+                            onClick={() =>
+                                apply({ category: null, tenant: null, q: null })
+                            }
+                        />
+                    ) : null}
+                    <label
+                        htmlFor="audit-system"
+                        className="ml-auto flex items-center gap-2 text-xs text-fg-2"
+                    >
+                        <Switch
+                            id="audit-system"
+                            checked={filters.system}
+                            onCheckedChange={(system) => apply({ system })}
+                        />
+                        Incluir actividad automática
+                    </label>
                 </div>
-                <label className="flex cursor-pointer items-center gap-1.5 text-xs text-fg-2">
-                    <input
-                        type="checkbox"
-                        checked={showSystem}
-                        onChange={(event) =>
-                            router.reload({
-                                only: ['entries', 'filters'],
-                                data: {
-                                    system: event.target.checked
-                                        ? 1
-                                        : undefined,
-                                },
-                            })
-                        }
-                        className="accent-primary"
-                    />
-                    Mostrar actividad automática del sistema
-                </label>
-            </header>
 
-            <div className="flex-1 overflow-y-auto p-5">
-                {entries.length === 0 ? (
-                    <EmptyState
-                        icon={ScrollText}
-                        title="Sin eventos de auditoría"
-                        description="Las acciones de seguridad y facturación cross-tenant aparecerán aquí a medida que ocurran."
-                    />
-                ) : (
-                    <div className="overflow-hidden rounded-md border border-border">
-                        <table className="w-full text-sm">
-                            <thead className="bg-surface-2 text-left">
-                                <tr className="sam-meta">
-                                    <th className="px-3 py-2 font-medium">
-                                        Cuándo
-                                    </th>
-                                    <th className="px-3 py-2 font-medium">
-                                        Acción
-                                    </th>
-                                    <th className="px-3 py-2 font-medium">
-                                        Tenant
-                                    </th>
-                                    <th className="px-3 py-2 font-medium">
-                                        Actor
-                                    </th>
-                                    <th className="px-3 py-2 font-medium">
-                                        Resumen
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {entries.map((entry) => (
-                                    <tr
-                                        key={entry.id}
-                                        className="border-t border-border align-top"
-                                    >
-                                        <td className="px-3 py-2 whitespace-nowrap tabular-nums">
-                                            {formatDateTime(entry.occurredAt)}
-                                        </td>
-                                        <td className="px-3 py-2">
-                                            <span title={entry.action}>
-                                                {entry.actionLabel}
-                                            </span>
-                                            {entry.categoryLabel && (
-                                                <span className="ml-2 text-2xs text-fg-3">
-                                                    {entry.categoryLabel}
-                                                </span>
-                                            )}
-                                        </td>
-                                        <td className="px-3 py-2">
-                                            {entry.team ?? '—'}
-                                        </td>
-                                        <td className="px-3 py-2">
-                                            {entry.actorEmail ?? '—'}
-                                        </td>
-                                        <td className="px-3 py-2 text-fg-2">
-                                            {entry.summary}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
+                <DataTable
+                    columns={columns}
+                    rows={entries}
+                    rowKey={(row) => row.id}
+                    loading={loading}
+                    empty={
+                        <EmptyState
+                            icon={ScrollText}
+                            title={
+                                filtered
+                                    ? 'Sin resultados'
+                                    : 'Sin eventos de auditoría'
+                            }
+                            description={
+                                filtered
+                                    ? 'Ningún evento coincide con los filtros.'
+                                    : 'Aquí aparecerá cada alta, entrada a la consola de un cliente y cambio de cobro.'
+                            }
+                        />
+                    }
+                />
+
+                <ListFooter
+                    pagination={pagination}
+                    shown={entries.length}
+                    onPage={(page) => apply({}, page)}
+                    noun={['evento', 'eventos']}
+                />
             </div>
-        </div>
+        </>
     );
 }
+
+AdminAuditIndex.layout = {
+    breadcrumbs: [{ title: 'Auditoría', href: auditIndex().url }],
+};

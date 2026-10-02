@@ -60,7 +60,7 @@ class TenantMemberController extends Controller
             }
 
             $this->record($request, $actor, $team, 'tenant.member_added',
-                "{$result['user']->email} añadido al tenant {$team->name} como {$data['role']}".($result['created'] ? ' (cuenta nueva).' : '.'),
+                "{$result['user']->email} añadido al cliente {$team->name} como {$data['role']}".($result['created'] ? ' (cuenta nueva).' : '.'),
                 ['member_email' => $result['user']->email, 'role' => $data['role'], 'user_created' => $result['created']]);
 
             return $result;
@@ -145,7 +145,7 @@ class TenantMemberController extends Controller
         app(AuthorizeAction::class)->invalidateCache($user->id, $team->id);
 
         $this->record($request, $actor, $team, 'tenant.member_removed',
-            "{$user->email} removido del tenant {$team->name}.",
+            "{$user->email} removido del cliente {$team->name}.",
             ['member_email' => $user->email]);
 
         return $this->back($team, 'Miembro removido.');
@@ -180,7 +180,7 @@ class TenantMemberController extends Controller
         }
 
         $this->record($request, $actor, $team, 'tenant.owner_reassigned',
-            "Propiedad del tenant {$team->name} reasignada a {$user->email}.",
+            "Propiedad del cliente {$team->name} reasignada a {$user->email}.",
             ['member_email' => $user->email]);
 
         return $this->back($team, 'Propietario reasignado.');

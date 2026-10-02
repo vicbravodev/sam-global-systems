@@ -25,16 +25,21 @@ class OperatorController extends Controller
 {
     public function __construct(private readonly RecordAuditEntry $audit) {}
 
-    public function index(): Response
+    public function index(#[CurrentUser] User $actor): Response
     {
         $operators = User::query()
             ->where('global_role', 'super_admin')
             ->orderBy('name')
-            ->get(['id', 'name', 'email'])
+            ->get(['id', 'name', 'email', 'two_factor_confirmed_at', 'created_at'])
             ->map(fn (User $user) => [
                 'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
+                'isYou' => $user->id === $actor->id,
+                // Un operador ve y opera a TODOS los clientes: sin 2FA es el
+                // eslabón más débil de la plataforma.
+                'twoFactor' => $user->two_factor_confirmed_at !== null,
+                'createdAt' => $user->created_at?->toIso8601String(),
             ])->values()->all();
 
         return Inertia::render('admin/operators/index', [
@@ -56,7 +61,7 @@ class OperatorController extends Controller
 
         if ($user === null) {
             throw ValidationException::withMessages([
-                'email' => __('validation.exists', ['attribute' => 'email']),
+                'email' => 'No hay una cuenta con ese correo. Crea la cuenta del operador con `php artisan sam:create-super-admin`.',
             ]);
         }
 

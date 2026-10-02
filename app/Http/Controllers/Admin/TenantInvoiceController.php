@@ -122,7 +122,7 @@ class TenantInvoiceController extends Controller
             $this->logStatusChange($request, $team, $invoice, $from);
 
             $this->record($request, $team, $invoice, 'tenant.invoice_paid',
-                "Factura #{$invoice->id} del tenant {$team->name} marcada como pagada.");
+                "Factura #{$invoice->id} del cliente {$team->name} marcada como pagada.");
         });
 
         $this->toast('Factura marcada como pagada.');
@@ -145,7 +145,7 @@ class TenantInvoiceController extends Controller
             $this->logStatusChange($request, $team, $invoice, $from);
 
             $this->record($request, $team, $invoice, 'tenant.invoice_voided',
-                "Factura #{$invoice->id} del tenant {$team->name} anulada.");
+                "Factura #{$invoice->id} del cliente {$team->name} anulada.");
         });
 
         $this->toast('Factura anulada.');

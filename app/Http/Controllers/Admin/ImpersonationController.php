@@ -25,6 +25,12 @@ class ImpersonationController extends Controller
 
     public function store(Request $request, Team $team, #[CurrentUser] User $user): RedirectResponse
     {
+        if ($team->is_personal) {
+            $this->toast('Un espacio personal no es un cliente: no se puede entrar a él.', 'error');
+
+            return redirect()->route('admin.tenants.index');
+        }
+
         $user->forceSwitchTeam($team);
 
         $this->audit->execute(
@@ -34,7 +40,7 @@ class ImpersonationController extends Controller
             category: AuditCategory::Security,
             entityType: Team::class,
             entityId: $team->id,
-            summary: "Super-admin {$user->email} inició impersonación del tenant {$team->name}.",
+            summary: "Super-admin {$user->email} inició impersonación del cliente {$team->name}.",
             teamId: $team->id,
             metadata: ['actor_email' => $user->email, 'team_slug' => $team->slug],
             signature: 'impersonation:start:'.Str::uuid()->toString(),
@@ -50,9 +56,14 @@ class ImpersonationController extends Controller
         $impersonated = $user->currentTeam;
         $personal = $user->personalTeam();
 
-        if ($personal !== null) {
-            $user->forceSwitchTeam($personal);
+        if ($personal === null) {
+            // Sin team personal al que volver: no fingimos que salió.
+            $this->toast('No tienes un espacio personal al que volver; ejecuta sam:create-super-admin para repararlo.', 'error');
+
+            return redirect()->route('admin.tenants.index');
         }
+
+        $user->forceSwitchTeam($personal);
 
         $this->audit->execute(
             actorType: AuditActorType::User,
@@ -61,7 +72,7 @@ class ImpersonationController extends Controller
             category: AuditCategory::Security,
             entityType: Team::class,
             entityId: $impersonated?->id,
-            summary: "Super-admin {$user->email} finalizó la impersonación.",
+            summary: "Super-admin {$user->email} salió de la consola del cliente.",
             teamId: $impersonated?->id,
             metadata: ['actor_email' => $user->email, 'team_slug' => $impersonated?->slug],
             signature: 'impersonation:stop:'.Str::uuid()->toString(),

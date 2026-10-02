@@ -50,7 +50,7 @@ class TenantBillingTermsController extends Controller
             category: AuditCategory::Billing,
             entityType: Team::class,
             entityId: $team->id,
-            summary: "Términos de facturación del tenant {$team->name} actualizados.",
+            summary: "Términos de facturación del cliente {$team->name} actualizados.",
             teamId: $team->id,
             metadata: ['actor_email' => $user->email, 'terms' => $terms->only([
                 'unit_price', 'currency', 'included_assets', 'min_billable_assets',
