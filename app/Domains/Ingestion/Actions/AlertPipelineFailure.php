@@ -113,6 +113,28 @@ class AlertPipelineFailure
     }
 
     /**
+     * El poll de respaldo (PollAlertIncidentsJob) ingirió una emergencia que
+     * el webhook no entregó dentro de su gracia. El incidente ya se abrió por
+     * el poll; lo que se avisa es que el webhook del tenant está roto (Secret
+     * Key mal pegada, Samsara no entrega, red). Como la emergencia es del
+     * tenant, también llega a sus owners/admins. Una por raw event.
+     */
+    public function forMissedWebhook(RawEvent $rawEvent): void
+    {
+        $this->guarded(fn () => $this->alert(
+            kind: PipelineFailureAlert::KIND_WEBHOOK_MISSED,
+            stage: 'ingestion.alert_incidents_poll',
+            rawEventId: $rawEvent->id,
+            normalizedEventId: null,
+            expectedTeamId: $rawEvent->team_id,
+            forceEmergency: true,
+            error: null,
+            reprocessAttempts: null,
+            externalEventType: LoggableCode::guard($rawEvent->event_type_raw),
+        ), ['raw_event_id' => $rawEvent->id]);
+    }
+
+    /**
      * @param  \Closure(): void  $callback
      * @param  array<string, mixed>  $input
      */

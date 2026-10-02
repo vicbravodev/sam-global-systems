@@ -24,6 +24,12 @@ class PipelineFailureAlert extends Model
     /** Alerta del proveedor (posible emergencia) que ninguna regla reconoce. */
     public const string KIND_UNMAPPED_ALERT = 'unmapped_alert';
 
+    /**
+     * El poll de respaldo encontró una emergencia que el webhook no entregó
+     * dentro de su gracia: el pánico se rescató, pero el webhook está roto.
+     */
+    public const string KIND_WEBHOOK_MISSED = 'webhook_missed';
+
     protected $fillable = [
         'team_id',
         'dedup_key',

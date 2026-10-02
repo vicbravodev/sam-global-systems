@@ -127,20 +127,19 @@ class PollSafetyEventsJob implements ShouldBeUnique, ShouldQueue
             $ingestSafetyEvent->execute($this->integration, $payload);
         }
 
-        $state['safety_events'] = [
-            'cursor' => $result['cursor'],
-            'start_time' => $result['start_time'] ?? $startTime,
-            'last_polled_at' => now()->toIso8601String(),
-        ];
-
-        $attributes = ['sync_state_json' => $state];
+        $attributes = [];
 
         if (str_starts_with((string) $this->integration->last_error_message, self::ERROR_PREFIX)) {
             $attributes['last_error_at'] = null;
             $attributes['last_error_message'] = null;
         }
 
-        $this->integration->update($attributes);
+        // Sólo su sub-clave: otros pollers escriben las suyas en paralelo.
+        $this->integration->mergeSyncState('safety_events', [
+            'cursor' => $result['cursor'],
+            'start_time' => $result['start_time'] ?? $startTime,
+            'last_polled_at' => now()->toIso8601String(),
+        ], $attributes);
 
         SystemLog::ok('ingestion.poll.cycle_completed', input: ['integration_id' => $this->integration->id], calc: ['start_time' => $startTime, 'had_cursor' => $cursor !== null], result: ['events' => count($result['events']), 'has_more' => $result['has_more'], 'next_cursor_present' => $result['cursor'] !== null]);
     }

@@ -4,6 +4,7 @@ namespace App\Domains\Ingestion\Services;
 
 use App\Contracts\RawEventIngestion;
 use App\Domains\Ingestion\Actions\QueueRawEventForProcessing;
+use App\Domains\Ingestion\Actions\ResolveAlertIncidentIdentity;
 use App\Domains\Ingestion\Actions\StoreRawEvent;
 use App\Domains\Ingestion\Enums\EventSourceType;
 use App\Domains\Integrations\Models\IntegrationProvider;
@@ -15,6 +16,7 @@ class RawEventIngestionService implements RawEventIngestion
     public function __construct(
         private StoreRawEvent $storeRawEvent,
         private QueueRawEventForProcessing $queueForProcessing,
+        private ResolveAlertIncidentIdentity $alertIncidentIdentity,
     ) {}
 
     /**
@@ -56,16 +58,33 @@ class RawEventIngestionService implements RawEventIngestion
     }
 
     /**
-     * Events that carry a resolution state (Samsara AlertIncident) must let
-     * state transitions through dedup: the provider re-sends the same eventId
-     * when the alert is resolved at the source. Keying on eventId alone would
-     * silently drop the resolution update; keying on eventId + state keeps
-     * same-state re-deliveries as duplicates.
+     * Samsara AlertIncident (p. ej. el botón de pánico) se deduplica por la
+     * identidad del INCIDENTE, no por `eventId` (que es de la entrega): así
+     * un reenvío con otro `eventId` y el poll de respaldo
+     * (PollAlertIncidentsJob) caen en la misma clave. Ver
+     * {@see ResolveAlertIncidentIdentity}.
+     *
+     * Events that carry a resolution state must let state transitions through
+     * dedup: the provider re-sends the same incident when the alert is
+     * resolved at the source. Keying on the identity alone would silently
+     * drop the resolution update; keying on identity + state keeps same-state
+     * re-deliveries as duplicates. Without identity (payload legacy) the key
+     * falls back to eventId + state.
      *
      * @param  array<string, mixed>  $payload
      */
     private function buildDeduplicationKey(?string $externalEventId, array $payload): ?string
     {
+        $data = $payload['data'] ?? null;
+
+        if (($payload['eventType'] ?? null) === 'AlertIncident' && is_array($data)) {
+            $identityKey = $this->alertIncidentIdentity->key($data);
+
+            if ($identityKey !== null) {
+                return $identityKey;
+            }
+        }
+
         if ($externalEventId === null) {
             return null;
         }

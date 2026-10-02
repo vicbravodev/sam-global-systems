@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Facades\DB;
 
 class TenantIntegration extends Model
 {
@@ -120,6 +121,37 @@ class TenantIntegration extends Model
     public function isActive(): bool
     {
         return $this->status === TenantIntegrationStatus::Active;
+    }
+
+    /**
+     * Escribe UNA sub-clave de `sync_state_json` sin pisar las demás.
+     *
+     * Varios pollers (safety events, alert incidents) guardan su estado en
+     * sub-claves de la misma columna y corren a la vez: escribir el array
+     * entero cargado al arrancar el job borraba lo que otro escribió mientras
+     * tanto. Aquí se relee la fila bajo `lockForUpdate` dentro de una
+     * transacción, se reemplaza sólo `$key` y se guarda junto con los
+     * `$attributes` extra (p. ej. limpiar `last_error_*`). El modelo en
+     * memoria queda con el estado fusionado.
+     *
+     * @param  array<string, mixed>  $value
+     * @param  array<string, mixed>  $attributes
+     */
+    public function mergeSyncState(string $key, array $value, array $attributes = []): void
+    {
+        DB::transaction(function () use ($key, $value, $attributes): void {
+            // Relectura de la propia fila (por su clave primaria) con lock.
+            $current = static::withoutGlobalScopes()
+                ->whereKey($this->getKey())
+                ->where('team_id', $this->team_id)
+                ->lockForUpdate()
+                ->first();
+
+            $state = $current?->sync_state_json ?? [];
+            $state[$key] = $value;
+
+            $this->forceFill([...$attributes, 'sync_state_json' => $state])->save();
+        });
     }
 
     /**
