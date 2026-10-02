@@ -10,6 +10,7 @@ class AIReevaluationRequested
     use Dispatchable, SerializesModels;
 
     public function __construct(
+        public readonly int $teamId,
         public readonly int $normalizedEventId,
         public readonly string $triggerType,
         public readonly ?int $triggerReferenceId = null,

@@ -150,7 +150,7 @@ return [
         AIReevaluationRequested::class => [
             'category' => AuditCategory::Ai->value,
             'action' => 'ai.reevaluation_requested',
-            'tenant_via' => 'none',
+            'tenant_via' => 'property:teamId',
         ],
         FalsePositiveDetected::class => [
             'category' => AuditCategory::Ai->value,

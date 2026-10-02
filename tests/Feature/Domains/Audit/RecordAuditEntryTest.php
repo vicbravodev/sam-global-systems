@@ -11,6 +11,8 @@ use App\Domains\Audit\Enums\ChangeType;
 use App\Domains\Audit\Models\AuditLog;
 use App\Domains\Audit\Models\ChangeHistory;
 use App\Models\Team;
+use App\Models\User;
+use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -90,6 +92,55 @@ class RecordAuditEntryTest extends TestCase
                 ->where('signature', 'duplicate-sig')
                 ->count(),
         );
+    }
+
+    public function test_platform_entry_with_null_team_is_not_stamped_with_the_active_tenant(): void
+    {
+        $team = Team::factory()->create();
+
+        /** @var RecordAuditEntry $action */
+        $action = $this->app->make(RecordAuditEntry::class);
+
+        [$log, $tenantAfter] = TenantContext::for($team, fn () => [
+            $action->execute(
+                actorType: AuditActorType::User,
+                actorId: 7,
+                action: 'platform-channel.updated',
+                category: AuditCategory::Security,
+                entityType: 'notification_channel',
+                entityId: 3,
+                summary: 'Canal de plataforma actualizado.',
+                teamId: null,
+            ),
+            TenantContext::id(),
+        ]);
+
+        $this->assertNotNull($log);
+        $this->assertNull($log->team_id);
+        $this->assertSame(0, AuditLog::withoutGlobalScopes()->where('team_id', $team->id)->count());
+        $this->assertSame(1, AuditLog::withoutGlobalScopes()->whereNull('team_id')->count());
+
+        // El contexto del llamador queda como estaba.
+        $this->assertSame($team->id, $tenantAfter);
+    }
+
+    public function test_platform_entry_with_null_team_ignores_the_users_current_team(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+
+        $log = $this->app->make(RecordAuditEntry::class)->execute(
+            actorType: AuditActorType::User,
+            actorId: $user->id,
+            action: 'operator.granted',
+            category: AuditCategory::Security,
+            entityType: User::class,
+            entityId: $user->id,
+            summary: 'Operador concedido.',
+        );
+
+        $this->assertNotNull($log);
+        $this->assertNull($log->fresh()?->team_id);
     }
 
     public function test_record_entity_change_persists_before_after(): void
