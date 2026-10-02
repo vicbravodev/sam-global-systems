@@ -38,7 +38,7 @@ class TenancyAdminSystemLogTest extends TestCase
     {
         parent::setUp();
 
-        $this->admin = User::factory()->create(['global_role' => 'super_admin']);
+        $this->admin = User::factory()->superAdmin()->create();
         $this->tenant = Team::factory()->create(['is_personal' => false, 'name' => 'Transportes Ana']);
     }
 
