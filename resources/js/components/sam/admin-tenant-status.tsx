@@ -19,10 +19,6 @@ const STAGE: Record<OnboardingStage, { label: string; tone: BillingTone }> = {
     operating: { label: 'Operando', tone: 'ok' },
 };
 
-export function stageLabel(stage: OnboardingStage): string {
-    return STAGE[stage].label;
-}
-
 export function StagePill({ stage }: { stage: OnboardingStage }) {
     const { label, tone } = STAGE[stage];
 

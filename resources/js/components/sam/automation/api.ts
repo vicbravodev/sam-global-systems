@@ -97,7 +97,7 @@ export function conditionPhrases(
     });
 }
 
-export function humanize(value: string): string {
+function humanize(value: string): string {
     const text = value
         .replace(/[_.-]+/g, ' ')
         .trim()

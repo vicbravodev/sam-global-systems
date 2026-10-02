@@ -34,7 +34,7 @@ export interface IntegrationState {
     webhookAlert: string | null;
 }
 
-export const STATUS_BADGE: Record<TenantIntegrationStatus, string> = {
+const STATUS_BADGE: Record<TenantIntegrationStatus, string> = {
     active: 'Funcionando',
     error: 'Requiere atención',
     pending: 'Pendiente',

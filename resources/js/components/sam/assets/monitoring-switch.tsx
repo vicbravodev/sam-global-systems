@@ -5,7 +5,7 @@ import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import type { AssetMonitoringState } from '@/types/assets';
 
-export const MONITORING_LABEL: Record<AssetMonitoringState, string> = {
+const MONITORING_LABEL: Record<AssetMonitoringState, string> = {
     monitored: 'Vigilada',
     pending: 'Sin vigilar',
     excluded: 'Excluida',

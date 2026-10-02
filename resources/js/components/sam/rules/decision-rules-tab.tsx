@@ -14,7 +14,7 @@ import type { DecisionRuleRow, OutcomeOption, RulesetOption } from './types';
 /** Filtros que aplica la franja de resumen. */
 export type DecisionFilter = 'active' | 'incident' | 'review' | 'other' | 'off';
 
-export const DECISION_FILTER_LABELS: Record<DecisionFilter, string> = {
+const DECISION_FILTER_LABELS: Record<DecisionFilter, string> = {
     active: 'encendidas',
     incident: 'abren un incidente',
     review: 'piden revisión de una persona',
@@ -22,7 +22,7 @@ export const DECISION_FILTER_LABELS: Record<DecisionFilter, string> = {
     off: 'apagadas',
 };
 
-export function matchesDecisionFilter(
+function matchesDecisionFilter(
     rule: DecisionRuleRow,
     filter: DecisionFilter | null,
 ): boolean {

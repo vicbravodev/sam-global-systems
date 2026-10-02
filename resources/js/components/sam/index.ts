@@ -17,5 +17,4 @@ export * from './charts';
 export * from './kpi-strip';
 export * from './tab-bar';
 export * from './detail-resizer';
-export * from './filter-chip';
 export * from './field';
