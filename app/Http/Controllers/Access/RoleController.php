@@ -80,6 +80,8 @@ class RoleController extends Controller
     public function update(UpdateRoleRequest $request, Team $current_team, Role $role, SyncRolePermissions $syncRolePermissions, #[CurrentUser] User $user): RedirectResponse
     {
         // Un rol de otro tenant no existe para este (404, sin filtrar su id).
+        // UpdateRoleRequest ya lo rechaza ANTES de validar; esto es defensa
+        // en profundidad.
         abort_unless($role->isVisibleToTeam($current_team->id), 404);
 
         $this->authorize('update', $role);
