@@ -12,6 +12,7 @@ use App\Domains\Integrations\Models\IntegrationProvider;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Support\SystemLog;
 use App\Support\TenantContext;
+use Illuminate\Support\Facades\DB;
 
 class SyncAssetFromIntegration
 {
@@ -131,31 +132,39 @@ class SyncAssetFromIntegration
     {
         $assetType = $this->resolveAssetType($assetData['asset_type_code'] ?? 'vehicle');
 
-        $asset = Asset::query()->create([
-            'team_id' => $teamId,
-            'asset_type_id' => $assetType->id,
-            'provider_id' => $providerId,
-            'source_integration_id' => $integrationId,
-            'external_primary_id' => $assetData['external_id'],
-            'name' => $assetData['name'] ?? 'Unknown Asset',
-            'code' => $assetData['code'] ?? null,
-            'metadata_json' => $assetData['metadata'] ?? null,
-            // El sync descubre TODA la flota del proveedor sin tope: la unidad
-            // entra al inventario como `pending` y el cliente decide si la
-            // enciende (SetAssetMonitoring). Nada se vigila ni se cobra solo.
-            'monitoring_state' => AssetMonitoringState::Pending,
-            'first_seen_at' => now(),
-            'last_seen_at' => now(),
-        ]);
+        // El activo y su referencia externa nacen juntos o no nacen: si la
+        // referencia (única por provider+external_id) fallara tras crear el
+        // activo, quedaría un `pending` huérfano que el siguiente sync, sin
+        // referencia que lo resuelva, duplicaría.
+        $asset = DB::transaction(function () use ($teamId, $integrationId, $providerId, $assetData, $assetType): Asset {
+            $asset = Asset::query()->create([
+                'team_id' => $teamId,
+                'asset_type_id' => $assetType->id,
+                'provider_id' => $providerId,
+                'source_integration_id' => $integrationId,
+                'external_primary_id' => $assetData['external_id'],
+                'name' => $assetData['name'] ?? 'Unknown Asset',
+                'code' => $assetData['code'] ?? null,
+                'metadata_json' => $assetData['metadata'] ?? null,
+                // El sync descubre TODA la flota del proveedor sin tope: la unidad
+                // entra al inventario como `pending` y el cliente decide si la
+                // enciende (SetAssetMonitoring). Nada se vigila ni se cobra solo.
+                'monitoring_state' => AssetMonitoringState::Pending,
+                'first_seen_at' => now(),
+                'last_seen_at' => now(),
+            ]);
 
-        AssetExternalReference::create([
-            'asset_id' => $asset->id,
-            'provider_id' => $providerId,
-            'external_id' => $assetData['external_id'],
-            'external_type' => $assetData['external_type'] ?? null,
-            'first_seen_at' => now(),
-            'last_seen_at' => now(),
-        ]);
+            AssetExternalReference::create([
+                'asset_id' => $asset->id,
+                'provider_id' => $providerId,
+                'external_id' => $assetData['external_id'],
+                'external_type' => $assetData['external_type'] ?? null,
+                'first_seen_at' => now(),
+                'last_seen_at' => now(),
+            ]);
+
+            return $asset;
+        });
 
         AssetDiscovered::dispatch(
             $teamId,

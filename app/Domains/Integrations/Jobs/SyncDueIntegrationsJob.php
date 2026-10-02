@@ -70,15 +70,11 @@ class SyncDueIntegrationsJob implements ShouldQueue
                     return;
                 }
 
-                $syncJob = IntegrationSyncJob::create([
-                    'tenant_integration_id' => $integration->id,
-                    'type' => SyncType::Incremental,
-                    'status' => SyncStatus::Pending,
-                ]);
+                $syncJob = SyncIntegrationJob::dispatchUnlessInFlight($integration, SyncType::Incremental);
 
-                SyncIntegrationJob::dispatch($integration, $syncJob);
-
-                SystemLog::ok('integrations.due_sync.requested', input: $this->logInput($integration), result: ['integration_sync_job_id' => $syncJob->id, 'type' => SyncType::Incremental->value]);
+                if ($syncJob !== null) {
+                    SystemLog::ok('integrations.due_sync.requested', input: $this->logInput($integration), result: ['integration_sync_job_id' => $syncJob->id, 'type' => SyncType::Incremental->value]);
+                }
             })));
     }
 

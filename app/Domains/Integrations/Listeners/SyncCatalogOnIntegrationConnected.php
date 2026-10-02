@@ -2,11 +2,9 @@
 
 namespace App\Domains\Integrations\Listeners;
 
-use App\Domains\Integrations\Enums\SyncStatus;
 use App\Domains\Integrations\Enums\SyncType;
 use App\Domains\Integrations\Events\IntegrationConnected;
 use App\Domains\Integrations\Jobs\SyncIntegrationJob;
-use App\Domains\Integrations\Models\IntegrationSyncJob;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Support\SystemLog;
 use App\Support\TenantContext;
@@ -40,13 +38,18 @@ class SyncCatalogOnIntegrationConnected
         // aplicado y el SyncIntegrationJob viaja con su TenantContext, aunque
         // aquí no haya usuario autenticado (cola, consola, scheduler).
         TenantContext::for($integration->team_id, function () use ($integration): void {
-            $syncJob = IntegrationSyncJob::query()->create([
-                'tenant_integration_id' => $integration->id,
-                'type' => SyncType::Full,
-                'status' => SyncStatus::Pending,
-            ]);
+            $syncJob = SyncIntegrationJob::dispatchUnlessInFlight($integration, SyncType::Full);
 
-            SyncIntegrationJob::dispatch($integration, $syncJob);
+            if ($syncJob === null) {
+                // Ya hay un sync en vuelo (p. ej. del scheduler): ese mismo
+                // trae el catálogo, no se apila otro.
+                SystemLog::skipped('integrations.catalog_sync.requested', reason: 'sync_in_flight', input: [
+                    'team_id' => $integration->team_id,
+                    'integration_id' => $integration->id,
+                ]);
+
+                return;
+            }
 
             SystemLog::ok('integrations.catalog_sync.requested', input: [
                 'team_id' => $integration->team_id,
