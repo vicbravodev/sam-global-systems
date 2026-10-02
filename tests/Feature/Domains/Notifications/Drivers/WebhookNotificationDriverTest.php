@@ -10,11 +10,20 @@ use App\Models\Team;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use Tests\Concerns\FakesHostResolution;
 use Tests\TestCase;
 
 class WebhookNotificationDriverTest extends TestCase
 {
-    use RefreshDatabase;
+    use FakesHostResolution, RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // OutboundUrlGuard resuelve el host: sin red en los tests.
+        $this->fakeDns(['example.com' => ['93.184.216.34']]);
+    }
 
     private function rendered(): RenderedNotification
     {
