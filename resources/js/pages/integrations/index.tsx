@@ -327,6 +327,7 @@ export default function IntegrationsIndex() {
                                 key={integration.id}
                                 integration={integration}
                                 canManage={canManage}
+                                teamSlug={teamSlug}
                                 testing={testingId === integration.id}
                                 onTest={() => void runTest(integration)}
                                 onEdit={() => openEdit(integration, 'edit')}
@@ -335,6 +336,9 @@ export default function IntegrationsIndex() {
                                 }
                                 onDisconnect={() =>
                                     setDisconnecting(integration)
+                                }
+                                onWebhookSecretSaved={() =>
+                                    router.reload({ only: RELOAD_PROPS })
                                 }
                             />
                         ))}

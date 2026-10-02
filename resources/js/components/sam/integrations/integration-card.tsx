@@ -41,6 +41,7 @@ import {
 } from './integration-state';
 import type { IntegrationTone } from './integration-state';
 import { ProviderTile } from './provider-tile';
+import { WebhookSecretPanel } from './webhook-secret-panel';
 
 const TONE_ICON: Record<IntegrationTone, LucideIcon> = {
     ok: CheckCircle2,
@@ -52,27 +53,35 @@ const TONE_ICON: Record<IntegrationTone, LucideIcon> = {
 interface Props {
     integration: IntegrationRow;
     canManage: boolean;
+    teamSlug: string | null;
     testing: boolean;
     onTest: () => void;
     onEdit: () => void;
     onUpdateKey: () => void;
     onDisconnect: () => void;
+    onWebhookSecretSaved: () => void;
 }
 
 export function IntegrationCard({
     integration,
     canManage,
+    teamSlug,
     testing,
     onTest,
     onEdit,
     onUpdateKey,
     onDisconnect,
+    onWebhookSecretSaved,
 }: Props) {
     const state = integrationState(integration);
     const StateIcon =
         integration.status === 'pending' ? CircleDashed : TONE_ICON[state.tone];
     const needsHand = integration.status !== 'active';
     const capabilities = integration.capabilities ?? [];
+    // Samsara sólo entrega pánicos por webhook firmado: su Secret Key es
+    // parte de la conexión, no un detalle técnico.
+    const samsaraWebhook =
+        integration.providerCode === 'samsara' ? integration.webhook : null;
 
     const primary =
         state.fix === 'credentials' ? (
@@ -273,6 +282,15 @@ export function IntegrationCard({
                 </div>
             ) : null}
 
+            {samsaraWebhook ? (
+                <WebhookSecretPanel
+                    integration={integration}
+                    webhook={samsaraWebhook}
+                    teamSlug={teamSlug}
+                    onSaved={onWebhookSecretSaved}
+                />
+            ) : null}
+
             <TechnicalDetails integration={integration} />
         </article>
     );
@@ -325,7 +343,9 @@ function syncSummary(config: Record<string, unknown> | null): string {
 
 function TechnicalDetails({ integration }: { integration: IntegrationRow }) {
     const [open, setOpen] = useState(false);
-    const webhook = integration.webhook;
+    // La dirección de Samsara vive en su panel de avisos instantáneos.
+    const webhook =
+        integration.providerCode === 'samsara' ? null : integration.webhook;
 
     return (
         <Collapsible
