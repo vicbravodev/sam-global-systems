@@ -10,9 +10,10 @@ namespace App\Domains\Ingestion\Actions;
  * incidente, y el poll no lo tiene: deduplicar por él dejaría pasar el mismo
  * pánico dos veces.
  *
- * La identidad es `incidentUrl` (Samsara la arma con la configuración, el
- * vehículo y el instante del incidente) o, si falta, configuración + instante
- * + vehículo/conductor. La clave lleva además el estado (`open`/`resolved`)
+ * La identidad es `incidentUrl` + `happenedAtTime` (Samsara arma la URL con
+ * la configuración, el vehículo y el instante, pero se vio la misma URL con
+ * instantes distintos) o, si falta la URL, configuración + instante +
+ * vehículo/conductor. La clave lleva además el estado (`open`/`resolved`)
  * para que la resolución en origen siga pasando como actualización, igual
  * que antes con `eventId:estado`.
  *
@@ -33,13 +34,16 @@ class ResolveAlertIncidentIdentity
     public function fingerprint(array $incident): ?string
     {
         $url = self::string($incident['incidentUrl'] ?? null);
+        $happenedAt = self::string($incident['happenedAtTime'] ?? null);
 
+        // El instante va en la huella aunque la URL ya lo codifique: en
+        // simulaciones la misma URL llegó con varios `happenedAtTime`, y
+        // fusionar dos pánicos distintos es peor que no deduplicar uno.
         if ($url !== null) {
-            return sha1('url|'.$url);
+            return sha1('url|'.$url.'|'.($happenedAt ?? ''));
         }
 
         $configurationId = self::string($incident['configurationId'] ?? null);
-        $happenedAt = self::string($incident['happenedAtTime'] ?? null);
 
         if ($configurationId === null || $happenedAt === null) {
             return null;
