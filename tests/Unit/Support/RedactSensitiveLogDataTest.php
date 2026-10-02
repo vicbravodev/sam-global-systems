@@ -173,6 +173,26 @@ class RedactSensitiveLogDataTest extends TestCase
         }
     }
 
+    public function test_session_ids_are_redacted_even_though_id_is_a_technical_suffix(): void
+    {
+        $out = RedactSensitiveLogData::redact([
+            'session_id' => 'f3Kx9aQ2pL7mN4vB8cD1eR6tY0uI5oP2',
+            'sessionId' => 'f3Kx9aQ2pL7mN4vB8cD1eR6tY0uI5oP2',
+            'laravel_session' => 'eyJpdiI6',
+            'session' => ['_token' => 'x'],
+            'session_count' => 3,
+            'conversation_id' => 41,
+        ]);
+
+        $this->assertSame('[redacted]', $out['session_id']);
+        $this->assertSame('[redacted]', $out['sessionId']);
+        $this->assertSame('[redacted]', $out['laravel_session']);
+        $this->assertSame('[redacted]', $out['session']);
+        $this->assertSame(3, $out['session_count']);
+        $this->assertSame(41, $out['conversation_id']);
+        $this->assertSame(['session_id'], RedactSensitiveLogData::findings(['session_id' => 'abc', 'user_id' => 9]));
+    }
+
     public function test_redact_describes_throwables_safely(): void
     {
         $out = RedactSensitiveLogData::redact(['exception' => new RuntimeException('no se pudo llamar a +525512345678')]);

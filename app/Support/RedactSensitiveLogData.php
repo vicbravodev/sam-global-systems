@@ -318,7 +318,9 @@ final class RedactSensitiveLogData implements ProcessorInterface
         $words = self::words($key);
 
         // `key` es sufijo técnico (`event_key`), salvo `api_key` o `secret_key`.
-        if (in_array(implode('_', $words), ['api_key', 'code_hash'], true)) {
+        // El id de una sesión tampoco es un id técnico: con él se secuestra la
+        // sesión (`session_id`, `sessionId`, `laravel_session`).
+        if (in_array(implode('_', $words), ['api_key', 'code_hash', 'session', 'session_id', 'laravel_session', 'session_token'], true)) {
             return true;
         }
 
