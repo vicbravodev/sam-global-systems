@@ -269,7 +269,7 @@ class TwilioVoiceController extends Controller
         $isValid = $validator->validate(
             $request->header('X-Twilio-Signature', ''),
             TwilioWebhookUrl::forSignature($request),
-            $request->post(),
+            TwilioWebhookUrl::signedParams($request),
         );
 
         abort_unless($isValid, 403, 'Invalid Twilio signature.');

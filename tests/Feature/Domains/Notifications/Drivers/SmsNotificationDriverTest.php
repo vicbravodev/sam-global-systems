@@ -7,6 +7,7 @@ use App\Domains\Notifications\Channels\TwilioMessenger;
 use App\Domains\Notifications\Data\RenderedNotification;
 use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Models\NotificationChannel;
+use App\Domains\Notifications\Support\SmsText;
 use App\Models\Team;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Mockery;
@@ -177,5 +178,38 @@ class SmsNotificationDriverTest extends TestCase
         $this->assertFalse($result->success);
         $this->assertStringContainsString('credentials missing', $result->errorMessage);
         $this->assertTrue($result->permanent);
+    }
+
+    /**
+     * Un acento (á, í, ó, ú), "…" o un emoji pasaban todo el SMS a UCS-2:
+     * 70 caracteres por segmento y hasta 3 veces el costo. Se manda en GSM-7.
+     */
+    public function test_spanish_text_and_emoji_are_sent_as_a_single_gsm7_segment(): void
+    {
+        $team = Team::factory()->create();
+        $captured = new \stdClass;
+
+        $this->bindMessenger()->shouldReceive('createMessage')->once()->andReturnUsing(function (string $to, array $params) use ($captured) {
+            $captured->body = $params['body'];
+
+            return (object) ['sid' => 'SM1', 'status' => 'queued', 'numSegments' => '1'];
+        });
+
+        $body = '🚨 PÁNICO: Unidad 42 — botón activado en Avenida Constitución. Atención inmediata… ¿Está bien el conductor? Información en el portal de SAM para el equipo de monitoreo nocturno.';
+
+        app(SmsNotificationDriver::class)->send($this->rendered($body), $this->channel($team));
+
+        $this->assertTrue(SmsText::isGsm7($captured->body));
+        $this->assertLessThanOrEqual(SmsNotificationDriver::MAX_LENGTH, mb_strlen($captured->body));
+        $this->assertStringStartsWith('PANICO: Unidad 42 - boton activado en Avenida Constitucion', $captured->body);
+        $this->assertStringContainsString('¿Esta bien', $captured->body, '¿ es GSM-7 y se conserva');
+        $this->assertStringEndsWith(SmsNotificationDriver::SUFFIX, $captured->body);
+    }
+
+    public function test_gsm7_keeps_characters_that_are_already_in_the_alphabet(): void
+    {
+        $this->assertSame('¿Qué paso? ¡Niño! Atencion', SmsText::gsm7('¿Qué pasó? ¡Niño! Atención'));
+        $this->assertSame('Panico ... "ok"', SmsText::gsm7('Pánico … “ok” 🚨'));
+        $this->assertFalse(SmsText::isGsm7('Pánico'));
     }
 }

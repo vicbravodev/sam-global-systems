@@ -12,6 +12,7 @@ use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Models\NotificationDelivery;
 use App\Domains\Notifications\Support\ChannelAddress;
 use App\Domains\Notifications\Support\DeliveryEscalationGuard;
+use App\Domains\Notifications\Support\MessagingSuppressions;
 use App\Support\JobFailureReporter;
 use App\Support\SystemLog;
 use App\Support\TenantContext;
@@ -130,9 +131,12 @@ class FallbackNotificationChannelJob implements ShouldQueue
             }
 
             $address = $primary->recipient->addressForChannel($type);
-            $invalid = $address === null || $address === ''
-                ? "no {$type->value} address (missing phone/email) for recipient"
-                : ChannelAddress::invalidReason($type, $address);
+            $suppressed = $address !== null && $address !== '' ? MessagingSuppressions::reasonFor($type, $address) : null;
+            $invalid = match (true) {
+                $address === null || $address === '' => "no {$type->value} address (missing phone/email) for recipient",
+                $suppressed !== null => "address unavailable for {$type->value}",
+                default => ChannelAddress::invalidReason($type, $address),
+            };
 
             $delivery = $this->createFallbackDelivery($primary, $channel, $invalid);
 
@@ -140,6 +144,7 @@ class FallbackNotificationChannelJob implements ShouldQueue
                 $walk[] = ['channel_type' => $type->value, 'outcome' => match (true) {
                     $delivery === null => 'race_lost',
                     $address === null || $address === '' => 'no_address',
+                    $suppressed !== null => 'suppressed',
                     default => 'invalid_address',
                 }];
 

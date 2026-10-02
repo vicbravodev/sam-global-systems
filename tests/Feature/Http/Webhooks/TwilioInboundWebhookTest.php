@@ -85,6 +85,25 @@ class TwilioInboundWebhookTest extends TestCase
         return $this->post('/api/webhooks/twilio', $params, ['X-Twilio-Signature' => $signature]);
     }
 
+    /**
+     * TrimStrings recortaba el cuerpo antes de validar la firma: una
+     * respuesta con salto de línea final (lo normal al teclear en el
+     * teléfono) daba 403 y el incidente nunca se reconocía.
+     */
+    public function test_a_reply_with_trailing_whitespace_still_validates_and_acknowledges(): void
+    {
+        $token = $this->makeToken();
+        $params = ['From' => self::OPERATOR_PHONE, 'To' => self::TWILIO_NUMBER, 'Body' => "SI-W4K9 \n"];
+        $signature = (new RequestValidator(self::AUTH_TOKEN))->computeSignature(url('/api/webhooks/twilio'), $params);
+
+        $this->call('POST', '/api/webhooks/twilio', $params, [], [], [
+            'CONTENT_TYPE' => 'application/x-www-form-urlencoded',
+            'HTTP_X_TWILIO_SIGNATURE' => $signature,
+        ], http_build_query($params))->assertOk();
+
+        $this->assertNotNull(Incident::withoutGlobalScopes()->find($token->incident_id)->acknowledged_at);
+    }
+
     public function test_invalid_signature_is_rejected_with_403(): void
     {
         $this->makeToken();

@@ -14,6 +14,7 @@ use App\Domains\Notifications\Events\NotificationFailed;
 use App\Domains\Notifications\Jobs\ResolveUncertainDeliveryJob;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Models\NotificationDelivery;
+use App\Domains\Notifications\Support\MessagingSuppressions;
 use App\Support\LoggableCode;
 use App\Support\SystemLog;
 
@@ -138,6 +139,9 @@ class AttemptDelivery
                 'resolve_job_requested' => true,
             ], durationMs: $durationMs);
         } else {
+            // STOP, fijo, sin WhatsApp: el siguiente aviso ya no lo intenta.
+            MessagingSuppressions::recordFromError($channel->channel_type, self::address($delivery), $result->providerErrorCode);
+
             // degraded: la cadena sigue con reintento o fallback; el fracaso
             // definitivo lo dicen fallback.exhausted y dispatch.completed.
             SystemLog::degraded('notifications.delivery.failed', reason: $result->permanent ? 'permanent_failure' : 'transient_failure', input: $logInput, result: [
@@ -191,5 +195,12 @@ class AttemptDelivery
             status: $result->providerStatus,
             segments: $result->segments,
         ) !== null;
+    }
+
+    private static function address(NotificationDelivery $delivery): ?string
+    {
+        $address = $delivery->payload_json['address'] ?? null;
+
+        return is_string($address) ? $address : null;
     }
 }
