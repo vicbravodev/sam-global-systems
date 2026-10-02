@@ -85,8 +85,7 @@ class RunAutomationWorkflowTest extends TestCase
             && $c['calc']['reused_count'] === 0
             && $c['calc']['incident_expected'] === false
             && $c['result']['workflow_execution_id'] === $execution->id
-            && $c['result']['status'] === WorkflowExecutionStatus::Running->value
-            && $c['result']['usage_event_key'] === "workflow_exec_{$execution->id}");
+            && $c['result']['status'] === WorkflowExecutionStatus::Running->value);
 
         // Cada demora registrada es la del ExecuteActionJob empujado (0 = sin delay).
         $pushedDelays = [];
@@ -281,7 +280,7 @@ class RunAutomationWorkflowTest extends TestCase
             && $c['calc']['queued_count'] === 0);
     }
 
-    public function test_emits_usage_event_for_workflow_execution(): void
+    public function test_workflow_execution_does_not_meter_incident_workflows(): void
     {
         Event::fake([UsageRecorded::class]);
         Bus::fake();
@@ -298,7 +297,9 @@ class RunAutomationWorkflowTest extends TestCase
             sourceReferenceId: 'usage-1',
         );
 
-        Event::assertDispatched(UsageRecorded::class, fn (UsageRecorded $ev) => $ev->meterCode === 'incident_workflows');
+        // El meter se cobra una vez por incidente al abrirlo; cada workflow
+        // extra no debe sumar.
+        Event::assertNotDispatched(UsageRecorded::class);
     }
 
     public function test_steps_inherit_the_incident_that_triggered_the_workflow(): void
