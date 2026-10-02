@@ -7,6 +7,7 @@ use App\Domains\Notifications\Models\NotificationChannel;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
+use Tests\Concerns\FakesHostResolution;
 use Tests\TestCase;
 
 /**
@@ -16,7 +17,15 @@ use Tests\TestCase;
  */
 class AdminGlobalChannelTest extends TestCase
 {
-    use RefreshDatabase;
+    use FakesHostResolution, RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // OutboundUrlGuard resuelve el host: sin red en los tests.
+        $this->fakeDns(['hooks.slack.com' => ['3.33.152.1']]);
+    }
 
     private function superAdmin(): User
     {
@@ -146,6 +155,56 @@ class AdminGlobalChannelTest extends TestCase
             ->assertSessionHasNoErrors();
 
         $this->assertDatabaseHas('notification_channels', ['code' => 'sam_slack']);
+    }
+
+    public function test_outbound_urls_pointing_to_the_internal_network_are_rejected_on_store(): void
+    {
+        $admin = $this->superAdmin();
+
+        foreach ([
+            ['slack', 'slack_webhook_url', 'https://169.254.169.254/latest/meta-data/'],
+            ['slack', 'slack_webhook_url', 'http://valkey:6379/'],
+            ['webhook', 'endpoint_url', 'https://localhost/admin'],
+            ['webhook', 'endpoint_url', 'https://10.0.0.5/hook'],
+        ] as $i => [$type, $key, $url]) {
+            $this->actingAs($admin)
+                ->post(route('admin.channels.store'), [
+                    'code' => "sam_unsafe_{$i}",
+                    'name' => 'Canal inseguro',
+                    'provider' => $type,
+                    'channel_type' => $type,
+                    'config_json' => [$key => $url, 'secret' => 's'],
+                ])
+                ->assertSessionHasErrors("config_json.{$key}");
+
+            $this->assertDatabaseMissing('notification_channels', ['code' => "sam_unsafe_{$i}"]);
+        }
+    }
+
+    public function test_outbound_url_pointing_to_the_internal_network_is_rejected_on_update(): void
+    {
+        $admin = $this->superAdmin();
+        $channel = NotificationChannel::factory()->create([
+            'channel_type' => ChannelType::Webhook,
+            'provider' => 'webhook',
+            'config_json' => ['endpoint_url' => 'https://hooks.slack.com/hook', 'secret' => 's'],
+        ]);
+
+        $this->actingAs($admin)
+            ->put(route('admin.channels.update', $channel), [
+                'config_json' => ['endpoint_url' => 'https://127.0.0.1:9000/', 'secret' => 's'],
+            ])
+            ->assertSessionHasErrors('config_json.endpoint_url');
+
+        $this->assertSame('https://hooks.slack.com/hook', $channel->fresh()->config_json['endpoint_url']);
+
+        $this->actingAs($admin)
+            ->put(route('admin.channels.update', $channel), [
+                'config_json' => ['endpoint_url' => 'https://hooks.slack.com/new', 'secret' => 's'],
+            ])
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame('https://hooks.slack.com/new', $channel->fresh()->config_json['endpoint_url']);
     }
 
     public function test_regular_users_cannot_access_the_console(): void

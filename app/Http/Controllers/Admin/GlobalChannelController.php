@@ -9,6 +9,7 @@ use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Support\PlatformTwilioConfig;
 use App\Http\Controllers\Controller;
+use App\Rules\SafeOutboundUrl;
 use Closure;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -63,6 +64,8 @@ class GlobalChannelController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        $request->validate($this->outboundUrlRules());
+
         $data = $request->validate([
             'code' => ['required', 'string', 'max:255', Rule::unique('notification_channels', 'code')],
             'name' => ['required', 'string', 'max:255'],
@@ -93,6 +96,8 @@ class GlobalChannelController extends Controller
 
     public function update(Request $request, NotificationChannel $channel): RedirectResponse
     {
+        $request->validate($this->outboundUrlRules());
+
         $data = $request->validate([
             'name' => ['nullable', 'string', 'max:255'],
             'provider' => ['nullable', 'string', 'max:64'],
@@ -120,6 +125,23 @@ class GlobalChannelController extends Controller
         $this->toast('Canal eliminado.');
 
         return redirect()->route('admin.channels.index');
+    }
+
+    /**
+     * URLs a las que los drivers harán POST (Slack, webhook saliente): deben
+     * pasar OutboundUrlGuard (https, sin red interna). Se valida al guardar
+     * para avisar pronto; el driver lo vuelve a comprobar al enviar. Se
+     * validan aparte: como reglas anidadas recortarían `config_json` en los
+     * datos validados.
+     *
+     * @return array<string, list<mixed>>
+     */
+    private function outboundUrlRules(): array
+    {
+        return [
+            'config_json.slack_webhook_url' => ['nullable', 'string', 'max:2048', new SafeOutboundUrl],
+            'config_json.endpoint_url' => ['nullable', 'string', 'max:2048', new SafeOutboundUrl],
+        ];
     }
 
     /**
