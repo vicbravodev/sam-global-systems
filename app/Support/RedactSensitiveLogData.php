@@ -114,7 +114,8 @@ final class RedactSensitiveLogData implements ProcessorInterface
         );
         $text = (string) preg_replace('/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i', '[email]', $text);
         $text = (string) preg_replace('~(https?://[^\s?#"\']+)\?[^\s"\'#]*~i', '$1?'.self::MASK, $text);
-        $text = (string) preg_replace('/\b(Bearer|Basic)\s+[A-Za-z0-9._~+\/=-]+/i', '$1 '.self::MASK, $text);
+        $text = (string) preg_replace('/\bBearer\s+[A-Za-z0-9._~+\/=-]+/i', 'Bearer '.self::MASK, $text);
+        $text = self::maskBasicCredentials($text);
 
         return (string) preg_replace_callback(
             '/(?<![\w.:\/-])\+?\d[\d\s()-]{7,}\d(?![\w\/-]|[.:]\w)/',
@@ -136,6 +137,26 @@ final class RedactSensitiveLogData implements ProcessorInterface
                 }
 
                 return '[phone]';
+            },
+            $text,
+        );
+    }
+
+    /**
+     * `Basic <base64(usuario:clave)>`. Sólo se enmascara lo que ES una
+     * credencial (tras `Authorization:` o un base64 que decodifica a algo con
+     * `:`): "basic" es también una palabra común ("Basic plan", "basic
+     * checks") y antes se comía la palabra siguiente del texto.
+     */
+    private static function maskBasicCredentials(string $text): string
+    {
+        return (string) preg_replace_callback(
+            '/(\bAuthorization\s*[:=]\s*)?\b(Basic)\s+([A-Za-z0-9+\/]+={0,2})(?![A-Za-z0-9+\/=._~-])/i',
+            static function (array $match): string {
+                $decoded = base64_decode($match[3], true);
+                $isCredential = $match[1] !== '' || (is_string($decoded) && str_contains($decoded, ':'));
+
+                return $isCredential ? $match[1].$match[2].' '.self::MASK : $match[0];
             },
             $text,
         );
