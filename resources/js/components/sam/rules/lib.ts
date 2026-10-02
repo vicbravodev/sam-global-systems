@@ -413,7 +413,7 @@ export function scopeForConditions(
 // ---- Traducción de alertas ----
 
 /** "HeavySpeeding" → "Heavy Speeding" (nombre tal como lo muestra Samsara). */
-export function splitCamel(value: string): string {
+function splitCamel(value: string): string {
     return value
         .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
         .replace(/[_.]+/g, ' ')

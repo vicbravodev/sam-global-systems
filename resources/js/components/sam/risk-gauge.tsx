@@ -34,7 +34,7 @@ const LEVEL_STROKE: Record<RiskLevel, string> = {
 };
 
 /** Level derived from the score when the backend did not persist one. */
-export function levelForScore(score: number): RiskLevel {
+function levelForScore(score: number): RiskLevel {
     if (score >= 75) {
         return 'critical';
     }

@@ -8,7 +8,7 @@ export function minutesSince(iso: string): number {
 }
 
 /** Umbral bajo el cual una señal se considera "en vivo" (ver watchdog C1). */
-export const FRESH_MINUTES = 15;
+const FRESH_MINUTES = 15;
 
 export function isFresh(iso: string | null): boolean {
     return iso !== null && minutesSince(iso) < FRESH_MINUTES;

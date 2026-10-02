@@ -1,20 +1,26 @@
 import { Plus, Scale, X } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { lazy, Suspense, useMemo, useState } from 'react';
 import type { ConditionFieldDef } from '@/components/sam/condition-builder';
 import { ConfirmDialog } from '@/components/sam/confirm-dialog';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { deleteJson, putJson } from '@/lib/sam-fetch';
 import { DecisionRuleCard } from './decision-rule-card';
-import { DecisionRuleSheet } from './decision-rule-sheet';
 import { outcomeGroup, submitRuleChange, useRulesBase } from './lib';
 import { RuleTestDialog } from './rule-tester';
 import type { DecisionRuleRow, OutcomeOption, RulesetOption } from './types';
 
+// The editor (condition builder + comboboxes) loads on its first opening.
+const DecisionRuleSheet = lazy(() =>
+    import('./decision-rule-sheet').then((module) => ({
+        default: module.DecisionRuleSheet,
+    })),
+);
+
 /** Filtros que aplica la franja de resumen. */
 export type DecisionFilter = 'active' | 'incident' | 'review' | 'other' | 'off';
 
-export const DECISION_FILTER_LABELS: Record<DecisionFilter, string> = {
+const DECISION_FILTER_LABELS: Record<DecisionFilter, string> = {
     active: 'encendidas',
     incident: 'abren un incidente',
     review: 'piden revisión de una persona',
@@ -22,7 +28,7 @@ export const DECISION_FILTER_LABELS: Record<DecisionFilter, string> = {
     off: 'apagadas',
 };
 
-export function matchesDecisionFilter(
+function matchesDecisionFilter(
     rule: DecisionRuleRow,
     filter: DecisionFilter | null,
 ): boolean {
@@ -159,6 +165,13 @@ export function DecisionRulesTab({
     const hasPlatform = rules.some((rule) => rule.isGlobal);
     const hasOwn = rules.some((rule) => !rule.isGlobal);
     const openRule = rules.find((rule) => rule.id === openRuleId) ?? null;
+    const sheetOpen = creating || openRule !== null;
+    // Mounted on first opening and kept, so closing still animates.
+    const [sheetMounted, setSheetMounted] = useState(false);
+
+    if (sheetOpen && !sheetMounted) {
+        setSheetMounted(true);
+    }
 
     const toggle = async (rule: DecisionRuleRow, active: boolean) => {
         if (base === null || togglingId !== null) {
@@ -264,21 +277,25 @@ export function DecisionRulesTab({
                 </ul>
             )}
 
-            <DecisionRuleSheet
-                open={creating || openRule !== null}
-                onOpenChange={(open) => {
-                    if (!open) {
-                        onCreatingChange(false);
-                        setOpenRuleId(null);
-                    }
-                }}
-                rule={creating ? null : openRule}
-                rules={rules}
-                fields={fields}
-                outcomes={outcomes}
-                rulesets={rulesets}
-                canManage={canManage}
-            />
+            {sheetMounted && (
+                <Suspense fallback={null}>
+                    <DecisionRuleSheet
+                        open={sheetOpen}
+                        onOpenChange={(open) => {
+                            if (!open) {
+                                onCreatingChange(false);
+                                setOpenRuleId(null);
+                            }
+                        }}
+                        rule={creating ? null : openRule}
+                        rules={rules}
+                        fields={fields}
+                        outcomes={outcomes}
+                        rulesets={rulesets}
+                        canManage={canManage}
+                    />
+                </Suspense>
+            )}
 
             {base !== null && (
                 <RuleTestDialog

@@ -1,4 +1,4 @@
-import type { AssetStatusValue } from '@/types/assets';
+import type { AssetMarker, AssetStatusValue } from '@/types/assets';
 
 /**
  * DOM builders for map markers. Styles live in app.css (`.sam-map-*`); here
@@ -224,4 +224,24 @@ const CARDINALS = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
 
 export function cardinal(heading: number): string {
     return CARDINALS[Math.round((((heading % 360) + 360) % 360) / 45) % 8];
+}
+
+export function isMoving(asset: AssetMarker): boolean {
+    if (asset.moving !== undefined && asset.moving !== null) {
+        return asset.moving;
+    }
+
+    return (asset.speed ?? 0) >= MOVING_MIN_KPH;
+}
+
+/** "42 km/h · NE", "Detenido" or "En movimiento", for tooltips and lists. */
+export function speedLine(asset: AssetMarker): string {
+    if (!isMoving(asset)) {
+        return 'Detenido';
+    }
+
+    const speed = asset.speed !== null ? `${Math.round(asset.speed)} km/h` : '';
+    const heading = asset.heading !== null ? cardinal(asset.heading) : '';
+
+    return [speed, heading].filter(Boolean).join(' · ') || 'En movimiento';
 }

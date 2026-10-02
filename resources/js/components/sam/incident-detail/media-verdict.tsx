@@ -2,7 +2,7 @@ import { cn } from '@/lib/utils';
 import type { IncidentMediaSummary } from '@/types/sam';
 
 /** Etiquetas en español para el veredicto por media de la IA. */
-export const MEDIA_RESULT_LABEL: Record<string, string> = {
+const MEDIA_RESULT_LABEL: Record<string, string> = {
     confirms_event: 'Confirma el evento',
     contradicts_event: 'Contradice el evento',
     inconclusive: 'No concluyente',
