@@ -21,11 +21,12 @@ use Laravel\Ai\Responses\Data\Meta;
 use Laravel\Ai\Responses\Data\TextUsage;
 use Laravel\Ai\Responses\Data\ToolCall;
 use Laravel\Ai\Responses\TextResponse;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class SendCopilotMessageTest extends TestCase
 {
-    use CopilotFixtures, RefreshDatabase;
+    use AssertsSystemLog, CopilotFixtures, RefreshDatabase;
 
     protected function setUp(): void
     {
@@ -142,6 +143,15 @@ class SendCopilotMessageTest extends TestCase
             ->assertJsonPath('answer.intent', CopilotIntent::FuelReport->value)
             ->assertJsonPath('answer.context.resolved.asset_id', $asset->id)
             ->assertJsonPath('answer.blocks.0.type', 'fuel');
+
+        $this->assertSystemLogged('copilot.intent.routed', fn (array $c) => ($c['reason'] ?? null) === 'asset_required'
+            && $c['input']['intent'] === CopilotIntent::FuelReport->value
+            && $c['input']['asset_source'] === 'none'
+            && $c['result']['tools'] === ['asset_picker']);
+        $this->assertSystemLogged('copilot.intent.routed', fn (array $c) => $c['outcome'] === 'ok'
+            && $c['input']['asset_source'] === 'previous_turn'
+            && $c['input']['asset_id'] === $asset->id);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_explicit_template_and_unit_from_the_ui_win_over_the_text(): void
