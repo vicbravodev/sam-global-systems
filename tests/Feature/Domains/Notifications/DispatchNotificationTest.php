@@ -247,6 +247,48 @@ class DispatchNotificationTest extends TestCase
         $this->assertNoSensitiveDataLogged();
     }
 
+    public function test_a_skipped_delivery_that_cannot_be_recorded_is_logged_and_the_loop_continues(): void
+    {
+        Mail::fake();
+
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+        $this->actingAs($user);
+
+        $channel = NotificationChannel::factory()->email()->create(['is_active' => true]);
+
+        $notification = Notification::factory()->create([
+            'team_id' => $team->id,
+            'notification_type' => 'manual.test',
+            'priority' => NotificationPriority::Normal,
+            'status' => NotificationStatus::Queued,
+            'payload_json' => [
+                'recipients' => [
+                    ['recipient_type' => RecipientType::ExternalContact->value, 'address' => 'no-es-un-correo'],
+                ],
+            ],
+        ]);
+
+        NotificationDelivery::creating(fn () => throw new RuntimeException('insert rechazado'));
+
+        app(DispatchNotification::class)->execute($notification);
+
+        $this->assertSame(0, NotificationDelivery::withoutGlobalScopes()->where('notification_id', $notification->id)->count());
+        Mail::assertNothingSent();
+
+        $recipient = NotificationRecipient::withoutGlobalScopes()->where('notification_id', $notification->id)->sole();
+        $this->assertSystemLogged('notifications.delivery.skip_record_failed', fn (array $c) => $c['outcome'] === 'degraded'
+            && $c['reason'] === 'record_failed'
+            && $c['input']['notification_id'] === $notification->id
+            && $c['input']['recipient_id'] === $recipient->id
+            && $c['input']['channel_id'] === $channel->id
+            && $c['input']['skip_reason'] === 'email address is not a valid email'
+            && isset($c['error']));
+        $this->assertSystemLogged('notifications.dispatch.completed');
+        $this->assertStringNotContainsString('no-es-un-correo', json_encode($this->systemLogEntries('notifications.delivery.skip_record_failed')));
+        $this->assertNoSensitiveDataLogged();
+    }
+
     public function test_a_rolled_back_incident_never_logs_the_requested_notification(): void
     {
         Bus::fake();
