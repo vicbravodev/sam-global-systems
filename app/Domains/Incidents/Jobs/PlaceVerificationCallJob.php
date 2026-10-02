@@ -18,6 +18,8 @@ use App\Domains\Notifications\Enums\MessagingChargeSource;
 use App\Domains\Notifications\Enums\MessagingResourceType;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Support\PlatformTwilioConfig;
+use App\Domains\Notifications\Support\TwilioResourceAttribution;
+use App\Domains\Notifications\Support\TwilioWebhookUrl;
 use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
 use App\Domains\Tenancy\Support\TenantCanSend;
@@ -30,6 +32,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Twilio\Exceptions\RestException;
 
 /**
  * Place one operator verification call through SAM's platform Twilio voice
@@ -43,6 +46,9 @@ class PlaceVerificationCallJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public const string USAGE_METER_CODE = 'voice_calls';
+
+    /** Espera mínima de la red de seguridad: más que una llamada completa. */
+    public const int MIN_OUTCOME_DELAY_SECONDS = 90;
 
     /**
      * Distinguishable `metadata_json.failure_reason` used when a verification
@@ -162,21 +168,32 @@ class PlaceVerificationCallJob implements ShouldQueue
                 'twiml' => VerificationCallTwiml::prompt(
                     $verification,
                     $incident,
-                    route('webhooks.twilio.voice.gather', ['verification' => $verification->id]),
+                    TwilioWebhookUrl::route('webhooks.twilio.voice.gather', ['verification' => $verification->id]),
                 ),
-                'statusCallback' => route('webhooks.twilio.voice.status', ['verification' => $verification->id]),
+                'statusCallback' => TwilioWebhookUrl::route('webhooks.twilio.voice.status', ['verification' => $verification->id]),
                 'timeout' => $config['ring_timeout_seconds'] ?? 25,
             ]);
             $durationMs = SystemLog::elapsedMs($started);
         } catch (\Throwable $e) {
-            // Sin `error: $e`: el mensaje del proveedor puede traer el
-            // número marcado. Sólo la clase de la excepción.
-            SystemLog::degraded('incidents.call_verification.placement_failed', reason: 'provider_error', input: ['verification_id' => $verification->id], result: ['error_class' => class_basename($e)], durationMs: SystemLog::elapsedMs($started));
+            $durationMs = SystemLog::elapsedMs($started);
 
-            $verification->forceFill(['notification_channel_id' => $channel->id])->save();
-            $handleFailure->execute($verification, 'placement_failed: '.$e->getMessage());
+            // Sin respuesta de Twilio (timeout, red): la llamada pudo haberse
+            // creado. Antes de marcar otra (dos teléfonos sonando a la vez y
+            // dos cobros), se busca en Twilio.
+            $call = $e instanceof RestException ? null : $this->findPlacedCall($caller, $verification->phone, $from, $started);
 
-            return;
+            if ($call === null) {
+                // Sin `error: $e`: el mensaje del proveedor puede traer el
+                // número marcado. Sólo la clase de la excepción.
+                SystemLog::degraded('incidents.call_verification.placement_failed', reason: 'provider_error', input: ['verification_id' => $verification->id], result: ['error_class' => class_basename($e), 'outcome_known' => $e instanceof RestException], durationMs: $durationMs);
+
+                $verification->forceFill(['notification_channel_id' => $channel->id])->save();
+                $handleFailure->execute($verification, 'placement_failed: '.$e->getMessage());
+
+                return;
+            }
+
+            SystemLog::ok('incidents.call_verification.placement_adopted', input: ['verification_id' => $verification->id], result: ['error_class' => class_basename($e)], durationMs: $durationMs);
         }
 
         $verification->forceFill([
@@ -205,7 +222,10 @@ class PlaceVerificationCallJob implements ShouldQueue
             StartIncidentCallVerification::SETTING_RETRY_DELAY,
             StartIncidentCallVerification::DEFAULT_RETRY_DELAY_SECONDS,
         );
-        $retryDelay = max(30, $configuredDelay);
+        // Nunca antes de que termine la llamada en curso (timbre 25 s + dos
+        // lecturas + 10 s de espera de tecla): la red de seguridad no debe
+        // marcar otra mientras ésta sigue sonando.
+        $retryDelay = max(self::MIN_OUTCOME_DELAY_SECONDS, $configuredDelay);
 
         EvaluateVerificationCallOutcomeJob::dispatch($verification->id)
             ->delay(now()->addSeconds($retryDelay));
@@ -264,5 +284,24 @@ class PlaceVerificationCallJob implements ShouldQueue
         JobFailureReporter::report(static::class, $exception, [
             'verification_id' => $this->verificationId,
         ]);
+    }
+
+    /**
+     * La llamada que Twilio sí creó pese a la excepción, sólo si es
+     * inequívocamente ésta (TwilioResourceAttribution); si no, null y se
+     * sigue como fallo normal. Nunca lanza.
+     */
+    private function findPlacedCall(TwilioVoiceCaller $caller, string $to, string $from, int $startedHrtime): ?object
+    {
+        $elapsedSeconds = (int) ceil(SystemLog::elapsedMs($startedHrtime) / 1000);
+        $since = now()->subSeconds($elapsedSeconds + 10);
+
+        try {
+            $candidates = $caller->findRecentCalls($to, $from, $since);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return TwilioResourceAttribution::pick($candidates, $since, now()->addMinute())['resource'];
     }
 }

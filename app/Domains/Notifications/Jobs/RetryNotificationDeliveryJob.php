@@ -55,7 +55,14 @@ class RetryNotificationDeliveryJob implements ShouldQueue
      */
     public function maxAttempts(): int
     {
-        return $this->isWebhook() ? 3 : 5;
+        return match ($this->channelType()) {
+            ChannelType::Webhook => 3,
+            // Una llamada sin contestar se reintenta una vez y luego cae a
+            // otro canal: cinco llamadas seguidas al mismo número son ruido
+            // (y la escalera ya tiene sus propios intentos por paso).
+            ChannelType::Voice => 2,
+            default => 5,
+        };
     }
 
     /**
@@ -66,20 +73,20 @@ class RetryNotificationDeliveryJob implements ShouldQueue
      */
     public function retryDelays(): array
     {
-        if ($this->isWebhook()) {
+        if ($this->channelType() === ChannelType::Webhook) {
             return [30, 120, 600];
         }
 
         return [30, 60, 120, 300, 600];
     }
 
-    private function isWebhook(): bool
+    private function channelType(): ?ChannelType
     {
         $delivery = NotificationDelivery::withoutGlobalScopes()
             ->with('channel')
             ->find($this->deliveryId);
 
-        return $delivery?->channel?->channel_type === ChannelType::Webhook;
+        return $delivery?->channel?->channel_type;
     }
 
     public function handle(AttemptDelivery $attemptDelivery, RenderNotificationContent $render): void
@@ -163,7 +170,24 @@ class RetryNotificationDeliveryJob implements ShouldQueue
             return;
         }
 
-        $delivery->update(['attempt_number' => $delivery->attempt_number + 1]);
+        // Reclamo atómico: sólo un job reintenta este fallo. Dos
+        // NotificationFailed del mismo intento (callback y reconciliador a la
+        // vez) programaban dos reintentos que pasaban ambos el chequeo de
+        // arriba y mandaban dos SMS.
+        $claimed = NotificationDelivery::withoutGlobalScopes()
+            ->whereKey($delivery->id)
+            ->where('team_id', $delivery->team_id)
+            ->where('status', DeliveryStatus::Failed)
+            ->where('attempt_number', $delivery->attempt_number)
+            ->update(['status' => DeliveryStatus::Retrying, 'attempt_number' => $delivery->attempt_number + 1]);
+
+        if ($claimed === 0) {
+            SystemLog::skipped('notifications.retry.skipped', reason: 'race_lost', input: $input);
+
+            return;
+        }
+
+        $delivery->refresh();
 
         $attemptDelivery->execute(
             $delivery,

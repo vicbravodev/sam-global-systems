@@ -13,6 +13,7 @@ use App\Domains\Notifications\Support\TwilioErrorCatalog;
 use App\Support\LoggableCode;
 use App\Support\SystemLog;
 use App\Support\TenantContext;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Aplica un estado reportado por Twilio a un recurso facturable y, si es de
@@ -75,8 +76,10 @@ class ApplyTwilioStatusUpdate
         ?int $durationSeconds = null,
         ?int $segments = null,
         string $source = 'callback',
+        ?string $answeredBy = null,
     ): void {
         $providerStatus = strtolower(trim($providerStatus));
+        $answeredBy = $answeredBy !== null && trim($answeredBy) !== '' ? strtolower(trim($answeredBy)) : null;
         $input = ['charge_id' => $charge->id, 'source' => $source, 'resource_type' => $charge->resource_type->value];
 
         if ($providerStatus === '') {
@@ -87,7 +90,14 @@ class ApplyTwilioStatusUpdate
 
         $errorCode = $errorCode !== null && $errorCode !== '' && $errorCode !== '0' ? $errorCode : null;
 
-        TenantContext::for($charge->team_id, function () use ($charge, $providerStatus, $errorCode, $durationSeconds, $segments, $source, $input) {
+        // Una llamada que contestó un buzón o un fax no es una persona: la
+        // entrega falla (permanente para la voz, cae a otro canal) en vez de
+        // contarse como contestada y bloquear el fallback.
+        if ($charge->resource_type === MessagingResourceType::Call && self::isMachine($answeredBy) && in_array($providerStatus, ['in-progress', 'completed'], true)) {
+            $errorCode = TwilioErrorCatalog::ANSWERED_BY_MACHINE;
+        }
+
+        TenantContext::for($charge->team_id, function () use ($charge, $providerStatus, $errorCode, $durationSeconds, $segments, $source, $input, $answeredBy) {
             $this->updateCharge($charge, $providerStatus, $errorCode, $durationSeconds, $segments, $source);
 
             if ($charge->source_type !== MessagingChargeSource::NotificationDelivery || $charge->source_id === null) {
@@ -99,13 +109,17 @@ class ApplyTwilioStatusUpdate
                 return;
             }
 
-            $applied = $this->updateDelivery($charge, $providerStatus, $errorCode, $durationSeconds, $segments);
+            // Fila bloqueada: un callback y una consulta del reconciliador a la
+            // vez no pueden leer el mismo estado y escribir uno que retroceda,
+            // ni emitir dos NotificationFailed del mismo intento.
+            $applied = DB::transaction(fn () => $this->updateDelivery($charge, $providerStatus, $errorCode, $durationSeconds, $segments));
 
             $input['delivery_id'] = $applied['delivery_id'];
             $calc = [
                 'provider_status' => LoggableCode::guard($providerStatus),
                 'provider_error_code' => LoggableCode::guard($errorCode),
                 'duration_seconds' => $durationSeconds,
+                'answered_by' => LoggableCode::guard($answeredBy),
             ];
             $result = ['from_status' => $applied['from'], 'to_status' => $applied['to']];
 
@@ -174,7 +188,7 @@ class ApplyTwilioStatusUpdate
         ?int $durationSeconds,
         ?int $segments,
     ): array {
-        $delivery = NotificationDelivery::query()->with(['notification', 'channel'])->find($charge->source_id);
+        $delivery = NotificationDelivery::query()->with(['notification', 'channel'])->lockForUpdate()->find($charge->source_id);
 
         // A retry replaces the delivery's SID: events for an older attempt
         // only update its charge, never the current attempt's state.
@@ -188,7 +202,7 @@ class ApplyTwilioStatusUpdate
 
         $now = now();
         $target = $charge->resource_type === MessagingResourceType::Call
-            ? $this->callTarget($delivery, $status, $durationSeconds)
+            ? ($errorCode === TwilioErrorCatalog::ANSWERED_BY_MACHINE ? DeliveryStatus::Failed : $this->callTarget($delivery, $status, $durationSeconds))
             : (self::MESSAGE_STATUSES[$status] ?? null);
 
         $changes = [
@@ -212,7 +226,7 @@ class ApplyTwilioStatusUpdate
             $changes['read_at'] = $now;
         }
 
-        if ($charge->resource_type === MessagingResourceType::Call && $status === 'in-progress' && $delivery->answered_at === null) {
+        if ($charge->resource_type === MessagingResourceType::Call && $status === 'in-progress' && $delivery->answered_at === null && $errorCode !== TwilioErrorCatalog::ANSWERED_BY_MACHINE) {
             $changes['answered_at'] = $now;
         }
 
@@ -296,5 +310,13 @@ class ApplyTwilioStatusUpdate
         $message = "twilio {$charge->resource_type->value} {$status}";
 
         return $errorCode !== null ? "{$message} (error {$errorCode})" : $message;
+    }
+
+    /**
+     * `AnsweredBy` de la detección de contestadora (AMD): `machine_*` o `fax`.
+     */
+    public static function isMachine(?string $answeredBy): bool
+    {
+        return $answeredBy !== null && (str_starts_with($answeredBy, 'machine') || $answeredBy === 'fax');
     }
 }

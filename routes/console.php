@@ -18,6 +18,7 @@ use App\Domains\Ingestion\Jobs\ReprocessStuckRawEventsJob;
 use App\Domains\Integrations\Jobs\CheckIntegrationHealthJob;
 use App\Domains\Integrations\Jobs\SyncDueIntegrationsJob;
 use App\Domains\Notifications\Jobs\ReconcileMessagingChargesJob;
+use App\Domains\Notifications\Jobs\SweepStuckDeliveriesJob;
 use App\Domains\Tenancy\Jobs\AggregateUsageJob;
 use App\Domains\Tenancy\Jobs\GenerateMonthlyInvoicesJob;
 use Illuminate\Foundation\Inspiring;
@@ -115,6 +116,10 @@ Schedule::job(new ExpireUnconfirmedActionsJob)->everyMinute()->onOneServer();
 // Red de seguridad de la escalera de SLA: re-despacha los pasos vencidos cuyo
 // job diferido se perdió o falló (el estado vive en la fila del incidente).
 Schedule::job(new SweepOverdueEscalationsJob)->everyMinute()->withoutOverlapping()->onOneServer();
+
+// Entregas atascadas "enviando" sin SID (worker caído a medio envío, timeout
+// sin resolver): se adoptan si Twilio sí las creó o fallan para reintento.
+Schedule::job(new SweepStuckDeliveriesJob)->everyFiveMinutes()->withoutOverlapping()->onOneServer();
 
 // Telescope (sólo local, dependencia de desarrollo): poda diaria de entradas
 // de más de 48 h para que la tabla no crezca sin límite.

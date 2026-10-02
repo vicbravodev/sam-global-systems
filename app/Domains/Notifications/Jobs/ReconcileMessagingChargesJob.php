@@ -169,7 +169,11 @@ class ReconcileMessagingChargesJob implements ShouldQueue
             if ($e->getCode() === 20404) {
                 // Twilio no conoce el SID (borrado o nunca creado): no hay nada
                 // que cobrar ni que seguir consultando.
-                $charge->forceFill(['status' => $charge->status ?? 'not_found'])->save();
+                // La entrega no puede quedarse "en cola" para siempre (contaba
+                // como alcanzada y bloqueaba el fallback): falla y el
+                // reintento/fallback decide.
+                $applyStatus->execute($charge, 'failed', '20404', source: 'poll');
+                $charge->refresh();
                 $finalize->withoutCost($charge);
 
                 SystemLog::ok('billing.messaging_charge.reconciled', input: $input, calc: [
@@ -195,6 +199,7 @@ class ReconcileMessagingChargesJob implements ShouldQueue
             durationSeconds: $charge->resource_type === MessagingResourceType::Call ? $duration : null,
             segments: $charge->resource_type === MessagingResourceType::Message ? $segments : null,
             source: 'poll',
+            answeredBy: isset($resource->answeredBy) && is_string($resource->answeredBy) ? $resource->answeredBy : null,
         );
 
         $charge->refresh();

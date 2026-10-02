@@ -56,6 +56,11 @@ return [
         // public host (proxy, tunnel). Non-public URLs are never sent —
         // the reconciler polls Twilio instead.
         'status_callback_url' => env('TWILIO_STATUS_CALLBACK_URL'),
+        // Public base URL (scheme + host) Twilio reaches SAM at, when it is
+        // not what Laravel sees behind the proxy/TLS terminator. Webhook
+        // signatures are validated against it (TwilioWebhookUrl); without it
+        // a proxy turns every DTMF/inbound reply into a 403.
+        'public_base_url' => env('TWILIO_PUBLIC_BASE_URL'),
         // Dev-only simulated Twilio (fake SIDs, deterministic outcomes).
         // Ignored in production.
         'sandbox' => (bool) env('TWILIO_SANDBOX', false),
