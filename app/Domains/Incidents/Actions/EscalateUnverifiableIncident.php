@@ -24,6 +24,7 @@ class EscalateUnverifiableIncident
         private readonly AppendTimelineEntry $appendTimelineEntry,
         private readonly EscalateIncident $escalateIncident,
         private readonly NotifyEscalationLevel $notifyEscalationLevel,
+        private readonly ArmIncidentEscalation $armIncidentEscalation,
     ) {}
 
     public function execute(Incident $incident, string $reason, string $description): void
@@ -80,6 +81,9 @@ class EscalateUnverifiableIncident
             subject: 'Emergencia sin verificar: '.$incident->title,
             body: $description.' Atiéndela ahora.',
         );
+
+        // Ese aviso cuenta como el paso 0 de la escalera (ver accelerate()).
+        $this->armIncidentEscalation->accelerate($incident, 'verification_unavailable');
 
         $incident->loadMissing('status');
         $escalatedResult = ['escalated_now' => $escalatedNow, 'status_after' => $incident->status?->code];

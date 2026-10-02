@@ -5,8 +5,8 @@ namespace App\Http\Controllers\Webhooks;
 use App\Domains\Audit\Actions\RecordAuditEntry;
 use App\Domains\Audit\Enums\AuditActorType;
 use App\Domains\Audit\Enums\AuditCategory;
-use App\Domains\Incidents\Actions\AcknowledgeIncident;
 use App\Domains\Incidents\Actions\AppendTimelineEntry;
+use App\Domains\Incidents\Actions\ArmIncidentEscalation;
 use App\Domains\Incidents\Actions\CloseIncident;
 use App\Domains\Incidents\Actions\EscalateIncident;
 use App\Domains\Incidents\Actions\HandleVerificationCallAttemptFailure;
@@ -42,13 +42,13 @@ use Twilio\Security\RequestValidator;
 class TwilioVoiceController extends Controller
 {
     public function __construct(
-        private readonly AcknowledgeIncident $acknowledgeIncident,
         private readonly CloseIncident $closeIncident,
         private readonly HandleVerificationCallAttemptFailure $handleFailure,
         private readonly AppendTimelineEntry $appendTimelineEntry,
         private readonly RecordAuditEntry $recordAuditEntry,
         private readonly EscalateIncident $escalateIncident,
         private readonly NotifyEscalationLevel $notifyEscalationLevel,
+        private readonly ArmIncidentEscalation $armIncidentEscalation,
     ) {}
 
     public function gather(Request $request, int $verification): Response
@@ -125,8 +125,10 @@ class TwilioVoiceController extends Controller
 
     private function confirmReal(IncidentCallVerification $row, Incident $incident): Response
     {
-        $this->acknowledgeIncident->execute($incident, null, via: 'voice');
-
+        // Sin ACK (decisión 2026-10-01): quien contesta la verificación suele
+        // ser el chofer, no alguien del equipo. Confirmar la emergencia acelera
+        // la escalera; sólo un humano del equipo (UI, respuesta SI, tecla en
+        // una llamada de escalación) la detiene.
         $this->consume($row, '1', CallVerificationOutcome::ConfirmedReal);
 
         $this->appendTimelineEntry->execute(
@@ -140,9 +142,9 @@ class TwilioVoiceController extends Controller
 
         $this->audit($row, $incident, 'confirmed_real');
 
-        // DTMF 1 = emergencia real: además del ACK (ya hay alguien enterado),
-        // se escala y se avisa en ese momento al primer nivel. Antes sólo se
-        // reconocía y el watchdog se apagaba sin avisar a nadie.
+        // DTMF 1 = emergencia real: se escala, se avisa en ese momento al
+        // primer nivel y ese paso de la escalera queda dado por hecho; el
+        // siguiente nivel sigue su curso si nadie del equipo atiende.
         $incident = $this->escalateIncident->execute(
             incident: $incident->refresh()->load(['status', 'priority', 'type']),
             reason: "Emergencia confirmada por verificación telefónica (DTMF 1) desde {$row->phone}.",
@@ -159,9 +161,11 @@ class TwilioVoiceController extends Controller
             priority: NotificationPriority::Critical,
         );
 
+        $this->armIncidentEscalation->accelerate($incident, 'emergency_confirmed');
+
         SystemLog::ok('incidents.call_verification.answered', input: $this->logInput($row), result: [
             'outcome' => CallVerificationOutcome::ConfirmedReal->value,
-            'acknowledged' => true,
+            'acknowledged' => false,
             'escalated' => true,
             'level_requested' => 0,
         ]);
