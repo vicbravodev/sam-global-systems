@@ -8,11 +8,13 @@ use App\Domains\Integrations\Events\IntegrationDisconnected;
 use App\Domains\Integrations\Events\IntegrationStatusChanged;
 use App\Domains\Integrations\Models\IntegrationProvider;
 use App\Domains\Integrations\Models\TenantIntegration;
+use App\Domains\Integrations\Models\WebhookEndpoint;
 use App\Models\Team;
 use App\Models\User;
 use Database\Seeders\AccessSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use RuntimeException;
 use Tests\TestCase;
 
 class IntegrationCrudTest extends TestCase
@@ -77,6 +79,35 @@ class IntegrationCrudTest extends TestCase
 
         Event::assertDispatched(IntegrationConnected::class);
         Event::assertDispatched(IntegrationStatusChanged::class);
+    }
+
+    public function test_a_failed_webhook_endpoint_insert_leaves_no_active_integration_behind(): void
+    {
+        Event::fake([IntegrationConnected::class, IntegrationStatusChanged::class]);
+
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+        $provider = IntegrationProvider::factory()->samsara()->create();
+
+        // La segunda escritura (el endpoint de webhooks) revienta tras crear la integración.
+        WebhookEndpoint::creating(function (): void {
+            throw new RuntimeException('webhook endpoint insert failed');
+        });
+
+        $this->actingAs($user)->postJson(
+            route('api.integrations.store', ['current_team' => $team->slug]),
+            [
+                'provider_id' => $provider->id,
+                'name' => 'My Samsara Connection',
+                'auth_type' => 'api_key',
+                'credentials' => 'super-secret-api-key-12345',
+            ],
+        )->assertServerError();
+
+        $this->assertSame(0, TenantIntegration::withoutGlobalScopes()->where('team_id', $team->id)->count(), 'Sin integración activa sin endpoint');
+        $this->assertSame(0, WebhookEndpoint::query()->count());
+        Event::assertNotDispatched(IntegrationConnected::class);
+        Event::assertNotDispatched(IntegrationStatusChanged::class);
     }
 
     public function test_it_lists_only_integrations_belonging_to_current_team(): void

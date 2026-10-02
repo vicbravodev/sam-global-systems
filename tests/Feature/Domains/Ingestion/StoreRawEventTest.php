@@ -249,6 +249,31 @@ class StoreRawEventTest extends TestCase
         );
     }
 
+    public function test_a_platform_event_without_team_or_provider_reuses_its_event_source(): void
+    {
+        Event::fake([RawEventReceived::class]);
+
+        $action = app(StoreRawEvent::class);
+
+        // `where('team_id', null)` del lookup compila a `IS NULL` (Laravel):
+        // la fila de plataforma se reutiliza, no se crea una por evento.
+        foreach (['platform-1', 'platform-2'] as $externalId) {
+            $action->execute(
+                payload: ['eventType' => 'Test', 'eventId' => $externalId],
+                sourceType: 'internal_monitor',
+                teamId: null,
+                providerId: null,
+                externalEventId: $externalId,
+            );
+        }
+
+        $this->assertSame(1, EventSource::withoutGlobalScopes()
+            ->whereNull('team_id')
+            ->whereNull('provider_id')
+            ->where('source_type', 'internal_monitor')
+            ->count());
+    }
+
     public function test_deduplication_key_falls_back_to_checksum_when_no_external_id(): void
     {
         Event::fake([RawEventReceived::class]);

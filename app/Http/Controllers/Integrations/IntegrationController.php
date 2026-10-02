@@ -15,6 +15,7 @@ use App\Http\Requests\Integrations\StoreIntegrationRequest;
 use App\Http\Requests\Integrations\UpdateIntegrationRequest;
 use App\Models\Team;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
 
 class IntegrationController extends Controller
 {
@@ -44,19 +45,25 @@ class IntegrationController extends Controller
             'Cannot create an integration for a deprecated provider.',
         );
 
-        $integration = TenantIntegration::create([
-            'team_id' => $current_team->id,
-            'provider_id' => $provider->id,
-            'name' => $request->validated('name'),
-            'auth_type' => $request->validated('auth_type'),
-            'credentials_encrypted' => $request->validated('credentials'),
-            'config_json' => $request->validated('config'),
-            'status' => TenantIntegrationStatus::Active,
-        ]);
+        // La integración y su endpoint de webhooks nacen juntos o no nacen:
+        // una integración activa sin endpoint no podría recibir ni un pánico.
+        $integration = DB::transaction(function () use ($request, $current_team, $provider): TenantIntegration {
+            $integration = TenantIntegration::create([
+                'team_id' => $current_team->id,
+                'provider_id' => $provider->id,
+                'name' => $request->validated('name'),
+                'auth_type' => $request->validated('auth_type'),
+                'credentials_encrypted' => $request->validated('credentials'),
+                'config_json' => $request->validated('config'),
+                'status' => TenantIntegrationStatus::Active,
+            ]);
 
-        WebhookEndpoint::create([
-            'tenant_integration_id' => $integration->id,
-        ]);
+            WebhookEndpoint::create([
+                'tenant_integration_id' => $integration->id,
+            ]);
+
+            return $integration;
+        });
 
         IntegrationConnected::dispatch(
             $current_team->id,

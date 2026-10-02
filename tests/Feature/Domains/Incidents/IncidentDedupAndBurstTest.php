@@ -112,6 +112,73 @@ class IncidentDedupAndBurstTest extends TestCase
         $this->assertNotNull($this->create($otherTeamId, $otherAsset->id, 'collision'));
     }
 
+    public function test_the_fast_path_and_the_ai_path_of_an_unresolved_asset_event_never_open_two_incidents(): void
+    {
+        $teamId = User::factory()->create()->currentTeam->id;
+        // Pánico de una unidad que no se pudo resolver: ni activo ni conductor.
+        $event = NormalizedEvent::factory()->create([
+            'team_id' => $teamId,
+            'asset_id' => null,
+            'driver_id' => null,
+            'occurred_at' => now(),
+        ]);
+
+        // Con backlog, OpenEmergencyIncidentJob y CreateIncidentJob pasan los
+        // dos su chequeo previo (fuera del candado) y llegan a la Action.
+        $fast = app(CreateIncidentFromEvent::class)->execute($event, ['incident_type_code' => 'panic_emergency', 'priority_code' => 'critical']);
+        $ai = app(CreateIncidentFromEvent::class)->execute($event, ['incident_type_code' => 'collision', 'priority_code' => 'medium']);
+
+        $this->assertSame($fast->id, $ai->id);
+        $this->assertSame(1, Incident::query()->where('team_id', $teamId)->count());
+
+        $c = $this->assertSystemLogged('incidents.dedup.same_event');
+        $this->assertSame('ok', $c['outcome']);
+        $this->assertSame($event->id, $c['input']['normalized_event_id']);
+        $this->assertSame($fast->id, $c['result']['existing_incident_id']);
+        $this->assertNoSensitiveDataLogged();
+
+        // Otro evento sin activo del mismo team sí abre su propio incidente.
+        $other = NormalizedEvent::factory()->create(['team_id' => $teamId, 'asset_id' => null, 'driver_id' => null, 'occurred_at' => now()]);
+        $this->assertNotSame($fast->id, app(CreateIncidentFromEvent::class)->execute($other, ['incident_type_code' => 'panic_emergency'])->id);
+    }
+
+    public function test_an_event_without_asset_or_driver_waits_on_its_own_lock(): void
+    {
+        config(['incidents.dedup_lock_wait_seconds' => 0]);
+
+        $teamId = User::factory()->create()->currentTeam->id;
+        $event = NormalizedEvent::factory()->create(['team_id' => $teamId, 'asset_id' => null, 'driver_id' => null, 'occurred_at' => now()]);
+
+        // El otro camino del mismo evento está creando el incidente.
+        $held = Cache::lock("incident_dedup:{$teamId}:event:{$event->id}", 30);
+        $this->assertTrue($held->get());
+
+        try {
+            app(CreateIncidentFromEvent::class)->execute($event, ['incident_type_code' => 'panic_emergency']);
+            $this->fail('La creación debía esperar el candado del evento.');
+        } catch (LockTimeoutException) {
+            $this->assertSame(0, Incident::query()->where('team_id', $teamId)->count());
+        } finally {
+            $held->release();
+        }
+    }
+
+    public function test_an_unresolved_asset_event_of_another_tenant_is_never_taken_as_the_same_event(): void
+    {
+        $teamA = User::factory()->create()->currentTeam;
+        $teamB = User::factory()->create()->currentTeam;
+        $eventB = NormalizedEvent::factory()->create(['team_id' => $teamB->id, 'asset_id' => null, 'driver_id' => null, 'occurred_at' => now()]);
+        app(CreateIncidentFromEvent::class)->execute($eventB, ['incident_type_code' => 'panic_emergency']);
+
+        $eventA = NormalizedEvent::factory()->create(['team_id' => $teamA->id, 'asset_id' => null, 'driver_id' => null, 'occurred_at' => now()]);
+
+        $incident = $this->assertNoTenantLeak($teamA, fn () => app(CreateIncidentFromEvent::class)
+            ->execute($eventA, ['incident_type_code' => 'panic_emergency']));
+
+        $this->assertSame($teamA->id, (int) $incident->team_id);
+        $this->assertSame([], $this->systemLogEntries('incidents.dedup.same_event'));
+    }
+
     public function test_device_offline_burst_collapses_into_one_aggregated_incident(): void
     {
         $teamId = User::factory()->create()->currentTeam->id;

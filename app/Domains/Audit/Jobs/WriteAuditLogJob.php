@@ -13,6 +13,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Persists a single auditable event captured by the wildcard listener.
@@ -20,7 +21,9 @@ use Illuminate\Support\Carbon;
  * do NOT propagate further events (no recursion into the audit listener).
  *
  * Idempotency: `(team_id, signature)` is unique on `audit_logs`. The
- * underlying `RecordAuditEntry` action handles the race-condition.
+ * underlying `RecordAuditEntry` action handles the race-condition, and
+ * both writes share one transaction so a retry never duplicates the
+ * `domain_event_logs` row.
  */
 class WriteAuditLogJob implements ShouldQueue
 {
@@ -60,34 +63,41 @@ class WriteAuditLogJob implements ShouldQueue
             ? Carbon::parse($this->occurredAt)
             : now();
 
-        // 1. Persist the raw domain event (wider, debugging-oriented).
-        $storeDomainEvent->execute(
-            eventName: $this->eventName,
-            teamId: $this->teamId,
-            aggregateType: $this->aggregateType,
-            aggregateId: $this->aggregateId,
-            payloadJson: $this->payloadJson,
-            correlationId: $this->correlationId,
-            causationId: $this->causationId,
-            occurredAt: $occurred,
-        );
+        // Los dos pasos van juntos: domain_event_logs es un insert simple, sin
+        // clave de idempotencia, así que si el paso 2 fallara después de
+        // escribir el 1, cada reintento (tries = 3) duplicaría el evento. Con
+        // la transacción, un intento fallido no deja nada y el reintento
+        // empieza de cero; RecordAuditEntry abre su propio savepoint.
+        DB::transaction(function () use ($storeDomainEvent, $recordAuditEntry, $occurred): void {
+            // 1. Persist the raw domain event (wider, debugging-oriented).
+            $storeDomainEvent->execute(
+                eventName: $this->eventName,
+                teamId: $this->teamId,
+                aggregateType: $this->aggregateType,
+                aggregateId: $this->aggregateId,
+                payloadJson: $this->payloadJson,
+                correlationId: $this->correlationId,
+                causationId: $this->causationId,
+                occurredAt: $occurred,
+            );
 
-        // 2. Promote to a structured audit log entry (user-facing trail).
-        $recordAuditEntry->execute(
-            actorType: AuditActorType::System,
-            actorId: null,
-            action: $this->action,
-            category: AuditCategory::from($this->category),
-            entityType: $this->aggregateType ?? $this->eventName,
-            entityId: $this->aggregateId,
-            summary: $this->buildSummary(),
-            teamId: $this->teamId,
-            metadata: $this->payloadJson,
-            sourceType: 'domain_event',
-            sourceReferenceId: $this->eventName,
-            signature: $this->signature,
-            occurredAt: $occurred,
-        );
+            // 2. Promote to a structured audit log entry (user-facing trail).
+            $recordAuditEntry->execute(
+                actorType: AuditActorType::System,
+                actorId: null,
+                action: $this->action,
+                category: AuditCategory::from($this->category),
+                entityType: $this->aggregateType ?? $this->eventName,
+                entityId: $this->aggregateId,
+                summary: $this->buildSummary(),
+                teamId: $this->teamId,
+                metadata: $this->payloadJson,
+                sourceType: 'domain_event',
+                sourceReferenceId: $this->eventName,
+                signature: $this->signature,
+                occurredAt: $occurred,
+            );
+        });
     }
 
     public function failed(\Throwable $exception): void
@@ -103,15 +113,5 @@ class WriteAuditLogJob implements ShouldQueue
             : '';
 
         return sprintf('%s%s', $this->action, $aggregate);
-    }
-
-    /**
-     * Allow the unique-constraint catch in `RecordAuditEntry` to suppress
-     * duplicate writes silently — but if the row truly exists already,
-     * there is no work left for this job.
-     */
-    public function uniqueId(): string
-    {
-        return $this->signature;
     }
 }
