@@ -31,7 +31,7 @@ class ReevaluateEventWithNewEvidence
     ): AIEventEvaluation {
         $request = $this->openRequest($event, $trigger, $triggerReferenceId, $reason);
 
-        AIReevaluationRequested::dispatch($event->id, $trigger->value, $triggerReferenceId);
+        AIReevaluationRequested::dispatch($event->team_id, $event->id, $trigger->value, $triggerReferenceId);
 
         $request->update(['status' => ReevaluationStatus::Processing]);
 

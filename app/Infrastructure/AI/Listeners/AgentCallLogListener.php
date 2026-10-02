@@ -14,7 +14,7 @@ use Throwable;
  * Una línea `ai.agent.called` por invocación de un agente del SDK (evaluación,
  * media, copiloto): agente, proveedor, modelo, tokens, pasos, herramientas y
  * latencia. Nunca el prompt, los adjuntos ni la respuesta. La medición de
- * uso (cobro) es aparte: `AIUsageListener`.
+ * uso (cobro) es aparte: la hace quien llama al agente.
  */
 class AgentCallLogListener
 {

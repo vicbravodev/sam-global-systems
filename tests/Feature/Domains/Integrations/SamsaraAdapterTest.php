@@ -160,12 +160,42 @@ class SamsaraAdapterTest extends TestCase
         $adapter = app(SamsaraAdapter::class);
         $payload = '{"event":"test"}';
         $secret = 'whsec';
-        $hmac = hash_hmac('sha256', $payload, $secret);
+        $timestamp = (string) now()->getTimestamp();
+        $hmac = hash_hmac('sha256', 'v1:'.$timestamp.':'.$payload, $secret);
 
-        $this->assertTrue($adapter->validateWebhookSignature($payload, $hmac, $secret));
-        $this->assertTrue($adapter->validateWebhookSignature($payload, 'v1='.$hmac, $secret));
-        $this->assertFalse($adapter->validateWebhookSignature($payload, 'deadbeef', $secret));
-        $this->assertFalse($adapter->validateWebhookSignature($payload, '', $secret));
+        $this->assertTrue($adapter->validateWebhookSignature($payload, $hmac, $secret, $timestamp));
+        $this->assertTrue($adapter->validateWebhookSignature($payload, 'v1='.$hmac, $secret, $timestamp));
+        $this->assertFalse($adapter->validateWebhookSignature($payload, 'deadbeef', $secret, $timestamp));
+        $this->assertFalse($adapter->validateWebhookSignature($payload, '', $secret, $timestamp));
+    }
+
+    /**
+     * Sin X-Samsara-Timestamp no hay frescura que comprobar: aceptar un HMAC
+     * sobre el cuerpo solo dejaría reenviar para siempre un cuerpo firmado
+     * capturado con sólo quitar la cabecera.
+     */
+    public function test_a_signature_without_timestamp_is_rejected_even_if_the_body_hmac_matches(): void
+    {
+        $secret = 'whsec';
+        $payload = '{"eventId":"abc","eventType":"AlertIncident"}';
+        $bodyOnly = hash_hmac('sha256', $payload, $secret);
+
+        foreach ([null, ''] as $timestamp) {
+            $this->assertFalse(app(SamsaraAdapter::class)->validateWebhookSignature($payload, 'v1='.$bodyOnly, $secret, $timestamp));
+            $this->assertFalse(app(SamsaraAdapter::class)->validateWebhookSignature($payload, $bodyOnly, $secret, $timestamp));
+        }
+
+        $entries = $this->systemLogEntries('webhook.signature.rejected');
+        $this->assertCount(4, $entries);
+
+        foreach ($entries as $entry) {
+            $this->assertSame('missing_timestamp', $entry['context']['reason']);
+            $this->assertSame('plain', $entry['context']['input']['scheme']);
+        }
+
+        $this->assertSystemNotLogged('webhook.signature.verified');
+        $this->assertStringNotContainsString($bodyOnly, json_encode($this->systemLogEntries()));
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_validate_webhook_signature_verifies_real_samsara_scheme(): void
@@ -323,33 +353,18 @@ class SamsaraAdapterTest extends TestCase
         $this->assertNoSensitiveDataLogged();
     }
 
-    public function test_signature_log_reports_verified_with_raw_secret_and_plain_scheme(): void
+    public function test_signature_log_reports_verified_with_raw_secret(): void
     {
         $secret = 'not base64!';
         $payload = '{"a":1}';
-        $signature = hash_hmac('sha256', $payload, $secret);
+        $timestamp = (string) now()->getTimestamp();
+        $signature = hash_hmac('sha256', 'v1:'.$timestamp.':'.$payload, $secret);
 
-        $this->assertTrue(app(SamsaraAdapter::class)->validateWebhookSignature($payload, $signature, $secret));
+        $this->assertTrue(app(SamsaraAdapter::class)->validateWebhookSignature($payload, $signature, $secret, $timestamp));
 
-        $context = $this->assertSystemLogged('webhook.signature.verified', fn (array $c) => $c['input']['scheme'] === 'plain'
+        $this->assertSystemLogged('webhook.signature.verified', fn (array $c) => $c['input']['scheme'] === 'timestamped'
             && $c['calc']['secret_variant'] === 'raw'
             && $c['calc']['key_variants_tried'] === 1);
-        $this->assertNull($context['calc']['skew_seconds'] ?? null);
-        // El esquema plain no revisa hora: no hay tolerancia que reportar.
-        $this->assertArrayHasKey('tolerance_seconds', $context['calc']);
-        $this->assertNull($context['calc']['tolerance_seconds']);
-    }
-
-    public function test_plain_scheme_hmac_mismatch_reports_no_tolerance(): void
-    {
-        config()->set('services.samsara.webhook_tolerance_seconds', 300);
-
-        $this->assertFalse(app(SamsaraAdapter::class)->validateWebhookSignature('{"a":1}', hash_hmac('sha256', '{"a":1}', 'other'), 'whsec'));
-
-        $context = $this->assertSystemLogged('webhook.signature.rejected', fn (array $c) => $c['reason'] === 'hmac_mismatch'
-            && $c['input']['scheme'] === 'plain');
-        $this->assertArrayHasKey('tolerance_seconds', $context['calc']);
-        $this->assertNull($context['calc']['tolerance_seconds']);
         $this->assertNoSensitiveDataLogged();
     }
 

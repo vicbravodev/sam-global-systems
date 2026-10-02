@@ -11,9 +11,9 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * Bridges Laravel AI SDK `agent_conversations` rows to a tenant + user so the
- * `AIUsageListener` can resolve `team_id` from a conversation id when it
- * receives `Laravel\Ai\Events\AgentPrompted` / `AgentStreamed` events.
+ * Bridges Laravel AI SDK `agent_conversations` rows to a tenant + user
+ * (traceability of each SDK call back to the event it evaluated). Billing
+ * does not go through here: callers meter their own tokens.
  *
  * `agent_conversation_id` is a CHAR(36) UUID matching the SDK's primary key.
  */

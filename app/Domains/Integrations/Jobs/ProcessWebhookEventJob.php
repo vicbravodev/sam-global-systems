@@ -57,19 +57,19 @@ class ProcessWebhookEventJob implements ShouldQueue
 
         $payload = $this->webhookEvent->payload_json;
 
-        // Preferred path: validate against the exact raw body bytes and the
-        // signature/timestamp headers captured at receipt (real Samsara scheme).
+        // Se valida contra los bytes exactos del cuerpo y las cabeceras de
+        // firma/hora capturadas al recibirlo (esquema real de Samsara). Sin el
+        // cuerpo crudo no hay nada que verificar: el antiguo modo "firma dentro
+        // del cuerpo" no llevaba hora, así que se podía reenviar para siempre.
         $signature = $this->webhookEvent->signature;
         $timestamp = $this->webhookEvent->signature_timestamp;
         $rawPayload = $this->webhookEvent->raw_payload;
-        $signatureMode = $rawPayload === null ? 'legacy_body' : 'raw_header';
+        $signatureMode = 'raw_header';
 
-        // Legacy fallback for events persisted without the raw body (e.g. crafted
-        // programmatically): the signature travelled inside the body and the HMAC
-        // was computed over the re-encoded payload minus that signature field.
         if ($rawPayload === null) {
-            $signature = (string) ($payload['signature'] ?? '');
-            $rawPayload = (string) json_encode(collect($payload)->except('signature')->all());
+            $this->reject('invalid_signature', 'missing_raw_body');
+
+            return;
         }
 
         $isValid = $validateSignature->execute(
@@ -104,7 +104,7 @@ class ProcessWebhookEventJob implements ShouldQueue
 
             $this->webhookEvent->markAsProcessed();
 
-            // event_type se resolvió antes de validar la firma (ResolveWebhookEventType) y puede venir de la query string, fuera del HMAC.
+            // event_type se resolvió antes de validar la firma (ResolveWebhookEventType): sólo se registra si parece un código.
             $eventType = LoggableCode::guard($this->webhookEvent->event_type);
 
             SystemLog::ok('webhook.event.ingested', input: [
