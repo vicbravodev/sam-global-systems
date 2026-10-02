@@ -118,6 +118,36 @@ interface ProviderAdapter
     public function fetchSafetyEvents(TenantIntegration $integration, ?string $cursor = null, \DateTimeInterface|string|null $startTime = null): array;
 
     /**
+     * The provider's alert configurations (enabled only), each with the ids of
+     * the trigger types it fires on. Used to find the panic-button alerts the
+     * backup poll ({@see fetchAlertIncidents()}) must follow. Providers without
+     * alerts return an empty list.
+     *
+     * @return list<array{id: string, is_enabled: bool, trigger_type_ids: list<int>}>
+     *
+     * @throws ProviderRequestFailedException
+     */
+    public function fetchAlertConfigurations(TenantIntegration $integration): array;
+
+    /**
+     * One page of the provider's alert-incident stream for the given alert
+     * configurations, by `updatedAtTime` since `$startTime`. Each incident is
+     * returned untransformed (the same object a webhook carries in `data`).
+     *
+     * Like the safety-event stream, a resumed page (`$cursor`) must repeat the
+     * exact `$startTime` and configuration ids of the page that produced the
+     * cursor; the caller pins them. A rejected cursor raises
+     * {@see ProviderCursorRejectedException}; any other error
+     * {@see ProviderRequestFailedException}, never an empty page.
+     *
+     * @param  list<string>  $configurationIds
+     * @return array{incidents: list<array<string, mixed>>, cursor: string|null, has_more: bool}
+     *
+     * @throws ProviderRequestFailedException
+     */
+    public function fetchAlertIncidents(TenantIntegration $integration, array $configurationIds, string $startTime, ?string $cursor = null): array;
+
+    /**
      * Validate a webhook signature against the provider's algorithm.
      *
      * @param  string  $payload  Exact raw request body bytes.

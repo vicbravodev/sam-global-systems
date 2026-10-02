@@ -50,7 +50,9 @@ class PipelineFailureNotification extends Notification
     {
         $d = $this->details;
         $unmappedAlert = $d['kind'] === PipelineFailureAlert::KIND_UNMAPPED_ALERT;
+        $webhookMissed = $d['kind'] === PipelineFailureAlert::KIND_WEBHOOK_MISSED;
         $what = match (true) {
+            $webhookMissed => 'Webhook sin entregar una emergencia',
             $unmappedAlert => 'Alerta del proveedor sin clasificar',
             $d['is_emergency'] => 'EMERGENCIA sin procesar',
             default => 'Fallo del pipeline',
@@ -63,6 +65,7 @@ class PipelineFailureNotification extends Notification
             ->error()
             ->subject("[SAM] {$what}: {$type}".($d['team_name'] !== null ? " · {$d['team_name']}" : ''))
             ->line(match (true) {
+                $webhookMissed => 'El respaldo de SAM encontró en el proveedor una emergencia (p. ej. un botón de pánico) que el webhook nunca entregó. El incidente ya se abrió por el respaldo, pero el webhook de la integración no está funcionando: revisa la Secret Key y el estado del webhook en Integraciones.',
                 $unmappedAlert => 'Llegó una alerta del proveedor (posible emergencia, p. ej. un botón de pánico) que SAM no pudo clasificar, así que no se abrió incidente. Revísala de inmediato en la plataforma del proveedor y confirma con la unidad.',
                 $d['is_emergency'] => 'Un evento de emergencia no pudo procesarse automáticamente. Revísalo de inmediato en la plataforma y confirma con la unidad.',
                 default => 'Un evento no pudo procesarse automáticamente.',

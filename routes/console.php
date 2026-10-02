@@ -12,6 +12,7 @@ use App\Domains\Assets\Jobs\PurgeOldAssetTelemetryJob;
 use App\Domains\Automation\Jobs\ExpireUnconfirmedActionsJob;
 use App\Domains\Drivers\Jobs\RecalculateDriverRiskProfilesJob;
 use App\Domains\Incidents\Jobs\SweepOverdueEscalationsJob;
+use App\Domains\Ingestion\Jobs\PollSamsaraAlertIncidentsJob;
 use App\Domains\Ingestion\Jobs\PollSamsaraSafetyEventsJob;
 use App\Domains\Ingestion\Jobs\PruneDeduplicationKeysJob;
 use App\Domains\Ingestion\Jobs\PurgeOldFailedJobsJob;
@@ -70,6 +71,14 @@ Schedule::job(new RecalculateDriverRiskProfilesJob)->dailyAt('04:30')->onOneServ
 // config_json.sync), so these ticks are the floor cadence, not the exact rate.
 Schedule::job(new SyncDueIntegrationsJob)->everyFifteenMinutes()->onOneServer();
 Schedule::job(new PollSamsaraSafetyEventsJob)->everyTwoMinutes()->onOneServer();
+
+// Respaldo del webhook de pánico: relee los alert incidents de pánico de
+// Samsara con una ventana de solape y los mete por el mismo pipeline que el
+// webhook (dedup por identidad del incidente). Encendido por defecto;
+// cadencia y ventana en config/pipeline.php (`alert_incidents_poll`).
+Schedule::job(new PollSamsaraAlertIncidentsJob)
+    ->cron(sprintf('*/%d * * * *', max(1, min(59, (int) config('pipeline.alert_incidents_poll.interval_minutes', 1)))))
+    ->onOneServer();
 
 // Red de seguridad del pipeline: re-despacha raw events fallidos o atascados
 // (emergencias primero) con tope de rescates por evento; al agotarlo alerta a

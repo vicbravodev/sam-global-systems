@@ -52,6 +52,43 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Respaldo de pánicos por polling (alert incidents de Samsara)
+    |--------------------------------------------------------------------------
+    |
+    | El botón de pánico de Samsara llega por webhook (`AlertIncident`). Si el
+    | webhook falla (Secret Key mal pegada, Samsara no entrega, red), el pánico
+    | se perdería. PollSamsaraAlertIncidentsJob consulta además
+    | `GET /alerts/incidents/stream` de las alertas de pánico de cada
+    | integración Samsara activa con unidades monitorizadas, y mete cada
+    | emergencia por el MISMO pipeline que el webhook, deduplicando con él por
+    | la identidad del incidente (no por el id de la entrega).
+    |
+    | - enabled: encendido por defecto (seguridad de vida).
+    | - interval_minutes: cadencia del scheduler (1–59).
+    | - window_minutes: ventana de solape que se relee en cada barrido
+    |   (por `updatedAtTime`). Debe superar `webhook_grace_seconds` para que
+    |   un pánico rescatado se vuelva a ver ya fuera de la gracia y se pueda
+    |   avisar del webhook roto.
+    | - webhook_grace_seconds: margen que se le da al webhook antes de
+    |   considerar que no entregó un pánico que el poll sí vio.
+    | - configurations_refresh_minutes: cada cuánto se redescubren las alertas
+    |   de pánico (`GET /alerts/configurations`, trigger 1034).
+    | - max_pages: páginas por corrida; lo que sobre sigue en la próxima con el
+    |   cursor y el `startTime` fijado.
+    |
+    */
+
+    'alert_incidents_poll' => [
+        'enabled' => (bool) env('PIPELINE_ALERT_INCIDENTS_POLL_ENABLED', true),
+        'interval_minutes' => (int) env('PIPELINE_ALERT_INCIDENTS_POLL_INTERVAL_MINUTES', 1),
+        'window_minutes' => (int) env('PIPELINE_ALERT_INCIDENTS_POLL_WINDOW_MINUTES', 10),
+        'webhook_grace_seconds' => (int) env('PIPELINE_ALERT_INCIDENTS_POLL_WEBHOOK_GRACE_SECONDS', 120),
+        'configurations_refresh_minutes' => (int) env('PIPELINE_ALERT_INCIDENTS_POLL_CONFIGURATIONS_REFRESH_MINUTES', 60),
+        'max_pages' => (int) env('PIPELINE_ALERT_INCIDENTS_POLL_MAX_PAGES', 10),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Retención de datos operativos
     |--------------------------------------------------------------------------
     |

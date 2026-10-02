@@ -4,15 +4,78 @@ namespace App\Domains\Ingestion\Actions;
 
 use App\Domains\Ingestion\Events\RawEventDuplicated;
 use App\Domains\Ingestion\Models\EventDeduplicationKey;
+use App\Domains\Ingestion\Models\EventSource;
 use App\Domains\Ingestion\Models\RawEvent;
 use App\Support\SystemLog;
+use Illuminate\Support\Facades\Cache;
 
 class DetectDuplicateEvent
 {
     /**
+     * Seconds a cross-source check may wait for the identity lock.
+     */
+    private const int IDENTITY_LOCK_WAIT_SECONDS = 5;
+
+    /**
      * Check whether this event is a duplicate. Returns true if duplicate found.
+     *
+     * Las claves de identidad del proveedor ({@see ResolveAlertIncidentIdentity},
+     * p. ej. el pánico de Samsara) valen ENTRE fuentes del mismo tenant: el
+     * webhook y el poll de respaldo traen el mismo incidente por dos
+     * `event_source_id` distintos, y el que llega segundo es duplicado, sea
+     * cual sea. Esa comprobación y el registro de la clave van bajo un lock
+     * por tenant y clave, para que dos workers simultáneos (webhook y poll a
+     * la vez) no pasen ambos.
      */
     public function execute(RawEvent $rawEvent): bool
+    {
+        if (! ResolveAlertIncidentIdentity::isIdentityKey($rawEvent->deduplication_key)) {
+            return $this->detect($rawEvent);
+        }
+
+        $lockKey = sprintf('ingestion:dedup-identity:%s:%s', $rawEvent->team_id ?? 'platform', sha1((string) $rawEvent->deduplication_key));
+
+        return Cache::lock($lockKey, 10)->block(
+            self::IDENTITY_LOCK_WAIT_SECONDS,
+            fn (): bool => $this->detectAcrossSources($rawEvent) || $this->detect($rawEvent),
+        );
+    }
+
+    /**
+     * Otra fuente del MISMO tenant ya registró esta identidad (vigente).
+     * Se busca por los `event_source_id` del tenant para usar el índice
+     * único (event_source_id, deduplication_key).
+     */
+    private function detectAcrossSources(RawEvent $rawEvent): bool
+    {
+        $otherSources = EventSource::withoutGlobalScopes()
+            ->where('team_id', $rawEvent->team_id)
+            ->whereKeyNot($rawEvent->event_source_id)
+            ->pluck('id');
+
+        if ($otherSources->isEmpty()) {
+            return false;
+        }
+
+        $existingKey = EventDeduplicationKey::query()
+            ->where('team_id', $rawEvent->team_id)
+            ->whereIn('event_source_id', $otherSources)
+            ->where('deduplication_key', $rawEvent->deduplication_key)
+            ->where('raw_event_id', '!=', $rawEvent->id)
+            ->notExpired()
+            ->orderBy('id')
+            ->first();
+
+        if ($existingKey === null) {
+            return false;
+        }
+
+        SystemLog::skipped('ingestion.duplicate.detected', reason: 'cross_source_key', input: ['raw_event_id' => $rawEvent->id, 'dedup_source' => 'deduplication_key'], result: ['first_raw_event_id' => $existingKey->raw_event_id]);
+
+        return $this->markDuplicate($rawEvent, (string) $rawEvent->deduplication_key);
+    }
+
+    private function detect(RawEvent $rawEvent): bool
     {
         $deduplicationKey = $rawEvent->deduplication_key ?? $rawEvent->checksum;
         // Nunca se registra el valor de la clave (puede ser un checksum del payload): sólo su procedencia.

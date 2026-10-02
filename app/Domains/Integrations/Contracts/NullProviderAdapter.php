@@ -58,6 +58,16 @@ class NullProviderAdapter implements ProviderAdapter
         ];
     }
 
+    public function fetchAlertConfigurations(TenantIntegration $integration): array
+    {
+        return [];
+    }
+
+    public function fetchAlertIncidents(TenantIntegration $integration, array $configurationIds, string $startTime, ?string $cursor = null): array
+    {
+        return ['incidents' => [], 'cursor' => $cursor, 'has_more' => false];
+    }
+
     public function validateWebhookSignature(string $payload, string $signature, string $secret, ?string $timestamp = null, ?\DateTimeInterface $receivedAt = null): bool
     {
         $provided = str_starts_with($signature, 'v1=') ? substr($signature, 3) : $signature;

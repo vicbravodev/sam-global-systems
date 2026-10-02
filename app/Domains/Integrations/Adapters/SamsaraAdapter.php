@@ -574,6 +574,138 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
     }
 
     /**
+     * Enabled alert configurations (`GET /alerts/configurations?status=enabled`)
+     * with the trigger type ids each fires on (Panic Button = 1034). Requires
+     * the token's "Read Alerts" scope; any non-2xx throws so the caller never
+     * mistakes a failure for "no panic alerts configured".
+     *
+     * @return list<array{id: string, is_enabled: bool, trigger_type_ids: list<int>}>
+     *
+     * @throws ProviderRequestFailedException
+     */
+    public function fetchAlertConfigurations(TenantIntegration $integration): array
+    {
+        $token = $this->resolveToken($integration);
+
+        if ($token === null) {
+            return [];
+        }
+
+        $configurations = [];
+        $cursor = null;
+        $pages = 0;
+
+        do {
+            $query = ['status' => 'enabled'];
+
+            if ($cursor !== null) {
+                $query['after'] = $cursor;
+            }
+
+            $response = $this->client($token)->get('/alerts/configurations', $query);
+
+            if (! $response->successful()) {
+                throw ProviderRequestFailedException::fromResponse('GET /alerts/configurations', $response);
+            }
+
+            foreach ((array) $response->json('data', []) as $record) {
+                $record = (array) $record;
+                $id = $this->scalarString($record['id'] ?? null);
+
+                if ($id === null || $id === '') {
+                    continue;
+                }
+
+                $triggerTypeIds = [];
+
+                foreach ((array) ($record['triggers'] ?? []) as $trigger) {
+                    $typeId = ((array) $trigger)['triggerTypeId'] ?? null;
+
+                    if (is_numeric($typeId)) {
+                        $triggerTypeIds[] = (int) $typeId;
+                    }
+                }
+
+                $configurations[] = [
+                    'id' => $id,
+                    'is_enabled' => ($record['isEnabled'] ?? true) !== false,
+                    'trigger_type_ids' => $triggerTypeIds,
+                ];
+            }
+
+            $endCursor = $response->json('pagination.endCursor');
+            $cursor = is_string($endCursor) && $endCursor !== '' ? $endCursor : null;
+            $hasNext = (bool) $response->json('pagination.hasNextPage', false);
+            $pages++;
+        } while ($hasNext && $cursor !== null && $pages < self::MAX_PAGES);
+
+        return $configurations;
+    }
+
+    /**
+     * One page of `GET /alerts/incidents/stream`. `configurationIds` is an
+     * exploded array (`configurationIds=a&configurationIds=b`, max 50), so the
+     * query string is built by hand: the HTTP client would encode it as
+     * `configurationIds[0]=a`. With `after`, `startTime` and the ids must be
+     * the ones of the first page (the caller pins them).
+     *
+     * @param  list<string>  $configurationIds
+     * @return array{incidents: list<array<string, mixed>>, cursor: string|null, has_more: bool}
+     *
+     * @throws ProviderRequestFailedException
+     */
+    public function fetchAlertIncidents(TenantIntegration $integration, array $configurationIds, string $startTime, ?string $cursor = null): array
+    {
+        $cursor = $cursor !== null && $cursor !== '' ? $cursor : null;
+        $token = $this->resolveToken($integration);
+
+        if ($token === null || $configurationIds === []) {
+            return ['incidents' => [], 'cursor' => $cursor, 'has_more' => false];
+        }
+
+        $pairs = ['startTime='.rawurlencode($startTime)];
+
+        foreach ($configurationIds as $configurationId) {
+            $pairs[] = 'configurationIds='.rawurlencode($configurationId);
+        }
+
+        if ($cursor !== null) {
+            $pairs[] = 'after='.rawurlencode($cursor);
+        }
+
+        $response = $this->client($token)->get('/alerts/incidents/stream?'.implode('&', $pairs));
+
+        if (! $response->successful()) {
+            $message = strtolower((string) $response->json('message', ''));
+            $cursorRejected = $cursor !== null
+                && $response->status() === 400
+                && (str_contains($message, 'cursor') || str_contains($message, 'parameters differ'));
+
+            throw $cursorRejected
+                ? ProviderCursorRejectedException::fromResponse('GET /alerts/incidents/stream', $response)
+                : ProviderRequestFailedException::fromResponse('GET /alerts/incidents/stream', $response);
+        }
+
+        $incidents = [];
+
+        foreach ((array) $response->json('data', []) as $record) {
+            if (is_array($record)) {
+                $incidents[] = $record;
+            }
+        }
+
+        $endCursor = $response->json('pagination.endCursor');
+        $nextCursor = is_string($endCursor) && $endCursor !== '' ? $endCursor : null;
+        $hasNext = (bool) $response->json('pagination.hasNextPage', false);
+
+        return [
+            'incidents' => $incidents,
+            'cursor' => $nextCursor ?? $cursor,
+            'has_more' => $hasNext && $nextCursor !== null,
+        ];
+    }
+
+    /**
      * Place a camera media retrieval (`POST /cameras/media/retrieval`).
      *
      * Returns Samsara's `retrievalId` to poll with {@see checkMedia}, or null
