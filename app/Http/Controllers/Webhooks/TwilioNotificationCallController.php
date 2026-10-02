@@ -8,6 +8,7 @@ use App\Domains\Notifications\Enums\NotificationSourceType;
 use App\Domains\Notifications\Enums\RecipientType;
 use App\Domains\Notifications\Models\NotificationDelivery;
 use App\Domains\Notifications\Support\PlatformTwilioConfig;
+use App\Domains\Notifications\Support\TwilioWebhookUrl;
 use App\Http\Controllers\Controller;
 use App\Models\Membership;
 use App\Support\SystemLog;
@@ -115,7 +116,7 @@ class TwilioNotificationCallController extends Controller
 
         $isValid = (new RequestValidator($authToken))->validate(
             $request->header('X-Twilio-Signature', ''),
-            $request->fullUrl(),
+            TwilioWebhookUrl::forSignature($request),
             $request->post(),
         );
 
