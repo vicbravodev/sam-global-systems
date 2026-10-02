@@ -5,6 +5,7 @@ namespace App\Domains\Integrations\Jobs;
 use App\Domains\Integrations\Actions\SyncIntegration;
 use App\Domains\Integrations\Models\IntegrationSyncJob;
 use App\Domains\Integrations\Models\TenantIntegration;
+use App\Support\SafeErrorMessage;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -36,7 +37,7 @@ class SyncIntegrationJob implements ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
-        $this->syncJob->markAsFailed($exception->getMessage());
+        $this->syncJob->markAsFailed(SafeErrorMessage::from($exception));
     }
 
     public function uniqueId(): string

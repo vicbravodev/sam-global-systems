@@ -41,4 +41,5 @@ Checklist por feature (todo lo aplicable):
 - Todo log pasa por `App\Support\SystemLog` (`ok`/`skipped`/`degraded`/`failed`/`measure`); nunca `Log::`, `logger()` ni `info()` (lo impide `LoggingConventionsTest`).
 - **Toda rama de decisión** (return temprano, skip, gate, fallback, dedupe, umbral) y **todo cálculo** registra su código `dominio.etapa.resultado` con `reason` (si no es `ok`), `input` y, en cálculos, `calc` con cada término y umbral — debe poder rehacerse a mano.
 - Excepciones como `error: $e` (SafeException), nunca `getMessage()`. Nunca teléfonos, emails, nombres, tokens, secretos, payloads, texto libre ni prompts.
+- Para **persistir** un error (columnas `error_message`/`last_error_message`, JSON, `DeliveryResult`) o mandarlo en un evento o respuesta: `SafeErrorMessage::from($e)` (mensaje redactado sólo de excepciones propias de su allowlist; de las ajenas, clase + status/código). Lo vigila `RawExceptionMessageConventionTest`.
 - Cada código nuevo: entrada en `docs/SAM/logging.md` y un test con `Tests\Concerns\AssertsSystemLog` (`assertSystemLogged` + `assertNoSensitiveDataLogged`).

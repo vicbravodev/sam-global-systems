@@ -22,6 +22,7 @@ use App\Domains\Integrations\Exceptions\ProviderUnauthorized;
 use App\Domains\Integrations\Exceptions\ProviderUnavailable;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Support\PipelineTrace;
+use App\Support\SafeErrorMessage;
 use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Carbon\CarbonInterface;
@@ -240,7 +241,7 @@ class FollowVehicleStatsFeedJob implements ShouldBeUnique, ShouldQueue
 
         $cursor->forceFill([
             'consecutive_failures' => $failures,
-            'last_error' => $e->getMessage(),
+            'last_error' => SafeErrorMessage::from($e),
         ]);
 
         $pauseSeconds = match (true) {
@@ -319,7 +320,7 @@ class FollowVehicleStatsFeedJob implements ShouldBeUnique, ShouldQueue
         $this->integration->update([
             'status' => TenantIntegrationStatus::Error,
             'last_error_at' => now(),
-            'last_error_message' => $e->getMessage(),
+            'last_error_message' => SafeErrorMessage::from($e),
         ]);
 
         IntegrationStatusChanged::dispatch(

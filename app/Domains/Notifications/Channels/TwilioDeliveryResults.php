@@ -5,6 +5,7 @@ namespace App\Domains\Notifications\Channels;
 use App\Domains\Notifications\Data\DeliveryResult;
 use App\Domains\Notifications\Enums\MessagingResourceType;
 use App\Domains\Notifications\Support\TwilioErrorCatalog;
+use App\Support\SafeErrorMessage;
 use Twilio\Exceptions\RestException;
 
 /**
@@ -56,7 +57,7 @@ final class TwilioDeliveryResults
             $code = $e->getCode() !== 0 ? (string) $e->getCode() : null;
 
             return DeliveryResult::failure(
-                "twilio {$driver} error: ".$e->getMessage(),
+                "twilio {$driver} error: ".SafeErrorMessage::from($e),
                 ['driver' => $driver, 'twilio_code' => $e->getCode()],
                 permanent: TwilioErrorCatalog::isPermanent($code),
                 providerErrorCode: $code,
@@ -64,7 +65,7 @@ final class TwilioDeliveryResults
         }
 
         return DeliveryResult::uncertain(
-            "{$driver} request outcome unknown: ".$e->getMessage(),
+            "{$driver} request outcome unknown: ".SafeErrorMessage::from($e),
             ['driver' => $driver, 'exception' => $e::class],
         );
     }

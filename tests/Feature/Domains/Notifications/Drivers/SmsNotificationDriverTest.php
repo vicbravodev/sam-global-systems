@@ -138,7 +138,8 @@ class SmsNotificationDriverTest extends TestCase
         $result = app(SmsNotificationDriver::class)->send($this->rendered(), $channel);
 
         $this->assertFalse($result->success);
-        $this->assertStringContainsString('rate limited', $result->errorMessage);
+        $this->assertSame('sms request outcome unknown: TwilioException', $result->errorMessage);
+        $this->assertStringNotContainsString('rate limited', $result->errorMessage);
         $this->assertSame('sms', $result->response['driver']);
     }
 
