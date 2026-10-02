@@ -36,13 +36,13 @@ export default function ErrorPage({ status }: ErrorPageProps) {
             <Head title={title} />
             <div className="flex w-full max-w-md flex-col items-center text-center">
                 <AppLogo className="h-24" />
-                <div className="mt-6 font-mono text-[13px] font-semibold tracking-[0.2em] text-fg-3">
+                <div className="mt-6 font-mono text-sm font-semibold tracking-caps text-fg-3">
                     ERROR {status}
                 </div>
                 <h1 className="mt-2 text-xl font-semibold text-fg-1">
                     {title}
                 </h1>
-                <p className="mt-2 text-[14px] leading-relaxed text-fg-2">
+                <p className="mt-2 text-base leading-relaxed text-fg-2">
                     {description}
                 </p>
                 <div className="mt-8 flex items-center gap-3">
