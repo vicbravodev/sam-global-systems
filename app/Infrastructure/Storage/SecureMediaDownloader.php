@@ -2,6 +2,7 @@
 
 namespace App\Infrastructure\Storage;
 
+use App\Support\SafeErrorMessage;
 use GuzzleHttp\Exception\RequestException as GuzzleRequestException;
 use Illuminate\Support\Facades\Http;
 use Psr\Http\Message\RequestInterface;
@@ -214,6 +215,6 @@ class SecureMediaDownloader
 
         $status = $exception instanceof GuzzleRequestException ? $exception->getResponse()?->getStatusCode() : null;
 
-        return new MediaDownloadException('Falló la descarga de media: '.$exception->getMessage(), status: $status, previous: $exception);
+        return new MediaDownloadException('Falló la descarga de media: '.SafeErrorMessage::from($exception), status: $status, previous: $exception);
     }
 }

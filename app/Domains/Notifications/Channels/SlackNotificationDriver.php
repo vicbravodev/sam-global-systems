@@ -8,6 +8,7 @@ use App\Domains\Notifications\Data\RenderedNotification;
 use App\Domains\Notifications\Enums\NotificationPriority;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Support\OutboundChannelUrl;
+use App\Support\SafeErrorMessage;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
@@ -66,11 +67,11 @@ class SlackNotificationDriver implements NotificationDriver
                 ->asJson()
                 ->post($webhookUrl, $payload);
         } catch (ConnectionException $e) {
-            return DeliveryResult::failure('slack connection error: '.$e->getMessage(), [
+            return DeliveryResult::failure('slack connection error: '.SafeErrorMessage::from($e), [
                 'driver' => 'slack',
             ]);
         } catch (\Throwable $e) {
-            return DeliveryResult::failure('slack error: '.$e->getMessage(), [
+            return DeliveryResult::failure('slack error: '.SafeErrorMessage::from($e), [
                 'driver' => 'slack',
             ]);
         }

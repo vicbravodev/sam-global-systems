@@ -7,6 +7,7 @@ use App\Domains\Notifications\Data\DeliveryResult;
 use App\Domains\Notifications\Data\RenderedNotification;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Support\OutboundChannelUrl;
+use App\Support\SafeErrorMessage;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
@@ -98,12 +99,12 @@ class WebhookNotificationDriver implements NotificationDriver
             /** @var Response $response */
             $response = $request->withBody($body, 'application/json')->post($endpoint);
         } catch (ConnectionException $e) {
-            return DeliveryResult::failure('webhook connection error: '.$e->getMessage(), [
+            return DeliveryResult::failure('webhook connection error: '.SafeErrorMessage::from($e), [
                 'driver' => 'webhook',
                 'event_key' => $eventKey,
             ]);
         } catch (\Throwable $e) {
-            return DeliveryResult::failure('webhook error: '.$e->getMessage(), [
+            return DeliveryResult::failure('webhook error: '.SafeErrorMessage::from($e), [
                 'driver' => 'webhook',
                 'event_key' => $eventKey,
             ]);

@@ -130,7 +130,8 @@ class WhatsappNotificationDriverTest extends TestCase
         $result = app(WhatsappNotificationDriver::class)->send($this->rendered(), $channel);
 
         $this->assertFalse($result->success);
-        $this->assertStringContainsString('queue full', $result->errorMessage);
+        $this->assertSame('whatsapp request outcome unknown: TwilioException', $result->errorMessage);
+        $this->assertStringNotContainsString('queue full', $result->errorMessage);
         $this->assertSame('whatsapp', $result->response['driver']);
     }
 

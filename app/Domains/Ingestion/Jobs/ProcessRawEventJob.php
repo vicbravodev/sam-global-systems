@@ -9,6 +9,7 @@ use App\Domains\Ingestion\Events\RawEventProcessed;
 use App\Domains\Ingestion\Models\RawEvent;
 use App\Support\JobFailureReporter;
 use App\Support\PipelineTrace;
+use App\Support\SafeErrorMessage;
 use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
@@ -72,7 +73,7 @@ class ProcessRawEventJob implements ShouldQueue
             TenantContext::for($rawEvent->team_id, function () use ($rawEvent, $exception) {
                 $rawEvent->markAsFailed();
 
-                RawEventFailed::dispatch($rawEvent, $exception->getMessage());
+                RawEventFailed::dispatch($rawEvent, SafeErrorMessage::from($exception));
             });
         }
 
