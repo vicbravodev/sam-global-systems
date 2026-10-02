@@ -25,9 +25,9 @@ class MemberRoleController extends Controller
     ): RedirectResponse {
         $this->authorize('assignRole', Role::class);
 
-        // The implicit binding resolves memberships by global id; reject any
-        // membership that does not belong to the current team (404 so the
-        // existence of other teams' memberships is not leaked).
+        // The implicit binding resolves memberships by global id. The
+        // FormRequest already 404s a foreign membership before validating (no
+        // existence oracle via 422); this re-check is defense in depth.
         abort_if($membership->team_id !== $current_team->id, 404);
 
         $role = Role::query()

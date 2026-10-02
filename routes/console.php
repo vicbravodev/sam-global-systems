@@ -14,9 +14,13 @@ use App\Domains\Drivers\Jobs\RecalculateDriverRiskProfilesJob;
 use App\Domains\Incidents\Jobs\SweepOverdueEscalationsJob;
 use App\Domains\Ingestion\Jobs\PollSamsaraSafetyEventsJob;
 use App\Domains\Ingestion\Jobs\PruneDeduplicationKeysJob;
+use App\Domains\Ingestion\Jobs\PurgeOldFailedJobsJob;
 use App\Domains\Ingestion\Jobs\ReprocessStuckRawEventsJob;
 use App\Domains\Integrations\Jobs\CheckIntegrationHealthJob;
+use App\Domains\Integrations\Jobs\PurgeOldIntegrationSyncJobsJob;
+use App\Domains\Integrations\Jobs\PurgeOldWebhookEventsJob;
 use App\Domains\Integrations\Jobs\SyncDueIntegrationsJob;
+use App\Domains\Notifications\Jobs\PurgeExpiredReplyTokensJob;
 use App\Domains\Notifications\Jobs\ReconcileMessagingChargesJob;
 use App\Domains\Notifications\Jobs\SweepStuckDeliveriesJob;
 use App\Domains\Tenancy\Jobs\AggregateUsageJob;
@@ -90,6 +94,15 @@ Schedule::job(new PollAllDeviceConnectivityJob)->everyFiveMinutes()->onOneServer
 
 Schedule::job(new PurgeOldAssetTelemetryJob)->dailyAt('03:45')->onOneServer();
 Schedule::job(new PurgeOldAssetLocationsJob)->dailyAt('03:50')->onOneServer();
+
+// Retención de datos operativos transitorios (config `pipeline.retention`):
+// webhooks ya resueltos, corridas de sync terminadas, tokens de respuesta
+// vencidos y jobs fallidos. Recorridos de plataforma en lotes. Lo facturable
+// y lo de auditoría no se purga aquí.
+Schedule::job(new PurgeOldWebhookEventsJob)->dailyAt('04:10')->onOneServer();
+Schedule::job(new PurgeOldIntegrationSyncJobsJob)->dailyAt('04:15')->onOneServer();
+Schedule::job(new PurgeExpiredReplyTokensJob)->dailyAt('04:20')->onOneServer();
+Schedule::job(new PurgeOldFailedJobsJob)->dailyAt('04:25')->onOneServer();
 
 // Offline-asset watchdog (Roadmap V2-C1): silence beyond the tenant/asset
 // threshold raises an internal `device_offline` event through the pipeline.

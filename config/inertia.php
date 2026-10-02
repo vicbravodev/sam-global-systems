@@ -15,9 +15,13 @@ return [
     |
     */
 
+    // Con el bundle SSR construido (`npm run build:ssr`), cada request intenta
+    // renderizar contra `url`: sin el proceso `php artisan inertia:start-ssr`
+    // vivo, cada página paga el intento fallido y cae a render en cliente.
+    // INERTIA_SSR_ENABLED=false lo apaga donde no corre ese proceso.
     'ssr' => [
-        'enabled' => true,
-        'url' => 'http://127.0.0.1:13714',
+        'enabled' => (bool) env('INERTIA_SSR_ENABLED', true),
+        'url' => env('INERTIA_SSR_URL', 'http://127.0.0.1:13714'),
         // 'bundle' => base_path('bootstrap/ssr/ssr.mjs'),
 
     ],
