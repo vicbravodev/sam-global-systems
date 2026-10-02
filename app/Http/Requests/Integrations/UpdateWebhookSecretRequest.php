@@ -31,4 +31,17 @@ class UpdateWebhookSecretRequest extends FormRequest
             'webhook_secret' => ['required', 'string', 'min:16', 'max:512', 'not_regex:/\s/'],
         ];
     }
+
+    /**
+     * El error se pinta bajo el campo «Secret Key»: mismo nombre que en
+     * Samsara, no el de la columna.
+     *
+     * @return array<string, string>
+     */
+    public function attributes(): array
+    {
+        return [
+            'webhook_secret' => 'Secret Key',
+        ];
+    }
 }
