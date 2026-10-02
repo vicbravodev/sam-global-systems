@@ -3,7 +3,6 @@
 namespace Database\Seeders\Showcase;
 
 use App\Domains\Access\Models\Role;
-use App\Domains\AI\Models\AIModelVersion;
 use App\Domains\Assets\Models\AssetType;
 use App\Domains\Decisions\Models\DecisionOutcome;
 use App\Domains\Incidents\Models\IncidentStatus;
@@ -80,7 +79,6 @@ class ShowcaseCatalogs
 
         $this->ensureCostPlusRates();
 
-        $this->ensureModelVersions();
     }
 
     /**
@@ -121,36 +119,6 @@ class ShowcaseCatalogs
                     'markup_percent' => CostPlusPricing::defaultMarkup(),
                 ],
             );
-        }
-    }
-
-    /**
-     * Catálogo de modelos de IA desplegados (global, sin tenant).
-     */
-    private function ensureModelVersions(): void
-    {
-        if (AIModelVersion::query()->exists()) {
-            return;
-        }
-
-        $versions = [
-            ['name' => 'gpt-5.4', 'version' => '2026-06', 'model_type' => 'llm', 'provider' => 'openai', 'modality' => ['text'], 'deployed' => 120, 'active' => true],
-            ['name' => 'gpt-5.4', 'version' => '2026-06-vision', 'model_type' => 'multimodal_llm', 'provider' => 'openai', 'modality' => ['text', 'image'], 'deployed' => 60, 'active' => true],
-            ['name' => 'sam-rules', 'version' => 'v3', 'model_type' => 'heuristic_pipeline', 'provider' => 'sam', 'modality' => ['text'], 'deployed' => 200, 'active' => true],
-            ['name' => 'gpt-4.1-mini', 'version' => '2025-04', 'model_type' => 'llm', 'provider' => 'openai', 'modality' => ['text'], 'deployed' => 400, 'active' => false],
-        ];
-
-        foreach ($versions as $v) {
-            AIModelVersion::query()->create([
-                'name' => $v['name'],
-                'version' => $v['version'],
-                'model_type' => $v['model_type'],
-                'provider' => $v['provider'],
-                'modality_support_json' => $v['modality'],
-                'config_json' => ['temperature' => 0.1],
-                'deployed_at' => now()->subDays($v['deployed']),
-                'is_active' => $v['active'],
-            ]);
         }
     }
 }
