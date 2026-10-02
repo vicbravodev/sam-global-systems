@@ -19,12 +19,16 @@ use App\Domains\Context\Events\EventMediaAvailable;
 use App\Domains\Incidents\Events\IncidentResolved;
 use App\Infrastructure\AI\Agents\SdkEventEvaluationAgent;
 use App\Infrastructure\AI\Agents\SdkMediaAssessmentAgent;
+use App\Infrastructure\AI\Listeners\AgentCallLogListener;
 use App\Infrastructure\AI\Listeners\AIUsageListener;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
+use Laravel\Ai\Events\AgentFailed;
 use Laravel\Ai\Events\AgentPrompted;
 use Laravel\Ai\Events\AgentStreamed;
+use Laravel\Ai\Events\PromptingAgent;
+use Laravel\Ai\Events\StreamingAgent;
 
 class AIServiceProvider extends ServiceProvider
 {
@@ -67,6 +71,13 @@ class AIServiceProvider extends ServiceProvider
         // constraint, so duplicate dispatches are safe.
         Event::listen(AgentPrompted::class, AIUsageListener::class);
         Event::listen(AgentStreamed::class, AIUsageListener::class);
+
+        // `ai.agent.called`: una línea por invocación (sin prompt ni respuesta).
+        Event::listen(PromptingAgent::class, [AgentCallLogListener::class, 'started']);
+        Event::listen(StreamingAgent::class, [AgentCallLogListener::class, 'started']);
+        Event::listen(AgentPrompted::class, [AgentCallLogListener::class, 'completed']);
+        Event::listen(AgentStreamed::class, [AgentCallLogListener::class, 'completed']);
+        Event::listen(AgentFailed::class, [AgentCallLogListener::class, 'failed']);
     }
 
     /**
