@@ -24,6 +24,7 @@ class ObjectStorageFailureTest extends TestCase
         $this->assertSame('some_upload', $ctx['input']['operation']);
         $this->assertSame(3, $ctx['input']['team_id']);
         $this->assertSame(UnableToWriteFile::class, $ctx['error']['class']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_a_throwing_listener_never_makes_report_throw(): void

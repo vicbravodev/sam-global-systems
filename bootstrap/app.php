@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\EnsureSuperAdmin;
+use App\Http\Middleware\EnsureTeamMembership;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\RendersErrorsAsJson;
@@ -8,12 +9,14 @@ use App\Http\Middleware\RequireSuperAdminTwoFactor;
 use App\Http\Middleware\SetTeamUrlDefaults;
 use App\Http\Middleware\TrustProxiesFromConfig;
 use App\Support\DeniedRequestLog;
+use Illuminate\Auth\Middleware\EnsureEmailIsVerified;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Http\Middleware\TrustProxies;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Routing\Middleware\ThrottleRequestsWithRedis;
 use Inertia\Inertia;
@@ -58,6 +61,20 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->prependToPriorityList(
             before: [ThrottleRequests::class, ThrottleRequestsWithRedis::class],
             prepend: RendersErrorsAsJson::class,
+        );
+
+        // EnsureTeamMembership fija el TenantContext con el `{current_team}`
+        // de la URL: tiene que correr ANTES de SubstituteBindings o el binding
+        // de `{incident}`, `{asset}`… filtraría por el current_team_id guardado
+        // del usuario (deep link a otro de sus teams → 404). `verified` se
+        // adelanta con él para que siga corriendo antes que la membresía.
+        $middleware->prependToPriorityList(
+            before: SubstituteBindings::class,
+            prepend: EnsureTeamMembership::class,
+        );
+        $middleware->prependToPriorityList(
+            before: EnsureTeamMembership::class,
+            prepend: EnsureEmailIsVerified::class,
         );
     })
     ->withExceptions(function (Exceptions $exceptions): void {

@@ -7,6 +7,7 @@ use App\Domains\Assets\Models\Asset;
 use App\Domains\Automation\Listeners\TriggerAutomationOnIncidentCreated;
 use App\Domains\Incidents\Actions\CreateIncidentFromEvent;
 use App\Domains\Incidents\Actions\CreateManualIncident;
+use App\Domains\Incidents\Actions\RecordIncidentWorkflowUsage;
 use App\Domains\Incidents\Enums\TimelineActorType;
 use App\Domains\Incidents\Enums\TimelineEntryType;
 use App\Domains\Incidents\Events\IncidentCreated;
@@ -278,6 +279,50 @@ class IncidentCreatedReactionsTest extends TestCase
         Bus::assertDispatched(RetryIncidentWorkflowUsageJob::class, fn (RetryIncidentWorkflowUsageJob $job) => $job->incidentId === $incident->id
             && $job->teamId === $this->team->id
             && $job->queue === 'billing');
+    }
+
+    public function test_a_failing_usage_record_whose_retry_cannot_be_queued_is_logged_as_unavailable(): void
+    {
+        $incident = Incident::factory()->create(['team_id' => $this->team->id]);
+        UsageMeter::query()->where('code', 'incident_workflows')->delete();
+        Cache::forget('usage_meter:incident_workflows');
+        // Ninguna conexión de cola resoluble: el reintento no se puede encolar.
+        config(['queue.default' => 'cola-inexistente']);
+
+        $recorded = app(RecordIncidentWorkflowUsage::class)->execute($incident, ['source' => 'test']);
+
+        $this->assertFalse($recorded);
+        $this->assertSame(0, UsageEvent::withoutGlobalScopes()->count());
+        $this->assertSystemLogged('incidents.usage.record_failed', fn (array $c) => $c['result']['retry_requested'] === false);
+        $c = $this->assertSystemLogged('incidents.usage.retry_unavailable');
+        $this->assertSame('failed', $c['outcome']);
+        $this->assertSame('dispatch_failed', $c['reason']);
+        $this->assertSame($incident->id, $c['input']['incident_id']);
+        $this->assertSame($this->team->id, $c['input']['team_id']);
+        $this->assertSame('incident_workflows:'.$incident->id, $c['input']['event_key']);
+        $this->assertArrayHasKey('error', $c);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_failing_reaction_whose_retry_cannot_be_queued_is_logged_as_unavailable(): void
+    {
+        $incident = Incident::factory()->create(['team_id' => $this->team->id]);
+        $listener = $this->partialMock(NotifyOnIncidentCreated::class, function (MockInterface $mock) {
+            $mock->shouldReceive('react')->once()->andThrow(new RuntimeException('boom'));
+        });
+        config(['queue.default' => 'cola-inexistente']);
+
+        $listener->handle(new IncidentCreated($incident));
+
+        $this->assertSystemLogged('incidents.created_reaction.failed', fn (array $c) => $c['result']['retry_requested'] === false);
+        $c = $this->assertSystemLogged('incidents.created_reaction.retry_unavailable');
+        $this->assertSame('failed', $c['outcome']);
+        $this->assertSame('dispatch_failed', $c['reason']);
+        $this->assertSame('NotifyOnIncidentCreated', $c['input']['reaction']);
+        $this->assertSame($incident->id, $c['input']['incident_id']);
+        $this->assertSame('notifications', $c['result']['retry_queue']);
+        $this->assertArrayHasKey('error', $c);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_the_usage_retry_records_the_charge_exactly_once(): void

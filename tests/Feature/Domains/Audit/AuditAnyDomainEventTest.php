@@ -2,22 +2,29 @@
 
 namespace Tests\Feature\Domains\Audit;
 
+use App\Domains\AI\Events\AIReevaluationRequested;
+use App\Domains\Audit\Contracts\AuditableEventClassifier;
 use App\Domains\Audit\Jobs\WriteAuditLogJob;
+use App\Domains\Audit\Listeners\AuditAnyDomainEvent;
 use App\Domains\Audit\Models\AuditLog;
 use App\Domains\Audit\Models\DomainEventLog;
 use App\Domains\Normalization\Events\EventNormalized;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\Tenancy\Events\UsageRecorded;
+use App\Models\Team;
 use App\Models\User;
+use App\Support\TenantContext;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Bus;
+use RuntimeException;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class AuditAnyDomainEventTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsSystemLog, RefreshDatabase;
 
     public function test_listener_dispatches_job_for_allowlisted_event(): void
     {
@@ -93,6 +100,79 @@ class AuditAnyDomainEventTest extends TestCase
         $this->assertSame(1, AuditLog::withoutGlobalScopes()
             ->where('team_id', $user->currentTeam->id)
             ->where('action', 'tenancy.usage_recorded')
+            ->count());
+    }
+
+    public function test_a_classifier_failure_never_breaks_the_original_event_and_is_logged(): void
+    {
+        Bus::fake();
+        $this->mock(AuditableEventClassifier::class, fn ($mock) => $mock->shouldReceive('classify')
+            ->andThrow(new RuntimeException('clasificador roto')));
+
+        $user = User::factory()->create();
+        $normalized = NormalizedEvent::factory()->create(['team_id' => $user->currentTeam->id]);
+
+        EventNormalized::dispatch($normalized);
+
+        Bus::assertNotDispatched(WriteAuditLogJob::class);
+        $this->assertSystemLogged('audit.domain_event.record_failed', fn (array $c): bool => $c['outcome'] === 'degraded'
+            && $c['reason'] === 'classifier_failed'
+            && $c['input']['event_name'] === EventNormalized::class
+            && isset($c['error']));
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_an_audit_job_that_cannot_be_queued_is_logged_instead_of_thrown(): void
+    {
+        $user = User::factory()->create();
+        $normalized = NormalizedEvent::factory()->create(['team_id' => $user->currentTeam->id]);
+        config(['queue.default' => 'cola-inexistente']);
+
+        // Directo al listener: los demás listeners de EventNormalized también
+        // van a cola y aquí sólo importa que la auditoría no propague.
+        app(AuditAnyDomainEvent::class)->handle(EventNormalized::class, [new EventNormalized($normalized)]);
+
+        $this->assertSame(0, AuditLog::withoutGlobalScopes()->count());
+        $this->assertSystemLogged('audit.domain_event.record_failed', fn (array $c): bool => $c['outcome'] === 'degraded'
+            && $c['reason'] === 'dispatch_failed'
+            && $c['input']['event_name'] === EventNormalized::class
+            && isset($c['error']));
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_system_level_event_stays_platform_wide_even_inside_a_tenant(): void
+    {
+        $team = Team::factory()->create();
+
+        $job = new WriteAuditLogJob(
+            eventName: 'App\\Domains\\Platform\\Events\\Something',
+            action: 'platform.something',
+            category: 'domain',
+            teamId: null,
+            aggregateType: null,
+            aggregateId: null,
+            payloadJson: [],
+            signature: 'platform-sig-1',
+        );
+
+        // El job hereda el TenantContext de quien lo despachó.
+        TenantContext::for($team, fn () => $this->app->call([$job, 'handle']));
+
+        $this->assertSame(0, AuditLog::withoutGlobalScopes()->where('team_id', $team->id)->count());
+        $this->assertSame(0, DomainEventLog::withoutGlobalScopes()->where('team_id', $team->id)->count());
+        $this->assertSame(1, AuditLog::withoutGlobalScopes()->whereNull('team_id')->where('action', 'platform.something')->count());
+        $this->assertSame(1, DomainEventLog::withoutGlobalScopes()->whereNull('team_id')->count());
+    }
+
+    public function test_reevaluation_requested_is_audited_under_the_events_team(): void
+    {
+        $normalized = NormalizedEvent::factory()->create();
+
+        AIReevaluationRequested::dispatch($normalized->team_id, $normalized->id, 'manual_review_requested');
+
+        $this->assertSame(1, AuditLog::withoutGlobalScopes()
+            ->where('team_id', $normalized->team_id)
+            ->where('action', 'ai.reevaluation_requested')
             ->count());
     }
 }

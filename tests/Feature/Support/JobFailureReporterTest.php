@@ -25,6 +25,7 @@ class JobFailureReporterTest extends TestCase
         $this->assertSame(7, $ctx['input']['team_id']);
         $this->assertSame(RuntimeException::class, $ctx['error']['class']);
         $this->assertStringContainsString('boom', $ctx['error']['message']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_the_code_is_derived_from_the_domain_and_job_name(): void
@@ -39,6 +40,7 @@ class JobFailureReporterTest extends TestCase
         JobFailureReporter::report('App\Jobs\Fake', new RuntimeException('to +525512345678'));
 
         $this->assertSame('to [phone]', $this->assertSystemLogged('app.fake.failed')['error']['message']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_a_throwing_listener_never_makes_report_throw(): void

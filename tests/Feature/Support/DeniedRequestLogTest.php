@@ -37,6 +37,7 @@ class DeniedRequestLogTest extends TestCase
         $this->assertSame('test.forbidden', $ctx['input']['route_name']);
         $this->assertSame($user->id, $ctx['input']['user_id']);
         $this->assertSame(403, $ctx['input']['status']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_a_flood_of_denials_is_capped_per_window_and_the_next_line_reports_the_suppressed(): void
@@ -66,6 +67,7 @@ class DeniedRequestLogTest extends TestCase
             'max_per_window' => DeniedRequestLog::MAX_PER_WINDOW,
             'window_seconds' => DeniedRequestLog::WINDOW_SECONDS,
         ], $last['calc']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_throttled_requests_are_logged(): void
@@ -73,6 +75,7 @@ class DeniedRequestLogTest extends TestCase
         $this->get('/_test/throttled')->assertStatus(429);
 
         $this->assertSystemLogged('http.request.throttled', fn (array $c) => $c['reason'] === 'rate_limited');
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_unknown_webhook_endpoints_are_logged_without_the_real_path(): void
@@ -82,6 +85,7 @@ class DeniedRequestLogTest extends TestCase
         $ctx = $this->assertSystemLogged('http.request.not_found');
         $this->assertSame('unknown_endpoint', $ctx['reason']);
         $this->assertStringNotContainsString('00000000-0000', (string) json_encode($ctx));
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_ordinary_404s_and_successes_are_not_logged_as_security_events(): void
