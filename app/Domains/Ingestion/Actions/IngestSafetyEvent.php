@@ -2,16 +2,12 @@
 
 namespace App\Domains\Ingestion\Actions;
 
-use App\Contracts\ObjectStorage;
-use App\Domains\Ingestion\Enums\AttachmentType;
 use App\Domains\Ingestion\Enums\EventSourceType;
+use App\Domains\Ingestion\Jobs\ArchiveRawEventMediaJob;
 use App\Domains\Ingestion\Models\RawEvent;
-use App\Domains\Ingestion\Models\RawEventAttachment;
 use App\Domains\Integrations\Models\TenantIntegration;
 use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
-use App\Infrastructure\Storage\MediaDownloadException;
-use App\Infrastructure\Storage\SecureMediaDownloader;
 use App\Support\PipelineTrace;
 use App\Support\SystemLog;
 use Illuminate\Support\Arr;
@@ -21,21 +17,16 @@ class IngestSafetyEvent
     public const string USAGE_METER_CODE = 'ingested_events';
 
     /**
-     * Provider payload keys carrying inline (pre-signed, expiring) media URLs,
-     * mapped to the local filename each download is stored under.
+     * Circuito del lote: el poll reutiliza esta instancia para todos sus
+     * eventos; tras el primer fallo de storage no se vuelve a esperar.
      */
-    private const MEDIA_URL_KEYS = [
-        'downloadForwardVideoUrl' => 'forward-video.mp4',
-        'downloadInwardVideoUrl' => 'inward-video.mp4',
-        'downloadTrackedInwardVideoUrl' => 'tracked-inward-video.mp4',
-    ];
+    private bool $storageUnavailable = false;
 
     public function __construct(
         private StoreRawEvent $storeRawEvent,
         private QueueRawEventForProcessing $queueForProcessing,
-        private ObjectStorage $storage,
         private RecordUsageEvent $recordUsageEvent,
-        private SecureMediaDownloader $downloader,
+        private ArchiveRawEventInlineMedia $archiveMedia,
     ) {}
 
     /**
@@ -48,6 +39,8 @@ class IngestSafetyEvent
      * Inline media URLs are pre-signed and expire, so they are downloaded
      * immediately into raw-event attachments; the existing context pipeline
      * (`AttachImmediateEventMedia`) materializes them with no extra code.
+     * Object storage is never on the critical path: if RustFS/S3 is down the
+     * event is still queued and metered, and the media archive is deferred.
      *
      * @param  array<string, mixed>  $payload
      */
@@ -75,7 +68,7 @@ class IngestSafetyEvent
 
         // El resto (descarga de media, encolado, uso) va en la traza del evento
         // recién guardado: el poll procesa muchos eventos en el mismo job.
-        return PipelineTrace::within($rawEvent->trace_id, $rawEvent->team_id, function () use ($rawEvent, $payload, $integration, $isKnownDuplicate, $externalEventId, $eventState): RawEvent {
+        return PipelineTrace::within($rawEvent->trace_id, $rawEvent->team_id, function () use ($rawEvent, $integration, $isKnownDuplicate, $externalEventId, $eventState): RawEvent {
             // Duplicates are still stored (full audit trail) and still flow through
             // ProcessRawEventJob, which marks them and stops the pipeline — but
             // their media was already captured by the first delivery, so the
@@ -83,7 +76,7 @@ class IngestSafetyEvent
             if ($isKnownDuplicate) {
                 SystemLog::skipped('ingestion.media.inline_skipped', reason: 'known_duplicate', input: ['raw_event_id' => $rawEvent->id, 'event_state' => $eventState]);
             } else {
-                $this->downloadInlineMedia($rawEvent, $payload);
+                $this->archiveInlineMedia($rawEvent, $integration->team_id);
             }
 
             $this->queueForProcessing->execute($rawEvent);
@@ -109,125 +102,41 @@ class IngestSafetyEvent
     }
 
     /**
-     * @param  array<string, mixed>  $payload
+     * Archiva la media inline sin dejar que el storage de objetos frene la
+     * ingesta: con RustFS/S3 caído el evento ya está en DB y sigue al
+     * pipeline; el archivado se difiere a {@see ArchiveRawEventMediaJob}, que
+     * relee las URLs del `payload_json` persistido. Tras el primer fallo de
+     * storage, el resto del lote se difiere sin volver a esperarlo.
      */
-    private function downloadInlineMedia(RawEvent $rawEvent, array $payload): void
+    private function archiveInlineMedia(RawEvent $rawEvent, int $teamId): void
     {
-        $found = 0;
-        $downloaded = 0;
-        $failed = 0;
-
-        // Legacy safety-event shape: top-level download URLs.
-        foreach (self::MEDIA_URL_KEYS as $key => $filename) {
-            $url = Arr::get($payload, $key);
-
-            if (! is_string($url) || $url === '') {
-                continue;
+        if ($this->storageUnavailable) {
+            if ($this->archiveMedia->countMediaUrls($rawEvent) > 0) {
+                $this->deferArchive($rawEvent, $teamId, 'storage_unavailable_earlier_in_batch');
             }
 
-            $found++;
-            $this->storeMediaDownload($rawEvent, $url, $filename, ['source_url_key' => $key]) ? $downloaded++ : $failed++;
+            return;
         }
 
-        // Stream v2 shape (`GET /safety-events/stream`): a `media` array with
-        // one `{input, url, cameraRole}` item per camera stream. The URLs are
-        // pre-signed and expire, so they must be captured at ingest time.
-        foreach ((array) Arr::get($payload, 'media', []) as $index => $media) {
-            $media = (array) $media;
-            $url = $media['url'] ?? null;
+        $result = $this->archiveMedia->execute($rawEvent);
 
-            if (! is_string($url) || $url === '') {
-                continue;
-            }
+        if ($result['storage_unavailable']) {
+            $this->storageUnavailable = true;
 
-            $filename = sprintf('media-%d-%s.mp4', (int) $index, $this->mediaInputSlug($media['input'] ?? null));
+            SystemLog::degraded('ingestion.media.storage_unavailable', reason: 'storage_unavailable', input: ['raw_event_id' => $rawEvent->id], error: $result['storage_error']);
 
-            $found++;
-            // Valores del payload de Samsara (mixed): se descartan los
-            // "vacíos" de PHP igual que el array_filter sin callback.
-            $this->storeMediaDownload($rawEvent, $url, $filename, array_filter([
-                'source_url_key' => "media.{$index}.url",
-                'input' => $media['input'] ?? null,
-                'camera_role' => $media['cameraRole'] ?? null,
-            ], static fn (mixed $value): bool => ! in_array($value, [null, false, 0, 0.0, '', '0', []], true))) ? $downloaded++ : $failed++;
+            $this->deferArchive($rawEvent, $teamId, 'storage_failed');
         }
 
-        SystemLog::ok('ingestion.media.inline_collected', input: ['raw_event_id' => $rawEvent->id], calc: ['urls_found' => $found, 'downloaded' => $downloaded, 'failed' => $failed], debug: $found === 0);
+        SystemLog::ok('ingestion.media.inline_collected', input: ['raw_event_id' => $rawEvent->id], calc: ['urls_found' => $result['found'], 'downloaded' => $result['downloaded'], 'failed' => $result['failed']], result: ['archive_deferred' => $result['storage_unavailable']], debug: $result['found'] === 0);
     }
 
-    /**
-     * Download through the hardened downloader (https + host allowlist,
-     * streamed to a temp file, size-capped) and store as a raw attachment.
-     *
-     * @param  array<string, mixed>  $metadata
-     */
-    private function storeMediaDownload(RawEvent $rawEvent, string $url, string $filename, array $metadata): bool
+    private function deferArchive(RawEvent $rawEvent, int $teamId, string $trigger): void
     {
-        try {
-            $download = $this->downloader->download($url);
-        } catch (MediaDownloadException $e) {
-            SystemLog::degraded('ingestion.media.inline_download_failed', reason: 'download_failed', input: ['raw_event_id' => $rawEvent->id, 'url_key' => $metadata['source_url_key'] ?? null], error: $e);
+        ArchiveRawEventMediaJob::dispatch($rawEvent->id, $teamId)
+            ->delay(now()->addSeconds(ArchiveRawEventMediaJob::OBJECT_STORAGE_FIRST_RETRY_SECONDS));
 
-            return false;
-        }
-
-        $storagePath = "teams/{$rawEvent->team_id}/raw-events/{$rawEvent->id}/{$filename}";
-        $mimeType = self::isBlank($download->contentType) ? 'video/mp4' : $download->contentType;
-
-        try {
-            $stream = $download->stream();
-
-            try {
-                $this->storage->put($storagePath, $stream, [
-                    'visibility' => 'private',
-                    'ContentType' => $mimeType,
-                ]);
-            } finally {
-                if (is_resource($stream)) {
-                    fclose($stream);
-                }
-            }
-        } finally {
-            $download->cleanup();
-        }
-
-        RawEventAttachment::create([
-            'raw_event_id' => $rawEvent->id,
-            'attachment_type' => AttachmentType::Clip,
-            'storage_path' => $storagePath,
-            'mime_type' => $mimeType,
-            'size_bytes' => $download->size,
-            'metadata_json' => $metadata,
-        ]);
-
-        return true;
-    }
-
-    private function mediaInputSlug(?string $input): string
-    {
-        return match ($input) {
-            'dashcamRoadFacing' => 'road-facing',
-            'dashcamDriverFacing' => 'driver-facing',
-            default => self::slugOrUnknown(self::isBlank($input) ? 'unknown' : $input),
-        };
-    }
-
-    /**
-     * `null`, '' y '0' cuentan como "sin valor" (la truthiness de string que
-     * usaba el `?:` original).
-     *
-     * @phpstan-assert-if-false non-falsy-string $value
-     */
-    private static function isBlank(?string $value): bool
-    {
-        return $value === null || $value === '' || $value === '0';
-    }
-
-    private static function slugOrUnknown(string $input): string
-    {
-        $slug = preg_replace('/[^a-z0-9]+/', '-', strtolower($input));
-
-        return self::isBlank($slug) ? 'unknown' : $slug;
+        SystemLog::degraded('ingestion.media.archive_deferred', reason: 'storage_unavailable', input: ['raw_event_id' => $rawEvent->id, 'trigger' => $trigger], calc: ['attempt' => 0, 'retry_in_seconds' => ArchiveRawEventMediaJob::OBJECT_STORAGE_FIRST_RETRY_SECONDS]);
     }
 
     private function recordUsage(TenantIntegration $integration, string $externalEventId, string $eventState, RawEvent $rawEvent): void

@@ -9,6 +9,7 @@ use App\Models\Team;
 use App\Models\TeamInvitation;
 use App\Models\User;
 use App\Notifications\Teams\TeamInvitation as TeamInvitationNotification;
+use App\Support\SystemLog;
 use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Gate;
@@ -34,6 +35,16 @@ class TeamInvitationController extends Controller
         Notification::route('mail', $invitation->email)
             ->notify(new TeamInvitationNotification($invitation));
 
+        // Sin el email ni el código del enlace (es el secreto de la invitación).
+        SystemLog::ok('access.invitation.created', input: [
+            'team_id' => $team->id,
+            'invited_by' => $user->id,
+        ], result: [
+            'invitation_id' => $invitation->id,
+            'role' => $invitation->role->value,
+            'expires_at' => $invitation->expires_at?->toIso8601String(),
+        ]);
+
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Invitation sent.')]);
 
         return to_route('teams.edit', ['team' => $team->slug]);
@@ -49,6 +60,12 @@ class TeamInvitationController extends Controller
         Gate::authorize('cancelInvitation', $team);
 
         $invitation->delete();
+
+        SystemLog::ok('access.invitation.cancelled', input: [
+            'team_id' => $team->id,
+            'invitation_id' => $invitation->id,
+            'actor_id' => auth()->id(),
+        ]);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Invitation cancelled.')]);
 

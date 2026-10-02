@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Support\SystemLog;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -18,7 +19,14 @@ class EnsureSuperAdmin
      */
     public function handle(Request $request, Closure $next): Response
     {
-        abort_if($request->user()?->isSuperAdmin() !== true, 403);
+        if ($request->user()?->isSuperAdmin() !== true) {
+            SystemLog::skipped('access.super_admin.denied', reason: 'not_super_admin', input: [
+                'user_id' => $request->user()?->getAuthIdentifier(),
+                'route_name' => $request->route()?->getName(),
+            ]);
+
+            abort(403);
+        }
 
         return $next($request);
     }

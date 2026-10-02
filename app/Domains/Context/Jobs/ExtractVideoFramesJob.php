@@ -2,6 +2,7 @@
 
 namespace App\Domains\Context\Jobs;
 
+use App\Concerns\DefersOnObjectStorageOutage;
 use App\Contracts\ObjectStorage;
 use App\Domains\Context\Actions\RefreshContextMediaSnapshot;
 use App\Domains\Context\Enums\MediaAvailabilityStatus;
@@ -14,6 +15,7 @@ use App\Domains\Context\Support\VideoFrameExtractor;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\Tenancy\Models\FileObject;
 use App\Support\JobFailureReporter;
+use App\Support\ObjectStorageFailure;
 use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
@@ -23,6 +25,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Collection;
+use Throwable;
 
 /**
  * Saca fotogramas clave de un clip para que el modelo de visión (que sólo
@@ -36,9 +39,14 @@ use Illuminate\Support\Collection;
  */
 class ExtractVideoFramesJob implements ShouldBeUnique, ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use DefersOnObjectStorageOutage, Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 2;
+    /**
+     * Con `retryUntil()` (de {@see DefersOnObjectStorageOutage}) Laravel
+     * ignora `$tries`: con RustFS/S3 caído el job se re-encola con backoff y
+     * los demás fallos siguen acotados aquí.
+     */
+    public int $maxExceptions = 2;
 
     public int $timeout = 120;
 
@@ -57,6 +65,22 @@ class ExtractVideoFramesJob implements ShouldBeUnique, ShouldQueue
     }
 
     public function handle(
+        VideoFrameExtractor $extractor,
+        ObjectStorage $storage,
+        RefreshContextMediaSnapshot $refreshSnapshot,
+    ): void {
+        try {
+            $this->extractFrames($extractor, $storage, $refreshSnapshot);
+        } catch (Throwable $e) {
+            if (! ObjectStorageFailure::matches($e)) {
+                throw $e;
+            }
+
+            $this->deferForObjectStorageOutage('media.frames.extract_deferred', ['media_context_id' => $this->mediaContextId], $e);
+        }
+    }
+
+    private function extractFrames(
         VideoFrameExtractor $extractor,
         ObjectStorage $storage,
         RefreshContextMediaSnapshot $refreshSnapshot,
@@ -234,7 +258,7 @@ class ExtractVideoFramesJob implements ShouldBeUnique, ShouldQueue
         return false;
     }
 
-    public function failed(\Throwable $exception): void
+    public function failed(Throwable $exception): void
     {
         JobFailureReporter::report(static::class, $exception, ['media_context_id' => $this->mediaContextId]);
     }

@@ -8,6 +8,7 @@ use Illuminate\Auth\Events\Lockout;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Events\Logout;
 use Illuminate\Auth\Events\PasswordReset;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Queue\Job;
 use Illuminate\Http\Client\Events\ConnectionFailed;
 use Illuminate\Http\Client\Events\ResponseReceived;
@@ -18,11 +19,19 @@ use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Queue\MaxAttemptsExceededException;
 use Illuminate\Queue\TimeoutExceededException;
 use Illuminate\Support\Facades\Event;
+use Laravel\Fortify\Events\RecoveryCodeReplaced;
+use Laravel\Fortify\Events\RecoveryCodesGenerated;
+use Laravel\Fortify\Events\TwoFactorAuthenticationChallenged;
+use Laravel\Fortify\Events\TwoFactorAuthenticationConfirmed;
+use Laravel\Fortify\Events\TwoFactorAuthenticationDisabled;
+use Laravel\Fortify\Events\TwoFactorAuthenticationEnabled;
+use Laravel\Fortify\Events\TwoFactorAuthenticationFailed;
+use Laravel\Fortify\Events\ValidTwoFactorAuthenticationCodeProvided;
 
 /**
  * Red de fondo del log narrativo: lo que se registra sin que cada módulo lo
  * pida. Ciclo de vida de cada job, cada llamada HTTP saliente (sin query,
- * headers ni body) y los eventos de autenticación (sin el email).
+ * headers ni body) y los eventos de autenticación y 2FA (sin el email).
  */
 final class AutomaticSystemLog
 {
@@ -128,6 +137,16 @@ final class AutomaticSystemLog
         self::listen(Logout::class, static fn (Logout $event) => SystemLog::ok('auth.logout.succeeded', input: ['user_id' => $event->user?->getAuthIdentifier(), 'guard' => $event->guard]));
         self::listen(PasswordReset::class, static fn (PasswordReset $event) => SystemLog::ok('auth.password.reset', input: ['user_id' => $event->user->getAuthIdentifier()]));
 
+        // 2FA (Fortify): sólo el id; nunca el secreto, el código ni los de recuperación.
+        self::listen(TwoFactorAuthenticationEnabled::class, static fn (TwoFactorAuthenticationEnabled $event) => SystemLog::ok('auth.two_factor.enabled', input: ['user_id' => self::userId($event->user)], result: ['confirmed' => false]));
+        self::listen(TwoFactorAuthenticationConfirmed::class, static fn (TwoFactorAuthenticationConfirmed $event) => SystemLog::ok('auth.two_factor.confirmed', input: ['user_id' => self::userId($event->user)]));
+        self::listen(TwoFactorAuthenticationDisabled::class, static fn (TwoFactorAuthenticationDisabled $event) => SystemLog::ok('auth.two_factor.disabled', input: ['user_id' => self::userId($event->user)]));
+        self::listen(RecoveryCodesGenerated::class, static fn (RecoveryCodesGenerated $event) => SystemLog::ok('auth.two_factor.recovery_codes_generated', input: ['user_id' => self::userId($event->user)]));
+        self::listen(RecoveryCodeReplaced::class, static fn (RecoveryCodeReplaced $event) => SystemLog::ok('auth.two_factor.recovery_code_used', input: ['user_id' => self::userId($event->user)]));
+        self::listen(TwoFactorAuthenticationChallenged::class, static fn (TwoFactorAuthenticationChallenged $event) => SystemLog::ok('auth.two_factor.challenged', input: ['user_id' => self::userId($event->user)]));
+        self::listen(ValidTwoFactorAuthenticationCodeProvided::class, static fn (ValidTwoFactorAuthenticationCodeProvided $event) => SystemLog::ok('auth.two_factor.challenge_passed', input: ['user_id' => self::userId($event->user)]));
+        self::listen(TwoFactorAuthenticationFailed::class, static fn (TwoFactorAuthenticationFailed $event) => SystemLog::skipped('auth.two_factor.challenge_failed', reason: 'invalid_code', input: ['user_id' => self::userId($event->user)]));
+
         self::listen(Failed::class, static fn (Failed $event) => SystemLog::skipped('auth.login.failed', reason: 'invalid_credentials', input: [
             'user_id' => $event->user?->getAuthIdentifier(),
             'guard' => $event->guard,
@@ -138,6 +157,14 @@ final class AutomaticSystemLog
             'route_name' => $event->request->route()?->getName(),
             'login_fingerprint' => self::fingerprint($event->request->input('email')),
         ]));
+    }
+
+    /**
+     * Los eventos de Fortify tipan `$user` como mixed.
+     */
+    private static function userId(mixed $user): mixed
+    {
+        return $user instanceof Authenticatable ? $user->getAuthIdentifier() : null;
     }
 
     /**

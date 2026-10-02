@@ -189,6 +189,9 @@ class TwilioVoiceWebhookTest extends TestCase
         $verification = $this->makeVerification();
 
         $this->gather($verification, '1', authToken: null)->assertForbidden();
+
+        $this->assertSystemLogged('webhook.twilio.signature_rejected', fn (array $c) => $c['reason'] === 'hmac_mismatch' && $c['input']['endpoint'] === 'call_verification');
+        $this->assertNoSensitiveDataLogged();
         $this->assertNull($verification->fresh()->outcome);
     }
 

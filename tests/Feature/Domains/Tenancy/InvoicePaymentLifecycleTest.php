@@ -72,6 +72,13 @@ class InvoicePaymentLifecycleTest extends TestCase
             'category' => 'payment_receipt',
         ]);
 
+        $uploaded = $this->assertSystemLogged('billing.receipt.uploaded', fn (array $c) => $c['input']['invoice_id'] === $invoice->id);
+        $this->assertSame($this->team->id, $uploaded['input']['team_id']);
+        $this->assertSame($this->user->id, $uploaded['input']['user_id']);
+        $this->assertSame($invoice->payment_receipt_file_object_id, $uploaded['result']['file_object_id']);
+        $this->assertTrue($uploaded['result']['note_present']);
+        $this->assertFalse($uploaded['result']['replaced_receipt']);
+
         $json = json_encode($this->systemLogEntries());
         $this->assertStringNotContainsString('transferencia', $json);
         $this->assertStringNotContainsString('SPEI 1234', $json);
@@ -96,6 +103,32 @@ class InvoicePaymentLifecycleTest extends TestCase
             ]),
             ['receipt' => UploadedFile::fake()->create('t.pdf', 10, 'application/pdf')],
         )->assertStatus(422);
+
+        $this->assertSystemLogged('billing.receipt.rejected', fn (array $c) => $c['reason'] === 'already_paid'
+            && $c['input']['invoice_id'] === $invoice->id
+            && $c['input']['status'] === InvoiceStatus::Paid->value);
+        $this->assertSystemNotLogged('billing.receipt.uploaded');
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_receipt_on_an_invoice_not_awaiting_payment_is_logged_as_rejected(): void
+    {
+        $invoice = InvoiceSnapshot::factory()->create([
+            'team_id' => $this->team->id,
+            'status' => InvoiceStatus::Void,
+        ]);
+
+        $this->actingAs($this->user)->post(
+            route('billing.invoices.receipt', [
+                'current_team' => $this->team->slug,
+                'invoice' => $invoice->id,
+            ]),
+            ['receipt' => UploadedFile::fake()->create('t.pdf', 10, 'application/pdf')],
+        )->assertStatus(422);
+
+        $this->assertSystemLogged('billing.receipt.rejected', fn (array $c) => $c['reason'] === 'not_awaiting_payment'
+            && $c['input']['invoice_id'] === $invoice->id);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_receipt_is_rejected_for_other_tenant_invoice(): void

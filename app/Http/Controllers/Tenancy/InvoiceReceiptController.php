@@ -9,6 +9,7 @@ use App\Domains\Tenancy\Models\InvoiceSnapshot;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
 use App\Support\ObjectStorageFailure;
+use App\Support\SystemLog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -38,8 +39,17 @@ class InvoiceReceiptController extends Controller
             403,
         );
 
-        abort_if($invoice->status === InvoiceStatus::Paid, 422, 'La factura ya está pagada.');
-        abort_unless($invoice->awaitsPayment(), 422, 'Esta factura no está pendiente de pago.');
+        if ($invoice->status === InvoiceStatus::Paid || ! $invoice->awaitsPayment()) {
+            $alreadyPaid = $invoice->status === InvoiceStatus::Paid;
+
+            SystemLog::skipped('billing.receipt.rejected', reason: $alreadyPaid ? 'already_paid' : 'not_awaiting_payment', input: [
+                'team_id' => $current_team->id,
+                'invoice_id' => $invoice->id,
+                'status' => $invoice->status->value,
+            ]);
+
+            abort(422, $alreadyPaid ? 'La factura ya está pagada.' : 'Esta factura no está pendiente de pago.');
+        }
 
         $validated = $request->validate([
             'receipt' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:4096'],
@@ -80,10 +90,26 @@ class InvoiceReceiptController extends Controller
             'category' => 'payment_receipt',
         ]);
 
+        $previousReceiptId = $invoice->payment_receipt_file_object_id;
+
         $invoice->forceFill([
             'payment_receipt_file_object_id' => $fileObject->id,
             'payment_note' => $validated['note'] ?? null,
         ])->save();
+
+        // Ni el nombre del archivo ni la nota (texto libre del tenant).
+        SystemLog::ok('billing.receipt.uploaded', input: [
+            'team_id' => $current_team->id,
+            'invoice_id' => $invoice->id,
+            'user_id' => $request->user()?->getAuthIdentifier(),
+            'status' => $invoice->status->value,
+        ], result: [
+            'file_object_id' => $fileObject->id,
+            'size_bytes' => $fileObject->size_bytes,
+            'content_type' => $fileObject->content_type,
+            'note_present' => ($validated['note'] ?? null) !== null,
+            'replaced_receipt' => $previousReceiptId !== null,
+        ]);
 
         return response()->json(['data' => [
             'invoiceId' => $invoice->id,

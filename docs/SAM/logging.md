@@ -53,7 +53,7 @@ jq 'select(.message == "telematics.cycle.completed")' storage/logs/telematics-*.
 - Teléfonos, emails, nombres de personas, direcciones, tokens, secretos, firmas, URLs con query, payloads crudos de proveedor, texto libre de operadores, prompts o respuestas de IA.
 - Coordenadas sin redondear (máximo 3 decimales, y sólo donde expliquen una decisión).
 
-**Red de seguridad:** `App\Support\RedactSensitiveLogData` corre como tap en cada canal y enmascara teléfonos, emails, tokens, claves sensibles y el path de las URLs de hosts fuera de la allowlist. Es la red, no el permiso: el código no debe depender de ella.
+**Red de seguridad:** `App\Support\RedactSensitiveLogData` corre como tap en cada canal y enmascara teléfonos, emails, tokens, claves sensibles y el path de las URLs de hosts fuera de la allowlist. Es la red, no el permiso: el código no debe depender de ella. Un `*_name` se conserva sólo si todas las palabras previas a `name` son técnicas (`route_name`, `model_name`, `meter_name`, `event_type_name`: `RedactSensitiveLogData::TECHNICAL_NAME_QUALIFIERS`); el de una persona, empresa o algo que escribió un usuario (`driver_name`, `team_name`, `report_name`) y cualquier `filename` se redactan. En texto libre, `Bearer <token>` se enmascara siempre; `Basic <x>` sólo si es una credencial (tras `Authorization:` o un base64 que decodifica a `usuario:clave`), para no comerse la palabra siguiente de un "Basic plan". El id de una sesión (`session_id`, `sessionId`, `laravel_session`, `session`) se redacta aunque termine en `id`: con él se secuestra la sesión.
 
 **Líneas diferidas al commit (billing y activos):** estas líneas de hechos persistidos salen por `DB::afterCommit` y se emiten dentro de `TenantContext::for(team_id, …)` del tenant de su `input.team_id` (el commit puede ocurrir fuera de ese contexto, p.ej. en la transacción de un llamador de plataforma): `billing.usage.recorded`, `assets.monitoring.changed`, `billing.messaging_charge.finalized` (también su `already_finalized`), `billing.invoice.generated`, `billing.invoice.status_changed`. Igual `ai.usage.not_metered` con link resuelto (dentro del tenant del link). También `tenant_config.defaults.applied` y `tenancy.plan.changed`.
 
@@ -100,6 +100,8 @@ Lo emite `App\Support\DeniedRequestLog` (outcome `degraded`); sólo la plantilla
 | `http.request.throttled` | degraded | `rate_limited` (429) | igual |
 | `http.request.not_found` | degraded | `unknown_endpoint` (404 en `api/webhooks/*`) | igual |
 
+Límite de volumen (`DeniedRequestLog::MAX_PER_WINDOW` = 20 por `WINDOW_SECONDS` = 60): por cubeta código + reason + `route_uri` + `user_id` (o invitado) sólo se escriben las primeras 20 líneas de cada minuto; el resto se cuenta y la primera línea de la ventana siguiente lo dice en `calc.suppressed_since_last` (con `max_per_window` y `window_seconds`). Si la caché falla, se escribe siempre.
+
 ### Autenticación (`auth`) — automático
 
 | Código | Outcome | Reason posibles | Campos clave |
@@ -109,6 +111,44 @@ Lo emite `App\Support\DeniedRequestLog` (outcome `degraded`); sólo la plantilla
 | `auth.login.locked_out` | degraded | `too_many_attempts` | `route_name`, `login_fingerprint` |
 | `auth.logout.succeeded` | ok | — | `user_id`, `guard` |
 | `auth.password.reset` | ok | — | `user_id` |
+| `auth.password.changed` | ok | — | `user_id`; result `other_sessions_logged_out` (siempre true: cambiarla en Seguridad cierra las demás sesiones). Nunca la contraseña ni su hash |
+| `auth.two_factor.enabled` | ok | — | `user_id`; result `confirmed=false` (el secreto existe pero falta confirmarlo con un código) |
+| `auth.two_factor.confirmed` | ok | — | `user_id`. Desde aquí el login pide el segundo factor |
+| `auth.two_factor.disabled` | ok | — | `user_id` |
+| `auth.two_factor.recovery_codes_generated` | ok | — | `user_id`. Nunca los códigos |
+| `auth.two_factor.recovery_code_used` | ok | — | `user_id`. Entró con un código de recuperación (queda reemplazado). Nunca el código |
+| `auth.two_factor.challenged` | ok | — | `user_id`. Contraseña correcta: se le pidió el segundo factor |
+| `auth.two_factor.challenge_passed` | ok | — | `user_id` |
+| `auth.two_factor.challenge_failed` | skipped | `invalid_code` | `user_id`. Nunca el código tecleado |
+
+Los `auth.two_factor.*` salen de los eventos de Fortify (`AutomaticSystemLog`); `auth.password.changed` de `Settings\SecurityController`.
+
+### Acceso (`access`)
+
+Quién puede qué dentro de un tenant, y los cambios de quién entra. Sólo ids, roles de equipo (`owner`/`admin`/`member`) y códigos del catálogo de permisos; nunca emails (tampoco el de una invitación), nombres ni el código del enlace de invitación (es su secreto). El nombre y el código de un rol propio los escribe el tenant: se registra su `role_id`.
+
+| Código | Outcome | Reason posibles | Campos clave |
+|---|---|---|---|
+| `access.check.denied` | skipped | `permission` (el rol no tiene el permiso), `subscription` (módulo operativo con suscripción que no da acceso; calc `subscription_status`), `feature` (módulo apagado para el tenant; calc `feature_key`), `no_team` (debug, desde `AuthorizeAction`); `not_member` (no es miembro del team de la URL o del cambio de team), `role` (rol de equipo bajo el mínimo de la ruta; `min_role`, `role`) | `user_id`, `team_id`, y `permission` (AuthorizeAction) o `route_name` / `min_role`. Las de `AuthorizeAction` van a **debug**: las policies también se evalúan para pintar la UI, así que una negación no siempre es un intento bloqueado; el 403 real lo da `http.request.denied`. `not_member` y `role` cortan la petición con 403 (info) |
+| `access.super_admin.denied` | skipped | `not_super_admin` | `user_id`, `route_name`. Alguien sin rol global pidió la consola `/admin` (403) |
+| `access.super_admin.forced_team_switch` | degraded | `direct_url` | `user_id`, `team_id`, `route_name`. Un super-admin abrió `/{team}/...` de un cliente del que no es miembro y su team actual cambió solo; antes sólo quedaba en la auditoría (`impersonation.started`, `via=direct_url`). `warning` para que se vea |
+| `access.impersonation.started` | ok / skipped | `personal_team` (no se entra a un espacio personal) | `user_id`, `team_id`; result `is_member`. Botón "Entrar a su consola" de la consola |
+| `access.impersonation.stopped` | ok / degraded | `no_personal_team` (sin espacio personal al que volver: no se finge la salida) | `user_id`, `team_id` (el cliente del que sale); result `returned_to_team_id` |
+| `access.team.switched` | ok | — | `user_id`, `team_id`; result `previous_team_id`. Cambio de team desde el selector |
+| `access.role_delegation.denied` | skipped | `self_change`, `owner_protected`, `target_outranks_actor` (el miembro tiene permisos que el actor no), `role_above_own` (rol de equipo superior al propio u `owner`; `requested_role`, `actor_role`), `permissions_not_held` (conceder un permiso que el actor no tiene) | `actor_id`, `team_id`, `check` (`change_membership` / `grant_team_role` / `grant_permissions`), `target_user_id`; en `target_outranks_actor` y `permissions_not_held`, calc `requested_count`, `missing_permissions` (códigos del catálogo). Intento de escalada bloqueado (403) |
+| `access.member.role_changed` | ok | — | `team_id`, `user_id`, `actor_id`; result `previous_role`, `role`, `rbac_role_cleared` (tenía rol RBAC y vuelve a mandar el de equipo). Tras el commit (`DB::afterCommit`) y en el `TenantContext` del team: la reasignación de propietario lo emite dos veces (el antiguo pasa a `admin`, el nuevo a `owner`) |
+| `access.member.role_assigned` | ok | — | `team_id`, `user_id`, `membership_id`, `actor_id`; result `previous_role_id`, `role_id`, `role_code` (sólo roles de sistema; null en los propios), `is_system_role`, `legacy_role` |
+| `access.member.added` | ok | — | `team_id`, `user_id`, `actor_id`, `via=admin_console`; result `role`, `user_created`, `access_link_queued`. La entrada por invitación la narra `access.invitation.accepted` |
+| `access.member.removed` | ok | — | `team_id`, `user_id`, `actor_id`, `via` (`tenant_settings` / `admin_console`) |
+| `access.invitation.created` | ok | — | `team_id`, `invited_by`; result `invitation_id`, `role`, `expires_at`. Nunca el email invitado ni el código del enlace |
+| `access.invitation.cancelled` | ok | — | `team_id`, `invitation_id`, `actor_id` |
+| `access.invitation.accepted` | ok | — | `team_id`, `invitation_id`, `user_id`; result `role`, `membership_created` (false = ya era miembro), `membership_id`. Tras el commit (el alta por invitación crea la cuenta en la misma transacción) |
+| `access.invitation.rejected` | skipped | `already_accepted`, `expired`, `team_deleted`, `email_mismatch` (la sesión es de otro correo), `not_resolvable`; en el alta (`stage=register`, `user_id` null) además `already_authenticated`, `account_exists` | `team_id`, `invitation_id`, `user_id`, `stage` (`accept`: la validación del formulario, `ValidTeamInvitation`; `register`: el alta de cuenta; `locked_recheck`: la re-comprobación con la fila bloqueada en `AcceptTeamInvitation`, que cubre la carrera entre dos envíos) |
+| `access.role.permissions_synced` | ok | — | `team_id` (null en roles de sistema globales), `role_id`, `is_system_role`, `actor_id`; calc `requested_count`, `known_count` (códigos que existen en el catálogo); result `attached_count`, `detached_count`, `memberships_invalidated` |
+| `access.role.deleted` | ok | — | `team_id`, `role_id`, `actor_id` |
+| `access.operator.granted` | ok | — | `actor_id`, `user_id`. Un usuario pasa a super-admin |
+| `access.operator.revoked` | ok | — | `actor_id`, `user_id` |
+| `access.operator.rejected` | skipped | `account_not_found`, `already_super_admin` (`change=grant`); `self_revocation`, `last_super_admin` (`change=revoke`) | `actor_id`, `user_id` (null si no hay cuenta), `change` |
 
 ### Almacenamiento (`storage`)
 
@@ -136,7 +176,11 @@ Lo emite `App\Support\DeniedRequestLog` (outcome `degraded`); sólo la plantilla
 | `ingestion.dedup.key_registered` | ok | | `raw_event_id`, `dedup_source` (`deduplication_key`/`checksum`), `calc.ttl_hours` |
 | `ingestion.duplicate.detected` | skipped | `existing_key`, `lost_insert_race` | `raw_event_id`, `dedup_source`, `first_raw_event_id` (sólo `existing_key`). Nunca el valor de la clave |
 | `ingestion.media.inline_skipped` | skipped | `known_duplicate` | `raw_event_id`, `event_state` |
-| `ingestion.media.inline_collected` | ok | | `raw_event_id`, `calc.urls_found`, `calc.downloaded`, `calc.failed` |
+| `ingestion.media.inline_collected` | ok | | `raw_event_id`, `calc.urls_found`, `calc.downloaded`, `calc.failed`, `result.archive_deferred` (el storage de objetos falló y el archivado se difirió) |
+| `ingestion.media.storage_unavailable` | degraded | `storage_unavailable` | `raw_event_id`, `error` (clase + mensaje redactado; nunca la URL prefirmada). RustFS/S3 falló al guardar la media inline de un safety event: el evento sigue al pipeline y el resto del lote del poll ya no espera al storage |
+| `ingestion.media.archive_deferred` | degraded | `storage_unavailable` | `raw_event_id`, `trigger` (`storage_failed`, `storage_unavailable_earlier_in_batch`, `retry_storage_failed`), `calc.attempt`, `retry_in_seconds`, `retry_window_hours` (en reintentos), `error` (en reintentos). El archivado de la media inline queda en `ArchiveRawEventMediaJob` (cola `context`, backoff 60 s → 30 min durante 12 h); las URLs se releen del `payload_json` |
+| `ingestion.media.archived` | ok | | `raw_event_id`, `calc.attempt`, `result.found`, `downloaded`, `already_stored`, `failed` (URL caducada o rechazada; ver `ingestion.media.inline_download_failed`), `extract_dispatched` (se re-materializó la media del evento ya normalizado) |
+| `ingestion.media.archive_skipped` | skipped | `raw_event_missing`, `team_mismatch` | `raw_event_id`, `job_team_id` (sólo `team_mismatch`: el job no concuerda con el tenant del evento y aborta sin tocar nada) |
 | `ingestion.usage.not_metered` | degraded | `meter_missing` | `meter_code`, `raw_event_id`; hueco de facturación |
 | `ingestion.usage.recorded` | ok | | `meter_code`, `raw_event_id`, `event_state` |
 | `ingestion.poll.cursor_restarted` | ok | | `integration_id`, `calc.restart_from`, `had_cursor`, `had_start_time`, `backfill_hours`, `restart_margin_minutes` |
@@ -161,6 +205,8 @@ Lo emite `App\Support\DeniedRequestLog` (outcome `degraded`); sólo la plantilla
 | `webhook.signature.verified` | ok | | `input.scheme` (`timestamped`/`plain`), `calc.secret_variant` (`base64_decoded`/`raw`), `key_variants_tried`, `skew_seconds`, `tolerance_seconds` (`null` en `plain`: no se revisa hora) |
 | `webhook.signature.rejected` | degraded | `empty_signature`, `invalid_timestamp`, `stale_timestamp`, `hmac_mismatch` | `input.scheme`; en `stale_timestamp`, calc `skew_seconds`, `tolerance_seconds`, `reference` (`received_at`/`now`), `timestamp_unit`; en `hmac_mismatch`, calc `key_variants_tried`, `skew_seconds`, `tolerance_seconds` (`null` en `plain`). Nunca firma, secreto ni cuerpo |
 | `webhook.event.discarded` | skipped | `tenant_deleted` | `webhook_event_id` |
+| `webhook.twilio.signature_rejected` | degraded | `not_configured` (sin auth token de plataforma), `empty_signature`, `hmac_mismatch` | `endpoint` (`inbound`, `status_callback`, `notification_call`, `call_verification`), `route_name`; calc `signed_url_source` (`request_url`, `public_base_url` o `configured_callback_url`: una base pública mal fijada detrás de un proxy es la causa típica de `hmac_mismatch`), `signed_params_count`. Corta con 403. Nunca firma, token, URL ni parámetros |
+| `webhook.twilio.unknown_number` | skipped | `not_platform_sender` | calc `to_present`, `to_channel` (`sms`/`whatsapp`). El `To` de un mensaje entrante no es un remitente de SAM (403, antes de validar la firma). Nunca el número |
 | `webhook.event.rejected` | skipped | `invalid_signature`, `secret_not_configured` (fail-closed: el endpoint aún no tiene la Secret Key de Samsara; no se intenta validar) | `webhook_event_id`, `webhook_endpoint_id`, `signature_mode` (`raw_header`/`legacy_body`; `none` en `secret_not_configured`), `event_type` (sólo si cumple `/^[A-Za-z0-9_.-]{1,64}$/`; si no, `null`: viene de una petición sin autenticar), `event_type_valid` |
 | `webhook.event.ingested` | ok | | `webhook_event_id`, `event_type` (con la misma guarda: lo resuelve `webhook.event_type.resolved` antes de validar la firma y puede venir de la query string, fuera del HMAC), `event_type_valid`, `signature_mode`, `provider_code` (con la misma guarda); `result.provider_code_fallback` |
 | `integrations.webhook_secret.updated` | ok | | `team_id`, `integration_id`, `webhook_endpoint_id`; result `replaced_existing`, `endpoint_created`. Nunca el secreto (también queda en `audit_logs` como `integration.webhook_secret.updated`, sin el valor) |
@@ -223,10 +269,13 @@ Las líneas del listener síncrono `RequestPanicMediaOnContextBuilt` (`context.m
 | Código | Outcome | Reason posibles | Campos clave |
 |---|---|---|---|
 | `media.event_media.extracted` | ok | — | `normalized_event_id`; result `media_created_count` |
+| `media.event_media.extract_deferred` | degraded | `storage_unavailable` | `normalized_event_id`, `calc.attempt`, `retry_in_seconds`, `retry_window_hours`, `error`. RustFS/S3 no respondió al materializar la media: el job se re-encola con backoff en vez de fallar |
 | `media.frames.extracted` | ok | — | `media_context_id`; result `frames_extracted`, `frames_created` |
 | `media.frames.ffmpeg_unavailable` | degraded | `ffmpeg_missing` | `media_context_id`, `ffmpeg_binary` |
+| `media.frames.extract_deferred` | degraded | `storage_unavailable` | `media_context_id`, `calc.attempt`, `retry_in_seconds`, `retry_window_hours`, `error`. Igual que `media.event_media.extract_deferred` para los fotogramas del clip |
 | `media.frames.offset_missing` | skipped | `no_frame_at_offset` | `offset_seconds`, `exit_code`, `stderr_excerpt` (saneado) |
 | `media.deferred.skipped` | skipped | `request_missing`, `not_in_flight` | `event_media_request_id`, `status` |
+| `media.deferred.storage_unavailable` | degraded | `storage_unavailable` | `event_media_request_id`, `normalized_event_id`, `calc.attempt`, `retry_in_seconds`, `retry_window_hours`, `error`. RustFS/S3 caído durante el ciclo de media diferida (barrido de pánico incluido): la petición sigue en vuelo y el ciclo se re-encola; su `expires_at` acota la espera |
 | `media.deferred.closed` | skipped / ok | skipped: `normalized_event_missing`, `retrieval_window_expired`, `no_active_integration`, `older_than_footage_retention`, `provider_rejected_retrieval`, `provider_rejected_all_stills`, `all_clips_failed`, `all_stills_failed`. ok: sin reason; cierra con evidencia subida y el motivo va en `result.close_reason` (cualquiera de los anteriores, y `fulfilled_by_sweep` / `no_camera_fulfilled_by_sweep`, que sólo se alcanzan por esta vía) | `event_media_request_id`, `normalized_event_id`, `calc.event_age_hours`/`max_age_hours` (retención), `result.status`, `result.completed_via`, `result.close_reason` |
 | `media.deferred.sweep_completed` | ok | - | `event_media_request_id`, `normalized_event_id`, `calc.window_seconds`, `match_seconds` (distancia máxima entre la captura y el evento para atribuirle la media), `items_found`, `available` (disponibles y atribuidas a este evento), `out_of_window` (disponibles pero capturadas lejos del evento: pertenecen a otro pánico/evento de la misma unidad), `result.downloaded` (bajados en este barrido), `result.already_stored` (ya estaban en storage de un barrido anterior) |
 | `media.deferred.retrieval_placed` | ok | - | `event_media_request_id`, `normalized_event_id`, `calc.media_type`, `inputs`, `next_poll_seconds` |
@@ -538,6 +587,8 @@ Selección de canales vacía (`notifications.channels.selected` skipped): antes 
 
 | Código | Outcome | Reason posibles | Campos clave |
 |---|---|---|---|
+| `billing.receipt.uploaded` | ok | — | `team_id`, `invoice_id`, `user_id`, `status`; result `file_object_id`, `size_bytes`, `content_type`, `note_present`, `replaced_receipt` (ya había uno). Comprobante de transferencia subido por el tenant; el super-admin lo verifica y marca la factura pagada. Nunca el nombre del archivo ni la nota. Si el almacenamiento falla: `storage.object.operation_failed` y 503 |
+| `billing.receipt.rejected` | skipped | `already_paid`, `not_awaiting_payment` | `team_id`, `invoice_id`, `status`. 422 |
 | `billing.usage.recorded` | ok | - | `team_id`, `meter_code`, `event_key`; calc `quantity`, `reset_period`, `occurred_at` (ISO 8601), `billing_period_key` (`Y-m` para `monthly` y el default, `Y-m-d` para `daily`); result `recorded=true`. Solo si `insertOrIgnore` insertó la fila, y por `DB::afterCommit` (una transacción que revierte no lo emite), emitida dentro del `TenantContext` del `team_id` aunque el commit ocurra en otro. Nunca `metadata` del uso |
 | `billing.usage.duplicate_ignored` | skipped | `event_key_exists` | `team_id`, `meter_code`, `event_key`; calc `quantity` (la pedida, no la guardada), `billing_period_key`. En `debug` sólo cuando el llamador lo pide (`RecordUsageEvent::record(..., debug: true)`: hoy el tracto-día del cierre diario, `RecordMonitoredAssetDay` con `fromDailyClose`); el resto en info. Directo: que este insert no escribió nada es cierto aunque la transacción revierta |
 | `billing.meter.missing` | degraded | `meter_missing` | `team_id`, `meter_code`, `stage` (`record_usage`: `RecordUsageEvent` relanza la misma `ModelNotFoundException`, con `event_key`; `invoice`: la factura lee ese meter como `0`, con `period_start`/`period_end`; `estimate`: la estimación de la página de facturación lo lee como `0`, sin periodo: lo lleva `billing.estimate.calculated` de la misma petición). Sin meter de mensajería (ni tarifa cost-plus del plan ni meter con unidad `usd_micros`) lleva `meter_unit = usd_micros` en vez de `meter_code`, y la factura / estimación sale sin cargo de Twilio |

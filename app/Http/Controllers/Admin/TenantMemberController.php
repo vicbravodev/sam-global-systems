@@ -13,6 +13,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Team;
 use App\Models\User;
 use App\Notifications\Teams\TenantAccessInvitation;
+use App\Support\SystemLog;
 use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -67,6 +68,17 @@ class TenantMemberController extends Controller
         });
 
         app(AuthorizeAction::class)->invalidateCache($user->id, $team->id);
+
+        SystemLog::ok('access.member.added', input: [
+            'team_id' => $team->id,
+            'user_id' => $user->id,
+            'actor_id' => $actor->id,
+            'via' => 'admin_console',
+        ], result: [
+            'role' => $data['role'],
+            'user_created' => $created,
+            'access_link_queued' => $user->email_verified_at === null,
+        ]);
 
         if ($user->email_verified_at === null) {
             $user->notify(new TenantAccessInvitation($team->id, $actor->id));
@@ -143,6 +155,13 @@ class TenantMemberController extends Controller
         });
 
         app(AuthorizeAction::class)->invalidateCache($user->id, $team->id);
+
+        SystemLog::ok('access.member.removed', input: [
+            'team_id' => $team->id,
+            'user_id' => $user->id,
+            'actor_id' => $actor->id,
+            'via' => 'admin_console',
+        ]);
 
         $this->record($request, $actor, $team, 'tenant.member_removed',
             "{$user->email} removido del cliente {$team->name}.",

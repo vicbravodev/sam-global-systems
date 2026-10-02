@@ -7,15 +7,13 @@ use App\Domains\Incidents\Models\Incident;
 use App\Domains\Notifications\Enums\NotificationSourceType;
 use App\Domains\Notifications\Enums\RecipientType;
 use App\Domains\Notifications\Models\NotificationDelivery;
-use App\Domains\Notifications\Support\PlatformTwilioConfig;
-use App\Domains\Notifications\Support\TwilioWebhookUrl;
+use App\Domains\Notifications\Support\TwilioWebhookSignature;
 use App\Http\Controllers\Controller;
 use App\Models\Membership;
 use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
-use Twilio\Security\RequestValidator;
 
 /**
  * La tecla de una llamada de aviso de incidente (VoiceNotificationDriver):
@@ -110,17 +108,7 @@ class TwilioNotificationCallController extends Controller
     private function authorizeWebhook(Request $request, int $deliveryId): NotificationDelivery
     {
         // La firma primero: sin ella no se revela qué entregas existen.
-        $authToken = PlatformTwilioConfig::authToken();
-
-        abort_if($authToken === null, 403, 'Twilio is not configured.');
-
-        $isValid = (new RequestValidator($authToken))->validate(
-            $request->header('X-Twilio-Signature', ''),
-            TwilioWebhookUrl::forSignature($request),
-            TwilioWebhookUrl::signedParams($request),
-        );
-
-        abort_unless($isValid, 403, 'Invalid Twilio signature.');
+        TwilioWebhookSignature::verify($request, 'notification_call');
 
         // Lookup de entrada sin scope: el webhook descubre aquí su tenant.
         $row = NotificationDelivery::withoutGlobalScopes()->find($deliveryId);

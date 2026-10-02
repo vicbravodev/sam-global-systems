@@ -109,6 +109,11 @@ class TwilioInboundWebhookTest extends TestCase
         $this->makeToken();
 
         $this->postReply('SI-W4K9', authToken: null)->assertForbidden();
+
+        $ctx = $this->assertSystemLogged('webhook.twilio.signature_rejected', fn (array $c) => $c['reason'] === 'hmac_mismatch');
+        $this->assertSame('inbound', $ctx['input']['endpoint']);
+        $this->assertSame(3, $ctx['calc']['signed_params_count']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_unknown_twilio_number_is_rejected_with_403(): void
@@ -116,6 +121,12 @@ class TwilioInboundWebhookTest extends TestCase
         $this->makeToken();
 
         $this->postReply('SI-W4K9', ['To' => '+10000000000'])->assertForbidden();
+
+        $ctx = $this->assertSystemLogged('webhook.twilio.unknown_number', fn (array $c) => $c['reason'] === 'not_platform_sender');
+        $this->assertSame(['to_present' => true, 'to_channel' => 'sms'], $ctx['calc']);
+        $this->assertStringNotContainsString('10000000000', (string) json_encode($this->systemLogEntries()));
+        $this->assertSystemNotLogged('webhook.twilio.signature_rejected');
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_si_reply_acknowledges_the_incident(): void
