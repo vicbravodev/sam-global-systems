@@ -5,6 +5,7 @@ namespace App\Domains\Analytics\Actions;
 use App\Domains\Analytics\Enums\PeriodType;
 use App\Domains\Analytics\Events\KPIsCalculated;
 use App\Domains\Analytics\Models\MetricDefinition;
+use App\Support\SystemLog;
 use Carbon\CarbonInterface;
 
 class CalculateKPIsForTenant
@@ -35,6 +36,16 @@ class CalculateKPIsForTenant
         $aiRecords = $this->evaluateAI->execute($teamId, $periodStart, $periodEnd);
 
         $totalCount = $metrics->count() + count($aiRecords);
+
+        SystemLog::ok('analytics.kpis.calculated', input: [
+            'team_id' => $teamId,
+            'period_start' => $periodStart->toIso8601String(),
+            'period_end' => $periodEnd->toIso8601String(),
+        ], result: [
+            'metrics_count' => $metrics->count(),
+            'ai_effectiveness_records' => count($aiRecords),
+            'total_count' => $totalCount,
+        ]);
 
         KPIsCalculated::dispatch(
             $teamId,

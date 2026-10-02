@@ -18,10 +18,12 @@ use App\Models\Team;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Storage;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class GenerateReportTest extends TestCase
 {
+    use AssertsSystemLog;
     use RefreshDatabase;
 
     public function test_report_writes_file_to_rustfs_and_records_execution(): void
@@ -63,6 +65,36 @@ class GenerateReportTest extends TestCase
 
         Event::assertDispatched(ReportGenerated::class);
         Event::assertDispatched(ReportReadyBroadcast::class);
+
+        $ctx = $this->assertSystemLogged('analytics.report.generated');
+        $this->assertSame($team->id, $ctx['input']['team_id']);
+        $this->assertSame($definition->id, $ctx['input']['report_definition_id']);
+        $this->assertSame('json', $ctx['input']['output_format']);
+        $this->assertFalse($ctx['input']['filters_present']);
+        $this->assertSame($execution->id, $ctx['result']['report_execution_id']);
+        $this->assertStringNotContainsString((string) $definition->name, (string) json_encode($this->systemLogEntries()));
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_failed_report_is_logged_and_rethrown(): void
+    {
+        Event::fake([ReportGenerated::class, ReportReadyBroadcast::class]);
+        Storage::shouldReceive('disk')->andThrow(new \RuntimeException('rustfs caído'));
+
+        $team = Team::factory()->create();
+        $definition = ReportDefinition::factory()->create(['team_id' => $team->id, 'metrics_json' => []]);
+
+        try {
+            app(GenerateReport::class)->execute($definition, $team->id, ReportOutputFormat::Json, ReportRequestedByType::User);
+            $this->fail('Debió relanzar.');
+        } catch (\RuntimeException) {
+        }
+
+        $ctx = $this->assertSystemLogged('analytics.report.failed', fn (array $c) => $c['reason'] === 'exception');
+        $this->assertSame($definition->id, $ctx['input']['report_definition_id']);
+        $this->assertSame(\RuntimeException::class, $ctx['error']['class']);
+        $this->assertSystemNotLogged('analytics.report.generated');
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_report_ready_names_the_requesting_user_and_not_scheduled_runs(): void

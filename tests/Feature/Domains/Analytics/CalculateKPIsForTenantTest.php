@@ -16,10 +16,12 @@ use App\Models\Team;
 use Carbon\CarbonInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class CalculateKPIsForTenantTest extends TestCase
 {
+    use AssertsSystemLog;
     use RefreshDatabase;
 
     protected function setUp(): void
@@ -78,6 +80,12 @@ class CalculateKPIsForTenantTest extends TestCase
         );
 
         Event::assertDispatched(KPIsCalculated::class, fn (KPIsCalculated $e) => $e->teamId === $team->id);
+
+        $ctx = $this->assertSystemLogged('analytics.kpis.calculated');
+        $this->assertSame($team->id, $ctx['input']['team_id']);
+        $this->assertSame(2, $ctx['result']['metrics_count']);
+        $this->assertSame($count, $ctx['result']['total_count']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_kpi_calculation_is_reproducible(): void
