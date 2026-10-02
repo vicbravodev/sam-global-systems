@@ -5,6 +5,7 @@ namespace App\Domains\Audit\Actions;
 use App\Domains\Audit\Enums\AuditActorType;
 use App\Domains\Audit\Enums\AuditCategory;
 use App\Domains\Audit\Models\AuditLog;
+use App\Support\TenantContext;
 use Carbon\CarbonImmutable;
 use DateTimeInterface;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -81,7 +82,10 @@ class RecordAuditEntry
             // Savepoint: on PostgreSQL a failed INSERT aborts the enclosing
             // transaction (ProcessInboundReply calls this inside one), so
             // without it the catch below could not query.
-            DB::transaction(fn () => $log->save());
+            // Dentro del tenant de la fila: un `teamId` null es una fila de
+            // plataforma y el autollenado de BelongsToTenant no debe sellarla
+            // con el tenant activo (p. ej. el del super-admin que impersona).
+            TenantContext::for($teamId, fn () => DB::transaction(fn () => $log->save()));
 
             return $log;
         } catch (UniqueConstraintViolationException) {

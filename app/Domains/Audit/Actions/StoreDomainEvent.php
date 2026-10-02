@@ -3,6 +3,7 @@
 namespace App\Domains\Audit\Actions;
 
 use App\Domains\Audit\Models\DomainEventLog;
+use App\Support\TenantContext;
 use Carbon\CarbonImmutable;
 use DateTimeInterface;
 
@@ -34,7 +35,9 @@ class StoreDomainEvent
         $log->occurred_at = $occurredAt !== null ? CarbonImmutable::instance($occurredAt) : CarbonImmutable::now();
         $log->correlation_id = $correlationId;
         $log->causation_id = $causationId;
-        $log->save();
+        // Un `teamId` null es un evento de plataforma: sin esto el
+        // autollenado de BelongsToTenant lo sellaría con el tenant activo.
+        TenantContext::for($teamId, fn () => $log->save());
 
         return $log;
     }

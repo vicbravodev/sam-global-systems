@@ -2,8 +2,10 @@
 
 namespace Tests\Feature\Http\Admin;
 
+use App\Domains\Audit\Models\AuditLog;
 use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Models\NotificationChannel;
+use App\Models\Team;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -205,6 +207,37 @@ class AdminGlobalChannelTest extends TestCase
             ->assertSessionHasNoErrors();
 
         $this->assertSame('https://hooks.slack.com/new', $channel->fresh()->config_json['endpoint_url']);
+    }
+
+    public function test_platform_channel_audit_is_not_stamped_with_the_impersonated_tenant(): void
+    {
+        $admin = $this->superAdmin();
+        $customer = Team::factory()->create();
+
+        // Venía de dar soporte a un cliente: su team actual es el del cliente.
+        $admin->forceFill(['current_team_id' => $customer->id])->save();
+
+        $this->actingAs($admin)
+            ->post(route('admin.channels.store'), [
+                'code' => 'sam_voice_mx',
+                'name' => 'Voz SAM México',
+                'provider' => 'twilio',
+                'channel_type' => 'voice',
+                'config_json' => ['from' => '+5215500000000'],
+            ])
+            ->assertRedirect(route('admin.channels.index'));
+
+        $channel = NotificationChannel::query()->where('code', 'sam_voice_mx')->sole();
+
+        $this->actingAs($admin)
+            ->put(route('admin.channels.update', $channel), ['is_active' => false])
+            ->assertRedirect(route('admin.channels.index'));
+
+        $rows = AuditLog::withoutGlobalScopes()->where('entity_type', 'notification_channel')->get();
+
+        $this->assertCount(2, $rows);
+        $this->assertTrue($rows->every(fn (AuditLog $row): bool => $row->team_id === null));
+        $this->assertSame(0, AuditLog::withoutGlobalScopes()->where('team_id', $customer->id)->count());
     }
 
     public function test_regular_users_cannot_access_the_console(): void
