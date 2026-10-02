@@ -62,6 +62,7 @@ use App\Http\Controllers\TenantConfig\TenantNotificationPolicyController;
 use App\Http\Controllers\TenantConfig\TenantRuleOverrideController;
 use App\Http\Controllers\TenantConfig\TenantScheduleProfileController;
 use App\Http\Middleware\EnsureTeamMembership;
+use App\Http\Middleware\EnsureTenantNotSuspended;
 use App\Http\Middleware\RendersErrorsAsJson;
 use Illuminate\Support\Facades\Route;
 
@@ -158,7 +159,7 @@ Route::prefix('admin')
     });
 
 Route::prefix('{current_team}')
-    ->middleware(['auth', 'verified', EnsureTeamMembership::class])
+    ->middleware(['auth', 'verified', EnsureTeamMembership::class, EnsureTenantNotSuspended::class])
     ->group(function () {
         Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
         Route::get('events', [EventsPageController::class, 'index'])->name('events.index');

@@ -507,6 +507,8 @@ Selección de canales vacía (`notifications.channels.selected` skipped): antes 
 | `tenancy.access_link.sent` | ok | — | `team_id`, `user_id`, `invited_by`; result `expires_in_days`. Se emite al renderizar el correo (en el worker), cuando se crea el token |
 | `tenancy.access_link.skipped` | skipped | `team_deleted`, `already_activated`, `not_a_user` | `team_id`, `user_id`, `channel` |
 | `tenancy.access_link.rejected` | skipped | `token`, `user`, `throttled` (status del broker `onboarding` sin prefijo) | — |
+| `tenancy.web_access.denied` | skipped (nivel `debug`) | `tenant_suspended` | `team_id`, `user_id`, `route_name`, `method`, `wants_json`. Un miembro (no super-admin) pidió una ruta `/{current_team}/...` (web o API) de un tenant cuya suscripción vigente está `suspended`: recibió la página "Cuenta suspendida" o JSON, ambos con 423. Se repite en cada petición, por eso va a `debug`. El pipeline de ingesta/emergencias no pasa por aquí. Las rutas `billing.*` no se niegan (ver `billing_allowed`) |
+| `tenancy.web_access.billing_allowed` | ok (nivel `debug`) | — | `team_id`, `user_id`, `route_name`, `status`. Un miembro de un tenant suspendido entró a Facturación (ver facturas o subir el comprobante de la transferencia) porque `SubscriptionStatus::grantsBillingAccess()` lo permite |
 | `tenancy.access_link.activated` | ok | — | `user_id`; result `landing_team_id` (la empresa del enlace si es miembro; si no, la más reciente; null si no tiene), `requires_two_factor` (true = no inicia sesión: entra por login con 2FA) |
 
 ### Billing (`billing`)
