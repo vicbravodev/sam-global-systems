@@ -494,6 +494,12 @@ Selección de canales vacía (`notifications.channels.selected` skipped): antes 
 | Código | Outcome | Reason posibles | Campos clave |
 |---|---|---|---|
 | `tenancy.super_admin.bootstrapped` | ok | — | `user_id`; result `created` (false = ya existía: sólo rol/verificación/team), `personal_team_id`. Nunca email ni contraseña |
+| `tenancy.user.provisioned` | ok | — | `user_id`; result `personal_team_id`. Cuenta creada por el super-admin SIN acceso usable (contraseña aleatoria, email sin verificar) hasta usar su enlace |
+| `tenancy.tenant.onboarded` | ok | — | `team_id`, `actor_id`, `plan_code`; result `owner_id`, `owner_created`, `access_link_queued` |
+| `tenancy.access_link.sent` | ok | — | `team_id`, `user_id`, `invited_by`; result `expires_in_days`. Se emite al renderizar el correo (en el worker), cuando se crea el token |
+| `tenancy.access_link.skipped` | skipped | `team_deleted`, `already_activated`, `not_a_user` | `team_id`, `user_id`, `channel` |
+| `tenancy.access_link.rejected` | skipped | `token`, `user`, `throttled` (status del broker `onboarding` sin prefijo) | — |
+| `tenancy.access_link.activated` | ok | — | `user_id`; result `landing_team_id` (la empresa del enlace si es miembro; si no, la más reciente; null si no tiene), `requires_two_factor` (true = no inicia sesión: entra por login con 2FA) |
 
 ### Billing (`billing`)
 

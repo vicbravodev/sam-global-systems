@@ -99,6 +99,18 @@ return [
             'expire' => 60,
             'throttle' => 60,
         ],
+
+        // Primer acceso de un usuario dado de alta por el super-admin (dueño
+        // de un tenant nuevo o miembro añadido desde la consola): define su
+        // contraseña desde el correo de bienvenida. Misma tabla que el reset,
+        // pero el enlace vive 7 días: el cliente no siempre abre el correo
+        // en la primera hora.
+        'onboarding' => [
+            'provider' => 'users',
+            'table' => env('AUTH_PASSWORD_RESET_TOKEN_TABLE', 'password_reset_tokens'),
+            'expire' => (int) env('AUTH_ONBOARDING_LINK_MINUTES', 10080),
+            'throttle' => 0,
+        ],
     ],
 
     /*

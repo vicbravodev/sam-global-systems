@@ -55,6 +55,7 @@ interface Member {
     name: string;
     email: string;
     role: string;
+    pendingAccess: boolean;
 }
 
 interface Feature {
@@ -213,6 +214,8 @@ export default function AdminTenantShow({
     };
 
     const [newMemberEmail, setNewMemberEmail] = useState('');
+
+    const [newMemberName, setNewMemberName] = useState('');
     const [newMemberRole, setNewMemberRole] = useState('member');
 
     const assetFeature = features.find((f) => f.key === 'monitored_assets');
@@ -265,6 +268,20 @@ export default function AdminTenantShow({
             ok('Propietario reasignado.'),
         );
 
+    const sendAccess = (userId: number) =>
+        router.post(
+            `${memberBase}/${userId}/send-access`,
+            {},
+            {
+                preserveScroll: true,
+                onError: (errors) =>
+                    toast.error(
+                        Object.values(errors)[0] ??
+                            'No se pudo reenviar el acceso.',
+                    ),
+            },
+        );
+
     const addMember = () => {
         if (!newMemberEmail) {
             return;
@@ -272,16 +289,20 @@ export default function AdminTenantShow({
 
         router.post(
             memberBase,
-            { email: newMemberEmail, role: newMemberRole },
+            {
+                email: newMemberEmail,
+                name: newMemberName || null,
+                role: newMemberRole,
+            },
             {
                 preserveScroll: true,
                 onSuccess: () => {
-                    toast.success('Miembro añadido.');
                     setNewMemberEmail('');
+                    setNewMemberName('');
                 },
-                onError: () =>
+                onError: (errors) =>
                     toast.error(
-                        'No se pudo añadir (¿email válido y existente?).',
+                        Object.values(errors)[0] ?? 'No se pudo añadir.',
                     ),
             },
         );
@@ -741,6 +762,25 @@ export default function AdminTenantShow({
                                                 <span className="sam-meta">
                                                     {member.email}
                                                 </span>
+                                                {member.pendingAccess ? (
+                                                    <>
+                                                        {' '}
+                                                        <span className="sam-meta rounded bg-surface-2 px-1.5 py-0.5 text-severity-medium">
+                                                            Acceso pendiente
+                                                        </span>{' '}
+                                                        <button
+                                                            type="button"
+                                                            className="sam-meta underline underline-offset-2 hover:text-fg-1"
+                                                            onClick={() =>
+                                                                sendAccess(
+                                                                    member.id,
+                                                                )
+                                                            }
+                                                        >
+                                                            Reenviar acceso
+                                                        </button>
+                                                    </>
+                                                ) : null}
                                             </span>
                                             {tenant.isPersonal || isOwner ? (
                                                 <span className="sam-meta rounded bg-surface-2 px-1.5 py-0.5">
@@ -809,7 +849,7 @@ export default function AdminTenantShow({
                                         htmlFor="member-email"
                                         className="sam-meta"
                                     >
-                                        Añadir miembro (email existente)
+                                        Añadir miembro
                                     </Label>
                                     <Input
                                         id="member-email"
@@ -819,6 +859,15 @@ export default function AdminTenantShow({
                                             setNewMemberEmail(e.target.value)
                                         }
                                         placeholder="user@empresa.com"
+                                    />
+                                    <Input
+                                        aria-label="Nombre (si no tiene cuenta)"
+                                        className="mt-1.5"
+                                        value={newMemberName}
+                                        onChange={(e) =>
+                                            setNewMemberName(e.target.value)
+                                        }
+                                        placeholder="Nombre (si no tiene cuenta)"
                                     />
                                 </div>
                                 <Select

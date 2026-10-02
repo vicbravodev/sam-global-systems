@@ -49,6 +49,7 @@ use App\Http\Controllers\Notifications\NotificationChannelController;
 use App\Http\Controllers\Notifications\NotificationPageController;
 use App\Http\Controllers\Search\CommandPaletteController;
 use App\Http\Controllers\Teams\InvitationAcceptanceController;
+use App\Http\Controllers\Teams\TenantAccessController;
 use App\Http\Controllers\Tenancy\BillingPageController;
 use App\Http\Controllers\Tenancy\BrandingController;
 use App\Http\Controllers\Tenancy\InvoiceReceiptController;
@@ -83,6 +84,16 @@ Route::post('invitations/{invitation}/register', [InvitationAcceptanceController
 Route::post('invitations/{invitation}/accept', [InvitationAcceptanceController::class, 'accept'])
     ->middleware(['auth', 'throttle:6,1'])
     ->name('invitations.accept');
+
+// Primer acceso de usuarios dados de alta por el super-admin (dueño de un
+// cliente nuevo o miembro añadido desde la consola): define su contraseña con
+// el enlace de bienvenida (broker `onboarding`, 7 días) y entra a su empresa.
+Route::get('bienvenida/{token}', [TenantAccessController::class, 'show'])
+    ->middleware(['guest', 'throttle:30,1'])
+    ->name('onboarding.show');
+Route::post('bienvenida', [TenantAccessController::class, 'store'])
+    ->middleware(['guest', 'throttle:6,1'])
+    ->name('onboarding.store');
 
 // The super-admin console is declared BEFORE the tenant wildcard group so
 // `/admin/...` never gets swallowed by `/{current_team}/...` routes.
@@ -120,6 +131,9 @@ Route::prefix('admin')
         Route::put('tenants/{team}/members/{user}', [TenantMemberController::class, 'update'])->name('tenants.members.update');
         Route::delete('tenants/{team}/members/{user}', [TenantMemberController::class, 'destroy'])->name('tenants.members.destroy');
         Route::post('tenants/{team}/members/{user}/make-owner', [TenantMemberController::class, 'makeOwner'])->name('tenants.members.make-owner');
+        Route::post('tenants/{team}/members/{user}/send-access', [TenantMemberController::class, 'sendAccess'])
+            ->middleware('throttle:10,1')
+            ->name('tenants.members.send-access');
 
         // Plan catalog: tune per-meter allowances (incl. the asset cap).
         Route::get('plans', [PlanController::class, 'index'])->name('plans.index');
