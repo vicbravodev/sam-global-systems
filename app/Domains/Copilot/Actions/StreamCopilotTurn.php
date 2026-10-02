@@ -19,7 +19,6 @@ use App\Models\User;
 use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Generator;
-use Laravel\Ai\Responses\Data\TextUsage;
 use Laravel\Ai\Responses\StreamedAgentResponse;
 use Symfony\Component\HttpFoundation\Response;
 use Throwable;
@@ -31,6 +30,11 @@ use Throwable;
  * same protocol, without a provider key or when the provider fails before
  * the first token. A failure after it, or a browser that leaves, stores
  * what was sent as a partial answer. Each turn is stored exactly once.
+ *
+ * Billing follows what the agent spent (`CopilotTurn::$spent`, step by
+ * step): a completed answer bills the stream's usage; a partial one, the
+ * tokens of the steps completed so far, on the stored message; a fallback,
+ * the abandoned agent's tokens apart (RecordCopilotUsage::executeAbandoned).
  *
  * The body runs after the controller returned, so every closure that
  * touches the DB enters the turn's tenant on its own.
@@ -44,6 +48,7 @@ class StreamCopilotTurn
         private readonly FinishCopilotTurn $finish,
         private readonly CopilotQuotaQuery $quota,
         private readonly CopilotStreamState $state,
+        private readonly RecordCopilotUsage $recordUsage,
     ) {}
 
     /**
@@ -101,14 +106,19 @@ class StreamCopilotTurn
 
             $reply = $this->storePartial($turn);
 
-            SystemLog::failed('copilot.turn.failed', 'agent_error_mid_stream', ['team_id' => $turn->team->id, 'message_id' => $reply->id], error: $e);
+            SystemLog::failed('copilot.turn.failed', 'agent_error_mid_stream', ['team_id' => $turn->team->id, 'message_id' => $reply->id], calc: ['tokens_so_far' => $turn->spent->tokens()], error: $e);
+
+            $this->logPartialUsage($turn, 'agent_error_mid_stream', $reply);
         });
 
         return (new CopilotStreamProtocol(
             state: $this->state,
             collector: $turn->collector,
             fallback: function (Throwable $e, bool $withStart) use ($turn): Generator {
-                SystemLog::degraded('copilot.turn.fallback', 'agent_error_before_output', ['team_id' => $turn->team->id], error: $e);
+                SystemLog::degraded('copilot.turn.fallback', 'agent_error_before_output', ['team_id' => $turn->team->id], calc: ['tokens_so_far' => $turn->spent->tokens()], error: $e);
+
+                // What the abandoned agent already spent is billed apart.
+                $this->recordUsage->executeAbandoned($turn);
 
                 // Start over: nothing a half-run agent collected reaches the answer.
                 $turn->collector = new CopilotTurnCollector;
@@ -122,7 +132,9 @@ class StreamCopilotTurn
 
                 $reply = $this->storePartial($turn);
 
-                SystemLog::skipped('copilot.turn.failed', 'client_disconnected', ['team_id' => $turn->team->id, 'message_id' => $reply->id]);
+                SystemLog::skipped('copilot.turn.failed', 'client_disconnected', ['team_id' => $turn->team->id, 'message_id' => $reply->id], calc: ['tokens_so_far' => $turn->spent->tokens()]);
+
+                $this->logPartialUsage($turn, 'client_disconnected', $reply);
             },
             startedAt: $turn->startedAt,
         ))->response($stream);
@@ -143,20 +155,34 @@ class StreamCopilotTurn
     }
 
     /**
-     * What was sent so far, stored as a partial agent answer.
+     * What was sent so far, stored as a partial agent answer with the tokens
+     * of the steps completed so far: the answer's own usage events bill them
+     * (keys from its message id), so a retry never bills them twice.
      */
     private function storePartial(CopilotTurn $turn): CopilotMessage
     {
         return $this->store($turn, new CopilotTurnOutcome(
             mode: 'agent',
             text: CopilotAnswerText::compose([$this->state->text], $turn->collector),
-            model: null,
-            usage: new TextUsage,
-            steps: 0,
+            model: $turn->spent->model,
+            usage: $turn->spent->usage,
+            steps: $turn->spent->steps,
             intent: $turn->collector->primaryIntent(),
             partial: true,
             firstTextMs: $this->state->firstTextMs,
         ));
+    }
+
+    private function logPartialUsage(CopilotTurn $turn, string $cause, CopilotMessage $reply): void
+    {
+        RecordCopilotUsage::logPartialUsage(
+            ['team_id' => $turn->team->id, 'cause' => $cause, 'question_id' => $turn->question->id, 'message_id' => $reply->id],
+            $turn->spent->steps,
+            $reply->model,
+            $reply->input_tokens,
+            $reply->output_tokens,
+            (float) $reply->cost_estimate,
+        );
     }
 
     /**
