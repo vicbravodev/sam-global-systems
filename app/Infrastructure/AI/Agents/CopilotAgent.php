@@ -3,6 +3,7 @@
 namespace App\Infrastructure\AI\Agents;
 
 use App\Domains\Copilot\Data\CopilotTurnScope;
+use App\Domains\Copilot\Support\CopilotTurnUsage;
 use App\Infrastructure\AI\Middleware\CopilotStepGuard;
 use Laravel\Ai\Attributes\CacheInstructions;
 use Laravel\Ai\Attributes\CacheToolDefinitions;
@@ -13,6 +14,7 @@ use Laravel\Ai\Contracts\Conversational;
 use Laravel\Ai\Contracts\HasMiddleware;
 use Laravel\Ai\Contracts\HasTools;
 use Laravel\Ai\Contracts\Tool;
+use Laravel\Ai\Gateway\StepResponse;
 use Laravel\Ai\Messages\Message;
 use Laravel\Ai\Promptable;
 use Stringable;
@@ -43,7 +45,17 @@ class CopilotAgent implements Agent, Conversational, HasMiddleware, HasTools
         private readonly array $history,
         private readonly array $tools,
         private readonly CopilotStepGuard $guard,
+        private readonly CopilotTurnUsage $spent = new CopilotTurnUsage,
     ) {}
+
+    /**
+     * One step of this agent completed (CopilotServiceProvider forwards the
+     * SDK's `StepCompleted` event): its tokens join what the turn spent.
+     */
+    public function recordStep(StepResponse $response, string $model): void
+    {
+        $this->spent->add($response->usage, $response->meta->model ?? $model);
+    }
 
     public function instructions(): Stringable|string
     {
