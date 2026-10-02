@@ -15,7 +15,7 @@ class AdminBadgesShareTest extends TestCase
 
     public function test_super_admin_receives_cross_tenant_badge_counts(): void
     {
-        $admin = User::factory()->create(['global_role' => 'super_admin']);
+        $admin = User::factory()->superAdmin()->create();
 
         Subscription::factory()->count(2)->pastDue()->create();
         Subscription::factory()->create(); // active → not counted

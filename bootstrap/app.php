@@ -4,6 +4,7 @@ use App\Http\Middleware\EnsureSuperAdmin;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\RendersErrorsAsJson;
+use App\Http\Middleware\RequireSuperAdminTwoFactor;
 use App\Http\Middleware\SetTeamUrlDefaults;
 use App\Http\Middleware\TrustProxiesFromConfig;
 use App\Support\DeniedRequestLog;
@@ -49,6 +50,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'ensure.super_admin' => EnsureSuperAdmin::class,
+            'super_admin.two_factor' => RequireSuperAdminTwoFactor::class,
         ]);
 
         // RendersErrorsAsJson (copilot.stream) must run before the throttle

@@ -240,6 +240,8 @@ class ShowcaseSeederTest extends TestCase
         $this->showcase(days: 3, extraTenants: true);
 
         $operator = User::where('email', 'superadmin@sam.test')->firstOrFail();
+        // La consola exige 2FA confirmado (RequireSuperAdminTwoFactor).
+        $operator->forceFill(['two_factor_secret' => encrypt('secret'), 'two_factor_confirmed_at' => now()])->save();
         $this->assertTrue($operator->isSuperAdmin());
 
         $this->actingAs($operator)->get('/admin/tenants')->assertOk()
