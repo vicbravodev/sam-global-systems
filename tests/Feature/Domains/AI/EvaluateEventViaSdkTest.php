@@ -177,6 +177,37 @@ class EvaluateEventViaSdkTest extends TestCase
         $this->assertNotEmpty($link->agent_conversation_id);
     }
 
+    /**
+     * El error del proveedor puede traer la clave, el prompt o datos del
+     * evento: el wrapper no copia su mensaje, sólo su clase, y lo conserva
+     * como `previous` (RetryableAIError sigue clasificándolo).
+     */
+    public function test_provider_failure_is_rethrown_without_the_provider_message(): void
+    {
+        $team = User::factory()->create()->currentTeam;
+        $provider = new \RuntimeException('Incorrect API key provided: sk-live-123 for +5215512345678');
+        EventClassifierAgent::fake(fn () => throw $provider);
+
+        $event = NormalizedEvent::factory()->create(['team_id' => $team->id]);
+        $input = new AIInputContext(
+            teamId: $team->id,
+            normalizedEventId: $event->id,
+            normalizedEvent: ['severity' => 'high'],
+            contextSignals: [],
+            operationalProfile: [],
+            recentHistory: [],
+            tenantProfile: [],
+        );
+
+        try {
+            app(SdkEventEvaluationAgent::class)->evaluate($input);
+            $this->fail('Expected the provider failure to be rethrown');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('Laravel AI SDK invocation failed (RuntimeException)', $exception->getMessage());
+            $this->assertSame($provider, $exception->getPrevious());
+        }
+    }
+
     public function test_wrapper_throws_when_response_is_not_valid_json(): void
     {
         $user = User::factory()->create();
