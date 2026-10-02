@@ -62,7 +62,40 @@ export default [
             },
         },
         rules: {
-            '@typescript-eslint/no-explicit-any': 'off',
+            '@typescript-eslint/no-explicit-any': 'error',
+            'react/jsx-no-useless-fragment': [
+                'error',
+                { allowExpressions: true },
+            ],
+            'react/button-has-type': 'error',
+            'react/jsx-no-target-blank': 'error',
+            'no-restricted-imports': [
+                'error',
+                {
+                    paths: [
+                        {
+                            name: 'axios',
+                            message:
+                                'Inertia v3 retiró axios: usa useForm / useHttp (o lib/sam-fetch para streaming).',
+                        },
+                    ],
+                },
+            ],
+            'no-restricted-syntax': [
+                'error',
+                {
+                    selector:
+                        'Literal[value=/(^|\\s)(text|tracking|leading)-\\[/]',
+                    message:
+                        'Tamaños arbitrarios prohibidos: usa los tokens de @theme (text-3xs…text-3xl, tracking-label/caps).',
+                },
+                {
+                    selector:
+                        'TemplateElement[value.raw=/(^|\\s)(text|tracking|leading)-\\[/]',
+                    message:
+                        'Tamaños arbitrarios prohibidos: usa los tokens de @theme (text-3xs…text-3xl, tracking-label/caps).',
+                },
+            ],
             '@typescript-eslint/consistent-type-imports': [
                 'error',
                 {
@@ -98,7 +131,11 @@ export default [
             '@stylistic': stylistic,
         },
         rules: {
-            '@stylistic/brace-style': ['error', '1tbs', { allowSingleLine: false }],
+            '@stylistic/brace-style': [
+                'error',
+                '1tbs',
+                { allowSingleLine: false },
+            ],
             '@stylistic/padding-line-between-statements': [
                 'error',
                 ...paddingAroundControl,
@@ -131,7 +168,11 @@ export default [
         },
         rules: {
             curly: ['error', 'all'],
-            '@stylistic/brace-style': ['error', '1tbs', { allowSingleLine: false }],
+            '@stylistic/brace-style': [
+                'error',
+                '1tbs',
+                { allowSingleLine: false },
+            ],
         },
     },
 ];

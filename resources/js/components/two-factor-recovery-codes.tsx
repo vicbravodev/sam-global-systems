@@ -117,9 +117,9 @@ export default function TwoFactorRecoveryCodes({
                                     aria-label="Códigos de recuperación"
                                 >
                                     {recoveryCodesList.length ? (
-                                        recoveryCodesList.map((code, index) => (
+                                        recoveryCodesList.map((code) => (
                                             <div
-                                                key={index}
+                                                key={code}
                                                 role="listitem"
                                                 className="select-text"
                                             >
