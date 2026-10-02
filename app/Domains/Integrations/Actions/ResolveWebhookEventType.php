@@ -10,9 +10,10 @@ use App\Support\SystemLog;
  *
  * Samsara manda el tipo en el cuerpo (`eventType`, p. ej. `AlertIncident`) y
  * nunca un `?event_type=`: leer sólo ese campo guardaba `unknown` en todos los
- * webhooks reales. Prioridad: `eventType` del cuerpo → `event_type` (query o
- * cuerpo, forma legacy) → `unknown`. Gana el primer candidato que parece un
- * código (`LoggableCode`); un valor que no lo parece nunca se guarda tal cual.
+ * webhooks reales. Prioridad: `eventType` del cuerpo → `event_type` del cuerpo
+ * (forma legacy) → `unknown`. La query string nunca se lee: queda fuera del
+ * HMAC. Gana el primer candidato que parece un código (`LoggableCode`); un
+ * valor que no lo parece nunca se guarda tal cual.
  *
  * El valor sale de una petición sin autenticar (la firma se valida después, en
  * ProcessWebhookEventJob): es sólo informativo. Nunca decide tenant, proveedor

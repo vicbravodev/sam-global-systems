@@ -2,7 +2,6 @@
 
 namespace App\Domains\Copilot\Support;
 
-use App\Contracts\AI\CopilotNarrator;
 use App\Domains\Copilot\Data\CopilotAnswer;
 use App\Domains\Copilot\Data\CopilotNarration;
 use App\Domains\Copilot\Enums\CopilotIntent;
@@ -12,8 +11,14 @@ use App\Domains\Copilot\Enums\CopilotIntent;
  * the fallback when the provider fails): it stitches the tools' own grounded
  * highlights together. No tokens are consumed.
  */
-final class TemplateCopilotNarrator implements CopilotNarrator
+final class TemplateCopilotNarrator
 {
+    /**
+     * Never adds facts that are not in `$answer`: the cards are the source of
+     * truth, the text only explains them.
+     *
+     * @param  list<array{role: string, content: string}>  $history  Previous turns, oldest first.
+     */
     public function narrate(string $question, CopilotAnswer $answer, array $history = []): CopilotNarration
     {
         $highlights = $answer->highlights();

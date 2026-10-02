@@ -12,8 +12,6 @@ use App\Domains\Audit\Enums\AuditCategory;
 use App\Domains\Context\Events\EventContextBuilt;
 use App\Domains\Normalization\Events\EventNormalized;
 use App\Domains\Normalization\Events\EventUnmapped;
-use App\Domains\Tenancy\Events\SubscriptionCanceled;
-use App\Domains\Tenancy\Events\SubscriptionUpdated;
 use App\Domains\Tenancy\Events\TenantCreated;
 use App\Domains\Tenancy\Events\UsageLimitExceeded;
 use App\Domains\Tenancy\Events\UsageRecorded;
@@ -68,16 +66,6 @@ return [
             'category' => AuditCategory::Domain->value,
             'action' => 'tenancy.tenant_created',
             'tenant_via' => 'model:team',
-        ],
-        SubscriptionUpdated::class => [
-            'category' => AuditCategory::Billing->value,
-            'action' => 'tenancy.subscription_updated',
-            'tenant_via' => 'model:subscription',
-        ],
-        SubscriptionCanceled::class => [
-            'category' => AuditCategory::Billing->value,
-            'action' => 'tenancy.subscription_canceled',
-            'tenant_via' => 'model:subscription',
         ],
         UsageRecorded::class => [
             'category' => AuditCategory::Billing->value,

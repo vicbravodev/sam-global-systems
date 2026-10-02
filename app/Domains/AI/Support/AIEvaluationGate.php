@@ -2,7 +2,9 @@
 
 namespace App\Domains\AI\Support;
 
+use App\Domains\Normalization\Actions\NormalizeRawEvent;
 use App\Domains\Normalization\Models\NormalizedEvent;
+use App\Domains\Tenancy\Support\TenantCanSend;
 use App\Support\SystemLog;
 
 /**
@@ -22,6 +24,12 @@ use App\Support\SystemLog;
  * `AIEvaluationCompleted` (`RunDecisionEngineOnAIEvaluationCompleted`), so a
  * skipped event produces NO decision and therefore no incident — the same
  * behaviour skipped categories (safety, maintenance) already had.
+ *
+ * `allows()` also stops paid evaluation for a tenant whose subscription blocks
+ * it ({@see TenantCanSend}: suspended, canceled, expired): it is no longer
+ * billed. Emergencies ({@see NormalizeRawEvent::isEmergencyCode()}: panic,
+ * collision, rollover) are exempt and are always evaluated; their incident
+ * is opened by the fast path without waiting for AI anyway.
  */
 class AIEvaluationGate
 {
@@ -86,7 +94,7 @@ class AIEvaluationGate
         $reason = $this->skipReason($event);
 
         if ($reason === null) {
-            return true;
+            return $this->tenantAllows($event, $stage);
         }
 
         SystemLog::skipped(
@@ -99,6 +107,41 @@ class AIEvaluationGate
                 'stage' => $stage,
             ],
             calc: ['config_key' => $reason === 'skip_type' ? 'ai.skip_evaluation_event_types' : 'ai.skip_evaluation_categories'],
+            result: ['evaluated' => false, 'decision_engine_runs' => false],
+        );
+
+        return false;
+    }
+
+    /**
+     * False (and narrated) when the tenant's subscription blocks paid work
+     * and the event is not an emergency.
+     */
+    private function tenantAllows(NormalizedEvent $event, string $stage): bool
+    {
+        $categoryCode = $event->eventCategory?->code;
+        $typeCode = $event->eventType?->code;
+
+        if (NormalizeRawEvent::isEmergencyCode($categoryCode, $typeCode)) {
+            return true;
+        }
+
+        $blocked = TenantCanSend::blockedReason($event->team_id);
+
+        if ($blocked === null) {
+            return true;
+        }
+
+        SystemLog::skipped(
+            'ai.gate.skipped',
+            reason: 'tenant_blocked',
+            input: [
+                'normalized_event_id' => $event->id,
+                'event_type_code' => $typeCode,
+                'category_code' => $categoryCode,
+                'stage' => $stage,
+            ],
+            calc: ['blocked_reason' => $blocked, 'is_emergency' => false],
             result: ['evaluated' => false, 'decision_engine_runs' => false],
         );
 

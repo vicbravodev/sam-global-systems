@@ -87,6 +87,25 @@ class EvaluateMediaViaSdkTest extends TestCase
         $this->assertSame(0.0, $output->costEstimate);
     }
 
+    /**
+     * El error del proveedor puede traer la clave, el prompt o datos del
+     * evento: el wrapper no copia su mensaje, sólo su clase, y lo conserva
+     * como `previous` (RetryableAIError sigue clasificándolo).
+     */
+    public function test_provider_failure_is_rethrown_without_the_provider_message(): void
+    {
+        $provider = new \RuntimeException('Incorrect API key provided: sk-live-123 for +5215512345678');
+        MediaInspectorAgent::fake(fn () => throw $provider);
+
+        try {
+            app(SdkMediaAssessmentAgent::class)->assess($this->makeInput());
+            $this->fail('Expected the provider failure to be rethrown');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('Laravel AI SDK media invocation failed (RuntimeException)', $exception->getMessage());
+            $this->assertSame($provider, $exception->getPrevious());
+        }
+    }
+
     public function test_wrapper_throws_when_response_is_not_valid_json(): void
     {
         MediaInspectorAgent::fake(['this is not json']);

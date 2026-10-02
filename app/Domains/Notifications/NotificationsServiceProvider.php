@@ -43,8 +43,8 @@ class NotificationsServiceProvider extends ServiceProvider
         Event::listen(IncidentStatusChanged::class, NotifyOnIncidentStatusChanged::class);
         Event::listen(NotificationFailed::class, RetryOrFallbackOnNotificationFailed::class);
 
-        // NotifyOnActionExecuted no se registra: las acciones de tipo envío ya
+        // ActionExecuted no tiene listener aquí: las acciones de tipo envío ya
         // notifican por sí mismas, y un segundo aviso sin destinatarios explícitos
-        // termina en fan-out a todo el equipo.
+        // terminaba en fan-out a todo el equipo.
     }
 }
