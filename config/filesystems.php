@@ -73,6 +73,15 @@ return [
             'public_endpoint' => env('RUSTFS_PUBLIC_ENDPOINT'),
             'use_path_style_endpoint' => true,
             'throw' => true,
+            // Sin esto el SDK de AWS espera sin límite a un RustFS/S3 que no
+            // responde y el job que lo llama se cuelga hasta su timeout. Con
+            // límites cortos el fallo llega rápido y los jobs de media lo
+            // degradan (reintento con backoff) en lugar de bloquearse.
+            'http' => [
+                'connect_timeout' => (float) env('RUSTFS_CONNECT_TIMEOUT', 5),
+                'timeout' => (float) env('RUSTFS_TIMEOUT', 60),
+            ],
+            'retries' => (int) env('RUSTFS_RETRIES', 2),
         ],
 
     ],

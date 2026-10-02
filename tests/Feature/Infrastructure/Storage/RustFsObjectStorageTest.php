@@ -126,4 +126,21 @@ class RustFsObjectStorageTest extends TestCase
 
         $this->assertIsString($this->storage->temporaryUrl('temp.txt', now()->addMinutes(5)));
     }
+
+    /**
+     * Con RustFS/S3 colgado (sin responder) el SDK no debe esperar sin límite:
+     * el disco real lleva timeouts de conexión y de petición acotados.
+     */
+    public function test_rustfs_disk_bounds_connect_and_request_timeouts(): void
+    {
+        $config = config('filesystems.disks.rustfs');
+        $this->assertIsArray($config);
+
+        $client = Storage::build($config)->getClient();
+        $http = $client->getCommand('HeadObject', ['Bucket' => 'sam', 'Key' => 'probe'])['@http'];
+
+        $this->assertIsArray($http);
+        $this->assertSame(5.0, $http['connect_timeout']);
+        $this->assertSame(60.0, $http['timeout']);
+    }
 }
