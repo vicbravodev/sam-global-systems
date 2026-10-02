@@ -24,10 +24,10 @@ import {
     summaryStatus,
 } from '@/components/sam/integrations/integration-state';
 import { IntegrationsEmpty } from '@/components/sam/integrations/integrations-empty';
+import { ListPage } from '@/components/sam/list-page';
 import { PulseStat, PulseStrip } from '@/components/sam/pulse-strip';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
-import { PageHeader } from '@/components/ui/page-header';
 import { useBroadcastReload } from '@/hooks/use-team-broadcasts';
 import { formatNumber } from '@/lib/format';
 import { deleteJson, postJson, readErrorMessage } from '@/lib/sam-fetch';
@@ -200,43 +200,40 @@ export default function IntegrationsIndex() {
     const hasAny = integrations.length > 0;
 
     return (
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <ListPage
+            title="Integraciones"
+            meta={
+                hasAny ? (
+                    <span className="text-xs text-fg-3">
+                        <span className="font-medium text-fg-1">
+                            {summary.total}
+                        </span>{' '}
+                        {summary.total === 1 ? 'conexión' : 'conexiones'}
+                        {summary.attention > 0 ? (
+                            <>
+                                {' · '}
+                                <span className="text-severity-critical">
+                                    {summary.attention}{' '}
+                                    {summary.attention === 1
+                                        ? 'requiere'
+                                        : 'requieren'}{' '}
+                                    atención
+                                </span>
+                            </>
+                        ) : null}
+                    </span>
+                ) : null
+            }
+            description="De aquí salen las ubicaciones, eventos y alertas de tu flota. Si algo falla, te decimos cómo arreglarlo."
+            actions={
+                canManage && hasAny ? (
+                    <Button size="sm" onClick={() => setConnectOpen(true)}>
+                        <Plus size={14} /> Conectar proveedor
+                    </Button>
+                ) : null
+            }
+        >
             <Head title="Integraciones" />
-
-            <PageHeader
-                title="Integraciones"
-                meta={
-                    hasAny ? (
-                        <span className="text-xs text-fg-3">
-                            <span className="font-medium text-fg-1">
-                                {summary.total}
-                            </span>{' '}
-                            {summary.total === 1 ? 'conexión' : 'conexiones'}
-                            {summary.attention > 0 ? (
-                                <>
-                                    {' · '}
-                                    <span className="text-severity-critical">
-                                        {summary.attention}{' '}
-                                        {summary.attention === 1
-                                            ? 'requiere'
-                                            : 'requieren'}{' '}
-                                        atención
-                                    </span>
-                                </>
-                            ) : null}
-                        </span>
-                    ) : null
-                }
-                description="De aquí salen las ubicaciones, eventos y alertas de tu flota. Si algo falla, te decimos cómo arreglarlo."
-                actions={
-                    canManage && hasAny ? (
-                        <Button size="sm" onClick={() => setConnectOpen(true)}>
-                            <Plus size={14} /> Conectar proveedor
-                        </Button>
-                    ) : null
-                }
-                className="shrink-0 border-b border-border bg-surface-1 px-5 py-3"
-            />
 
             {hasAny ? (
                 <PulseStrip>
@@ -377,7 +374,7 @@ export default function IntegrationsIndex() {
                     }
                 }}
             />
-        </div>
+        </ListPage>
     );
 }
 

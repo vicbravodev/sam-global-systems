@@ -1,9 +1,8 @@
 import { router, usePage } from '@inertiajs/react';
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { CriticalIncidentAlert } from '@/components/critical-incident-alert';
 import { ImpersonationBanner } from '@/components/impersonation-banner';
 import { RealtimeBootstrap } from '@/components/realtime-bootstrap';
-import { CommandPalette } from '@/components/sam/command-palette';
 import { CopilotLauncher } from '@/components/sam/copilot/copilot-launcher';
 import { OpsSidebar } from '@/components/sam/ops-sidebar';
 import { OpsTopbar } from '@/components/sam/ops-topbar';
@@ -16,6 +15,14 @@ import {
 } from '@/components/ui/sheet';
 import type { BreadcrumbItem } from '@/types';
 
+// The palette UI downloads on its first ⌘K; the shortcut listener below stays
+// in the layout.
+const CommandPalette = lazy(() =>
+    import('@/components/sam/command-palette').then((module) => ({
+        default: module.CommandPalette,
+    })),
+);
+
 interface OpsLayoutProps {
     children: React.ReactNode;
     breadcrumbs?: BreadcrumbItem[];
@@ -26,6 +33,13 @@ export default function OpsLayout({
     breadcrumbs = [],
 }: OpsLayoutProps) {
     const [commandOpen, setCommandOpen] = useState(false);
+    // Mounted on first open and kept mounted, as before (query survives).
+    const [commandMounted, setCommandMounted] = useState(false);
+
+    if (commandOpen && !commandMounted) {
+        setCommandMounted(true);
+    }
+
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
     const navBadges = usePage().props.navBadges ?? { inbox: 0 };
 
@@ -64,10 +78,14 @@ export default function OpsLayout({
                         />
                         {children}
                     </div>
-                    <CommandPalette
-                        open={commandOpen}
-                        onClose={() => setCommandOpen(false)}
-                    />
+                    {commandMounted && (
+                        <Suspense fallback={null}>
+                            <CommandPalette
+                                open={commandOpen}
+                                onClose={() => setCommandOpen(false)}
+                            />
+                        </Suspense>
+                    )}
                 </div>
             </div>
             <CopilotLauncher />

@@ -1135,6 +1135,7 @@ function SettingsTab({
                                         <img
                                             src={form.logo_url}
                                             alt="Vista previa del logo"
+                                            decoding="async"
                                             className="size-full object-contain"
                                             onError={() =>
                                                 setBrokenLogo(form.logo_url)

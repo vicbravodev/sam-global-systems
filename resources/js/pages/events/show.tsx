@@ -21,7 +21,7 @@ import { ConfidenceBar } from '@/components/sam/confidence-bar';
 import { toSeverity } from '@/components/sam/event-severity';
 import { EventCategoryIcon } from '@/components/sam/events/event-category-icon';
 import { PipelineStatusPill } from '@/components/sam/events/pipeline-status';
-import { PointMap } from '@/components/sam/point-map';
+import { PointMap } from '@/components/sam/lazy-point-map';
 import { ProviderTag } from '@/components/sam/provider-tag';
 import { RelativeTime } from '@/components/sam/relative-time';
 import { SeverityBadge } from '@/components/sam/severity-badge';
@@ -779,6 +779,8 @@ function MediaCard({ media }: { media: EventMediaItem[] }) {
                                             <img
                                                 src={item.thumbnailUrl}
                                                 alt={`${label} #${item.id}`}
+                                                loading="lazy"
+                                                decoding="async"
                                                 className="h-full w-full object-cover transition-transform group-hover:scale-[1.02]"
                                             />
                                         ) : (

@@ -7,11 +7,11 @@ import InputError from '@/components/input-error';
 import { BillingPill } from '@/components/sam/billing/panel';
 import { ConfirmDialog } from '@/components/sam/confirm-dialog';
 import { EntityAvatar } from '@/components/sam/entity-avatar';
+import { ListPage } from '@/components/sam/list-page';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { PageHeader } from '@/components/ui/page-header';
 import { Spinner } from '@/components/ui/spinner';
 import { formatDate } from '@/lib/format';
 import {
@@ -63,21 +63,18 @@ export default function AdminOperatorsIndex({
     return (
         <>
             <Head title="Operadores" />
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                <PageHeader
-                    title="Operadores"
-                    description="Personas de SAM con acceso a todos los clientes."
-                    meta={
-                        <span className="text-xs text-fg-3">
-                            <span className="font-medium text-fg-1">
-                                {operators.length}
-                            </span>{' '}
-                            {operators.length === 1 ? 'operador' : 'operadores'}
-                        </span>
-                    }
-                    className="shrink-0 border-b border-border bg-surface-1 px-5 py-3"
-                />
-
+            <ListPage
+                title="Operadores"
+                description="Personas de SAM con acceso a todos los clientes."
+                meta={
+                    <span className="text-xs text-fg-3">
+                        <span className="font-medium text-fg-1">
+                            {operators.length}
+                        </span>{' '}
+                        {operators.length === 1 ? 'operador' : 'operadores'}
+                    </span>
+                }
+            >
                 <div className="min-h-0 flex-1 overflow-y-auto p-5">
                     <div className="grid max-w-4xl gap-4">
                         {withoutTwoFactor > 0 ? (
@@ -206,7 +203,7 @@ export default function AdminOperatorsIndex({
                         </section>
                     </div>
                 </div>
-            </div>
+            </ListPage>
 
             <ConfirmDialog
                 open={demoting !== null}

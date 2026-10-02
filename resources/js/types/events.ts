@@ -1,3 +1,5 @@
+import type { ListPagination } from '@/types/pagination';
+
 export type EventPipelineStatus =
     | 'normalized'
     | 'enrichment_pending'
@@ -52,13 +54,6 @@ export interface EventFilterOptions {
     statuses: EventFilterOption[];
 }
 
-export interface EventsPagination {
-    page: number;
-    perPage: number;
-    total: number;
-    lastPage: number;
-}
-
 /** Pulso de eventos del tenant (ignora filtros). */
 export interface EventsSummary {
     last24h: number;
@@ -70,7 +65,7 @@ export interface EventsSummary {
 
 export interface EventsIndexProps {
     events: EventRow[];
-    pagination: EventsPagination;
+    pagination: ListPagination;
     filters: EventFilters;
     filterOptions: EventFilterOptions;
     unmappedCount: number;

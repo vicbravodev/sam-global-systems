@@ -356,6 +356,7 @@ export function MediaStrip({
                             <img
                                 src={openItem.url}
                                 alt={`Media del incidente #${openItem.id}`}
+                                decoding="async"
                                 className="max-h-[55vh] w-full rounded-md object-contain"
                             />
                         ))}

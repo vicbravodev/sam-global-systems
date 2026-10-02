@@ -8,7 +8,7 @@ import {
     Search,
     Trash2,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { lazy, Suspense, useMemo, useState } from 'react';
 import { ConfirmDialog } from '@/components/sam/confirm-dialog';
 import { SegmentedFilter } from '@/components/sam/segmented-filter';
 import { SeverityBadge } from '@/components/sam/severity-badge';
@@ -26,9 +26,15 @@ import { Switch } from '@/components/ui/switch';
 import { deleteJson, putJson } from '@/lib/sam-fetch';
 import { cn } from '@/lib/utils';
 import { mappingSource, submitRuleChange, useRulesBase } from './lib';
-import { MappingRuleSheet } from './mapping-rule-sheet';
 import { RuleTestDialog } from './rule-tester';
 import type { MappingOptions, MappingRuleRow, MappingSummary } from './types';
+
+// The editor (condition builder + comboboxes) loads on its first opening.
+const MappingRuleSheet = lazy(() =>
+    import('./mapping-rule-sheet').then((module) => ({
+        default: module.MappingRuleSheet,
+    })),
+);
 
 const SEVERITIES: Severity[] = ['critical', 'high', 'medium', 'low', 'info'];
 
@@ -105,6 +111,13 @@ export function MappingRulesTab({
     const providerName =
         providers.size === 1 ? ([...providers][0] ?? 'el proveedor') : null;
     const editRule = rules.find((rule) => rule.id === editId) ?? null;
+    const sheetOpen = creating || editRule !== null;
+    // Mounted on first opening and kept, so closing still animates.
+    const [sheetMounted, setSheetMounted] = useState(false);
+
+    if (sheetOpen && !sheetMounted) {
+        setSheetMounted(true);
+    }
 
     const toggle = async (rule: MappingRuleRow, active: boolean) => {
         if (base === null || togglingId !== null) {
@@ -360,18 +373,20 @@ export function MappingRulesTab({
                 </ul>
             )}
 
-            {canManage && (
-                <MappingRuleSheet
-                    open={creating || editRule !== null}
-                    onOpenChange={(open) => {
-                        if (!open) {
-                            onCreatingChange(false);
-                            setEditId(null);
-                        }
-                    }}
-                    rule={creating ? null : editRule}
-                    options={options}
-                />
+            {canManage && sheetMounted && (
+                <Suspense fallback={null}>
+                    <MappingRuleSheet
+                        open={sheetOpen}
+                        onOpenChange={(open) => {
+                            if (!open) {
+                                onCreatingChange(false);
+                                setEditId(null);
+                            }
+                        }}
+                        rule={creating ? null : editRule}
+                        options={options}
+                    />
+                </Suspense>
             )}
 
             {base !== null && (

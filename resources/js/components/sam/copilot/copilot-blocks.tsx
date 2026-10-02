@@ -758,6 +758,7 @@ function MediaCard({ block }: { block: MediaBlock }) {
                             key={active.id}
                             src={active.url}
                             alt={active.eventType ?? 'Snapshot de cámara'}
+                            loading="lazy"
                             decoding="async"
                             className="aspect-video w-full object-contain"
                         />
