@@ -3,8 +3,14 @@
 namespace App\Http\Controllers\Webhooks;
 
 use App\Domains\Notifications\Actions\ApplyTwilioStatusUpdate;
+use App\Domains\Notifications\Actions\RecordMessagingCharge;
+use App\Domains\Notifications\Enums\ChannelType;
+use App\Domains\Notifications\Enums\MessagingChargeSource;
+use App\Domains\Notifications\Enums\MessagingResourceType;
 use App\Domains\Notifications\Models\MessagingCharge;
+use App\Domains\Notifications\Models\NotificationDelivery;
 use App\Domains\Notifications\Support\PlatformTwilioConfig;
+use App\Domains\Notifications\Support\TwilioWebhookUrl;
 use App\Http\Controllers\Controller;
 use App\Support\SystemLog;
 use App\Support\TenantContext;
@@ -23,7 +29,7 @@ use Twilio\Security\RequestValidator;
  */
 class TwilioStatusCallbackController extends Controller
 {
-    public function __invoke(Request $request, ApplyTwilioStatusUpdate $applyStatus): Response
+    public function __invoke(Request $request, ApplyTwilioStatusUpdate $applyStatus, RecordMessagingCharge $recordCharge): Response
     {
         $authToken = PlatformTwilioConfig::authToken();
 
@@ -35,7 +41,7 @@ class TwilioStatusCallbackController extends Controller
         // fijada por config (proxy/túnel), esa es la URL firmada, no la que
         // ve Laravel detrás del proxy.
         $configured = config('services.twilio.status_callback_url');
-        $signedUrl = is_string($configured) && $configured !== '' ? $configured : $request->fullUrl();
+        $signedUrl = is_string($configured) && $configured !== '' ? $configured : TwilioWebhookUrl::forSignature($request);
 
         $isValid = (new RequestValidator($authToken))->validate(
             $request->header('X-Twilio-Signature', ''),
@@ -60,7 +66,8 @@ class TwilioStatusCallbackController extends Controller
 
         // Lookup de entrada sin scope: el webhook no tiene sesión y es como
         // descubre a qué tenant pertenece el recurso. Ver §2.1.
-        $charge = MessagingCharge::withoutGlobalScopes()->where('provider_sid', $sid)->first();
+        $charge = MessagingCharge::withoutGlobalScopes()->where('provider_sid', $sid)->first()
+            ?? $this->adoptFromDelivery($sid, $isCall, $recordCharge);
 
         if ($charge === null) {
             // Sin el SID: viene del request y no hay tenant resuelto.
@@ -83,8 +90,54 @@ class TwilioStatusCallbackController extends Controller
             durationSeconds: $isCall && is_numeric($duration) ? (int) $duration : null,
             segments: ! $isCall && is_numeric($segments) ? (int) $segments : null,
             source: 'callback',
+            answeredBy: $isCall && $request->filled('AnsweredBy') ? (string) $request->input('AnsweredBy') : null,
         );
 
         return response('', 200);
+    }
+
+    /**
+     * El callback llegó antes que el registro del cargo (Twilio puede avisar
+     * en milisegundos, antes de que el envío termine de guardar) o el
+     * registro falló: si una entrega ya tiene ese SID, el cargo se crea aquí
+     * y el estado se aplica, en vez de perderse hasta el siguiente sondeo.
+     * El tenant sale de la entrega en DB, nunca del payload.
+     */
+    private function adoptFromDelivery(string $sid, bool $isCall, RecordMessagingCharge $recordCharge): ?MessagingCharge
+    {
+        // Lookup de entrada sin scope, por el SID que Twilio firmó.
+        $matches = NotificationDelivery::withoutGlobalScopes()
+            ->with('channel')
+            ->where('provider_message_id', $sid)
+            ->limit(2)
+            ->get();
+
+        // Inequívoco o nada: el SID sólo prueba que es de la cuenta de
+        // plataforma, no de qué tenant. Dos entregas con el mismo SID, o un
+        // tipo de recurso que no cuadra con el canal, no se adoptan.
+        $delivery = $matches->count() === 1 ? $matches->first() : null;
+        $typeMatches = $delivery?->channel !== null
+            && ($delivery->channel->channel_type === ChannelType::Voice) === $isCall;
+
+        if ($delivery === null || ! $typeMatches) {
+            if ($matches->isNotEmpty()) {
+                SystemLog::degraded('notifications.provider_status.charge_adopted', reason: $matches->count() > 1 ? 'ambiguous_sid' : 'resource_type_mismatch', calc: ['matches_count' => $matches->count()]);
+            }
+
+            return null;
+        }
+
+        $charge = $recordCharge->execute(
+            teamId: $delivery->team_id,
+            providerSid: $sid,
+            resourceType: $isCall ? MessagingResourceType::Call : MessagingResourceType::Message,
+            sourceType: MessagingChargeSource::NotificationDelivery,
+            sourceId: $delivery->id,
+            channelType: $delivery->channel->channel_type,
+        );
+
+        SystemLog::ok('notifications.provider_status.charge_adopted', input: ['delivery_id' => $delivery->id], result: ['charge_id' => $charge?->id]);
+
+        return $charge;
     }
 }

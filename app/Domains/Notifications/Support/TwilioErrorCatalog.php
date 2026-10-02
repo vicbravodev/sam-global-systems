@@ -16,7 +16,14 @@ namespace App\Domains\Notifications\Support;
 final class TwilioErrorCatalog
 {
     /**
-     * @var array<int, string> código => explicación para el tenant (PHP convierte las claves numéricas a int)
+     * Código propio de SAM (no de Twilio) para una llamada que contestó un
+     * buzón de voz o un fax (AMD). Permanente para la voz: reintentar la
+     * llamada vuelve a caer en el buzón; se pasa a otro canal.
+     */
+    public const string ANSWERED_BY_MACHINE = 'answered_by_machine';
+
+    /**
+     * @var array<int|string, string> código => explicación para el tenant (PHP convierte las claves numéricas a int; `answered_by_machine` es propio de SAM)
      */
     private const PERMANENT = [
         '21211' => 'El número de destino no es válido.',
@@ -37,6 +44,7 @@ final class TwilioErrorCatalog
         '63003' => 'El número no tiene WhatsApp.',
         '63016' => 'WhatsApp fuera de la ventana de 24 h: requiere una plantilla aprobada.',
         '63024' => 'El destinatario no es válido en WhatsApp.',
+        self::ANSWERED_BY_MACHINE => 'Contestó un buzón de voz, no una persona.',
     ];
 
     /**

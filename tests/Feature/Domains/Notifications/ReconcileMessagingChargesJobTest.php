@@ -341,9 +341,15 @@ class ReconcileMessagingChargesJobTest extends TestCase
 
     public function test_unknown_sid_at_twilio_is_closed_without_cost(): void
     {
-        $this->queuedDelivery(ChannelType::Sms, 'SM_GONE');
+        $delivery = $this->queuedDelivery(ChannelType::Sms, 'SM_GONE');
 
         $this->runReconciler();
+
+        // La entrega no se queda "en cola" (contaba como alcanzada y
+        // bloqueaba el fallback): falla con el código y sigue su cadena.
+        $fresh = $delivery->fresh();
+        $this->assertSame(DeliveryStatus::Failed, $fresh->status);
+        $this->assertSame('20404', $fresh->provider_error_code);
 
         $charge = MessagingCharge::query()->where('provider_sid', 'SM_GONE')->sole();
         $this->assertNotNull($charge->finalized_at);
