@@ -60,10 +60,24 @@ export type TenantIntegrationStatus =
     | 'error'
     | 'pending';
 
+/** Signature health of the webhook (`WebhookEndpoint::signatureHealth()`). */
+export type WebhookSignatureHealth =
+    | 'pending_secret'
+    | 'rejecting'
+    | 'waiting'
+    | 'ok';
+
 export interface IntegrationWebhook {
     url: string;
     status: string;
     lastReceivedAt: string | null;
+    /** The Secret Key itself never travels: only whether it is set and when. */
+    secretConfigured: boolean;
+    secretConfiguredAt: string | null;
+    health: WebhookSignatureHealth;
+    lastValidReceivedAt: string | null;
+    lastRejectedAt: string | null;
+    lastRejectionReason: string | null;
 }
 
 export interface IntegrationRow {
@@ -79,6 +93,8 @@ export interface IntegrationRow {
     lastErrorAt: string | null;
     lastErrorMessage: string | null;
     webhook: IntegrationWebhook | null;
+    /** The user may manage this integration (Policy `update`). */
+    canUpdate?: boolean;
     /** Human label of the auth method ("Clave de API"). */
     authTypeLabel?: string;
     /** Provider capability codes (gps, diagnostics, driver_behavior…). */
