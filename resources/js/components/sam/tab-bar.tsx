@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
 export interface TabItem {
@@ -13,6 +14,8 @@ export interface TabBarProps {
     onChange: (key: string) => void;
     className?: string;
     'aria-label'?: string;
+    /** Controles a la derecha de la tira (p. ej. densidad), fuera del tablist. */
+    actions?: ReactNode;
 }
 
 /**
@@ -26,6 +29,7 @@ export function TabBar({
     onChange,
     className,
     'aria-label': ariaLabel,
+    actions,
 }: TabBarProps) {
     const move = (dir: 1 | -1) => {
         const idx = items.findIndex((t) => t.key === value);
@@ -36,13 +40,15 @@ export function TabBar({
         }
     };
 
-    return (
+    const tablist = (
         <div
             role="tablist"
             aria-label={ariaLabel}
             className={cn(
-                'flex items-center gap-0.5 border-b border-border',
-                className,
+                'flex items-center gap-0.5',
+                actions == null
+                    ? cn('border-b border-border', className)
+                    : 'scrollbar-none min-w-0 flex-1 overflow-x-auto',
             )}
         >
             {items.map((t) => {
@@ -88,6 +94,22 @@ export function TabBar({
                     </button>
                 );
             })}
+        </div>
+    );
+
+    if (actions == null) {
+        return tablist;
+    }
+
+    return (
+        <div
+            className={cn(
+                'flex items-center justify-between gap-2 border-b border-border',
+                className,
+            )}
+        >
+            {tablist}
+            {actions}
         </div>
     );
 }

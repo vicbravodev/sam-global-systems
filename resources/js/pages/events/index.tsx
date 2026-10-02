@@ -3,13 +3,11 @@ import {
     Activity,
     AlertTriangle,
     CircleSlash,
-    RefreshCw,
     ShieldAlert,
     Sparkles,
     Truck,
     Unlink,
 } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
 import { CellEmpty, DataTable } from '@/components/sam/data-table';
 import type { DataTableColumn } from '@/components/sam/data-table';
 import { EntityAvatar } from '@/components/sam/entity-avatar';
@@ -18,18 +16,19 @@ import { EventCategoryIcon } from '@/components/sam/events/event-category-icon';
 import { PipelineStatusPill } from '@/components/sam/events/pipeline-status';
 import {
     ClearFiltersButton,
+    EMPTY_PAGINATION,
     FilterDropdown,
     ListFooter,
     SearchInput,
 } from '@/components/sam/list';
+import { ListEmptyState, ListPage } from '@/components/sam/list-page';
 import { ProviderTag } from '@/components/sam/provider-tag';
 import { PulseStat, PulseStrip } from '@/components/sam/pulse-strip';
 import { RelativeTime } from '@/components/sam/relative-time';
 import { SegmentedFilter } from '@/components/sam/segmented-filter';
 import { SeverityBadge } from '@/components/sam/severity-badge';
 import { Button } from '@/components/ui/button';
-import { EmptyState } from '@/components/ui/empty-state';
-import { PageHeader } from '@/components/ui/page-header';
+import { useServerList } from '@/hooks/use-server-list';
 import { formatDateTime } from '@/lib/format';
 import { priorityLabel, providerDescriptionLabel } from '@/lib/labels';
 import { formatClock, dayLabel, minutesSince } from '@/lib/time';
@@ -39,7 +38,6 @@ import type {
     EventFilters,
     EventRow,
     EventsIndexProps,
-    EventsPagination,
     EventsSummary,
 } from '@/types/events';
 
@@ -58,13 +56,6 @@ const EMPTY_OPTIONS: EventFilterOptions = {
     categories: [],
     severities: [],
     statuses: [],
-};
-
-const EMPTY_PAGINATION: EventsPagination = {
-    page: 1,
-    perPage: 50,
-    total: 0,
-    lastPage: 1,
 };
 
 // ---- Quick date ranges ----
@@ -488,140 +479,98 @@ export default function EventsIndex() {
     const teamSlug = page.props.currentTeam?.slug ?? null;
     const events = pageProps.events ?? [];
     const pagination = pageProps.pagination ?? EMPTY_PAGINATION;
-    const serverFilters = pageProps.filters ?? EMPTY_FILTERS;
     const filterOptions = pageProps.filterOptions ?? EMPTY_OPTIONS;
     const summary = pageProps.summary ?? null;
     const unmappedCount = pageProps.unmappedCount ?? 0;
 
-    const [refreshing, setRefreshing] = useState(false);
-    const [filters, setFilters] = useState<EventFilters>(serverFilters);
+    const list = useServerList({
+        only: ['events', 'pagination'],
+        applyOnly: ['events', 'pagination', 'filters', 'unmappedCount'],
+        refreshOnly: ['events', 'pagination', 'summary', 'unmappedCount'],
+        filters: pageProps.filters ?? EMPTY_FILTERS,
+        emptyFilters: EMPTY_FILTERS,
+    });
 
-    useEffect(() => {
-        setFilters(serverFilters);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [JSON.stringify(serverFilters)]);
-
-    const applyFilters = useCallback((next: EventFilters) => {
-        setFilters(next);
-        router.reload({
-            only: ['events', 'pagination', 'filters', 'unmappedCount'],
-            data: {
-                q: next.q ?? undefined,
-                status: next.status ?? undefined,
-                event_type_id: next.event_type_id ?? undefined,
-                event_category_id: next.event_category_id ?? undefined,
-                event_severity_id: next.event_severity_id ?? undefined,
-                occurred_from: next.occurred_from ?? undefined,
-                occurred_until: next.occurred_until ?? undefined,
-                page: undefined,
-            },
-        });
-    }, []);
-
-    const goToPage = useCallback((target: number) => {
-        router.reload({
-            only: ['events', 'pagination'],
-            data: { page: target },
-        });
-    }, []);
-
-    const refresh = () => {
-        setRefreshing(true);
-        router.reload({
-            only: ['events', 'pagination', 'summary', 'unmappedCount'],
-            onFinish: () => setRefreshing(false),
-        });
-    };
-
-    const hasActive = Object.values(serverFilters).some(
-        (value) => value !== null,
-    );
-    const unmappedActive = filters.status === 'unmapped';
+    const hasActive = list.hasActiveFilters;
+    const unmappedActive = list.filters.status === 'unmapped';
 
     return (
         <>
             <Head title="Eventos" />
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                <PageHeader
-                    title="Eventos"
-                    meta={
-                        <span className="text-xs text-fg-3">
-                            <span className="font-medium text-fg-1">
-                                {pagination.total}
-                            </span>{' '}
-                            {hasActive
-                                ? 'con estos filtros'
-                                : 'eventos normalizados'}
-                            {summary && summary.last24h > 0 && (
-                                <>
-                                    {' · '}
-                                    <span className="text-severity-info">
-                                        {summary.last24h} en 24 h
-                                    </span>
-                                </>
-                            )}
-                        </span>
-                    }
-                    actions={
-                        <>
-                            <Button
-                                size="sm"
-                                variant={unmappedActive ? 'default' : 'outline'}
-                                onClick={() =>
-                                    applyFilters({
-                                        ...EMPTY_FILTERS,
-                                        status: unmappedActive
-                                            ? null
-                                            : 'unmapped',
-                                    })
-                                }
-                            >
-                                <Unlink size={13} />
-                                Sin mapear
-                                <span
-                                    className={cn(
-                                        'rounded-full px-1.5 font-mono text-3xs tabular-nums',
-                                        unmappedActive
-                                            ? 'bg-primary-foreground/20'
-                                            : unmappedCount > 0
-                                              ? 'bg-severity-high/15 text-severity-high'
-                                              : 'bg-surface-3 text-fg-3',
-                                    )}
-                                >
-                                    {unmappedCount}
+            <ListPage
+                title="Eventos"
+                meta={
+                    <span className="text-xs text-fg-3">
+                        <span className="font-medium text-fg-1">
+                            {pagination.total}
+                        </span>{' '}
+                        {hasActive
+                            ? 'con estos filtros'
+                            : 'eventos normalizados'}
+                        {summary && summary.last24h > 0 && (
+                            <>
+                                {' · '}
+                                <span className="text-severity-info">
+                                    {summary.last24h} en 24 h
                                 </span>
-                            </Button>
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={refresh}
-                                disabled={refreshing}
-                            >
-                                <RefreshCw
-                                    size={13}
-                                    className={cn(refreshing && 'animate-spin')}
-                                />
-                                Refrescar
-                            </Button>
-                        </>
-                    }
-                    className="shrink-0 border-b border-border bg-surface-1 px-5 py-3"
-                />
-
-                {summary && (
-                    <EventsPulse
-                        summary={summary}
-                        filters={filters}
-                        onApply={applyFilters}
+                            </>
+                        )}
+                    </span>
+                }
+                actions={
+                    <Button
+                        size="sm"
+                        variant={unmappedActive ? 'default' : 'outline'}
+                        onClick={() =>
+                            list.apply({
+                                ...EMPTY_FILTERS,
+                                status: unmappedActive ? null : 'unmapped',
+                            })
+                        }
+                    >
+                        <Unlink size={13} />
+                        Sin mapear
+                        <span
+                            className={cn(
+                                'rounded-full px-1.5 font-mono text-3xs tabular-nums',
+                                unmappedActive
+                                    ? 'bg-primary-foreground/20'
+                                    : unmappedCount > 0
+                                      ? 'bg-severity-high/15 text-severity-high'
+                                      : 'bg-surface-3 text-fg-3',
+                            )}
+                        >
+                            {unmappedCount}
+                        </span>
+                    </Button>
+                }
+                onRefresh={list.refresh}
+                refreshing={list.refreshing}
+                pulse={
+                    summary && (
+                        <EventsPulse
+                            summary={summary}
+                            filters={list.filters}
+                            onApply={list.apply}
+                        />
+                    )
+                }
+                filters={
+                    <FilterBar
+                        filters={list.filters}
+                        options={filterOptions}
+                        onApply={list.apply}
                     />
-                )}
-
-                <FilterBar
-                    filters={filters}
-                    options={filterOptions}
-                    onApply={applyFilters}
-                />
-
+                }
+                footer={
+                    <ListFooter
+                        pagination={pagination}
+                        shown={events.length}
+                        onPage={list.goToPage}
+                        noun={['evento', 'eventos']}
+                    />
+                }
+            >
                 <DataTable
                     columns={COLUMNS}
                     rows={events}
@@ -632,30 +581,17 @@ export default function EventsIndex() {
                         }
                     }}
                     empty={
-                        <EmptyState
-                            className="min-h-0 flex-1"
+                        <ListEmptyState
                             icon={Activity}
-                            title={
-                                hasActive
-                                    ? 'Sin eventos con estos filtros.'
-                                    : 'Aún no hay eventos normalizados.'
-                            }
-                            description={
-                                hasActive
-                                    ? 'Ajusta o limpia los filtros para ver más eventos.'
-                                    : 'Cuando el pipeline normalice eventos de tus integraciones aparecerán aquí.'
-                            }
+                            filtered={hasActive}
+                            title="Aún no hay eventos normalizados."
+                            description="Cuando el pipeline normalice eventos de tus integraciones aparecerán aquí."
+                            filteredTitle="Sin eventos con estos filtros."
+                            filteredDescription="Ajusta o limpia los filtros para ver más eventos."
                         />
                     }
                 />
-
-                <ListFooter
-                    pagination={pagination}
-                    shown={events.length}
-                    onPage={goToPage}
-                    noun={['evento', 'eventos']}
-                />
-            </div>
+            </ListPage>
         </>
     );
 }

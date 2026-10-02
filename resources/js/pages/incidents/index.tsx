@@ -1,31 +1,21 @@
 import { Head, router, usePage } from '@inertiajs/react';
-import {
-    Filter,
-    Inbox,
-    LayoutList,
-    Loader2,
-    RefreshCw,
-    Rows3,
-    Search,
-    X,
-} from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Inbox, LayoutList, Loader2, Rows3, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { DetailResizer } from '@/components/sam/detail-resizer';
 import { InboxGrouped } from '@/components/sam/inbox/inbox-grouped';
 import { InboxStream } from '@/components/sam/inbox/inbox-stream';
 import { InboxTable } from '@/components/sam/inbox/inbox-table';
 import { IncidentDetailPanel } from '@/components/sam/incident-detail';
-import { PermissionTooltip } from '@/components/sam/permission-tooltip';
-import { Button } from '@/components/ui/button';
 import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuRadioGroup,
-    DropdownMenuRadioItem,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+    ClearFiltersButton,
+    FilterDropdown,
+    SearchInput,
+} from '@/components/sam/list';
+import { RefreshButton } from '@/components/sam/list-page';
+import { PermissionTooltip } from '@/components/sam/permission-tooltip';
+import { TabBar } from '@/components/sam/tab-bar';
+import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
 import {
@@ -33,6 +23,7 @@ import {
     TooltipContent,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { hasActiveFilters, useServerList } from '@/hooks/use-server-list';
 import { TEAM_BROADCAST_EVENT_NAME } from '@/hooks/use-team-broadcasts';
 import type { TeamBroadcastDetail } from '@/hooks/use-team-broadcasts';
 import { postJson, readErrorMessage } from '@/lib/sam-fetch';
@@ -228,18 +219,10 @@ function PageHead({
                         ))}
                     </div>
 
-                    <Button
-                        variant="ghost"
-                        size="sm"
+                    <RefreshButton
                         onClick={onRefresh}
-                        disabled={refreshing}
-                    >
-                        <RefreshCw
-                            size={13}
-                            className={cn(refreshing && 'animate-spin')}
-                        />
-                        Refrescar
-                    </Button>
+                        refreshing={refreshing}
+                    />
 
                     {!canAssign ? (
                         <PermissionTooltip
@@ -288,23 +271,15 @@ function PageHead({
     );
 }
 
-// ---- TabBar ----
+// ---- Tabs ----
 
-interface TabBarProps {
-    tab: InboxTab;
-    setTab: (t: InboxTab) => void;
-    density: InboxDensity;
-    setDensity: (d: InboxDensity) => void;
-    openIncidents: MockIncident[];
-}
-
-const TABS: { value: InboxTab; label: string }[] = [
-    { value: 'open', label: 'Abiertos' },
-    { value: 'mine', label: 'Míos' },
-    { value: 'unassigned', label: 'Sin asignar' },
-    { value: 'sla', label: 'SLA crítico' },
-    { value: 'all', label: 'Todos' },
-    { value: 'discarded', label: 'Descartados' },
+const TABS: { key: InboxTab; label: string }[] = [
+    { key: 'open', label: 'Abiertos' },
+    { key: 'mine', label: 'Míos' },
+    { key: 'unassigned', label: 'Sin asignar' },
+    { key: 'sla', label: 'SLA crítico' },
+    { key: 'all', label: 'Todos' },
+    { key: 'discarded', label: 'Descartados' },
 ];
 
 const DENSITY_OPTS: { value: InboxDensity; label: string }[] = [
@@ -313,221 +288,95 @@ const DENSITY_OPTS: { value: InboxDensity; label: string }[] = [
     { value: 'relaxed', label: 'R' },
 ];
 
-function TabBar({
-    tab,
-    setTab,
+function DensityToggle({
     density,
     setDensity,
-    openIncidents,
-}: TabBarProps) {
+}: {
+    density: InboxDensity;
+    setDensity: (d: InboxDensity) => void;
+}) {
+    // En móvil la bandeja usa tarjetas, no filas.
     return (
-        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-surface-1 px-5">
-            <nav className="scrollbar-none flex min-w-0 flex-1 items-center gap-0 overflow-x-auto">
-                {TABS.map((t) => (
-                    <button
-                        key={t.value}
-                        type="button"
-                        onClick={() => setTab(t.value)}
-                        className={cn(
-                            '-mb-px shrink-0 border-b-2 px-3.5 py-2.5 text-xs font-medium whitespace-nowrap transition-colors',
-                            tab === t.value
-                                ? 'border-primary text-fg-1'
-                                : 'border-transparent text-fg-3 hover:text-fg-2',
-                        )}
-                    >
-                        {t.label}
-                        {t.value === 'open' && openIncidents.length > 0 && (
-                            <span className="ml-1.5 font-mono text-3xs text-fg-3">
-                                {openIncidents.length}
-                            </span>
-                        )}
-                    </button>
-                ))}
-            </nav>
-
-            {/* Density: en móvil la bandeja usa tarjetas, no filas. */}
-            <div className="hidden shrink-0 items-center gap-1 py-1.5 sm:flex">
-                {DENSITY_OPTS.map((d) => (
-                    <button
-                        key={d.value}
-                        type="button"
-                        onClick={() => setDensity(d.value)}
-                        className={cn(
-                            'h-6 w-6 rounded-sm text-3xs font-semibold transition-colors',
-                            density === d.value
-                                ? 'bg-surface-3 text-fg-1'
-                                : 'text-fg-3 hover:text-fg-2',
-                        )}
-                        title={d.value}
-                    >
-                        {d.label}
-                    </button>
-                ))}
-            </div>
+        <div className="hidden shrink-0 items-center gap-1 py-1.5 sm:flex">
+            {DENSITY_OPTS.map((d) => (
+                <button
+                    key={d.value}
+                    type="button"
+                    onClick={() => setDensity(d.value)}
+                    className={cn(
+                        'h-6 w-6 rounded-sm text-3xs font-semibold transition-colors',
+                        density === d.value
+                            ? 'bg-surface-3 text-fg-1'
+                            : 'text-fg-3 hover:text-fg-2',
+                    )}
+                    title={d.value}
+                >
+                    {d.label}
+                </button>
+            ))}
         </div>
     );
 }
 
 // ---- FilterBar ----
 
-interface FilterDropdownProps {
-    label: string;
-    value: string | null;
-    options: { value: string; label: string }[];
-    onChange: (value: string | null) => void;
-}
-
-function FilterDropdown({
-    label,
-    value,
-    options,
-    onChange,
-}: FilterDropdownProps) {
-    const active = value !== null;
-    const activeLabel = options.find((o) => o.value === value)?.label;
-
-    return (
-        <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-                <button
-                    type="button"
-                    className={cn(
-                        'flex shrink-0 items-center gap-1 rounded-sm border px-2.5 py-1.5 text-2xs whitespace-nowrap transition-colors',
-                        active
-                            ? 'border-primary/40 bg-primary/10 text-primary'
-                            : 'border-border bg-surface-1 text-fg-2 hover:border-border-strong',
-                    )}
-                >
-                    <Filter size={11} />
-                    {active && activeLabel ? `${label}: ${activeLabel}` : label}
-                </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-                align="start"
-                className="max-h-72 overflow-y-auto"
-            >
-                <DropdownMenuRadioGroup
-                    value={value ?? ''}
-                    onValueChange={(v) => onChange(v === '' ? null : v)}
-                >
-                    <DropdownMenuRadioItem value="">
-                        Todos
-                    </DropdownMenuRadioItem>
-                    {options.length > 0 && <DropdownMenuSeparator />}
-                    {options.map((o) => (
-                        <DropdownMenuRadioItem key={o.value} value={o.value}>
-                            {o.label}
-                        </DropdownMenuRadioItem>
-                    ))}
-                </DropdownMenuRadioGroup>
-            </DropdownMenuContent>
-        </DropdownMenu>
-    );
-}
-
 interface FilterBarProps {
     filters: InboxFilters;
     options: InboxFilterOptions;
     onApply: (next: InboxFilters) => void;
+    onReset: () => void;
 }
 
-function FilterBar({ filters, options, onApply }: FilterBarProps) {
-    const [search, setSearch] = useState(filters.q ?? '');
-
-    // Keep the input in sync when filters are reset/changed externally.
-    useEffect(() => {
-        setSearch(filters.q ?? '');
-    }, [filters.q]);
-
-    // Debounce the free-text search before firing a reload.
-    useEffect(() => {
-        const current = filters.q ?? '';
-        const next = search.trim();
-
-        if (next === current) {
-            return;
-        }
-
-        const timer = setTimeout(() => {
-            onApply({ ...filters, q: next === '' ? null : next });
-        }, 350);
-
-        return () => clearTimeout(timer);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [search]);
-
+function FilterBar({ filters, options, onApply, onReset }: FilterBarProps) {
     const providerOptions = options.providers.map((p) => ({
         value: p,
         label: p,
     }));
 
-    const hasActive =
-        filters.q !== null ||
-        filters.severity !== null ||
-        filters.status !== null ||
-        filters.provider !== null ||
-        filters.shift !== null;
-
     return (
         <div className="scrollbar-none flex shrink-0 items-center gap-2 overflow-x-auto border-b border-border bg-background px-5 py-2">
-            <div className="mr-1 flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-surface-1 px-2.5 py-1.5 text-xs text-fg-3">
-                <Search size={12} />
-                <input
-                    type="text"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Buscar incidente…"
-                    className="w-40 border-none bg-transparent text-xs text-fg-1 outline-none placeholder:text-fg-3"
-                />
-            </div>
+            <SearchInput
+                value={filters.q}
+                onApply={(q) => onApply({ ...filters, q })}
+                placeholder="Buscar incidente…"
+                className="mr-1 shrink-0"
+            />
 
             <FilterDropdown
                 label="Severidad"
                 value={filters.severity}
                 options={options.severities}
                 onChange={(v) => onApply({ ...filters, severity: v })}
+                className="shrink-0"
             />
             <FilterDropdown
                 label="Estado"
                 value={filters.status}
                 options={options.statuses}
                 onChange={(v) => onApply({ ...filters, status: v })}
+                className="shrink-0"
             />
             <FilterDropdown
                 label="Proveedor"
                 value={filters.provider}
                 options={providerOptions}
                 onChange={(v) => onApply({ ...filters, provider: v })}
+                className="shrink-0"
             />
             <FilterDropdown
                 label="Turno"
                 value={filters.shift}
                 options={options.shifts}
                 onChange={(v) => onApply({ ...filters, shift: v })}
+                className="shrink-0"
             />
 
-            {hasActive && (
-                <button
-                    type="button"
-                    onClick={() =>
-                        onApply({
-                            q: null,
-                            severity: null,
-                            status: null,
-                            provider: null,
-                            shift: null,
-                        })
-                    }
-                    className="flex shrink-0 items-center gap-1 rounded-sm border border-dashed border-border px-2.5 py-1.5 text-2xs whitespace-nowrap text-fg-3 transition-colors hover:border-border-strong"
-                >
-                    <X size={11} />
-                    Limpiar
-                </button>
+            {hasActiveFilters(filters) && (
+                <ClearFiltersButton onClick={onReset} className="shrink-0" />
             )}
         </div>
     );
 }
-
 // ---- InboxFooter ----
 
 function InboxFooter({
@@ -600,8 +449,33 @@ function DetailPlaceholder({
     );
 }
 
-// ---- Main page ----
+// ---- Incident actions ----
 
+const NETWORK_ERROR = 'Error de red. Vuelve a intentarlo.';
+
+/**
+ * POST de una acción sobre un incidente. `null` = error de red. Vive fuera
+ * del componente: el React Compiler aún no compila condicionales dentro de
+ * try/catch.
+ */
+async function postIncidentAction(
+    url: string,
+    body: Record<string, unknown>,
+): Promise<{ ok: boolean; status: number; message: string | null } | null> {
+    try {
+        const response = await postJson(url, body);
+
+        return {
+            ok: response.ok,
+            status: response.status,
+            message: response.ok ? null : await readErrorMessage(response),
+        };
+    } catch {
+        return null;
+    }
+}
+
+// ---- Main page ----
 interface IncidentsIndexProps {
     incidents: MockIncident[];
     filters: InboxFilters;
@@ -641,7 +515,6 @@ export default function IncidentsIndex() {
         () => pageProps.incidents ?? [],
         [pageProps.incidents],
     );
-    const serverFilters = pageProps.filters ?? EMPTY_FILTERS;
     const filterOptions = pageProps.filterOptions ?? EMPTY_OPTIONS;
     const can = pageProps.can ?? NO_ABILITIES;
     const teamSlug = page.props.currentTeam?.slug ?? null;
@@ -657,39 +530,31 @@ export default function IncidentsIndex() {
         Record<string, IncidentDetail>
     >({});
     const [failedIds, setFailedIds] = useState<Set<string>>(new Set());
-    const [refreshing, setRefreshing] = useState(false);
-    const [filters, setFilters] = useState<InboxFilters>(serverFilters);
     const [bulkPending, setBulkPending] = useState<string | null>(null);
     const [assigningOldest, setAssigningOldest] = useState(false);
     /** Incidente cuya toma/liberación está en vuelo, para bloquear su botón. */
     const [claimPendingId, setClaimPendingId] = useState<number | null>(null);
 
-    // Re-sync local filter state if the server echoes a different set
-    // (e.g. after a browser back/forward navigation).
-    useEffect(() => {
-        setFilters(serverFilters);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [
-        serverFilters.q,
-        serverFilters.severity,
-        serverFilters.status,
-        serverFilters.provider,
-        serverFilters.shift,
-    ]);
+    const list = useServerList({
+        only: ['incidents'],
+        filters: pageProps.filters ?? EMPTY_FILTERS,
+        emptyFilters: EMPTY_FILTERS,
+        // Refrescar también tira los detalles cacheados del panel.
+        onRefreshFinish: () => {
+            setDetailCache({});
+            setFailedIds(new Set());
+        },
+    });
 
-    const openIncidents = useMemo(
-        () =>
-            incidents.filter(
-                (i) => !['resolved', 'closed', 'discarded'].includes(i.status),
-            ),
-        [incidents],
+    const openIncidents = incidents.filter(
+        (i) => !['resolved', 'closed', 'discarded'].includes(i.status),
     );
 
     const critical = openIncidents.filter(
         (i) => i.severity === 'critical',
     ).length;
 
-    const rows = useMemo(() => {
+    const rows = (() => {
         let source: MockIncident[];
 
         switch (tab) {
@@ -723,7 +588,7 @@ export default function IncidentsIndex() {
         }
 
         return source;
-    }, [tab, openIncidents, incidents, currentUserId]);
+    })();
 
     const selectedRow = useMemo(
         () => incidents.find((i) => i.id === selectedId) ?? null,
@@ -776,35 +641,9 @@ export default function IncidentsIndex() {
         return () => controller.abort();
     }, [selectedId, selectedRow, teamSlug, detailCache, failedIds]);
 
-    const refresh = () => {
-        setRefreshing(true);
-        router.reload({
-            only: ['incidents'],
-            onFinish: () => {
-                setRefreshing(false);
-                setDetailCache({});
-                setFailedIds(new Set());
-            },
-        });
-    };
-
-    const applyFilters = useCallback((next: InboxFilters) => {
-        setFilters(next);
-        router.reload({
-            only: ['incidents', 'filters'],
-            data: {
-                q: next.q ?? undefined,
-                severity: next.severity ?? undefined,
-                status: next.status ?? undefined,
-                provider: next.provider ?? undefined,
-                shift: next.shift ?? undefined,
-            },
-        });
-    }, []);
-
     // Invalidate the cached detail for the open incident and refresh the list
     // after a panel action mutates server state.
-    const handlePanelMutated = useCallback(() => {
+    const handlePanelMutated = () => {
         router.reload({ only: ['incidents'] });
 
         if (selectedId !== null) {
@@ -821,7 +660,7 @@ export default function IncidentsIndex() {
                 return next;
             });
         }
-    }, [selectedId]);
+    };
 
     // Live updates: a freshly created or updated incident (status change,
     // assignment, media assessed) refreshes the inbox list. Bursts (a
@@ -918,6 +757,216 @@ export default function IncidentsIndex() {
         };
     }, []);
 
+    const assignIncidentToMe = async (incident: MockIncident) => {
+        if (teamSlug === null || currentUserId === null) {
+            return;
+        }
+
+        const result = await postIncidentAction(
+            `/${teamSlug}/incidents/${incident.incidentId}/assign`,
+            { assigned_to_type: 'user', assigned_to_id: currentUserId },
+        );
+
+        if (result === null) {
+            toast.error(NETWORK_ERROR);
+        } else if (result.ok) {
+            toast.success(`Te asignaste ${incident.id}.`);
+            router.reload({ only: ['incidents'] });
+        } else {
+            toast.error(result.message ?? 'No se pudo asignar el incidente.');
+        }
+    };
+
+    /**
+     * Toma/suelta desde la fila. El 409 no es un error del usuario sino una
+     * carrera perdida: se avisa con el mensaje del servidor y se refresca para
+     * que la fila pase a mostrar quién ganó.
+     */
+    const toggleClaim = async (incident: MockIncident) => {
+        if (teamSlug === null) {
+            return;
+        }
+
+        const mine =
+            incident.claimedBy !== null &&
+            incident.claimedBy.id === currentUserId;
+        const action = mine ? 'release' : 'claim';
+
+        setClaimPendingId(incident.incidentId);
+
+        const result = await postIncidentAction(
+            `/${teamSlug}/incidents/${incident.incidentId}/${action}`,
+            {},
+        );
+
+        if (result === null) {
+            toast.error(NETWORK_ERROR);
+        } else if (result.ok) {
+            toast.success(
+                mine ? `Soltaste ${incident.id}.` : `Tomaste ${incident.id}.`,
+            );
+            router.reload({ only: ['incidents'] });
+        } else {
+            toast.error(result.message ?? 'No se pudo completar la acción.');
+
+            if (result.status === 409) {
+                router.reload({ only: ['incidents'] });
+            }
+        }
+
+        setClaimPendingId(null);
+    };
+    const handleToggle = (id: string) => {
+        setSelectedSet((prev) => {
+            const next = new Set(prev);
+
+            if (next.has(id)) {
+                next.delete(id);
+            } else {
+                next.add(id);
+            }
+
+            return next;
+        });
+    };
+
+    const handleSelectAll = () => {
+        if (selectedSet.size === rows.length) {
+            setSelectedSet(new Set());
+        } else {
+            setSelectedSet(new Set(rows.map((r) => r.id)));
+        }
+    };
+
+    const handleSelect = (id: string) => {
+        setSelectedId((prev) => (prev === id ? null : id));
+    };
+
+    // Run a bulk action over the current selection, then refresh + clear.
+    const runBulk = async (
+        key: string,
+        buildBody: (incident: MockIncident) => Record<string, unknown>,
+        path: string,
+        verb: string,
+    ) => {
+        if (teamSlug === null) {
+            toast.error('No hay equipo activo.');
+
+            return;
+        }
+
+        const targets = incidents.filter((i) => selectedSet.has(i.id));
+
+        if (targets.length === 0) {
+            return;
+        }
+
+        setBulkPending(key);
+
+        const results = await Promise.allSettled(
+            targets.map((incident) =>
+                postJson(
+                    `/${teamSlug}/incidents/${incident.incidentId}/${path}`,
+                    buildBody(incident),
+                ),
+            ),
+        );
+
+        const ok = results.filter(
+            (r) => r.status === 'fulfilled' && r.value.ok,
+        ).length;
+        const failed = targets.length - ok;
+
+        setBulkPending(null);
+        setSelectedSet(new Set());
+
+        if (ok > 0) {
+            toast.success(`${ok} ${verb}.`);
+        }
+
+        if (failed > 0) {
+            toast.error(`${failed} no se pudieron procesar.`);
+        }
+
+        router.reload({ only: ['incidents'] });
+    };
+
+    const bulkAssign = () => {
+        if (currentUserId === null) {
+            toast.error('No se pudo identificar tu usuario.');
+
+            return;
+        }
+
+        void runBulk(
+            'assign',
+            () => ({ assigned_to_type: 'user', assigned_to_id: currentUserId }),
+            'assign',
+            'asignados',
+        );
+    };
+
+    const bulkEscalate = () =>
+        void runBulk('escalate', () => ({}), 'escalate', 'escalados');
+
+    const bulkDiscard = () =>
+        void runBulk(
+            'discard',
+            () => ({
+                resolution_code: 'false_positive',
+                summary: 'Descartado por el operador.',
+            }),
+            'resolve',
+            'descartados',
+        );
+
+    const assignOldestCritical = async () => {
+        if (teamSlug === null) {
+            toast.error('No hay equipo activo.');
+
+            return;
+        }
+
+        if (currentUserId === null) {
+            toast.error('No se pudo identificar tu usuario.');
+
+            return;
+        }
+
+        const candidates = openIncidents.filter(
+            (i) => i.severity === 'critical',
+        );
+
+        if (candidates.length === 0) {
+            toast('No hay incidentes críticos abiertos.');
+
+            return;
+        }
+
+        const oldest = candidates.reduce((a, b) =>
+            a.ageMin >= b.ageMin ? a : b,
+        );
+
+        setAssigningOldest(true);
+
+        const result = await postIncidentAction(
+            `/${teamSlug}/incidents/${oldest.incidentId}/assign`,
+            { assigned_to_type: 'user', assigned_to_id: currentUserId },
+        );
+
+        if (result === null) {
+            toast.error(NETWORK_ERROR);
+        } else if (result.ok) {
+            toast.success(`Te asignaste ${oldest.id}.`);
+            router.reload({ only: ['incidents'] });
+        } else if (result.status === 403) {
+            toast.error('No tienes permisos para asignar.');
+        } else {
+            toast.error(result.message ?? 'No se pudo asignar el incidente.');
+        }
+
+        setAssigningOldest(false);
+    };
     // Atajos de teclado que el footer anuncia (F2.2): J/K navegar, Enter
     // abrir, X seleccionar, A asignarme, Esc cerrar el panel. Nunca dentro
     // de inputs ni diálogos.
@@ -989,232 +1038,6 @@ export default function IncidentsIndex() {
         return () => window.removeEventListener('keydown', handler);
     });
 
-    const assignIncidentToMe = async (incident: MockIncident) => {
-        if (teamSlug === null || currentUserId === null) {
-            return;
-        }
-
-        try {
-            const response = await postJson(
-                `/${teamSlug}/incidents/${incident.incidentId}/assign`,
-                { assigned_to_type: 'user', assigned_to_id: currentUserId },
-            );
-
-            if (response.ok) {
-                toast.success(`Te asignaste ${incident.id}.`);
-                router.reload({ only: ['incidents'] });
-            } else {
-                const message = await readErrorMessage(response);
-                toast.error(message ?? 'No se pudo asignar el incidente.');
-            }
-        } catch {
-            toast.error('Error de red. Vuelve a intentarlo.');
-        }
-    };
-
-    /**
-     * Toma/suelta desde la fila. El 409 no es un error del usuario sino una
-     * carrera perdida: se avisa con el mensaje del servidor y se refresca para
-     * que la fila pase a mostrar quién ganó.
-     */
-    const toggleClaim = async (incident: MockIncident) => {
-        if (teamSlug === null) {
-            return;
-        }
-
-        const mine =
-            incident.claimedBy !== null &&
-            incident.claimedBy.id === currentUserId;
-        const action = mine ? 'release' : 'claim';
-
-        setClaimPendingId(incident.incidentId);
-
-        try {
-            const response = await postJson(
-                `/${teamSlug}/incidents/${incident.incidentId}/${action}`,
-                {},
-            );
-
-            if (response.ok) {
-                toast.success(
-                    mine
-                        ? `Soltaste ${incident.id}.`
-                        : `Tomaste ${incident.id}.`,
-                );
-                router.reload({ only: ['incidents'] });
-            } else {
-                const message = await readErrorMessage(response);
-                toast.error(message ?? 'No se pudo completar la acción.');
-
-                if (response.status === 409) {
-                    router.reload({ only: ['incidents'] });
-                }
-            }
-        } catch {
-            toast.error('Error de red. Vuelve a intentarlo.');
-        } finally {
-            setClaimPendingId(null);
-        }
-    };
-
-    const handleToggle = (id: string) => {
-        setSelectedSet((prev) => {
-            const next = new Set(prev);
-
-            if (next.has(id)) {
-                next.delete(id);
-            } else {
-                next.add(id);
-            }
-
-            return next;
-        });
-    };
-
-    const handleSelectAll = () => {
-        if (selectedSet.size === rows.length) {
-            setSelectedSet(new Set());
-        } else {
-            setSelectedSet(new Set(rows.map((r) => r.id)));
-        }
-    };
-
-    const handleSelect = (id: string) => {
-        setSelectedId((prev) => (prev === id ? null : id));
-    };
-
-    // Run a bulk action over the current selection, then refresh + clear.
-    const runBulk = useCallback(
-        async (
-            key: string,
-            buildBody: (incident: MockIncident) => Record<string, unknown>,
-            path: string,
-            verb: string,
-        ) => {
-            if (teamSlug === null) {
-                toast.error('No hay equipo activo.');
-
-                return;
-            }
-
-            const targets = incidents.filter((i) => selectedSet.has(i.id));
-
-            if (targets.length === 0) {
-                return;
-            }
-
-            setBulkPending(key);
-
-            const results = await Promise.allSettled(
-                targets.map((incident) =>
-                    postJson(
-                        `/${teamSlug}/incidents/${incident.incidentId}/${path}`,
-                        buildBody(incident),
-                    ),
-                ),
-            );
-
-            const ok = results.filter(
-                (r) => r.status === 'fulfilled' && r.value.ok,
-            ).length;
-            const failed = targets.length - ok;
-
-            setBulkPending(null);
-            setSelectedSet(new Set());
-
-            if (ok > 0) {
-                toast.success(`${ok} ${verb}.`);
-            }
-
-            if (failed > 0) {
-                toast.error(`${failed} no se pudieron procesar.`);
-            }
-
-            router.reload({ only: ['incidents'] });
-        },
-        [incidents, selectedSet, teamSlug],
-    );
-
-    const bulkAssign = () => {
-        if (currentUserId === null) {
-            toast.error('No se pudo identificar tu usuario.');
-
-            return;
-        }
-
-        void runBulk(
-            'assign',
-            () => ({ assigned_to_type: 'user', assigned_to_id: currentUserId }),
-            'assign',
-            'asignados',
-        );
-    };
-
-    const bulkEscalate = () =>
-        void runBulk('escalate', () => ({}), 'escalate', 'escalados');
-
-    const bulkDiscard = () =>
-        void runBulk(
-            'discard',
-            () => ({
-                resolution_code: 'false_positive',
-                summary: 'Descartado por el operador.',
-            }),
-            'resolve',
-            'descartados',
-        );
-
-    const assignOldestCritical = async () => {
-        if (teamSlug === null) {
-            toast.error('No hay equipo activo.');
-
-            return;
-        }
-
-        if (currentUserId === null) {
-            toast.error('No se pudo identificar tu usuario.');
-
-            return;
-        }
-
-        const candidates = openIncidents.filter(
-            (i) => i.severity === 'critical',
-        );
-
-        if (candidates.length === 0) {
-            toast('No hay incidentes críticos abiertos.');
-
-            return;
-        }
-
-        const oldest = candidates.reduce((a, b) =>
-            a.ageMin >= b.ageMin ? a : b,
-        );
-
-        setAssigningOldest(true);
-
-        try {
-            const response = await postJson(
-                `/${teamSlug}/incidents/${oldest.incidentId}/assign`,
-                { assigned_to_type: 'user', assigned_to_id: currentUserId },
-            );
-
-            if (response.ok) {
-                toast.success(`Te asignaste ${oldest.id}.`);
-                router.reload({ only: ['incidents'] });
-            } else if (response.status === 403) {
-                toast.error('No tienes permisos para asignar.');
-            } else {
-                const message = await readErrorMessage(response);
-                toast.error(message ?? 'No se pudo asignar el incidente.');
-            }
-        } catch {
-            toast.error('Error de red. Vuelve a intentarlo.');
-        } finally {
-            setAssigningOldest(false);
-        }
-    };
-
     const hasIncidents = incidents.length > 0;
 
     return (
@@ -1248,8 +1071,8 @@ export default function IncidentsIndex() {
                         criticalCount={critical}
                         layout={layout}
                         setLayout={setLayout}
-                        onRefresh={refresh}
-                        refreshing={refreshing}
+                        onRefresh={list.refresh}
+                        refreshing={list.refreshing}
                         onAssignOldestCritical={() =>
                             void assignOldestCritical()
                         }
@@ -1258,17 +1081,30 @@ export default function IncidentsIndex() {
                     />
 
                     <TabBar
-                        tab={tab}
-                        setTab={setTab}
-                        density={density}
-                        setDensity={setDensity}
-                        openIncidents={openIncidents}
+                        aria-label="Vistas de la bandeja"
+                        items={TABS.map((t) => ({
+                            ...t,
+                            count:
+                                t.key === 'open' && openIncidents.length > 0
+                                    ? openIncidents.length
+                                    : undefined,
+                        }))}
+                        value={tab}
+                        onChange={(key) => setTab(key as InboxTab)}
+                        actions={
+                            <DensityToggle
+                                density={density}
+                                setDensity={setDensity}
+                            />
+                        }
+                        className="shrink-0 bg-surface-1 px-5"
                     />
 
                     <FilterBar
-                        filters={filters}
+                        filters={list.filters}
                         options={filterOptions}
-                        onApply={applyFilters}
+                        onApply={list.apply}
+                        onReset={list.reset}
                     />
 
                     {!hasIncidents ? (

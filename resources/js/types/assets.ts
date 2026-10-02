@@ -1,5 +1,6 @@
 import type { LinkedIncidentEntry } from '@/components/sam/linked-incidents-card';
 import type { RecentEventEntry } from '@/components/sam/recent-events-card';
+import type { ListPagination } from '@/types/pagination';
 
 export type AssetStatusValue =
     | 'active'
@@ -105,13 +106,6 @@ export interface MonitoringSummary {
     overCap: boolean;
 }
 
-export interface AssetsPagination {
-    page: number;
-    perPage: number;
-    total: number;
-    lastPage: number;
-}
-
 /** Pulso de toda la flota del tenant (ignora filtros). */
 export interface AssetsSummary {
     total: number;
@@ -126,7 +120,7 @@ export interface AssetsSummary {
 
 export interface AssetsIndexProps {
     assets: AssetRow[];
-    pagination: AssetsPagination;
+    pagination: ListPagination;
     filters: AssetFilters;
     filterOptions: AssetFilterOptions;
     summary?: AssetsSummary;

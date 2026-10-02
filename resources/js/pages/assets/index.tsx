@@ -7,34 +7,32 @@ import {
     Navigation,
     Radio,
     RadioTower,
-    RefreshCw,
     Siren,
     Truck,
     Wrench,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { AssetsTable } from '@/components/sam/assets/assets-table';
 import {
     ClearFiltersButton,
+    EMPTY_PAGINATION,
     FilterDropdown,
     ListFooter,
     SearchInput,
 } from '@/components/sam/list';
+import { ListEmptyState, ListPage } from '@/components/sam/list-page';
 import { PulseStat, PulseStrip } from '@/components/sam/pulse-strip';
 import { SegmentedFilter } from '@/components/sam/segmented-filter';
 import { Button } from '@/components/ui/button';
-import { EmptyState } from '@/components/ui/empty-state';
-import { PageHeader } from '@/components/ui/page-header';
+import { useServerList } from '@/hooks/use-server-list';
 import { TEAM_BROADCAST_EVENT_NAME } from '@/hooks/use-team-broadcasts';
 import type { TeamBroadcastDetail } from '@/hooks/use-team-broadcasts';
-import { cn } from '@/lib/utils';
 import type {
     AssetFilterOptions,
     AssetFilters,
     AssetRow,
     AssetsIndexProps,
-    AssetsPagination,
     AssetsSummary,
     MonitoringSummary,
 } from '@/types/assets';
@@ -122,67 +120,6 @@ const STATUS_DOT: Record<string, string> = {
     critical: 'bg-severity-critical',
     maintenance: 'bg-severity-medium',
 };
-
-// ---- PageHead ----
-
-function PageHead({
-    total,
-    reporting,
-    teamSlug,
-    onRefresh,
-    refreshing,
-}: {
-    total: number;
-    reporting: number | null;
-    teamSlug: string | null;
-    onRefresh: () => void;
-    refreshing: boolean;
-}) {
-    return (
-        <PageHeader
-            title="Flota"
-            meta={
-                <span className="text-xs text-fg-3">
-                    <span className="font-medium text-fg-1">{total}</span>{' '}
-                    {total === 1 ? 'unidad' : 'unidades'}
-                    {reporting !== null && (
-                        <>
-                            {' · '}
-                            <span className="text-severity-low">
-                                {reporting} reportando ahora
-                            </span>
-                        </>
-                    )}
-                </span>
-            }
-            actions={
-                <>
-                    {teamSlug && (
-                        <Button variant="outline" size="sm" asChild>
-                            <Link href={`/${teamSlug}/assets/map`}>
-                                <MapIcon size={13} />
-                                Mapa en vivo
-                            </Link>
-                        </Button>
-                    )}
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={onRefresh}
-                        disabled={refreshing}
-                    >
-                        <RefreshCw
-                            size={13}
-                            className={cn(refreshing && 'animate-spin')}
-                        />
-                        Refrescar
-                    </Button>
-                </>
-            }
-            className="shrink-0 border-b border-border bg-surface-1 px-5 py-3"
-        />
-    );
-}
 
 // ---- Pending banner ----
 
@@ -440,23 +377,6 @@ function FilterBar({ filters, options, summary, onApply }: FilterBarProps) {
     );
 }
 
-// ---- Empty state ----
-
-function FleetEmptyState({ filtered }: { filtered: boolean }) {
-    return (
-        <EmptyState
-            className="min-h-0 flex-1"
-            icon={Truck}
-            title={filtered ? 'Sin resultados' : 'Sin unidades'}
-            description={
-                filtered
-                    ? 'Ninguna unidad coincide con los filtros aplicados.'
-                    : 'Cuando la sincronización de integraciones registre vehículos aparecerán aquí.'
-            }
-        />
-    );
-}
-
 // ---- Main page ----
 
 const EMPTY_FILTERS: AssetFilters = {
@@ -472,76 +392,32 @@ const EMPTY_OPTIONS: AssetFilterOptions = {
     monitoring: [],
 };
 
-const EMPTY_PAGINATION: AssetsPagination = {
-    page: 1,
-    perPage: 50,
-    total: 0,
-    lastPage: 1,
-};
-
 export default function AssetsIndex() {
     const page = usePage();
     const pageProps = page.props as unknown as AssetsIndexProps;
     const teamSlug = page.props.currentTeam?.slug ?? null;
-    const serverAssets = pageProps.assets;
     const [livePositions, setLivePositions] = useState<
         Map<number, FleetPosition>
     >(() => new Map());
-    const assets = useMemo(
-        () =>
-            (serverAssets ?? []).map((asset) =>
-                withLivePosition(asset, livePositions.get(asset.id)),
-            ),
-        [serverAssets, livePositions],
+    const assets = (pageProps.assets ?? []).map((asset) =>
+        withLivePosition(asset, livePositions.get(asset.id)),
     );
     const pagination = pageProps.pagination ?? EMPTY_PAGINATION;
-    const serverFilters = pageProps.filters ?? EMPTY_FILTERS;
     const filterOptions = pageProps.filterOptions ?? EMPTY_OPTIONS;
     const summary = pageProps.summary ?? null;
     const monitoring = pageProps.monitoring ?? null;
 
-    const [refreshing, setRefreshing] = useState(false);
     const [monitoringAll, setMonitoringAll] = useState(false);
-    const [filters, setFilters] = useState<AssetFilters>(serverFilters);
-
-    // Re-sync local filter state if the server echoes a different set
-    // (e.g. after a browser back/forward navigation).
-    useEffect(() => {
-        setFilters(serverFilters);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [
-        serverFilters.q,
-        serverFilters.status,
-        serverFilters.type,
-        serverFilters.monitoring,
-    ]);
-
-    const refresh = () => {
-        setRefreshing(true);
-        router.reload({
-            only: ['assets', 'pagination', 'summary', 'monitoring'],
-            onFinish: () => setRefreshing(false),
-        });
-    };
-
-    const applyFilters = useCallback((next: AssetFilters) => {
-        setFilters(next);
-        router.reload({
-            only: ['assets', 'pagination', 'filters'],
-            data: {
-                q: next.q ?? undefined,
-                status: next.status ?? undefined,
-                type: next.type ?? undefined,
-                monitoring: next.monitoring ?? undefined,
-                // Changing filters always restarts at the first page.
-                page: undefined,
-            },
-        });
-    }, []);
+    const list = useServerList({
+        only: ['assets', 'pagination'],
+        refreshOnly: ['assets', 'pagination', 'summary', 'monitoring'],
+        filters: pageProps.filters ?? EMPTY_FILTERS,
+        emptyFilters: EMPTY_FILTERS,
+    });
 
     // "Vigilar todas": enciende cada unidad pendiente. El servidor avisa si
     // con eso se rebasa el tope (se cobra como extra, no se bloquea).
-    const monitorAllPending = useCallback(() => {
+    const monitorAllPending = () => {
         if (teamSlug === null) {
             return;
         }
@@ -587,14 +463,7 @@ export default function AssetsIndex() {
             },
             onError: () => setMonitoringAll(false),
         });
-    }, [teamSlug]);
-
-    const goToPage = useCallback((target: number) => {
-        router.reload({
-            only: ['assets', 'pagination'],
-            data: { page: target },
-        });
-    }, []);
+    };
 
     // Live updates: location polls and status transitions refresh the list
     // and the pulse strip. Bursts are coalesced into a single partial reload
@@ -696,81 +565,106 @@ export default function AssetsIndex() {
         };
     }, []);
 
-    const hasActiveFilters =
-        serverFilters.q !== null ||
-        serverFilters.status !== null ||
-        serverFilters.type !== null ||
-        serverFilters.monitoring !== null;
+    const handleSelect = (id: number) => {
+        if (teamSlug !== null) {
+            router.visit(`/${teamSlug}/assets/${id}`);
+        }
+    };
 
-    const handleSelect = useCallback(
-        (id: number) => {
-            if (teamSlug !== null) {
-                router.visit(`/${teamSlug}/assets/${id}`);
-            }
-        },
-        [teamSlug],
-    );
+    const total = summary?.total ?? pagination.total;
 
     return (
         <>
             <Head title="Flota" />
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                <PageHead
-                    total={summary?.total ?? pagination.total}
-                    reporting={summary?.reporting ?? null}
-                    teamSlug={teamSlug}
-                    onRefresh={refresh}
-                    refreshing={refreshing}
-                />
-
-                {monitoring && (
-                    <PendingBanner
-                        monitoring={monitoring}
-                        teamSlug={teamSlug}
-                        busy={monitoringAll}
-                        onShowPending={() =>
-                            applyFilters({ ...filters, monitoring: 'pending' })
-                        }
-                        onMonitorAll={monitorAllPending}
-                    />
-                )}
-
-                {summary && (
-                    <FleetPulse
+            <ListPage
+                title="Flota"
+                meta={
+                    <span className="text-xs text-fg-3">
+                        <span className="font-medium text-fg-1">{total}</span>{' '}
+                        {total === 1 ? 'unidad' : 'unidades'}
+                        {summary && (
+                            <>
+                                {' · '}
+                                <span className="text-severity-low">
+                                    {summary.reporting} reportando ahora
+                                </span>
+                            </>
+                        )}
+                    </span>
+                }
+                actions={
+                    teamSlug && (
+                        <Button variant="outline" size="sm" asChild>
+                            <Link href={`/${teamSlug}/assets/map`}>
+                                <MapIcon size={13} />
+                                Mapa en vivo
+                            </Link>
+                        </Button>
+                    )
+                }
+                onRefresh={list.refresh}
+                refreshing={list.refreshing}
+                pulse={
+                    <>
+                        {monitoring && (
+                            <PendingBanner
+                                monitoring={monitoring}
+                                teamSlug={teamSlug}
+                                busy={monitoringAll}
+                                onShowPending={() =>
+                                    list.setFilter('monitoring', 'pending')
+                                }
+                                onMonitorAll={monitorAllPending}
+                            />
+                        )}
+                        {summary && (
+                            <FleetPulse
+                                summary={summary}
+                                monitoring={monitoring}
+                                status={list.filters.status}
+                                monitoringFilter={list.filters.monitoring}
+                                onStatus={(status) =>
+                                    list.setFilter('status', status)
+                                }
+                                onMonitoring={(value) =>
+                                    list.setFilter('monitoring', value)
+                                }
+                            />
+                        )}
+                    </>
+                }
+                filters={
+                    <FilterBar
+                        filters={list.filters}
+                        options={filterOptions}
                         summary={summary}
-                        monitoring={monitoring}
-                        status={filters.status}
-                        monitoringFilter={filters.monitoring}
-                        onStatus={(status) =>
-                            applyFilters({ ...filters, status })
-                        }
-                        onMonitoring={(value) =>
-                            applyFilters({ ...filters, monitoring: value })
-                        }
+                        onApply={list.apply}
                     />
-                )}
-
-                <FilterBar
-                    filters={filters}
-                    options={filterOptions}
-                    summary={summary}
-                    onApply={applyFilters}
-                />
-
+                }
+                footer={
+                    <ListFooter
+                        pagination={pagination}
+                        shown={assets.length}
+                        onPage={list.goToPage}
+                        noun={['unidad', 'unidades']}
+                    />
+                }
+            >
                 <AssetsTable
                     rows={assets}
                     onSelect={handleSelect}
                     teamSlug={teamSlug}
-                    empty={<FleetEmptyState filtered={hasActiveFilters} />}
+                    empty={
+                        <ListEmptyState
+                            icon={Truck}
+                            filtered={list.hasActiveFilters}
+                            title="Sin unidades"
+                            description="Cuando la sincronización de integraciones registre vehículos aparecerán aquí."
+                            filteredDescription="Ninguna unidad coincide con los filtros aplicados."
+                        />
+                    }
                 />
-
-                <ListFooter
-                    pagination={pagination}
-                    shown={assets.length}
-                    onPage={goToPage}
-                    noun={['unidad', 'unidades']}
-                />
-            </div>
+            </ListPage>
         </>
     );
 }

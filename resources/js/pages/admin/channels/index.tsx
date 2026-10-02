@@ -5,12 +5,12 @@ import type { FormEvent } from 'react';
 import InputError from '@/components/input-error';
 import { BillingPill } from '@/components/sam/billing/panel';
 import { ConfirmDialog } from '@/components/sam/confirm-dialog';
+import { ListPage } from '@/components/sam/list-page';
 import { MetaChip } from '@/components/sam/meta-chip';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { PageHeader } from '@/components/ui/page-header';
 import {
     Select,
     SelectContent,
@@ -378,27 +378,24 @@ export default function AdminChannelsIndex({
     return (
         <>
             <Head title="Canales de plataforma" />
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                <PageHeader
-                    title="Canales"
-                    description="Por dónde SAM avisa a los clientes. Apagar un canal corta ese aviso para todos."
-                    meta={
-                        <span className="text-xs text-fg-3">
-                            <span className="font-medium text-fg-1">
-                                {channels.filter((c) => c.isActive).length}
-                            </span>{' '}
-                            de {channels.length} activos
-                        </span>
-                    }
-                    actions={
-                        <Button size="sm" onClick={() => setCreateOpen(true)}>
-                            <Plus className="size-3.5" />
-                            Nuevo canal
-                        </Button>
-                    }
-                    className="shrink-0 border-b border-border bg-surface-1 px-5 py-3"
-                />
-
+            <ListPage
+                title="Canales"
+                description="Por dónde SAM avisa a los clientes. Apagar un canal corta ese aviso para todos."
+                meta={
+                    <span className="text-xs text-fg-3">
+                        <span className="font-medium text-fg-1">
+                            {channels.filter((c) => c.isActive).length}
+                        </span>{' '}
+                        de {channels.length} activos
+                    </span>
+                }
+                actions={
+                    <Button size="sm" onClick={() => setCreateOpen(true)}>
+                        <Plus className="size-3.5" />
+                        Nuevo canal
+                    </Button>
+                }
+            >
                 <div className="min-h-0 flex-1 overflow-y-auto p-5">
                     <section className="max-w-5xl rounded-lg border border-border bg-surface-1">
                         {channels.length === 0 ? (
@@ -527,7 +524,7 @@ export default function AdminChannelsIndex({
                         )}
                     </section>
                 </div>
-            </div>
+            </ListPage>
 
             <CreateChannelSheet
                 open={createOpen}
