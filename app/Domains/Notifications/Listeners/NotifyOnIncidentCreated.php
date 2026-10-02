@@ -4,6 +4,7 @@ namespace App\Domains\Notifications\Listeners;
 
 use App\Contracts\TenantConfig\TenantConfigResolver;
 use App\Domains\Context\Models\EventContextSnapshot;
+use App\Domains\Incidents\Actions\ResolveEscalationAudience;
 use App\Domains\Incidents\Events\IncidentCreated;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Support\IncidentCreatedReaction;
@@ -41,6 +42,7 @@ class NotifyOnIncidentCreated implements IncidentCreatedReaction
     public function __construct(
         private readonly SendNotification $sendNotification,
         private readonly TenantConfigResolver $tenantConfig,
+        private readonly ResolveEscalationAudience $resolveAudience,
     ) {}
 
     public function retryQueue(): string
@@ -92,12 +94,18 @@ class NotifyOnIncidentCreated implements IncidentCreatedReaction
             DB::afterCommit(fn () => SystemLog::skipped('notifications.out_of_band.skipped', reason: 'below_min_severity', input: $skipInput, calc: $skipCalc, result: $skipResult));
         }
 
+        $priority = NotificationPriority::fromIncidentPriority($severity);
+
+        if ($threshold['reaches']) {
+            $payload = $this->routeToFirstResponders($incident, $notificationType['type'], $priority, $payload);
+        }
+
         $this->sendNotification->execute(
             teamId: $incident->team_id,
             notificationType: $notificationType['type'],
             sourceType: NotificationSourceType::Incident,
             sourceReferenceId: (string) $incident->id,
-            priority: NotificationPriority::fromIncidentPriority($severity),
+            priority: $priority,
             triggeredByType: NotificationTriggeredByType::System,
             triggeredById: null,
             eventKey: 'incident_created:'.$incident->id,
@@ -105,6 +113,62 @@ class NotifyOnIncidentCreated implements IncidentCreatedReaction
             subject: 'Nuevo incidente creado',
             bodyPreview: 'Se ha reportado un nuevo incidente en tu equipo.',
         );
+    }
+
+    /**
+     * Decisión 2026-10-01: los canales fuera de la app que despiertan (SMS,
+     * llamada, push; la política del tenant decide cuáles) son sólo para la
+     * persona en turno —o, sin nadie en turno, para quien opera incidentes—;
+     * el resto del equipo se entera en la app y por correo. Antes un crítico
+     * mandaba SMS a todo el equipo, en turno o no.
+     *
+     * Devuelve el payload del aviso al equipo: sin los primeros respondientes
+     * y fijado a web + correo.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private function routeToFirstResponders(Incident $incident, string $notificationType, NotificationPriority $priority, array $payload): array
+    {
+        $audience = $this->resolveAudience->execute($incident->team_id, 'on_call');
+        $input = ['incident_id' => $incident->id];
+        $calc = [
+            'audience' => $audience['audience'],
+            'audience_fallback' => $audience['fallback'],
+            'responders_count' => count($audience['recipients']),
+        ];
+
+        if ($audience['recipients'] === []) {
+            // Nadie en el equipo gestiona incidentes: el aviso sale al equipo
+            // con la política normal, como antes.
+            DB::afterCommit(fn () => SystemLog::skipped('notifications.incident_created.routed', reason: 'no_responders', input: $input, calc: $calc));
+
+            return $payload;
+        }
+
+        $this->sendNotification->execute(
+            teamId: $incident->team_id,
+            notificationType: $notificationType,
+            sourceType: NotificationSourceType::Incident,
+            sourceReferenceId: (string) $incident->id,
+            priority: $priority,
+            triggeredByType: NotificationTriggeredByType::System,
+            triggeredById: null,
+            eventKey: 'incident_created_responder:'.$incident->id,
+            payload: [...$payload, 'recipients' => $audience['recipients'], 'first_responder' => true],
+            subject: 'Nuevo incidente creado',
+            bodyPreview: 'Se ha reportado un nuevo incidente en tu equipo.',
+        );
+
+        DB::afterCommit(fn () => SystemLog::ok('notifications.incident_created.routed', input: $input, calc: $calc, result: [
+            'team_forced_channel_types' => [ChannelType::Web->value, ChannelType::Email->value],
+        ]));
+
+        return [
+            ...$payload,
+            'exclude_user_ids' => $audience['user_ids'],
+            'force_channels' => [ChannelType::Web->value, ChannelType::Email->value],
+        ];
     }
 
     /**

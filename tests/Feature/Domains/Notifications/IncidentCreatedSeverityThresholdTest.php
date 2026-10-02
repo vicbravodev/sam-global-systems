@@ -71,8 +71,8 @@ class IncidentCreatedSeverityThresholdTest extends TestCase
     {
         $team = User::factory()->create()->currentTeam;
 
-        $this->assertArrayNotHasKey('force_channels', $this->notifyFor($team, 'medium')->payload_json);
-        $this->assertArrayNotHasKey('force_channels', $this->notifyFor($team, 'critical')->payload_json);
+        $this->assertNormalPolicyGoesToFirstResponders($this->notifyFor($team, 'medium'));
+        $this->assertNormalPolicyGoesToFirstResponders($this->notifyFor($team, 'critical'));
     }
 
     public function test_tenant_threshold_high_keeps_medium_in_app_but_not_critical(): void
@@ -83,7 +83,7 @@ class IncidentCreatedSeverityThresholdTest extends TestCase
         $medium = $this->notifyFor($team, 'medium');
         $this->assertSame(['web'], $medium->payload_json['force_channels']);
         $critical = $this->notifyFor($team, 'critical');
-        $this->assertArrayNotHasKey('force_channels', $critical->payload_json);
+        $this->assertNormalPolicyGoesToFirstResponders($critical);
 
         $this->assertSystemLogged('notifications.out_of_band.skipped', fn (array $c) => $c['input']['incident_id'] === (int) $medium->payload_json['incident_id']
             && $c['calc']['severity_rank'] === 2
@@ -92,7 +92,10 @@ class IncidentCreatedSeverityThresholdTest extends TestCase
             && $c['calc']['severity_rank'] < $c['calc']['min_severity_rank']);
         $this->assertCount(1, $this->systemLogEntries('notifications.out_of_band.skipped'));
         $this->assertSystemLogged('notifications.notification.requested', fn (array $c) => $c['result']['notification_id'] === $critical->id
-            && $c['calc']['forced_channel_types'] === null);
+            && $c['calc']['forced_channel_types'] === ['web', 'email']);
+        $this->assertSystemLogged('notifications.incident_created.routed', fn (array $c) => $c['input']['incident_id'] === (int) $critical->payload_json['incident_id']
+            && $c['calc']['responders_count'] === 1
+            && $c['result']['team_forced_channel_types'] === ['web', 'email']);
         $this->assertNoSensitiveDataLogged();
     }
 
@@ -121,7 +124,7 @@ class IncidentCreatedSeverityThresholdTest extends TestCase
         $this->assertNoTenantLeak($teamB, fn () => IncidentCreated::dispatch($incident));
 
         $notification = Notification::withoutGlobalScopes()->where('event_key', "incident_created:{$incident->id}")->sole();
-        $this->assertArrayNotHasKey('force_channels', $notification->payload_json);
+        $this->assertNormalPolicyGoesToFirstResponders($notification);
     }
 
     public function test_settings_endpoint_validates_the_threshold_value(): void
@@ -156,6 +159,25 @@ class IncidentCreatedSeverityThresholdTest extends TestCase
             'value_type' => SettingValueType::String,
             'value_json' => ['value' => $value],
         ]);
+    }
+
+    /**
+     * Desde el umbral, la política normal del tenant (fuera de banda si es
+     * crítico) va en el aviso a los primeros respondientes; el resto del
+     * equipo queda fijado a app + correo (decisión 2026-10-01).
+     */
+    private function assertNormalPolicyGoesToFirstResponders(Notification $teamNotice): void
+    {
+        $this->assertSame(['web', 'email'], $teamNotice->payload_json['force_channels']);
+
+        $responder = Notification::withoutGlobalScopes()
+            ->where('team_id', $teamNotice->team_id)
+            ->where('event_key', 'incident_created_responder:'.$teamNotice->payload_json['incident_id'])
+            ->sole();
+
+        $this->assertArrayNotHasKey('force_channels', $responder->payload_json);
+        $this->assertTrue($responder->payload_json['first_responder']);
+        $this->assertSame($responder->payload_json['recipients'][0]['recipient_reference_id'], (string) $teamNotice->payload_json['exclude_user_ids'][0]);
     }
 
     private function notifyFor(Team $team, string $priorityCode): Notification

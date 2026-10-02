@@ -5,7 +5,6 @@ namespace App\Domains\Notifications\Listeners;
 use App\Domains\Incidents\Enums\AssigneeType;
 use App\Domains\Incidents\Enums\IncidentStatusCode;
 use App\Domains\Incidents\Enums\TimelineEntryType;
-use App\Domains\Incidents\Events\IncidentClosed;
 use App\Domains\Incidents\Events\IncidentStatusChanged;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentTimeline;
@@ -28,10 +27,11 @@ use Illuminate\Support\Facades\DB;
  *
  * - `in_review` es un estado interno del pipeline (la automatización pide
  *   revisión humana justo tras crear): no se notifica.
- * - `escalated` por SLA ya lo notifica CheckIncidentAcknowledgementJob con su
- *   cadena de escalación: aquí no se duplica.
- * - Canal: web + correo; sólo un incidente crítico usa la política crítica
- *   (SMS/push) del tenant.
+ * - `escalated` por el sistema (SLA, verificación) ya lo notifica la escalera:
+ *   aquí no se duplica.
+ * - Canal: siempre web + correo, también en un crítico: es informativo.
+ * - Sólo escucha IncidentStatusChanged: IncidentClosed llega siempre detrás
+ *   del mismo cambio y sin actor, así que avisaba a quien cerró.
  */
 class NotifyOnIncidentStatusChanged
 {
@@ -39,12 +39,12 @@ class NotifyOnIncidentStatusChanged
         private readonly SendNotification $sendNotification,
     ) {}
 
-    public function handle(IncidentStatusChanged|IncidentClosed $event): void
+    public function handle(IncidentStatusChanged $event): void
     {
         $incident = $event->incident;
 
-        $newStatus = $event instanceof IncidentStatusChanged ? $event->newStatus : IncidentStatusCode::Closed->value;
-        $actorUserId = $event instanceof IncidentStatusChanged ? $event->actorUserId : null;
+        $newStatus = $event->newStatus;
+        $actorUserId = $event->actorUserId;
 
         // Corre dentro de EscalateIncident/CloseIncident: las líneas salen
         // tras el commit más externo.
@@ -57,8 +57,12 @@ class NotifyOnIncidentStatusChanged
         }
 
         TenantContext::for($incident->team_id, function () use ($incident, $newStatus, $actorUserId, $logInput): void {
-            if ($newStatus === IncidentStatusCode::Escalated->value && $this->escalatedBySla($incident)) {
-                DB::afterCommit(fn () => SystemLog::skipped('notifications.status_change.skipped', reason: 'escalated_by_sla', input: $logInput));
+            // Una escalación del sistema (SLA, verificación sin respuesta,
+            // emergencia confirmada) ya avisa por la escalera, a quien toca:
+            // aquí sería el mismo aviso otra vez.
+            if ($newStatus === IncidentStatusCode::Escalated->value && $actorUserId === null) {
+                $reason = $this->escalatedBySla($incident) ? 'escalated_by_sla' : 'escalated_by_system';
+                DB::afterCommit(fn () => SystemLog::skipped('notifications.status_change.skipped', reason: $reason, input: $logInput));
 
                 return;
             }
@@ -73,15 +77,14 @@ class NotifyOnIncidentStatusChanged
 
             $priority = NotificationPriority::fromIncidentPriority($incident->priority?->code);
 
+            // Quien lleva el incidente ya está encima: un cambio de estado es
+            // informativo, nunca un SMS o una llamada (decisión 2026-10-01).
             $payload = [
                 'incident_id' => $incident->id,
                 'new_status' => $newStatus,
                 'recipients' => $recipients,
+                'force_channels' => [ChannelType::Web->value, ChannelType::Email->value],
             ];
-
-            if (! $priority->isCritical()) {
-                $payload['force_channels'] = [ChannelType::Web->value, ChannelType::Email->value];
-            }
 
             $this->sendNotification->execute(
                 teamId: $incident->team_id,
@@ -91,7 +94,9 @@ class NotifyOnIncidentStatusChanged
                 priority: $priority,
                 triggeredByType: $actorUserId !== null ? NotificationTriggeredByType::User : NotificationTriggeredByType::System,
                 triggeredById: $actorUserId,
-                eventKey: "incident_status:{$incident->id}:{$newStatus}",
+                // Una transición por clave: volver al mismo estado (reabrir y
+                // cerrar otra vez, escalar de nuevo) también avisa.
+                eventKey: "incident_status:{$incident->id}:{$newStatus}:".($incident->updated_at?->getTimestamp() ?? 0),
                 payload: $payload,
                 subject: 'Estado del incidente actualizado',
                 bodyPreview: "El incidente {$incident->reference()} pasó a ".IncidentStatusPresenter::label($newStatus).'.',

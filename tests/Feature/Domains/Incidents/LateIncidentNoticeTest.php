@@ -143,7 +143,12 @@ class LateIncidentNoticeTest extends TestCase
         $this->assertSame('incident.panic_emergency.created', $notification->notification_type);
         $this->assertSame(NotificationPriority::Critical, $notification->priority);
         $this->assertSame('⚠️ Ocurrió hace 9 h (hora local 03:00)', $notification->payload_json['late_notice']);
-        $this->assertArrayNotHasKey('force_channels', $notification->payload_json);
+        // El equipo, en la app y por correo; la persona en turno (o su
+        // respaldo) recibe el aviso por la política crítica, con el retraso.
+        $this->assertSame(['web', 'email'], $notification->payload_json['force_channels']);
+        $responder = Notification::withoutGlobalScopes()->where('event_key', "incident_created_responder:{$incident->id}")->sole();
+        $this->assertArrayNotHasKey('force_channels', $responder->payload_json);
+        $this->assertSame('⚠️ Ocurrió hace 9 h (hora local 03:00)', $responder->payload_json['late_notice']);
 
         $email = $this->render($notification, ChannelType::Email);
         $this->assertStringStartsWith('🚨 PÁNICO:', (string) $email['subject']);
