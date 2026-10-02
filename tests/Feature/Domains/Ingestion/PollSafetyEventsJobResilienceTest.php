@@ -196,6 +196,15 @@ class PollSafetyEventsJobResilienceTest extends TestCase
         ], $this->feedOf($integration));
         $this->assertTrue(RawEvent::withoutGlobalScopes()->where('external_event_id', 'evt-1')->exists());
         $this->assertNull($integration->fresh()->last_error_message);
+
+        $this->assertSystemLogged('ingestion.poll.cursor_rejected', fn (array $c) => $c['outcome'] === 'degraded'
+            && $c['reason'] === 'provider_rejected_cursor'
+            && $c['input']['integration_id'] === $integration->id
+            && $c['input']['http_status'] === 400
+            && $c['input']['restart_from'] === $restart
+            && is_string($c['input']['provider_message']));
+        $this->assertCount(1, $this->systemLogEntries('ingestion.poll.cursor_rejected'));
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_params_differ_is_recovered_like_an_expired_cursor(): void

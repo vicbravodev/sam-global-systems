@@ -541,6 +541,35 @@ class RetryAndFallbackTest extends TestCase
             ->count());
     }
 
+    public function test_fallback_for_a_missing_delivery_is_skipped_and_logged(): void
+    {
+        app()->call([new FallbackNotificationChannelJob(999_999), 'handle']);
+
+        $this->assertSame(0, NotificationDelivery::withoutGlobalScopes()->count());
+        $this->assertSystemLogged('notifications.fallback.skipped', fn (array $c) => $c['outcome'] === 'skipped'
+            && $c['reason'] === 'relations_missing'
+            && $c['input']['failed_delivery_id'] === 999_999);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_a_duplicate_fallback_run_is_skipped_as_already_escalated(): void
+    {
+        $primary = $this->channel(ChannelType::Sms);
+        $this->channel(ChannelType::Email);
+        $failed = $this->failedDelivery($primary, attemptNumber: 5);
+
+        $this->runFallback($failed);
+        $this->assertSystemNotLogged('notifications.fallback.skipped');
+
+        $this->runFallback($failed);
+
+        $this->assertSystemLogged('notifications.fallback.skipped', fn (array $c) => $c['outcome'] === 'skipped'
+            && $c['reason'] === 'already_escalated'
+            && $c['input']['failed_delivery_id'] === $failed->id);
+        $this->assertCount(1, $this->systemLogEntries('notifications.fallback.skipped'));
+        $this->assertNoSensitiveDataLogged();
+    }
+
     public function test_fallback_respects_channels_the_tenant_switched_off(): void
     {
         $primary = $this->channel(ChannelType::Sms);
