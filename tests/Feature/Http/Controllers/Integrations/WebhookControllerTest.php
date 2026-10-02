@@ -238,11 +238,34 @@ class WebhookControllerTest extends TestCase
 
         $endpoint = $this->createActiveEndpoint('ctrl-'.bin2hex(random_bytes(6)));
 
-        $this->postJson("/api/webhooks/{$endpoint->url}?event_type=vehicle.updated", [
+        $this->postJson("/api/webhooks/{$endpoint->url}", [
             'eventType' => ['not' => 'a string'],
+            'event_type' => 'vehicle.updated',
         ])->assertStatus(202);
 
         $this->assertSame('vehicle.updated', WebhookEvent::withoutGlobalScopes()->sole()->event_type);
+    }
+
+    /**
+     * La query string queda fuera del HMAC: ni el tipo ni el payload se leen
+     * de ella, o un cuerpo firmado capturado podría reetiquetarse con sólo
+     * añadir `?event_type=`.
+     */
+    public function test_the_unsigned_query_string_never_sets_the_event_type_or_the_payload(): void
+    {
+        Queue::fake();
+        Event::fake([WebhookReceived::class]);
+
+        $endpoint = $this->createActiveEndpoint('ctrl-'.bin2hex(random_bytes(6)));
+
+        $this->postJson("/api/webhooks/{$endpoint->url}?event_type=AlertIncident&injected=1", [
+            'data' => ['id' => 1],
+        ])->assertStatus(202);
+
+        $event = WebhookEvent::withoutGlobalScopes()->sole();
+        $this->assertSame('unknown', $event->event_type);
+        $this->assertSame(['data' => ['id' => 1]], $event->payload_json);
+        $this->assertSystemLogged('webhook.event_type.resolved', fn (array $c) => $c['reason'] === 'missing');
     }
 
     public function test_it_returns_404_when_endpoint_url_is_unknown(): void

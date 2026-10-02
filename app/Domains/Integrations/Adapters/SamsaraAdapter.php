@@ -932,9 +932,11 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
      * first and fall back to the raw secret (for generic providers / secrets
      * already stored in decoded form).
      *
-     * When no timestamp is supplied (generic providers / legacy callers) we fall
-     * back to a plain HMAC over the raw body, still accepting either the "v1="
-     * prefixed or raw-hex signature form.
+     * The timestamp is mandatory: without it there is no freshness to check, and
+     * accepting a plain HMAC over the body would let anyone replay a captured
+     * signed body forever just by dropping the header. Such requests are
+     * rejected (`missing_timestamp`). Both the "v1=" prefixed and raw-hex
+     * signature forms are accepted.
      */
     public function validateWebhookSignature(string $payload, string $signature, string $secret, ?string $timestamp = null, ?\DateTimeInterface $receivedAt = null): bool
     {
@@ -948,36 +950,34 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
             return false;
         }
 
-        $skew = null;
-        // The plain scheme checks no timestamp: there is no tolerance to report.
-        $tolerance = null;
+        if ($timestamp === null || $timestamp === '') {
+            SystemLog::degraded('webhook.signature.rejected', reason: 'missing_timestamp', input: ['scheme' => $scheme]);
 
-        if ($hasTimestamp) {
-            $check = $this->checkTimestamp($timestamp, $receivedAt);
-            $skew = $check['skew_seconds'];
-            $tolerance = $check['tolerance_seconds'];
-
-            if (! $check['valid']) {
-                SystemLog::degraded('webhook.signature.rejected', reason: 'invalid_timestamp', input: ['scheme' => 'timestamped']);
-
-                return false;
-            }
-
-            if (! $check['within']) {
-                SystemLog::degraded('webhook.signature.rejected', reason: 'stale_timestamp', input: ['scheme' => 'timestamped'], calc: [
-                    'skew_seconds' => $skew,
-                    'tolerance_seconds' => $tolerance,
-                    'reference' => $receivedAt !== null ? 'received_at' : 'now',
-                    'timestamp_unit' => $check['unit'],
-                ]);
-
-                return false;
-            }
-
-            $message = 'v1:'.$timestamp.':'.$payload;
-        } else {
-            $message = $payload;
+            return false;
         }
+
+        $check = $this->checkTimestamp($timestamp, $receivedAt);
+        $skew = $check['skew_seconds'];
+        $tolerance = $check['tolerance_seconds'];
+
+        if (! $check['valid']) {
+            SystemLog::degraded('webhook.signature.rejected', reason: 'invalid_timestamp', input: ['scheme' => $scheme]);
+
+            return false;
+        }
+
+        if (! $check['within']) {
+            SystemLog::degraded('webhook.signature.rejected', reason: 'stale_timestamp', input: ['scheme' => $scheme], calc: [
+                'skew_seconds' => $skew,
+                'tolerance_seconds' => $tolerance,
+                'reference' => $receivedAt !== null ? 'received_at' : 'now',
+                'timestamp_unit' => $check['unit'],
+            ]);
+
+            return false;
+        }
+
+        $message = 'v1:'.$timestamp.':'.$payload;
 
         $candidates = $this->candidateSecrets($secret);
 

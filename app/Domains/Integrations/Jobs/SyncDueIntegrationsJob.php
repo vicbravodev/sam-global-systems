@@ -7,6 +7,8 @@ use App\Domains\Integrations\Enums\SyncType;
 use App\Domains\Integrations\Enums\TenantIntegrationStatus;
 use App\Domains\Integrations\Models\IntegrationSyncJob;
 use App\Domains\Integrations\Models\TenantIntegration;
+use App\Domains\Tenancy\Support\TenantCanSend;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -21,6 +23,11 @@ use Illuminate\Queue\SerializesModels;
  * Due-ness is gated against last_sync_at using a per-integration interval from
  * config_json.sync, and integrations with an in-flight sync are skipped so a
  * fast scheduler tick never stacks redundant syncs or orphans tracking rows.
+ *
+ * Tenants whose subscription blocks them ({@see TenantCanSend}) get no
+ * scheduled sync: they are no longer billed. The catalog they already have
+ * stays, so panics (webhook and backup poller, not gated) still resolve
+ * their unit.
  */
 class SyncDueIntegrationsJob implements ShouldQueue
 {
@@ -46,21 +53,37 @@ class SyncDueIntegrationsJob implements ShouldQueue
             ->with('provider')
             ->each(fn (TenantIntegration $integration) => TenantContext::for($integration->team_id, function () use ($integration): void {
                 if (! $this->isDue($integration)) {
+                    SystemLog::skipped('integrations.due_sync.skipped', reason: 'not_due', input: $this->logInput($integration), debug: true);
+
+                    return;
+                }
+
+                if (($blocked = TenantCanSend::blockedReason($integration->team_id)) !== null) {
+                    SystemLog::skipped('integrations.due_sync.skipped', reason: 'tenant_blocked', input: $this->logInput($integration), calc: ['blocked_reason' => $blocked]);
+
                     return;
                 }
 
                 if ($this->hasInFlightSync($integration)) {
+                    SystemLog::skipped('integrations.due_sync.skipped', reason: 'sync_in_flight', input: $this->logInput($integration), calc: ['stale_sync_minutes' => self::STALE_SYNC_MINUTES], debug: true);
+
                     return;
                 }
 
-                $syncJob = IntegrationSyncJob::create([
-                    'tenant_integration_id' => $integration->id,
-                    'type' => SyncType::Incremental,
-                    'status' => SyncStatus::Pending,
-                ]);
+                $syncJob = SyncIntegrationJob::dispatchUnlessInFlight($integration, SyncType::Incremental);
 
-                SyncIntegrationJob::dispatch($integration, $syncJob);
+                if ($syncJob !== null) {
+                    SystemLog::ok('integrations.due_sync.requested', input: $this->logInput($integration), result: ['integration_sync_job_id' => $syncJob->id, 'type' => SyncType::Incremental->value]);
+                }
             })));
+    }
+
+    /**
+     * @return array{team_id: int, integration_id: int}
+     */
+    private function logInput(TenantIntegration $integration): array
+    {
+        return ['team_id' => $integration->team_id, 'integration_id' => $integration->id];
     }
 
     private function isDue(TenantIntegration $integration): bool

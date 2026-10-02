@@ -3,15 +3,17 @@
 namespace Tests\Feature\Domains\Incidents;
 
 use App\Domains\Incidents\Models\Incident;
+use App\Domains\Tenancy\Models\Subscription;
 use App\Models\User;
 use Database\Seeders\IncidentsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Broadcast;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 class IncidentChannelAuthorizationTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsSystemLog, RefreshDatabase;
 
     protected function setUp(): void
     {
@@ -51,6 +53,36 @@ class IncidentChannelAuthorizationTest extends TestCase
         ]);
 
         $response->assertStatus(200);
+    }
+
+    public function test_member_of_a_suspended_tenant_cannot_join_its_incident_channel(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+        Subscription::factory()->suspended()->create(['team_id' => $team->id]);
+        $incident = Incident::factory()->create(['team_id' => $team->id]);
+
+        $this->actingAs($user)->postJson('/broadcasting/auth', [
+            'socket_id' => '1234.5678',
+            'channel_name' => "presence-incidents.{$incident->id}",
+        ])->assertStatus(403);
+
+        $ctx = $this->assertSystemLogged('broadcast.channel.denied', fn (array $c) => $c['reason'] === 'tenant_suspended');
+        $this->assertSame(['user_id' => $user->id, 'team_id' => $team->id, 'channel' => 'incidents'], $ctx['input']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_super_admin_can_join_an_incident_channel_of_a_suspended_foreign_tenant(): void
+    {
+        $admin = User::factory()->superAdmin()->create();
+        $team = User::factory()->create()->currentTeam;
+        Subscription::factory()->suspended()->create(['team_id' => $team->id]);
+        $incident = Incident::factory()->create(['team_id' => $team->id]);
+
+        $this->actingAs($admin)->postJson('/broadcasting/auth', [
+            'socket_id' => '1234.5678',
+            'channel_name' => "presence-incidents.{$incident->id}",
+        ])->assertStatus(200);
     }
 
     public function test_non_member_cannot_subscribe_to_foreign_incident_channel(): void

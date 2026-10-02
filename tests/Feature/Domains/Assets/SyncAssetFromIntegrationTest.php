@@ -14,6 +14,7 @@ use App\Domains\Integrations\Models\TenantIntegration;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use RuntimeException;
 use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
@@ -53,6 +54,44 @@ class SyncAssetFromIntegrationTest extends TestCase
             'credentials_encrypted' => 'test-key',
             'status' => 'active',
         ]);
+    }
+
+    public function test_a_failed_external_reference_insert_leaves_no_orphan_asset_and_the_next_sync_creates_one(): void
+    {
+        Event::fake([AssetDiscovered::class]);
+
+        [, $team, $provider, $integration] = $this->createSetup();
+        $payload = ['external_id' => 'ext-vehicle-rollback', 'name' => 'Truck Rollback', 'asset_type_code' => 'vehicle'];
+
+        // La segunda escritura (la referencia externa) revienta tras crear el activo.
+        $failing = true;
+        AssetExternalReference::creating(function () use (&$failing): void {
+            if ($failing) {
+                throw new RuntimeException('reference insert failed');
+            }
+        });
+
+        try {
+            app(SyncAssetFromIntegration::class)->execute($team->id, $integration->id, $payload);
+            $this->fail('La creación debía propagar el fallo de la referencia.');
+        } catch (RuntimeException) {
+            // esperado
+        }
+
+        $this->assertSame(0, Asset::withoutGlobalScopes()->where('team_id', $team->id)->count(), 'Sin activo pending huérfano');
+        Event::assertNotDispatched(AssetDiscovered::class);
+
+        // El siguiente sync crea exactamente un activo con su referencia.
+        $failing = false;
+        $asset = app(SyncAssetFromIntegration::class)->execute($team->id, $integration->id, $payload);
+
+        $this->assertSame(1, Asset::withoutGlobalScopes()->where('team_id', $team->id)->count());
+        $this->assertTrue(AssetExternalReference::query()
+            ->where('provider_id', $provider->id)
+            ->where('external_id', 'ext-vehicle-rollback')
+            ->where('asset_id', $asset->id)
+            ->exists());
+        Event::assertDispatchedTimes(AssetDiscovered::class, 1);
     }
 
     public function test_it_creates_asset_from_integration_sync(): void

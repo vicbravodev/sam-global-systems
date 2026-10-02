@@ -58,7 +58,6 @@ return new class extends Migration
             'driver_assignments_team_id_index' => ['driver_assignments', ['team_id'], null],
             'invoice_snapshots_team_id_period_index' => ['invoice_snapshots', ['team_id', 'period_start', 'period_end'], null],
             'team_invitations_team_id_index' => ['team_invitations', ['team_id'], null],
-            'user_preferences_team_id_index' => ['user_preferences', ['team_id'], null],
 
             // User FKs that are SET NULL on delete: a user delete otherwise
             // scans each of these tables.

@@ -69,14 +69,11 @@ class CreateIncidentFromEvent
         $incidentType = $this->resolveIncidentType($context['incident_type_code'] ?? null, $event);
         $lockKey = $this->dedupLockKey($event, $incidentType);
 
-        if ($lockKey === null) {
-            return $this->createOrLink($event, $context, $incidentType);
-        }
-
         // Dos eventos casi simultáneos del mismo activo (o una ráfaga de
-        // device_offline del tenant) no pueden abrir dos incidentes: el
-        // chequeo de duplicado y la creación van bajo el mismo candado. La
-        // clave incluye el team_id (§2.1.7).
+        // device_offline del tenant, o los dos caminos —vía rápida y IA— del
+        // mismo evento sin activo ni conductor) no pueden abrir dos
+        // incidentes: el chequeo de duplicado y la creación van bajo el mismo
+        // candado. La clave incluye el team_id (§2.1.7).
         return Cache::lock($lockKey, self::DEDUP_LOCK_SECONDS)
             ->block(
                 (int) config('incidents.dedup_lock_wait_seconds', self::DEDUP_LOCK_WAIT_SECONDS),
@@ -112,6 +109,18 @@ class CreateIncidentFromEvent
             $dedupWindowMinutes = (int) config('incidents.duplicate_window_minutes', 30);
             $dedupWindowStart = $this->windowStart($event, $dedupWindowMinutes);
             $dedupWindowEnd = $this->windowEnd($event, $dedupWindowMinutes);
+            $sameEvent = $this->findIncidentOfSameEvent($event);
+
+            if ($sameEvent !== null) {
+                $sameEventLine = [
+                    'input' => ['normalized_event_id' => $event->id, 'incident_type_id' => $incidentType->id],
+                    'result' => ['existing_incident_id' => $sameEvent->id],
+                ];
+                DB::afterCommit(fn () => SystemLog::ok('incidents.dedup.same_event', ...$sameEventLine));
+
+                return $sameEvent;
+            }
+
             $existing = $this->findOpenDuplicate($event, $incidentType, $dedupWindowStart, $dedupWindowEnd);
 
             if ($existing !== null) {
@@ -450,6 +459,30 @@ class CreateIncidentFromEvent
      * días de retraso (rescate, reintento del proveedor) no puede colgarse de
      * un incidente abierto DESPUÉS por otro pánico de la misma unidad.
      */
+    /**
+     * Para eventos sin activo ni conductor: incidente que ya nació de este
+     * mismo evento o lo tiene vinculado. Los
+     * jobs lo comprueban antes de llamar, pero fuera del candado: con backlog,
+     * la vía rápida y el camino de la IA pueden pasar ambos ese chequeo, y
+     * sólo aquí, bajo el candado, el segundo ve lo que creó el primero.
+     */
+    private function findIncidentOfSameEvent(NormalizedEvent $event): ?Incident
+    {
+        // Con activo o conductor ya lo cubre findOpenDuplicate (que además
+        // sube la prioridad si hace falta): sólo se mira el hueco real.
+        if ($event->asset_id !== null || $event->driver_id !== null) {
+            return null;
+        }
+
+        return Incident::query()
+            ->where('team_id', $event->team_id)
+            ->where(fn ($q) => $q
+                ->where('related_event_id', $event->id)
+                ->orWhereHas('eventLinks', fn ($links) => $links->where('normalized_event_id', $event->id)))
+            ->orderByDesc('id')
+            ->first();
+    }
+
     private function findOpenDuplicate(NormalizedEvent $event, IncidentType $incidentType, Carbon $threshold, Carbon $until): ?Incident
     {
         if ($event->asset_id === null && $event->driver_id === null) {
@@ -561,7 +594,14 @@ class CreateIncidentFromEvent
         return $eventType?->code === DetectOfflineAssetsJob::EVENT_TYPE_CODE;
     }
 
-    private function dedupLockKey(NormalizedEvent $event, IncidentType $incidentType): ?string
+    /**
+     * Sin activo ni conductor el dedup por ventana no agrupa nada, así que el
+     * candado es por evento: la vía rápida de emergencias y el camino de la
+     * IA del mismo evento se serializan y el segundo encuentra el incidente
+     * del primero (findIncidentOfSameEvent). Sin tipo en la clave: los dos
+     * caminos pueden resolver tipos distintos para el mismo evento.
+     */
+    private function dedupLockKey(NormalizedEvent $event, IncidentType $incidentType): string
     {
         $teamId = $event->team_id;
 
@@ -570,7 +610,7 @@ class CreateIncidentFromEvent
         }
 
         if ($event->asset_id === null && $event->driver_id === null) {
-            return null;
+            return "incident_dedup:{$teamId}:event:{$event->id}";
         }
 
         return "incident_dedup:{$teamId}:{$incidentType->id}:a{$event->asset_id}:d{$event->driver_id}";

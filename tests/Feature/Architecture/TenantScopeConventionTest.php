@@ -5,12 +5,10 @@ namespace Tests\Feature\Architecture;
 use App\Concerns\BelongsToTenant;
 use App\Domains\Access\Models\Permission;
 use App\Domains\Access\Models\Role;
-use App\Domains\Access\Models\UserPreference;
 use App\Domains\AI\Models\AIDecisionSignal;
 use App\Domains\AI\Models\AIExplanation;
 use App\Domains\AI\Models\AIInferenceLog;
 use App\Domains\AI\Models\AIMediaAssessment;
-use App\Domains\AI\Models\AIModelVersion;
 use App\Domains\AI\Models\AIRecommendedAction;
 use App\Domains\AI\Models\AIReevaluationRequest;
 use App\Domains\Analytics\Models\MetricDefinition;
@@ -24,7 +22,6 @@ use App\Domains\Audit\Models\AuditLog;
 use App\Domains\Audit\Models\ChangeHistory;
 use App\Domains\Audit\Models\DomainEventLog;
 use App\Domains\Audit\Models\SystemTrace;
-use App\Domains\Audit\Models\TraceLink;
 use App\Domains\Automation\Models\ActionExecutionLog;
 use App\Domains\Automation\Models\ActionTemplate;
 use App\Domains\Automation\Models\AutomationWorkflow;
@@ -124,7 +121,6 @@ class TenantScopeConventionTest extends TestCase
         ChangeHistory::class => 'Ídem AuditLog.',
         DomainEventLog::class => 'Ídem AuditLog.',
         SystemTrace::class => 'Ídem AuditLog.',
-        TraceLink::class => 'Ídem AuditLog.',
         EventSource::class => 'Una fuente sin team es de plataforma y no debe verse desde un tenant.',
         PipelineFailureAlert::class => 'Alerta sin tenant resoluble (evento borrado) es sólo de plataforma y no debe verse desde un tenant.',
         UserNotification::class => 'Aviso in-app de plataforma (team_id null) no debe verse desde un tenant; con tenant activo sólo los de ese tenant.',
@@ -139,7 +135,6 @@ class TenantScopeConventionTest extends TestCase
      * @var array<class-string<Model>, string>
      */
     private const NULLABLE_TEAM_ID_UNSCOPED = [
-        UserPreference::class => 'Preferencia global del usuario (team_id null) o específica de un team.',
         ReportDefinition::class => 'Reportes de plataforma + definiciones propias del tenant.',
         ActionTemplate::class => 'Plantilla de acción de plataforma, overrideable por tenant.',
         AutomationWorkflow::class => 'Workflow default de SAM, overrideable por tenant.',
@@ -157,7 +152,6 @@ class TenantScopeConventionTest extends TestCase
      * @var list<class-string<Model>>
      */
     private const PLATFORM_CATALOG = [
-        AIModelVersion::class,
         Permission::class,
         MetricDefinition::class,
         AssetType::class,

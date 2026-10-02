@@ -13,6 +13,7 @@ use App\Models\Team;
 use App\Models\User;
 use Database\Seeders\IncidentStatusSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
 use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
@@ -161,6 +162,8 @@ class TwilioInboundWebhookTest extends TestCase
 
         $this->assertReplyApplied($token, 'SI', 'acknowledge');
         $this->assertNoReplySecretsLogged($token, 'SI-W4K9');
+        $this->assertNoReplyPiiPersisted($token, 'SI-W4K9');
+        $this->assertSame(['action' => 'SI', 'channel_type' => 'sms', 'user_id' => $this->operator->id], $token->reply_payload_json);
     }
 
     public function test_no_reply_dismisses_the_incident_as_false_positive(): void
@@ -177,6 +180,9 @@ class TwilioInboundWebhookTest extends TestCase
 
         $this->assertReplyApplied($token, 'NO', 'dismiss');
         $this->assertNoReplySecretsLogged($token, 'NO-W4K9');
+        $this->assertNoReplyPiiPersisted($token, 'NO-W4K9');
+        // Quién descartó se ve por su identidad de usuario, no por su teléfono.
+        $this->assertStringContainsString($this->operator->name, (string) $incident->resolution?->resolution_summary);
     }
 
     public function test_esc_reply_escalates_the_incident(): void
@@ -193,6 +199,19 @@ class TwilioInboundWebhookTest extends TestCase
 
         $this->assertReplyApplied($token, 'ESC', 'escalate');
         $this->assertNoReplySecretsLogged($token, 'ESC-W4K9');
+        $this->assertNoReplyPiiPersisted($token, 'ESC-W4K9');
+    }
+
+    public function test_a_reply_without_a_linked_user_persists_only_the_masked_phone(): void
+    {
+        $token = $this->makeToken(['user_id' => null]);
+
+        $this->postReply('NO-W4K9')->assertOk();
+
+        $incident = $token->incident()->first();
+        $this->assertNoReplyPiiPersisted($token, 'NO-W4K9');
+        $this->assertStringContainsString('5678', (string) $incident->resolution?->resolution_summary);
+        $this->assertSame(['action' => 'NO', 'channel_type' => 'sms', 'user_id' => null], $token->fresh()->reply_payload_json);
     }
 
     public function test_expired_token_takes_no_action(): void
@@ -275,6 +294,23 @@ class TwilioInboundWebhookTest extends TestCase
         $this->assertStringNotContainsString(ltrim(self::OPERATOR_PHONE, '+'), $json);
         $this->assertStringNotContainsString(ltrim((string) $token->address, '+'), $json);
         $this->assertNoSensitiveDataLogged();
+    }
+
+    /**
+     * Lo que ven los admins del tenant (auditoría, resolución, timeline y la
+     * traza del token) nunca guarda el teléfono completo ni el texto libre.
+     */
+    private function assertNoReplyPiiPersisted(NotificationReplyToken $token, string $body): void
+    {
+        $persisted = json_encode([
+            AuditLog::withoutGlobalScopes()->where('team_id', $this->team->id)->get(['summary', 'metadata_json'])->toArray(),
+            IncidentTimeline::query()->where('incident_id', $token->incident_id)->get(['title', 'description', 'payload_json'])->toArray(),
+            DB::table('incident_resolutions')->where('incident_id', $token->incident_id)->pluck('resolution_summary')->all(),
+            $token->fresh()?->reply_payload_json,
+        ]);
+
+        $this->assertStringNotContainsString(ltrim(self::OPERATOR_PHONE, '+'), (string) $persisted);
+        $this->assertStringNotContainsString($body, (string) $persisted);
     }
 
     public function test_unknown_token_is_answered_with_silence(): void

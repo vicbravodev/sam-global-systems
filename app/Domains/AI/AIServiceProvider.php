@@ -20,7 +20,6 @@ use App\Domains\Incidents\Events\IncidentResolved;
 use App\Infrastructure\AI\Agents\SdkEventEvaluationAgent;
 use App\Infrastructure\AI\Agents\SdkMediaAssessmentAgent;
 use App\Infrastructure\AI\Listeners\AgentCallLogListener;
-use App\Infrastructure\AI\Listeners\AIUsageListener;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
@@ -64,13 +63,10 @@ class AIServiceProvider extends ServiceProvider
         // "Descartar como falso positivo" = etiqueta humana para la IA.
         Event::listen(IncidentResolved::class, RecordOperatorVerdictOnIncidentResolved::class);
 
-        // Laravel's dispatcher does not fire parent-class listeners for
-        // child events, so we register against both `AgentPrompted` and
-        // `AgentStreamed` (the latter extends the former). Idempotency is
-        // enforced by `RecordUsageEvent`'s unique `(team_id, event_key)`
-        // constraint, so duplicate dispatches are safe.
-        Event::listen(AgentPrompted::class, AIUsageListener::class);
-        Event::listen(AgentStreamed::class, AIUsageListener::class);
+        // Sin listener de cobro sobre los eventos del SDK: los tokens los cobra
+        // quien llama (EvaluateEventWithAI / EvaluateEventMultimodally /
+        // RecordCopilotUsage) con su propia event_key; otro cobro aquí
+        // duplicaría la misma llamada.
 
         // `ai.agent.called`: una línea por invocación (sin prompt ni respuesta).
         Event::listen(PromptingAgent::class, [AgentCallLogListener::class, 'started']);
