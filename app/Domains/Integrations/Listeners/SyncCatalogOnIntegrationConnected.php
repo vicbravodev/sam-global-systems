@@ -25,20 +25,36 @@ class SyncCatalogOnIntegrationConnected
             return;
         }
 
-        $syncJob = IntegrationSyncJob::create([
-            'tenant_integration_id' => $integration->id,
-            'type' => SyncType::Full,
-            'status' => SyncStatus::Pending,
-        ]);
+        // El evento trae su team_id: si no es el dueño de la integración, no
+        // se sincroniza el catálogo de otro tenant en su nombre.
+        if ($integration->team_id !== $event->teamId) {
+            SystemLog::skipped('integrations.catalog_sync.requested', reason: 'team_mismatch', input: [
+                'team_id' => $event->teamId,
+                'integration_id' => $integration->id,
+            ]);
 
-        SyncIntegrationJob::dispatch($integration, $syncJob);
+            return;
+        }
 
-        TenantContext::for($integration->team_id, fn () => SystemLog::ok('integrations.catalog_sync.requested', input: [
-            'team_id' => $integration->team_id,
-            'integration_id' => $integration->id,
-        ], result: [
-            'integration_sync_job_id' => $syncJob->id,
-            'type' => SyncType::Full->value,
-        ]));
+        // Dentro del tenant de la integración: el sync job se crea con el scope
+        // aplicado y el SyncIntegrationJob viaja con su TenantContext, aunque
+        // aquí no haya usuario autenticado (cola, consola, scheduler).
+        TenantContext::for($integration->team_id, function () use ($integration): void {
+            $syncJob = IntegrationSyncJob::query()->create([
+                'tenant_integration_id' => $integration->id,
+                'type' => SyncType::Full,
+                'status' => SyncStatus::Pending,
+            ]);
+
+            SyncIntegrationJob::dispatch($integration, $syncJob);
+
+            SystemLog::ok('integrations.catalog_sync.requested', input: [
+                'team_id' => $integration->team_id,
+                'integration_id' => $integration->id,
+            ], result: [
+                'integration_sync_job_id' => $syncJob->id,
+                'type' => SyncType::Full->value,
+            ]);
+        });
     }
 }
