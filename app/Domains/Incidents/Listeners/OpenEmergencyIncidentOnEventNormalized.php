@@ -8,6 +8,7 @@ use App\Domains\Incidents\Jobs\OpenEmergencyIncidentJob;
 use App\Domains\Ingestion\Models\RawEvent;
 use App\Domains\Normalization\Actions\NormalizeRawEvent;
 use App\Domains\Normalization\Events\EventNormalized;
+use App\Domains\Normalization\Models\EventCategory;
 use App\Domains\Normalization\Models\EventType;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Support\SystemLog;
@@ -29,17 +30,24 @@ class OpenEmergencyIncidentOnEventNormalized
         $normalizedEventId = $normalized->id;
 
         $type = EventType::query()
-            ->with('category:id,code')
-            ->select(['id', 'code', 'category_id'])
+            ->select(['id', 'code'])
             ->find($normalized->event_type_id);
+
+        // La categoría del evento normalizado, no la del tipo: una regla de
+        // mapeo puede reclasificarlo (mapped_category_id) y la normalización
+        // ya decidió con ésa (p.ej. no descartar una emergencia de un activo
+        // no monitoreado).
+        $categoryCode = EventCategory::query()
+            ->whereKey($normalized->event_category_id)
+            ->value('code');
 
         $input = [
             'normalized_event_id' => $normalizedEventId,
             'event_type_code' => $type?->code,
-            'category_code' => $type?->category?->code,
+            'category_code' => $categoryCode,
         ];
 
-        if (NormalizeRawEvent::isEmergencyCode($type?->category?->code, $type?->code)) {
+        if (NormalizeRawEvent::isEmergencyCode($categoryCode, $type?->code)) {
             OpenEmergencyIncidentJob::dispatch($normalized->id, $normalized->team_id)
                 ->afterCommit();
 

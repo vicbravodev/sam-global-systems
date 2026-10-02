@@ -32,11 +32,6 @@ class RaiseAfterHoursMovement
 {
     public const string EVENT_TYPE_CODE = 'after_hours_movement';
 
-    /**
-     * @deprecated El umbral vive en MovementCriterion (config telematics.moving_speed_kph).
-     */
-    public const float MIN_SPEED_KPH = 5.0;
-
     /** Positions older than this are not evidence of current movement. */
     public const int FRESHNESS_MINUTES = 15;
 

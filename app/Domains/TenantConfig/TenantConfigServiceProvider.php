@@ -8,7 +8,6 @@ use App\Contracts\TenantConfig\TenantAutomationPoliciesResolver;
 use App\Contracts\TenantConfig\TenantConfigResolver;
 use App\Contracts\TenantConfig\TenantDecisionRulesResolver;
 use App\Contracts\TenantConfig\TenantNotificationPoliciesResolver;
-use App\Contracts\TenantConfig\TenantNotificationPolicyResolver;
 use App\Contracts\TenantConfig\TenantRuleOverrideApplier;
 use App\Contracts\TenantConfig\TenantScheduleResolver;
 use App\Domains\Tenancy\Events\TenantCreated;
@@ -18,7 +17,6 @@ use App\Domains\TenantConfig\Actions\ResolveTenantAnalyticsConfig;
 use App\Domains\TenantConfig\Actions\ResolveTenantAutomationPolicies;
 use App\Domains\TenantConfig\Actions\ResolveTenantDecisionRules;
 use App\Domains\TenantConfig\Actions\ResolveTenantNotificationPolicies;
-use App\Domains\TenantConfig\Actions\ResolveTenantNotificationPolicy;
 use App\Domains\TenantConfig\Actions\ResolveTenantSchedule;
 use App\Domains\TenantConfig\Actions\ResolveTenantSetting;
 use App\Domains\TenantConfig\Listeners\ApplyDefaultConfigOnTenantCreated;
@@ -46,7 +44,6 @@ class TenantConfigServiceProvider extends ServiceProvider
     {
         $this->app->singletonIf(TenantConfigResolver::class, ResolveTenantSetting::class);
         $this->app->singletonIf(TenantAIProfileResolver::class, ResolveTenantAIProfile::class);
-        $this->app->singletonIf(TenantNotificationPolicyResolver::class, ResolveTenantNotificationPolicy::class);
         $this->app->singletonIf(TenantNotificationPoliciesResolver::class, ResolveTenantNotificationPolicies::class);
         $this->app->singletonIf(TenantScheduleResolver::class, ResolveTenantSchedule::class);
         $this->app->singletonIf(TenantRuleOverrideApplier::class, ApplyTenantRuleOverrides::class);

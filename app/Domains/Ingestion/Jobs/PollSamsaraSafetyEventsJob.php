@@ -4,6 +4,8 @@ namespace App\Domains\Ingestion\Jobs;
 
 use App\Domains\Integrations\Enums\TenantIntegrationStatus;
 use App\Domains\Integrations\Models\TenantIntegration;
+use App\Domains\Tenancy\Support\TenantCanSend;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -17,6 +19,11 @@ use Illuminate\Queue\SerializesModels;
  *
  * Runs across all tenants (global scope bypassed) since the scheduler has no
  * tenant context — the same pattern as PollAllDeviceConnectivityJob.
+ *
+ * Tenants whose subscription blocks them ({@see TenantCanSend}) are skipped:
+ * safety events skip AI and only feed correlation, so polling them for a
+ * tenant that is no longer billed is pure unpaid load. Panics keep flowing
+ * through the webhook and PollSamsaraAlertIncidentsJob, which are not gated.
  */
 class PollSamsaraSafetyEventsJob implements ShouldQueue
 {
@@ -37,9 +44,23 @@ class PollSamsaraSafetyEventsJob implements ShouldQueue
             ->ofLiveTeam()
             ->with('provider')
             ->each(fn (TenantIntegration $integration) => TenantContext::for($integration->team_id, function () use ($integration): void {
-                if ($this->shouldPoll($integration)) {
-                    PollSafetyEventsJob::dispatch($integration);
+                if (! $this->shouldPoll($integration)) {
+                    return;
                 }
+
+                if (($blocked = TenantCanSend::blockedReason($integration->team_id)) !== null) {
+                    SystemLog::skipped(
+                        'ingestion.safety_events_poll.skipped',
+                        reason: 'tenant_blocked',
+                        input: ['team_id' => $integration->team_id, 'integration_id' => $integration->id],
+                        calc: ['blocked_reason' => $blocked],
+                        result: ['dispatched' => false],
+                    );
+
+                    return;
+                }
+
+                PollSafetyEventsJob::dispatch($integration);
             })));
     }
 
