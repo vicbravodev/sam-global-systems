@@ -21,9 +21,11 @@ use App\Domains\Notifications\Support\TwilioStatusCallbackUrl;
  * Credentials are SAM's platform Twilio account (env TWILIO_*). The channel
  * `config_json` may only override `from` (E.164) and `ring_timeout_seconds`.
  *
- * No DTMF here: the notification counts as delivered when the call is
- * answered (status callback `in-progress`, or `completed` with duration).
- * Success means Twilio queued the call.
+ * An incident notice gathers one digit: 1 acknowledges the incident
+ * (TwilioNotificationCallController) and stops the escalation. The
+ * notification counts as delivered when the call is answered (status callback
+ * `in-progress`, or `completed` with duration). Success means Twilio queued
+ * the call.
  */
 class VoiceNotificationDriver implements NotificationDriver
 {
@@ -74,13 +76,49 @@ class VoiceNotificationDriver implements NotificationDriver
     {
         $text = trim(($notification->subject !== null && $notification->subject !== '' ? $notification->subject.'. ' : '').$notification->body);
         $say = htmlspecialchars($text, ENT_XML1 | ENT_QUOTES, 'UTF-8');
+        $gatherUrl = $this->gatherUrl($notification);
 
-        // The message is read twice so a delayed pickup still hears it whole.
+        if ($gatherUrl === null) {
+            // The message is read twice so a delayed pickup still hears it whole.
+            return '<?xml version="1.0" encoding="UTF-8"?>'
+                .'<Response>'
+                .'<Say language="es-MX">'.$say.'</Say>'
+                .'<Pause length="1"/>'
+                .'<Say language="es-MX">'.$say.'</Say>'
+                .'</Response>';
+        }
+
+        // Aviso de un incidente: quien contesta puede atenderlo ahí mismo
+        // (presiona 1) y la escalera se detiene. Se lee dos veces dentro del
+        // Gather para que una tecla temprana corte la lectura.
+        $action = htmlspecialchars($gatherUrl, ENT_XML1 | ENT_QUOTES, 'UTF-8');
+        $prompt = 'Para atender este incidente presiona 1.';
+
         return '<?xml version="1.0" encoding="UTF-8"?>'
             .'<Response>'
+            .'<Gather numDigits="1" timeout="8" action="'.$action.'" method="POST">'
             .'<Say language="es-MX">'.$say.'</Say>'
+            .'<Say language="es-MX">'.$prompt.'</Say>'
             .'<Pause length="1"/>'
             .'<Say language="es-MX">'.$say.'</Say>'
+            .'<Say language="es-MX">'.$prompt.'</Say>'
+            .'</Gather>'
+            .'<Say language="es-MX">No recibimos respuesta. SAM seguirá avisando al equipo.</Say>'
             .'</Response>';
+    }
+
+    /**
+     * URL del webhook que recibe la tecla, o null si la llamada no puede
+     * atender un incidente o Twilio no alcanzaría la URL (local).
+     */
+    private function gatherUrl(RenderedNotification $notification): ?string
+    {
+        if (! $notification->acknowledgesIncident || $notification->deliveryId === null) {
+            return null;
+        }
+
+        $url = route('webhooks.twilio.voice.notification.gather', ['delivery' => $notification->deliveryId]);
+
+        return TwilioStatusCallbackUrl::isPublic($url) ? $url : null;
     }
 }

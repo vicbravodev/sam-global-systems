@@ -8,6 +8,7 @@ use App\Domains\Notifications\Data\RenderedNotification;
 use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Enums\DeliveryStatus;
 use App\Domains\Notifications\Enums\MessagingChargeSource;
+use App\Domains\Notifications\Enums\NotificationSourceType;
 use App\Domains\Notifications\Events\NotificationDelivered;
 use App\Domains\Notifications\Events\NotificationFailed;
 use App\Domains\Notifications\Models\NotificationChannel;
@@ -54,6 +55,11 @@ class AttemptDelivery
                 'body' => $rendered->body,
             ],
         ]);
+
+        $rendered = $rendered->forDelivery(
+            $delivery->id,
+            $delivery->notification?->source_type === NotificationSourceType::Incident,
+        );
 
         $started = hrtime(true);
         $result = $this->drivers->driverFor($channel->channel_type)->send($rendered, $channel);
