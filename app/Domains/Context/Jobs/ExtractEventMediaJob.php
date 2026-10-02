@@ -2,10 +2,12 @@
 
 namespace App\Domains\Context\Jobs;
 
+use App\Concerns\DefersOnObjectStorageOutage;
 use App\Domains\Context\Actions\AttachImmediateEventMedia;
 use App\Domains\Context\Actions\RefreshContextMediaSnapshot;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Support\JobFailureReporter;
+use App\Support\ObjectStorageFailure;
 use App\Support\PipelineTrace;
 use App\Support\SystemLog;
 use App\Support\TenantContext;
@@ -15,12 +17,19 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Throwable;
 
+/**
+ * Materializa la media cruda del evento en su ruta canónica del storage. Con
+ * RustFS/S3 caído no se pierde: se re-encola con backoff hasta que vuelve
+ * ({@see DefersOnObjectStorageOutage}); los demás fallos siguen acotados a
+ * `$maxExceptions` intentos con el `$backoff` de siempre.
+ */
 class ExtractEventMediaJob implements ShouldBeUnique, ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use DefersOnObjectStorageOutage, Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 3;
+    public int $maxExceptions = 3;
 
     public int $uniqueFor = 60;
 
@@ -52,22 +61,32 @@ class ExtractEventMediaJob implements ShouldBeUnique, ShouldQueue
 
         PipelineTrace::adopt($normalizedEvent->trace_id, $normalizedEvent->team_id, ['normalized_event_id' => $normalizedEvent->id]);
 
-        $created = TenantContext::for($normalizedEvent->team_id, function () use (
-            $normalizedEvent,
-            $attachImmediate,
-            $refreshSnapshot,
-        ) {
-            $created = $attachImmediate->execute($normalizedEvent);
+        try {
+            $created = TenantContext::for($normalizedEvent->team_id, function () use (
+                $normalizedEvent,
+                $attachImmediate,
+                $refreshSnapshot,
+            ) {
+                $created = $attachImmediate->execute($normalizedEvent);
 
-            $refreshSnapshot->execute($normalizedEvent->id);
+                $refreshSnapshot->execute($normalizedEvent->id);
 
-            return $created;
-        });
+                return $created;
+            });
+        } catch (Throwable $e) {
+            if (! ObjectStorageFailure::matches($e)) {
+                throw $e;
+            }
+
+            $this->deferForObjectStorageOutage('media.event_media.extract_deferred', ['normalized_event_id' => $this->normalizedEventId], $e);
+
+            return;
+        }
 
         SystemLog::ok('media.event_media.extracted', input: ['normalized_event_id' => $this->normalizedEventId], result: ['media_created_count' => $created->count()]);
     }
 
-    public function failed(\Throwable $exception): void
+    public function failed(Throwable $exception): void
     {
         JobFailureReporter::report(static::class, $exception, ['normalized_event_id' => $this->normalizedEventId]);
     }

@@ -136,7 +136,11 @@ Lo emite `App\Support\DeniedRequestLog` (outcome `degraded`); sólo la plantilla
 | `ingestion.dedup.key_registered` | ok | | `raw_event_id`, `dedup_source` (`deduplication_key`/`checksum`), `calc.ttl_hours` |
 | `ingestion.duplicate.detected` | skipped | `existing_key`, `lost_insert_race` | `raw_event_id`, `dedup_source`, `first_raw_event_id` (sólo `existing_key`). Nunca el valor de la clave |
 | `ingestion.media.inline_skipped` | skipped | `known_duplicate` | `raw_event_id`, `event_state` |
-| `ingestion.media.inline_collected` | ok | | `raw_event_id`, `calc.urls_found`, `calc.downloaded`, `calc.failed` |
+| `ingestion.media.inline_collected` | ok | | `raw_event_id`, `calc.urls_found`, `calc.downloaded`, `calc.failed`, `result.archive_deferred` (el storage de objetos falló y el archivado se difirió) |
+| `ingestion.media.storage_unavailable` | degraded | `storage_unavailable` | `raw_event_id`, `error` (clase + mensaje redactado; nunca la URL prefirmada). RustFS/S3 falló al guardar la media inline de un safety event: el evento sigue al pipeline y el resto del lote del poll ya no espera al storage |
+| `ingestion.media.archive_deferred` | degraded | `storage_unavailable` | `raw_event_id`, `trigger` (`storage_failed`, `storage_unavailable_earlier_in_batch`, `retry_storage_failed`), `calc.attempt`, `retry_in_seconds`, `retry_window_hours` (en reintentos), `error` (en reintentos). El archivado de la media inline queda en `ArchiveRawEventMediaJob` (cola `context`, backoff 60 s → 30 min durante 12 h); las URLs se releen del `payload_json` |
+| `ingestion.media.archived` | ok | | `raw_event_id`, `calc.attempt`, `result.found`, `downloaded`, `already_stored`, `failed` (URL caducada o rechazada; ver `ingestion.media.inline_download_failed`), `extract_dispatched` (se re-materializó la media del evento ya normalizado) |
+| `ingestion.media.archive_skipped` | skipped | `raw_event_missing`, `team_mismatch` | `raw_event_id`, `job_team_id` (sólo `team_mismatch`: el job no concuerda con el tenant del evento y aborta sin tocar nada) |
 | `ingestion.usage.not_metered` | degraded | `meter_missing` | `meter_code`, `raw_event_id`; hueco de facturación |
 | `ingestion.usage.recorded` | ok | | `meter_code`, `raw_event_id`, `event_state` |
 | `ingestion.poll.cursor_restarted` | ok | | `integration_id`, `calc.restart_from`, `had_cursor`, `had_start_time`, `backfill_hours`, `restart_margin_minutes` |
@@ -218,10 +222,13 @@ Las líneas del listener síncrono `RequestPanicMediaOnContextBuilt` (`context.m
 | Código | Outcome | Reason posibles | Campos clave |
 |---|---|---|---|
 | `media.event_media.extracted` | ok | — | `normalized_event_id`; result `media_created_count` |
+| `media.event_media.extract_deferred` | degraded | `storage_unavailable` | `normalized_event_id`, `calc.attempt`, `retry_in_seconds`, `retry_window_hours`, `error`. RustFS/S3 no respondió al materializar la media: el job se re-encola con backoff en vez de fallar |
 | `media.frames.extracted` | ok | — | `media_context_id`; result `frames_extracted`, `frames_created` |
 | `media.frames.ffmpeg_unavailable` | degraded | `ffmpeg_missing` | `media_context_id`, `ffmpeg_binary` |
+| `media.frames.extract_deferred` | degraded | `storage_unavailable` | `media_context_id`, `calc.attempt`, `retry_in_seconds`, `retry_window_hours`, `error`. Igual que `media.event_media.extract_deferred` para los fotogramas del clip |
 | `media.frames.offset_missing` | skipped | `no_frame_at_offset` | `offset_seconds`, `exit_code`, `stderr_excerpt` (saneado) |
 | `media.deferred.skipped` | skipped | `request_missing`, `not_in_flight` | `event_media_request_id`, `status` |
+| `media.deferred.storage_unavailable` | degraded | `storage_unavailable` | `event_media_request_id`, `normalized_event_id`, `calc.attempt`, `retry_in_seconds`, `retry_window_hours`, `error`. RustFS/S3 caído durante el ciclo de media diferida (barrido de pánico incluido): la petición sigue en vuelo y el ciclo se re-encola; su `expires_at` acota la espera |
 | `media.deferred.closed` | skipped / ok | skipped: `normalized_event_missing`, `retrieval_window_expired`, `no_active_integration`, `older_than_footage_retention`, `provider_rejected_retrieval`, `provider_rejected_all_stills`, `all_clips_failed`, `all_stills_failed`. ok: sin reason; cierra con evidencia subida y el motivo va en `result.close_reason` (cualquiera de los anteriores, y `fulfilled_by_sweep` / `no_camera_fulfilled_by_sweep`, que sólo se alcanzan por esta vía) | `event_media_request_id`, `normalized_event_id`, `calc.event_age_hours`/`max_age_hours` (retención), `result.status`, `result.completed_via`, `result.close_reason` |
 | `media.deferred.sweep_completed` | ok | - | `event_media_request_id`, `normalized_event_id`, `calc.window_seconds`, `match_seconds` (distancia máxima entre la captura y el evento para atribuirle la media), `items_found`, `available` (disponibles y atribuidas a este evento), `out_of_window` (disponibles pero capturadas lejos del evento: pertenecen a otro pánico/evento de la misma unidad), `result.downloaded` (bajados en este barrido), `result.already_stored` (ya estaban en storage de un barrido anterior) |
 | `media.deferred.retrieval_placed` | ok | - | `event_media_request_id`, `normalized_event_id`, `calc.media_type`, `inputs`, `next_poll_seconds` |
