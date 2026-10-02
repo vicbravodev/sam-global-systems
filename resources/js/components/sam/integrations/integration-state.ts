@@ -27,6 +27,11 @@ export interface IntegrationState {
     fix: IntegrationFix;
     /** A secondary warning on an otherwise working connection. */
     warning: string | null;
+    /**
+     * Samsara's signed webhooks (panics) are not getting in, even though the
+     * API connection works: missing or mismatched Secret Key.
+     */
+    webhookAlert: string | null;
 }
 
 export const STATUS_BADGE: Record<TenantIntegrationStatus, string> = {
@@ -119,6 +124,7 @@ export function integrationState(
                 hint: copy.hint,
                 fix: copy.fix,
                 warning: null,
+                webhookAlert: null,
             };
         }
         case 'pending':
@@ -129,6 +135,7 @@ export function integrationState(
                 hint: `Prueba la conexión para terminar de configurarla. Si la clave es correcta, SAM trae tus unidades y conductores de ${provider} en unos minutos.`,
                 fix: 'test',
                 warning: null,
+                webhookAlert: null,
             };
         case 'inactive':
             return {
@@ -138,6 +145,7 @@ export function integrationState(
                 hint: 'No recibe eventos ni ubicaciones. Prueba la conexión para volver a activarla.',
                 fix: 'test',
                 warning: null,
+                webhookAlert: null,
             };
         default: {
             const synced = integration.lastSyncAt
@@ -151,6 +159,24 @@ export function integrationState(
                               : ''
                       }`
                     : null;
+            const webhookAlert = webhookAlertFor(integration);
+
+            if (webhookAlert !== null) {
+                return {
+                    tone: 'critical',
+                    // No "Requiere atención": ese badge es del estado `error`
+                    // y el contador de Atención no incluye este caso.
+                    badge: 'Pánicos sin recibir',
+                    headline: `Funcionando · ${synced}`,
+                    hint: null,
+                    fix:
+                        integration.problem === 'credentials'
+                            ? 'credentials'
+                            : 'test',
+                    warning,
+                    webhookAlert,
+                };
+            }
 
             return {
                 tone: warning ? 'warn' : 'ok',
@@ -162,8 +188,25 @@ export function integrationState(
                         ? 'credentials'
                         : 'test',
                 warning,
+                webhookAlert: null,
             };
         }
+    }
+}
+
+/** Panics only reach SAM through Samsara's signed webhook. */
+function webhookAlertFor(integration: IntegrationRow): string | null {
+    if (integration.providerCode !== 'samsara' || !integration.webhook) {
+        return null;
+    }
+
+    switch (integration.webhook.health) {
+        case 'pending_secret':
+            return 'Los pánicos de Samsara no están entrando: falta pegar la Secret Key de los avisos instantáneos.';
+        case 'rejecting':
+            return 'Los pánicos de Samsara se están rechazando: la Secret Key guardada no coincide con la de Samsara.';
+        default:
+            return null;
     }
 }
 

@@ -191,7 +191,7 @@ export function IntegrationCard({
                 <div
                     className={cn(
                         'flex w-full items-start gap-2.5 rounded-md border px-3 py-2.5',
-                        needsHand || state.warning
+                        needsHand || state.warning || state.webhookAlert
                             ? TONE_SURFACE[state.tone]
                             : 'border-transparent bg-surface-2',
                     )}
@@ -205,6 +205,12 @@ export function IntegrationCard({
                         <p className="text-sm font-medium text-fg-1">
                             {state.headline}
                         </p>
+                        {state.webhookAlert ? (
+                            <p className="text-xs leading-relaxed text-fg-2">
+                                {state.webhookAlert} Más abajo te decimos cómo
+                                resolverlo.
+                            </p>
+                        ) : null}
                         {state.warning ? (
                             <p className="text-xs text-fg-2">
                                 Aviso reciente: {state.warning}. Si se repite,
