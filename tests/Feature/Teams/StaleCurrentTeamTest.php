@@ -58,7 +58,7 @@ class StaleCurrentTeamTest extends TestCase
 
     public function test_admin_tenant_deletion_resets_current_team_of_members(): void
     {
-        $admin = User::factory()->create(['global_role' => 'super_admin']);
+        $admin = User::factory()->superAdmin()->create();
         $member = User::factory()->create();
         $team = $this->tenantWith($member);
 
@@ -83,7 +83,7 @@ class StaleCurrentTeamTest extends TestCase
 
     public function test_admin_member_removal_clears_current_team_without_personal_team(): void
     {
-        $admin = User::factory()->create(['global_role' => 'super_admin']);
+        $admin = User::factory()->superAdmin()->create();
         $owner = User::factory()->create();
         $member = $this->userWithoutPersonalTeam();
         $team = $this->tenantWith($owner, $member);
@@ -123,7 +123,7 @@ class StaleCurrentTeamTest extends TestCase
 
     public function test_super_admin_keeps_impersonated_team_and_unscoped_platform_view(): void
     {
-        $operator = User::factory()->create(['global_role' => 'super_admin']);
+        $operator = User::factory()->superAdmin()->create();
         $team = Team::factory()->create();
         Asset::factory()->create(['team_id' => $team->id]);
         Asset::factory()->create(['team_id' => Team::factory()->create()->id]);
