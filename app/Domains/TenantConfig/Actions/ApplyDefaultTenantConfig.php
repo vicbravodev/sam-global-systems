@@ -14,7 +14,9 @@ use App\Domains\TenantConfig\Enums\SettingValueType;
 use App\Domains\TenantConfig\Models\TenantEscalationConfig;
 use App\Domains\TenantConfig\Models\TenantSetting;
 use App\Models\Team;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
+use Illuminate\Support\Facades\DB;
 
 /**
  * SAM Default Config Pack (Roadmap V2-A5): the monitoring protocol SAM tuned
@@ -66,6 +68,26 @@ class ApplyDefaultTenantConfig
 
                 $summary['snapshot_version'] = $version->version;
             }
+
+            $applied = $summary['settings_created'] > 0 || $summary['rules_created'] > 0 || $summary['escalation_created'];
+
+            // Idempotente: re-aplicarlo sobre un tenant ya configurado no crea
+            // nada y queda como `skipped`. Tras el commit: el alta de un
+            // tenant (CreateTenant) lo corre dentro de su transacción.
+            $teamId = $team->id;
+            DB::afterCommit(fn () => TenantContext::for($teamId, function () use ($applied, $summary, $teamId): void {
+                $input = ['team_id' => $teamId, 'pack_version' => self::PACK_VERSION];
+
+                if ($applied) {
+                    SystemLog::ok('tenant_config.defaults.applied', input: $input, calc: [
+                        'settings_in_pack' => count(self::defaultSettings()),
+                    ], result: $summary);
+
+                    return;
+                }
+
+                SystemLog::skipped('tenant_config.defaults.applied', reason: 'already_configured', input: $input, result: $summary);
+            }));
 
             return $summary;
         });

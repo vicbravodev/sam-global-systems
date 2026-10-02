@@ -14,6 +14,7 @@ use App\Models\User;
 use Database\Seeders\AccessSeeder;
 use Database\Seeders\DecisionOutcomeSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\AssertsSystemLog;
 use Tests\TestCase;
 
 /**
@@ -22,6 +23,7 @@ use Tests\TestCase;
  */
 class ApplyDefaultTenantConfigTest extends TestCase
 {
+    use AssertsSystemLog;
     use RefreshDatabase;
 
     protected function setUp(): void
@@ -103,6 +105,14 @@ class ApplyDefaultTenantConfigTest extends TestCase
             count(ApplyDefaultTenantConfig::defaultSettings()),
             TenantSetting::withoutGlobalScopes()->where('team_id', $team->id)->count(),
         );
+
+        $first = $this->assertSystemLogged('tenant_config.defaults.applied', fn (array $c) => $c['outcome'] === 'ok');
+        $this->assertSame(['team_id' => $team->id, 'pack_version' => ApplyDefaultTenantConfig::PACK_VERSION], $first['input']);
+        $this->assertSame(count(ApplyDefaultTenantConfig::defaultSettings()), $first['result']['settings_created']);
+        $this->assertSame(4, $first['result']['rules_created']);
+        $this->assertSystemLogged('tenant_config.defaults.applied', fn (array $c) => ($c['reason'] ?? null) === 'already_configured'
+            && $c['result']['settings_created'] === 0);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_never_overwrites_a_tenant_modified_setting(): void
@@ -157,6 +167,11 @@ class ApplyDefaultTenantConfigTest extends TestCase
         $owner = User::factory()->create();
 
         $team = app(CreateTenant::class)->execute('Flota Norte', $owner);
+
+        // Corre dentro de la transacción del alta: se narra tras el commit y
+        // dentro del tenant nuevo.
+        $this->assertSystemLogged('tenant_config.defaults.applied', fn (array $c) => $c['input']['team_id'] === $team->id && $c['outcome'] === 'ok');
+        $this->assertStringNotContainsString('Flota Norte', (string) json_encode($this->systemLogEntries()));
 
         $this->assertSame(
             count(ApplyDefaultTenantConfig::defaultSettings()),

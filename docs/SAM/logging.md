@@ -648,6 +648,14 @@ Branches de `assets.after_hours.evaluated` (el resultado de `execute()` es `eval
 | `analytics.report.failed` | failed | `exception` | `team_id`, `report_definition_id`, `report_execution_id`, `output_format`, `error`. La ejecución queda `failed` con `SafeErrorMessage` y el job reintenta |
 | `analytics.reports.expired` | ok | — | `team_id`; calc `retention_days` (config del tenant), `threshold`; result `expired_count`, `files_deleted`. En **debug** cuando no expiró nada |
 
+### Configuración del tenant (`tenant_config`)
+
+| Código | Outcome | Reason posibles | Campos clave |
+|---|---|---|---|
+| `tenant_config.defaults.applied` | ok / skipped | `already_configured` (re-aplicado sin nada que sembrar: idempotente) | `team_id`, `pack_version`; calc `settings_in_pack`; result `settings_created`, `rules_created`, `escalation_created`, `snapshot_version`. Tras el commit y en el `TenantContext` del tenant (el alta de un tenant lo corre dentro de su transacción) |
+| `tenant_config.setting.updated` | ok / skipped | `type_mismatch` (el valor no es del tipo declarado: se lanza `InvalidArgumentException`) | `team_id`, `setting_key` (con `LoggableCode`), `setting_group`, `value_type`, `updated_by_type`, `updated_by_id`; result `setting_id`, `version`, `created`, `previous_value` / `value` (sólo números y booleanos; un texto o JSON sale como `[not_logged]`: puede llevar contactos o texto libre), `snapshotted` (grupos `ai`, `escalation`, `compliance` versionan la config) |
+| `tenant_config.ai_profile.updated` | ok | — | `team_id`, `profile_code` (con `LoggableCode`), `updated_by_type`, `updated_by_id`; result `profile_id`, `created`, `risk_tolerance`, `false_positive_tolerance`, `automation_level`, `media_strategy`, `prompt_overrides_present`, `human_review_policy_present`. Nunca el nombre, la descripción ni los overrides del prompt |
+
 ### Telemática (`telematics`) — `storage/logs/telematics-*.json`
 
 | Código | Outcome | Reason posibles | Campos clave |
