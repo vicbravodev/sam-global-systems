@@ -89,4 +89,16 @@ class UserFactory extends Factory
             'two_factor_confirmed_at' => now(),
         ]);
     }
+
+    /**
+     * Operador SaaS listo para la consola /admin: `global_role = super_admin`
+     * con 2FA confirmado (RequireSuperAdminTwoFactor lo exige). Para probar el
+     * bloqueo, `->create(['global_role' => 'super_admin'])` a secas.
+     */
+    public function superAdmin(): static
+    {
+        return $this->withTwoFactor()->state(fn (array $attributes) => [
+            'global_role' => 'super_admin',
+        ]);
+    }
 }

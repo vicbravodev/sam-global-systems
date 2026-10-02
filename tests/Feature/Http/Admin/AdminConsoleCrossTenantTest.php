@@ -34,7 +34,7 @@ class AdminConsoleCrossTenantTest extends TestCase
      */
     private function superAdminWithOwnTeamData(): array
     {
-        $admin = User::factory()->create(['global_role' => 'super_admin']);
+        $admin = User::factory()->superAdmin()->create();
         $adminTeam = $admin->currentTeam;
 
         $this->assertNotNull($adminTeam, 'El super-admin debe tener team actual para reproducir el bug.');

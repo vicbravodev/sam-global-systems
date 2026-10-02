@@ -93,7 +93,7 @@ class DecisionRuleTenantGuardTest extends TestCase
 
     public function test_super_admin_can_update_a_global_rule(): void
     {
-        $admin = User::factory()->create(['global_role' => 'super_admin']);
+        $admin = User::factory()->superAdmin()->create();
         $rule = DecisionRule::factory()->create([
             'team_id' => null,
             'ruleset_id' => RuleSet::factory()->global()->create()->id,

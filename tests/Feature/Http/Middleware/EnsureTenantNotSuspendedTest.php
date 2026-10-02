@@ -201,7 +201,7 @@ class EnsureTenantNotSuspendedTest extends TestCase
 
     public function test_super_admins_are_never_blocked(): void
     {
-        $admin = User::factory()->create(['global_role' => 'super_admin']);
+        $admin = User::factory()->superAdmin()->create();
 
         $this->actingAs($admin)
             ->get(route('dashboard', ['current_team' => $this->suspended->slug]))
@@ -292,7 +292,7 @@ class EnsureTenantNotSuspendedTest extends TestCase
         $url = route('dashboard', ['current_team' => $this->suspended->slug]);
         $this->actingAs($this->owner)->get($url)->assertStatus(423);
 
-        $admin = User::factory()->create(['global_role' => 'super_admin']);
+        $admin = User::factory()->superAdmin()->create();
         $this->actingAs($admin)
             ->post(route('admin.tenants.subscription.reactivate', $this->suspended))
             ->assertRedirect();

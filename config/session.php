@@ -167,9 +167,15 @@ return [
     | to the server if the browser has a HTTPS connection. This will keep
     | the cookie from being sent to you when it can't be done securely.
     |
+    | Sin valor (ausente o vacío, como en un .env copiado del ejemplo) vale
+    | `true` en producción y `false` fuera de ella (http://localhost). Un
+    | valor explícito siempre manda.
+    |
     */
 
-    'secure' => env('SESSION_SECURE_COOKIE'),
+    'secure' => in_array(env('SESSION_SECURE_COOKIE'), [null, ''], true)
+        ? env('APP_ENV') === 'production'
+        : (bool) env('SESSION_SECURE_COOKIE'),
 
     /*
     |--------------------------------------------------------------------------

@@ -7,6 +7,14 @@ use Monolog\Handler\StreamHandler;
 use Monolog\Handler\SyslogUdpHandler;
 use Monolog\Processor\PsrLogMessageProcessor;
 
+// Defaults de producción cuando el entorno no fija LOG_STACK / LOG_LEVEL: en
+// producción el stack rota por día (`single` crece sin límite) y el nivel es
+// `info` (las líneas `debug` del log narrativo se quedan en dev). Lo explícito
+// en el entorno siempre manda.
+$isProduction = env('APP_ENV') === 'production';
+$defaultStack = $isProduction ? 'daily,json' : 'single,json';
+$defaultLevel = $isProduction ? 'info' : 'debug';
+
 return [
 
     /*
@@ -56,7 +64,7 @@ return [
 
         'stack' => [
             'driver' => 'stack',
-            'channels' => explode(',', (string) env('LOG_STACK', 'single,json')),
+            'channels' => explode(',', (string) env('LOG_STACK', $defaultStack)),
             'ignore_exceptions' => false,
             'tap' => [RedactLogChannel::class],
         ],
@@ -64,7 +72,7 @@ return [
         'single' => [
             'driver' => 'single',
             'path' => storage_path('logs/laravel.log'),
-            'level' => env('LOG_LEVEL', 'debug'),
+            'level' => env('LOG_LEVEL', $defaultLevel),
             'replace_placeholders' => true,
             'tap' => [RedactLogChannel::class],
         ],
@@ -72,7 +80,7 @@ return [
         'daily' => [
             'driver' => 'daily',
             'path' => storage_path('logs/laravel.log'),
-            'level' => env('LOG_LEVEL', 'debug'),
+            'level' => env('LOG_LEVEL', $defaultLevel),
             'days' => env('LOG_DAILY_DAYS', 14),
             'replace_placeholders' => true,
             'tap' => [RedactLogChannel::class],
@@ -86,7 +94,7 @@ return [
         // Misma truthiness que antes: env() da bool, null o string ('' y '0' = no).
         'json' => ! in_array(env('LOG_JSON_STDERR', false), [null, false, '', '0'], true) ? [
             'driver' => 'monolog',
-            'level' => env('LOG_JSON_LEVEL', env('LOG_LEVEL', 'debug')),
+            'level' => env('LOG_JSON_LEVEL', env('LOG_LEVEL', $defaultLevel)),
             'handler' => StreamHandler::class,
             'handler_with' => ['stream' => 'php://stderr'],
             'formatter' => JsonFormatter::class,
@@ -94,7 +102,7 @@ return [
         ] : [
             'driver' => 'daily',
             'path' => storage_path('logs/system.json'),
-            'level' => env('LOG_JSON_LEVEL', env('LOG_LEVEL', 'debug')),
+            'level' => env('LOG_JSON_LEVEL', env('LOG_LEVEL', $defaultLevel)),
             'days' => env('LOG_JSON_DAYS', 7),
             'formatter' => JsonFormatter::class,
             'tap' => [RedactLogChannel::class],
@@ -115,7 +123,7 @@ return [
         'monthly' => [
             'driver' => 'monthly',
             'path' => storage_path('logs/laravel.log'),
-            'level' => env('LOG_LEVEL', 'debug'),
+            'level' => env('LOG_LEVEL', $defaultLevel),
             'max_files' => 3,
             'replace_placeholders' => true,
             'tap' => [RedactLogChannel::class],
@@ -133,7 +141,7 @@ return [
 
         'papertrail' => [
             'driver' => 'monolog',
-            'level' => env('LOG_LEVEL', 'debug'),
+            'level' => env('LOG_LEVEL', $defaultLevel),
             'handler' => env('LOG_PAPERTRAIL_HANDLER', SyslogUdpHandler::class),
             'handler_with' => [
                 'host' => env('PAPERTRAIL_URL'),
@@ -146,7 +154,7 @@ return [
 
         'stderr' => [
             'driver' => 'monolog',
-            'level' => env('LOG_LEVEL', 'debug'),
+            'level' => env('LOG_LEVEL', $defaultLevel),
             'handler' => StreamHandler::class,
             'handler_with' => [
                 'stream' => 'php://stderr',
@@ -158,7 +166,7 @@ return [
 
         'syslog' => [
             'driver' => 'syslog',
-            'level' => env('LOG_LEVEL', 'debug'),
+            'level' => env('LOG_LEVEL', $defaultLevel),
             'facility' => env('LOG_SYSLOG_FACILITY', LOG_USER),
             'replace_placeholders' => true,
             'tap' => [RedactLogChannel::class],
@@ -166,7 +174,7 @@ return [
 
         'errorlog' => [
             'driver' => 'errorlog',
-            'level' => env('LOG_LEVEL', 'debug'),
+            'level' => env('LOG_LEVEL', $defaultLevel),
             'replace_placeholders' => true,
             'tap' => [RedactLogChannel::class],
         ],
