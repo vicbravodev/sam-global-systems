@@ -177,7 +177,7 @@ class CrossDomainListenersTest extends TestCase
     }
 
     /**
-     * NotifyOnActionExecuted is no longer registered against ActionExecuted (see
+     * The Notifications domain has no listener on ActionExecuted (see
      * NotificationsServiceProvider): a send action already notifies its recipients by
      * itself, so a second Notifications-domain listener reacting to the same event used
      * to fan out an extra notice to the whole team. This previously asserted the

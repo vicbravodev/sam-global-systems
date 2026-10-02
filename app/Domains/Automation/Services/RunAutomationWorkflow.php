@@ -14,7 +14,6 @@ use App\Domains\Automation\Models\ActionExecution;
 use App\Domains\Automation\Models\AutomationWorkflow;
 use App\Domains\Automation\Models\WorkflowExecution;
 use App\Domains\Incidents\Models\Incident;
-use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Support\LoggableCode;
 use App\Support\PipelineTrace;
 use App\Support\SystemLog;
@@ -24,7 +23,6 @@ class RunAutomationWorkflow
 {
     public function __construct(
         private ResolveActionTemplate $resolveActionTemplate,
-        private RecordUsageEvent $recordUsageEvent,
     ) {}
 
     /**
@@ -77,12 +75,9 @@ class RunAutomationWorkflow
 
             PipelineTrace::add(['workflow_execution_id' => $workflowExecution->id]);
 
-            $this->recordUsageEvent->execute(
-                teamId: $teamId,
-                meterCode: 'incident_workflows',
-                quantity: 1,
-                eventKey: "workflow_exec_{$workflowExecution->id}",
-            );
+            // Sin cobro aquí: `incident_workflows` se mide una vez por
+            // incidente al abrirlo (RecordIncidentWorkflowUsage). Medirlo
+            // también por ejecución contaba 1+N por incidente.
 
             $incidentId = $this->linkedIncidentId($teamId, $sourceType, $sourceReferenceId);
 
@@ -150,7 +145,6 @@ class RunAutomationWorkflow
             result: [
                 'workflow_execution_id' => $execution->id,
                 'status' => $execution->status->value,
-                'usage_event_key' => "workflow_exec_{$execution->id}",
             ],
         );
 
