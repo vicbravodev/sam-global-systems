@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import InputError from '@/components/input-error';
 import { ConditionBuilder } from '@/components/sam/condition-builder';
+import { FormField } from '@/components/sam/form-field';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -157,10 +158,12 @@ function MappingRuleForm({
 
             <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-5 py-5">
                 <EditorStep step={1} title="¿Qué alerta llega?">
-                    <div className="flex flex-col gap-1.5">
-                        <Label htmlFor="mapping-provider" className="text-xs">
-                            Proveedor
-                        </Label>
+                    <FormField
+                        label="Proveedor"
+                        htmlFor="mapping-provider"
+                        error={errors.provider_id}
+                        size="sm"
+                    >
                         <Select
                             value={providerId}
                             onValueChange={setProviderId}
@@ -183,15 +186,13 @@ function MappingRuleForm({
                                 ))}
                             </SelectContent>
                         </Select>
-                        <InputError
-                            message={errors.provider_id}
-                            className="text-xs"
-                        />
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                        <Label htmlFor="mapping-external" className="text-xs">
-                            Nombre de la alerta en el proveedor
-                        </Label>
+                    </FormField>
+                    <FormField
+                        label="Nombre de la alerta en el proveedor"
+                        htmlFor="mapping-external"
+                        error={errors.external_event_type}
+                        size="sm"
+                    >
                         <Input
                             id="mapping-external"
                             value={externalEventType}
@@ -205,11 +206,7 @@ function MappingRuleForm({
                             Tal como lo envía el proveedor (en Samsara, el
                             «behaviorLabel» o el tipo de alerta).
                         </p>
-                        <InputError
-                            message={errors.external_event_type}
-                            className="text-xs"
-                        />
-                    </div>
+                    </FormField>
                     <div className="flex flex-col gap-1.5">
                         <span className="text-xs font-medium text-fg-1">
                             Solo si la alerta trae estos datos{' '}
@@ -244,10 +241,12 @@ function MappingRuleForm({
                     title="¿Cómo la trata SAM?"
                     help="El tipo de evento decide qué reglas le aplican y cómo se muestra en la bandeja."
                 >
-                    <div className="flex flex-col gap-1.5">
-                        <Label htmlFor="mapping-type" className="text-xs">
-                            Se trata como
-                        </Label>
+                    <FormField
+                        label="Se trata como"
+                        htmlFor="mapping-type"
+                        error={errors.mapped_event_type_id}
+                        size="sm"
+                    >
                         <Select
                             value={eventTypeId}
                             onValueChange={setEventTypeId}
@@ -269,15 +268,12 @@ function MappingRuleForm({
                                 ))}
                             </SelectContent>
                         </Select>
-                        <InputError
-                            message={errors.mapped_event_type_id}
-                            className="text-xs"
-                        />
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                        <Label htmlFor="mapping-severity" className="text-xs">
-                            Gravedad
-                        </Label>
+                    </FormField>
+                    <FormField
+                        label="Gravedad"
+                        htmlFor="mapping-severity"
+                        size="sm"
+                    >
                         <Select
                             value={severityId}
                             onValueChange={setSeverityId}
@@ -304,7 +300,7 @@ function MappingRuleForm({
                                 ))}
                             </SelectContent>
                         </Select>
-                    </div>
+                    </FormField>
                 </EditorStep>
 
                 {base !== null && hasConditions && (

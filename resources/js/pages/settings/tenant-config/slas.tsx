@@ -4,7 +4,6 @@ import { useMemo } from 'react';
 import type { FormEvent } from 'react';
 import { toast } from 'sonner';
 import { update } from '@/actions/App/Http/Controllers/TenantConfig/IncidentSlaController';
-import InputError from '@/components/input-error';
 import { Field, FormCard } from '@/components/sam/field';
 import {
     FormActions,
@@ -118,6 +117,7 @@ export default function TenantConfigSlas() {
 
                                     return (
                                         <Field
+                                            error={fieldError}
                                             key={priority.id}
                                             label={priorityLabel(priority.code)}
                                             help={
@@ -188,7 +188,6 @@ export default function TenantConfigSlas() {
                                                     </span>
                                                 )}
                                             </div>
-                                            <InputError message={fieldError} />
                                         </Field>
                                     );
                                 })}

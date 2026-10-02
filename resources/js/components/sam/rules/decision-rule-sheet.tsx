@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import InputError from '@/components/input-error';
 import { ConditionBuilder } from '@/components/sam/condition-builder';
 import type { ConditionFieldDef } from '@/components/sam/condition-builder';
+import { FormField } from '@/components/sam/form-field';
 import { RadioCard, RadioCardGroup } from '@/components/sam/radio-card-group';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -344,10 +345,12 @@ function DecisionRuleForm({
                     title="¿En qué orden se revisa?"
                     help="Las reglas se revisan de arriba abajo. Pon primero las más importantes, como las de seguridad."
                 >
-                    <div className="flex flex-col gap-1.5">
-                        <Label htmlFor="rule-placement" className="text-xs">
-                            Revisar esta regla
-                        </Label>
+                    <FormField
+                        label="Revisar esta regla"
+                        htmlFor="rule-placement"
+                        error={errors.priority}
+                        size="sm"
+                    >
                         <Select
                             value={placement}
                             disabled={!editable}
@@ -387,11 +390,7 @@ function DecisionRuleForm({
                                 ? ' cuando la enciendas.'
                                 : '.'}
                         </p>
-                        <InputError
-                            message={errors.priority}
-                            className="text-xs"
-                        />
-                    </div>
+                    </FormField>
 
                     <label
                         htmlFor="rule-stop"
@@ -417,10 +416,12 @@ function DecisionRuleForm({
                 </EditorStep>
 
                 <EditorStep step={4} title="¿Cómo se llama?">
-                    <div className="flex flex-col gap-1.5">
-                        <Label htmlFor="rule-name" className="text-xs">
-                            Nombre
-                        </Label>
+                    <FormField
+                        label="Nombre"
+                        htmlFor="rule-name"
+                        error={errors.name}
+                        size="sm"
+                    >
                         <Input
                             id="rule-name"
                             value={name}
@@ -430,8 +431,7 @@ function DecisionRuleForm({
                             disabled={!editable}
                             onChange={(e) => setName(e.target.value)}
                         />
-                        <InputError message={errors.name} className="text-xs" />
-                    </div>
+                    </FormField>
                     <div className="flex flex-col gap-1.5">
                         <Label htmlFor="rule-description" className="text-xs">
                             Para qué sirve{' '}

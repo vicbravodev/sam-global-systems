@@ -10,7 +10,6 @@ import {
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { toast } from 'sonner';
-import InputError from '@/components/input-error';
 import {
     AdminTenantBilling,
     CapMeterBar,
@@ -27,6 +26,7 @@ import { SubscriptionPill } from '@/components/sam/admin-tenant-status';
 import { BillingPill } from '@/components/sam/billing/panel';
 import { ConfirmDialog } from '@/components/sam/confirm-dialog';
 import { EntityAvatar } from '@/components/sam/entity-avatar';
+import { FormField } from '@/components/sam/form-field';
 import { MetaChip } from '@/components/sam/meta-chip';
 import { Panel } from '@/components/sam/panel';
 import { TabBar } from '@/components/sam/tab-bar';
@@ -776,8 +776,11 @@ function MembersTab({
                     className="self-start"
                 >
                     <form onSubmit={add} className="grid gap-3">
-                        <div className="grid gap-1.5">
-                            <Label htmlFor="member-email">Correo</Label>
+                        <FormField
+                            label="Correo"
+                            htmlFor="member-email"
+                            error={errors.email}
+                        >
                             <Input
                                 id="member-email"
                                 type="email"
@@ -786,20 +789,24 @@ function MembersTab({
                                 placeholder="monitor@empresa.mx"
                                 required
                             />
-                            <InputError message={errors.email} />
-                        </div>
-                        <div className="grid gap-1.5">
-                            <Label htmlFor="member-name">Nombre</Label>
+                        </FormField>
+                        <FormField
+                            label="Nombre"
+                            htmlFor="member-name"
+                            error={errors.name}
+                        >
                             <Input
                                 id="member-name"
                                 value={name}
                                 onChange={(e) => setName(e.target.value)}
                                 placeholder="Obligatorio si no tiene cuenta"
                             />
-                            <InputError message={errors.name} />
-                        </div>
-                        <div className="grid gap-1.5">
-                            <Label htmlFor="member-role">Rol</Label>
+                        </FormField>
+                        <FormField
+                            label="Rol"
+                            htmlFor="member-role"
+                            error={errors.role}
+                        >
                             <Select value={role} onValueChange={setRole}>
                                 <SelectTrigger
                                     id="member-role"
@@ -816,8 +823,7 @@ function MembersTab({
                                     </SelectItem>
                                 </SelectContent>
                             </Select>
-                            <InputError message={errors.role} />
-                        </div>
+                        </FormField>
                         <Button
                             type="submit"
                             size="sm"
@@ -1065,20 +1071,23 @@ function SettingsTab({
             >
                 <form onSubmit={save} className="grid gap-4">
                     <div className="grid gap-4 sm:grid-cols-2">
-                        <div className="grid gap-1.5">
-                            <Label htmlFor="tenant-name">Nombre</Label>
+                        <FormField
+                            label="Nombre"
+                            htmlFor="tenant-name"
+                            error={errors.name}
+                        >
                             <Input
                                 id="tenant-name"
                                 value={form.name}
                                 onChange={(e) => set('name')(e.target.value)}
                                 required
                             />
-                            <InputError message={errors.name} />
-                        </div>
-                        <div className="grid gap-1.5">
-                            <Label htmlFor="display-name">
-                                Nombre visible (marca)
-                            </Label>
+                        </FormField>
+                        <FormField
+                            label="Nombre visible (marca)"
+                            htmlFor="display-name"
+                            error={errors.display_name}
+                        >
                             <Input
                                 id="display-name"
                                 value={form.display_name}
@@ -1087,10 +1096,12 @@ function SettingsTab({
                                 }
                                 placeholder={form.name}
                             />
-                            <InputError message={errors.display_name} />
-                        </div>
-                        <div className="grid gap-1.5">
-                            <Label htmlFor="tenant-tz">Zona horaria</Label>
+                        </FormField>
+                        <FormField
+                            label="Zona horaria"
+                            htmlFor="tenant-tz"
+                            error={errors.timezone}
+                        >
                             <Select
                                 value={form.timezone}
                                 onValueChange={set('timezone')}
@@ -1112,12 +1123,12 @@ function SettingsTab({
                                     ))}
                                 </SelectContent>
                             </Select>
-                            <InputError message={errors.timezone} />
-                        </div>
-                        <div className="grid gap-1.5">
-                            <Label htmlFor="primary-color">
-                                Color principal
-                            </Label>
+                        </FormField>
+                        <FormField
+                            label="Color principal"
+                            htmlFor="primary-color"
+                            error={errors.primary_color}
+                        >
                             <div className="flex items-center gap-2">
                                 <input
                                     type="color"
@@ -1143,10 +1154,13 @@ function SettingsTab({
                                     maxLength={7}
                                 />
                             </div>
-                            <InputError message={errors.primary_color} />
-                        </div>
-                        <div className="grid gap-1.5 sm:col-span-2">
-                            <Label htmlFor="logo-url">URL del logo</Label>
+                        </FormField>
+                        <FormField
+                            label="URL del logo"
+                            htmlFor="logo-url"
+                            error={errors.logo_url}
+                            className="sm:col-span-2"
+                        >
                             <div className="flex items-center gap-3">
                                 <div className="grid size-12 shrink-0 place-items-center overflow-hidden rounded-md border border-border bg-surface-2">
                                     {form.logo_url && !logoBroken ? (
@@ -1181,8 +1195,7 @@ function SettingsTab({
                                     No se pudo cargar la imagen de esa URL.
                                 </p>
                             ) : null}
-                            <InputError message={errors.logo_url} />
-                        </div>
+                        </FormField>
                     </div>
                     <div className="flex justify-end">
                         <Button type="submit" size="sm" disabled={saving}>

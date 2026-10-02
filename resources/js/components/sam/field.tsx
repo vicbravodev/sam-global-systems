@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-
+import InputError from '@/components/input-error';
 import { cn } from '@/lib/utils';
 
 export interface FieldProps {
@@ -8,6 +8,8 @@ export interface FieldProps {
     help?: string;
     /** Associates the label with a control id for a11y. */
     htmlFor?: string;
+    /** Validation message shown under the control. */
+    error?: string;
     children: ReactNode;
     className?: string;
 }
@@ -20,6 +22,7 @@ export function Field({
     label,
     help,
     htmlFor,
+    error,
     children,
     className,
 }: FieldProps) {
@@ -38,7 +41,10 @@ export function Field({
                     </span>
                 )}
             </label>
-            <div className="flex min-w-0 flex-col gap-2">{children}</div>
+            <div className="flex min-w-0 flex-col gap-2">
+                {children}
+                <InputError message={error} />
+            </div>
         </div>
     );
 }
