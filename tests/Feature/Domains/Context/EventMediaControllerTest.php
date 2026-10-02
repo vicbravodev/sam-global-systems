@@ -12,11 +12,12 @@ use App\Models\User;
 use Database\Seeders\AccessSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
+use Tests\Concerns\AssertsTenantIsolation;
 use Tests\TestCase;
 
 class EventMediaControllerTest extends TestCase
 {
-    use RefreshDatabase;
+    use AssertsTenantIsolation, RefreshDatabase;
 
     protected function setUp(): void
     {
@@ -107,5 +108,29 @@ class EventMediaControllerTest extends TestCase
         );
 
         $response->assertStatus(422);
+    }
+
+    public function test_request_rejects_a_foreign_event_through_its_own_slug_without_writing(): void
+    {
+        Bus::fake();
+
+        $owner = User::factory()->create();
+        $intruder = User::factory()->create();
+        $event = NormalizedEvent::factory()->create(['team_id' => $owner->currentTeam->id]);
+
+        $url = "/api/{$intruder->currentTeam->slug}/events/{$event->id}/media/request";
+        $payload = ['request_type' => MediaRequestType::FetchVideoClip->value];
+
+        $plain = $this->actingAs($intruder)->postJson($url, $payload);
+        $this->assertContains($plain->status(), [403, 404]);
+
+        $response = $this->assertNoTenantLeak(
+            $intruder->currentTeam,
+            fn () => $this->actingAs($intruder)->postJson($url, $payload),
+        );
+
+        $this->assertContains($response->status(), [403, 404]);
+        $this->assertSame(0, EventMediaRequest::withoutGlobalScopes()->count());
+        Bus::assertNotDispatched(FetchDeferredEventMediaJob::class);
     }
 }
