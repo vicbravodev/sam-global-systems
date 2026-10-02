@@ -71,6 +71,6 @@ class PlatformSuperAdminSeeder extends Seeder
             return;
         }
 
-        $this->command?->info("Super-admin creado: {$user->email} → consola en /admin/tenants. Quita SAM_SUPER_ADMIN_PASSWORD del entorno y activa 2FA al entrar.");
+        $this->command?->info("Super-admin creado: {$user->email} → consola en /admin/tenants. Quita SAM_SUPER_ADMIN_PASSWORD del entorno y activa 2FA al entrar (la consola lo exige).");
     }
 }

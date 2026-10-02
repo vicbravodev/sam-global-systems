@@ -16,7 +16,7 @@ class AdminAuditViewerTest extends TestCase
 
     public function test_super_admin_sees_cross_tenant_security_audit(): void
     {
-        $admin = User::factory()->create(['global_role' => 'super_admin']);
+        $admin = User::factory()->superAdmin()->create();
         $team = Team::factory()->create(['is_personal' => false]);
 
         AuditLog::factory()->create([
@@ -46,7 +46,7 @@ class AdminAuditViewerTest extends TestCase
 
     public function test_admin_audit_hides_system_noise_by_default_and_names_the_tenant(): void
     {
-        $admin = User::factory()->create(['global_role' => 'super_admin']);
+        $admin = User::factory()->superAdmin()->create();
         $team = Team::factory()->create(['is_personal' => false, 'name' => 'Transportes Norte']);
 
         AuditLog::factory()->create([
