@@ -52,7 +52,7 @@ class EmailNormalizationTest extends TestCase
     {
         Notification::fake();
 
-        $admin = User::factory()->create(['global_role' => 'super_admin']);
+        $admin = User::factory()->superAdmin()->create();
         $owner = User::factory()->create(['email' => 'owner@acme.test']);
         Plan::factory()->create(['code' => 'pro', 'is_active' => true]);
 
@@ -73,7 +73,7 @@ class EmailNormalizationTest extends TestCase
     {
         Notification::fake();
 
-        $admin = User::factory()->create(['global_role' => 'super_admin']);
+        $admin = User::factory()->superAdmin()->create();
 
         $this->actingAs($admin)
             ->post(route('admin.tenants.store'), [
@@ -88,7 +88,7 @@ class EmailNormalizationTest extends TestCase
 
     public function test_admin_can_add_member_with_mixed_case_email(): void
     {
-        $admin = User::factory()->create(['global_role' => 'super_admin']);
+        $admin = User::factory()->superAdmin()->create();
         $member = User::factory()->create(['email' => 'member@acme.test']);
         $team = Team::factory()->create(['is_personal' => false]);
 

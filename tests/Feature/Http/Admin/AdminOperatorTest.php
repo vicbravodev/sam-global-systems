@@ -13,7 +13,7 @@ class AdminOperatorTest extends TestCase
 
     private function superAdmin(): User
     {
-        return User::factory()->create(['global_role' => 'super_admin']);
+        return User::factory()->superAdmin()->create();
     }
 
     public function test_operators_index_renders_with_operator_list(): void

@@ -43,6 +43,13 @@ class NotificationDeliveryDetailPageTest extends TestCase
 
     public function test_detail_page_shows_per_channel_feedback_without_cost(): void
     {
+        // The three deliveries belong to ONE dispatch round. The legacy
+        // fallback heuristic compares created_at at second precision, so if
+        // the wall clock ticked over a second between the failed SMS and the
+        // voice row, the call would be read as a fallback of the SMS and
+        // `deliveries.1.isFallback` would flip (flaky under --parallel load).
+        $this->freezeTime();
+
         $notification = Notification::factory()->create([
             'team_id' => $this->team->id,
             'status' => NotificationStatus::PartiallySent,

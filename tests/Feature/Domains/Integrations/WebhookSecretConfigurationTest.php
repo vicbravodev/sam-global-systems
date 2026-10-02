@@ -153,6 +153,20 @@ class WebhookSecretConfigurationTest extends TestCase
         $this->assertNull($endpoint->refresh()->secret);
     }
 
+    public function test_validation_errors_name_the_field_as_samsara_does(): void
+    {
+        [$user, $team, $integration] = $this->connectedSamsara();
+
+        $message = $this->actingAs($user)
+            ->putJson($this->secretRoute($team, $integration), ['webhook_secret' => 'short'])
+            ->assertUnprocessable()
+            ->json('errors.webhook_secret.0');
+
+        $this->assertIsString($message);
+        $this->assertStringContainsString('Secret Key', $message);
+        $this->assertStringNotContainsString('webhook', $message);
+    }
+
     public function test_a_member_without_manage_permission_cannot_store_the_secret(): void
     {
         [, $team, $integration, $endpoint] = $this->connectedSamsara();

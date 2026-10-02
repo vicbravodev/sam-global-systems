@@ -13,7 +13,7 @@ class AdminTenantLifecycleTest extends TestCase
 
     private function superAdmin(): User
     {
-        return User::factory()->create(['global_role' => 'super_admin']);
+        return User::factory()->superAdmin()->create();
     }
 
     public function test_super_admin_updates_tenant_name_and_branding(): void
