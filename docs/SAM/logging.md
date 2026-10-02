@@ -232,6 +232,8 @@ Las líneas del listener síncrono `RequestPanicMediaOnContextBuilt` (`context.m
 | `media.deferred.completed` | ok | - | `event_media_request_id`, `normalized_event_id`, `result.available`, `result.downloaded` (de este sondeo), `result.already_stored` (disponibles que ya estaban guardados de un sondeo anterior), `result.stills_downloaded_total` (acumulado, solo stills) |
 | `media.deferred.sweep_polling` | ok | - | `event_media_request_id`, `normalized_event_id`, `calc.next_poll_seconds` |
 | `media.deferred.download_failed` | degraded | `download_failed` | `normalized_event_id`, `camera_input`, `error` |
+| `media.download.completed` | ok | — | `host` (nunca path ni query: la URL pre-firmada es la credencial), `duration_ms`; result `bytes`, `content_type`. `SecureMediaDownloader`, toda descarga de media de proveedor |
+| `media.download.rejected` | degraded | `ssrf_blocked` (esquema no https u host fuera de `ai.media.allowed_download_hosts`, también en una redirección), `too_large`, `http_error`, `empty_body`, `transport_failed`, `temp_file_failed` | `host`, `duration_ms`; calc `http_status`, `max_bytes`, `timeout_seconds`; `error` sólo en fallos de transporte (la causa, saneada) |
 
 ### IA (`ai`) y copiloto (`copilot`)
 
