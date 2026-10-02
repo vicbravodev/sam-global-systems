@@ -13,7 +13,9 @@ use App\Domains\Incidents\Models\IncidentPriority;
 use App\Domains\Incidents\Models\IncidentStatus;
 use App\Domains\Incidents\Models\IncidentType;
 use App\Domains\Incidents\Support\IncidentCreatedBroadcast;
+use App\Domains\TenantConfig\Actions\ResolveIncidentSla;
 use App\Models\User;
+use App\Support\SystemLog;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -22,6 +24,8 @@ class CreateManualIncident
     public function __construct(
         private readonly AppendTimelineEntry $appendTimelineEntry,
         private readonly RecordIncidentWorkflowUsage $recordIncidentWorkflowUsage,
+        private readonly ResolveIncidentSla $resolveIncidentSla,
+        private readonly ArmIncidentEscalation $armIncidentEscalation,
     ) {}
 
     /**
@@ -40,6 +44,11 @@ class CreateManualIncident
                 ->where('code', IncidentStatusCode::Open->value)
                 ->firstOrFail();
 
+            // Un incidente manual también tiene SLA y escalera: antes nacía sin
+            // `sla_due_at` y nadie escalaba si no lo atendían.
+            $sla = $this->resolveIncidentSla->resolve($teamId, $priority->id);
+            $slaDueAt = $sla['sla_seconds'] !== null ? now()->addSeconds($sla['sla_seconds']) : null;
+
             $incident = Incident::query()->create([
                 'team_id' => $teamId,
                 'incident_type_id' => $type->id,
@@ -55,6 +64,7 @@ class CreateManualIncident
                 'summary' => $data['summary'],
                 'description' => $data['description'] ?? null,
                 'opened_at' => now(),
+                'sla_due_at' => $slaDueAt,
                 'created_by_type' => IncidentCreatorType::User,
                 'created_by_id' => $creator->id,
                 'metadata_json' => $data['metadata'] ?? null,
@@ -71,6 +81,13 @@ class CreateManualIncident
                     'creator_id' => $creator->id,
                 ],
             );
+
+            if ($slaDueAt !== null) {
+                $this->armIncidentEscalation->arm($incident, $slaDueAt, 'manual_incident_created');
+            } else {
+                $skipInput = ['incident_id' => $incident->id, 'incident_priority_id' => $priority->id, 'team_id' => $teamId];
+                DB::afterCommit(fn () => SystemLog::skipped('incidents.sla.calculated', reason: 'no_sla_for_priority', input: $skipInput, calc: ['sla_source' => $sla['sla_source']], result: ['watchdog_requested' => false]));
+            }
 
             // El cobro nunca tumba la apertura: savepoint propio y no fatal.
             $this->recordIncidentWorkflowUsage->execute($incident, [

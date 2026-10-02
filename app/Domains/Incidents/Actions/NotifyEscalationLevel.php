@@ -45,6 +45,7 @@ class NotifyEscalationLevel
         $config = TenantContext::for($teamId, fn () => TenantEscalationConfig::query()
             ->where('team_id', $teamId)
             ->where('is_active', true)
+            ->latest('id')
             ->first());
 
         $steps = $config?->steps_json;

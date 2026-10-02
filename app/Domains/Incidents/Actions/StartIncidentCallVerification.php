@@ -252,6 +252,7 @@ class StartIncidentCallVerification
         $config = TenantEscalationConfig::query()
             ->where('team_id', $teamId)
             ->where('is_active', true)
+            ->latest('id')
             ->first();
 
         foreach ($config?->steps_json ?? [] as $step) {
