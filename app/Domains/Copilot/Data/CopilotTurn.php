@@ -5,6 +5,7 @@ namespace App\Domains\Copilot\Data;
 use App\Domains\Copilot\Models\CopilotConversation;
 use App\Domains\Copilot\Models\CopilotMessage;
 use App\Domains\Copilot\Support\CopilotTurnCollector;
+use App\Domains\Copilot\Support\CopilotTurnUsage;
 use App\Models\Team;
 use App\Models\User;
 
@@ -15,6 +16,8 @@ use App\Models\User;
  *
  * `$collector` stays mutable: a fallback to the deterministic path starts
  * over with an empty one so no half-run agent tool leaks into the answer.
+ * `$spent` adds up the tokens of every agent step as it completes, so a
+ * turn that fails or is cut short still bills what it spent.
  */
 final class CopilotTurn
 {
@@ -34,5 +37,6 @@ final class CopilotTurn
         public readonly array $hints,
         public readonly string $channel,
         public readonly int $startedAt,
+        public readonly CopilotTurnUsage $spent = new CopilotTurnUsage,
     ) {}
 }
