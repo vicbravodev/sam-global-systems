@@ -265,6 +265,11 @@ class PlaceVerificationCallJob implements ShouldQueue
     private function recordUsage(IncidentCallVerification $verification, RecordUsageEvent $recordUsage): void
     {
         if (! UsageMeter::where('code', self::USAGE_METER_CODE)->exists()) {
+            SystemLog::degraded('incidents.usage.not_metered', reason: 'meter_missing', input: [
+                'meter_code' => self::USAGE_METER_CODE,
+                'verification_id' => $verification->id,
+            ]);
+
             return;
         }
 

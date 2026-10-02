@@ -6,6 +6,7 @@ use App\Domains\Assets\Enums\TelematicsFeed;
 use App\Domains\Assets\Models\TelematicsFeedCursor;
 use App\Domains\Integrations\Enums\TenantIntegrationStatus;
 use App\Domains\Integrations\Models\TenantIntegration;
+use App\Domains\Tenancy\Support\TenantCanSend;
 use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
@@ -23,6 +24,11 @@ use Illuminate\Queue\SerializesModels;
  * inline in the scheduler process (routes/console.php), not on a queue. The work, and every failure, happens per tenant
  * in its own job on the `telematics` queue, where one slow or broken tenant
  * holds at most one worker.
+ *
+ * A tenant whose subscription blocks it ({@see TenantCanSend}: suspended,
+ * canceled, expired) is not polled: it is no longer billed, so its stats feed
+ * would be unpaid provider and worker load. Panics still flow through the
+ * webhook and the alert-incidents backup poller, which are not gated here.
  *
  * An integration joins only after its first catalog sync: the feed's opening
  * page carries the last known state of every vehicle, and a vehicle without
@@ -76,7 +82,7 @@ class DispatchTelematicsFeedsJob implements ShouldQueue
                 ->keyBy(fn (TelematicsFeedCursor $cursor) => $cursor->tenant_integration_id.'|'.$cursor->feed->value);
 
             // Platform-wide sweep: counts only, never a tenant's ids.
-            $counts = ['feed_disabled' => 0, 'dispatched' => 0, 'not_due' => 0, 'paused' => 0];
+            $counts = ['tenant_blocked' => 0, 'feed_disabled' => 0, 'dispatched' => 0, 'not_due' => 0, 'paused' => 0];
             $byFeed = [];
 
             foreach (TelematicsFeed::cases() as $feed) {
@@ -85,6 +91,12 @@ class DispatchTelematicsFeedsJob implements ShouldQueue
 
             foreach ($integrations as $integration) {
                 TenantContext::for($integration->team_id, function () use ($integration, $cursors, &$counts, &$byFeed): void {
+                    if (TenantCanSend::blockedReason($integration->team_id) !== null) {
+                        $counts['tenant_blocked']++;
+
+                        return;
+                    }
+
                     if (! $this->feedEnabled($integration)) {
                         $counts['feed_disabled']++;
 
@@ -110,6 +122,7 @@ class DispatchTelematicsFeedsJob implements ShouldQueue
 
             SystemLog::ok('telematics.feeds.dispatched', calc: ['tick_seconds' => self::TICK_SECONDS], result: [
                 'integrations_count' => $integrations->count(),
+                'tenant_blocked_count' => $counts['tenant_blocked'],
                 'feed_disabled_count' => $counts['feed_disabled'],
                 'dispatched_count' => $counts['dispatched'],
                 'not_due_count' => $counts['not_due'],

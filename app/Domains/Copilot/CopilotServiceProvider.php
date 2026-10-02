@@ -2,10 +2,8 @@
 
 namespace App\Domains\Copilot;
 
-use App\Contracts\AI\CopilotNarrator;
 use App\Domains\Copilot\Models\CopilotConversation;
 use App\Domains\Copilot\Policies\CopilotConversationPolicy;
-use App\Domains\Copilot\Support\TemplateCopilotNarrator;
 use App\Infrastructure\AI\Agents\CopilotAgent;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -17,13 +15,6 @@ use Laravel\Ai\Events\StepCompleted;
 
 class CopilotServiceProvider extends ServiceProvider
 {
-    public function register(): void
-    {
-        // The agent (RunCopilotAgentTurn) phrases its own answers; the
-        // narrator contract only backs the deterministic, token-free path.
-        $this->app->singletonIf(CopilotNarrator::class, TemplateCopilotNarrator::class);
-    }
-
     public function boot(): void
     {
         Gate::policy(CopilotConversation::class, CopilotConversationPolicy::class);

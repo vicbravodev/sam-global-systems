@@ -94,6 +94,27 @@ class EmergencyFastPathTest extends TestCase
         $this->assertNoSensitiveDataLogged();
     }
 
+    public function test_a_mapping_rule_that_overrides_the_category_to_emergency_takes_the_fast_path(): void
+    {
+        Queue::fake();
+        // El tipo vive en `safety`, pero la regla de mapeo lo reclasificó a
+        // `emergency` (mapped_category_id): manda la categoría del evento
+        // normalizado, la misma que usó la normalización para no descartarlo.
+        $event = $this->eventOfType('harsh_event_custom', 'safety');
+        $emergency = EventCategory::query()->where('code', 'emergency')->first()
+            ?? EventCategory::factory()->create(['code' => 'emergency']);
+        $event->update(['event_category_id' => $emergency->id]);
+
+        app(OpenEmergencyIncidentOnEventNormalized::class)->handle(new EventNormalized($event->fresh()));
+
+        Queue::assertPushed(OpenEmergencyIncidentJob::class, fn (OpenEmergencyIncidentJob $job) => $job->normalizedEventId === $event->id);
+
+        $c = $this->assertSystemLogged('incidents.emergency.fast_path');
+        $this->assertSame('ok', $c['outcome']);
+        $this->assertSame('emergency', $c['input']['category_code']);
+        $this->assertNoSensitiveDataLogged();
+    }
+
     public function test_non_emergencies_wait_for_the_ai(): void
     {
         Queue::fake();

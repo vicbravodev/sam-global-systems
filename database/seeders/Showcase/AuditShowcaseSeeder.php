@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\DB;
  * facturación, sistema, IA, integración) y todos los tipos de actor, la
  * cadena de eventos de dominio de cada incidente unida por
  * `correlation_id`, historial de cambios de estado y trazas distribuidas
- * del pipeline (spans por módulo + enlaces entre entidades).
+ * del pipeline (spans por módulo).
  *
  * Tablas append-only: sólo inserciones. Idempotencia:
  *  - audit_logs: `signature = showcase:{team}:…` determinista +
@@ -54,7 +54,6 @@ class AuditShowcaseSeeder extends ShowcaseStep
         $domainEvents = [];
         $changes = [];
         $traces = [];
-        $links = [];
         $existingCorrelations = array_flip(DB::table('domain_event_logs')->where('team_id', $this->ctx->team->id)->whereNotNull('correlation_id')->distinct()->pluck('correlation_id')->map(fn ($id) => (string) $id)->all());
         $withHistory = array_flip(DB::table('change_histories')->where('team_id', $this->ctx->team->id)->where('entity_type', 'Incident')->distinct()->pluck('entity_id')->all());
 
@@ -110,7 +109,7 @@ class AuditShowcaseSeeder extends ShowcaseStep
                     $previous = $causation;
                 }
 
-                $this->traceFor($incident, $event, $opened, $random, $traces, $links);
+                $this->traceFor($incident, $opened, $random, $traces);
             }
 
             if (! isset($withHistory[$incident->id])) {
@@ -130,7 +129,6 @@ class AuditShowcaseSeeder extends ShowcaseStep
         $this->bulkInsert('domain_event_logs', $domainEvents, timestamps: false);
         $this->bulkInsert('change_histories', $changes, timestamps: false);
         $this->bulkInsert('system_traces', $traces, timestamps: false);
-        $this->bulkInsert('trace_links', $links, timestamps: false);
     }
 
     /**
@@ -258,9 +256,8 @@ class AuditShowcaseSeeder extends ShowcaseStep
 
     /**
      * @param  array<int, array<string, mixed>>  $traces
-     * @param  array<int, array<string, mixed>>  $links
      */
-    private function traceFor(Incident $incident, ?NormalizedEvent $event, CarbonImmutable $opened, ShowcaseRandom $random, array &$traces, array &$links): void
+    private function traceFor(Incident $incident, CarbonImmutable $opened, ShowcaseRandom $random, array &$traces): void
     {
         $traceId = $this->uuid('trace', $incident->id);
         $root = $this->uuid('span-root', $incident->id);
@@ -273,29 +270,6 @@ class AuditShowcaseSeeder extends ShowcaseStep
             $duration = $module === 'ai' ? $random->int(900, 6_000) : $random->int(15, 400);
             $cursor = $cursor->addMilliseconds($random->int(20, 300));
             $traces[] = $this->span($traceId, $this->uuid("span-{$module}", $incident->id), $root, $module, $operation, $cursor, $duration, $failedModule === $module ? 'Timeout consultando la ubicación en vivo; se usó la última conocida.' : null);
-        }
-
-        // Ids de secuencia: un related_decision_id nunca vale 0.
-        $decisionId = $incident->related_decision_id;
-
-        $pairs = array_filter([
-            $event !== null ? ['raw_event', $event->raw_event_id, 'normalized_event', $event->id, 'generated'] : null,
-            $decisionId !== null && $event !== null ? ['normalized_event', $event->id, 'decision', $decisionId, 'triggered'] : null,
-            $decisionId !== null ? ['decision', $decisionId, 'incident', $incident->id, 'generated'] : null,
-            $event !== null && $decisionId === null ? ['normalized_event', $event->id, 'incident', $incident->id, 'linked_to'] : null,
-        ], fn (?array $pair): bool => $pair !== null);
-
-        foreach ($pairs as [$sourceType, $sourceId, $targetType, $targetId, $relation]) {
-            $links[] = [
-                'team_id' => $this->ctx->team->id,
-                'trace_id' => $traceId,
-                'source_type' => $sourceType,
-                'source_id' => $sourceId,
-                'target_type' => $targetType,
-                'target_id' => $targetId,
-                'relation_type' => $relation,
-                'created_at' => $opened,
-            ];
         }
     }
 
