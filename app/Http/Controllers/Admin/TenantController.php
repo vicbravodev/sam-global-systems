@@ -7,10 +7,13 @@ use App\Domains\Assets\Models\Asset;
 use App\Domains\Audit\Actions\RecordAuditEntry;
 use App\Domains\Audit\Enums\AuditActorType;
 use App\Domains\Audit\Enums\AuditCategory;
+use App\Domains\Integrations\Enums\TenantIntegrationStatus;
+use App\Domains\Integrations\Models\TenantIntegration;
 use App\Domains\Tenancy\Actions\DeleteTenant;
 use App\Domains\Tenancy\Actions\OnboardTenant;
 use App\Domains\Tenancy\Actions\ResolveAssetLimit;
 use App\Domains\Tenancy\Actions\ResolveBillingTerms;
+use App\Domains\Tenancy\Actions\ResolveTenantSetupStatus;
 use App\Domains\Tenancy\Actions\UpdateTenant;
 use App\Domains\Tenancy\Models\InvoiceSnapshot;
 use App\Domains\Tenancy\Models\Plan;
@@ -19,13 +22,13 @@ use App\Domains\Tenancy\Models\TenantBranding;
 use App\Domains\Tenancy\Models\TenantFeature;
 use App\Domains\Tenancy\Models\TenantUsageCounter;
 use App\Domains\Tenancy\Support\CostPlusPricing;
+use App\Enums\TeamRole;
 use App\Http\Controllers\Controller;
 use App\Models\Membership;
 use App\Models\Team;
 use App\Models\User;
 use App\Support\TenantContext;
 use Illuminate\Container\Attributes\CurrentUser;
-use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection as BaseCollection;
@@ -52,10 +55,28 @@ class TenantController extends Controller
             ->orderByDesc('id')
             ->get();
 
-        $subscriptions = $this->latestSubscriptionsByTeam($teams->pluck('id')->all());
+        $teamIds = $teams->pluck('id')->all();
+        $subscriptions = $this->latestSubscriptionsByTeam($teamIds);
+        $owners = $this->ownersByTeam($teamIds);
+        // Directorio de la consola: cruza tenants a propósito (§2.1).
+        $integrations = TenantContext::withoutTenant(fn () => TenantIntegration::query()
+            ->whereIn('team_id', $teamIds)
+            ->where('status', TenantIntegrationStatus::Active)
+            ->selectRaw('team_id, COUNT(*) as aggregate')
+            ->groupBy('team_id')
+            ->pluck('aggregate', 'team_id'));
+        $monitored = TenantContext::withoutTenant(fn () => Asset::query()
+            ->whereIn('team_id', $teamIds)
+            ->where('monitoring_state', AssetMonitoringState::Monitored)
+            ->selectRaw('team_id, COUNT(*) as aggregate')
+            ->groupBy('team_id')
+            ->pluck('aggregate', 'team_id'));
 
-        $tenants = $teams->map(function (Team $team) use ($subscriptions) {
+        $tenants = $teams->map(function (Team $team) use ($subscriptions, $owners, $integrations, $monitored) {
             $subscription = $subscriptions->get($team->id);
+            $owner = $owners->get($team->id);
+            $integrationsCount = (int) ($integrations[$team->id] ?? 0);
+            $monitoredCount = (int) ($monitored[$team->id] ?? 0);
 
             return [
                 'id' => $team->id,
@@ -63,15 +84,29 @@ class TenantController extends Controller
                 'slug' => $team->slug,
                 'isPersonal' => $team->is_personal,
                 'membersCount' => $team->members_count,
+                'owner' => $owner === null ? null : [
+                    'name' => $owner->name,
+                    'email' => $owner->email,
+                    'pendingAccess' => $owner->email_verified_at === null,
+                ],
                 'plan' => $subscription?->plan?->name,
                 'subscriptionStatus' => $subscription?->status->value,
+                'integrationsCount' => $integrationsCount,
+                'monitoredAssets' => $monitoredCount,
+                'stage' => $this->onboardingStage($owner, $integrationsCount, $monitoredCount),
                 'createdAt' => $team->created_at?->toIso8601String(),
             ];
-        })->values()->all();
+        })->values();
 
         return Inertia::render('admin/tenants/index', [
-            'tenants' => $tenants,
-            'stats' => $this->stats($teams, $subscriptions),
+            'tenants' => $tenants->all(),
+            'stats' => [
+                'total' => $tenants->count(),
+                'operating' => $tenants->where('stage', 'operating')->count(),
+                'onboarding' => $tenants->where('stage', '!=', 'operating')->count(),
+                'pastDue' => $tenants->where('subscriptionStatus', 'past_due')->count(),
+                'suspended' => $tenants->where('subscriptionStatus', 'suspended')->count(),
+            ],
             'plans' => fn () => $this->planOptions(),
         ]);
     }
@@ -95,21 +130,18 @@ class TenantController extends Controller
 
         $owner = $team->owner();
 
-        Inertia::flash('toast', [
-            'type' => 'success',
-            'message' => $owner !== null && $owner->email_verified_at === null
-                ? "Cliente {$team->name} creado. Enviamos a {$owner->email} su enlace de acceso."
-                : "Cliente {$team->name} creado.",
-        ]);
+        $this->toast($owner !== null && $owner->email_verified_at === null
+            ? "Cliente {$team->name} creado. Enviamos a {$owner->email} su enlace de acceso."
+            : "Cliente {$team->name} creado.");
 
         return redirect()->route('admin.tenants.show', $team);
     }
 
-    public function show(Team $team, ResolveAssetLimit $resolveAssetLimit, ResolveBillingTerms $resolveBillingTerms): Response
+    public function show(Team $team, ResolveAssetLimit $resolveAssetLimit, ResolveBillingTerms $resolveBillingTerms, ResolveTenantSetupStatus $resolveSetup): Response
     {
         // El operador está viendo UN tenant: entrar en él hace que todo lo
         // que se lea aquí sea suyo, sin depender de filtros a mano. Ver §2.1.
-        return TenantContext::for($team->id, function () use ($team, $resolveAssetLimit, $resolveBillingTerms) {
+        return TenantContext::for($team->id, function () use ($team, $resolveAssetLimit, $resolveBillingTerms, $resolveSetup) {
             $subscription = Subscription::query()
                 ->with('plan')
                 ->where('team_id', $team->id)
@@ -150,6 +182,7 @@ class TenantController extends Controller
                 ->get()
                 ->map(fn (TenantUsageCounter $counter) => [
                     'meter' => $counter->usageMeter?->name ?? $counter->usageMeter?->code ?? '—',
+                    'meterCode' => $counter->usageMeter?->code,
                     'periodStart' => $counter->period_start?->toDateString(),
                     'consumed' => $counter->consumed_value,
                     'included' => $counter->included_value,
@@ -177,6 +210,7 @@ class TenantController extends Controller
                     'name' => $team->name,
                     'slug' => $team->slug,
                     'isPersonal' => $team->is_personal,
+                    'timezone' => $team->timezone,
                     'createdAt' => $team->created_at?->toIso8601String(),
                     'branding' => [
                         'displayName' => $branding?->display_name,
@@ -193,6 +227,7 @@ class TenantController extends Controller
                     'renewsAt' => $subscription->renews_at?->toIso8601String(),
                 ] : null,
                 'members' => $members,
+                'setup' => $resolveSetup->execute($team),
                 'features' => $features,
                 'usage' => $usage,
                 'invoices' => InvoiceSnapshot::query()
@@ -233,6 +268,7 @@ class TenantController extends Controller
             'primary_color' => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
             'secondary_color' => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
             'logo_url' => ['nullable', 'string', 'max:2048'],
+            'timezone' => ['nullable', 'string', 'timezone:all'],
         ], [
             'primary_color.regex' => 'El color primario debe ser un hex de 6 dígitos (ej. #2563eb).',
             'secondary_color.regex' => 'El color secundario debe ser un hex de 6 dígitos (ej. #2563eb).',
@@ -255,7 +291,9 @@ class TenantController extends Controller
             userAgent: $request->userAgent(),
         );
 
-        return redirect()->route('admin.tenants.show', $team)->with('status', 'Tenant actualizado.');
+        $this->toast('Cliente actualizado.');
+
+        return redirect()->route('admin.tenants.show', $team);
     }
 
     public function destroy(Request $request, Team $team, DeleteTenant $deleteTenant, RecordAuditEntry $audit, #[CurrentUser] User $user): RedirectResponse
@@ -286,7 +324,9 @@ class TenantController extends Controller
             userAgent: $request->userAgent(),
         );
 
-        return redirect()->route('admin.tenants.index')->with('status', 'Tenant eliminado.');
+        $this->toast('Cliente eliminado.');
+
+        return redirect()->route('admin.tenants.index');
     }
 
     /**
@@ -329,23 +369,39 @@ class TenantController extends Controller
     }
 
     /**
-     * @param  Collection<int, Team>  $teams
-     * @param  BaseCollection<int, Subscription>  $subscriptions
-     * @return array<string, int>
+     * Dónde va el alta del cliente: primero su dueño entra, luego conecta su
+     * proveedor, luego vigila unidades. Sólo entonces está operando.
      */
-    private function stats(Collection $teams, BaseCollection $subscriptions): array
+    private function onboardingStage(?User $owner, int $integrations, int $monitoredAssets): string
     {
-        $tenantTeams = $teams->where('is_personal', false);
+        return match (true) {
+            $owner === null || $owner->email_verified_at === null => 'owner_pending',
+            $integrations === 0 => 'integration_pending',
+            $monitoredAssets === 0 => 'assets_pending',
+            default => 'operating',
+        };
+    }
 
-        $statusCount = fn (string $status): int => $tenantTeams
-            ->filter(fn (Team $team) => $subscriptions->get($team->id)?->status->value === $status)
-            ->count();
+    /**
+     * @param  array<int, int>  $teamIds
+     * @return BaseCollection<int, User>
+     */
+    private function ownersByTeam(array $teamIds): BaseCollection
+    {
+        $owners = new BaseCollection;
 
-        return [
-            'total' => $tenantTeams->count(),
-            'active' => $statusCount('active'),
-            'pastDue' => $statusCount('past_due'),
-        ];
+        Membership::query()
+            ->whereIn('team_id', $teamIds)
+            ->where('role', TeamRole::Owner->value)
+            ->with('user')
+            ->get()
+            ->each(function (Membership $membership) use ($owners): void {
+                if ($membership->user instanceof User) {
+                    $owners->put($membership->team_id, $membership->user);
+                }
+            });
+
+        return $owners;
     }
 
     /**

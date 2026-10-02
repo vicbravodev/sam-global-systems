@@ -86,7 +86,9 @@ class GlobalChannelController extends Controller
         $this->record($request, 'platform-channel.created', $channel,
             "Canal de plataforma {$channel->code} ({$channel->channel_type->value}) creado.");
 
-        return redirect()->route('admin.channels.index')->with('status', 'Canal de plataforma creado.');
+        $this->toast('Canal de plataforma creado.');
+
+        return redirect()->route('admin.channels.index');
     }
 
     public function update(Request $request, NotificationChannel $channel): RedirectResponse
@@ -103,7 +105,9 @@ class GlobalChannelController extends Controller
         $this->record($request, 'platform-channel.updated', $channel,
             "Canal de plataforma {$channel->code} actualizado.");
 
-        return redirect()->route('admin.channels.index')->with('status', 'Canal actualizado.');
+        $this->toast('Canal actualizado.');
+
+        return redirect()->route('admin.channels.index');
     }
 
     public function destroy(Request $request, NotificationChannel $channel): RedirectResponse
@@ -113,7 +117,9 @@ class GlobalChannelController extends Controller
 
         $channel->delete();
 
-        return redirect()->route('admin.channels.index')->with('status', 'Canal eliminado.');
+        $this->toast('Canal eliminado.');
+
+        return redirect()->route('admin.channels.index');
     }
 
     /**

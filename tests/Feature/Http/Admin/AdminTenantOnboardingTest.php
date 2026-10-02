@@ -444,4 +444,15 @@ class AdminTenantOnboardingTest extends TestCase
 
         $this->assertSame($own->id, $user->fresh()?->current_team_id);
     }
+
+    public function test_the_welcome_mail_is_always_in_spanish(): void
+    {
+        Notification::fake();
+        app()->setLocale('en');
+        $this->createTenant($this->superAdmin());
+        $owner = User::query()->where('email', 'dueno@norte.mx')->sole();
+
+        Notification::assertSentTo($owner, TenantAccessInvitation::class,
+            fn (TenantAccessInvitation $n): bool => $n->locale === 'es');
+    }
 }

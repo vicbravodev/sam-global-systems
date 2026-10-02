@@ -1,5 +1,11 @@
-import { usePage } from '@inertiajs/react';
+import { Link, usePage } from '@inertiajs/react';
 import { ChevronRight, Menu, Moon, Sun } from 'lucide-react';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { UserMenuContent } from '@/components/user-menu-content';
 import { useAppearance } from '@/hooks/use-appearance';
 import { useInitials } from '@/hooks/use-initials';
 import { cn } from '@/lib/utils';
@@ -57,16 +63,28 @@ export function AdminTopbar({
                                         aria-hidden="true"
                                     />
                                 )}
-                                <span
-                                    className={cn(
-                                        'text-xs font-medium',
-                                        isLast
-                                            ? 'font-semibold text-fg-1'
-                                            : 'text-fg-3',
-                                    )}
-                                >
-                                    {crumb.title}
-                                </span>
+                                {!isLast && crumb.href ? (
+                                    <Link
+                                        href={crumb.href}
+                                        className="text-xs font-medium text-fg-3 transition-colors hover:text-fg-1"
+                                    >
+                                        {crumb.title}
+                                    </Link>
+                                ) : (
+                                    <span
+                                        className={cn(
+                                            'max-w-[40vw] truncate text-xs font-medium',
+                                            isLast
+                                                ? 'font-semibold text-fg-1'
+                                                : 'text-fg-3',
+                                        )}
+                                        aria-current={
+                                            isLast ? 'page' : undefined
+                                        }
+                                    >
+                                        {crumb.title}
+                                    </span>
+                                )}
                             </span>
                         );
                     })}
@@ -91,22 +109,33 @@ export function AdminTopbar({
                 )}
             </button>
 
-            {/* User pill */}
-            <div className="flex items-center gap-2 rounded-full border border-border pr-2 pl-0.5">
-                <div className="grid size-[26px] shrink-0 place-items-center rounded-full bg-primary">
-                    <span className="text-2xs font-semibold text-white">
-                        {userInitials}
-                    </span>
-                </div>
-                <div className="min-w-0">
-                    <div className="max-w-[120px] truncate text-xs font-semibold text-fg-1">
-                        {user.name}
-                    </div>
-                    <div className="mt-0.5 font-mono text-3xs text-fg-3">
-                        Operador SAM
-                    </div>
-                </div>
-            </div>
+            {/* User menu: perfil, 2FA (Configuración) y cerrar sesión. */}
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <button
+                        type="button"
+                        className="flex cursor-pointer items-center gap-2 rounded-full border border-border bg-transparent pr-2 pl-0.5 transition-colors duration-100 hover:bg-surface-2"
+                        aria-label="Menú de usuario"
+                    >
+                        <div className="grid size-[26px] shrink-0 place-items-center rounded-full bg-primary">
+                            <span className="text-2xs font-semibold text-primary-foreground">
+                                {userInitials}
+                            </span>
+                        </div>
+                        <div className="hidden min-w-0 text-left sm:block">
+                            <div className="max-w-[120px] truncate text-xs font-semibold text-fg-1">
+                                {user.name}
+                            </div>
+                            <div className="mt-0.5 font-mono text-3xs text-fg-3">
+                                Operador SAM
+                            </div>
+                        </div>
+                    </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="min-w-56" align="end">
+                    <UserMenuContent user={user} />
+                </DropdownMenuContent>
+            </DropdownMenu>
         </header>
     );
 }

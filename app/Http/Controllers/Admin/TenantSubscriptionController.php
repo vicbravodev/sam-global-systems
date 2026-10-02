@@ -117,8 +117,8 @@ class TenantSubscriptionController extends Controller
 
     private function backToTenant(Team $team, string $message, bool $error = false): RedirectResponse
     {
-        return redirect()
-            ->route('admin.tenants.show', $team)
-            ->with($error ? 'error' : 'status', $message);
+        $this->toast($message, $error ? 'error' : 'success');
+
+        return redirect()->route('admin.tenants.show', $team);
     }
 }

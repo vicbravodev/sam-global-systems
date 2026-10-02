@@ -85,8 +85,9 @@ class PlanController extends Controller
             userAgent: $request->userAgent(),
         );
 
+        $this->toast('Plan actualizado.');
+
         return redirect()
-            ->route('admin.plans.index')
-            ->with('status', 'Plan actualizado.');
+            ->route('admin.plans.index');
     }
 }

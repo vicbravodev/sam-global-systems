@@ -1,17 +1,31 @@
-import { Head, Link, router, useForm } from '@inertiajs/react';
-import { Building2, Plus, UserCog } from 'lucide-react';
-import { useState } from 'react';
-import { Button } from '@/components/ui/button';
+import { Head, router, useForm } from '@inertiajs/react';
 import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-} from '@/components/ui/dialog';
+    AlertTriangle,
+    Building2,
+    CircleCheck,
+    Hourglass,
+    PauseCircle,
+    Plus,
+    UserCog,
+} from 'lucide-react';
+import { useMemo, useState } from 'react';
+import type { FormEvent } from 'react';
+import InputError from '@/components/input-error';
+import {
+    StagePill,
+    SubscriptionPill,
+} from '@/components/sam/admin-tenant-status';
+import type { OnboardingStage } from '@/components/sam/admin-tenant-status';
+import { DataTable } from '@/components/sam/data-table/data-table';
+import type { DataTableColumn } from '@/components/sam/data-table/data-table';
+import { EntityAvatar } from '@/components/sam/entity-avatar';
+import { ClearFiltersButton, SearchInput } from '@/components/sam/list';
+import { PulseStat, PulseStrip } from '@/components/sam/pulse-strip';
+import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { PageHeader } from '@/components/ui/page-header';
 import {
     Select,
     SelectContent,
@@ -19,10 +33,25 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import {
+    Sheet,
+    SheetContent,
+    SheetDescription,
+    SheetFooter,
+    SheetHeader,
+    SheetTitle,
+} from '@/components/ui/sheet';
+import { Spinner } from '@/components/ui/spinner';
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { formatDate } from '@/lib/format';
 import { DEFAULT_TENANT_TIMEZONE, TENANT_TIMEZONES } from '@/lib/timezones';
 import { store as impersonateStore } from '@/routes/admin/impersonate';
 import {
+    index as adminTenantsIndex,
     show as adminTenantShow,
     store as adminTenantStore,
 } from '@/routes/admin/tenants';
@@ -31,10 +60,13 @@ interface TenantRow {
     id: number;
     name: string;
     slug: string;
-    isPersonal: boolean;
     membersCount: number;
+    owner: { name: string; email: string; pendingAccess: boolean } | null;
     plan: string | null;
     subscriptionStatus: string | null;
+    integrationsCount: number;
+    monitoredAssets: number;
+    stage: OnboardingStage;
     createdAt: string | null;
 }
 
@@ -45,36 +77,50 @@ interface PlanOption {
 
 interface Stats {
     total: number;
-    active: number;
+    operating: number;
+    onboarding: number;
     pastDue: number;
+    suspended: number;
 }
 
 interface AdminTenantsIndexProps {
     tenants: TenantRow[];
     stats: Stats;
-    plans: PlanOption[];
+    plans?: PlanOption[];
 }
 
-const STATUS_LABEL: Record<string, string> = {
-    active: 'Activa',
-    past_due: 'Morosa',
-    suspended: 'Suspendida',
-    canceled: 'Cancelada',
-    expired: 'Expirada',
-};
+type QuickFilter = 'operating' | 'onboarding' | 'past_due' | 'suspended';
 
-function StatCard({ label, value }: { label: string; value: number }) {
-    // D6: misma celda cockpit que la franja de KPIs del dashboard (F3.1):
-    // sin borde por celda; la franja lleva el borde único y los hairlines.
-    return (
-        <div className="bg-surface-1 px-4 py-3">
-            <div className="sam-meta">{label}</div>
-            <div className="text-2xl font-semibold tabular-nums">{value}</div>
-        </div>
-    );
+const NO_PLAN = '__none__';
+
+function matchesQuick(row: TenantRow, filter: QuickFilter | null): boolean {
+    switch (filter) {
+        case 'operating':
+            return row.stage === 'operating';
+        case 'onboarding':
+            return row.stage !== 'operating';
+        case 'past_due':
+            return row.subscriptionStatus === 'past_due';
+        case 'suspended':
+            return row.subscriptionStatus === 'suspended';
+        default:
+            return true;
+    }
 }
 
-function CreateTenantDialog({
+function matchesSearch(row: TenantRow, q: string | null): boolean {
+    if (!q) {
+        return true;
+    }
+
+    const needle = q.toLocaleLowerCase('es');
+
+    return [row.name, row.slug, row.owner?.name, row.owner?.email]
+        .filter((v): v is string => Boolean(v))
+        .some((v) => v.toLocaleLowerCase('es').includes(needle));
+}
+
+function CreateTenantSheet({
     open,
     onOpenChange,
     plans,
@@ -85,15 +131,19 @@ function CreateTenantDialog({
 }) {
     const form = useForm({
         name: '',
-        plan_code: '',
+        timezone: DEFAULT_TENANT_TIMEZONE,
+        plan_code: NO_PLAN,
         owner_email: '',
         owner_name: '',
-        timezone: DEFAULT_TENANT_TIMEZONE,
     });
 
-    const submit = () => {
+    const submit = (e: FormEvent) => {
+        e.preventDefault();
+        form.transform((data) => ({
+            ...data,
+            plan_code: data.plan_code === NO_PLAN ? null : data.plan_code,
+        }));
         form.post(adminTenantStore().url, {
-            preserveScroll: true,
             onSuccess: () => {
                 form.reset();
                 onOpenChange(false);
@@ -102,142 +152,184 @@ function CreateTenantDialog({
     };
 
     return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent>
-                <DialogHeader>
-                    <DialogTitle>Crear tenant</DialogTitle>
-                    <DialogDescription>
-                        Da de alta la empresa y a su responsable. Si el correo
-                        no tiene cuenta, se crea y recibe un enlace (válido 7
-                        días) para definir su contraseña y entrar directo a su
-                        empresa.
-                    </DialogDescription>
-                </DialogHeader>
+        <Sheet open={open} onOpenChange={onOpenChange}>
+            <SheetContent className="flex w-full flex-col gap-0 p-0 sm:max-w-md">
+                <form
+                    onSubmit={submit}
+                    className="flex min-h-0 flex-1 flex-col"
+                >
+                    <SheetHeader className="border-b border-border px-5 py-4">
+                        <SheetTitle>Nuevo cliente</SheetTitle>
+                        <SheetDescription>
+                            Da de alta la empresa y a su responsable. Nace con
+                            el paquete por defecto (reglas, escalación y
+                            ajustes) listo.
+                        </SheetDescription>
+                    </SheetHeader>
 
-                <div className="grid gap-3">
-                    <div className="grid gap-1.5">
-                        <Label htmlFor="tenant-name">Nombre del tenant</Label>
-                        <Input
-                            id="tenant-name"
-                            value={form.data.name}
-                            onChange={(e) =>
-                                form.setData('name', e.target.value)
-                            }
-                            placeholder="Acme Logistics"
-                        />
-                        {form.errors.name ? (
-                            <p className="text-xs text-health-down">
-                                {form.errors.name}
-                            </p>
-                        ) : null}
-                    </div>
-
-                    <div className="grid gap-1.5">
-                        <Label htmlFor="tenant-plan">Plan (opcional)</Label>
-                        <Select
-                            value={form.data.plan_code}
-                            onValueChange={(v) => form.setData('plan_code', v)}
-                        >
-                            <SelectTrigger id="tenant-plan">
-                                <SelectValue placeholder="Sin plan" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {plans.map((plan) => (
-                                    <SelectItem
-                                        key={plan.code}
-                                        value={plan.code}
+                    <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-5 py-5">
+                        <fieldset className="grid gap-4">
+                            <legend className="sam-caps mb-1 text-fg-3">
+                                Empresa
+                            </legend>
+                            <div className="grid gap-1.5">
+                                <Label htmlFor="tenant-name">Nombre</Label>
+                                <Input
+                                    id="tenant-name"
+                                    value={form.data.name}
+                                    onChange={(e) =>
+                                        form.setData('name', e.target.value)
+                                    }
+                                    placeholder="Transportes del Norte"
+                                    autoFocus
+                                    required
+                                />
+                                <InputError message={form.errors.name} />
+                            </div>
+                            <div className="grid gap-1.5">
+                                <Label htmlFor="tenant-timezone">
+                                    Zona horaria
+                                </Label>
+                                <Select
+                                    value={form.data.timezone}
+                                    onValueChange={(v) =>
+                                        form.setData('timezone', v)
+                                    }
+                                >
+                                    <SelectTrigger
+                                        id="tenant-timezone"
+                                        className="w-full"
                                     >
-                                        {plan.name}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                        {form.errors.plan_code ? (
-                            <p className="text-xs text-health-down">
-                                {form.errors.plan_code}
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {TENANT_TIMEZONES.map((tz) => (
+                                            <SelectItem
+                                                key={tz.value}
+                                                value={tz.value}
+                                            >
+                                                {tz.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs text-fg-3">
+                                    Rige el horario silencioso, los reportes y
+                                    el contexto de la IA.
+                                </p>
+                                <InputError message={form.errors.timezone} />
+                            </div>
+                            <div className="grid gap-1.5">
+                                <Label htmlFor="tenant-plan">
+                                    Topes de plan
+                                </Label>
+                                <Select
+                                    value={form.data.plan_code}
+                                    onValueChange={(v) =>
+                                        form.setData('plan_code', v)
+                                    }
+                                >
+                                    <SelectTrigger
+                                        id="tenant-plan"
+                                        className="w-full"
+                                    >
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value={NO_PLAN}>
+                                            Sin plan (sólo términos propios)
+                                        </SelectItem>
+                                        {plans.map((plan) => (
+                                            <SelectItem
+                                                key={plan.code}
+                                                value={plan.code}
+                                            >
+                                                {plan.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <InputError message={form.errors.plan_code} />
+                            </div>
+                        </fieldset>
+
+                        <fieldset className="grid gap-4">
+                            <legend className="sam-caps mb-1 text-fg-3">
+                                Responsable
+                            </legend>
+                            <div className="grid gap-1.5">
+                                <Label htmlFor="owner-email">Correo</Label>
+                                <Input
+                                    id="owner-email"
+                                    type="email"
+                                    value={form.data.owner_email}
+                                    onChange={(e) =>
+                                        form.setData(
+                                            'owner_email',
+                                            e.target.value,
+                                        )
+                                    }
+                                    placeholder="direccion@empresa.mx"
+                                    autoComplete="off"
+                                    required
+                                />
+                                <InputError message={form.errors.owner_email} />
+                            </div>
+                            <div className="grid gap-1.5">
+                                <Label htmlFor="owner-name">Nombre</Label>
+                                <Input
+                                    id="owner-name"
+                                    value={form.data.owner_name}
+                                    onChange={(e) =>
+                                        form.setData(
+                                            'owner_name',
+                                            e.target.value,
+                                        )
+                                    }
+                                    placeholder="Obligatorio si aún no tiene cuenta"
+                                />
+                                <InputError message={form.errors.owner_name} />
+                            </div>
+                        </fieldset>
+
+                        <div className="rounded-lg border border-border bg-surface-2 px-4 py-3">
+                            <p className="sam-caps mb-2 text-fg-3">
+                                Qué pasa después
                             </p>
-                        ) : null}
+                            <ol className="grid list-decimal gap-1.5 pl-4 text-sm text-fg-2">
+                                <li>
+                                    El responsable recibe un correo para definir
+                                    su contraseña (válido 7 días).
+                                </li>
+                                <li>
+                                    Conecta su proveedor (Samsara) en
+                                    Integraciones.
+                                </li>
+                                <li>
+                                    Elige qué unidades vigilar; desde ahí se
+                                    cobra por tracto-día.
+                                </li>
+                            </ol>
+                        </div>
                     </div>
 
-                    <div className="grid gap-1.5">
-                        <Label htmlFor="tenant-timezone">Zona horaria</Label>
-                        <Select
-                            value={form.data.timezone}
-                            onValueChange={(v) => form.setData('timezone', v)}
+                    <SheetFooter className="flex-row justify-end gap-2 border-t border-border px-5 py-3">
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            onClick={() => onOpenChange(false)}
+                            disabled={form.processing}
                         >
-                            <SelectTrigger id="tenant-timezone">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {TENANT_TIMEZONES.map((tz) => (
-                                    <SelectItem key={tz.value} value={tz.value}>
-                                        {tz.label}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                        {form.errors.timezone ? (
-                            <p className="text-xs text-health-down">
-                                {form.errors.timezone}
-                            </p>
-                        ) : null}
-                    </div>
-
-                    <div className="grid gap-1.5">
-                        <Label htmlFor="owner-email">
-                            Email del propietario
-                        </Label>
-                        <Input
-                            id="owner-email"
-                            type="email"
-                            value={form.data.owner_email}
-                            onChange={(e) =>
-                                form.setData('owner_email', e.target.value)
-                            }
-                            placeholder="owner@acme.com"
-                            autoComplete="off"
-                        />
-                        {form.errors.owner_email ? (
-                            <p className="text-xs text-health-down">
-                                {form.errors.owner_email}
-                            </p>
-                        ) : null}
-                    </div>
-
-                    <div className="grid gap-1.5">
-                        <Label htmlFor="owner-name">
-                            Nombre del propietario (si es nuevo)
-                        </Label>
-                        <Input
-                            id="owner-name"
-                            value={form.data.owner_name}
-                            onChange={(e) =>
-                                form.setData('owner_name', e.target.value)
-                            }
-                            placeholder="Jane Doe"
-                        />
-                        {form.errors.owner_name ? (
-                            <p className="text-xs text-health-down">
-                                {form.errors.owner_name}
-                            </p>
-                        ) : null}
-                    </div>
-                </div>
-
-                <DialogFooter>
-                    <Button
-                        variant="ghost"
-                        onClick={() => onOpenChange(false)}
-                        disabled={form.processing}
-                    >
-                        Cancelar
-                    </Button>
-                    <Button onClick={submit} disabled={form.processing}>
-                        Crear tenant
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
+                            Cancelar
+                        </Button>
+                        <Button type="submit" disabled={form.processing}>
+                            {form.processing && <Spinner />}
+                            Crear cliente
+                        </Button>
+                    </SheetFooter>
+                </form>
+            </SheetContent>
+        </Sheet>
     );
 }
 
@@ -247,174 +339,280 @@ export default function AdminTenantsIndex({
     plans,
 }: AdminTenantsIndexProps) {
     const [createOpen, setCreateOpen] = useState(false);
+    const [quick, setQuick] = useState<QuickFilter | null>(null);
+    const [search, setSearch] = useState<string | null>(null);
+    const [entering, setEntering] = useState<number | null>(null);
+
+    const rows = useMemo(
+        () =>
+            tenants.filter(
+                (row) => matchesQuick(row, quick) && matchesSearch(row, search),
+            ),
+        [tenants, quick, search],
+    );
+
+    const toggle = (value: QuickFilter) => () =>
+        setQuick((current) => (current === value ? null : value));
+    const filtered = quick !== null || search !== null;
+    const clearFilters = () => {
+        setQuick(null);
+        setSearch(null);
+    };
+
+    const impersonate = (row: TenantRow) => {
+        router.post(
+            impersonateStore(row.slug).url,
+            {},
+            {
+                onStart: () => setEntering(row.id),
+                onFinish: () => setEntering(null),
+            },
+        );
+    };
+
+    const columns: DataTableColumn<TenantRow>[] = [
+        {
+            key: 'name',
+            header: 'Cliente',
+            sortValue: (row) => row.name,
+            cell: (row) => (
+                <span className="flex min-w-0 items-center gap-2.5">
+                    <EntityAvatar name={row.name} shape="square" size={26} />
+                    <span className="min-w-0">
+                        <span className="block truncate font-medium text-fg-1">
+                            {row.name}
+                        </span>
+                        <span className="block truncate font-mono text-3xs text-fg-3">
+                            {row.slug}
+                        </span>
+                    </span>
+                </span>
+            ),
+        },
+        {
+            key: 'owner',
+            header: 'Responsable',
+            sortValue: (row) => row.owner?.name ?? null,
+            cell: (row) =>
+                row.owner ? (
+                    <span className="block min-w-0">
+                        <span className="block truncate text-fg-1">
+                            {row.owner.name}
+                        </span>
+                        <span className="block truncate text-xs text-fg-3">
+                            {row.owner.email}
+                        </span>
+                    </span>
+                ) : (
+                    <span className="text-fg-3">Sin responsable</span>
+                ),
+        },
+        {
+            key: 'stage',
+            header: 'Estado',
+            width: 'w-52',
+            sortValue: (row) => row.stage,
+            cell: (row) => <StagePill stage={row.stage} />,
+        },
+        {
+            key: 'assets',
+            header: 'Unidades',
+            width: 'w-24',
+            align: 'right',
+            numeric: true,
+            sortValue: (row) => row.monitoredAssets,
+            cell: (row) => row.monitoredAssets,
+        },
+        {
+            key: 'subscription',
+            header: 'Suscripción',
+            width: 'w-40',
+            sortValue: (row) => row.subscriptionStatus,
+            cell: (row) => (
+                <span className="flex flex-col items-start gap-0.5">
+                    <SubscriptionPill status={row.subscriptionStatus} />
+                    {row.plan ? (
+                        <span className="text-3xs text-fg-3">{row.plan}</span>
+                    ) : null}
+                </span>
+            ),
+        },
+        {
+            key: 'created',
+            header: 'Alta',
+            width: 'w-32',
+            sortValue: (row) => row.createdAt,
+            cell: (row) => (
+                <span className="text-xs whitespace-nowrap text-fg-3 tabular-nums">
+                    {formatDate(row.createdAt)}
+                </span>
+            ),
+        },
+        {
+            key: 'actions',
+            header: <span className="sr-only">Acciones</span>,
+            width: 'w-12',
+            align: 'right',
+            cell: (row) => (
+                <Tooltip>
+                    <TooltipTrigger asChild>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-7"
+                            aria-label={`Entrar a la consola de ${row.name}`}
+                            disabled={entering !== null}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                impersonate(row);
+                            }}
+                        >
+                            {entering === row.id ? (
+                                <Spinner />
+                            ) : (
+                                <UserCog className="size-3.5" />
+                            )}
+                        </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Entrar a su consola</TooltipContent>
+                </Tooltip>
+            ),
+        },
+    ];
 
     return (
-        <div className="flex h-full flex-col overflow-hidden">
-            <Head title="Tenants" />
+        <>
+            <Head title="Clientes" />
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                <PageHeader
+                    title="Clientes"
+                    meta={
+                        <span className="text-xs text-fg-3">
+                            <span className="font-medium text-fg-1">
+                                {stats.total}
+                            </span>{' '}
+                            {stats.total === 1 ? 'cliente' : 'clientes'}
+                        </span>
+                    }
+                    actions={
+                        <Button size="sm" onClick={() => setCreateOpen(true)}>
+                            <Plus className="size-3.5" />
+                            Nuevo cliente
+                        </Button>
+                    }
+                    className="shrink-0 border-b border-border bg-surface-1 px-5 py-3"
+                />
 
-            <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-surface-1 px-5 py-3">
-                <div className="flex items-center gap-3">
-                    <h1 className="sam-h2 m-0">Tenants</h1>
-                    <span className="sam-meta">{tenants.length} equipos</span>
-                </div>
-                <Button size="sm" onClick={() => setCreateOpen(true)}>
-                    <Plus size={14} /> Crear tenant
-                </Button>
-            </header>
+                {stats.total > 0 ? (
+                    <>
+                        <PulseStrip>
+                            <PulseStat
+                                label="Operando"
+                                value={stats.operating}
+                                tone="ok"
+                                icon={CircleCheck}
+                                onClick={toggle('operating')}
+                                active={quick === 'operating'}
+                            />
+                            <PulseStat
+                                label="En alta"
+                                value={stats.onboarding}
+                                hint="Por terminar"
+                                tone={stats.onboarding > 0 ? 'warn' : 'neutral'}
+                                icon={Hourglass}
+                                onClick={toggle('onboarding')}
+                                active={quick === 'onboarding'}
+                            />
+                            <PulseStat
+                                label="Pago vencido"
+                                value={stats.pastDue}
+                                tone={
+                                    stats.pastDue > 0 ? 'critical' : 'neutral'
+                                }
+                                icon={AlertTriangle}
+                                onClick={toggle('past_due')}
+                                active={quick === 'past_due'}
+                            />
+                            <PulseStat
+                                label="Suspendidos"
+                                value={stats.suspended}
+                                icon={PauseCircle}
+                                onClick={toggle('suspended')}
+                                active={quick === 'suspended'}
+                            />
+                        </PulseStrip>
 
-            <div className="flex-1 overflow-y-auto p-5">
-                <div className="mb-5 grid grid-cols-3 gap-px overflow-hidden rounded-lg border border-border bg-border">
-                    <StatCard label="Tenants" value={stats.total} />
-                    <StatCard label="Activos" value={stats.active} />
-                    <StatCard label="Morosos" value={stats.pastDue} />
-                </div>
-
-                {/* D1: tarjetas apiladas en < md en vez de scroll lateral. */}
-                <div className="flex flex-col gap-2 md:hidden">
-                    {tenants.map((tenant) => (
-                        <div
-                            key={tenant.id}
-                            className="flex flex-col gap-2 rounded-lg border border-border bg-surface-1 p-3"
-                        >
-                            <div className="flex items-center justify-between gap-2">
-                                <Link
-                                    href={adminTenantShow(tenant.slug).url}
-                                    className="flex min-w-0 items-center gap-2 font-medium hover:underline"
-                                >
-                                    <Building2
-                                        size={14}
-                                        className="shrink-0 text-fg-3"
-                                    />
-                                    <span className="truncate">
-                                        {tenant.name}
-                                    </span>
-                                    {tenant.isPersonal ? (
-                                        <span className="sam-meta shrink-0 rounded bg-surface-2 px-1.5 py-0.5">
-                                            personal
-                                        </span>
-                                    ) : null}
-                                </Link>
-                                <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="shrink-0"
-                                    onClick={() =>
-                                        router.post(
-                                            impersonateStore(tenant.slug).url,
-                                        )
-                                    }
-                                >
-                                    <UserCog size={13} /> Impersonar
-                                </Button>
-                            </div>
-                            <div className="flex flex-wrap gap-x-4 gap-y-1 text-2xs text-fg-3">
-                                <span>{tenant.plan ?? 'Sin plan'}</span>
-                                <span>
-                                    {tenant.subscriptionStatus
-                                        ? (STATUS_LABEL[
-                                              tenant.subscriptionStatus
-                                          ] ?? tenant.subscriptionStatus)
-                                        : 'Sin suscripción'}
-                                </span>
-                                <span className="tabular-nums">
-                                    {tenant.membersCount} miembros
-                                </span>
-                                <span className="tabular-nums">
-                                    {formatDate(tenant.createdAt)}
-                                </span>
-                            </div>
+                        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-background px-5 py-2">
+                            <SearchInput
+                                value={search}
+                                onApply={setSearch}
+                                placeholder="Buscar cliente o responsable…"
+                                delay={150}
+                                className="w-full sm:w-80"
+                            />
+                            {filtered ? (
+                                <ClearFiltersButton onClick={clearFilters} />
+                            ) : null}
+                            <span className="ml-auto text-xs text-fg-3 tabular-nums">
+                                {rows.length} de {stats.total}
+                            </span>
                         </div>
-                    ))}
-                </div>
+                    </>
+                ) : null}
 
-                <div className="hidden overflow-hidden rounded-md border border-border md:block">
-                    <table className="w-full text-sm">
-                        <thead className="bg-surface-2 text-left">
-                            <tr className="sam-meta">
-                                <th className="px-3 py-2 font-medium">
-                                    Tenant
-                                </th>
-                                <th className="px-3 py-2 font-medium">Plan</th>
-                                <th className="px-3 py-2 font-medium">
-                                    Estado
-                                </th>
-                                <th className="px-3 py-2 font-medium">
-                                    Miembros
-                                </th>
-                                <th className="px-3 py-2 font-medium">
-                                    Creado
-                                </th>
-                                <th className="px-3 py-2" />
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {tenants.map((tenant) => (
-                                <tr
-                                    key={tenant.id}
-                                    className="border-t border-border hover:bg-surface-2/50"
-                                >
-                                    <td className="px-3 py-2">
-                                        <Link
-                                            href={
-                                                adminTenantShow(tenant.slug).url
-                                            }
-                                            className="flex items-center gap-2 font-medium hover:underline"
-                                        >
-                                            <Building2
-                                                size={14}
-                                                className="text-fg-3"
-                                            />
-                                            {tenant.name}
-                                            {tenant.isPersonal ? (
-                                                <span className="sam-meta rounded bg-surface-2 px-1.5 py-0.5">
-                                                    personal
-                                                </span>
-                                            ) : null}
-                                        </Link>
-                                    </td>
-                                    <td className="px-3 py-2">
-                                        {tenant.plan ?? '—'}
-                                    </td>
-                                    <td className="px-3 py-2">
-                                        {tenant.subscriptionStatus
-                                            ? (STATUS_LABEL[
-                                                  tenant.subscriptionStatus
-                                              ] ?? tenant.subscriptionStatus)
-                                            : 'Sin suscripción'}
-                                    </td>
-                                    <td className="px-3 py-2 tabular-nums">
-                                        {tenant.membersCount}
-                                    </td>
-                                    <td className="px-3 py-2 tabular-nums">
-                                        {formatDate(tenant.createdAt)}
-                                    </td>
-                                    <td className="px-3 py-2 text-right">
-                                        <Button
-                                            size="sm"
-                                            variant="outline"
-                                            onClick={() =>
-                                                router.post(
-                                                    impersonateStore(
-                                                        tenant.slug,
-                                                    ).url,
-                                                )
-                                            }
-                                        >
-                                            <UserCog size={13} /> Impersonar
-                                        </Button>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
+                <DataTable
+                    columns={columns}
+                    rows={rows}
+                    rowKey={(row) => row.id}
+                    onRowClick={(row) =>
+                        router.visit(adminTenantShow(row.slug).url)
+                    }
+                    defaultSort={{ key: 'created', dir: 'desc' }}
+                    empty={
+                        filtered ? (
+                            <EmptyState
+                                icon={Building2}
+                                title="Sin resultados"
+                                description="Ningún cliente coincide con la búsqueda o el filtro."
+                                action={
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={clearFilters}
+                                    >
+                                        Limpiar filtros
+                                    </Button>
+                                }
+                            />
+                        ) : (
+                            <EmptyState
+                                icon={Building2}
+                                title="Da de alta tu primer cliente"
+                                description="Crea la empresa y a su responsable; recibirá un correo para entrar y conectar su flota."
+                                action={
+                                    <Button
+                                        size="sm"
+                                        onClick={() => setCreateOpen(true)}
+                                    >
+                                        <Plus className="size-3.5" />
+                                        Nuevo cliente
+                                    </Button>
+                                }
+                            />
+                        )
+                    }
+                />
             </div>
 
-            <CreateTenantDialog
+            <CreateTenantSheet
                 open={createOpen}
                 onOpenChange={setCreateOpen}
-                plans={plans}
+                plans={plans ?? []}
             />
-        </div>
+        </>
     );
 }
+
+AdminTenantsIndex.layout = {
+    breadcrumbs: [{ title: 'Clientes', href: adminTenantsIndex().url }],
+};

@@ -68,7 +68,9 @@ class TenantInvoiceController extends Controller
                 input: $logInput + ['stage' => 'admin_request'],
             ));
 
-            return back()->with('error', "Ya existe una factura para {$periodStart->format('Y-m')}.");
+            $this->toast("Ya existe una factura para {$periodStart->format('Y-m')}.", 'error');
+
+            return back();
         }
 
         TenantContext::for($team->id, fn () => Bus::chain([
@@ -95,62 +97,74 @@ class TenantInvoiceController extends Controller
             metadata: ['period_start' => $start, 'period_end' => $end],
         );
 
-        return back()->with('success', "Factura de {$periodStart->format('Y-m')} en generación.");
+        $this->toast("Factura de {$periodStart->format('Y-m')} en generación.");
+
+        return back();
     }
 
     public function markPaid(Request $request, Team $team, int $invoice): RedirectResponse
     {
-        $invoice = $this->invoiceFor($team, $invoice);
+        // Transacción + bloqueo de fila: dos clics simultáneos no registran
+        // dos cambios de estado (y el log afterCommit sale con el commit real).
+        DB::transaction(function () use ($request, $team, $invoice): void {
+            $invoice = $this->invoiceFor($team, $invoice, lock: true);
 
-        abort_if($invoice->status === InvoiceStatus::Void, 422, 'Una factura anulada no se puede marcar como pagada.');
-        abort_if($invoice->status === InvoiceStatus::Paid, 422, 'La factura ya está pagada.');
+            abort_if($invoice->status === InvoiceStatus::Void, 422, 'Una factura anulada no se puede marcar como pagada.');
+            abort_if($invoice->status === InvoiceStatus::Paid, 422, 'La factura ya está pagada.');
 
-        $from = $invoice->status->value;
+            $from = $invoice->status->value;
 
-        $invoice->forceFill([
-            'status' => InvoiceStatus::Paid,
-            'paid_at' => now(),
-        ])->save();
+            $invoice->forceFill([
+                'status' => InvoiceStatus::Paid,
+                'paid_at' => now(),
+            ])->save();
 
-        $this->logStatusChange($request, $team, $invoice, $from);
+            $this->logStatusChange($request, $team, $invoice, $from);
 
-        $this->record($request, $team, $invoice, 'tenant.invoice_paid',
-            "Factura #{$invoice->id} del tenant {$team->name} marcada como pagada.");
+            $this->record($request, $team, $invoice, 'tenant.invoice_paid',
+                "Factura #{$invoice->id} del tenant {$team->name} marcada como pagada.");
+        });
 
-        return back()->with('success', 'Factura marcada como pagada.');
+        $this->toast('Factura marcada como pagada.');
+
+        return back();
     }
 
     public function void(Request $request, Team $team, int $invoice): RedirectResponse
     {
-        $invoice = $this->invoiceFor($team, $invoice);
+        DB::transaction(function () use ($request, $team, $invoice): void {
+            $invoice = $this->invoiceFor($team, $invoice, lock: true);
 
-        abort_if($invoice->status === InvoiceStatus::Paid, 422, 'Una factura pagada no se anula.');
-        abort_if($invoice->status === InvoiceStatus::Void, 422, 'La factura ya está anulada.');
+            abort_if($invoice->status === InvoiceStatus::Paid, 422, 'Una factura pagada no se anula.');
+            abort_if($invoice->status === InvoiceStatus::Void, 422, 'La factura ya está anulada.');
 
-        $from = $invoice->status->value;
+            $from = $invoice->status->value;
 
-        $invoice->forceFill(['status' => InvoiceStatus::Void])->save();
+            $invoice->forceFill(['status' => InvoiceStatus::Void])->save();
 
-        $this->logStatusChange($request, $team, $invoice, $from);
+            $this->logStatusChange($request, $team, $invoice, $from);
 
-        $this->record($request, $team, $invoice, 'tenant.invoice_voided',
-            "Factura #{$invoice->id} del tenant {$team->name} anulada.");
+            $this->record($request, $team, $invoice, 'tenant.invoice_voided',
+                "Factura #{$invoice->id} del tenant {$team->name} anulada.");
+        });
 
-        return back()->with('success', 'Factura anulada.');
+        $this->toast('Factura anulada.');
+
+        return back();
     }
 
     /**
      * Explicit lookup: implicit binding would apply the BelongsToTenant scope
      * with the ADMIN's own current team and 404 every foreign invoice.
      */
-    private function invoiceFor(Team $team, int $invoiceId): InvoiceSnapshot
+    private function invoiceFor(Team $team, int $invoiceId, bool $lock = false): InvoiceSnapshot
     {
         // El operador abre la factura de OTRO tenant: se entra en el suyo,
         // que es lo que el scope global necesita para no chocar con el team
         // actual del admin. Ver §2.1.
         return TenantContext::for(
             $team->id,
-            fn () => InvoiceSnapshot::query()->findOrFail($invoiceId),
+            fn () => InvoiceSnapshot::query()->when($lock, fn ($q) => $q->lockForUpdate())->findOrFail($invoiceId),
         );
     }
 

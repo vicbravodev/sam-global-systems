@@ -62,8 +62,9 @@ class TenantBillingTermsController extends Controller
             userAgent: $request->userAgent(),
         );
 
+        $this->toast('Términos de facturación actualizados.');
+
         return redirect()
-            ->route('admin.tenants.show', $team)
-            ->with('status', 'Términos de facturación actualizados.');
+            ->route('admin.tenants.show', $team);
     }
 }
