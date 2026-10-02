@@ -21,6 +21,7 @@ use App\Domains\Context\Models\EventMediaContext;
 use App\Domains\Normalization\Models\NormalizedEvent;
 use App\Domains\Tenancy\Actions\RecordUsageEvent;
 use App\Domains\Tenancy\Models\UsageMeter;
+use App\Support\SafeErrorMessage;
 use App\Support\SystemLog;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -431,7 +432,7 @@ class EvaluateEventMultimodally
             'result' => MediaAssessmentResult::LowQuality,
             'confidence_score' => 0.0,
             'extracted_signals_json' => ['rejected_reason' => $exception->reason],
-            'summary_text' => 'Imagen descartada antes del análisis: '.$exception->getMessage(),
+            'summary_text' => 'Imagen descartada antes del análisis: '.SafeErrorMessage::from($exception),
             'latency_ms' => null,
             'input_tokens' => null,
             'output_tokens' => null,

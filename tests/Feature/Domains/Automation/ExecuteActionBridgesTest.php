@@ -343,7 +343,7 @@ class ExecuteActionBridgesTest extends TestCase
         $result = app(ExecuteAction::class)->execute($execution);
 
         $this->assertSame(ActionExecutionStatus::Failed, $result->status);
-        $this->assertSame('unrelated', $result->error_message);
+        $this->assertSame('InvalidArgumentException', $result->error_message);
         $this->assertSystemLogged('automation.action.failed', fn (array $c) => $c['reason'] === 'unexpected_exception'
             && $c['result'] === ['error_class' => 'InvalidArgumentException']);
         $this->assertCount(1, $this->systemLogEntries('automation.action.failed'));

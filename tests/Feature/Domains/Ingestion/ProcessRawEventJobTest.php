@@ -165,7 +165,7 @@ class ProcessRawEventJobTest extends TestCase
 
         Event::assertDispatched(RawEventFailed::class, function ($event) use ($rawEvent) {
             return $event->rawEvent->id === $rawEvent->id
-                && $event->reason === 'Processing timeout';
+                && $event->reason === 'RuntimeException';
         });
     }
 
