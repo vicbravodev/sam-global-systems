@@ -109,6 +109,33 @@ Lo emite `App\Support\DeniedRequestLog` (outcome `degraded`); sólo la plantilla
 | `auth.logout.succeeded` | ok | — | `user_id`, `guard` |
 | `auth.password.reset` | ok | — | `user_id` |
 
+### Acceso (`access`)
+
+Quién puede qué dentro de un tenant, y los cambios de quién entra. Sólo ids, roles de equipo (`owner`/`admin`/`member`) y códigos del catálogo de permisos; nunca emails (tampoco el de una invitación), nombres ni el código del enlace de invitación (es su secreto). El nombre y el código de un rol propio los escribe el tenant: se registra su `role_id`.
+
+| Código | Outcome | Reason posibles | Campos clave |
+|---|---|---|---|
+| `access.check.denied` | skipped | `permission` (el rol no tiene el permiso), `subscription` (módulo operativo con suscripción que no da acceso; calc `subscription_status`), `feature` (módulo apagado para el tenant; calc `feature_key`), `no_team` (debug, desde `AuthorizeAction`); `not_member` (no es miembro del team de la URL o del cambio de team), `role` (rol de equipo bajo el mínimo de la ruta; `min_role`, `role`) | `user_id`, `team_id`, y `permission` (AuthorizeAction) o `route_name` / `min_role`. Las de `AuthorizeAction` van a **debug**: las policies también se evalúan para pintar la UI, así que una negación no siempre es un intento bloqueado; el 403 real lo da `http.request.denied`. `not_member` y `role` cortan la petición con 403 (info) |
+| `access.super_admin.denied` | skipped | `not_super_admin` | `user_id`, `route_name`. Alguien sin rol global pidió la consola `/admin` (403) |
+| `access.super_admin.forced_team_switch` | degraded | `direct_url` | `user_id`, `team_id`, `route_name`. Un super-admin abrió `/{team}/...` de un cliente del que no es miembro y su team actual cambió solo; antes sólo quedaba en la auditoría (`impersonation.started`, `via=direct_url`). `warning` para que se vea |
+| `access.impersonation.started` | ok / skipped | `personal_team` (no se entra a un espacio personal) | `user_id`, `team_id`; result `is_member`. Botón "Entrar a su consola" de la consola |
+| `access.impersonation.stopped` | ok / degraded | `no_personal_team` (sin espacio personal al que volver: no se finge la salida) | `user_id`, `team_id` (el cliente del que sale); result `returned_to_team_id` |
+| `access.team.switched` | ok | — | `user_id`, `team_id`; result `previous_team_id`. Cambio de team desde el selector |
+| `access.role_delegation.denied` | skipped | `self_change`, `owner_protected`, `target_outranks_actor` (el miembro tiene permisos que el actor no), `role_above_own` (rol de equipo superior al propio u `owner`; `requested_role`, `actor_role`), `permissions_not_held` (conceder un permiso que el actor no tiene) | `actor_id`, `team_id`, `check` (`change_membership` / `grant_team_role` / `grant_permissions`), `target_user_id`; en `target_outranks_actor` y `permissions_not_held`, calc `requested_count`, `missing_permissions` (códigos del catálogo). Intento de escalada bloqueado (403) |
+| `access.member.role_changed` | ok | — | `team_id`, `user_id`, `actor_id`; result `previous_role`, `role`, `rbac_role_cleared` (tenía rol RBAC y vuelve a mandar el de equipo). Tras el commit (`DB::afterCommit`) y en el `TenantContext` del team: la reasignación de propietario lo emite dos veces (el antiguo pasa a `admin`, el nuevo a `owner`) |
+| `access.member.role_assigned` | ok | — | `team_id`, `user_id`, `membership_id`, `actor_id`; result `previous_role_id`, `role_id`, `role_code` (sólo roles de sistema; null en los propios), `is_system_role`, `legacy_role` |
+| `access.member.added` | ok | — | `team_id`, `user_id`, `actor_id`, `via=admin_console`; result `role`, `user_created`, `access_link_queued`. La entrada por invitación la narra `access.invitation.accepted` |
+| `access.member.removed` | ok | — | `team_id`, `user_id`, `actor_id`, `via` (`tenant_settings` / `admin_console`) |
+| `access.invitation.created` | ok | — | `team_id`, `invited_by`; result `invitation_id`, `role`, `expires_at`. Nunca el email invitado ni el código del enlace |
+| `access.invitation.cancelled` | ok | — | `team_id`, `invitation_id`, `actor_id` |
+| `access.invitation.accepted` | ok | — | `team_id`, `invitation_id`, `user_id`; result `role`, `membership_created` (false = ya era miembro), `membership_id`. Tras el commit (el alta por invitación crea la cuenta en la misma transacción) |
+| `access.invitation.rejected` | skipped | `already_accepted`, `expired`, `team_deleted`, `email_mismatch` (la sesión es de otro correo), `not_resolvable`; en el alta (`stage=register`, `user_id` null) además `already_authenticated`, `account_exists` | `team_id`, `invitation_id`, `user_id`, `stage` (`accept`: la validación del formulario, `ValidTeamInvitation`; `register`: el alta de cuenta; `locked_recheck`: la re-comprobación con la fila bloqueada en `AcceptTeamInvitation`, que cubre la carrera entre dos envíos) |
+| `access.role.permissions_synced` | ok | — | `team_id` (null en roles de sistema globales), `role_id`, `is_system_role`, `actor_id`; calc `requested_count`, `known_count` (códigos que existen en el catálogo); result `attached_count`, `detached_count`, `memberships_invalidated` |
+| `access.role.deleted` | ok | — | `team_id`, `role_id`, `actor_id` |
+| `access.operator.granted` | ok | — | `actor_id`, `user_id`. Un usuario pasa a super-admin |
+| `access.operator.revoked` | ok | — | `actor_id`, `user_id` |
+| `access.operator.rejected` | skipped | `account_not_found`, `already_super_admin` (`change=grant`); `self_revocation`, `last_super_admin` (`change=revoke`) | `actor_id`, `user_id` (null si no hay cuenta), `change` |
+
 ### Almacenamiento (`storage`)
 
 | Código | Outcome | Reason posibles | Campos clave |

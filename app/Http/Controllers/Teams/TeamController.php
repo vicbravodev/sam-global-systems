@@ -10,6 +10,7 @@ use App\Http\Requests\Teams\SaveTeamRequest;
 use App\Models\Membership;
 use App\Models\Team;
 use App\Models\User;
+use App\Support\SystemLog;
 use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
@@ -127,9 +128,23 @@ class TeamController extends Controller
      */
     public function switch(Team $team, #[CurrentUser] User $user): RedirectResponse
     {
-        abort_unless($user->belongsToTeam($team), 403);
+        if (! $user->belongsToTeam($team)) {
+            SystemLog::skipped('access.check.denied', reason: 'not_member', input: [
+                'user_id' => $user->id,
+                'team_id' => $team->id,
+                'route_name' => 'teams.switch',
+            ]);
+
+            abort(403);
+        }
+
+        $previousTeamId = $user->current_team_id;
 
         $user->switchTeam($team);
+
+        SystemLog::ok('access.team.switched', input: ['user_id' => $user->id, 'team_id' => $team->id], result: [
+            'previous_team_id' => $previousTeamId,
+        ]);
 
         return back();
     }

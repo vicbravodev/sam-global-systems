@@ -8,6 +8,7 @@ use App\Domains\Audit\Enums\AuditCategory;
 use App\Enums\TeamRole;
 use App\Models\Team;
 use App\Models\User;
+use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Closure;
 use Illuminate\Http\Request;
@@ -45,7 +46,19 @@ class EnsureTeamMembership
             return $next($request);
         }
 
-        abort_if($user === null || $team === null || ! $user->belongsToTeam($team), 403);
+        if ($user === null || $team === null || ! $user->belongsToTeam($team)) {
+            // Sin usuario o sin team no hay a quién atribuirlo: lo cubre el
+            // `http.request.denied` del 403. Un no-miembro sí se narra.
+            if ($user !== null && $team !== null) {
+                SystemLog::skipped('access.check.denied', reason: 'not_member', input: [
+                    'user_id' => $user->id,
+                    'team_id' => $team->id,
+                    'route_name' => $request->route()?->getName(),
+                ]);
+            }
+
+            abort(403);
+        }
 
         $this->ensureTeamMemberHasRequiredRole($user, $team, $minimumRole);
 
@@ -63,6 +76,14 @@ class EnsureTeamMembership
 
     private function recordImplicitImpersonation(Request $request, User $user, Team $team): void
     {
+        // Hasta ahora silencioso fuera de la auditoría: un operador cambió de
+        // tenant sólo por abrir una URL. Va a `warning` para que se vea.
+        SystemLog::degraded('access.super_admin.forced_team_switch', reason: 'direct_url', input: [
+            'user_id' => $user->id,
+            'team_id' => $team->id,
+            'route_name' => $request->route()?->getName(),
+        ]);
+
         app(RecordAuditEntry::class)->execute(
             actorType: AuditActorType::User,
             actorId: $user->id,
@@ -92,12 +113,16 @@ class EnsureTeamMembership
 
         $requiredRole = TeamRole::tryFrom($minimumRole);
 
-        abort_if(
-            $requiredRole === null ||
-            $role === null ||
-            ! $role->isAtLeast($requiredRole),
-            403,
-        );
+        if ($requiredRole === null || $role === null || ! $role->isAtLeast($requiredRole)) {
+            SystemLog::skipped('access.check.denied', reason: 'role', input: [
+                'user_id' => $user->id,
+                'team_id' => $team->id,
+                'min_role' => $minimumRole,
+                'role' => $role?->value,
+            ]);
+
+            abort(403);
+        }
     }
 
     /**

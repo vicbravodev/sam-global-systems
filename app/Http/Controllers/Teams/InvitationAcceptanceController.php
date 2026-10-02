@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Teams\AcceptTeamInvitationRequest;
 use App\Models\TeamInvitation;
 use App\Models\User;
+use App\Support\SystemLog;
 use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -74,16 +75,22 @@ class InvitationAcceptanceController extends Controller
         AcceptTeamInvitation $acceptTeamInvitation,
     ): RedirectResponse {
         if ($request->user() !== null) {
+            $this->rejectRegistration('already_authenticated', $invitation);
+
             throw ValidationException::withMessages([
                 'invitation' => 'Ya tienes una sesión iniciada. Cierra sesión para crear una cuenta nueva.',
             ]);
         }
 
         if (($problem = AcceptTeamInvitation::problem($invitation)) !== null) {
+            $this->rejectRegistration(AcceptTeamInvitation::problemCode($invitation) ?? 'unusable', $invitation);
+
             throw ValidationException::withMessages(['invitation' => $problem]);
         }
 
         if (User::findByEmail($invitation->email) !== null) {
+            $this->rejectRegistration('account_exists', $invitation);
+
             throw ValidationException::withMessages([
                 'invitation' => 'Ya existe una cuenta con este correo. Inicia sesión para aceptar la invitación.',
             ]);
@@ -107,5 +114,18 @@ class InvitationAcceptanceController extends Controller
         $request->session()->regenerate();
 
         return to_route('dashboard', ['current_team' => $team->slug]);
+    }
+
+    /**
+     * Alta por invitación rechazada antes de crear la cuenta (sin usuario aún).
+     */
+    private function rejectRegistration(string $reason, TeamInvitation $invitation): void
+    {
+        SystemLog::skipped('access.invitation.rejected', reason: $reason, input: [
+            'team_id' => $invitation->team_id,
+            'invitation_id' => $invitation->id,
+            'user_id' => null,
+            'stage' => 'register',
+        ]);
     }
 }
