@@ -16,6 +16,7 @@ use App\Domains\Notifications\Models\MessagingCharge;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Models\TenantChannelToggle;
 use App\Domains\Tenancy\Models\UsageEvent;
+use App\Domains\Tenancy\Models\UsageMeter;
 use App\Models\User;
 use Database\Seeders\IncidentsMeterSeeder;
 use Database\Seeders\IncidentStatusSeeder;
@@ -185,6 +186,32 @@ class PlaceVerificationCallJobTest extends TestCase
         $this->assertSame('debug', $entry['level']);
         $this->assertSame('not_in_flight', $entry['context']['reason']);
         $this->assertSame(['verification_id' => $verification->id], $entry['context']['input']);
+    }
+
+    public function test_a_placed_call_without_the_voice_calls_meter_is_logged_as_a_billing_gap(): void
+    {
+        // La migración de meters de mensajería lo crea: aquí se quita.
+        UsageMeter::query()->where('code', PlaceVerificationCallJob::USAGE_METER_CODE)->delete();
+        NotificationChannel::factory()->voice()->create();
+        $verification = $this->makeVerification();
+
+        $this->mock(TwilioVoiceCaller::class, function ($mock) {
+            $mock->shouldReceive('createCall')->once()->andReturn((object) ['sid' => 'CA-nometer', 'status' => 'queued']);
+        });
+
+        $this->runJob($verification);
+
+        $this->assertSame(CallVerificationStatus::Calling, $verification->fresh()->status);
+        $this->assertSame(0, UsageEvent::withoutGlobalScopes()->where('event_key', "voice_call:{$verification->id}")->count());
+
+        $context = $this->assertSystemLogged('incidents.usage.not_metered', fn (array $c) => $c['outcome'] === 'degraded');
+        $this->assertSame('meter_missing', $context['reason']);
+        $this->assertSame([
+            'meter_code' => PlaceVerificationCallJob::USAGE_METER_CODE,
+            'verification_id' => $verification->id,
+        ], $context['input']);
+        $this->assertSame('warning', $this->systemLogEntries('incidents.usage.not_metered')[0]['level']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_uses_the_platform_voice_channel(): void
