@@ -11,11 +11,20 @@ use App\Models\Team;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use Tests\Concerns\FakesHostResolution;
 use Tests\TestCase;
 
 class SlackNotificationDriverTest extends TestCase
 {
-    use RefreshDatabase;
+    use FakesHostResolution, RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // OutboundUrlGuard resuelve el host: sin red en los tests.
+        $this->fakeDns(['hooks.slack.com' => ['3.33.152.1']]);
+    }
 
     private function rendered(?string $priority = null, ?string $incidentId = null, ?string $body = 'world'): RenderedNotification
     {

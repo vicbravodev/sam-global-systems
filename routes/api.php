@@ -51,10 +51,11 @@ use App\Http\Controllers\Webhooks\TwilioNotificationCallController;
 use App\Http\Controllers\Webhooks\TwilioStatusCallbackController;
 use App\Http\Controllers\Webhooks\TwilioVoiceController;
 use App\Http\Middleware\EnsureTeamMembership;
+use App\Http\Middleware\EnsureTenantNotSuspended;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('{current_team}')
-    ->middleware(['auth', EnsureTeamMembership::class, 'throttle:api'])
+    ->middleware(['auth', EnsureTeamMembership::class, EnsureTenantNotSuspended::class, 'throttle:api'])
     ->group(function () {
         Route::get('integrations', [IntegrationController::class, 'index'])->name('api.integrations.index');
         Route::post('integrations', [IntegrationController::class, 'store'])->name('api.integrations.store');

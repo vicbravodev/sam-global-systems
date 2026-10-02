@@ -7,6 +7,7 @@ use App\Domains\Notifications\Data\DeliveryResult;
 use App\Domains\Notifications\Data\RenderedNotification;
 use App\Domains\Notifications\Enums\NotificationPriority;
 use App\Domains\Notifications\Models\NotificationChannel;
+use App\Domains\Notifications\Support\OutboundChannelUrl;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
@@ -32,6 +33,10 @@ class SlackNotificationDriver implements NotificationDriver
 {
     public const DEFAULT_TIMEOUT_SECONDS = 10;
 
+    public function __construct(
+        private readonly OutboundChannelUrl $outboundUrl,
+    ) {}
+
     public function send(RenderedNotification $notification, NotificationChannel $channel): DeliveryResult
     {
         $config = $channel->config_json ?? [];
@@ -42,12 +47,22 @@ class SlackNotificationDriver implements NotificationDriver
             return DeliveryResult::failure('slack_webhook_url missing');
         }
 
+        // URL configurable: SSRF. Si apunta a la red interna la entrega falla
+        // definitivamente sin hacer la petición; si no, la conexión queda fijada
+        // a las IPs validadas y sin redirecciones.
+        $target = $this->outboundUrl->guard($webhookUrl, $channel, 'slack');
+
+        if ($target instanceof DeliveryResult) {
+            return $target;
+        }
+
         $timeout = is_int($config['timeout'] ?? null) ? $config['timeout'] : self::DEFAULT_TIMEOUT_SECONDS;
 
         $payload = $this->buildPayload($notification, $config);
 
         try {
-            $response = Http::timeout($timeout)
+            $response = Http::withOptions($target->httpOptions())
+                ->timeout($timeout)
                 ->asJson()
                 ->post($webhookUrl, $payload);
         } catch (ConnectionException $e) {
@@ -68,6 +83,10 @@ class SlackNotificationDriver implements NotificationDriver
             'status_code' => $response->status(),
             'body' => $responseBody,
         ];
+
+        if ($response->redirect()) {
+            return OutboundChannelUrl::redirectFailure('slack', $response->status(), $responsePayload);
+        }
 
         // Slack incoming webhooks return 200 + body "ok" on success. We also
         // tolerate 2xx with an empty body for Slack-compatible relays.

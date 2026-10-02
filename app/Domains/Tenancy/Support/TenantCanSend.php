@@ -2,10 +2,7 @@
 
 namespace App\Domains\Tenancy\Support;
 
-use App\Domains\Tenancy\Enums\SubscriptionStatus;
-use App\Domains\Tenancy\Models\Subscription;
 use App\Models\Team;
-use App\Support\TenantContext;
 
 /**
  * Única puerta que decide si un tenant puede generar envíos con coste
@@ -43,20 +40,9 @@ final class TenantCanSend
             return self::REASON_TEAM_MISSING;
         }
 
-        $subscription = TenantContext::for($teamId, fn () => Subscription::query()
-            ->where('team_id', $teamId)
-            ->latest('starts_at')
-            ->latest('id')
-            ->first());
+        $status = CurrentSubscription::status($teamId);
 
-        if ($subscription === null) {
-            return null;
-        }
-
-        /** @var SubscriptionStatus $status */
-        $status = $subscription->status;
-
-        if ($status->grantsOperationalAccess()) {
+        if ($status === null || $status->grantsOperationalAccess()) {
             return null;
         }
 
