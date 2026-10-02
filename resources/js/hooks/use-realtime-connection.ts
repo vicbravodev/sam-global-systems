@@ -1,6 +1,12 @@
 import type Pusher from 'pusher-js';
 import { useSyncExternalStore } from 'react';
-import { createEcho } from '@/echo';
+import {
+    echoLoadFailed,
+    getEcho,
+    isEchoAvailable,
+    loadEcho,
+    subscribeEcho,
+} from '@/echo';
 import type { RealtimeConnectionState } from '@/types/realtime';
 
 function normalizeState(raw: string): RealtimeConnectionState {
@@ -20,7 +26,7 @@ function normalizeState(raw: string): RealtimeConnectionState {
 }
 
 function currentPusher(): Pusher | null {
-    const echo = createEcho();
+    const echo = getEcho();
 
     if (!echo) {
         return null;
@@ -32,7 +38,14 @@ function currentPusher(): Pusher | null {
 function getSnapshot(): RealtimeConnectionState {
     const pusher = currentPusher();
 
-    return pusher ? normalizeState(pusher.connection.state) : 'disconnected';
+    if (pusher) {
+        return normalizeState(pusher.connection.state);
+    }
+
+    // The client code is still downloading: the socket is on its way.
+    return isEchoAvailable() && !echoLoadFailed()
+        ? 'connecting'
+        : 'disconnected';
 }
 
 /**
@@ -44,17 +57,39 @@ function getServerSnapshot(): RealtimeConnectionState {
     return 'connecting';
 }
 
+/**
+ * Follows the socket's state changes, attaching to the connection as soon as
+ * the lazily loaded client exists (and re-attaching if it is recreated).
+ */
 function subscribe(onChange: () => void): () => void {
-    const pusher = currentPusher();
+    let detach = () => {};
 
-    if (!pusher) {
-        return () => {};
-    }
+    const attach = () => {
+        detach();
+        detach = () => {};
 
-    pusher.connection.bind('state_change', onChange);
+        const pusher = currentPusher();
+
+        if (!pusher) {
+            return;
+        }
+
+        pusher.connection.bind('state_change', onChange);
+        detach = () => pusher.connection.unbind('state_change', onChange);
+    };
+
+    attach();
+
+    const unsubscribeEcho = subscribeEcho(() => {
+        attach();
+        onChange();
+    });
+
+    void loadEcho();
 
     return () => {
-        pusher.connection.unbind('state_change', onChange);
+        unsubscribeEcho();
+        detach();
     };
 }
 

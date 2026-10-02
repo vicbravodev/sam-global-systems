@@ -2,7 +2,7 @@ import { usePage } from '@inertiajs/react';
 import { Eye } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { UserAvatar } from '@/components/sam/incident-detail/user-avatar';
-import { createEcho } from '@/echo';
+import { useEcho } from '@/echo';
 
 type Viewer = { id: number; name: string };
 
@@ -24,10 +24,9 @@ function initials(name: string): string {
  */
 function useIncidentViewers(incidentId: number): Viewer[] {
     const [viewers, setViewers] = useState<Viewer[]>([]);
+    const echo = useEcho();
 
     useEffect(() => {
-        const echo = createEcho();
-
         if (!echo) {
             return;
         }
@@ -53,7 +52,7 @@ function useIncidentViewers(incidentId: number): Viewer[] {
             echo.leave(name);
             setViewers([]);
         };
-    }, [incidentId]);
+    }, [echo, incidentId]);
 
     return viewers;
 }

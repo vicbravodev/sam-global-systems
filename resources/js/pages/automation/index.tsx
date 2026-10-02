@@ -9,7 +9,7 @@ import {
     Workflow,
     X,
 } from 'lucide-react';
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { submit, useAutomationBase } from '@/components/sam/automation/api';
 import { isRunning } from '@/components/sam/automation/copy';
 import { ExecutionsList } from '@/components/sam/automation/executions-list';
@@ -18,7 +18,6 @@ import type {
     ExecutionStatusFilter,
     WorkflowRow,
 } from '@/components/sam/automation/types';
-import { WorkflowEditorDialog } from '@/components/sam/automation/workflow-editor-dialog';
 import { WorkflowListRow } from '@/components/sam/automation/workflow-row';
 import { ConfirmDialog } from '@/components/sam/confirm-dialog';
 import { PulseStat, PulseStrip } from '@/components/sam/pulse-strip';
@@ -30,6 +29,14 @@ import { PageHeader } from '@/components/ui/page-header';
 import { useBroadcastReload } from '@/hooks/use-team-broadcasts';
 import { formatNumber } from '@/lib/format';
 import { deleteJson, postJson, putJson } from '@/lib/sam-fetch';
+
+// The editor (condition builder, step editor, comboboxes) loads on its first
+// opening.
+const WorkflowEditorDialog = lazy(() =>
+    import('@/components/sam/automation/workflow-editor-dialog').then(
+        (module) => ({ default: module.WorkflowEditorDialog }),
+    ),
+);
 
 type TabKey = 'workflows' | 'executions';
 type WorkflowFilter = 'active' | 'inactive';
@@ -95,6 +102,13 @@ export default function AutomationIndex() {
         open: boolean;
         workflow: WorkflowRow | null;
     }>({ open: false, workflow: null });
+    // Mounted on first opening and kept, so closing still animates.
+    const [editorMounted, setEditorMounted] = useState(false);
+
+    if (editor.open && !editorMounted) {
+        setEditorMounted(true);
+    }
+
     const [deleting, setDeleting] = useState<WorkflowRow | null>(null);
     const [toggling, setToggling] = useState<number | null>(null);
 
@@ -501,16 +515,20 @@ export default function AutomationIndex() {
                 )}
             </div>
 
-            <WorkflowEditorDialog
-                open={editor.open}
-                workflow={editor.workflow}
-                options={props.options}
-                triggerConditionFields={props.triggerConditionFields}
-                teamTargets={props.teamTargets}
-                onOpenChange={(open) =>
-                    !open && setEditor({ open: false, workflow: null })
-                }
-            />
+            {editorMounted && (
+                <Suspense fallback={null}>
+                    <WorkflowEditorDialog
+                        open={editor.open}
+                        workflow={editor.workflow}
+                        options={props.options}
+                        triggerConditionFields={props.triggerConditionFields}
+                        teamTargets={props.teamTargets}
+                        onOpenChange={(open) =>
+                            !open && setEditor({ open: false, workflow: null })
+                        }
+                    />
+                </Suspense>
+            )}
 
             <ConfirmDialog
                 open={deleting !== null}

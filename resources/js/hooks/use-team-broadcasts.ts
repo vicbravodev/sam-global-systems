@@ -1,6 +1,6 @@
 import { router, usePage } from '@inertiajs/react';
 import { useEffect, useRef } from 'react';
-import { createEcho } from '@/echo';
+import { useEcho } from '@/echo';
 import type {
     TeamBroadcastEvent,
     TeamBroadcastEventMap,
@@ -67,13 +67,14 @@ export function useTeamBroadcastsSubscription(): void {
     const userId =
         (page.props.auth as { user?: { id?: number } | null } | undefined)?.user
             ?.id ?? null;
+    // Null until the realtime client finishes loading; the effects below
+    // subscribe as soon as it is there.
+    const echo = useEcho();
 
     useEffect(() => {
         if (teamId === null) {
             return;
         }
-
-        const echo = createEcho();
 
         if (!echo) {
             return;
@@ -98,14 +99,12 @@ export function useTeamBroadcastsSubscription(): void {
 
             echo.leaveChannel(`private-${channelName}`);
         };
-    }, [teamId]);
+    }, [echo, teamId]);
 
     useEffect(() => {
         if (userId === null) {
             return;
         }
-
-        const echo = createEcho();
 
         if (!echo) {
             return;
@@ -130,13 +129,11 @@ export function useTeamBroadcastsSubscription(): void {
 
             echo.leaveChannel(`private-${channelName}`);
         };
-    }, [userId]);
+    }, [echo, userId]);
 
     // Missed-message recovery: Pusher does not replay what was sent while the
     // connection was down.
     useEffect(() => {
-        const echo = createEcho();
-
         if (!echo) {
             return;
         }
@@ -164,7 +161,7 @@ export function useTeamBroadcastsSubscription(): void {
         return () => {
             connection.unbind('state_change', onStateChange);
         };
-    }, []);
+    }, [echo]);
 }
 
 /**
