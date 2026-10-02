@@ -33,7 +33,22 @@ final class RedactSensitiveLogData implements ProcessorInterface
     private const array SENSITIVE_WORDS = [
         'phone', 'email', 'password', 'secret', 'token', 'signature', 'authorization',
         'cookie', 'apikey', 'otp', 'payload', 'body', 'raw', 'prompt', 'address',
-        'name', 'credential', 'credentials',
+        'name', 'filename', 'credential', 'credentials',
+    ];
+
+    /**
+     * Calificadores que hacen de un `*_name` el nombre de una pieza técnica
+     * (`route_name`, `job_name`, `model_name`, `meter_name`) y no el de una
+     * persona, una empresa o algo que escribió un usuario (`driver_name`,
+     * `team_name`, `report_name`, `display_name` siguen redactados).
+     *
+     * @var list<string>
+     */
+    private const array TECHNICAL_NAME_QUALIFIERS = [
+        'route', 'event', 'agent', 'job', 'queue', 'connection', 'channel', 'guard',
+        'model', 'tool', 'meter', 'feature', 'permission', 'class', 'method', 'table',
+        'column', 'disk', 'bucket', 'host', 'feed', 'provider', 'metric', 'type',
+        'command', 'middleware', 'policy', 'listener', 'notification',
     ];
 
     /**
@@ -291,6 +306,13 @@ final class RedactSensitiveLogData implements ProcessorInterface
         }
 
         if ($words === [] || in_array(end($words), self::TECHNICAL_SUFFIXES, true) || in_array($words[0], ['has', 'is'], true)) {
+            return false;
+        }
+
+        // `route_name`, `event_type_name`: todas las palabras previas a `name`
+        // son técnicas. Basta una que no lo sea (`driver_name`) para redactar.
+        if (count($words) > 1 && end($words) === 'name'
+            && array_diff(array_slice($words, 0, -1), self::TECHNICAL_NAME_QUALIFIERS) === []) {
             return false;
         }
 

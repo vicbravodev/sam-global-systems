@@ -140,6 +140,34 @@ class RedactSensitiveLogDataTest extends TestCase
         $this->assertSame(12345678901, $out['count']);
     }
 
+    public function test_technical_name_keys_are_kept_but_people_and_user_written_names_are_redacted(): void
+    {
+        $out = RedactSensitiveLogData::redact([
+            'route_name' => 'teams.switch',
+            'model_name' => 'gpt-5-mini',
+            'meter_name' => 'ai_tokens',
+            'event_type_name' => 'harsh_brake',
+            'feature_name' => 'copilot',
+            'driver_name' => 'Juan Pérez',
+            'team_name' => 'Transportes Ana',
+            'display_name' => 'Ana',
+            'full_name' => 'Ana Pérez',
+            'report_name' => 'Reporte de Ana',
+            'original_filename' => 'INE-ana-perez.pdf',
+            'filename' => 'ana.jpg',
+        ]);
+
+        $this->assertSame('teams.switch', $out['route_name']);
+        $this->assertSame('gpt-5-mini', $out['model_name']);
+        $this->assertSame('ai_tokens', $out['meter_name']);
+        $this->assertSame('harsh_brake', $out['event_type_name']);
+        $this->assertSame('copilot', $out['feature_name']);
+
+        foreach (['driver_name', 'team_name', 'display_name', 'full_name', 'report_name', 'original_filename', 'filename'] as $key) {
+            $this->assertSame('[redacted]', $out[$key], $key);
+        }
+    }
+
     public function test_redact_describes_throwables_safely(): void
     {
         $out = RedactSensitiveLogData::redact(['exception' => new RuntimeException('no se pudo llamar a +525512345678')]);
