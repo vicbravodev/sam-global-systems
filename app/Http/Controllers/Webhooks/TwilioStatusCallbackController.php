@@ -9,14 +9,12 @@ use App\Domains\Notifications\Enums\MessagingChargeSource;
 use App\Domains\Notifications\Enums\MessagingResourceType;
 use App\Domains\Notifications\Models\MessagingCharge;
 use App\Domains\Notifications\Models\NotificationDelivery;
-use App\Domains\Notifications\Support\PlatformTwilioConfig;
-use App\Domains\Notifications\Support\TwilioWebhookUrl;
+use App\Domains\Notifications\Support\TwilioWebhookSignature;
 use App\Http\Controllers\Controller;
 use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
-use Twilio\Security\RequestValidator;
 
 /**
  * Status callback de Twilio para mensajes (SMS/WhatsApp) y llamadas de
@@ -31,25 +29,12 @@ class TwilioStatusCallbackController extends Controller
 {
     public function __invoke(Request $request, ApplyTwilioStatusUpdate $applyStatus, RecordMessagingCharge $recordCharge): Response
     {
-        $authToken = PlatformTwilioConfig::authToken();
-
-        if ($authToken === null) {
-            abort(403, 'Twilio is not configured.');
-        }
-
         // Twilio firma la URL exacta a la que se le pidió reportar. Si está
         // fijada por config (proxy/túnel), esa es la URL firmada, no la que
         // ve Laravel detrás del proxy.
         $configured = config('services.twilio.status_callback_url');
-        $signedUrl = is_string($configured) && $configured !== '' ? $configured : TwilioWebhookUrl::forSignature($request);
 
-        $isValid = (new RequestValidator($authToken))->validate(
-            $request->header('X-Twilio-Signature', ''),
-            $signedUrl,
-            TwilioWebhookUrl::signedParams($request),
-        );
-
-        abort_unless($isValid, 403, 'Invalid Twilio signature.');
+        TwilioWebhookSignature::verify($request, 'status_callback', is_string($configured) && $configured !== '' ? $configured : null);
 
         $isCall = $request->filled('CallSid');
         $sid = (string) ($isCall ? $request->input('CallSid') : $request->input('MessageSid', ''));

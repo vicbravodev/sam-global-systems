@@ -24,6 +24,9 @@ class RedactSensitiveLogDataTest extends TestCase
             'email' => ['user Ana.Perez+x@empresa.com.mx rechazado', 'user [email] rechazado'],
             'signed url' => ['GET https://s3.amazonaws.com/b/k.jpg?X-Amz-Signature=abc&X-Amz-Credential=d failed', 'GET https://s3.amazonaws.com/b/k.jpg?[redacted] failed'],
             'bearer' => ['Authorization: Bearer eyJhbGciOi.abc-def_ghi', 'Authorization: Bearer [redacted]'],
+            'basic header' => ['Authorization: Basic QUMxMjM6c2VjcmV0', 'Authorization: Basic [redacted]'],
+            'basic credential in prose' => ['request with Basic QUMxMjM6c2VjcmV0 failed', 'request with Basic [redacted] failed'],
+            'lowercase basic header' => ['authorization=basic dXNlcjpwYXNz', 'authorization=basic [redacted]'],
             'phone with trailing dot' => ['llamada a +525512345678.', 'llamada a [phone].'],
             'phone with trailing colon' => ['tel +525512345678: fallo', 'tel [phone]: fallo'],
             'bare 10-digit run (indistinguishable from an MX phone, masked)' => ['ts 1727517600 epoch', 'ts [phone] epoch'],
@@ -95,6 +98,8 @@ class RedactSensitiveLogDataTest extends TestCase
             'ulid' => ['01k6b7yq3m9x2c4d5e6f7g8h9j'],
             'uuid' => ['0e8f1c2a-3b4d-4e5f-8a9b-123456789012'],
             'short number' => ['intento 3 de 5, 1200 ms'],
+            'basic as a word' => ['Basic plan: basic checks passed'],
+            'basic followed by a non-credential word' => ['the Basic tier was downgraded'],
             'url without query' => ['https://api.samsara.com/fleet/vehicles/stats'],
             '13-digit ms epoch' => ['ts 1727517600000 epoch'],
             '15-digit bare id' => ['vehicle 281474978683353 offline'],
@@ -138,6 +143,54 @@ class RedactSensitiveLogDataTest extends TestCase
         $this->assertSame('raw_header', $out['signature_mode']);
         $this->assertSame('App\\Jobs\\X', $out['job']);
         $this->assertSame(12345678901, $out['count']);
+    }
+
+    public function test_technical_name_keys_are_kept_but_people_and_user_written_names_are_redacted(): void
+    {
+        $out = RedactSensitiveLogData::redact([
+            'route_name' => 'teams.switch',
+            'model_name' => 'gpt-5-mini',
+            'meter_name' => 'ai_tokens',
+            'event_type_name' => 'harsh_brake',
+            'feature_name' => 'copilot',
+            'driver_name' => 'Juan Pérez',
+            'team_name' => 'Transportes Ana',
+            'display_name' => 'Ana',
+            'full_name' => 'Ana Pérez',
+            'report_name' => 'Reporte de Ana',
+            'original_filename' => 'INE-ana-perez.pdf',
+            'filename' => 'ana.jpg',
+        ]);
+
+        $this->assertSame('teams.switch', $out['route_name']);
+        $this->assertSame('gpt-5-mini', $out['model_name']);
+        $this->assertSame('ai_tokens', $out['meter_name']);
+        $this->assertSame('harsh_brake', $out['event_type_name']);
+        $this->assertSame('copilot', $out['feature_name']);
+
+        foreach (['driver_name', 'team_name', 'display_name', 'full_name', 'report_name', 'original_filename', 'filename'] as $key) {
+            $this->assertSame('[redacted]', $out[$key], $key);
+        }
+    }
+
+    public function test_session_ids_are_redacted_even_though_id_is_a_technical_suffix(): void
+    {
+        $out = RedactSensitiveLogData::redact([
+            'session_id' => 'f3Kx9aQ2pL7mN4vB8cD1eR6tY0uI5oP2',
+            'sessionId' => 'f3Kx9aQ2pL7mN4vB8cD1eR6tY0uI5oP2',
+            'laravel_session' => 'eyJpdiI6',
+            'session' => ['_token' => 'x'],
+            'session_count' => 3,
+            'conversation_id' => 41,
+        ]);
+
+        $this->assertSame('[redacted]', $out['session_id']);
+        $this->assertSame('[redacted]', $out['sessionId']);
+        $this->assertSame('[redacted]', $out['laravel_session']);
+        $this->assertSame('[redacted]', $out['session']);
+        $this->assertSame(3, $out['session_count']);
+        $this->assertSame(41, $out['conversation_id']);
+        $this->assertSame(['session_id'], RedactSensitiveLogData::findings(['session_id' => 'abc', 'user_id' => 9]));
     }
 
     public function test_redact_describes_throwables_safely(): void

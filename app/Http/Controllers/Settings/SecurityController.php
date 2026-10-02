@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Settings\PasswordUpdateRequest;
 use App\Http\Requests\Settings\TwoFactorAuthenticationRequest;
 use App\Models\User;
+use App\Support\SystemLog;
 use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Routing\Controllers\HasMiddleware;
@@ -59,6 +60,8 @@ class SecurityController extends Controller implements HasMiddleware
         // Cierra las demás sesiones (AuthenticateSession compara el hash) y
         // conserva la actual.
         Auth::logoutOtherDevices($request->password);
+
+        SystemLog::ok('auth.password.changed', input: ['user_id' => $user->id], result: ['other_sessions_logged_out' => true]);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Password updated.')]);
 
