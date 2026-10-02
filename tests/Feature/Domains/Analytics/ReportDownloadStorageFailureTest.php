@@ -86,6 +86,7 @@ class ReportDownloadStorageFailureTest extends TestCase
         $entries = $this->systemLogEntries('storage.object.operation_failed');
         $this->assertCount(1, $entries);
         $this->assertSame('error', $entries[0]['level']);
+        $this->assertNoSensitiveDataLogged();
     }
 
     public function test_api_download_returns_503_with_message_when_storage_is_down(): void

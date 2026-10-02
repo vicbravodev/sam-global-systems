@@ -82,5 +82,6 @@ class DriverSyncHandlerServiceTest extends TestCase
         $this->assertSame(0, Driver::withoutGlobalScopes()->where('team_id', $intruder->team_id)->count());
         $this->assertCount(1, $this->systemLogEntries('drivers.sync.external_id_conflict'));
         $this->assertSystemLogged('drivers.sync.external_id_conflict', fn (array $c) => $c['reason'] === 'owned_by_other_tenant');
+        $this->assertNoSensitiveDataLogged();
     }
 }
