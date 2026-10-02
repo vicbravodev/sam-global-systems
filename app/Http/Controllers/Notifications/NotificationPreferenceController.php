@@ -41,7 +41,7 @@ class NotificationPreferenceController extends Controller
             ->where('notification_type', $validated['notification_type'])
             ->first();
 
-        $this->authorize('update', $preference);
+        $this->authorize('update', $preference ?? NotificationPreference::class);
 
         $payload = [
             'team_id' => $current_team->id,
