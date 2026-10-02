@@ -32,6 +32,7 @@ class DeliveryResult
         public readonly ?string $providerStatus = null,
         public readonly ?MessagingResourceType $resourceType = null,
         public readonly ?int $segments = null,
+        public readonly bool $uncertain = false,
     ) {}
 
     /**
@@ -64,6 +65,24 @@ class DeliveryResult
             providerStatus: $providerStatus,
             resourceType: $resourceType,
             segments: $segments,
+        );
+    }
+
+    /**
+     * La petición al proveedor no tuvo respuesta (timeout, red caída): pudo
+     * o no haberse creado el mensaje/llamada. No es un fallo — reintentar a
+     * ciegas manda un duplicado que se cobra —: la entrega queda en vuelo y
+     * ResolveUncertainDeliveryJob lo averigua en el proveedor.
+     *
+     * @param  array<string, mixed>|null  $response
+     */
+    public static function uncertain(string $errorMessage, ?array $response = null): self
+    {
+        return new self(
+            success: false,
+            response: $response,
+            errorMessage: $errorMessage,
+            uncertain: true,
         );
     }
 

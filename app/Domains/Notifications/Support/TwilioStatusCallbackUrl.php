@@ -19,7 +19,7 @@ final class TwilioStatusCallbackUrl
 
         $url = is_string($configured) && $configured !== ''
             ? $configured
-            : route('webhooks.twilio.status');
+            : TwilioWebhookUrl::route('webhooks.twilio.status');
 
         return self::isPublic($url) ? $url : null;
     }

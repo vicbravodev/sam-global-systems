@@ -41,4 +41,28 @@ class TwilioVoiceCaller
 
         return $this->factory->make()->calls->getContext($sid)->fetch();
     }
+
+    /**
+     * Llamadas de `from` a `to` creados desde `$since`, del más reciente al
+     * más viejo. El número de plataforma es compartido: quien los use debe
+     * descartar los que ya pertenecen a otro envío.
+     *
+     * @return list<object>
+     */
+    public function findRecentCalls(string $to, string $from, \DateTimeInterface $since): array
+    {
+        if (TwilioSandbox::enabled()) {
+            return [];
+        }
+
+        $found = [];
+
+        foreach ($this->factory->make()->calls->read(['to' => $to, 'from' => $from], 20) as $resource) {
+            if ($resource->dateCreated instanceof \DateTimeInterface && $resource->dateCreated >= $since) {
+                $found[] = $resource;
+            }
+        }
+
+        return $found;
+    }
 }

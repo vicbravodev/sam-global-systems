@@ -22,6 +22,7 @@ use App\Domains\Incidents\Models\IncidentCallVerification;
 use App\Domains\Incidents\Support\VerificationCallTwiml;
 use App\Domains\Notifications\Enums\NotificationPriority;
 use App\Domains\Notifications\Support\PlatformTwilioConfig;
+use App\Domains\Notifications\Support\TwilioWebhookUrl;
 use App\Http\Controllers\Controller;
 use App\Support\LoggableCode;
 use App\Support\SystemLog;
@@ -77,7 +78,7 @@ class TwilioVoiceController extends Controller
             return $this->twiml(VerificationCallTwiml::prompt(
                 $row,
                 $incident,
-                route('webhooks.twilio.voice.gather', ['verification' => $row->id]),
+                TwilioWebhookUrl::route('webhooks.twilio.voice.gather', ['verification' => $row->id]),
             ));
         }
 
@@ -267,7 +268,7 @@ class TwilioVoiceController extends Controller
 
         $isValid = $validator->validate(
             $request->header('X-Twilio-Signature', ''),
-            $request->fullUrl(),
+            TwilioWebhookUrl::forSignature($request),
             $request->post(),
         );
 

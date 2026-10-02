@@ -5,7 +5,7 @@ namespace App\Domains\Notifications\Channels;
 use App\Domains\Notifications\Data\DeliveryResult;
 use App\Domains\Notifications\Enums\MessagingResourceType;
 use App\Domains\Notifications\Support\TwilioErrorCatalog;
-use Twilio\Exceptions\TwilioException;
+use Twilio\Exceptions\RestException;
 
 /**
  * Traducción común de las respuestas de Twilio a DeliveryResult para los
@@ -44,9 +44,15 @@ final class TwilioDeliveryResults
         return DeliveryResult::failure($message, ['driver' => $driver], permanent: true);
     }
 
+    /**
+     * - RestException: Twilio respondió con un error, el recurso NO se creó;
+     *   el código decide si es permanente.
+     * - Cualquier otra cosa (timeout, red, respuesta ilegible): no se sabe si
+     *   Twilio lo creó → resultado incierto, nunca un reintento a ciegas.
+     */
     public static function fromException(\Throwable $e, string $driver): DeliveryResult
     {
-        if ($e instanceof TwilioException) {
+        if ($e instanceof RestException) {
             $code = $e->getCode() !== 0 ? (string) $e->getCode() : null;
 
             return DeliveryResult::failure(
@@ -57,6 +63,9 @@ final class TwilioDeliveryResults
             );
         }
 
-        return DeliveryResult::failure("{$driver} error: ".$e->getMessage(), ['driver' => $driver]);
+        return DeliveryResult::uncertain(
+            "{$driver} request outcome unknown: ".$e->getMessage(),
+            ['driver' => $driver, 'exception' => $e::class],
+        );
     }
 }

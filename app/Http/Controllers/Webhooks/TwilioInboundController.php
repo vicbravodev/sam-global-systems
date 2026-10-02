@@ -6,6 +6,7 @@ use App\Domains\Notifications\Actions\ProcessInboundReply;
 use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Support\PlatformTwilioConfig;
+use App\Domains\Notifications\Support\TwilioWebhookUrl;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -36,7 +37,7 @@ class TwilioInboundController extends Controller
 
         $isValid = $validator->validate(
             $request->header('X-Twilio-Signature', ''),
-            $request->fullUrl(),
+            TwilioWebhookUrl::forSignature($request),
             $request->post(),
         );
 

@@ -10,6 +10,7 @@ use App\Domains\Notifications\Enums\MessagingResourceType;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Support\PlatformTwilioConfig;
 use App\Domains\Notifications\Support\TwilioStatusCallbackUrl;
+use App\Domains\Notifications\Support\TwilioWebhookUrl;
 
 /**
  * Twilio Voice driver (Roadmap V2-A3): delivers a notification as an outbound
@@ -56,6 +57,9 @@ class VoiceNotificationDriver implements NotificationDriver
         $params = [
             'twiml' => $this->twiml($notification),
             'timeout' => $config['ring_timeout_seconds'] ?? 25,
+            // Detección de contestadora: un buzón no cuenta como "contestó"
+            // (ApplyTwilioStatusUpdate lo marca fallido y cae a otro canal).
+            'machineDetection' => 'Enable',
         ];
 
         if (($callback = TwilioStatusCallbackUrl::resolve()) !== null) {
@@ -117,7 +121,7 @@ class VoiceNotificationDriver implements NotificationDriver
             return null;
         }
 
-        $url = route('webhooks.twilio.voice.notification.gather', ['delivery' => $notification->deliveryId]);
+        $url = TwilioWebhookUrl::route('webhooks.twilio.voice.notification.gather', ['delivery' => $notification->deliveryId]);
 
         return TwilioStatusCallbackUrl::isPublic($url) ? $url : null;
     }
