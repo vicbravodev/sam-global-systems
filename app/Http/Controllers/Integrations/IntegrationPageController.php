@@ -16,6 +16,8 @@ use App\Domains\Integrations\Models\TenantIntegration;
 use App\Domains\Integrations\Models\WebhookEndpoint;
 use App\Http\Controllers\Controller;
 use App\Models\Team;
+use App\Models\User;
+use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -33,7 +35,7 @@ class IntegrationPageController extends Controller
      * integrations, a tenant-wide pulse and the catalog of providers
      * available for connection.
      */
-    public function index(Team $current_team): Response
+    public function index(Team $current_team, #[CurrentUser] User $user): Response
     {
         $this->authorize('viewAny', TenantIntegration::class);
 
@@ -57,6 +59,7 @@ class IntegrationPageController extends Controller
             'integrations' => $integrations
                 ->map(fn (TenantIntegration $integration) => $this->presentIntegration(
                     $integration,
+                    $user->can('update', $integration),
                     $events24h[$integration->id] ?? 0,
                     $liveData[$integration->id] ?? null,
                     ($integrationsPerProvider[$integration->provider_id] ?? 0) === 1
@@ -74,7 +77,7 @@ class IntegrationPageController extends Controller
      * @param  array{assets: int, monitored: int, drivers: int}|null  $fleet
      * @return array<string, mixed>
      */
-    private function presentIntegration(TenantIntegration $integration, int $events24h, ?string $liveDataAt, ?array $fleet): array
+    private function presentIntegration(TenantIntegration $integration, bool $canUpdate, int $events24h, ?string $liveDataAt, ?array $fleet): array
     {
         $endpoint = $integration->webhookEndpoint;
         $problem = IntegrationProblem::classify($integration->last_error_message);
@@ -102,6 +105,10 @@ class IntegrationPageController extends Controller
             'events24h' => $events24h,
             'fleet' => $fleet,
             'webhook' => $endpoint !== null ? $this->presentWebhook($endpoint) : null,
+            // Gobierna el formulario de la Secret Key del webhook (y el resto
+            // de acciones de gestión) por integración, con la misma Policy
+            // que autoriza el PUT.
+            'canUpdate' => $canUpdate,
         ];
     }
 

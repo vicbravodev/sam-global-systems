@@ -81,6 +81,7 @@ class IntegrationsPageTest extends TestCase
                         ->has('lastSyncAt')
                         ->has('lastErrorAt')
                         ->has('lastErrorMessage')
+                        ->where('canUpdate', true)
                         ->has(
                             'webhook',
                             fn (Assert $webhook) => $webhook
@@ -350,6 +351,133 @@ class IntegrationsPageTest extends TestCase
                 ->has('integrations', 1)
                 ->where('integrations.0.events24h', 0)
                 ->where('summary.events24h', 0),
+        );
+    }
+
+    public function test_samsara_row_exposes_the_webhook_secret_state_but_never_its_value(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+        $provider = IntegrationProvider::factory()->samsara()->create();
+        $integration = TenantIntegration::factory()->active()->create([
+            'team_id' => $team->id,
+            'provider_id' => $provider->id,
+        ]);
+        $configuredAt = now()->subDay()->startOfSecond();
+        $endpoint = WebhookEndpoint::factory()->create([
+            'tenant_integration_id' => $integration->id,
+            'secret' => 'SAMSARA_SECRET_KEY_NEVER_RENDERED',
+            'secret_configured_at' => $configuredAt,
+            'last_valid_received_at' => now()->subMinutes(5),
+        ]);
+
+        $response = $this->actingAs($user)->get(
+            route('integrations.index', ['current_team' => $team->slug]),
+        );
+
+        $response->assertOk();
+        $this->assertStringNotContainsString('SAMSARA_SECRET_KEY_NEVER_RENDERED', $response->getContent());
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->component('integrations/index')
+                ->where('integrations.0.canUpdate', true)
+                ->where('integrations.0.webhook.url', route('webhooks.handle', ['endpoint_url' => $endpoint->url]))
+                ->where('integrations.0.webhook.secretConfigured', true)
+                ->where('integrations.0.webhook.secretConfiguredAt', $configuredAt->toIso8601String())
+                ->where('integrations.0.webhook.health', WebhookEndpoint::HEALTH_OK)
+                ->missing('integrations.0.webhook.secret'),
+        );
+    }
+
+    public function test_samsara_row_reports_a_pending_secret(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+        $integration = TenantIntegration::factory()->active()->create([
+            'team_id' => $team->id,
+            'provider_id' => IntegrationProvider::factory()->samsara()->create()->id,
+        ]);
+        WebhookEndpoint::factory()->create([
+            'tenant_integration_id' => $integration->id,
+            'secret' => null,
+            'secret_configured_at' => null,
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('integrations.index', ['current_team' => $team->slug]))
+            ->assertInertia(
+                fn (Assert $page) => $page
+                    ->where('integrations.0.webhook.secretConfigured', false)
+                    ->where('integrations.0.webhook.secretConfiguredAt', null)
+                    ->where('integrations.0.webhook.health', WebhookEndpoint::HEALTH_PENDING_SECRET),
+            );
+    }
+
+    public function test_a_viewer_without_manage_permission_does_not_get_the_secret_form_flag(): void
+    {
+        $owner = User::factory()->create();
+        $team = $owner->currentTeam;
+        $integration = TenantIntegration::factory()->active()->create([
+            'team_id' => $team->id,
+            'provider_id' => IntegrationProvider::factory()->samsara()->create()->id,
+        ]);
+        WebhookEndpoint::factory()->create(['tenant_integration_id' => $integration->id]);
+
+        $viewer = $this->memberWithPermissions($team, ['integrations.view']);
+        $viewer->switchTeam($team);
+
+        $this->actingAs($viewer)
+            ->get(route('integrations.index', ['current_team' => $team->slug]))
+            ->assertOk()
+            ->assertInertia(
+                fn (Assert $page) => $page
+                    ->where('integrations.0.id', $integration->id)
+                    ->where('integrations.0.canUpdate', false)
+                    ->has('integrations.0.webhook.health'),
+            );
+    }
+
+    public function test_the_webhook_secret_state_of_another_tenant_never_reaches_the_page(): void
+    {
+        $provider = IntegrationProvider::factory()->samsara()->create();
+
+        $owner = User::factory()->create();
+        $foreign = TenantIntegration::factory()->active()->create([
+            'team_id' => $owner->currentTeam->id,
+            'provider_id' => $provider->id,
+        ]);
+        $foreignEndpoint = WebhookEndpoint::factory()->create([
+            'tenant_integration_id' => $foreign->id,
+            'secret' => 'FOREIGN_SECRET_KEY_VALUE',
+            'secret_configured_at' => now(),
+        ]);
+
+        $viewer = User::factory()->create();
+        $viewerTeam = $viewer->currentTeam;
+        $own = TenantIntegration::factory()->active()->create([
+            'team_id' => $viewerTeam->id,
+            'provider_id' => $provider->id,
+        ]);
+        WebhookEndpoint::factory()->create([
+            'tenant_integration_id' => $own->id,
+            'secret' => null,
+            'secret_configured_at' => null,
+        ]);
+
+        $response = $this->assertNoTenantLeak($viewerTeam, fn () => $this->actingAs($viewer)->get(
+            route('integrations.index', ['current_team' => $viewerTeam->slug]),
+        ));
+
+        $response->assertOk();
+        $props = (string) json_encode($response->viewData('page')['props']);
+        $this->assertStringNotContainsString($foreignEndpoint->url, $props);
+        $this->assertStringNotContainsString('FOREIGN_SECRET_KEY_VALUE', $props);
+        $response->assertInertia(
+            fn (Assert $page) => $page
+                ->has('integrations', 1)
+                ->where('integrations.0.id', $own->id)
+                ->where('integrations.0.webhook.secretConfigured', false)
+                ->where('integrations.0.webhook.health', WebhookEndpoint::HEALTH_PENDING_SECRET),
         );
     }
 
