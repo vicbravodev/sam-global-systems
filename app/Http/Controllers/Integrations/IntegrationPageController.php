@@ -142,11 +142,14 @@ class IntegrationPageController extends Controller
     private function summary(Collection $integrations, array $events24h, array $fleet): array
     {
         $byStatus = $integrations->countBy(fn (TenantIntegration $i) => $i->status->value);
+        // Una Samsara que sincroniza pero rechaza (o no puede validar) los
+        // webhooks no está funcionando: los pánicos no entran.
+        $panicsBlocked = $integrations->filter(fn (TenantIntegration $i) => $this->panicsBlocked($i))->count();
 
         return [
             'total' => $integrations->count(),
-            'working' => (int) ($byStatus[TenantIntegrationStatus::Active->value] ?? 0),
-            'attention' => (int) ($byStatus[TenantIntegrationStatus::Error->value] ?? 0),
+            'working' => (int) ($byStatus[TenantIntegrationStatus::Active->value] ?? 0) - $panicsBlocked,
+            'attention' => (int) ($byStatus[TenantIntegrationStatus::Error->value] ?? 0) + $panicsBlocked,
             'pending' => (int) ($byStatus[TenantIntegrationStatus::Pending->value] ?? 0),
             'inactive' => (int) ($byStatus[TenantIntegrationStatus::Inactive->value] ?? 0),
             'events24h' => array_sum($events24h),
@@ -154,6 +157,21 @@ class IntegrationPageController extends Controller
             'monitored' => array_sum(array_column($fleet, 'monitored')),
             'drivers' => array_sum(array_column($fleet, 'drivers')),
         ];
+    }
+
+    /**
+     * Activa, de Samsara, y con la firma del webhook sin configurar o
+     * rechazando: el mismo criterio que la tarjeta usa para «Pánicos sin
+     * recibir».
+     */
+    private function panicsBlocked(TenantIntegration $integration): bool
+    {
+        $endpoint = $integration->webhookEndpoint;
+
+        return $integration->status === TenantIntegrationStatus::Active
+            && $integration->provider?->code === 'samsara'
+            && $endpoint !== null
+            && in_array($endpoint->signatureHealth(), [WebhookEndpoint::HEALTH_PENDING_SECRET, WebhookEndpoint::HEALTH_REJECTING], true);
     }
 
     /**

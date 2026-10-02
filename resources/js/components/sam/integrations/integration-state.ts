@@ -167,7 +167,7 @@ export function integrationState(
                     // No "Requiere atención": ese badge es del estado `error`
                     // y el contador de Atención no incluye este caso.
                     badge: 'Pánicos sin recibir',
-                    headline: `Funcionando · ${synced}`,
+                    headline: 'Los pánicos de Samsara no están entrando',
                     hint: null,
                     fix:
                         integration.problem === 'credentials'
@@ -194,6 +194,20 @@ export function integrationState(
     }
 }
 
+/**
+ * Bucket for the pulse strip and its filters: a working Samsara connection
+ * whose panics are blocked counts as needing attention, not as working
+ * (mirrors `IntegrationPageController::summary()`).
+ */
+export function summaryStatus(
+    integration: IntegrationRow,
+): TenantIntegrationStatus {
+    return integration.status === 'active' &&
+        webhookAlertFor(integration) !== null
+        ? 'error'
+        : integration.status;
+}
+
 /** Panics only reach SAM through Samsara's signed webhook. */
 function webhookAlertFor(integration: IntegrationRow): string | null {
     if (integration.providerCode !== 'samsara' || !integration.webhook) {
@@ -202,9 +216,9 @@ function webhookAlertFor(integration: IntegrationRow): string | null {
 
     switch (integration.webhook.health) {
         case 'pending_secret':
-            return 'Los pánicos de Samsara no están entrando: falta pegar la Secret Key de los avisos instantáneos.';
+            return 'Falta pegar la Secret Key de los avisos instantáneos.';
         case 'rejecting':
-            return 'Los pánicos de Samsara se están rechazando: la Secret Key guardada no coincide con la de Samsara.';
+            return 'Samsara los está enviando, pero la Secret Key guardada no coincide.';
         default:
             return null;
     }

@@ -19,7 +19,10 @@ import type {
     EditTarget,
 } from '@/components/sam/integrations/edit-dialog';
 import { IntegrationCard } from '@/components/sam/integrations/integration-card';
-import { STATUS_ORDER } from '@/components/sam/integrations/integration-state';
+import {
+    STATUS_ORDER,
+    summaryStatus,
+} from '@/components/sam/integrations/integration-state';
 import { IntegrationsEmpty } from '@/components/sam/integrations/integrations-empty';
 import { PulseStat, PulseStrip } from '@/components/sam/pulse-strip';
 import { Button } from '@/components/ui/button';
@@ -47,7 +50,7 @@ const RELOAD_PROPS = ['integrations', 'summary'];
 
 function summarize(integrations: IntegrationRow[]): IntegrationsSummary {
     const count = (status: TenantIntegrationStatus) =>
-        integrations.filter((i) => i.status === status).length;
+        integrations.filter((i) => summaryStatus(i) === status).length;
 
     return {
         total: integrations.length,
@@ -99,11 +102,11 @@ export default function IntegrationsIndex() {
     const visible = useMemo(
         () =>
             integrations
-                .filter((i) => filter === null || i.status === filter)
+                .filter((i) => filter === null || summaryStatus(i) === filter)
                 .sort(
                     (a, b) =>
-                        STATUS_ORDER[a.status] - STATUS_ORDER[b.status] ||
-                        b.id - a.id,
+                        STATUS_ORDER[summaryStatus(a)] -
+                            STATUS_ORDER[summaryStatus(b)] || b.id - a.id,
                 ),
         [integrations, filter],
     );

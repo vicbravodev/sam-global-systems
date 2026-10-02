@@ -413,6 +413,51 @@ class IntegrationsPageTest extends TestCase
             );
     }
 
+    public function test_samsara_integrations_whose_panics_are_blocked_count_as_attention_not_working(): void
+    {
+        $user = User::factory()->create();
+        $team = $user->currentTeam;
+        $samsara = IntegrationProvider::factory()->samsara()->create();
+
+        $endpoints = [
+            'pending' => ['secret' => null, 'secret_configured_at' => null],
+            'rejecting' => ['secret' => str_repeat('r', 32), 'secret_configured_at' => now()->subDay(), 'last_rejected_at' => now()->subMinutes(5)],
+            'waiting' => ['secret' => str_repeat('w', 32), 'secret_configured_at' => now()->subHour()],
+            'ok' => ['secret' => str_repeat('o', 32), 'secret_configured_at' => now()->subDay(), 'last_valid_received_at' => now()->subMinute()],
+        ];
+
+        foreach ($endpoints as $attributes) {
+            $integration = TenantIntegration::factory()->active()->create([
+                'team_id' => $team->id,
+                'provider_id' => $samsara->id,
+            ]);
+            WebhookEndpoint::factory()->create(['tenant_integration_id' => $integration->id] + $attributes);
+        }
+
+        // Ya en error: cuenta una sola vez en Atención aunque falte la llave.
+        $broken = TenantIntegration::factory()->error()->create([
+            'team_id' => $team->id,
+            'provider_id' => $samsara->id,
+        ]);
+        WebhookEndpoint::factory()->create(['tenant_integration_id' => $broken->id, 'secret' => null]);
+
+        // Otro proveedor sin llave: su webhook no es la vía de los pánicos.
+        $other = TenantIntegration::factory()->active()->create([
+            'team_id' => $team->id,
+            'provider_id' => IntegrationProvider::factory()->create()->id,
+        ]);
+        WebhookEndpoint::factory()->create(['tenant_integration_id' => $other->id, 'secret' => null]);
+
+        $this->actingAs($user)
+            ->get(route('integrations.index', ['current_team' => $team->slug]))
+            ->assertInertia(
+                fn (Assert $page) => $page
+                    ->where('summary.total', 6)
+                    ->where('summary.working', 3)
+                    ->where('summary.attention', 3),
+            );
+    }
+
     public function test_a_viewer_without_manage_permission_does_not_get_the_secret_form_flag(): void
     {
         $owner = User::factory()->create();
