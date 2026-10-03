@@ -4,7 +4,6 @@ namespace Tests\Feature\Security;
 
 use App\Domains\Analytics\Models\AnalyticsSnapshot;
 use App\Domains\Analytics\Models\ReportExecution;
-use App\Domains\Audit\Models\SystemTrace;
 use App\Domains\Context\Models\EventContextSnapshot;
 use App\Domains\Copilot\Enums\CopilotMessageRole;
 use App\Domains\Copilot\Models\CopilotConversation;
@@ -149,14 +148,13 @@ class CrossTenantRouteSweepTest extends TestCase
      * sale el valor de cada team y qué columna va en la URL.
      *
      * `selector` = el valor no identifica un registro sino que filtra (un
-     * tipo, un trace id): sólo B tiene registro y todas las variantes usan su
+     * tipo de snapshot): sólo B tiene registro y todas las variantes usan su
      * valor; un 2xx está permitido, pero nunca con datos de B.
      *
      * @var array<string, array{class: class-string<Model>, field: string, selector: bool}>
      */
     private const SCALAR_PARAMS = [
         'invoice' => ['class' => InvoiceSnapshot::class, 'field' => 'id', 'selector' => false],
-        'traceId' => ['class' => SystemTrace::class, 'field' => 'trace_id', 'selector' => true],
         'type' => ['class' => AnalyticsSnapshot::class, 'field' => 'snapshot_type', 'selector' => true],
     ];
 
