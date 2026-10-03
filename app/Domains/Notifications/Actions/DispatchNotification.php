@@ -177,8 +177,10 @@ class DispatchNotification
 
                 // Anti-ruido: la misma persona ya recibió hace segundos un SMS,
                 // WhatsApp o llamada de ESTE incidente por otro aviso (creado +
-                // emergencia confirmada, verificación + SLA...). No se repite
-                // por canal pagado; la app, el correo y el push siguen.
+                // SLA, verificación + SLA...). No se repite por un canal pagado
+                // igual o menos insistente; la app, el correo y el push siguen.
+                // Un SMS reciente nunca frena una llamada: si el aviso nuevo es
+                // más urgente (emergencia confirmada), tiene que sonar.
                 $cooldown = $this->recentPaidContact($notification, $channel, $recipient, $targetAddress);
 
                 if ($cooldown !== null) {
@@ -451,30 +453,71 @@ class DispatchNotification
      */
     public const int PAID_COOLDOWN_SECONDS = 90;
 
-    /** @var list<string> */
-    private const array PAID_CHANNEL_TYPES = ['sms', 'whatsapp', 'voice'];
+    /**
+     * Qué tan insistente es cada canal pagado: una llamada interrumpe más que
+     * un mensaje. Un contacto reciente sólo frena canales de su nivel o menor.
+     *
+     * @var array<string, int>
+     */
+    private const array PAID_CHANNEL_RANK = ['sms' => 1, 'whatsapp' => 1, 'voice' => 2];
 
     /**
      * Términos del contacto reciente que activa la ventana, o null.
      *
-     * @return array{incident_id: int, cooldown_seconds: int, seconds_ago: int, previous_notification_id: int}|null
+     * @return array{incident_id: int, cooldown_seconds: int, seconds_ago: int, previous_notification_id: int, channel_type: string, previous_channel_type: string}|null
      */
     private function recentPaidContact(Notification $notification, NotificationChannel $channel, NotificationRecipient $recipient, string $targetAddress): ?array
     {
-        if (! in_array($channel->channel_type->value, self::PAID_CHANNEL_TYPES, true)
+        $channelType = $channel->channel_type->value;
+        $rank = self::PAID_CHANNEL_RANK[$channelType] ?? null;
+
+        if ($rank === null
             || $notification->source_type !== NotificationSourceType::Incident
             || ! is_numeric($notification->source_reference_id)) {
             return null;
         }
 
+        // Frena: un contacto reciente igual o más insistente que este canal.
+        $blockingTypes = array_keys(array_filter(self::PAID_CHANNEL_RANK, fn (int $other) => $other >= $rank));
+        $previous = $this->latestPaidContact($notification, $recipient, $targetAddress, $blockingTypes);
+
+        if ($previous !== null) {
+            return $this->cooldownTerms($notification, $channelType, $previous);
+        }
+
+        // No frena, pero se narra: hubo un contacto menos insistente (un SMS)
+        // y este aviso sale igual por un canal más fuerte (una llamada).
+        $lowerTypes = array_keys(array_filter(self::PAID_CHANNEL_RANK, fn (int $other) => $other < $rank));
+        $lower = $lowerTypes !== [] ? $this->latestPaidContact($notification, $recipient, $targetAddress, $lowerTypes) : null;
+
+        if ($lower !== null) {
+            SystemLog::ok('notifications.paid_cooldown.bypassed', input: [
+                'notification_id' => $notification->id,
+                'recipient_id' => $recipient->id,
+                'channel_id' => $channel->id,
+            ], calc: $this->cooldownTerms($notification, $channelType, $lower));
+        }
+
+        return null;
+    }
+
+    /**
+     * Última entrega viva, dentro de la ventana, de OTRO aviso del mismo
+     * incidente a la misma persona o dirección por alguno de esos canales.
+     *
+     * @param  list<string>  $channelTypes
+     */
+    private function latestPaidContact(Notification $notification, NotificationRecipient $recipient, string $targetAddress, array $channelTypes): ?NotificationDelivery
+    {
         $since = now()->subSeconds(self::PAID_COOLDOWN_SECONDS);
 
-        $previous = NotificationDelivery::query()
+        return NotificationDelivery::query()
+            ->with('channel')
             ->where('team_id', $notification->team_id)
             ->where('notification_id', '!=', $notification->id)
             ->where('created_at', '>=', $since)
             ->whereNotIn('status', [DeliveryStatus::Failed, DeliveryStatus::Skipped, DeliveryStatus::Cancelled, DeliveryStatus::Bounced])
-            ->whereHas('channel', fn ($query) => $query->whereIn('channel_type', self::PAID_CHANNEL_TYPES))
+            ->whereHas('channel', fn ($query) => $query->whereIn('channel_type', $channelTypes))
             ->whereHas('notification', fn ($query) => $query
                 ->where('source_type', NotificationSourceType::Incident->value)
                 ->where('source_reference_id', $notification->source_reference_id))
@@ -487,16 +530,20 @@ class DispatchNotification
                         ->where('recipient_reference_id', $recipient->recipient_reference_id)))))
             ->latest('created_at')
             ->first();
+    }
 
-        if ($previous === null || $previous->created_at === null) {
-            return null;
-        }
-
+    /**
+     * @return array{incident_id: int, cooldown_seconds: int, seconds_ago: int, previous_notification_id: int, channel_type: string, previous_channel_type: string}
+     */
+    private function cooldownTerms(Notification $notification, string $channelType, NotificationDelivery $previous): array
+    {
         return [
             'incident_id' => (int) $notification->source_reference_id,
             'cooldown_seconds' => self::PAID_COOLDOWN_SECONDS,
-            'seconds_ago' => (int) $previous->created_at->diffInSeconds(now()),
+            'seconds_ago' => (int) ($previous->created_at?->diffInSeconds(now()) ?? 0),
             'previous_notification_id' => $previous->notification_id,
+            'channel_type' => $channelType,
+            'previous_channel_type' => $previous->channel?->channel_type->value ?? 'unknown',
         ];
     }
 }
