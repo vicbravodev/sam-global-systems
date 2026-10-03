@@ -223,6 +223,7 @@ class RecordAssetUsageMeters extends Command
         // Stand-alone cameras registered as assets of their own (fixed cameras),
         // unless they already carry an attached camera device counted above.
         $cameraAssets = Asset::query()
+            ->where('team_id', $team->id)
             ->monitored()
             ->where('status', '!=', AssetStatus::Inactive)
             ->whereHas('assetType', fn ($query) => $query->where('category', AssetCategory::Camera))
