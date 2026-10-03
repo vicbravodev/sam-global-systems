@@ -21,6 +21,17 @@ Clef-flash contra (a) GPT y (b) una base de verdad etiquetada por humanos.
 - Clef: $0.24/M de tokens de entrada (doc oficial), ~0.2 s. Clef-flash: $0.09/M, ~0.04 s.
 - Hay **0 veredictos de operador** en la base, y el 98 % de las evaluaciones de dev son `real_event` o `unclear` (replays de pánicos). Por eso se incluye el etiquetado (§6).
 
+### La sombra es temporal (decisión 2026-10-03)
+
+No queremos dos modelos corriendo a la par de forma permanente. La sombra es una
+medición con fecha de fin, no una arquitectura:
+
+- Corre hasta tener **≥ 300 veredictos** cruzados con Clef, o **4 semanas** desde que se active, lo que pase primero.
+- `ai.clef.shadow_until` (fecha en config/env): pasada esa fecha, el listener deja de despachar (`skipped`, `reason: shadow_expired`). Si se olvida apagarla, igual se detiene sola.
+- Al cerrar la medición se toma una de dos decisiones, y en ambas la sombra desaparece:
+  - **Clef pasa:** fases 2 y 3, y Clef reemplaza a GPT en la decisión. El listener de sombra se borra.
+  - **Clef no pasa:** se borran el listener, el job y el cliente, y la tabla queda como registro histórico (o se elimina con una migración).
+
 ## 2. Alcance
 
 **Dentro:**
@@ -81,7 +92,8 @@ en una cola de baja prioridad y, si falla, sólo marca su propia fila.
     'enabled' => env('AI_CLEF_SHADOW_ENABLED', false),
     'models' => ['clef', 'clef-flash'],
     'sample_rate' => env('AI_CLEF_SHADOW_SAMPLE_RATE', 1.0),   // 0..1
-    'send_images' => env('AI_CLEF_SHADOW_SEND_IMAGES', false), // subprocesador nuevo: apagado por defecto
+    'send_images' => env('AI_CLEF_SHADOW_SEND_IMAGES', true),  // cliente informado (2026-10-03)
+    'shadow_until' => env('AI_CLEF_SHADOW_UNTIL'),               // fecha ISO; vacía = sin despachar
     'max_images' => 4,
     'timeout_seconds' => 15,
     'pricing_per_million_input' => ['clef' => 0.24, 'clef-flash' => 0.09],
@@ -144,7 +156,7 @@ Las instrucciones se derivan del prompt de `EventClassifierAgent` (misma semánt
 
 ### 4.6 Listener y job
 
-- `DispatchClefShadowEvaluation` escucha `AIEvaluationCompleted`. Despacha sólo si `enabled`, hay credenciales, el `evaluation_mode` es `ai_text` o `hybrid` (las rutas `rules_only` no tienen contra qué comparar) y el muestreo lo permite. Cada rama registra su `skipped` con razón.
+- `DispatchClefShadowEvaluation` escucha `AIEvaluationCompleted`. Despacha sólo si `enabled`, hoy ≤ `shadow_until`, hay credenciales, el `evaluation_mode` es `ai_text` o `hybrid` (las rutas `rules_only` no tienen contra qué comparar) y el muestreo lo permite. Cada rama registra su `skipped` con razón.
 - `ShadowEvaluateWithClefJob(int $teamId, int $evaluationId, string $source = 'live')`:
   - entra por id sin scope, valida `team_id` y hace `TenantContext::set`;
   - cola `default` (supervisor `low`): nunca compite con `ai-evaluation`;
@@ -207,7 +219,7 @@ Desglose por tipo de evento y por modelo (`gpt`, `clef`, `clef-flash`). Cada mé
 
 ## 8. Logging (códigos nuevos en `docs/SAM/logging.md`)
 
-- `ai.clef_shadow.dispatched` · `ai.clef_shadow.skipped` (`disabled`, `missing_credentials`, `rules_only_mode`, `not_sampled`, `already_evaluated`)
+- `ai.clef_shadow.dispatched` · `ai.clef_shadow.skipped` (`disabled`, `missing_credentials`, `shadow_expired`, `rules_only_mode`, `not_sampled`, `already_evaluated`)
 - `ai.clef_shadow.completed`: `input` con ids y modelo; `calc` con tokens, precio por millón, costo, latencia, `images_sent` y si coincide con GPT; `result` con la clasificación y su probabilidad.
 - `ai.clef_shadow.image_skipped` · `ai.clef_shadow.failed` (con `error`)
 - `ai.clef_backfill.planned` (calc: filas, tokens y costo estimado) · `ai.label.recorded`
@@ -232,7 +244,7 @@ Nunca se registran el estado enviado, las imágenes, URLs firmadas ni el token.
 
 ## 10. Riesgos y decisiones abiertas
 
-- **Subprocesador nuevo:** las imágenes de cabina irían a Cloudflare. `send_images=false` por defecto; activarlo requiere revisar los términos de privacidad con los clientes.
+- **Subprocesador nuevo:** las imágenes de cabina van a Cloudflare. El cliente actual está informado y de acuerdo (2026-10-03), así que `send_images=true` por defecto. Cada cliente nuevo debe quedar informado en su contrato.
 - **Modelo recién lanzado** (2026-10-01): el rendimiento en español y con telemetría de flotas es desconocido. Justo eso es lo que mide esta fase.
 - **Precios:** los de la doc oficial se fijan en config; si cambian, el reporte usa los de config al momento del cálculo.
 - **Volumen de veredictos:** el criterio de paso exige ≥ 300. El etiquetado acelera llegar ahí; los veredictos de producción lo completan.
