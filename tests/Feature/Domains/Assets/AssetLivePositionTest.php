@@ -21,6 +21,9 @@ class AssetLivePositionTest extends TestCase
 
     public function test_a_snapshot_written_outside_the_feed_moves_the_live_position_forward_only(): void
     {
+        // El reloj congelado: la aserción vuelve a calcular now() y, si entre
+        // medias cambiaba el segundo, el test fallaba al azar.
+        $this->freezeTime();
         $asset = Asset::factory()->create();
 
         AssetLocationSnapshot::factory()->for($asset)->create(['latitude' => 19.1, 'speed' => 40, 'recorded_at' => now()->subMinute()]);
