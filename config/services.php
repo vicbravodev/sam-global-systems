@@ -61,6 +61,11 @@ return [
         // signatures are validated against it (TwilioWebhookUrl); without it
         // a proxy turns every DTMF/inbound reply into a 403.
         'public_base_url' => env('TWILIO_PUBLIC_BASE_URL'),
+        // Text-to-speech voice and pace for every call SAM places
+        // (TwilioSpeech). Polly.Mia-Neural is Mexican Spanish with full SSML;
+        // Polly.Mía-Generative sounds warmer but costs ~4x and is in beta.
+        'tts_voice' => env('TWILIO_TTS_VOICE', 'Polly.Mia-Neural'),
+        'tts_rate' => env('TWILIO_TTS_RATE', '90%'),
         // Dev-only simulated Twilio (fake SIDs, deterministic outcomes).
         // Ignored in production.
         'sandbox' => (bool) env('TWILIO_SANDBOX', false),

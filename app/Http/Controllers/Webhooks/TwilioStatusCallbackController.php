@@ -11,6 +11,7 @@ use App\Domains\Notifications\Models\MessagingCharge;
 use App\Domains\Notifications\Models\NotificationDelivery;
 use App\Domains\Notifications\Support\TwilioWebhookSignature;
 use App\Http\Controllers\Controller;
+use App\Support\LoggableCode;
 use App\Support\SystemLog;
 use App\Support\TenantContext;
 use Illuminate\Http\Request;
@@ -39,6 +40,18 @@ class TwilioStatusCallbackController extends Controller
         $isCall = $request->filled('CallSid');
         $sid = (string) ($isCall ? $request->input('CallSid') : $request->input('MessageSid', ''));
         $status = (string) ($isCall ? $request->input('CallStatus', '') : $request->input('MessageStatus', ''));
+
+        // Detección de contestadora en paralelo (asyncAmd): el veredicto llega
+        // aparte, sólo con CallSid + AnsweredBy. La llamada ya está contestada
+        // en ese momento, así que se aplica como `in-progress`.
+        if ($isCall && $status === '' && $request->filled('AnsweredBy')) {
+            $status = 'in-progress';
+
+            SystemLog::ok('notifications.provider_status.amd_verdict', calc: [
+                'answered_by' => LoggableCode::guard((string) $request->input('AnsweredBy')),
+                'applied_as' => $status,
+            ], debug: true);
+        }
 
         if ($sid === '' || $status === '') {
             SystemLog::skipped('notifications.provider_status.skipped', reason: 'missing_fields', calc: [

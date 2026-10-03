@@ -9,6 +9,7 @@ use App\Domains\Notifications\Enums\ChannelType;
 use App\Domains\Notifications\Enums\MessagingResourceType;
 use App\Domains\Notifications\Models\NotificationChannel;
 use App\Domains\Notifications\Support\PlatformTwilioConfig;
+use App\Domains\Notifications\Support\TwilioSpeech;
 use App\Domains\Notifications\Support\TwilioStatusCallbackUrl;
 use App\Domains\Notifications\Support\TwilioWebhookUrl;
 
@@ -59,12 +60,20 @@ class VoiceNotificationDriver implements NotificationDriver
             'timeout' => $config['ring_timeout_seconds'] ?? 25,
             // Detección de contestadora: un buzón no cuenta como "contestó"
             // (ApplyTwilioStatusUpdate lo marca fallido y cae a otro canal).
+            // En paralelo: el mensaje suena en cuanto contestan y el veredicto
+            // llega después (al callback, o al conciliador que consulta la
+            // llamada). En modo síncrono Twilio no reproducía nada hasta
+            // decidir —hasta 30 s de silencio— y la gente colgaba creyendo
+            // que era una llamada muerta.
             'machineDetection' => 'Enable',
+            'asyncAmd' => 'true',
         ];
 
         if (($callback = TwilioStatusCallbackUrl::resolve()) !== null) {
             $params['statusCallback'] = $callback;
             $params['statusCallbackEvent'] = self::STATUS_CALLBACK_EVENTS;
+            $params['asyncAmdStatusCallback'] = $callback;
+            $params['asyncAmdStatusCallbackMethod'] = 'POST';
         }
 
         try {
@@ -79,16 +88,15 @@ class VoiceNotificationDriver implements NotificationDriver
     private function twiml(RenderedNotification $notification): string
     {
         $text = trim(($notification->subject !== null && $notification->subject !== '' ? $notification->subject.'. ' : '').$notification->body);
-        $say = htmlspecialchars($text, ENT_XML1 | ENT_QUOTES, 'UTF-8');
         $gatherUrl = $this->gatherUrl($notification);
 
         if ($gatherUrl === null) {
             // The message is read twice so a delayed pickup still hears it whole.
             return '<?xml version="1.0" encoding="UTF-8"?>'
                 .'<Response>'
-                .'<Say language="es-MX">'.$say.'</Say>'
+                .TwilioSpeech::say($text)
                 .'<Pause length="1"/>'
-                .'<Say language="es-MX">'.$say.'</Say>'
+                .TwilioSpeech::say('Te repito. '.$text)
                 .'</Response>';
         }
 
@@ -96,18 +104,16 @@ class VoiceNotificationDriver implements NotificationDriver
         // (presiona 1) y la escalera se detiene. Se lee dos veces dentro del
         // Gather para que una tecla temprana corte la lectura.
         $action = htmlspecialchars($gatherUrl, ENT_XML1 | ENT_QUOTES, 'UTF-8');
-        $prompt = 'Para atender este incidente presiona 1.';
+        $prompt = 'Si tú la vas a atender, presiona 1.';
 
         return '<?xml version="1.0" encoding="UTF-8"?>'
             .'<Response>'
             .'<Gather numDigits="1" timeout="8" action="'.$action.'" method="POST">'
-            .'<Say language="es-MX">'.$say.'</Say>'
-            .'<Say language="es-MX">'.$prompt.'</Say>'
+            .TwilioSpeech::say($text.' '.$prompt)
             .'<Pause length="1"/>'
-            .'<Say language="es-MX">'.$say.'</Say>'
-            .'<Say language="es-MX">'.$prompt.'</Say>'
+            .TwilioSpeech::say('Te repito. '.$text.' '.$prompt)
             .'</Gather>'
-            .'<Say language="es-MX">No recibimos respuesta. SAM seguirá avisando al equipo.</Say>'
+            .TwilioSpeech::say(['No recibimos respuesta.', 'Vamos a seguir avisando al equipo.'])
             .'</Response>';
     }
 
