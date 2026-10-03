@@ -1,5 +1,6 @@
 import { Info } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { Meter } from '@/components/sam/meter';
 import { APP_LOCALE, formatDate, formatNumber, toDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { money } from './panel';
@@ -150,7 +151,6 @@ export function MonthSummary({ estimate }: { estimate: PeriodEstimate }) {
     const e = estimate;
     const c = e.currency;
     const lines = buildLines(e);
-    const progress = Math.min(1, e.daysElapsed / Math.max(1, e.daysInPeriod));
     const daysLeft = Math.max(0, e.daysInPeriod - e.daysElapsed);
     const missingDays = Math.max(0, e.daysElapsed - e.daysRecorded);
 
@@ -189,19 +189,12 @@ export function MonthSummary({ estimate }: { estimate: PeriodEstimate }) {
                     </div>
                 </div>
                 <div className="flex flex-col gap-1.5">
-                    <div
-                        className="h-1.5 overflow-hidden rounded-full bg-surface-3"
+                    <Meter
+                        value={e.daysElapsed}
+                        max={e.daysInPeriod}
+                        label="Avance del mes"
                         role="progressbar"
-                        aria-label="Avance del mes"
-                        aria-valuemin={0}
-                        aria-valuemax={e.daysInPeriod}
-                        aria-valuenow={e.daysElapsed}
-                    >
-                        <div
-                            className="h-full rounded-full bg-primary"
-                            style={{ width: `${progress * 100}%` }}
-                        />
-                    </div>
+                    />
                     <div className="flex flex-wrap justify-between gap-x-4 text-2xs text-fg-3">
                         <span>
                             Día {e.daysElapsed} de {e.daysInPeriod}

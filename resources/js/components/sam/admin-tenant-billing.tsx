@@ -6,6 +6,7 @@ import { SubscriptionPill } from '@/components/sam/admin-tenant-status';
 import { BillingPill } from '@/components/sam/billing/panel';
 import type { BillingTone } from '@/components/sam/billing/panel';
 import { ConfirmDialog } from '@/components/sam/confirm-dialog';
+import { Meter } from '@/components/sam/meter';
 import { Panel } from '@/components/sam/panel';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -123,7 +124,6 @@ const INVOICE_TONE: Record<string, BillingTone> = {
 
 export function CapMeterBar({ usage }: { usage: AssetUsage }) {
     const limit = usage.limit;
-    const ratio = limit && limit > 0 ? usage.current / limit : 0;
     const over = limit !== null && usage.current > limit;
 
     return (
@@ -137,22 +137,12 @@ export function CapMeterBar({ usage }: { usage: AssetUsage }) {
                 </span>
             </div>
             {limit !== null ? (
-                <div
-                    className="h-1.5 overflow-hidden rounded-full bg-surface-3"
-                    role="meter"
-                    aria-valuemin={0}
-                    aria-valuemax={limit}
-                    aria-valuenow={usage.current}
-                    aria-label="Unidades vigiladas contra el tope"
-                >
-                    <div
-                        className={cn(
-                            'h-full rounded-full transition-transform',
-                            over ? 'bg-severity-medium' : 'bg-primary',
-                        )}
-                        style={{ width: `${Math.min(100, ratio * 100)}%` }}
-                    />
-                </div>
+                <Meter
+                    value={usage.current}
+                    max={limit}
+                    label="Unidades vigiladas contra el tope"
+                    toneClassName={over ? 'bg-severity-medium' : 'bg-primary'}
+                />
             ) : null}
             <p
                 className={cn(

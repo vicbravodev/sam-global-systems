@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CopilotChatPanel } from '@/components/sam/copilot/copilot-chat-panel';
 import { timeAgo } from '@/components/sam/copilot/copilot-format';
 import { useCopilotChat } from '@/components/sam/copilot/use-copilot-chat';
+import { Meter } from '@/components/sam/meter';
 import { cn } from '@/lib/utils';
 import type {
     CopilotCatalog,
@@ -284,19 +285,18 @@ function QuotaMeter({ quota }: { quota: CopilotQuota }) {
                     {quota.used} / {quota.included}
                 </span>
             </div>
-            <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-surface-3">
-                <div
-                    className={cn(
-                        'h-full rounded-full',
-                        percent >= 100
-                            ? 'bg-severity-critical'
-                            : percent >= 80
-                              ? 'bg-severity-high'
-                              : 'bg-ai-accent',
-                    )}
-                    style={{ width: `${percent}%` }}
-                />
-            </div>
+            <Meter
+                value={percent}
+                label="Consultas del mes usadas"
+                className="mt-1.5 h-1"
+                toneClassName={
+                    percent >= 100
+                        ? 'bg-severity-critical'
+                        : percent >= 80
+                          ? 'bg-severity-high'
+                          : 'bg-ai-accent'
+                }
+            />
         </div>
     );
 }

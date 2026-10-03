@@ -7,6 +7,7 @@ import {
     Video,
 } from 'lucide-react';
 import { SeverityBadge } from '@/components/sam';
+import { Meter } from '@/components/sam/meter';
 import { formatDateTime } from '@/lib/format';
 import { eventTypeLabel } from '@/lib/labels';
 import { formatClock } from '@/lib/time';
@@ -82,12 +83,12 @@ function RiskBar({ value }: { value: number }) {
             <span className={cn('font-mono text-2xs font-semibold', color)}>
                 {value}
             </span>
-            <span className="h-1 w-12 shrink-0 overflow-hidden rounded-full bg-surface-3">
-                <span
-                    className={cn('block h-full', bgColor)}
-                    style={{ width: `${value}%` }}
-                />
-            </span>
+            <Meter
+                value={value}
+                label="Riesgo"
+                toneClassName={bgColor}
+                className="h-1 w-12 shrink-0"
+            />
         </span>
     );
 }
