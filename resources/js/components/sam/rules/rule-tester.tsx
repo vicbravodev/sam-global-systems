@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dialog';
 import { formatDateTime } from '@/lib/format';
 import { postJson } from '@/lib/sam-fetch';
+import { TONE_SURFACE, TONE_TEXT } from '@/lib/tone';
 import { cn } from '@/lib/utils';
 import { describeCondition, describeValue } from './lib';
 import { OutcomePill } from './rule-sentence';
@@ -129,13 +130,15 @@ export function RuleTester({
                     className={cn(
                         'flex flex-col gap-1 rounded-md border px-3 py-2.5',
                         result.result === 'match'
-                            ? 'border-health-ok/40 bg-health-ok/10'
-                            : 'border-border bg-surface-2',
+                            ? TONE_SURFACE.ok
+                            : TONE_SURFACE.neutral,
                     )}
                 >
                     <p className="flex flex-wrap items-center gap-1.5 text-sm font-medium text-fg-1">
                         {result.result === 'match' ? (
-                            <CheckCircle2 className="size-4 text-health-ok" />
+                            <CheckCircle2
+                                className={cn('size-4', TONE_TEXT.ok)}
+                            />
                         ) : (
                             <XCircle className="size-4 text-fg-3" />
                         )}
@@ -172,12 +175,18 @@ export function RuleTester({
                             >
                                 {check.passed ? (
                                     <CheckCircle2
-                                        className="mt-0.5 size-3.5 shrink-0 text-health-ok"
+                                        className={cn(
+                                            'mt-0.5 size-3.5 shrink-0',
+                                            TONE_TEXT.ok,
+                                        )}
                                         aria-label="Se cumple"
                                     />
                                 ) : (
                                     <XCircle
-                                        className="mt-0.5 size-3.5 shrink-0 text-severity-critical"
+                                        className={cn(
+                                            'mt-0.5 size-3.5 shrink-0',
+                                            TONE_TEXT.critical,
+                                        )}
                                         aria-label="No se cumple"
                                     />
                                 )}

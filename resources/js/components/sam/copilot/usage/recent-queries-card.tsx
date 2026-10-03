@@ -6,6 +6,8 @@ import {
 } from '@/components/sam/copilot/copilot-format';
 import { COPILOT_CHANNEL_LABELS } from '@/components/sam/copilot/copy';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { TONE_TEXT } from '@/lib/tone';
+import { cn } from '@/lib/utils';
 import type { CopilotUsageReport } from '@/types/copilot';
 
 export function RecentQueriesCard({
@@ -69,7 +71,12 @@ export function RecentQueriesCard({
                                         {(row.latencyMs / 1000).toFixed(1)} s
                                     </span>
                                     {row.feedback === 1 && (
-                                        <ThumbsUp className="size-3 text-health-ok" />
+                                        <ThumbsUp
+                                            className={cn(
+                                                'size-3',
+                                                TONE_TEXT.ok,
+                                            )}
+                                        />
                                     )}
                                     {row.feedback === -1 && (
                                         <ThumbsDown className="size-3 text-severity-critical" />
