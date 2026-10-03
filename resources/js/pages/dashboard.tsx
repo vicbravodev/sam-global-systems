@@ -19,7 +19,8 @@ import { useBroadcastReload } from '@/hooks/use-team-broadcasts';
 import { formatCurrency } from '@/lib/format';
 import { formatClock } from '@/lib/time';
 import { cn } from '@/lib/utils';
-import { dashboard } from '@/routes';
+import { dashboard, home } from '@/routes';
+import incidentRoutes from '@/routes/incidents';
 import type {
     DashboardIntegration,
     DashboardProps,
@@ -288,7 +289,7 @@ function OpenIncidentsPanel({
                 </CardTitle>
                 {teamSlug ? (
                     <Button variant="ghost" size="sm" asChild>
-                        <Link href={`/${teamSlug}/incidents`}>
+                        <Link href={incidentRoutes.index(teamSlug)}>
                             Ver todos
                             <ChevronRight />
                         </Link>
@@ -307,7 +308,10 @@ function OpenIncidentsPanel({
                                 <Link
                                     href={
                                         teamSlug
-                                            ? `/${teamSlug}/incidents/${incident.incidentId}`
+                                            ? incidentRoutes.show([
+                                                  teamSlug,
+                                                  incident.incidentId,
+                                              ])
                                             : '#'
                                     }
                                     className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-surface-2"
@@ -604,7 +608,9 @@ Dashboard.layout = (props: { currentTeam?: { slug: string } | null }) => ({
     breadcrumbs: [
         {
             title: 'Panel',
-            href: props.currentTeam ? dashboard(props.currentTeam.slug) : '/',
+            href: props.currentTeam
+                ? dashboard(props.currentTeam.slug)
+                : home(),
         },
     ],
 });

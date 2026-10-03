@@ -9,6 +9,7 @@ import { useLiveAsset } from '@/components/sam/assets/detail/use-live-asset';
 import { VehicleCard } from '@/components/sam/assets/detail/vehicle-card';
 import { LinkedIncidentsCard } from '@/components/sam/linked-incidents-card';
 import { RecentEventsCard } from '@/components/sam/recent-events-card';
+import assetRoutes from '@/routes/assets';
 import type { AssetShowProps } from '@/types/assets';
 
 export default function AssetShow() {
@@ -78,15 +79,18 @@ AssetShow.layout = (props: {
         {
             title: 'Flota',
             href: props.currentTeam
-                ? `/${props.currentTeam.slug}/assets`
-                : '/assets',
+                ? assetRoutes.index.url(props.currentTeam.slug)
+                : '#',
         },
         ...(props.asset
             ? [
                   {
                       title: props.asset.name,
                       href: props.currentTeam
-                          ? `/${props.currentTeam.slug}/assets/${props.asset.id}`
+                          ? assetRoutes.show.url([
+                                props.currentTeam.slug,
+                                props.asset.id,
+                            ])
                           : '#',
                   },
               ]

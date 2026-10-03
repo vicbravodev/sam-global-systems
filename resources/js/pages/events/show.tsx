@@ -7,6 +7,7 @@ import { IncidentCard } from '@/components/sam/events/detail/incident-card';
 import { JsonBlock } from '@/components/sam/events/detail/json-block';
 import { MediaCard } from '@/components/sam/events/detail/media-card';
 import { PipelineStepper } from '@/components/sam/events/detail/pipeline-stepper';
+import eventRoutes from '@/routes/events';
 import type { EventShowProps } from '@/types/events';
 
 export default function EventShow() {
@@ -74,8 +75,8 @@ EventShow.layout = (props: {
         {
             title: 'Eventos',
             href: props.currentTeam
-                ? `/${props.currentTeam.slug}/events`
-                : '/events',
+                ? eventRoutes.index.url(props.currentTeam.slug)
+                : '#',
         },
         ...(props.event
             ? [
@@ -83,7 +84,10 @@ EventShow.layout = (props: {
                       title: props.event.eventType ?? `#${props.event.id}`,
                       href:
                           props.currentTeam && props.event
-                              ? `/${props.currentTeam.slug}/events/${props.event.id}`
+                              ? eventRoutes.show.url([
+                                    props.currentTeam.slug,
+                                    props.event.id,
+                                ])
                               : '#',
                   },
               ]

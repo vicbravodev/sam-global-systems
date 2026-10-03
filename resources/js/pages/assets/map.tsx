@@ -25,6 +25,7 @@ import { useTeamBroadcast } from '@/hooks/use-team-broadcasts';
 import { formatDateTime } from '@/lib/format';
 import { relativeLabel } from '@/lib/time';
 import { cn } from '@/lib/utils';
+import assetRoutes from '@/routes/assets';
 import type {
     AssetMarker,
     AssetsMapProps,
@@ -167,7 +168,7 @@ function UnitCallout({
                 </span>
                 {teamSlug && (
                     <Button size="sm" asChild>
-                        <Link href={`/${teamSlug}/assets/${asset.id}`}>
+                        <Link href={assetRoutes.show([teamSlug, asset.id])}>
                             Ver unidad
                             <ArrowUpRight className="size-3.5" />
                         </Link>
@@ -684,8 +685,8 @@ AssetsMap.layout = (props: { currentTeam?: { slug: string } | null }) => ({
         {
             title: 'Mapa en vivo',
             href: props.currentTeam
-                ? `/${props.currentTeam.slug}/assets/map`
-                : '/assets/map',
+                ? assetRoutes.map.url(props.currentTeam.slug)
+                : '#',
         },
     ],
 });

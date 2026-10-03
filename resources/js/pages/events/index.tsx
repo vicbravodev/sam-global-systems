@@ -33,6 +33,7 @@ import { formatDateTime } from '@/lib/format';
 import { priorityLabel, providerDescriptionLabel } from '@/lib/labels';
 import { formatClock, dayLabel, minutesSince } from '@/lib/time';
 import { cn } from '@/lib/utils';
+import eventRoutes from '@/routes/events';
 import type {
     EventFilterOptions,
     EventFilters,
@@ -577,7 +578,9 @@ export default function EventsIndex() {
                     rowKey={(event) => event.id}
                     onRowClick={(event) => {
                         if (teamSlug) {
-                            router.visit(`/${teamSlug}/events/${event.id}`);
+                            router.visit(
+                                eventRoutes.show([teamSlug, event.id]),
+                            );
                         }
                     }}
                     empty={
@@ -601,8 +604,8 @@ EventsIndex.layout = (props: { currentTeam?: { slug: string } | null }) => ({
         {
             title: 'Eventos',
             href: props.currentTeam
-                ? `/${props.currentTeam.slug}/events`
-                : '/events',
+                ? eventRoutes.index.url(props.currentTeam.slug)
+                : '#',
         },
     ],
 });

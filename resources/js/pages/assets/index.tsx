@@ -28,6 +28,7 @@ import { Button } from '@/components/ui/button';
 import { useServerList } from '@/hooks/use-server-list';
 import { TEAM_BROADCAST_EVENT_NAME } from '@/hooks/use-team-broadcasts';
 import type { TeamBroadcastDetail } from '@/hooks/use-team-broadcasts';
+import assetRoutes from '@/routes/assets';
 import type {
     AssetFilterOptions,
     AssetFilters,
@@ -438,7 +439,7 @@ export default function AssetsIndex() {
                 }
 
                 router.put(
-                    `/${teamSlug}/assets/monitoring`,
+                    assetRoutes.monitoring.bulk.url(teamSlug),
                     { state: 'monitored', asset_ids: pending },
                     {
                         preserveScroll: true,
@@ -567,7 +568,7 @@ export default function AssetsIndex() {
 
     const handleSelect = (id: number) => {
         if (teamSlug !== null) {
-            router.visit(`/${teamSlug}/assets/${id}`);
+            router.visit(assetRoutes.show([teamSlug, id]));
         }
     };
 
@@ -595,7 +596,7 @@ export default function AssetsIndex() {
                 actions={
                     teamSlug && (
                         <Button variant="outline" size="sm" asChild>
-                            <Link href={`/${teamSlug}/assets/map`}>
+                            <Link href={assetRoutes.map(teamSlug)}>
                                 <MapIcon size={13} />
                                 Mapa en vivo
                             </Link>
@@ -674,8 +675,8 @@ AssetsIndex.layout = (props: { currentTeam?: { slug: string } | null }) => ({
         {
             title: 'Flota',
             href: props.currentTeam
-                ? `/${props.currentTeam.slug}/assets`
-                : '/assets',
+                ? assetRoutes.index.url(props.currentTeam.slug)
+                : '#',
         },
     ],
 });

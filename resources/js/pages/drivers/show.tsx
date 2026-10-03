@@ -8,6 +8,7 @@ import { RiskCard } from '@/components/sam/drivers/detail/risk-card';
 import { StatusLogCard } from '@/components/sam/drivers/detail/status-log-card';
 import { LinkedIncidentsCard } from '@/components/sam/linked-incidents-card';
 import { RecentEventsCard } from '@/components/sam/recent-events-card';
+import driverRoutes from '@/routes/drivers';
 import type { DriverShowProps } from '@/types/drivers';
 
 export default function DriverShow() {
@@ -72,15 +73,18 @@ DriverShow.layout = (props: {
         {
             title: 'Conductores',
             href: props.currentTeam
-                ? `/${props.currentTeam.slug}/drivers`
-                : '/drivers',
+                ? driverRoutes.index.url(props.currentTeam.slug)
+                : '#',
         },
         ...(props.driver
             ? [
                   {
                       title: props.driver.fullName,
                       href: props.currentTeam
-                          ? `/${props.currentTeam.slug}/drivers/${props.driver.id}`
+                          ? driverRoutes.show.url([
+                                props.currentTeam.slug,
+                                props.driver.id,
+                            ])
                           : '#',
                   },
               ]

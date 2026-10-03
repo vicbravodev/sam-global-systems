@@ -20,6 +20,7 @@ import { ListEmptyState, ListPage } from '@/components/sam/list-page';
 import { PulseStat, PulseStrip } from '@/components/sam/pulse-strip';
 import { SegmentedFilter } from '@/components/sam/segmented-filter';
 import { useServerList } from '@/hooks/use-server-list';
+import driverRoutes from '@/routes/drivers';
 import type {
     DriverFilterOptions,
     DriverFilters,
@@ -191,7 +192,7 @@ export default function DriversIndex() {
 
     const handleSelect = (id: number) => {
         if (teamSlug !== null) {
-            router.visit(`/${teamSlug}/drivers/${id}`);
+            router.visit(driverRoutes.show([teamSlug, id]));
         }
     };
 
@@ -270,8 +271,8 @@ DriversIndex.layout = (props: { currentTeam?: { slug: string } | null }) => ({
         {
             title: 'Conductores',
             href: props.currentTeam
-                ? `/${props.currentTeam.slug}/drivers`
-                : '/drivers',
+                ? driverRoutes.index.url(props.currentTeam.slug)
+                : '#',
         },
     ],
 });
