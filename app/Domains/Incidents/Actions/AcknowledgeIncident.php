@@ -37,7 +37,7 @@ class AcknowledgeIncident
                 entryType: TimelineEntryType::Acknowledged,
                 actorType: $userId !== null ? TimelineActorType::User : TimelineActorType::System,
                 actorId: $userId,
-                title: $via !== null ? "Incident acknowledged via {$via}" : 'Incident acknowledged',
+                title: self::title($via),
                 payload: array_filter([
                     'acknowledged_by' => $userId,
                     'via' => $via,
@@ -52,5 +52,22 @@ class AcknowledgeIncident
 
             return $fresh;
         });
+    }
+
+    /**
+     * "Incidente atendido por llamada": el canal en español, no el código.
+     */
+    private static function title(?string $via): string
+    {
+        $channel = match ($via) {
+            null, '' => null,
+            'voice' => 'por llamada',
+            'sms' => 'por SMS',
+            'whatsapp' => 'por WhatsApp',
+            'web' => 'desde SAM',
+            default => "por {$via}",
+        };
+
+        return $channel !== null ? "Incidente atendido {$channel}" : 'Incidente atendido';
     }
 }

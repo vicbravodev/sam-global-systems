@@ -19,6 +19,7 @@ use App\Domains\Incidents\Enums\TimelineActorType;
 use App\Domains\Incidents\Enums\TimelineEntryType;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentCallVerification;
+use App\Domains\Incidents\Support\IncidentNoticeCopy;
 use App\Domains\Incidents\Support\VerificationCallTwiml;
 use App\Domains\Notifications\Enums\NotificationPriority;
 use App\Domains\Notifications\Support\TwilioWebhookSignature;
@@ -58,7 +59,7 @@ class TwilioVoiceController extends Controller
         if ($row->outcome !== null || $row->status === CallVerificationStatus::Answered) {
             SystemLog::skipped('incidents.call_verification.answered', reason: 'already_answered', input: $this->logInput($row));
 
-            return $this->twiml(VerificationCallTwiml::say('Ya registramos su respuesta. Gracias.'));
+            return $this->twiml(VerificationCallTwiml::say(['Ya teníamos tu respuesta.', 'Gracias.']));
         }
 
         $digits = trim((string) $request->input('Digits', ''));
@@ -71,7 +72,7 @@ class TwilioVoiceController extends Controller
             $incident = Incident::query()->with('asset')->find($row->incident_id);
 
             if ($incident === null) {
-                return $this->twiml(VerificationCallTwiml::say('El incidente ya no existe. Gracias.'));
+                return $this->twiml(VerificationCallTwiml::say(['Esta alerta ya no existe.', 'Gracias.']));
             }
 
             return $this->twiml(VerificationCallTwiml::prompt(
@@ -89,7 +90,7 @@ class TwilioVoiceController extends Controller
 
             SystemLog::skipped('incidents.call_verification.answered', reason: 'incident_closed', input: $this->logInput($row), result: ['outcome' => $outcome->value]);
 
-            return $this->twiml(VerificationCallTwiml::say("El incidente número {$row->incident_id} ya está cerrado. Gracias."));
+            return $this->twiml(VerificationCallTwiml::say(['Esta alerta ya estaba cerrada.', 'Gracias por avisarnos.']));
         }
 
         return $digits === '1'
@@ -151,14 +152,17 @@ class TwilioVoiceController extends Controller
             escalatedByType: IncidentCreatorType::System,
         );
 
+        $copy = IncidentNoticeCopy::emergencyConfirmed($incident);
+
         $this->notifyEscalationLevel->execute(
             incident: $incident,
             level: 0,
             eventKey: "incident_emergency_confirmed:{$incident->id}",
             notificationType: 'incident.emergency_confirmed',
-            subject: 'EMERGENCIA CONFIRMADA: '.$incident->title,
-            body: "El operador confirmó por teléfono ({$row->phone}) que la emergencia es real. Actúa ahora.",
+            subject: $copy['subject'],
+            body: $copy['body'],
             priority: NotificationPriority::Critical,
+            spoken: $copy['spoken'],
         );
 
         $this->armIncidentEscalation->accelerate($incident, 'emergency_confirmed');
@@ -171,7 +175,7 @@ class TwilioVoiceController extends Controller
         ]);
 
         return $this->twiml(VerificationCallTwiml::say(
-            'Emergencia confirmada. SAM escaló el incidente y está avisando a los contactos de emergencia. Gracias.',
+            ['Gracias.', 'Ya avisamos a tu equipo de monitoreo y te van a dar seguimiento de inmediato.'],
         ));
     }
 
@@ -204,7 +208,7 @@ class TwilioVoiceController extends Controller
         ]);
 
         return $this->twiml(VerificationCallTwiml::say(
-            'Registrado como falsa alarma. El incidente fue cerrado. Gracias.',
+            ['Gracias por avisarnos.', 'Registramos la alerta como falsa alarma y la cerramos.'],
         ));
     }
 

@@ -9,6 +9,7 @@ use App\Domains\Incidents\Enums\TimelineEntryType;
 use App\Domains\Incidents\Events\IncidentAssigned;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentAssignment;
+use App\Models\User;
 use App\Support\TeamMembers;
 use Illuminate\Support\Facades\DB;
 
@@ -49,7 +50,7 @@ class AssignIncident
                 entryType: TimelineEntryType::Assigned,
                 actorType: $assignedByType === IncidentCreatorType::User ? TimelineActorType::User : TimelineActorType::System,
                 actorId: $assignedById,
-                title: "Assigned to {$assigneeType->value} #{$assigneeId}",
+                title: $this->title($assigneeType, $assigneeId),
                 payload: [
                     'assignment_id' => $assignment->id,
                     'assigned_to_type' => $assigneeType->value,
@@ -69,6 +70,20 @@ class AssignIncident
      * alguien de otro tenant (le daría acceso a sus datos y notificaciones).
      * Un super-admin sí puede figurar como asignado (soporte de SAM).
      */
+    /**
+     * "Asignado a Ana López", no "Assigned to user #12". El nombre sale de un
+     * usuario ya validado como asignable en este team (guardAssignee).
+     */
+    private function title(AssigneeType $assigneeType, int $assigneeId): string
+    {
+        return match ($assigneeType) {
+            AssigneeType::User => 'Asignado a '.(User::query()->whereKey($assigneeId)->value('name') ?? "usuario #{$assigneeId}"),
+            AssigneeType::Team => 'Asignado al equipo',
+            AssigneeType::Queue => 'Asignado a la cola del equipo',
+            AssigneeType::AutomatedHandler => 'Asignado a atención automática',
+        };
+    }
+
     private function guardAssignee(Incident $incident, AssigneeType $assigneeType, int $assigneeId): void
     {
         $teamId = $incident->team_id;

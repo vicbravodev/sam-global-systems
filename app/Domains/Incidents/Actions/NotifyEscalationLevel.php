@@ -65,6 +65,7 @@ class NotifyEscalationLevel
         string $subject,
         string $body,
         ?NotificationPriority $priority = null,
+        ?string $spoken = null,
     ): void {
         $teamId = $incident->team_id;
         $incident->loadMissing(['priority', 'type']);
@@ -78,6 +79,12 @@ class NotifyEscalationLevel
             'incident_title' => $incident->title,
             'escalation_level' => $level,
         ];
+
+        // Lo que se lee en una llamada (VoiceNotificationDriver): un texto
+        // pensado para oírse, no el SMS en voz alta.
+        if ($spoken !== null && $spoken !== '') {
+            $payload['spoken'] = $spoken;
+        }
 
         $channels = array_values(array_filter(
             (array) ($step['channels'] ?? []),

@@ -8,6 +8,7 @@ use App\Domains\Incidents\Enums\AssigneeType;
 use App\Domains\Incidents\Events\IncidentCreated;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Support\IncidentCreatedReaction;
+use App\Domains\Incidents\Support\IncidentNoticeCopy;
 use App\Domains\Incidents\Support\IsolatesIncidentCreatedReaction;
 use App\Domains\Notifications\Actions\SendNotification;
 use App\Domains\Notifications\Enums\ChannelType;
@@ -130,6 +131,8 @@ class AssignOnCallOnIncidentCreated implements IncidentCreatedReaction
             return null;
         }
 
+        $copy = IncidentNoticeCopy::onCallAssigned($incident);
+
         return $this->sendNotification->execute(
             teamId: $incident->team_id,
             notificationType: 'incident.assigned.on_call',
@@ -155,8 +158,8 @@ class AssignOnCallOnIncidentCreated implements IncidentCreatedReaction
                     ],
                 ],
             ],
-            subject: 'Incidente crítico asignado a ti (on-call)',
-            bodyPreview: 'Se te asignó un incidente crítico como operador on-call.',
+            subject: $copy['subject'],
+            bodyPreview: $copy['body'],
         );
     }
 }

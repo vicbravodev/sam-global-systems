@@ -9,6 +9,7 @@ use App\Domains\Incidents\Enums\TimelineActorType;
 use App\Domains\Incidents\Enums\TimelineEntryType;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Models\IncidentCallVerification;
+use App\Domains\Incidents\Support\IncidentNoticeCopy;
 use App\Domains\Incidents\Support\IncidentSuppression;
 use App\Support\LoggableCode;
 use App\Support\SystemLog;
@@ -117,13 +118,16 @@ class HandleVerificationCallAttemptFailure
             escalatedByType: IncidentCreatorType::System,
         );
 
+        $copy = IncidentNoticeCopy::verificationUnanswered($incident);
+
         $this->notifyEscalationLevel->execute(
             incident: $incident,
             level: 0,
             eventKey: "incident_verification_no_answer:{$incident->id}",
             notificationType: 'incident.verification_no_answer',
-            subject: 'Emergencia sin respuesta del operador: '.$incident->title,
-            body: "Nadie contestó la llamada de verificación tras {$verification->attempt} intentos. Atiéndela ahora.",
+            subject: $copy['subject'],
+            body: $copy['body'],
+            spoken: $copy['spoken'],
         );
 
         // Ese aviso cuenta como el paso 0 de la escalera: el SLA no vuelve a

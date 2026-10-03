@@ -35,7 +35,7 @@ class LinkEventToIncident
                 incident: $incident,
                 entryType: TimelineEntryType::EventLinked,
                 actorType: TimelineActorType::System,
-                title: "Event #{$event->id} linked",
+                title: "Evento #{$event->id} vinculado",
                 description: null,
                 payload: [
                     'normalized_event_id' => $event->id,

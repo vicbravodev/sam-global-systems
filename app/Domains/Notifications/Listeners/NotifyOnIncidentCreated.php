@@ -8,6 +8,7 @@ use App\Domains\Incidents\Actions\ResolveEscalationAudience;
 use App\Domains\Incidents\Events\IncidentCreated;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Support\IncidentCreatedReaction;
+use App\Domains\Incidents\Support\IncidentNoticeCopy;
 use App\Domains\Incidents\Support\IsolatesIncidentCreatedReaction;
 use App\Domains\Notifications\Actions\SendNotification;
 use App\Domains\Notifications\Enums\ChannelType;
@@ -70,6 +71,9 @@ class NotifyOnIncidentCreated implements IncidentCreatedReaction
             'has_media' => $this->hasMedia($context),
         ];
 
+        $copy = IncidentNoticeCopy::created($incident);
+        $payload['spoken'] = $copy['spoken'];
+
         $payload += $this->lateNotice($incident);
 
         $notificationType = $this->resolveNotificationType($incident);
@@ -97,7 +101,7 @@ class NotifyOnIncidentCreated implements IncidentCreatedReaction
         $priority = NotificationPriority::fromIncidentPriority($severity);
 
         if ($threshold['reaches']) {
-            $payload = $this->routeToFirstResponders($incident, $notificationType['type'], $priority, $payload);
+            $payload = $this->routeToFirstResponders($incident, $notificationType['type'], $priority, $payload, $copy);
         }
 
         $this->sendNotification->execute(
@@ -110,8 +114,8 @@ class NotifyOnIncidentCreated implements IncidentCreatedReaction
             triggeredById: null,
             eventKey: 'incident_created:'.$incident->id,
             payload: $payload,
-            subject: 'Nuevo incidente creado',
-            bodyPreview: 'Se ha reportado un nuevo incidente en tu equipo.',
+            subject: $copy['subject'],
+            bodyPreview: $copy['body'],
         );
     }
 
@@ -126,9 +130,10 @@ class NotifyOnIncidentCreated implements IncidentCreatedReaction
      * y fijado a web + correo.
      *
      * @param  array<string, mixed>  $payload
+     * @param  array{subject: string, body: string, spoken: string}  $copy
      * @return array<string, mixed>
      */
-    private function routeToFirstResponders(Incident $incident, string $notificationType, NotificationPriority $priority, array $payload): array
+    private function routeToFirstResponders(Incident $incident, string $notificationType, NotificationPriority $priority, array $payload, array $copy): array
     {
         $audience = $this->resolveAudience->execute($incident->team_id, 'on_call');
         $input = ['incident_id' => $incident->id];
@@ -156,8 +161,8 @@ class NotifyOnIncidentCreated implements IncidentCreatedReaction
             triggeredById: null,
             eventKey: 'incident_created_responder:'.$incident->id,
             payload: [...$payload, 'recipients' => $audience['recipients'], 'first_responder' => true],
-            subject: 'Nuevo incidente creado',
-            bodyPreview: 'Se ha reportado un nuevo incidente en tu equipo.',
+            subject: $copy['subject'],
+            bodyPreview: $copy['body'],
         );
 
         DB::afterCommit(fn () => SystemLog::ok('notifications.incident_created.routed', input: $input, calc: $calc, result: [

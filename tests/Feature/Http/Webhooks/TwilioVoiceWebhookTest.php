@@ -118,7 +118,7 @@ class TwilioVoiceWebhookTest extends TestCase
         $response = $this->gather($verification, '1');
 
         $response->assertOk();
-        $this->assertStringContainsString('Emergencia confirmada', $response->getContent());
+        $this->assertStringContainsString('Ya avisamos a tu equipo de monitoreo', $response->getContent());
 
         $fresh = $verification->fresh();
         $this->assertSame(CallVerificationStatus::Answered, $fresh->status);
@@ -211,7 +211,7 @@ class TwilioVoiceWebhookTest extends TestCase
         $response = $this->gather($verification, '2');
 
         $response->assertOk();
-        $this->assertStringContainsString('Ya registramos su respuesta', $response->getContent());
+        $this->assertStringContainsString('Ya teníamos tu respuesta', $response->getContent());
 
         $this->assertSame(CallVerificationOutcome::ConfirmedReal, $verification->fresh()->outcome);
 
@@ -309,7 +309,7 @@ class TwilioVoiceWebhookTest extends TestCase
         $response = $this->gather($verification, '1');
 
         $response->assertOk();
-        $this->assertStringContainsString('ya está cerrado', $response->getContent());
+        $this->assertStringContainsString('Esta alerta ya estaba cerrada', $response->getContent());
         $this->assertSame(CallVerificationStatus::Answered, $verification->fresh()->status);
 
         $this->assertSystemLogged('incidents.call_verification.answered', fn (array $c) => $c['reason'] === 'incident_closed'

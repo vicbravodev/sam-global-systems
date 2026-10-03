@@ -106,13 +106,13 @@ class ProcessInboundReply
                     'consumed_action' => LoggableCode::guard($token->consumed_action),
                 ]);
 
-                return "Ya registramos tu respuesta para el incidente {$reference}.";
+                return "Ya teníamos tu respuesta para el incidente {$reference}.";
             }
 
             if ($token->isExpired()) {
                 SystemLog::skipped('notifications.inbound_reply.ignored', reason: 'token_expired', input: $logInput);
 
-                return "El código {$code} ha expirado. Gestiona el incidente {$reference} desde el portal.";
+                return "El código {$code} ya venció. Atiende el incidente {$reference} desde SAM.";
             }
 
             if ($incident === null || $incident->isTerminal()) {
@@ -176,7 +176,7 @@ class ProcessInboundReply
     {
         $this->acknowledgeIncident->execute($incident, $token->user_id, via: $via);
 
-        return "✔ Incidente {$incident->reference()} confirmado. SLA detenido.";
+        return "✔ Listo, quedaste a cargo del incidente {$incident->reference()}. Ya no avisaremos a nadie más.";
     }
 
     private function dismiss(Incident $incident, NotificationReplyToken $token, string $via): string
@@ -189,7 +189,7 @@ class ProcessInboundReply
             resolvedById: $token->user_id,
         );
 
-        return "✖ Incidente {$incident->reference()} descartado como falsa alarma.";
+        return "✖ Cerramos el incidente {$incident->reference()} como falsa alarma.";
     }
 
     private function escalate(Incident $incident, NotificationReplyToken $token, string $via): string
@@ -201,7 +201,7 @@ class ProcessInboundReply
             escalatedById: $token->user_id,
         );
 
-        return "▲ Incidente {$incident->reference()} escalado.";
+        return "▲ Pedimos apoyo: el incidente {$incident->reference()} pasó al siguiente nivel.";
     }
 
     /**
