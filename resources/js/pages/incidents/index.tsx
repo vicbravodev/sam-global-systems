@@ -874,7 +874,7 @@ export default function IncidentsIndex(pageProps: IncidentsIndexProps) {
         const succeeded = targets.filter((_, index) => {
             const result = results[index];
 
-            return result.status === 'fulfilled' && result.value.ok;
+            return result?.status === 'fulfilled' && result.value.ok;
         });
         const ok = succeeded.length;
         const failed = targets.length - ok;
