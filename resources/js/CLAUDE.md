@@ -1,8 +1,61 @@
 # Frontend (resources/js/)
 
-- Páginas en `pages/`, primitivas en `components/ui/`, componentes de producto en `components/sam/`. Reutiliza antes de crear.
-- Rutas tipadas con Wayfinder: importa de `@/actions/` (controladores) o `@/routes/` (rutas con nombre). Son generados y gitignored: tras cambiar rutas, `php artisan wayfinder:generate --with-form` (o `npm run build`).
-- **Inertia v3:** Axios fue removido (no lo añadas): usa `useForm` / `useHttp`. `Inertia::lazy()` ya no existe (`Inertia::optional()`). Eventos renombrados: `invalid` → `httpException`, `exception` → `networkError`; `router.cancel()` → `router.cancelAll()`. Props diferidas llevan skeleton animado.
-- **Tokens de diseño** en `@theme` de `resources/css/app.css`. Usa las utilities (`text-3xs`…`text-3xl`, `tracking-label`, `tracking-caps`, `rounded-sm/md/lg/xl`), nunca valores arbitrarios (`text-[12px]`). Ojo: `text-sm` = 13px y `text-base` = 14px (no los defaults de Tailwind).
+Inertia v3 + React 19 (React Compiler activo) + TypeScript estricto + Tailwind v4. Antes de crear algo, busca si ya existe: casi todo lo que una pantalla necesita está en las primitivas de abajo.
+
+## Dónde va cada cosa
+
+| Ruta                          | Qué va ahí                                                                                                                                                                                                                                        |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pages/<feature>/*.tsx`       | Sólo composición: recibe props tipadas, arma la página con primitivas y componentes de la feature. Objetivo < 250 líneas; si crece, extrae a `components/sam/<feature>/`. Modelo: `pages/incidents/show.tsx` + `components/sam/incident-detail/`. |
+| `components/sam/<feature>/`   | Componentes de la feature. Detalle en `<feature>/detail/`. Sus tipos en `types.ts`, textos/catálogos propios en `copy.ts`, helpers en `lib.ts`, hooks en `use-*.ts`.                                                                              |
+| `components/sam/*.tsx` (raíz) | Primitivas genéricas de producto (ver catálogo). Nada específico de una feature.                                                                                                                                                                  |
+| `components/ui/`              | shadcn vendorizado: no editar salvo los propios (`combobox`, `empty-state`, `page-header`, `pagination`, `sonner`, `switch`, `textarea`).                                                                                                         |
+| `hooks/`                      | Hooks transversales (`use-server-list`, `use-team-broadcasts`, `use-realtime-connection`…).                                                                                                                                                       |
+| `lib/`                        | Funciones puras: `format`, `time`, `labels`, `initials`, `submit`, `sam-fetch`, `utils` (`cn`).                                                                                                                                                   |
+| `types/`                      | Tipos de dominio compartidos entre features (no importan de `components/`). `pagination.ts` = `ListPagination`.                                                                                                                                   |
+
+Archivos en kebab-case. Named exports en todo salvo páginas y layouts (`export default`). Props exportadas como `interface XxxProps`; subcomponentes privados con tipo inline.
+
+## Catálogo de primitivas (`components/sam/`)
+
+- **Páginas de lista:** `ListPage` (shell: título, meta, acciones, `pulse`, `filters`, cuerpo, `footer`, `onRefresh`) + `ListEmptyState` (vacío vs. sin resultados) + `hooks/use-server-list` (filtros, `apply`, `goToPage`, `refresh`) + `list/*` (`SearchInput`, `FilterDropdown`, `ClearFiltersButton`, `ListFooter`) + `data-table/*` + `PulseStrip`.
+- **Páginas de detalle:** `DetailHeader` (volver, título, chips, meta, acciones), `Panel` (bloque con encabezado), `DescriptionList`/`DescriptionItem`, `TabBar` (con `actions`).
+- **Formularios:** Inertia `<Form>`/`useForm` con `FormField` (apilado: label, control, ayuda, error) o `Field` (dos columnas en ajustes, con `error`), `RadioCardGroup`/`RadioCard`, `Step` (secciones numeradas), `ReadOnlyNotice`, `ConfirmDialog` (descripción `ReactNode`, `processing`).
+- **Estado y datos:** `SeverityBadge`, `StatusPill`, `MetaChip`, `Meter`, `KpiStrip`, `RelativeTime`, `SlaCountdown`, `RealtimeStatus`, `UserAvatar`/`EntityAvatar` (+ `lib/initials`), `ui/spinner` (no `Loader2` suelto), `ui/skeleton`.
+
+Si necesitas una variante, extiende la primitiva con una prop; no copies su markup en la página.
+
+## Datos: leer, navegar, mutar
+
+- **Props:** la página recibe sus props tipadas como argumento (`export default function Page({ incidents }: IncidentsPageProps)`). Nunca `usePage().props as unknown as …`. Las compartidas (`auth`, `currentTeam`, `permissions`…) ya están tipadas en `types/global.d.ts`: `usePage().props.currentTeam`.
+- **URLs:** siempre Wayfinder: `import incidentRoutes from '@/routes/incidents'` → `incidentRoutes.show.url([teamSlug, id])`, o el objeto de ruta directo en `<Link href>`/`router.visit`. Query strings con `{ query: {...} }`. Nada de `` `/${slug}/…` `` ni rutas literales. Son generados y gitignored: tras cambiar rutas, `php artisan wayfinder:generate --with-form`.
+- **Recargas:** `router.reload({ only: [...] })` siempre con `only`. Props caras → `Inertia::defer()` en el controlador + `<Deferred>` con `Skeleton`.
+- **Mutaciones:** formularios de página con `<Form>`/`useForm` + ruta Wayfinder; acciones JSON con `submit(postJson(ruta.url(...), body), 'Mensaje')` de `lib/submit` (toast, 403/422, recarga). Lecturas JSON, subidas y streaming con `getJson`/`postFormData`/`postStream` de `lib/sam-fetch` (CSRF por cookie). `fetch` crudo sólo para URLs externas. **Axios no existe** (Inertia v3 lo retiró; lint lo prohíbe).
+- **Tiempo real:** `useTeamBroadcast` / `useBroadcastReload` de `hooks/use-team-broadcasts` (el payload se estrecha por `detail.event`, sin casts). Nunca `window.addEventListener` directo ni un debounce propio.
+- **Inertia v3:** `Inertia::lazy()` → `Inertia::optional()`; eventos `invalid` → `httpException`, `exception` → `networkError`; `router.cancel()` → `router.cancelAll()`.
+
+## Textos y formato
+
+- Copy en es-MX. Códigos del backend → etiqueta con `lib/labels.ts` (`priorityLabel`, `actionLabel`, `humanizeCode`…); si es propio de una feature, en su `copy.ts`. No declares mapas `*_LABELS` sueltos en páginas.
+- Números, moneda y fechas sólo vía `lib/format.ts` y `lib/time.ts` (nada de `toLocaleString`/`Intl` directo).
+
+## Estilo
+
+- **Tokens de diseño** en `@theme` de `resources/css/app.css`. Usa las utilities (`text-3xs`…`text-3xl`, `tracking-label`, `tracking-caps`, `rounded-sm/md/lg/xl`, `sam-caps`, `sam-h1`…`sam-h4`, `sam-meta`), nunca tamaños arbitrarios (`text-[12px]`: lint lo rechaza). Ojo: `text-sm` = 13px y `text-base` = 14px.
+- Clases condicionales con `cn()`, no template literals.
+
+## Rendimiento
+
+- **React Compiler:** no uses `useMemo`/`useCallback`/`memo` salvo que una dependencia de efecto necesite identidad estable. Nunca `eslint-disable react-hooks/*`: el compilador salta ese componente. Para handlers "más recientes" en efectos, `useEffectEvent`; no copies props a estado con efectos (deriva en render o usa `key`). El compilador no soporta `try/finally` dentro del componente: lleva esa lógica a un helper fuera.
+- **Code-splitting:** librerías pesadas (maplibre, editores, paneles que sólo se abren a demanda) con `React.lazy` + `Suspense` del mismo tamaño que el contenido. Ejemplos: `lazy-point-map.tsx`, `copilot-bubble.tsx`, `pages/assets/map.tsx`.
+- Imágenes de listas/galerías con `loading="lazy" decoding="async"` y dimensiones.
+- Filas de listas grandes como componente propio (el compilador memoiza por componente, no dentro de `.map`).
+
+## Accesibilidad
+
+Todo `<button>` con `type` (lint), botones de icono con `aria-label`, inputs con label asociado, filas clicables con `role`, `tabIndex` y teclado.
+
+## Gates y entorno
+
+- `npm run types:check && npm run lint:check && npm run format:check` (y `npm run build`).
 - Si un cambio no se ve en la UI, falta `npm run dev` / `npm run build`. Error "Unable to locate file in Vite manifest" → `npm run build`.
-- Gate: `npm run types:check && npm run lint:check && npm run format:check`.
