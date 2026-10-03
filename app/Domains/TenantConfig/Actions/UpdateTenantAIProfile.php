@@ -58,6 +58,9 @@ class UpdateTenantAIProfile
                 );
 
             Cache::forget(CacheKeys::aiProfile($teamId));
+            // El umbral de revisión humana del motor de decisiones sale del
+            // automation_level: sin esto el cambio tardaría el TTL en aplicar.
+            Cache::forget(CacheKeys::decisionRules($teamId));
 
             // Nunca el nombre, la descripción ni los overrides del prompt.
             SystemLog::ok('tenant_config.ai_profile.updated', input: [

@@ -143,6 +143,7 @@ class ResolveDecisionOutcome
 
         $explain = [
             'confidence' => $confidence,
+            'automation_level' => $policy->automationLevel,
             'human_review_threshold' => $policy->humanReviewConfidenceThreshold,
             'review_by_confidence' => $requiresHumanReview,
             'risk' => $eval->risk_score ?? 0.0,

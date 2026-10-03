@@ -26,6 +26,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Switch } from '@/components/ui/switch';
 import { deleteJson, putJson } from '@/lib/sam-fetch';
 import { submit } from '@/lib/submit';
+import { TONE_DOT, TONE_TEXT } from '@/lib/tone';
 import { cn } from '@/lib/utils';
 import rulesRoutes from '@/routes/rules';
 import { mappingSource, RULE_SUBMIT } from './lib';
@@ -190,13 +191,13 @@ export function MappingRulesTab({
                             value: 'on',
                             label: 'Encendidas',
                             count: summary.active,
-                            dot: 'bg-health-ok',
+                            dot: TONE_DOT.ok,
                         },
                         {
                             value: 'off',
                             label: 'Apagadas',
                             count: summary.total - summary.active,
-                            dot: 'bg-fg-3',
+                            dot: TONE_DOT.neutral,
                         },
                     ]}
                 />
@@ -304,17 +305,21 @@ export function MappingRulesTab({
                                         <span
                                             className={cn(
                                                 'inline-flex items-center gap-1.5 text-xs whitespace-nowrap',
-                                                rule.isActive
-                                                    ? 'text-health-ok'
-                                                    : 'text-fg-3',
+                                                TONE_TEXT[
+                                                    rule.isActive
+                                                        ? 'ok'
+                                                        : 'neutral'
+                                                ],
                                             )}
                                         >
                                             <span
                                                 className={cn(
                                                     'size-1.5 rounded-full',
-                                                    rule.isActive
-                                                        ? 'bg-health-ok'
-                                                        : 'bg-fg-3',
+                                                    TONE_DOT[
+                                                        rule.isActive
+                                                            ? 'ok'
+                                                            : 'neutral'
+                                                    ],
                                                 )}
                                                 aria-hidden="true"
                                             />

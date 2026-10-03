@@ -66,6 +66,7 @@ class TenantConfigShowcaseSeeder extends ShowcaseStep
         }
 
         Cache::forget(CacheKeys::aiProfile($teamId));
+        Cache::forget(CacheKeys::decisionRules($teamId));
         Cache::forget(CacheKeys::schedule($teamId));
 
         $this->ctx->slaSeconds = $this->effectiveSlas();

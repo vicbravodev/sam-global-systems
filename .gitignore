@@ -30,3 +30,8 @@ yarn-error.log
 /.zed
 /.claude/settings.local.json
 /laravel
+
+# Respaldos locales de archivos de configuración y caché de playwright-cli
+*.bak
+*.bak-*
+/.playwright-cli/
