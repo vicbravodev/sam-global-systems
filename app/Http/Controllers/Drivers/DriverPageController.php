@@ -14,7 +14,6 @@ use App\Domains\Drivers\Models\DriverAssignment;
 use App\Domains\Drivers\Models\DriverContact;
 use App\Domains\Drivers\Models\DriverDocument;
 use App\Domains\Drivers\Models\DriverRiskProfile;
-use App\Domains\Drivers\Models\DriverStatusLog;
 use App\Domains\Incidents\Models\Incident;
 use App\Domains\Incidents\Support\IncidentStatusPresenter;
 use App\Domains\Normalization\Models\NormalizedEvent;
@@ -71,11 +70,6 @@ class DriverPageController extends Controller
      * Historical assignments shown in the detail panel.
      */
     private const ASSIGNMENTS_LIMIT = 20;
-
-    /**
-     * Status log entries shown in the detail panel.
-     */
-    private const STATUS_LOG_LIMIT = 20;
 
     /**
      * Recent normalized events shown in the detail activity feed.
@@ -160,7 +154,6 @@ class DriverPageController extends Controller
         return Inertia::render('drivers/show', [
             'driver' => $this->toDetail($driver),
             'assignments' => fn () => $this->assignments($driver),
-            'statusLog' => fn () => $this->statusLog($driver),
             'recentEvents' => fn () => $this->recentEvents($driver),
             'incidents' => fn () => $this->incidents($driver),
             'activity' => fn () => $this->activity($driver),
@@ -535,29 +528,6 @@ class DriverPageController extends Controller
                 'startedAt' => $assignment->started_at?->toIso8601String(),
                 'endedAt' => $assignment->ended_at?->toIso8601String(),
                 'isCurrent' => $assignment->ended_at === null,
-            ])
-            ->all());
-    }
-
-    /**
-     * Status transitions, newest first.
-     *
-     * @return list<array<string, mixed>>
-     */
-    private function statusLog(Driver $driver): array
-    {
-        return array_values($driver->statusLogs()
-            ->orderByDesc('effective_from')
-            ->orderByDesc('id')
-            ->limit(self::STATUS_LOG_LIMIT)
-            ->get()
-            ->map(fn (DriverStatusLog $log) => [
-                'id' => $log->id,
-                'statusCode' => $log->status_code,
-                'statusLabel' => $log->status_label,
-                'severity' => $log->severity?->value,
-                'effectiveFrom' => $log->effective_from?->toIso8601String(),
-                'effectiveTo' => $log->effective_to?->toIso8601String(),
             ])
             ->all());
     }

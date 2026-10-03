@@ -150,15 +150,6 @@ export interface DriverAssignmentEntry {
     isCurrent: boolean;
 }
 
-export interface DriverStatusLogEntry {
-    id: number;
-    statusCode: string;
-    statusLabel: string | null;
-    severity: 'low' | 'medium' | 'high' | 'critical' | null;
-    effectiveFrom: string | null;
-    effectiveTo: string | null;
-}
-
 export interface DriverActivityPoint {
     date: string;
     count: number;
@@ -167,7 +158,6 @@ export interface DriverActivityPoint {
 export interface DriverShowProps {
     driver: DriverDetail;
     assignments: DriverAssignmentEntry[];
-    statusLog: DriverStatusLogEntry[];
     recentEvents: RecentEventEntry[];
     incidents: LinkedIncidentEntry[];
     activity: DriverActivityPoint[];
