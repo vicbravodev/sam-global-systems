@@ -1,4 +1,4 @@
-import { CheckCircle2, Loader2, Sparkles } from 'lucide-react';
+import { CheckCircle2, Sparkles } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
@@ -9,6 +9,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { Spinner } from '@/components/ui/spinner';
 import { postJson } from '@/lib/sam-fetch';
 import { submit, useTeamBase } from './shared';
 
@@ -108,9 +109,7 @@ export function RecommendedConfigCard() {
                             onClick={() => void apply()}
                             disabled={applying}
                         >
-                            {applying ? (
-                                <Loader2 className="size-4 animate-spin" />
-                            ) : null}
+                            {applying ? <Spinner className="size-4" /> : null}
                             Aplicar recomendada
                         </Button>
                     </DialogFooter>

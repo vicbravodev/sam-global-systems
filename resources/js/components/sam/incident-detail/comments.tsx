@@ -1,5 +1,4 @@
 import { usePage } from '@inertiajs/react';
-import { Loader2 } from 'lucide-react';
 import { useState } from 'react';
 import { UserAvatar } from '@/components/sam/user-avatar';
 import { Button } from '@/components/ui/button';
@@ -10,6 +9,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { Spinner } from '@/components/ui/spinner';
 import { getInitials } from '@/lib/initials';
 import { cn } from '@/lib/utils';
 import type { IncidentDetail } from '@/types/sam';
@@ -113,9 +113,7 @@ function CommentComposer() {
                     onClick={() => void submit()}
                     disabled={busy || comment.trim() === ''}
                 >
-                    {busy ? (
-                        <Loader2 size={12} className="animate-spin" />
-                    ) : null}
+                    {busy ? <Spinner className="size-3" /> : null}
                     Comentar
                 </Button>
             </div>

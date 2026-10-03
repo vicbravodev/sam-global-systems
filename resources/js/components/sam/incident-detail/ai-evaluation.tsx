@@ -1,7 +1,6 @@
 import {
     ChevronDown,
     ChevronRight,
-    Loader2,
     Sparkles,
     UserCheck,
     UserX,
@@ -23,6 +22,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { Spinner } from '@/components/ui/spinner';
 import { formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type {
@@ -177,9 +177,7 @@ function ReclassifyDialog({
                         onClick={() => void submit()}
                         disabled={busy || typeId === ''}
                     >
-                        {busy ? (
-                            <Loader2 size={13} className="animate-spin" />
-                        ) : null}
+                        {busy ? <Spinner className="size-3.25" /> : null}
                         Reclasificar
                     </Button>
                 </DialogFooter>
@@ -244,9 +242,7 @@ function FeedbackDialog({
                         onClick={() => void submit()}
                         disabled={busy || reason.trim() === ''}
                     >
-                        {busy ? (
-                            <Loader2 size={13} className="animate-spin" />
-                        ) : null}
+                        {busy ? <Spinner className="size-3.25" /> : null}
                         Enviar feedback
                     </Button>
                 </DialogFooter>
@@ -443,10 +439,7 @@ export function AiEvaluationCard({
                                 disabled={pending === 'confirm-ai'}
                             >
                                 {pending === 'confirm-ai' ? (
-                                    <Loader2
-                                        size={12}
-                                        className="animate-spin"
-                                    />
+                                    <Spinner className="size-3" />
                                 ) : null}
                                 Confirmar
                             </Button>

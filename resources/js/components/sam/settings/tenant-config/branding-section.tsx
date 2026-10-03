@@ -1,5 +1,5 @@
 import { router } from '@inertiajs/react';
-import { ImageUp, Loader2 } from 'lucide-react';
+import { ImageUp } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Field, FormCard } from '@/components/sam/field';
@@ -9,6 +9,7 @@ import {
 } from '@/components/sam/settings/settings-page';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Spinner } from '@/components/ui/spinner';
 import { putJson, readErrorMessage } from '@/lib/sam-fetch';
 import { submit, useTeamBase } from './shared';
 import type { BrandingProp } from './types';
@@ -170,7 +171,7 @@ export function BrandingSection({
                                     className="cursor-pointer"
                                 >
                                     {uploading ? (
-                                        <Loader2 className="size-3.5 animate-spin" />
+                                        <Spinner className="size-3.5" />
                                     ) : (
                                         <ImageUp className="size-3.5" />
                                     )}

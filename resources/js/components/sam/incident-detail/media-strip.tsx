@@ -7,7 +7,6 @@ import {
     Clapperboard,
     FileQuestion,
     HelpCircle,
-    Loader2,
     Play,
     X,
 } from 'lucide-react';
@@ -21,6 +20,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { Spinner } from '@/components/ui/spinner';
 import { postJson, readErrorMessage } from '@/lib/sam-fetch';
 import { cn } from '@/lib/utils';
 import type {
@@ -284,7 +284,7 @@ export function MediaStrip({
                 </h3>
                 {pendingRequest ? (
                     <Badge variant="outline" className="gap-1 text-fg-2">
-                        <Loader2 size={11} className="animate-spin" />
+                        <Spinner className="size-2.75" />
                         Solicitud en curso
                     </Badge>
                 ) : retrieval !== null && !retrieval.available ? (

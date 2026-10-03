@@ -1,5 +1,5 @@
 import { router } from '@inertiajs/react';
-import { ChevronDown, Loader2 } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -25,6 +25,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { Spinner } from '@/components/ui/spinner';
 import { Switch } from '@/components/ui/switch';
 import { putJson, readErrorMessage } from '@/lib/sam-fetch';
 import { cn } from '@/lib/utils';
@@ -403,9 +404,7 @@ export function EditDialog({ target, onClose, teamSlug }: Props) {
                         Cancelar
                     </Button>
                     <Button onClick={submit} disabled={submitting}>
-                        {submitting ? (
-                            <Loader2 size={14} className="animate-spin" />
-                        ) : null}
+                        {submitting ? <Spinner className="size-3.5" /> : null}
                         {keyFirst ? 'Guardar clave' : 'Guardar'}
                     </Button>
                 </DialogFooter>

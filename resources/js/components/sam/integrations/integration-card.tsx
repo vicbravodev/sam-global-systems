@@ -4,7 +4,6 @@ import {
     ChevronDown,
     CircleDashed,
     KeyRound,
-    Loader2,
     MoreHorizontal,
     Pencil,
     PauseCircle,
@@ -31,6 +30,7 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Spinner } from '@/components/ui/spinner';
 import { formatDate, formatDateTime, formatNumber } from '@/lib/format';
 import { relativeLabel } from '@/lib/time';
 import { cn } from '@/lib/utils';
@@ -104,7 +104,7 @@ export function IntegrationCard({
                 disabled={testing}
             >
                 {testing ? (
-                    <Loader2 size={13} className="animate-spin" />
+                    <Spinner className="size-3.25" />
                 ) : (
                     <RefreshCw size={13} />
                 )}

@@ -1,12 +1,5 @@
 import { Head, router, usePage } from '@inertiajs/react';
-import {
-    Loader2,
-    Lock,
-    MoreHorizontal,
-    Pencil,
-    Plus,
-    Trash2,
-} from 'lucide-react';
+import { Lock, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/sam/confirm-dialog';
@@ -41,6 +34,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { Spinner } from '@/components/ui/spinner';
 import { teamRoleLabel } from '@/lib/labels';
 import {
     deleteJson,
@@ -344,9 +338,7 @@ function CreateRoleDialog({
                         Cancelar
                     </Button>
                     <Button onClick={submit} disabled={submitting}>
-                        {submitting ? (
-                            <Loader2 size={14} className="animate-spin" />
-                        ) : null}
+                        {submitting ? <Spinner className="size-3.5" /> : null}
                         Crear rol
                     </Button>
                 </DialogFooter>
@@ -512,9 +504,7 @@ function EditRoleDialog({
                         Cancelar
                     </Button>
                     <Button onClick={submit} disabled={submitting}>
-                        {submitting ? (
-                            <Loader2 size={14} className="animate-spin" />
-                        ) : null}
+                        {submitting ? <Spinner className="size-3.5" /> : null}
                         Guardar
                     </Button>
                 </DialogFooter>
@@ -764,10 +754,7 @@ function MembersCard({
                             {canManage && !member.locked ? (
                                 <div className="flex items-center gap-2">
                                     {updatingId === member.id ? (
-                                        <Loader2
-                                            size={14}
-                                            className="animate-spin text-fg-3"
-                                        />
+                                        <Spinner className="size-3.5 text-fg-3" />
                                     ) : null}
                                     <Select
                                         value={member.roleCode ?? ''}

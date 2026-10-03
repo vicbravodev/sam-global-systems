@@ -1,5 +1,5 @@
 import { router } from '@inertiajs/react';
-import { Check, ChevronDown, Loader2 } from 'lucide-react';
+import { Check, ChevronDown } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
 import { RadioCard, RadioCardGroup } from '@/components/sam/radio-card-group';
@@ -27,6 +27,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { Spinner } from '@/components/ui/spinner';
 import { postJson, readErrorMessage } from '@/lib/sam-fetch';
 import { cn } from '@/lib/utils';
 import type { AuthTypeOption, IntegrationProviderOption } from '@/types/sam';
@@ -376,9 +377,7 @@ export function ConnectDialog({
                         Cancelar
                     </Button>
                     <Button onClick={submit} disabled={submitting}>
-                        {submitting ? (
-                            <Loader2 size={14} className="animate-spin" />
-                        ) : null}
+                        {submitting ? <Spinner className="size-3.5" /> : null}
                         Conectar
                     </Button>
                 </DialogFooter>
