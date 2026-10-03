@@ -1,22 +1,14 @@
+import { MEDIA_RESULT_LABELS } from '@/components/sam/incident-detail/copy';
 import { TONE_PILL } from '@/lib/tone';
 import { cn } from '@/lib/utils';
 import type { IncidentMediaSummary } from '@/types/sam';
-
-/** Etiquetas en español para el veredicto por media de la IA. */
-const MEDIA_RESULT_LABEL: Record<string, string> = {
-    confirms_event: 'Confirma el evento',
-    contradicts_event: 'Contradice el evento',
-    inconclusive: 'No concluyente',
-    low_quality: 'Baja calidad',
-    unavailable: 'No disponible',
-};
 
 export function mediaResultLabel(result: string | null | undefined): string {
     if (!result) {
         return 'Sin veredicto';
     }
 
-    return MEDIA_RESULT_LABEL[result] ?? result;
+    return MEDIA_RESULT_LABELS[result] ?? result;
 }
 
 function Chip({

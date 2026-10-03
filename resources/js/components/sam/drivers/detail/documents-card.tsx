@@ -1,16 +1,9 @@
 import { FileText } from 'lucide-react';
+import { DOCUMENT_TYPE_LABELS } from '@/components/sam/drivers/copy';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type { DriverDocumentEntry } from '@/types/drivers';
-
-const DOCUMENT_TYPE_LABELS: Record<string, string> = {
-    license: 'Licencia',
-    identification: 'Identificación',
-    medical_cert: 'Certificado médico',
-    internal_doc: 'Documento interno',
-    special_permit: 'Permiso especial',
-};
 
 function ExpiryChip({ document }: { document: DriverDocumentEntry }) {
     if (document.isExpired || document.status === 'expired') {

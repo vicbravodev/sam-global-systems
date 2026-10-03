@@ -123,6 +123,19 @@ export function eventTypeLabel(
 
 // ── Acciones automáticas / protocolos ────────────────────────────────────
 
+/** Modo con que se evaluó un evento (`ai_evaluations.mode`). */
+const EVALUATION_MODE_LABELS: Record<string, string> = {
+    rules_only: 'Solo reglas',
+    ai_text: 'IA (texto)',
+    multimodal: 'IA multimodal',
+    hybrid: 'Híbrido',
+    deferred_pending_media: 'Diferido, esperando media',
+};
+
+export function evaluationModeLabel(code: string | null | undefined): string {
+    return lookup(EVALUATION_MODE_LABELS, code, code);
+}
+
 export const ACTION_LABELS: Record<string, string> = {
     send_email: 'Enviar correo',
     send_whatsapp: 'Enviar WhatsApp',

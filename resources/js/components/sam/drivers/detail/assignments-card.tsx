@@ -1,17 +1,11 @@
 import { Link } from '@inertiajs/react';
 import { Truck } from 'lucide-react';
+import { ASSIGNMENT_TYPE_LABELS } from '@/components/sam/drivers/copy';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import assetRoutes from '@/routes/assets';
 import type { DriverAssignmentEntry } from '@/types/drivers';
-
-const ASSIGNMENT_TYPE_LABELS: Record<string, string> = {
-    primary_driver: 'Conductor principal',
-    secondary_driver: 'Conductor secundario',
-    temporary_operator: 'Operador temporal',
-    responsible_party: 'Responsable',
-};
 
 export function AssignmentsCard({
     assignments,

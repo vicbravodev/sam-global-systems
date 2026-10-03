@@ -1,22 +1,12 @@
 import { Link } from '@inertiajs/react';
 import { Bell, PhoneCall } from 'lucide-react';
+import {
+    CALL_OUTCOME_LABELS,
+    CALL_STATUS_LABELS,
+} from '@/components/sam/incident-detail/copy';
 import { formatDateTime } from '@/lib/format';
 import notificationRoutes from '@/routes/notifications';
 import type { IncidentCommunications } from '@/types/sam';
-
-const CALL_STATUS_LABEL: Record<string, string> = {
-    pending: 'Pendiente',
-    calling: 'Llamando',
-    answered: 'Contestada',
-    no_answer: 'Sin respuesta',
-    failed: 'Fallida',
-};
-
-const CALL_OUTCOME_LABEL: Record<string, string> = {
-    confirmed_real: 'Confirmó emergencia',
-    confirmed_false: 'Descartó (falsa alarma)',
-    no_answer: 'Sin respuesta',
-};
 
 function deliverySummary(delivered: number, failed: number, total: number) {
     if (total === 0) {
@@ -72,9 +62,9 @@ export function Communications({
                             </div>
                             <div className="text-2xs text-fg-3">
                                 {(call.outcome &&
-                                    CALL_OUTCOME_LABEL[call.outcome]) ??
+                                    CALL_OUTCOME_LABELS[call.outcome]) ??
                                     (call.status &&
-                                        CALL_STATUS_LABEL[call.status]) ??
+                                        CALL_STATUS_LABELS[call.status]) ??
                                     '—'}
                                 {call.phone ? ` · ${call.phone}` : ''}
                                 {call.placedAt

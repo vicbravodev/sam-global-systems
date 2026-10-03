@@ -1,14 +1,8 @@
 import { Phone } from 'lucide-react';
+import { CONTACT_TYPE_LABELS } from '@/components/sam/drivers/copy';
 import { digits, isPhoneContact } from '@/components/sam/drivers/detail/phone';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { DriverContactEntry } from '@/types/drivers';
-
-const CONTACT_TYPE_LABELS: Record<string, string> = {
-    mobile_phone: 'Teléfono móvil',
-    email: 'Correo',
-    emergency_contact: 'Contacto de emergencia',
-    supervisor_contact: 'Supervisor',
-};
 
 export function ContactsCard({ contacts }: { contacts: DriverContactEntry[] }) {
     return (

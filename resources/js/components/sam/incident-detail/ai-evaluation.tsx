@@ -7,6 +7,10 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { ConfidenceBar } from '@/components/sam';
+import {
+    AI_DECISION_LABELS,
+    OPERATOR_VERDICT_LABELS,
+} from '@/components/sam/incident-detail/copy';
 import { StatusBadge } from '@/components/sam/status-badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -25,29 +29,14 @@ import {
 } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { formatDateTime } from '@/lib/format';
+import { evaluationModeLabel } from '@/lib/labels';
 import { cn } from '@/lib/utils';
-import type {
-    AiDecision,
-    IncidentDetail,
-    IncidentMediaSummary,
-} from '@/types/sam';
+import type { IncidentDetail, IncidentMediaSummary } from '@/types/sam';
 import { useIncidentActions } from './incident-actions-context';
 import { MediaVerdictChips } from './media-verdict';
 
 // Sentinel para "sin selección" en <Select>: Radix no permite value="".
 const NONE_OPTION = '__none__';
-
-const DECISION_LABEL: Record<AiDecision, string> = {
-    incident: 'Incidente confirmado',
-    escalate: 'Escalamiento recomendado',
-    info: 'Evento informativo',
-    discard: 'Descartado',
-};
-
-const OPERATOR_VERDICT_LABEL: Record<'confirmed' | 'false_positive', string> = {
-    confirmed: 'Confirmado por operador',
-    false_positive: 'Falso positivo (operador)',
-};
 
 function OperatorVerdictBadge({ incident }: { incident: IncidentDetail }) {
     const verdict = incident.aiOperatorVerdict ?? null;
@@ -65,7 +54,7 @@ function OperatorVerdictBadge({ incident }: { incident: IncidentDetail }) {
                 size="sm"
                 tone={confirmed ? 'ok' : 'neutral'}
                 icon={Icon}
-                label={OPERATOR_VERDICT_LABEL[verdict]}
+                label={OPERATOR_VERDICT_LABELS[verdict]}
                 className="rounded-full px-2"
                 title={
                     incident.aiOperatorVerdictAt
@@ -76,14 +65,6 @@ function OperatorVerdictBadge({ incident }: { incident: IncidentDetail }) {
         </span>
     );
 }
-
-const MODE_LABEL: Record<string, string> = {
-    rules_only: 'solo reglas',
-    ai_text: 'texto',
-    multimodal: 'multimodal',
-    hybrid: 'híbrida',
-    deferred_pending_media: 'esperando media',
-};
 
 // ---- ReclassifyDialog ----
 
@@ -295,7 +276,7 @@ export function AiEvaluationCard({
 
     const summary = mediaSummary ?? incident.mediaSummary ?? null;
     const modeLabel = incident.aiMode
-        ? (MODE_LABEL[incident.aiMode] ?? incident.aiMode)
+        ? evaluationModeLabel(incident.aiMode)
         : null;
     const steps = incident.aiReasoningSteps ?? [];
 
@@ -359,7 +340,7 @@ export function AiEvaluationCard({
                     compact ? 'text-sm' : 'text-base',
                 )}
             >
-                {DECISION_LABEL[incident.aiDecision]}
+                {AI_DECISION_LABELS[incident.aiDecision]}
             </div>
 
             <OperatorVerdictBadge incident={incident} />

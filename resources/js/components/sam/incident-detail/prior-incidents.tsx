@@ -1,20 +1,12 @@
 import { Link } from '@inertiajs/react';
 import { History } from 'lucide-react';
 import { SeverityBadge } from '@/components/sam';
+import { INCIDENT_RELATION_LABELS } from '@/components/sam/incident-detail/copy';
 import type { Severity } from '@/components/sam/severity-badge';
 import { Badge } from '@/components/ui/badge';
 import { formatDateTime } from '@/lib/format';
 import incidentRoutes from '@/routes/incidents';
 import type { PriorIncidentSummary } from '@/types/sam';
-
-const RELATION_LABEL: Record<string, string> = {
-    same_asset_open_incident: 'Mismo activo',
-    same_driver_recent_incident: 'Mismo conductor',
-    same_location_cluster: 'Misma zona',
-    probable_followup: 'Probable seguimiento',
-    duplicate_operational_case: 'Caso duplicado',
-    prior_similar_incident: 'Incidente similar previo',
-};
 
 const SEVERITY_LEVELS: Severity[] = [
     'critical',
@@ -68,8 +60,9 @@ export function PriorIncidents({
                                     variant="outline"
                                     className="text-3xs text-fg-3"
                                 >
-                                    {RELATION_LABEL[prior.relationType ?? ''] ??
-                                        'Relacionado'}
+                                    {INCIDENT_RELATION_LABELS[
+                                        prior.relationType ?? ''
+                                    ] ?? 'Relacionado'}
                                 </Badge>
                                 <span className="ml-auto font-mono text-3xs text-fg-3">
                                     {prior.reference} · {prior.statusLabel}

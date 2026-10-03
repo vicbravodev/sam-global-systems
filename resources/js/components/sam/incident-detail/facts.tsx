@@ -7,6 +7,10 @@ import {
     Video,
 } from 'lucide-react';
 import { SeverityBadge } from '@/components/sam';
+import {
+    EVENT_ROLE_LABELS,
+    RESOLUTION_LABELS,
+} from '@/components/sam/incident-detail/copy';
 import { Meter } from '@/components/sam/meter';
 import { formatDateTime } from '@/lib/format';
 import { eventTypeLabel } from '@/lib/labels';
@@ -19,21 +23,6 @@ const EVIDENCE_ICON = {
     video: Video,
     map: Map,
     payload: FileCode,
-};
-
-const RESOLUTION_LABEL: Record<string, string> = {
-    handled_successfully: 'Resuelto correctamente',
-    false_positive: 'Falso positivo',
-    operator_confirmed_safe: 'Operador confirmó seguro',
-    resolved_externally: 'Resuelto externamente',
-    escalated_externally: 'Escalado externamente',
-    unresolved_closed: 'Cerrado sin resolver',
-    duplicate_incident: 'Incidente duplicado',
-};
-
-const RELATION_LABEL: Record<string, string> = {
-    root_trigger: 'Disparador',
-    supporting_event: 'Soporte',
 };
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
@@ -222,7 +211,8 @@ export function ResolutionCard({ incident }: { incident: IncidentDetail }) {
                 <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-health-ok">
                     <CheckCircle2 size={13} strokeWidth={1.75} />
                     {resolution.code
-                        ? (RESOLUTION_LABEL[resolution.code] ?? resolution.code)
+                        ? (RESOLUTION_LABELS[resolution.code] ??
+                          resolution.code)
                         : 'Resuelto'}
                 </div>
                 {resolution.summary && (
@@ -334,7 +324,7 @@ export function LinkedEvents({ incident }: { incident: IncidentDetail }) {
                         )}
                         {link.relationType && (
                             <span className="ml-auto text-2xs text-fg-3">
-                                {RELATION_LABEL[link.relationType] ??
+                                {EVENT_ROLE_LABELS[link.relationType] ??
                                     link.relationType}
                             </span>
                         )}

@@ -7,18 +7,10 @@ import {
 import { StatusBadge } from '@/components/sam/status-badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatDateTime } from '@/lib/format';
-import { actionLabel, priorityLabel } from '@/lib/labels';
+import { actionLabel, priorityLabel, evaluationModeLabel } from '@/lib/labels';
 import { TONE_PILL } from '@/lib/tone';
 import { cn } from '@/lib/utils';
 import type { EventEvaluation } from '@/types/events';
-
-const MODE_LABELS: Record<string, string> = {
-    rules_only: 'Solo reglas',
-    ai_text: 'IA (texto)',
-    multimodal: 'IA multimodal',
-    hybrid: 'Híbrido',
-    deferred_pending_media: 'Diferido, esperando media',
-};
 
 export function EvaluationCard({
     evaluation,
@@ -36,7 +28,7 @@ export function EvaluationCard({
                     <span className="sam-meta">
                         v{evaluation.version}
                         {evaluation.mode &&
-                            ` · ${MODE_LABELS[evaluation.mode] ?? evaluation.mode}`}
+                            ` · ${evaluationModeLabel(evaluation.mode)}`}
                     </span>
                 )}
             </CardHeader>
