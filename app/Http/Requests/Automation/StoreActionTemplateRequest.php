@@ -22,7 +22,7 @@ class StoreActionTemplateRequest extends FormRequest
         return [
             'code' => ['required', 'string', 'max:255'],
             'name' => ['required', 'string', 'max:255'],
-            'action_type' => ['required', Rule::enum(ActionType::class)],
+            'action_type' => ['required', Rule::notIn(ActionType::deferredValues()), Rule::enum(ActionType::class)],
             'channel' => ['nullable', 'string', 'max:255'],
             'subject_template' => ['nullable', 'string'],
             'body_template' => ['nullable', 'string'],
@@ -31,6 +31,16 @@ class StoreActionTemplateRequest extends FormRequest
             // La URL del webhook la controla el tenant: nada de red interna.
             'config_json.url' => ['nullable', 'string', 'max:2048', new SafeOutboundUrl],
             'is_active' => ['nullable', 'boolean'],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'action_type.not_in' => ActionType::DEFERRED_MESSAGE,
         ];
     }
 }

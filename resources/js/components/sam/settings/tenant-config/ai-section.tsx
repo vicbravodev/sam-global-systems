@@ -15,16 +15,17 @@ import tenantConfigRoutes from '@/routes/tenant-config';
 import { CONFIG_SUBMIT } from './shared';
 import type { AiProfile, Option } from './types';
 
-/** Qué significa cada nivel para quien opera (clave = AutomationLevel). */
+/**
+ * Qué hace cada nivel (clave = AutomationLevel). Los porcentajes son los
+ * umbrales de config('ai.automation_levels.human_review_threshold').
+ */
 const LEVEL_HELP: Record<string, string> = {
-    conservative:
-        'La IA sólo recomienda y pide revisión humana ante cualquier duda.',
-    assisted:
-        'La IA propone y una persona confirma las decisiones importantes.',
+    conservative: 'Una persona revisa todas las decisiones de la IA.',
+    assisted: 'Pide revisión humana si la IA tiene menos de 50 % de confianza.',
     semi_automatic:
-        'La IA resuelve lo rutinario y deja a las personas los casos dudosos.',
+        'Pide revisión humana si la IA tiene menos de 40 % de confianza.',
     highly_automated:
-        'La IA decide en la mayoría de los casos; las personas supervisan.',
+        'Pide revisión humana sólo si la IA tiene menos de 30 % de confianza.',
 };
 
 const RECOMMENDED_LEVEL = 'assisted';
@@ -78,12 +79,13 @@ export function AiSection({
             <FormCard>
                 {/*
                   Sólo se expone automation_level: es el único campo de
-                  TenantAIProfile que hoy llega al pipeline (ver
-                  app/Domains/AI/Data/TenantAIProfileData.php).
+                  TenantAIProfile que hoy llega al pipeline (prompt de la IA
+                  y umbral de revisión humana del motor de decisiones, ver
+                  ResolveTenantDecisionRules).
                 */}
                 <Field
                     label="Nivel de autonomía"
-                    help="Se aplica a las evaluaciones nuevas. Puedes cambiarlo cuando quieras."
+                    help="Se aplica a las decisiones nuevas. Pánico, colisión y vuelco siempre abren incidente al instante."
                 >
                     <RadioCardGroup
                         label="Nivel de autonomía"

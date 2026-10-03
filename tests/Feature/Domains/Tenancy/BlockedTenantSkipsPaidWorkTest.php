@@ -9,6 +9,8 @@ use App\Domains\AI\Models\AIEventEvaluation;
 use App\Domains\AI\Support\AIEvaluationGate;
 use App\Domains\Assets\Jobs\DispatchTelematicsFeedsJob;
 use App\Domains\Assets\Jobs\FollowVehicleStatsFeedJob;
+use App\Domains\Assets\Jobs\PollAllDeviceConnectivityJob;
+use App\Domains\Assets\Jobs\PollAssetConnectivityJob;
 use App\Domains\Context\Events\EventContextBuilt;
 use App\Domains\Context\Models\EventContextSnapshot;
 use App\Domains\Context\Models\OperationalContextProfile;
@@ -118,6 +120,48 @@ class BlockedTenantSkipsPaidWorkTest extends TestCase
         $this->assertFalse($context['result']['dispatched']);
         $this->assertCount(1, $this->systemLogEntries('ingestion.safety_events_poll.skipped'));
         $this->assertNoSensitiveDataLogged();
+    }
+
+    // ── Sondeo de conectividad de dispositivos ──────────────────────────
+
+    public function test_device_connectivity_poll_skips_a_blocked_tenant_without_stopping_others(): void
+    {
+        $first = $this->integration($this->team('pastDue'));
+        $blockedTeam = $this->team('suspended');
+        $blocked = $this->integration($blockedTeam);
+        $last = $this->integration($this->team());
+
+        (new PollAllDeviceConnectivityJob)->handle();
+
+        $polled = Queue::pushed(PollAssetConnectivityJob::class)
+            ->map(fn (PollAssetConnectivityJob $job) => $job->integration->id)
+            ->sort()->values()->all();
+
+        $this->assertSame([$first->id, $last->id], $polled);
+
+        $skipped = $this->assertSystemLogged('assets.connectivity.skipped', fn (array $c) => $c['reason'] === 'tenant_blocked');
+        $this->assertSame(['team_id' => $blockedTeam->id, 'integration_id' => $blocked->id], $skipped['input']);
+        $this->assertSame('subscription_suspended', $skipped['calc']['blocked_reason']);
+        $this->assertFalse($skipped['result']['dispatched']);
+        $this->assertCount(1, $this->systemLogEntries('assets.connectivity.skipped'));
+
+        $dispatched = $this->assertSystemLogged('assets.connectivity.dispatched');
+        $this->assertSame(['dispatched_count' => 2, 'sync_disabled_count' => 0, 'tenant_blocked_count' => 1], $dispatched['result']);
+        // Recorrido de plataforma: sólo conteos, nunca ids de tenant.
+        $this->assertStringNotContainsString('team_id', (string) json_encode($this->systemLogEntries('assets.connectivity.dispatched')));
+        $this->assertNoSensitiveDataLogged();
+    }
+
+    public function test_device_connectivity_poll_still_polls_an_active_tenant(): void
+    {
+        $team = $this->team();
+        Subscription::factory()->create(['team_id' => $team->id]); // estado por defecto: active
+        $active = $this->integration($team);
+
+        (new PollAllDeviceConnectivityJob)->handle();
+
+        Queue::assertPushed(PollAssetConnectivityJob::class, fn (PollAssetConnectivityJob $job) => $job->integration->id === $active->id);
+        $this->assertSame([], $this->systemLogEntries('assets.connectivity.skipped'));
     }
 
     // ── Sync programado del catálogo ────────────────────────────────────

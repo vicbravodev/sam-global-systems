@@ -103,8 +103,7 @@ class AutomationShowcaseSeeder extends ShowcaseStep
                         'step_type' => match ($step['action_type']) {
                             'assign_incident' => 'assign',
                             'escalate' => 'escalate',
-                            'create_ticket' => 'create_ticket',
-                            'request_human_review', 'update_asset_state' => 'request_confirmation',
+                            'request_human_review' => 'request_confirmation',
                             'call_webhook' => 'call_external_system',
                             default => 'notify',
                         },
@@ -150,11 +149,11 @@ class AutomationShowcaseSeeder extends ShowcaseStep
                 ],
             ],
             'coaching-cumplimiento' => [
-                'Coaching por cumplimiento', 'Violaciones de cumplimiento: correo al supervisor y ticket de seguimiento.',
+                'Coaching por cumplimiento', 'Violaciones de cumplimiento: correo al supervisor y revisión de seguimiento.',
                 'incident_created', ['incident_type' => 'compliance_violation'], 'active',
                 [
                     ['order' => 1, 'action_type' => 'send_email', 'execution_mode' => 'async', 'target_type' => 'role', 'target_reference' => 'supervisor', 'delay_seconds' => 0, 'template_code' => 'email-resumen-incidente'],
-                    ['order' => 2, 'action_type' => 'create_ticket', 'execution_mode' => 'async', 'target_type' => 'external', 'target_reference' => 'mesa-de-ayuda', 'delay_seconds' => 0],
+                    ['order' => 2, 'action_type' => 'request_human_review', 'execution_mode' => 'async', 'target_type' => 'role', 'target_reference' => 'supervisor', 'delay_seconds' => 0],
                 ],
             ],
             'webhook-geocerca-cliente' => [
@@ -165,11 +164,11 @@ class AutomationShowcaseSeeder extends ShowcaseStep
                 ],
             ],
             'revision-camara' => [
-                'Revisión de cámara obstruida', 'Pide confirmación humana antes de marcar la unidad en mantenimiento.',
+                'Revisión de cámara obstruida', 'Pide confirmación humana y avisa al supervisor por correo.',
                 'incident_created', ['incident_type' => 'camera_obstructed'], 'active',
                 [
                     ['order' => 1, 'action_type' => 'request_human_review', 'execution_mode' => 'requires_confirmation', 'target_type' => 'role', 'target_reference' => 'supervisor', 'delay_seconds' => 0],
-                    ['order' => 2, 'action_type' => 'update_asset_state', 'execution_mode' => 'requires_confirmation', 'target_type' => 'asset', 'target_reference' => 'maintenance', 'delay_seconds' => 0],
+                    ['order' => 2, 'action_type' => 'send_email', 'execution_mode' => 'async', 'target_type' => 'role', 'target_reference' => 'supervisor', 'delay_seconds' => 0, 'template_code' => 'email-resumen-incidente'],
                 ],
             ],
             'escalamiento-direccion' => [
@@ -307,7 +306,6 @@ class AutomationShowcaseSeeder extends ShowcaseStep
             'send_whatsapp' => 'Twilio 63016: fuera de la ventana de 24 h; se requiere plantilla aprobada.',
             'send_email' => 'SMTP 550: buzón del destinatario lleno.',
             'call_webhook' => 'El webhook del cliente respondió HTTP 502 tras 3 intentos.',
-            'create_ticket' => 'La mesa de ayuda rechazó el ticket: campo "categoría" obligatorio.',
             default => 'La acción no pudo completarse.',
         };
     }

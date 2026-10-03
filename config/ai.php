@@ -202,6 +202,30 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Automation Level → Human Review Threshold
+    |--------------------------------------------------------------------------
+    |
+    | The tenant's "Nivel de autonomía" (TenantAIProfile::automation_level)
+    | sets the AI confidence below which the decision engine requires human
+    | review (`confidence < threshold`). Conservative sits above 1.0 so every
+    | AI decision is reviewed; assisted keeps the historical 0.5 (also the
+    | level of tenants without a profile). Emergencies (panic, collision,
+    | rollover) open their incident on the fast path and never reach this.
+    | Resolved by `App\Domains\TenantConfig\Actions\ResolveTenantDecisionRules`.
+    |
+    */
+
+    'automation_levels' => [
+        'human_review_threshold' => [
+            'conservative' => 1.01,
+            'assisted' => 0.5,
+            'semi_automatic' => 0.4,
+            'highly_automated' => 0.3,
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Event Types Excluded From AI Evaluation
     |--------------------------------------------------------------------------
     |
