@@ -8,7 +8,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { UserMenuContent } from '@/components/user-menu-content';
 import { useAppearance } from '@/hooks/use-appearance';
-import { useInitials } from '@/hooks/use-initials';
+import { getInitials } from '@/lib/initials';
 import { cn } from '@/lib/utils';
 import type { BreadcrumbItem } from '@/types';
 
@@ -28,7 +28,6 @@ export function OpsTopbar({
     const currentTeam = page.props.currentTeam;
     const { appearance, updateAppearance } = useAppearance();
     const isDark = appearance === 'dark';
-    const getInitials = useInitials();
     const userInitials = getInitials(user.name);
 
     return (

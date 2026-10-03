@@ -1,7 +1,6 @@
 import {
     ChevronDown,
     ChevronRight,
-    Loader2,
     Sparkles,
     UserCheck,
     UserX,
@@ -23,6 +22,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { Spinner } from '@/components/ui/spinner';
 import { formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type {
@@ -177,9 +177,7 @@ function ReclassifyDialog({
                         onClick={() => void submit()}
                         disabled={busy || typeId === ''}
                     >
-                        {busy ? (
-                            <Loader2 size={13} className="animate-spin" />
-                        ) : null}
+                        {busy ? <Spinner className="size-3.25" /> : null}
                         Reclasificar
                     </Button>
                 </DialogFooter>
@@ -244,9 +242,7 @@ function FeedbackDialog({
                         onClick={() => void submit()}
                         disabled={busy || reason.trim() === ''}
                     >
-                        {busy ? (
-                            <Loader2 size={13} className="animate-spin" />
-                        ) : null}
+                        {busy ? <Spinner className="size-3.25" /> : null}
                         Enviar feedback
                     </Button>
                 </DialogFooter>
@@ -315,7 +311,7 @@ export function AiEvaluationCard({
                     compact ? 'p-3' : 'p-4',
                 )}
             >
-                <span className="mb-1.5 inline-flex items-center gap-1.5 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
+                <span className="sam-caps mb-1.5 inline-flex items-center gap-1.5">
                     <Sparkles size={11} strokeWidth={1.75} />
                     Sin evaluación IA
                 </span>
@@ -393,7 +389,7 @@ export function AiEvaluationCard({
                 evaluación en vez de perdida en el timeline. */}
             {summary && summary.total > 0 && (
                 <div className="mb-3 rounded-md border border-border bg-surface-2 p-2.5">
-                    <div className="mb-1.5 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
+                    <div className="sam-caps mb-1.5">
                         Análisis visual · {summary.assessed} de {summary.total}{' '}
                         medias evaluadas
                     </div>
@@ -443,10 +439,7 @@ export function AiEvaluationCard({
                                 disabled={pending === 'confirm-ai'}
                             >
                                 {pending === 'confirm-ai' ? (
-                                    <Loader2
-                                        size={12}
-                                        className="animate-spin"
-                                    />
+                                    <Spinner className="size-3" />
                                 ) : null}
                                 Confirmar
                             </Button>

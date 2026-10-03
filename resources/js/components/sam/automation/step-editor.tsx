@@ -1,5 +1,6 @@
 import { Trash2 } from 'lucide-react';
 import InputError from '@/components/input-error';
+import { RadioCardGroup } from '@/components/sam/radio-card-group';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Combobox } from '@/components/ui/combobox';
@@ -259,9 +260,8 @@ export function StepEditor({
                         A quién
                     </span>
                     {kinds.length > 1 && (
-                        <div
-                            role="radiogroup"
-                            aria-label="Tipo de destinatario"
+                        <RadioCardGroup
+                            label="Tipo de destinatario"
                             className="flex flex-wrap gap-1"
                         >
                             {kinds.map((value) => (
@@ -281,7 +281,7 @@ export function StepEditor({
                                     {TARGET_KINDS[value].label}
                                 </button>
                             ))}
-                        </div>
+                        </RadioCardGroup>
                     )}
                     {kind === 'role' || kind === 'user' ? (
                         <Combobox

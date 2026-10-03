@@ -53,9 +53,7 @@ export function Communications({
 
     return (
         <section>
-            <h3 className="mb-2 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
-                Comunicaciones
-            </h3>
+            <h3 className="sam-caps mb-2">Comunicaciones</h3>
             <ul className="m-0 flex list-none flex-col gap-1.5 p-0 text-xs">
                 {calls.map((call) => (
                     <li

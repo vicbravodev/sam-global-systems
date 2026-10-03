@@ -76,7 +76,7 @@ export function PulseStat({
                 className,
             )}
         >
-            <span className="flex items-center gap-1.5 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
+            <span className="sam-caps flex items-center gap-1.5">
                 {Icon && (
                     <Icon
                         className="size-3 shrink-0"

@@ -165,7 +165,7 @@ export function DataTable<T>({
                 tabla densa solo aparece en md+ para no forzar scroll lateral. */}
             <table className="hidden w-full min-w-[640px] border-collapse md:table">
                 <thead>
-                    <tr className="sticky top-0 z-10 border-b border-border bg-surface-3 text-3xs font-semibold tracking-caps text-fg-3 uppercase">
+                    <tr className="sam-caps sticky top-0 z-10 border-b border-border bg-surface-3">
                         {selectable && (
                             <th className="w-[34px] px-2.5 py-2 text-left">
                                 <input

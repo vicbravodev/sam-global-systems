@@ -2,6 +2,10 @@ import { useMemo, useState } from 'react';
 import InputError from '@/components/input-error';
 import { ConditionBuilder } from '@/components/sam/condition-builder';
 import type { ConditionFieldDef } from '@/components/sam/condition-builder';
+import { FormField } from '@/components/sam/form-field';
+import { RadioCard, RadioCardGroup } from '@/components/sam/radio-card-group';
+import { ReadOnlyNotice } from '@/components/sam/read-only-notice';
+import { Step } from '@/components/sam/step';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -39,7 +43,6 @@ import {
     submitRuleChange,
     useRulesBase,
 } from './lib';
-import { EditorStep, ReadOnlyNote } from './rule-editor-parts';
 import { RuleSentence } from './rule-sentence';
 import { RuleTester } from './rule-tester';
 import type { DecisionRuleRow, OutcomeOption, RulesetOption } from './types';
@@ -265,15 +268,15 @@ function DecisionRuleForm({
 
             <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-5 py-5">
                 {!editable && rule && (
-                    <ReadOnlyNote>
+                    <ReadOnlyNotice>
                         {rule.isGlobal
                             ? 'Esta regla la mantiene SAM y aplica a todas las cuentas. Puedes verla y probarla, pero no cambiarla.'
                             : 'No tienes permiso para cambiar reglas. Puedes verla y probarla.'}
-                    </ReadOnlyNote>
+                    </ReadOnlyNotice>
                 )}
 
                 <div className="rounded-md border border-border bg-surface-1 px-3 py-2.5">
-                    <span className="mb-1.5 block text-3xs font-semibold tracking-caps text-fg-3 uppercase">
+                    <span className="sam-caps mb-1.5 block">
                         Así se lee la regla
                     </span>
                     <RuleSentence
@@ -283,7 +286,7 @@ function DecisionRuleForm({
                     />
                 </div>
 
-                <EditorStep
+                <Step
                     step={1}
                     title="¿Cuándo aplica?"
                     help="Elige qué debe cumplir el evento. Puedes sumar varias condiciones: «todas» exige que se cumplan todas; «alguna», con una basta."
@@ -303,16 +306,15 @@ function DecisionRuleForm({
                         message={errors.conditions_json}
                         className="text-xs"
                     />
-                </EditorStep>
+                </Step>
 
-                <EditorStep
+                <Step
                     step={2}
                     title="¿Qué debe pasar?"
                     help="Lo que SAM hará con el evento cuando la regla se cumpla."
                 >
-                    <div
-                        role="radiogroup"
-                        aria-label="Resultado de la regla"
+                    <RadioCardGroup
+                        label="Resultado de la regla"
                         className="grid grid-cols-1 gap-2 sm:grid-cols-2"
                     >
                         {outcomeChoices.map((outcome) => (
@@ -332,22 +334,24 @@ function DecisionRuleForm({
                             disabled={!editable}
                             onSelect={() => setOutcomeId(NO_OUTCOME)}
                         />
-                    </div>
+                    </RadioCardGroup>
                     <InputError
                         message={errors.outcome_override}
                         className="text-xs"
                     />
-                </EditorStep>
+                </Step>
 
-                <EditorStep
+                <Step
                     step={3}
                     title="¿En qué orden se revisa?"
                     help="Las reglas se revisan de arriba abajo. Pon primero las más importantes, como las de seguridad."
                 >
-                    <div className="flex flex-col gap-1.5">
-                        <Label htmlFor="rule-placement" className="text-xs">
-                            Revisar esta regla
-                        </Label>
+                    <FormField
+                        label="Revisar esta regla"
+                        htmlFor="rule-placement"
+                        error={errors.priority}
+                        size="sm"
+                    >
                         <Select
                             value={placement}
                             disabled={!editable}
@@ -387,11 +391,7 @@ function DecisionRuleForm({
                                 ? ' cuando la enciendas.'
                                 : '.'}
                         </p>
-                        <InputError
-                            message={errors.priority}
-                            className="text-xs"
-                        />
-                    </div>
+                    </FormField>
 
                     <label
                         htmlFor="rule-stop"
@@ -414,13 +414,15 @@ function DecisionRuleForm({
                             </span>
                         </span>
                     </label>
-                </EditorStep>
+                </Step>
 
-                <EditorStep step={4} title="¿Cómo se llama?">
-                    <div className="flex flex-col gap-1.5">
-                        <Label htmlFor="rule-name" className="text-xs">
-                            Nombre
-                        </Label>
+                <Step step={4} title="¿Cómo se llama?">
+                    <FormField
+                        label="Nombre"
+                        htmlFor="rule-name"
+                        error={errors.name}
+                        size="sm"
+                    >
                         <Input
                             id="rule-name"
                             value={name}
@@ -430,8 +432,7 @@ function DecisionRuleForm({
                             disabled={!editable}
                             onChange={(e) => setName(e.target.value)}
                         />
-                        <InputError message={errors.name} className="text-xs" />
-                    </div>
+                    </FormField>
                     <div className="flex flex-col gap-1.5">
                         <Label htmlFor="rule-description" className="text-xs">
                             Para qué sirve{' '}
@@ -446,10 +447,10 @@ function DecisionRuleForm({
                             onChange={(e) => setDescription(e.target.value)}
                         />
                     </div>
-                </EditorStep>
+                </Step>
 
                 {base !== null && (
-                    <EditorStep
+                    <Step
                         step={5}
                         title="Pruébala"
                         help="Comprueba si la regla se habría cumplido con el último evento que evaluó SAM. No cambia nada."
@@ -460,7 +461,7 @@ function DecisionRuleForm({
                             fields={fields}
                             outcomeCode={outcomeCode}
                         />
-                    </EditorStep>
+                    </Step>
                 )}
 
                 <details className="group text-xs text-fg-3">
@@ -526,32 +527,29 @@ function OutcomeChoice({
     const tone = OUTCOME_TONE[outcomeGroup(code)];
 
     return (
-        <button
-            type="button"
-            role="radio"
-            aria-checked={selected}
+        <RadioCard
+            selected={selected}
             disabled={disabled}
-            onClick={onSelect}
+            onSelect={onSelect}
             className={cn(
-                'flex flex-col gap-0.5 rounded-md border px-3 py-2 text-left transition-colors disabled:cursor-not-allowed',
-                selected
-                    ? 'border-primary bg-primary/5 ring-1 ring-primary'
-                    : 'border-border hover:bg-surface-2',
+                'px-3 py-2',
+                selected && 'ring-1 ring-primary',
                 disabled && !selected && 'opacity-60',
             )}
-        >
-            <span className="flex items-center gap-1.5 text-sm font-medium text-fg-1">
-                <span
-                    className={cn('size-2 shrink-0 rounded-full', tone.dot)}
-                    aria-hidden="true"
-                />
-                {decisionOutcomeEffectLabel(code)}
-            </span>
-            <span className="text-xs leading-snug text-fg-3">
-                {code === null
+            label={
+                <>
+                    <span
+                        className={cn('size-2 shrink-0 rounded-full', tone.dot)}
+                        aria-hidden="true"
+                    />
+                    {decisionOutcomeEffectLabel(code)}
+                </>
+            }
+            description={
+                code === null
                     ? 'La regla no fija el resultado: lo decide la IA.'
-                    : OUTCOME_HELP[code]}
-            </span>
-        </button>
+                    : OUTCOME_HELP[code]
+            }
+        />
     );
 }

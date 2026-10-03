@@ -1,6 +1,5 @@
 import { History, SlidersHorizontal } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import InputError from '@/components/input-error';
 import { Field, FormCard } from '@/components/sam/field';
 import { RelativeTime } from '@/components/sam/relative-time';
 import {
@@ -196,6 +195,7 @@ function TopicBlock({
 
                     return (
                         <Field
+                            error={errors[setting.key]}
                             key={setting.id}
                             label={meta.label}
                             help={meta.help || undefined}
@@ -263,7 +263,6 @@ function TopicBlock({
                                     }
                                 />
                             )}
-                            <InputError message={errors[setting.key]} />
                         </Field>
                     );
                 })}

@@ -1,8 +1,10 @@
 import { Link } from '@inertiajs/react';
 import { ChevronRight } from 'lucide-react';
+import { Meter } from '@/components/sam/meter';
+import { Panel } from '@/components/sam/panel';
 import { formatNumber } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { BillingPanel, money } from './panel';
+import { money } from './panel';
 import type { BillingTerms, FleetCounts, PeriodEstimate } from './types';
 
 /**
@@ -24,10 +26,9 @@ export function CapMeter({
     const monitored = fleet.monitored;
     const c = estimate.currency;
     const over = cap !== null && monitored > cap;
-    const ratio = cap !== null && cap > 0 ? Math.min(1, monitored / cap) : 0;
 
     return (
-        <BillingPanel
+        <Panel
             title="Unidades vigiladas"
             description="Sólo se cobran las unidades que tú decides vigilar."
             bodyClassName="gap-4 px-4 py-4"
@@ -49,22 +50,16 @@ export function CapMeter({
                     </span>
                 </div>
                 {cap !== null && (
-                    <div
-                        className="h-2 overflow-hidden rounded-full bg-surface-3"
-                        role="meter"
-                        aria-label="Unidades vigiladas contra el tope"
-                        aria-valuemin={0}
-                        aria-valuemax={cap}
-                        aria-valuenow={monitored}
-                    >
-                        <div
-                            className={cn(
-                                'h-full rounded-full',
-                                over ? 'bg-severity-medium' : 'bg-primary',
-                            )}
-                            style={{ width: `${Math.max(2, ratio * 100)}%` }}
-                        />
-                    </div>
+                    <Meter
+                        value={monitored}
+                        max={cap}
+                        label="Unidades vigiladas contra el tope"
+                        toneClassName={
+                            over ? 'bg-severity-medium' : 'bg-primary'
+                        }
+                        minPercent={2}
+                        className="h-2"
+                    />
                 )}
                 <p
                     className={cn(
@@ -138,7 +133,7 @@ export function CapMeter({
                     }
                 />
             </dl>
-        </BillingPanel>
+        </Panel>
     );
 }
 

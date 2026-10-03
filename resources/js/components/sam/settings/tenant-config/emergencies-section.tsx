@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import InputError from '@/components/input-error';
 import { Field, FormCard } from '@/components/sam/field';
 import {
     FormActions,
@@ -167,6 +166,7 @@ export function EmergenciesSection({
                     </Field>
 
                     <Field
+                        error={stalenessError ?? undefined}
                         label="Ubicación desactualizada"
                         help="Si la última posición conocida de la unidad es más vieja que esto, SAM pide una nueva al proveedor antes de evaluar el evento."
                         htmlFor="tc-staleness"
@@ -188,7 +188,6 @@ export function EmergenciesSection({
                             />
                             <span className="text-sm text-fg-3">minutos</span>
                         </div>
-                        <InputError message={stalenessError ?? undefined} />
                     </Field>
 
                     {canManage ? (

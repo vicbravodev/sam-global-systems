@@ -4,7 +4,6 @@ import {
     CheckCircle2,
     CircleDashed,
     KeyRound,
-    Loader2,
     XCircle,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -15,6 +14,7 @@ import InputError from '@/components/input-error';
 import PasswordInput from '@/components/password-input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Spinner } from '@/components/ui/spinner';
 import { formatDateTime } from '@/lib/format';
 import { relativeLabel } from '@/lib/time';
 import { cn } from '@/lib/utils';
@@ -264,10 +264,7 @@ export function WebhookSecretPanel({
                                     }
                                 >
                                     {form.processing ? (
-                                        <Loader2
-                                            size={13}
-                                            className="animate-spin"
-                                        />
+                                        <Spinner className="size-3.25" />
                                     ) : null}
                                     {form.processing
                                         ? 'Guardando…'

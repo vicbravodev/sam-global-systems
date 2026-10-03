@@ -1,5 +1,6 @@
 import type { LucideIcon } from 'lucide-react';
 
+import { getInitials } from '@/lib/initials';
 import { cn } from '@/lib/utils';
 
 // Eight muted hues (OKLCH-ish via tailwind tokens would need per-name tokens;
@@ -14,20 +15,6 @@ function hueFor(seed: string): number {
     }
 
     return HUES[Math.abs(hash) % HUES.length];
-}
-
-export function initialsOf(name: string): string {
-    const parts = name.trim().split(/\s+/).filter(Boolean);
-
-    if (parts.length === 0) {
-        return '?';
-    }
-
-    if (parts.length === 1) {
-        return parts[0].slice(0, 2).toUpperCase();
-    }
-
-    return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
 }
 
 interface Props {
@@ -78,7 +65,7 @@ export function EntityAvatar({
                     strokeWidth={1.75}
                 />
             ) : (
-                initialsOf(name)
+                getInitials(name, 2) || '?'
             )}
         </span>
     );

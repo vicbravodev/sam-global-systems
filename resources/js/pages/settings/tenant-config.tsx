@@ -1,5 +1,6 @@
 import { Head, usePage } from '@inertiajs/react';
 import { lazy, Suspense } from 'react';
+import { ReadOnlyNotice } from '@/components/sam/read-only-notice';
 import { SettingsPage } from '@/components/sam/settings/settings-page';
 import { AdvancedSection } from '@/components/sam/settings/tenant-config/advanced-section';
 import { AiSection } from '@/components/sam/settings/tenant-config/ai-section';
@@ -7,7 +8,6 @@ import { AlertsSection } from '@/components/sam/settings/tenant-config/alerts-se
 import { BrandingSection } from '@/components/sam/settings/tenant-config/branding-section';
 import { EmergenciesSection } from '@/components/sam/settings/tenant-config/emergencies-section';
 import { OnCallSection } from '@/components/sam/settings/tenant-config/on-call-section';
-import { ReadOnlyNotice } from '@/components/sam/settings/tenant-config/shared';
 import type { TenantConfigProps } from '@/components/sam/settings/tenant-config/types';
 import {
     COMPANY_SECTIONS,

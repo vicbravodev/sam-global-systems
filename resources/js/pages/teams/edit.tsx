@@ -26,7 +26,7 @@ import {
     TooltipContent,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { useInitials } from '@/hooks/use-initials';
+import { getInitials } from '@/lib/initials';
 import { edit, index, update } from '@/routes/teams';
 import { update as updateMember } from '@/routes/teams/members';
 import type {
@@ -52,7 +52,6 @@ export default function TeamEdit({
     permissions,
     availableRoles,
 }: Props) {
-    const getInitials = useInitials();
     const page = usePage();
     const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);

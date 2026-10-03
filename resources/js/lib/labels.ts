@@ -43,6 +43,9 @@ export const PRIORITY_LABELS: Record<string, string> = {
     medium: 'Media',
     low: 'Baja',
     info: 'Info',
+    // Prioridad que propone la evaluación de IA.
+    normal: 'Normal',
+    urgent: 'Urgente',
 };
 
 export function priorityLabel(code: string | null | undefined): string {
@@ -130,6 +133,10 @@ export const ACTION_LABELS: Record<string, string> = {
     trigger_emergency_protocol: 'Activar protocolo de emergencia',
     place_verification_call: 'Llamada de verificación',
     notify: 'Notificar',
+    // Acción que recomienda la evaluación de IA.
+    escalate_to_operator: 'Escalar a un operador',
+    call_driver: 'Llamar al conductor',
+    ignore_event: 'Ignorar el evento',
 };
 
 export function actionLabel(code: string | null | undefined): string {

@@ -1,21 +1,13 @@
 import { usePage } from '@inertiajs/react';
 import { Eye } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { UserAvatar } from '@/components/sam/incident-detail/user-avatar';
+import { UserAvatar } from '@/components/sam/user-avatar';
 import { useEcho } from '@/echo';
+import { getInitials } from '@/lib/initials';
 
 type Viewer = { id: number; name: string };
 
 const MAX_AVATARS = 3;
-
-function initials(name: string): string {
-    return name
-        .split(/\s+/)
-        .filter(Boolean)
-        .slice(0, 2)
-        .map((part) => part[0]?.toUpperCase() ?? '')
-        .join('');
-}
 
 /**
  * Who else has this incident open right now, over the presence channel
@@ -83,7 +75,7 @@ export function IncidentViewers({ incidentId }: { incidentId: number }) {
                         className="rounded-full ring-2 ring-surface-2"
                     >
                         <UserAvatar
-                            initials={initials(viewer.name)}
+                            initials={getInitials(viewer.name)}
                             size={20}
                         />
                     </span>
