@@ -24,8 +24,9 @@ import {
 import { EmptyState } from '@/components/ui/empty-state';
 import { Switch } from '@/components/ui/switch';
 import { deleteJson, putJson } from '@/lib/sam-fetch';
+import { submit } from '@/lib/submit';
 import { cn } from '@/lib/utils';
-import { mappingSource, submitRuleChange, useRulesBase } from './lib';
+import { mappingSource, RULE_SUBMIT, useRulesBase } from './lib';
 import { RuleTestDialog } from './rule-tester';
 import type { MappingOptions, MappingRuleRow, MappingSummary } from './types';
 
@@ -125,9 +126,10 @@ export function MappingRulesTab({
         }
 
         setTogglingId(rule.id);
-        await submitRuleChange(
+        await submit(
             putJson(`${base}/mapping/${rule.id}`, { is_active: active }),
             active ? 'Traducción encendida.' : 'Traducción apagada.',
+            RULE_SUBMIT,
         );
         setTogglingId(null);
     };
@@ -137,9 +139,10 @@ export function MappingRulesTab({
             return;
         }
 
-        const result = await submitRuleChange(
+        const result = await submit(
             deleteJson(`${base}/mapping/${deleteRule.id}`),
             'Traducción eliminada.',
+            RULE_SUBMIT,
         );
 
         if (result.ok) {

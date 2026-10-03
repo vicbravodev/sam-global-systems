@@ -1,7 +1,5 @@
-import { router } from '@inertiajs/react';
 import { ImageUp } from 'lucide-react';
 import { useState } from 'react';
-import { toast } from 'sonner';
 import { Field, FormCard } from '@/components/sam/field';
 import {
     FormActions,
@@ -10,8 +8,9 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
-import { putJson, readErrorMessage } from '@/lib/sam-fetch';
-import { submit, useTeamBase } from './shared';
+import { postFormData, putJson } from '@/lib/sam-fetch';
+import { submit } from '@/lib/submit';
+import { CONFIG_SUBMIT, useTeamBase } from './shared';
 import type { BrandingProp } from './types';
 
 function ColorInput({
@@ -86,6 +85,7 @@ export function BrandingSection({
                     form.email_signature === '' ? null : form.email_signature,
             }),
             'Marca guardada.',
+            CONFIG_SUBMIT,
         );
 
         if (!result.ok) {
@@ -102,35 +102,19 @@ export function BrandingSection({
 
         setUploading(true);
 
+        const body = new FormData();
+        body.append('logo', file);
+
         try {
-            const body = new FormData();
-            body.append('logo', file);
-
-            const token =
-                document
-                    .querySelector('meta[name=csrf-token]')
-                    ?.getAttribute('content') ?? '';
-
-            const response = await fetch(`${base}/branding/logo`, {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'X-CSRF-TOKEN': token, Accept: 'application/json' },
-                body,
-            });
-
-            if (response.ok || response.status === 201) {
-                toast.success('Logo actualizado.');
-                router.reload();
-            } else if (response.status === 403) {
-                toast.error('No tienes permisos para cambiar la marca.');
-            } else {
-                toast.error(
-                    (await readErrorMessage(response)) ??
-                        'No se pudo subir el logo.',
-                );
-            }
-        } catch {
-            toast.error('Error de red. Vuelve a intentarlo.');
+            await submit(
+                postFormData(`${base}/branding/logo`, body),
+                'Logo actualizado.',
+                {
+                    forbiddenMessage:
+                        'No tienes permisos para cambiar la marca.',
+                    errorMessage: 'No se pudo subir el logo.',
+                },
+            );
         } finally {
             setUploading(false);
         }

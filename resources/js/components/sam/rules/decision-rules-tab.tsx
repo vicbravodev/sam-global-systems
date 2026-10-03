@@ -5,8 +5,9 @@ import { ConfirmDialog } from '@/components/sam/confirm-dialog';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { deleteJson, putJson } from '@/lib/sam-fetch';
+import { submit } from '@/lib/submit';
 import { DecisionRuleCard } from './decision-rule-card';
-import { outcomeGroup, submitRuleChange, useRulesBase } from './lib';
+import { outcomeGroup, RULE_SUBMIT, useRulesBase } from './lib';
 import { RuleTestDialog } from './rule-tester';
 import type { DecisionRuleRow, OutcomeOption, RulesetOption } from './types';
 
@@ -179,9 +180,10 @@ export function DecisionRulesTab({
         }
 
         setTogglingId(rule.id);
-        await submitRuleChange(
+        await submit(
             putJson(`${base}/decision/${rule.id}`, { is_active: active }),
             active ? 'Regla encendida.' : 'Regla apagada.',
+            RULE_SUBMIT,
         );
         setTogglingId(null);
     };
@@ -191,9 +193,10 @@ export function DecisionRulesTab({
             return;
         }
 
-        const result = await submitRuleChange(
+        const result = await submit(
             deleteJson(`${base}/decision/${deleteRule.id}`),
             'Regla eliminada.',
+            RULE_SUBMIT,
         );
 
         if (result.ok) {

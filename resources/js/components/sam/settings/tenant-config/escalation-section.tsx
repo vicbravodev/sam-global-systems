@@ -11,11 +11,12 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { humanizeCode } from '@/lib/labels';
 import { postJson, putJson } from '@/lib/sam-fetch';
+import { submit } from '@/lib/submit';
 import {
+    CONFIG_SUBMIT,
     JsonField,
     parseJson,
     providedOr,
-    submit,
     useTeamBase,
 } from './shared';
 import type { EscalationConfigRow, Option } from './types';
@@ -61,6 +62,7 @@ export function EscalationSection({
                 trigger_conditions: conditions,
             }),
             'Escalamiento guardado.',
+            CONFIG_SUBMIT,
         );
         setSaving(false);
     };
@@ -88,6 +90,7 @@ export function EscalationSection({
                 is_active: true,
             }),
             'Escalamiento creado.',
+            CONFIG_SUBMIT,
         );
         setSaving(false);
     };

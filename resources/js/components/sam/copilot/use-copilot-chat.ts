@@ -5,6 +5,7 @@ import {
     postStream,
     putJson,
     readErrorMessage,
+    getJson,
 } from '@/lib/sam-fetch';
 import type {
     CopilotChannel,
@@ -359,11 +360,10 @@ export function useCopilotChat({
             setRetryMode(null);
 
             try {
-                const response = await fetch(`${base}/conversations/${id}`, {
-                    credentials: 'same-origin',
-                    headers: { Accept: 'application/json' },
-                    signal: controller.signal,
-                });
+                const response = await getJson(
+                    `${base}/conversations/${id}`,
+                    controller.signal,
+                );
 
                 // A newer load/reset owns the thread: this reply is stale.
                 if (loadAbortRef.current !== controller) {

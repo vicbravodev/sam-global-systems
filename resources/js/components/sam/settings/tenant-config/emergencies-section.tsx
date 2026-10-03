@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { putJson } from '@/lib/sam-fetch';
+import { submit } from '@/lib/submit';
 import { RecommendedConfigCard } from './recommended-config';
 import {
     LIVE_LOCATION_DEFAULT_SECONDS,
@@ -23,7 +24,7 @@ import {
     PANIC_AUTO_CLOSE_KEY,
     secondsToMinutesInput,
 } from './settings-catalog';
-import { submit, useTeamBase } from './shared';
+import { CONFIG_SUBMIT, useTeamBase } from './shared';
 import type { SettingRow } from './types';
 
 export function EmergenciesSection({
@@ -101,6 +102,7 @@ export function EmergenciesSection({
                 ],
             }),
             'Ajustes de emergencias guardados.',
+            CONFIG_SUBMIT,
         );
 
         if (!result.ok) {

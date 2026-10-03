@@ -18,8 +18,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { codeFromName } from '@/lib/labels';
 import { postJson, putJson } from '@/lib/sam-fetch';
-import { codeFromName, submit, useAutomationBase } from './api';
+import { submit } from '@/lib/submit';
+import { useAutomationBase } from './api';
 import { HIDDEN_CONDITION_FIELDS, TRIGGER_ORDER, TRIGGERS } from './copy';
 import {
     newStepDraft,
@@ -193,7 +195,12 @@ function EditorBody({
             isNew
                 ? postJson(`${base}/workflows`, {
                       ...common,
-                      code: codeFromName(state.name),
+                      code: codeFromName(
+                          state.name,
+                          'automatizacion',
+                          Date.now().toString(36),
+                          40,
+                      ),
                       status: state.enabled ? 'active' : 'inactive',
                       is_active: state.enabled,
                   })

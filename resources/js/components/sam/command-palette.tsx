@@ -1,6 +1,7 @@
 import { router, usePage } from '@inertiajs/react';
 import { Search, Truck, User } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { getJson } from '@/lib/sam-fetch';
 import { cn } from '@/lib/utils';
 
 interface PaletteIncident {
@@ -126,10 +127,10 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
 
         const controller = new AbortController();
         const timer = window.setTimeout(() => {
-            fetch(`/${slug}/palette-search?q=${encodeURIComponent(query)}`, {
-                headers: { Accept: 'application/json' },
-                signal: controller.signal,
-            })
+            getJson(
+                `/${slug}/palette-search?q=${encodeURIComponent(query)}`,
+                controller.signal,
+            )
                 .then((response) => (response.ok ? response.json() : null))
                 .then((data: PaletteResults | null) => {
                     if (data) {

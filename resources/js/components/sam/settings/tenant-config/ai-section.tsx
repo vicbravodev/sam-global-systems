@@ -8,8 +8,9 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { putJson } from '@/lib/sam-fetch';
+import { submit } from '@/lib/submit';
 import { cn } from '@/lib/utils';
-import { submit, useTeamBase } from './shared';
+import { CONFIG_SUBMIT, useTeamBase } from './shared';
 import type { AiProfile, Option } from './types';
 
 /** Qué significa cada nivel para quien opera (clave = AutomationLevel). */
@@ -62,6 +63,7 @@ export function AiSection({
                 description: form.description === '' ? null : form.description,
             }),
             'Respuesta de la IA guardada.',
+            CONFIG_SUBMIT,
         );
         setSaving(false);
     };

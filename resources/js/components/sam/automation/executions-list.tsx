@@ -8,9 +8,10 @@ import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { formatDateTime } from '@/lib/format';
 import { postJson } from '@/lib/sam-fetch';
+import { submit } from '@/lib/submit';
 import { minutesSince } from '@/lib/time';
 import { cn } from '@/lib/utils';
-import { submit, useAutomationBase, useTeamSlug } from './api';
+import { useAutomationBase, useTeamSlug } from './api';
 import { ACTIONS, executionStatus, stepPhrase } from './copy';
 import type { ExecutionRow, Option } from './types';
 

@@ -16,7 +16,8 @@ import {
 } from '@/components/ui/select';
 import { humanizeCode } from '@/lib/labels';
 import { putJson } from '@/lib/sam-fetch';
-import { JsonField, parseJson, submit, useTeamBase } from './shared';
+import { submit } from '@/lib/submit';
+import { CONFIG_SUBMIT, JsonField, parseJson, useTeamBase } from './shared';
 import type { RecipientOptions, ScheduleProfileRow } from './types';
 
 const WEEKDAYS = [
@@ -209,6 +210,7 @@ export function OnCallSection({
                 shift_rules: shiftRules,
             }),
             'Guardias guardadas.',
+            CONFIG_SUBMIT,
         );
         setSaving(false);
     };

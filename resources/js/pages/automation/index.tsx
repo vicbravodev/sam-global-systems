@@ -10,7 +10,7 @@ import {
     X,
 } from 'lucide-react';
 import { lazy, Suspense, useState } from 'react';
-import { submit, useAutomationBase } from '@/components/sam/automation/api';
+import { useAutomationBase } from '@/components/sam/automation/api';
 import { isRunning } from '@/components/sam/automation/copy';
 import { ExecutionsList } from '@/components/sam/automation/executions-list';
 import type {
@@ -29,6 +29,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { useBroadcastReload } from '@/hooks/use-team-broadcasts';
 import { formatNumber } from '@/lib/format';
 import { deleteJson, postJson, putJson } from '@/lib/sam-fetch';
+import { submit } from '@/lib/submit';
 
 // The editor (condition builder, step editor, comboboxes) loads on its first
 // opening.

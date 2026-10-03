@@ -1,12 +1,12 @@
-import { router } from '@inertiajs/react';
 import { ChevronDown, FileText, Upload } from 'lucide-react';
 import { useRef, useState } from 'react';
-import { toast } from 'sonner';
 import { Panel } from '@/components/sam/panel';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { APP_LOCALE, formatDate, formatNumber, toDate } from '@/lib/format';
 import { meterLabel } from '@/lib/labels';
+import { postFormData } from '@/lib/sam-fetch';
+import { submit } from '@/lib/submit';
 import { cn } from '@/lib/utils';
 import type { BillingTone } from './panel';
 import { BillingPill, money } from './panel';
@@ -132,40 +132,23 @@ function ReceiptButton({
 
         setUploading(true);
 
+        const body = new FormData();
+        body.append('receipt', file);
+
         try {
-            const body = new FormData();
-            body.append('receipt', file);
-
-            const token =
-                document
-                    .querySelector('meta[name=csrf-token]')
-                    ?.getAttribute('content') ?? '';
-
-            const response = await fetch(
-                `/${teamSlug}/billing/invoices/${invoice.id}/receipt`,
-                {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: {
-                        'X-CSRF-TOKEN': token,
-                        Accept: 'application/json',
-                    },
+            await submit(
+                postFormData(
+                    `/${teamSlug}/billing/invoices/${invoice.id}/receipt`,
                     body,
+                ),
+                'Comprobante enviado. El equipo de SAM lo verificará.',
+                {
+                    forbiddenMessage:
+                        'No tienes permisos para subir comprobantes.',
+                    errorMessage: 'No se pudo subir el comprobante.',
+                    only: ['invoices'],
                 },
             );
-
-            if (response.ok) {
-                toast.success(
-                    'Comprobante enviado. El equipo de SAM lo verificará.',
-                );
-                router.reload({ only: ['invoices'] });
-            } else if (response.status === 403) {
-                toast.error('No tienes permisos para subir comprobantes.');
-            } else {
-                toast.error('No se pudo subir el comprobante.');
-            }
-        } catch {
-            toast.error('Error de red. Vuelve a intentarlo.');
         } finally {
             setUploading(false);
 

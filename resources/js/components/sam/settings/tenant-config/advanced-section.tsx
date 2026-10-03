@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { formatDateTime } from '@/lib/format';
 import { putJson } from '@/lib/sam-fetch';
+import { submit } from '@/lib/submit';
 import {
     DEDICATED_KEYS,
     describeSetting,
@@ -27,7 +28,7 @@ import {
     unitLabel,
 } from './settings-catalog';
 import type { SettingTopic } from './settings-catalog';
-import { submit, useTeamBase } from './shared';
+import { CONFIG_SUBMIT, useTeamBase } from './shared';
 import type { SettingRow, VersionRow } from './types';
 
 export function AdvancedSection({
@@ -166,6 +167,7 @@ function TopicBlock({
         const result = await submit(
             putJson(`${base}/settings`, { settings: payload }),
             `${title}: cambios guardados.`,
+            CONFIG_SUBMIT,
         );
 
         if (!result.ok) {

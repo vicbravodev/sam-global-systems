@@ -11,7 +11,8 @@ import {
 } from '@/components/ui/dialog';
 import { Spinner } from '@/components/ui/spinner';
 import { postJson } from '@/lib/sam-fetch';
-import { submit, useTeamBase } from './shared';
+import { submit } from '@/lib/submit';
+import { CONFIG_SUBMIT, useTeamBase } from './shared';
 
 const INCLUDES = [
     'Protocolo de botón de pánico: todo pánico abre un incidente y se verifica con una llamada.',
@@ -39,6 +40,7 @@ export function RecommendedConfigCard() {
         const result = await submit(
             postJson(`${base}/apply-sam-defaults`, {}),
             'Configuración recomendada aplicada.',
+            CONFIG_SUBMIT,
         );
         setApplying(false);
 

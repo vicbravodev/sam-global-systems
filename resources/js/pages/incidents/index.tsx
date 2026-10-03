@@ -26,7 +26,7 @@ import {
 import { hasActiveFilters, useServerList } from '@/hooks/use-server-list';
 import { TEAM_BROADCAST_EVENT_NAME } from '@/hooks/use-team-broadcasts';
 import type { TeamBroadcastDetail } from '@/hooks/use-team-broadcasts';
-import { postJson, readErrorMessage } from '@/lib/sam-fetch';
+import { getJson, postJson, readErrorMessage } from '@/lib/sam-fetch';
 import { cn } from '@/lib/utils';
 import type {
     InboxDensity,
@@ -614,11 +614,10 @@ export default function IncidentsIndex() {
 
         const controller = new AbortController();
 
-        fetch(`/${teamSlug}/incidents/${selectedRow.incidentId}`, {
-            headers: { Accept: 'application/json' },
-            credentials: 'same-origin',
-            signal: controller.signal,
-        })
+        getJson(
+            `/${teamSlug}/incidents/${selectedRow.incidentId}`,
+            controller.signal,
+        )
             .then((res) =>
                 res.ok
                     ? (res.json() as Promise<IncidentDetail>)

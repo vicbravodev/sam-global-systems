@@ -23,7 +23,8 @@ import {
 } from '@/components/ui/sheet';
 import { priorityLabel } from '@/lib/labels';
 import { postJson, putJson } from '@/lib/sam-fetch';
-import { submitRuleChange, useRulesBase } from './lib';
+import { submit } from '@/lib/submit';
+import { RULE_SUBMIT, useRulesBase } from './lib';
 import { RuleTester } from './rule-tester';
 import type { MappingOptions, MappingRuleRow } from './types';
 
@@ -122,17 +123,19 @@ function MappingRuleForm({
         };
 
         const result = isNew
-            ? await submitRuleChange(
+            ? await submit(
                   postJson(`${base}/mapping`, {
                       ...body,
                       provider_id: Number(providerId),
                       is_active: true,
                   }),
                   'Traducción creada.',
+                  RULE_SUBMIT,
               )
-            : await submitRuleChange(
+            : await submit(
                   putJson(`${base}/mapping/${rule.id}`, body),
                   'Traducción guardada.',
+                  RULE_SUBMIT,
               );
 
         setSaving(false);

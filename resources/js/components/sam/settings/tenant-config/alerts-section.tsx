@@ -20,8 +20,9 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { channelLabel } from '@/lib/labels';
 import { postJson, putJson } from '@/lib/sam-fetch';
+import { submit } from '@/lib/submit';
 import { MIN_SEVERITY_KEY } from './settings-catalog';
-import { submit, useTeamBase } from './shared';
+import { CONFIG_SUBMIT, useTeamBase } from './shared';
 import type {
     ChannelRow,
     NotificationPolicyRow,
@@ -115,6 +116,7 @@ function ChannelsBlock({
             channel.enabledForTeam
                 ? `${channelLabel(channel.channelType)} apagado para tu equipo.`
                 : `${channelLabel(channel.channelType)} encendido para tu equipo.`,
+            CONFIG_SUBMIT,
         );
         setPending(null);
     };
@@ -255,6 +257,7 @@ function MinSeverityBlock({
                 ],
             }),
             'Nivel de aviso guardado.',
+            CONFIG_SUBMIT,
         );
         setSaving(false);
     };
@@ -417,6 +420,7 @@ function PoliciesBlock({
                 })),
             }),
             'Reglas de aviso guardadas.',
+            CONFIG_SUBMIT,
         );
         setSaving(false);
     };

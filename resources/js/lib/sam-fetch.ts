@@ -1,10 +1,17 @@
 /**
- * Lightweight fetch helpers for the SAM inbox actions.
+ * Transporte de bajo nivel hacia las rutas web propias (sesión + CSRF).
  *
- * The inbox talks to session-authenticated web routes (not the stateless
- * `api` group), so every mutating request must carry the Laravel CSRF token.
- * Inertia sets the readable `XSRF-TOKEN` cookie; we echo it back in the
- * `X-XSRF-TOKEN` header exactly like axios/Inertia would.
+ * Las rutas viven en el grupo `web` (no en el `api` sin estado), así que toda
+ * petición que muta lleva el token CSRF: Inertia deja la cookie legible
+ * `XSRF-TOKEN` y aquí se devuelve en la cabecera `X-XSRF-TOKEN`, igual que
+ * axios/Inertia.
+ *
+ * Cuándo usar qué (ver también `@/lib/submit`):
+ * - Formularios de página: `<Form>` / `useForm` de Inertia.
+ * - Acciones JSON con toast + recarga: `submit(postJson(...), '...')`.
+ * - Lecturas JSON, subidas y streaming: `getJson`, `postFormData`,
+ *   `postStream` de este archivo (aceptan `AbortSignal`).
+ * - `fetch` crudo sólo para URLs externas.
  */
 
 function readCookie(name: string): string | null {
@@ -39,6 +46,42 @@ function sendJson(
             ...(token ? { 'X-XSRF-TOKEN': token } : {}),
         },
         body: JSON.stringify(body ?? {}),
+    });
+}
+
+/**
+ * GET a session-authenticated route that answers JSON (palette search,
+ * Copilot catalog, inbox detail). Returns the raw Response.
+ */
+export function getJson(url: string, signal?: AbortSignal): Promise<Response> {
+    return fetch(url, {
+        credentials: 'same-origin',
+        signal,
+        headers: { Accept: 'application/json' },
+    });
+}
+
+/**
+ * POST a multipart body (file uploads) with the CSRF token. The browser sets
+ * the multipart Content-Type boundary itself.
+ */
+export function postFormData(
+    url: string,
+    body: FormData,
+    signal?: AbortSignal,
+): Promise<Response> {
+    const token = readCookie('XSRF-TOKEN');
+
+    return fetch(url, {
+        method: 'POST',
+        credentials: 'same-origin',
+        signal,
+        headers: {
+            Accept: 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            ...(token ? { 'X-XSRF-TOKEN': token } : {}),
+        },
+        body,
     });
 }
 

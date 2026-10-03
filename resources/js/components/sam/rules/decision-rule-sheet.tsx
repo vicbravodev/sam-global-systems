@@ -27,10 +27,11 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { decisionOutcomeEffectLabel } from '@/lib/labels';
+import { codeFromName } from '@/lib/labels';
 import { postJson, putJson } from '@/lib/sam-fetch';
+import { submit } from '@/lib/submit';
 import { cn } from '@/lib/utils';
 import {
-    codeFromName,
     ordinal,
     OUTCOME_HELP,
     OUTCOME_ORDER,
@@ -40,7 +41,7 @@ import {
     priorityForPlacement,
     randomSuffix,
     scopeForConditions,
-    submitRuleChange,
+    RULE_SUBMIT,
     useRulesBase,
 } from './lib';
 import { RuleSentence } from './rule-sentence';
@@ -214,20 +215,22 @@ function DecisionRuleForm({
                 return;
             }
 
-            result = await submitRuleChange(
+            result = await submit(
                 postJson(`${base}/decision`, {
                     ...body,
                     ruleset_id: ruleset.id,
-                    code: codeFromName(name, suffix),
+                    code: codeFromName(name, 'regla', suffix),
                     scope: scopeForConditions(conditions),
                     is_active: true,
                 }),
                 'Regla creada y encendida.',
+                RULE_SUBMIT,
             );
         } else {
-            result = await submitRuleChange(
+            result = await submit(
                 putJson(`${base}/decision/${rule.id}`, body),
                 'Regla guardada.',
+                RULE_SUBMIT,
             );
         }
 
@@ -471,8 +474,7 @@ function DecisionRuleForm({
                     <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
                         <dt>Identificador</dt>
                         <dd className="font-mono break-all text-fg-2">
-                            {rule?.code ??
-                                codeFromName(name || 'regla', suffix)}
+                            {rule?.code ?? codeFromName(name, 'regla', suffix)}
                         </dd>
                         <dt>Prioridad numérica</dt>
                         <dd className="font-mono text-fg-2">
