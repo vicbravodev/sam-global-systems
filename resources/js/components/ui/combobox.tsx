@@ -81,9 +81,9 @@ function Combobox({
                     aria-invalid={props['aria-invalid']}
                     aria-label={props['aria-label']}
                     className={cn(
-                        'border-input placeholder:text-muted-foreground flex h-9 w-full rounded-md border bg-transparent px-3 py-1 pr-8 text-base shadow-xs transition-[color,box-shadow] outline-none md:text-sm',
-                        'focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]',
-                        'aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive',
+                        'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 pr-8 text-base shadow-xs transition-[color,box-shadow] outline-none placeholder:text-muted-foreground md:text-sm',
+                        'focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                        'aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40',
                         'disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
                     )}
                     displayValue={(current: string | null) =>
@@ -95,12 +95,13 @@ function Combobox({
                     placeholder={placeholder}
                     onChange={(event) => {
                         setQuery(event.target.value);
+
                         if (allowCustom) {
                             onChange(event.target.value || null);
                         }
                     }}
                 />
-                <ComboboxButton className="text-fg-3 absolute inset-y-0 right-0 flex items-center pr-2.5">
+                <ComboboxButton className="absolute inset-y-0 right-0 flex items-center pr-2.5 text-fg-3">
                     <ChevronsUpDown className="size-4" aria-hidden />
                 </ComboboxButton>
             </div>
@@ -109,7 +110,7 @@ function Combobox({
                 anchor="bottom start"
                 transition
                 className={cn(
-                    'bg-popover text-popover-foreground z-50 w-(--input-width) overflow-auto rounded-md border p-1 shadow-md [--anchor-gap:4px] [--anchor-max-height:280px] empty:invisible',
+                    'z-50 w-(--input-width) overflow-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md [--anchor-gap:4px] [--anchor-max-height:280px] empty:invisible',
                     'origin-top transition duration-150 ease-out data-closed:scale-[0.97] data-closed:opacity-0',
                 )}
             >
@@ -127,7 +128,7 @@ function Combobox({
                                 {option.label}
                             </span>
                             {option.description ? (
-                                <span className="text-fg-3 block truncate text-xs">
+                                <span className="block truncate text-xs text-fg-3">
                                     {option.description}
                                 </span>
                             ) : null}
@@ -143,16 +144,14 @@ function Combobox({
                 {showCustom ? (
                     <ComboboxOption
                         value={query.trim()}
-                        className="data-focus:bg-accent data-focus:text-accent-foreground relative flex w-full cursor-default items-center gap-2 rounded-sm py-1.5 pr-8 pl-2 text-sm outline-none select-none"
+                        className="relative flex w-full cursor-default items-center gap-2 rounded-sm py-1.5 pr-8 pl-2 text-sm outline-none select-none data-focus:bg-accent data-focus:text-accent-foreground"
                     >
-                        <span className="truncate">
-                            Usar «{query.trim()}»
-                        </span>
+                        <span className="truncate">Usar «{query.trim()}»</span>
                     </ComboboxOption>
                 ) : null}
 
                 {filtered.length === 0 && !showCustom ? (
-                    <div className="text-fg-3 px-2 py-1.5 text-sm">
+                    <div className="px-2 py-1.5 text-sm text-fg-3">
                         {emptyText}
                     </div>
                 ) : null}
