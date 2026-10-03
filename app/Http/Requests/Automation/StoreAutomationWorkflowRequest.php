@@ -39,7 +39,7 @@ class StoreAutomationWorkflowRequest extends FormRequest
             'status' => ['required', Rule::enum(WorkflowStatus::class)],
             'version' => ['nullable', 'integer', 'min:1'],
             'steps_json' => ['required', 'array', 'min:1'],
-            'steps_json.*.action_type' => ['required', 'string'],
+            'steps_json.*.action_type' => ['required', 'string', ...$this->stepActionTypeRules()],
             'steps_json.*.execution_mode' => ['nullable', 'string'],
             'steps_json.*.delay_seconds' => ['nullable', 'integer', 'min:0'],
             'steps_json.*.order' => ['nullable', 'integer', 'min:1'],
@@ -56,6 +56,7 @@ class StoreAutomationWorkflowRequest extends FormRequest
     {
         return [
             'code.unique' => 'Ya existe un workflow con este código en tu equipo.',
+            ...$this->stepActionTypeMessages(),
         ];
     }
 }

@@ -119,7 +119,8 @@ class AutomationPageController extends Controller
             'options' => fn (): array => [
                 'actionTypes' => array_map(
                     fn (ActionType $type) => ['value' => $type->value, 'label' => $type->label()],
-                    ActionType::cases(),
+                    // Sin las diferidas (create_ticket, update_asset_state): no hacen nada.
+                    ActionType::configurable(),
                 ),
                 'triggerTypes' => array_map(
                     fn (WorkflowTriggerType $type) => ['value' => $type->value, 'label' => $type->label()],
