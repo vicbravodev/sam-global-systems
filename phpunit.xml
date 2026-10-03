@@ -87,5 +87,16 @@
         <env name="OPENAI_API_KEY" value=""/>
         <env name="ANTHROPIC_API_KEY" value=""/>
         <env name="GEMINI_API_KEY" value=""/>
+        <!-- Twilio vacío: un .env local con credenciales reales nunca debe
+             mandar SMS ni hacer llamadas desde la suite. -->
+        <env name="TWILIO_ACCOUNT_SID" value=""/>
+        <env name="TWILIO_AUTH_TOKEN" value=""/>
+        <env name="TWILIO_SMS_FROM" value=""/>
+        <env name="TWILIO_WHATSAPP_FROM" value=""/>
+        <env name="TWILIO_VOICE_FROM" value=""/>
+        <env name="TWILIO_PUBLIC_BASE_URL" value=""/>
+        <env name="TWILIO_STATUS_CALLBACK_URL" value=""/>
+        <env name="TWILIO_TTS_VOICE" value=""/>
+        <env name="TWILIO_TTS_RATE" value=""/>
     </php>
 </phpunit>
