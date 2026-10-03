@@ -23,6 +23,7 @@ import {
 import { lazy, memo, Suspense, useMemo, useState } from 'react';
 import { SparkArea } from '@/components/sam/charts';
 import { SeverityBadge } from '@/components/sam/severity-badge';
+import { formatNumber } from '@/lib/format';
 import { TONE_DOT, TONE_TEXT, TONE_VAR } from '@/lib/tone';
 import { cn } from '@/lib/utils';
 import type {
@@ -1186,7 +1187,7 @@ function DriverTable({ block }: { block: DriversBlock }) {
 }
 
 function formatValue(value: number): string {
-    return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+    return formatNumber(value, { maximumFractionDigits: 2 });
 }
 
 function RankingTable({ block }: { block: RankingBlock }) {

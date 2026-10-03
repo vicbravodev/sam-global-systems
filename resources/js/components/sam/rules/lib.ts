@@ -1,4 +1,5 @@
 import type { ConditionFieldDef } from '@/components/sam/condition-builder';
+import { formatNumber } from '@/lib/format';
 import { humanizeCode } from '@/lib/labels';
 import type { SubmitOptions } from '@/lib/submit';
 import type { Tone } from '@/lib/tone';
@@ -170,7 +171,7 @@ function formatScalar(value: unknown, field?: ConditionFieldDef): string {
     }
 
     if (typeof value === 'number') {
-        return value.toLocaleString('es-MX');
+        return formatNumber(value);
     }
 
     const text = String(value);

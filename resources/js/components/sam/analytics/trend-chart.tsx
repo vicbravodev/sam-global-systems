@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Bars, LineChart } from '@/components/sam/charts';
-import { formatNumber } from '@/lib/format';
+import { formatNumber, formatShortDate } from '@/lib/format';
 import { formatMetricValue, isRatio } from './metric-catalog';
 import type { MetricPoint } from './types';
 
@@ -27,15 +27,8 @@ function useElementWidth<T extends HTMLElement>() {
     return [ref, width] as const;
 }
 
-const SHORT_DAY = new Intl.DateTimeFormat('es-MX', {
-    day: 'numeric',
-    month: 'short',
-});
-
 function shortDay(date: string): string {
-    const [y, m, d] = date.split('-').map(Number);
-
-    return SHORT_DAY.format(new Date(y, m - 1, d)).replace('.', '');
+    return formatShortDate(date);
 }
 
 /** Etiquetas de fecha espaciadas (~1 cada 90 px); ninguna pegada al borde derecho, donde se cortaría. */

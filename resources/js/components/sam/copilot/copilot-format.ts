@@ -1,49 +1,14 @@
-import { APP_LOCALE } from '@/lib/format';
+import { formatDateWith, formatNumber } from '@/lib/format';
+import { formatClock, relativeLabel } from '@/lib/time';
 
-const RELATIVE = new Intl.RelativeTimeFormat(APP_LOCALE, { numeric: 'auto' });
-
-/** "hace 5 min", "ayer"… — for timestamps inside Copilot cards. */
+/** "hace 5 minutos", "ayer"… — for timestamps inside Copilot cards. */
 export function timeAgo(iso: string | null | undefined): string {
-    if (!iso) {
-        return 'sin registro';
-    }
-
-    const diffSeconds = Math.round((Date.parse(iso) - Date.now()) / 1000);
-    const abs = Math.abs(diffSeconds);
-
-    if (Number.isNaN(diffSeconds)) {
-        return '—';
-    }
-
-    if (abs < 45) {
-        return 'ahora';
-    }
-
-    if (abs < 3600) {
-        return RELATIVE.format(Math.round(diffSeconds / 60), 'minute');
-    }
-
-    if (abs < 86400) {
-        return RELATIVE.format(Math.round(diffSeconds / 3600), 'hour');
-    }
-
-    return RELATIVE.format(Math.round(diffSeconds / 86400), 'day');
+    return iso ? relativeLabel(iso, 'long') : 'sin registro';
 }
 
 /** "14:05" */
 export function timeOfDay(iso: string | null | undefined): string {
-    if (!iso) {
-        return '—';
-    }
-
-    const date = new Date(iso);
-
-    return Number.isNaN(date.getTime())
-        ? '—'
-        : date.toLocaleTimeString(APP_LOCALE, {
-              hour: '2-digit',
-              minute: '2-digit',
-          });
+    return formatClock(iso);
 }
 
 export function formatTokens(value: number): string {
@@ -59,7 +24,7 @@ export function formatTokens(value: number): string {
 }
 
 export function formatUsd(value: number): string {
-    return `US$ ${value.toLocaleString(APP_LOCALE, {
+    return `US$ ${formatNumber(value, {
         minimumFractionDigits: value < 1 ? 4 : 2,
         maximumFractionDigits: value < 1 ? 4 : 2,
     })}`;
@@ -67,19 +32,11 @@ export function formatUsd(value: number): string {
 
 /** "lun 29 sep, 14:05" — for timelines that span several days. */
 export function dayAndTime(iso: string | null | undefined): string {
-    if (!iso) {
-        return '—';
-    }
-
-    const date = new Date(iso);
-
-    return Number.isNaN(date.getTime())
-        ? '—'
-        : date.toLocaleString(APP_LOCALE, {
-              weekday: 'short',
-              day: 'numeric',
-              month: 'short',
-              hour: '2-digit',
-              minute: '2-digit',
-          });
+    return formatDateWith(iso, {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+    });
 }

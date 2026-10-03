@@ -1,12 +1,9 @@
 import { RelativeTime } from '@/components/sam/relative-time';
 import { formatDate } from '@/lib/format';
+import { minutesSince } from '@/lib/time';
 import { cn } from '@/lib/utils';
 
 const DAY_MINUTES = 1440;
-
-function minutesSince(iso: string): number {
-    return Math.max(0, Math.floor((Date.now() - Date.parse(iso)) / 60000));
-}
 
 interface Props {
     /** Latest REAL signal (location/telemetry), never the bulk sync bump. */

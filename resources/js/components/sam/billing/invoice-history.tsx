@@ -4,7 +4,7 @@ import { Panel } from '@/components/sam/panel';
 import { StatusBadge } from '@/components/sam/status-badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
-import { APP_LOCALE, formatDate, formatNumber, toDate } from '@/lib/format';
+import { formatDate, formatMonthYear, formatNumber } from '@/lib/format';
 import { meterLabel } from '@/lib/labels';
 import { postFormData } from '@/lib/sam-fetch';
 import { submit } from '@/lib/submit';
@@ -23,12 +23,7 @@ function periodLabel(invoice: InvoiceRow): string {
         return 'Periodo sin fecha';
     }
 
-    const label = toDate(invoice.periodStart).toLocaleDateString(APP_LOCALE, {
-        month: 'long',
-        year: 'numeric',
-    });
-
-    return label.charAt(0).toUpperCase() + label.slice(1);
+    return formatMonthYear(invoice.periodStart);
 }
 
 /** Estado de pago en palabras del cliente. */

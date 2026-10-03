@@ -1,3 +1,4 @@
+import { formatNumber } from '@/lib/format';
 import type {
     CopilotBlock,
     CopilotMessage,
@@ -474,7 +475,7 @@ export function formatElapsed(ms: number): string {
     const seconds = ms / 1000;
 
     if (seconds < 10) {
-        return `${seconds.toLocaleString('es-MX', {
+        return `${formatNumber(seconds, {
             minimumFractionDigits: 1,
             maximumFractionDigits: 1,
         })} s`;

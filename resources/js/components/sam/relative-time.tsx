@@ -1,3 +1,4 @@
+import { ageLabel } from '@/lib/time';
 import { cn } from '@/lib/utils';
 
 interface Props {
@@ -7,15 +8,6 @@ interface Props {
 }
 
 export function RelativeTime({ minutes, className }: Props) {
-    const text =
-        minutes < 1
-            ? 'ahora'
-            : minutes < 60
-              ? `hace ${minutes} min`
-              : minutes < 1440
-                ? `hace ${Math.floor(minutes / 60)} h`
-                : `hace ${Math.floor(minutes / 1440)} d`;
-
     return (
         <span
             className={cn(
@@ -23,7 +15,7 @@ export function RelativeTime({ minutes, className }: Props) {
                 className,
             )}
         >
-            {text}
+            {ageLabel(minutes)}
         </span>
     );
 }

@@ -17,7 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { useRealtimeConnection } from '@/hooks/use-realtime-connection';
 import { useBroadcastReload } from '@/hooks/use-team-broadcasts';
-import { formatCurrency } from '@/lib/format';
+import { formatCurrency, formatNumber, formatPercent } from '@/lib/format';
 import { formatClock } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { dashboard, home } from '@/routes';
@@ -96,7 +96,7 @@ export default function Dashboard({
                     />
                     <Kpi
                         label="SLA cumplido · 7 d"
-                        value={formatPercent(kpis.slaCompliance.value)}
+                        value={percentLabel(kpis.slaCompliance.value)}
                         delta={
                             kpis.slaCompliance.deltaPp !== null
                                 ? {
@@ -113,7 +113,7 @@ export default function Dashboard({
                     />
                     <Kpi
                         label="Precisión IA · 7 d"
-                        value={formatPercent(kpis.aiPrecision.value)}
+                        value={percentLabel(kpis.aiPrecision.value)}
                         delta={
                             kpis.aiPrecision.deltaPp !== null
                                 ? {
@@ -259,12 +259,10 @@ function Spark({ series }: SparkProps) {
     );
 }
 
-function formatPercent(value: number | null): string {
-    if (value === null) {
-        return '—';
-    }
-
-    return `${value.toLocaleString('es', { maximumFractionDigits: 1 })} %`;
+function percentLabel(value: number | null): string {
+    return value === null
+        ? '—'
+        : formatPercent(value, { alreadyPercent: true });
 }
 
 function formatSlaClock(seconds: number | null): string {
@@ -490,7 +488,7 @@ function IntegrationsPanel({
                                 />
                             </div>
                             <div className="font-mono text-xl tabular-nums">
-                                {integration.events24h.toLocaleString('es')}
+                                {formatNumber(integration.events24h)}
                             </div>
                             <div className="sam-meta">eventos · últ. 24 h</div>
                             <div className="mt-2 font-mono text-3xs text-fg-3">
@@ -567,13 +565,10 @@ function UsagePanel({ usage }: { usage: UsageCounterRow[] }) {
                                     {counter.meterName}
                                 </div>
                                 <div className="mt-1 font-mono text-xl tabular-nums">
-                                    {counter.consumed.toLocaleString('es')}
+                                    {formatNumber(counter.consumed)}
                                     <span className="text-sm text-fg-3">
                                         {' '}
-                                        /{' '}
-                                        {counter.included.toLocaleString(
-                                            'es',
-                                        )}{' '}
+                                        / {formatNumber(counter.included)}{' '}
                                         {counter.unit}
                                     </span>
                                 </div>
@@ -591,10 +586,8 @@ function UsagePanel({ usage }: { usage: UsageCounterRow[] }) {
                                 <div className="mt-2 flex items-center justify-between font-mono text-3xs text-fg-3">
                                     <span>
                                         {hasOverage
-                                            ? `+${counter.overage.toLocaleString('es')} excedente`
-                                            : formatPercent(
-                                                  counter.percentUsed,
-                                              )}
+                                            ? `+${formatNumber(counter.overage)} excedente`
+                                            : percentLabel(counter.percentUsed)}
                                     </span>
                                     {counter.periodEnd ? (
                                         <span>renueva {counter.periodEnd}</span>

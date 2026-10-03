@@ -21,6 +21,7 @@ import { Switch } from '@/components/ui/switch';
 import { formatDateTime } from '@/lib/format';
 import { putJson } from '@/lib/sam-fetch';
 import { submit } from '@/lib/submit';
+import { minutesSince } from '@/lib/time';
 import tenantConfigRoutes from '@/routes/tenant-config';
 import {
     DEDICATED_KEYS,
@@ -296,18 +297,6 @@ function TopicBlock({
 
 // ---- Historial de cambios ----
 
-function minutesAgo(iso: string | null): number | null {
-    if (iso === null) {
-        return null;
-    }
-
-    const time = new Date(iso).getTime();
-
-    return Number.isNaN(time)
-        ? null
-        : Math.max(0, Math.round((Date.now() - time) / 60000));
-}
-
 function versionOrigin(version: VersionRow): string {
     const label = version.snapshot?.label;
 
@@ -341,7 +330,11 @@ function VersionsBlock({ versions }: { versions: VersionRow[] }) {
                 <FormCard className="gap-0 p-0">
                     <ul className="divide-y divide-border">
                         {versions.map((version) => {
-                            const ago = minutesAgo(version.createdAt);
+                            const ago =
+                                version.createdAt !== null &&
+                                !Number.isNaN(Date.parse(version.createdAt))
+                                    ? minutesSince(version.createdAt)
+                                    : null;
 
                             return (
                                 <li

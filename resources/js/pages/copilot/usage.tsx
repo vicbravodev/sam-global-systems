@@ -11,7 +11,7 @@ import { COPILOT_CHANNEL_LABELS } from '@/components/sam/copilot/copy';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
-import { formatNumber } from '@/lib/format';
+import { formatNumber, formatShortDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import copilotRoutes from '@/routes/copilot';
 import type { CopilotUsageReport } from '@/types/copilot';
@@ -32,10 +32,7 @@ export default function CopilotUsage({ usage }: { usage: CopilotUsageReport }) {
 
     const labels = usage.series.map((point, index) =>
         index % Math.ceil(usage.series.length / 10) === 0
-            ? new Date(`${point.date}T00:00:00`).toLocaleDateString('es', {
-                  day: 'numeric',
-                  month: 'short',
-              })
+            ? formatShortDate(point.date)
             : '',
     );
 

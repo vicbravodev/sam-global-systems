@@ -105,3 +105,43 @@ export function formatDateTime(iso: string | Date | null | undefined): string {
         minute: '2-digit',
     });
 }
+
+/**
+ * Fecha con un formato a medida (APP_LOCALE, reloj de 24 h). Para los
+ * formatos comunes usa `formatDate`/`formatDateTime`/`formatShortDate`.
+ */
+export function formatDateWith(
+    value: string | Date | null | undefined,
+    options: Intl.DateTimeFormatOptions,
+): string {
+    if (!value) {
+        return '—';
+    }
+
+    const date = toDate(value);
+
+    if (Number.isNaN(date.getTime())) {
+        return '—';
+    }
+
+    return date.toLocaleString(APP_LOCALE, { hourCycle: 'h23', ...options });
+}
+
+/** Día corto sin año: "2 oct" (ejes de gráficas, agrupación por día). */
+export function formatShortDate(
+    value: string | Date | null | undefined,
+): string {
+    return formatDateWith(value, { day: 'numeric', month: 'short' }).replace(
+        '.',
+        '',
+    );
+}
+
+/** Mes y año con mayúscula inicial: "Octubre de 2026" (periodos de cobro). */
+export function formatMonthYear(
+    value: string | Date | null | undefined,
+): string {
+    const label = formatDateWith(value, { month: 'long', year: 'numeric' });
+
+    return label.charAt(0).toUpperCase() + label.slice(1);
+}

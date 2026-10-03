@@ -13,7 +13,8 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { formatDateTime } from '@/lib/format';
+import { formatDateTime, formatShortDate } from '@/lib/format';
+import { formatClock } from '@/lib/time';
 import { TONE_PILL } from '@/lib/tone';
 import { cn } from '@/lib/utils';
 import type {
@@ -81,28 +82,13 @@ function useTimestamps(timeline: IncidentTimelineEntry[]) {
                 return '';
             }
 
-            const date = new Date(entry.tsIso);
-
-            if (Number.isNaN(date.getTime())) {
+            if (Number.isNaN(Date.parse(entry.tsIso))) {
                 return '';
             }
 
-            const time = date.toLocaleTimeString('es', {
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-            });
-
-            if (!multiDay) {
-                return time;
-            }
-
-            const day = date.toLocaleDateString('es', {
-                day: 'numeric',
-                month: 'short',
-            });
-
-            return `${day} · ${time.slice(0, 5)}`;
+            return multiDay
+                ? `${formatShortDate(entry.tsIso)} · ${formatClock(entry.tsIso)}`
+                : formatClock(entry.tsIso, { seconds: true });
         };
     }, [timeline]);
 }
