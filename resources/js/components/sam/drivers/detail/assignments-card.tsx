@@ -3,6 +3,7 @@ import { Truck } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import assetRoutes from '@/routes/assets';
 import type { DriverAssignmentEntry } from '@/types/drivers';
 
 const ASSIGNMENT_TYPE_LABELS: Record<string, string> = {
@@ -67,7 +68,11 @@ export function AssignmentsCard({
                                                 <Link
                                                     href={
                                                         teamSlug
-                                                            ? `/${teamSlug}/assets/${assignment.asset.id}`
+                                                            ? assetRoutes.show([
+                                                                  teamSlug,
+                                                                  assignment
+                                                                      .asset.id,
+                                                              ])
                                                             : '#'
                                                     }
                                                     className="text-xs text-fg-1 hover:text-primary hover:underline"

@@ -23,6 +23,7 @@ import {
 import { Spinner } from '@/components/ui/spinner';
 import { postJson, readErrorMessage } from '@/lib/sam-fetch';
 import { cn } from '@/lib/utils';
+import incidentRoutes from '@/routes/incidents';
 import type {
     IncidentMediaAssessment,
     IncidentMediaItem,
@@ -180,12 +181,7 @@ export function MediaStrip({
     onMutated,
 }: MediaStripProps) {
     const page = usePage();
-    const teamSlug =
-        (
-            page.props as unknown as {
-                currentTeam?: { slug?: string | null } | null;
-            }
-        ).currentTeam?.slug ?? null;
+    const teamSlug = page.props.currentTeam?.slug ?? null;
 
     const { can } = useIncidentActions();
     const [openIndex, setOpenIndex] = useState<number | null>(null);
@@ -232,7 +228,7 @@ export function MediaStrip({
 
         try {
             const response = await postJson(
-                `/${teamSlug}/incidents/${incidentId}/media/request`,
+                incidentRoutes.media.request.url([teamSlug, incidentId]),
                 {},
             );
 

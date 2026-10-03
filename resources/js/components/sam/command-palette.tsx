@@ -1,7 +1,13 @@
 import { router, usePage } from '@inertiajs/react';
 import { Search, Truck, User } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { getJson } from '@/lib/sam-fetch';
 import { cn } from '@/lib/utils';
+import { dashboard } from '@/routes';
+import assetRoutes from '@/routes/assets';
+import driverRoutes from '@/routes/drivers';
+import incidentRoutes from '@/routes/incidents';
+import { search as paletteSearch } from '@/routes/palette';
 
 interface PaletteIncident {
     id: number;
@@ -52,26 +58,26 @@ const ACTIONS: PaletteAction[] = [
         id: 'action-dashboard',
         label: 'Ir al panel',
         description: 'Vista general de operaciones',
-        href: (slug) => `/${slug}/dashboard`,
+        href: (slug) => dashboard.url(slug),
     },
     {
         id: 'action-incidents',
         label: 'Ir a Incidentes',
         description: 'Bandeja de incidentes activos',
-        href: (slug) => `/${slug}/incidents`,
+        href: (slug) => incidentRoutes.index.url(slug),
         can: 'incidents',
     },
     {
         id: 'action-fleet',
         label: 'Ir a Flota',
         description: 'Unidades y su última señal',
-        href: (slug) => `/${slug}/assets`,
+        href: (slug) => assetRoutes.index.url(slug),
     },
     {
         id: 'action-map',
         label: 'Mapa en vivo',
         description: 'Posición de activos en tiempo real',
-        href: (slug) => `/${slug}/assets/map`,
+        href: (slug) => assetRoutes.map.url(slug),
     },
 ];
 
@@ -87,12 +93,7 @@ const GROUP_TITLE = 'border-t border-border px-3.5 py-2.5 sam-caps';
 
 export function CommandPalette({ open, onClose }: CommandPaletteProps) {
     const page = usePage();
-    const slug =
-        (
-            page.props as unknown as {
-                currentTeam?: { slug?: string | null } | null;
-            }
-        ).currentTeam?.slug ?? null;
+    const slug = page.props.currentTeam?.slug ?? null;
     const nav = page.props.nav;
 
     const [query, setQuery] = useState('');
@@ -126,10 +127,10 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
 
         const controller = new AbortController();
         const timer = window.setTimeout(() => {
-            fetch(`/${slug}/palette-search?q=${encodeURIComponent(query)}`, {
-                headers: { Accept: 'application/json' },
-                signal: controller.signal,
-            })
+            getJson(
+                paletteSearch.url(slug, { query: { q: query } }),
+                controller.signal,
+            )
                 .then((response) => (response.ok ? response.json() : null))
                 .then((data: PaletteResults | null) => {
                     if (data) {
@@ -178,7 +179,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
             const incident = incidents[index];
 
             if (incident) {
-                go(`/${slug}/incidents/${incident.id}`);
+                go(incidentRoutes.show.url([slug, incident.id]));
             }
 
             return;
@@ -188,7 +189,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
             const asset = assets[index - assetOffset];
 
             if (asset) {
-                go(`/${slug}/assets/${asset.id}`);
+                go(assetRoutes.show.url([slug, asset.id]));
             }
 
             return;
@@ -198,7 +199,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
             const driver = drivers[index - driverOffset];
 
             if (driver) {
-                go(`/${slug}/drivers/${driver.id}`);
+                go(driverRoutes.show.url([slug, driver.id]));
             }
 
             return;

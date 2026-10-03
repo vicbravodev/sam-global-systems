@@ -2,6 +2,7 @@ import { router, usePage } from '@inertiajs/react';
 import { Siren, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTeamBroadcast } from '@/hooks/use-team-broadcasts';
+import incidentRoutes from '@/routes/incidents';
 
 type ActiveAlert = {
     id: number;
@@ -131,7 +132,7 @@ export function CriticalIncidentAlert() {
                             onClick={() => {
                                 dismiss(alert.id);
                                 router.visit(
-                                    `/${teamSlug}/incidents/${alert.id}`,
+                                    incidentRoutes.show([teamSlug, alert.id]),
                                 );
                             }}
                             className="rounded bg-white/20 px-2.5 py-1 text-xs hover:bg-white/30"
@@ -169,7 +170,7 @@ function notifyBrowser(id: number, title: string, teamSlug: string | null) {
             window.focus();
 
             if (teamSlug !== null) {
-                router.visit(`/${teamSlug}/incidents/${id}`);
+                router.visit(incidentRoutes.show([teamSlug, id]));
             }
         };
     };

@@ -1,3 +1,4 @@
+import type { SharedPageProps } from '@inertiajs/core';
 import { Head, Link, usePage } from '@inertiajs/react';
 import {
     Bell,
@@ -20,6 +21,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
 import { formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import notificationRoutes from '@/routes/notifications';
 import type {
     DeliveryTone,
     NotificationDeliveryRow,
@@ -186,10 +188,11 @@ function groupByRecipient(
     return [...groups.values()];
 }
 
-export default function NotificationShow() {
+export default function NotificationShow({
+    notification,
+    deliveries,
+}: NotificationShowProps) {
     const page = usePage();
-    const { notification, deliveries } =
-        page.props as unknown as NotificationShowProps;
     const teamSlug = page.props.currentTeam?.slug ?? null;
     const groups = groupByRecipient(deliveries);
 
@@ -213,7 +216,11 @@ export default function NotificationShow() {
                             )}
                             {teamSlug !== null && (
                                 <Button variant="outline" size="sm" asChild>
-                                    <Link href={`/${teamSlug}/notifications`}>
+                                    <Link
+                                        href={notificationRoutes.index(
+                                            teamSlug,
+                                        )}
+                                    >
                                         <ChevronLeft size={13} />
                                         Notificaciones
                                     </Link>
@@ -265,22 +272,24 @@ export default function NotificationShow() {
     );
 }
 
-NotificationShow.layout = (props: {
-    currentTeam?: { slug: string } | null;
-    notification?: { id: number } | null;
-}) => ({
+NotificationShow.layout = (
+    props: SharedPageProps & Partial<NotificationShowProps>,
+) => ({
     breadcrumbs: [
         {
             title: 'Notificaciones',
             href: props.currentTeam
-                ? `/${props.currentTeam.slug}/notifications`
-                : '/notifications',
+                ? notificationRoutes.index.url(props.currentTeam.slug)
+                : '#',
         },
         ...(props.notification && props.currentTeam
             ? [
                   {
                       title: `Entregas #${props.notification.id}`,
-                      href: `/${props.currentTeam.slug}/notifications/${props.notification.id}`,
+                      href: notificationRoutes.show.url([
+                          props.currentTeam.slug,
+                          props.notification.id,
+                      ]),
                   },
               ]
             : []),

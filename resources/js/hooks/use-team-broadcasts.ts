@@ -38,12 +38,15 @@ const USER_EVENTS: UserBroadcastEvent[] = ['notification.pushed'];
 type AnyBroadcastMap = TeamBroadcastEventMap & UserBroadcastEventMap;
 type AnyBroadcastEvent = keyof AnyBroadcastMap;
 
+/**
+ * Discriminated by `event`: checking `detail.event` narrows `payload` to
+ * that event's shape, no casts needed.
+ */
 export type TeamBroadcastDetail<
     E extends AnyBroadcastEvent = AnyBroadcastEvent,
 > = {
-    event: E;
-    payload: AnyBroadcastMap[E];
-};
+    [K in E]: { event: K; payload: AnyBroadcastMap[K] };
+}[E];
 
 export const TEAM_BROADCAST_EVENT_NAME = 'sam:team-broadcast';
 
@@ -64,9 +67,7 @@ function emit(detail: TeamBroadcastDetail): void {
 export function useTeamBroadcastsSubscription(): void {
     const page = usePage();
     const teamId = page.props.currentTeam?.id ?? null;
-    const userId =
-        (page.props.auth as { user?: { id?: number } | null } | undefined)?.user
-            ?.id ?? null;
+    const userId = page.props.auth?.user?.id ?? null;
     // Null until the realtime client finishes loading; the effects below
     // subscribe as soon as it is there.
     const echo = useEcho();
@@ -84,8 +85,10 @@ export function useTeamBroadcastsSubscription(): void {
         const channel = echo.private(channelName);
 
         const handlers = TEAM_EVENTS.map((event) => {
+            // The socket is the untyped boundary: the event name pairs the
+            // payload with its shape.
             const handler = (payload: TeamBroadcastEventMap[typeof event]) =>
-                emit({ event, payload });
+                emit({ event, payload } as TeamBroadcastDetail);
 
             channel.listen(`.${event}`, handler);
 

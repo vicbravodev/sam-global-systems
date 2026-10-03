@@ -27,6 +27,7 @@ import {
     TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { getInitials } from '@/lib/initials';
+import roleRoutes from '@/routes/access/roles';
 import { edit, index, update } from '@/routes/teams';
 import { update as updateMember } from '@/routes/teams/members';
 import type {
@@ -66,15 +67,10 @@ export default function TeamEdit({
 
     // Enlace a los roles de acceso sólo si se pueden abrir (permiso de roles)
     // y el equipo que se mira es el activo.
-    const currentSlug =
-        (
-            page.props as unknown as {
-                currentTeam?: { slug?: string | null } | null;
-            }
-        ).currentTeam?.slug ?? null;
+    const currentSlug = page.props.currentTeam?.slug ?? null;
     const rolesHref =
         page.props.nav?.roles && currentSlug === team.slug
-            ? `/${team.slug}/settings/roles`
+            ? roleRoutes.index.url(team.slug)
             : null;
 
     const updateMemberRole = (member: TeamMember, newRole: string) => {

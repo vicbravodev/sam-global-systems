@@ -1,11 +1,19 @@
 import { usePage } from '@inertiajs/react';
 import { Maximize2, MessageSquarePlus, Sparkles, X } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+    useCallback,
+    useEffect,
+    useEffectEvent,
+    useRef,
+    useState,
+} from 'react';
 import {
     Tooltip,
     TooltipContent,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { getJson } from '@/lib/sam-fetch';
+import copilotRoutes from '@/routes/copilot';
 import type { CopilotCatalog, CopilotQuota } from '@/types/copilot';
 import {
     CopilotBubbleConnecting,
@@ -67,10 +75,7 @@ export default function CopilotBubble({
 
         catalogInFlight.current = true;
         setCatalog({ status: 'loading' });
-        fetch(`/${teamSlug}/copilot/catalog`, {
-            credentials: 'same-origin',
-            headers: { Accept: 'application/json' },
-        })
+        getJson(copilotRoutes.catalog.url(teamSlug))
             .then((response) =>
                 response.ok ? response.json() : Promise.reject(),
             )
@@ -87,13 +92,18 @@ export default function CopilotBubble({
     const needsCatalog =
         catalog.status === 'idle' || catalog.status === 'failed';
 
-    useEffect(() => {
-        if (open && needsCatalog) {
+    // Only an opening triggers the load, not a failure while open (that one
+    // offers "Reintentar"): the catalog state is read, not reacted to.
+    const loadCatalogIfNeeded = useEffectEvent(() => {
+        if (needsCatalog) {
             loadCatalog();
         }
-        // Only an opening triggers the load, not a failure while open (that
-        // one offers "Reintentar").
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+    });
+
+    useEffect(() => {
+        if (open) {
+            loadCatalogIfNeeded();
+        }
     }, [open]);
 
     if (!open) {

@@ -2,6 +2,7 @@ import { Link } from '@inertiajs/react';
 import { User } from 'lucide-react';
 import { EntityAvatar } from '@/components/sam/entity-avatar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import driverRoutes from '@/routes/drivers';
 import type { AssetShowProps } from '@/types/assets';
 
 export function DriverCard({
@@ -27,7 +28,9 @@ export function DriverCard({
                 ) : (
                     <Link
                         href={
-                            teamSlug ? `/${teamSlug}/drivers/${driver.id}` : '#'
+                            teamSlug
+                                ? driverRoutes.show([teamSlug, driver.id])
+                                : '#'
                         }
                         className="flex items-center gap-3 rounded-md border border-border bg-surface-2 p-3 transition-colors hover:border-primary/40"
                     >

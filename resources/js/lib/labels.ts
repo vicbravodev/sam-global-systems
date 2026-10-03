@@ -450,3 +450,24 @@ export function providerDescriptionLabel(
 
     return eventTypeName && translated === eventTypeName ? null : translated;
 }
+
+/**
+ * Código interno único a partir de un nombre: "Pánico nocturno" →
+ * "panico-nocturno-x7k2". El usuario nunca lo escribe ni lo ve.
+ */
+export function codeFromName(
+    name: string,
+    fallback: string,
+    suffix: string,
+    maxLength = 60,
+): string {
+    const slug = name
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, maxLength);
+
+    return `${slug || fallback}-${suffix}`;
+}

@@ -1,3 +1,4 @@
+import type { SharedPageProps } from '@inertiajs/core';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { ChevronRight, Gauge, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
@@ -19,7 +20,8 @@ import { useBroadcastReload } from '@/hooks/use-team-broadcasts';
 import { formatCurrency } from '@/lib/format';
 import { formatClock } from '@/lib/time';
 import { cn } from '@/lib/utils';
-import { dashboard } from '@/routes';
+import { dashboard, home } from '@/routes';
+import incidentRoutes from '@/routes/incidents';
 import type {
     DashboardIntegration,
     DashboardProps,
@@ -44,10 +46,14 @@ const RELOAD_DEBOUNCE_MS = 2000;
 // The KPI strip is a two-week aggregate: a live event barely moves it.
 const KPI_MIN_INTERVAL_MS = 30000;
 
-export default function Dashboard() {
+export default function Dashboard({
+    kpis,
+    incidents,
+    stream,
+    integrations,
+    usage,
+}: DashboardProps) {
     const page = usePage();
-    const { kpis, incidents, stream, integrations, usage } =
-        page.props as unknown as DashboardProps;
     const teamSlug = page.props.currentTeam?.slug ?? null;
 
     useBroadcastReload(RELOAD_KEYS_BY_EVENT, {
@@ -288,7 +294,7 @@ function OpenIncidentsPanel({
                 </CardTitle>
                 {teamSlug ? (
                     <Button variant="ghost" size="sm" asChild>
-                        <Link href={`/${teamSlug}/incidents`}>
+                        <Link href={incidentRoutes.index(teamSlug)}>
                             Ver todos
                             <ChevronRight />
                         </Link>
@@ -307,7 +313,10 @@ function OpenIncidentsPanel({
                                 <Link
                                     href={
                                         teamSlug
-                                            ? `/${teamSlug}/incidents/${incident.incidentId}`
+                                            ? incidentRoutes.show([
+                                                  teamSlug,
+                                                  incident.incidentId,
+                                              ])
                                             : '#'
                                     }
                                     className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-surface-2"
@@ -600,11 +609,13 @@ function UsagePanel({ usage }: { usage: UsageCounterRow[] }) {
     );
 }
 
-Dashboard.layout = (props: { currentTeam?: { slug: string } | null }) => ({
+Dashboard.layout = (props: SharedPageProps) => ({
     breadcrumbs: [
         {
             title: 'Panel',
-            href: props.currentTeam ? dashboard(props.currentTeam.slug) : '/',
+            href: props.currentTeam
+                ? dashboard(props.currentTeam.slug)
+                : home(),
         },
     ],
 });

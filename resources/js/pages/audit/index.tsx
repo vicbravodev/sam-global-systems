@@ -1,4 +1,5 @@
-import { Head, usePage } from '@inertiajs/react';
+import type { SharedPageProps } from '@inertiajs/core';
+import { Head } from '@inertiajs/react';
 import { ScrollText } from 'lucide-react';
 import { useState } from 'react';
 import { DataTable } from '@/components/sam/data-table';
@@ -22,6 +23,7 @@ import {
 } from '@/components/ui/select';
 import { useServerList } from '@/hooks/use-server-list';
 import { formatDateTime } from '@/lib/format';
+import auditRoutes from '@/routes/audit';
 import type { ListPagination } from '@/types/pagination';
 
 // Sentinel para representar "sin filtro" en los <Select> del DS: Radix no
@@ -191,9 +193,7 @@ const EVENT_COLUMNS: DataTableColumn<DomainEventRow>[] = [
     },
 ];
 
-export default function AuditIndex() {
-    const page = usePage();
-    const pageProps = page.props as unknown as AuditPageProps;
+export default function AuditIndex(pageProps: AuditPageProps) {
     const { logs, pagination, filterOptions, events } = pageProps;
 
     const [tab, setTab] = useState<TabKey>('logs');
@@ -390,13 +390,13 @@ export default function AuditIndex() {
     );
 }
 
-AuditIndex.layout = (props: { currentTeam?: { slug: string } | null }) => ({
+AuditIndex.layout = (props: SharedPageProps) => ({
     breadcrumbs: [
         {
             title: 'Auditoría',
             href: props.currentTeam
-                ? `/${props.currentTeam.slug}/audit`
-                : '/audit',
+                ? auditRoutes.show.url(props.currentTeam.slug)
+                : '#',
         },
     ],
 });

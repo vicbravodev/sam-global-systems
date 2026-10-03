@@ -1,3 +1,4 @@
+import { usePage } from '@inertiajs/react';
 import {
     ArrowRight,
     ArrowRightLeft,
@@ -24,8 +25,10 @@ import {
 import { EmptyState } from '@/components/ui/empty-state';
 import { Switch } from '@/components/ui/switch';
 import { deleteJson, putJson } from '@/lib/sam-fetch';
+import { submit } from '@/lib/submit';
 import { cn } from '@/lib/utils';
-import { mappingSource, submitRuleChange, useRulesBase } from './lib';
+import rulesRoutes from '@/routes/rules';
+import { mappingSource, RULE_SUBMIT } from './lib';
 import { RuleTestDialog } from './rule-tester';
 import type { MappingOptions, MappingRuleRow, MappingSummary } from './types';
 
@@ -63,7 +66,7 @@ export function MappingRulesTab({
     creating,
     onCreatingChange,
 }: MappingRulesTabProps) {
-    const base = useRulesBase();
+    const teamSlug = usePage().props.currentTeam?.slug ?? null;
     const [query, setQuery] = useState('');
     const [state, setState] = useState<StateFilter | null>(null);
     const [editId, setEditId] = useState<number | null>(null);
@@ -120,26 +123,32 @@ export function MappingRulesTab({
     }
 
     const toggle = async (rule: MappingRuleRow, active: boolean) => {
-        if (base === null || togglingId !== null) {
+        if (teamSlug === null || togglingId !== null) {
             return;
         }
 
         setTogglingId(rule.id);
-        await submitRuleChange(
-            putJson(`${base}/mapping/${rule.id}`, { is_active: active }),
+        await submit(
+            putJson(rulesRoutes.mapping.update.url([teamSlug, rule.id]), {
+                is_active: active,
+            }),
             active ? 'Traducción encendida.' : 'Traducción apagada.',
+            RULE_SUBMIT,
         );
         setTogglingId(null);
     };
 
     const remove = async () => {
-        if (base === null || deleteRule === null) {
+        if (teamSlug === null || deleteRule === null) {
             return;
         }
 
-        const result = await submitRuleChange(
-            deleteJson(`${base}/mapping/${deleteRule.id}`),
+        const result = await submit(
+            deleteJson(
+                rulesRoutes.mapping.destroy.url([teamSlug, deleteRule.id]),
+            ),
             'Traducción eliminada.',
+            RULE_SUBMIT,
         );
 
         if (result.ok) {
@@ -389,12 +398,12 @@ export function MappingRulesTab({
                 </Suspense>
             )}
 
-            {base !== null && (
+            {teamSlug !== null && (
                 <RuleTestDialog
                     open={testRule !== null}
                     onOpenChange={(open) => !open && setTestRule(null)}
                     title={testRule ? mappingSource(testRule).title : ''}
-                    endpoint={`${base}/test-mapping`}
+                    endpoint={rulesRoutes.test.mapping.url(teamSlug)}
                     payload={() => ({
                         external_conditions_json: testRule?.conditions ?? {},
                     })}

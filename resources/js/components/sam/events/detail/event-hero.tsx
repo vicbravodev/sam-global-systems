@@ -11,6 +11,9 @@ import { Button } from '@/components/ui/button';
 import { formatDateTime } from '@/lib/format';
 import { providerDescriptionLabel } from '@/lib/labels';
 import { minutesSince } from '@/lib/time';
+import assetRoutes from '@/routes/assets';
+import driverRoutes from '@/routes/drivers';
+import eventRoutes from '@/routes/events';
 import type { EventDetail } from '@/types/events';
 
 export function EventHero({
@@ -24,7 +27,7 @@ export function EventHero({
 
     return (
         <DetailHeader
-            backHref={teamSlug ? `/${teamSlug}/events` : '#'}
+            backHref={teamSlug ? eventRoutes.index.url(teamSlug) : '#'}
             backLabel="Volver a eventos"
             media={
                 <span className="grid size-12 shrink-0 place-items-center rounded-md border border-border bg-surface-2">
@@ -66,7 +69,10 @@ export function EventHero({
                         <Link
                             href={
                                 teamSlug && event.assetId !== null
-                                    ? `/${teamSlug}/assets/${event.assetId}`
+                                    ? assetRoutes.show([
+                                          teamSlug,
+                                          event.assetId,
+                                      ])
                                     : '#'
                             }
                             className="inline-flex items-center gap-1 text-fg-2 hover:text-primary hover:underline"
@@ -79,7 +85,10 @@ export function EventHero({
                         <Link
                             href={
                                 teamSlug && event.driverId !== null
-                                    ? `/${teamSlug}/drivers/${event.driverId}`
+                                    ? driverRoutes.show([
+                                          teamSlug,
+                                          event.driverId,
+                                      ])
                                     : '#'
                             }
                             className="inline-flex items-center gap-1 text-fg-2 hover:text-primary hover:underline"

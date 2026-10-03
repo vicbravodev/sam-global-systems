@@ -10,6 +10,7 @@ import { UserMenuContent } from '@/components/user-menu-content';
 import { useAppearance } from '@/hooks/use-appearance';
 import { getInitials } from '@/lib/initials';
 import { cn } from '@/lib/utils';
+import notificationRoutes from '@/routes/notifications';
 import type { BreadcrumbItem } from '@/types';
 
 interface OpsTopbarProps {
@@ -113,7 +114,7 @@ export function OpsTopbar({
             {/* Notification bell */}
             {currentTeam?.slug && (
                 <Link
-                    href={`/${currentTeam.slug}/notifications`}
+                    href={notificationRoutes.index(currentTeam.slug)}
                     className="relative grid h-[30px] w-[30px] cursor-pointer place-items-center rounded-md border border-transparent bg-transparent text-fg-2 transition-colors duration-100 hover:bg-surface-2 hover:text-fg-1"
                     aria-label="Notificaciones"
                 >

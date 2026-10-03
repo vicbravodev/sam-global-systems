@@ -9,6 +9,7 @@ import type { IncidentStatus } from '@/components/sam/status-pill';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { minutesSince } from '@/lib/time';
+import incidentRoutes from '@/routes/incidents';
 
 export interface LinkedIncidentEntry {
     id: number;
@@ -61,7 +62,7 @@ export function LinkedIncidentsCard({
                 </CardTitle>
                 {teamSlug && incidents.length > 0 && (
                     <Button variant="ghost" size="sm" asChild>
-                        <Link href={`/${teamSlug}/incidents`}>
+                        <Link href={incidentRoutes.index(teamSlug)}>
                             Ver bandeja
                             <ChevronRight />
                         </Link>
@@ -80,7 +81,10 @@ export function LinkedIncidentsCard({
                                 <Link
                                     href={
                                         teamSlug
-                                            ? `/${teamSlug}/incidents/${incident.id}`
+                                            ? incidentRoutes.show([
+                                                  teamSlug,
+                                                  incident.id,
+                                              ])
                                             : '#'
                                     }
                                     className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-surface-2"

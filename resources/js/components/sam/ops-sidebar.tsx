@@ -27,8 +27,22 @@ import {
     TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import { dashboard } from '@/routes';
+import { dashboard, home } from '@/routes';
 import { index as adminTenantsIndex } from '@/routes/admin/tenants';
+import analyticsRoutes from '@/routes/analytics';
+import assetRoutes from '@/routes/assets';
+import auditRoutes from '@/routes/audit';
+import automationRoutes from '@/routes/automation';
+import billingRoutes from '@/routes/billing';
+import copilotRoutes from '@/routes/copilot';
+import driverRoutes from '@/routes/drivers';
+import eventRoutes from '@/routes/events';
+import incidentRoutes from '@/routes/incidents';
+import integrationRoutes from '@/routes/integrations';
+import notificationRoutes from '@/routes/notifications';
+import { edit as editProfile } from '@/routes/profile';
+import rulesRoutes from '@/routes/rules';
+import tenantConfigRoutes from '@/routes/tenant-config';
 import type { NavBadges, NavPermissions } from '@/types/sam';
 
 interface NavItemConfig {
@@ -134,7 +148,9 @@ export function OpsSidebar({ navBadges, mobile = false }: OpsSidebarProps) {
     const copilotEnabled = Boolean(page.props.copilot?.enabled);
     const nav = page.props.nav;
 
-    const dashboardHref = currentTeam ? dashboard(currentTeam.slug).url : '/';
+    const dashboardHref = currentTeam
+        ? dashboard(currentTeam.slug).url
+        : home.url();
 
     const navGroups: NavGroup[] = useMemo(() => {
         const groups: NavGroup[] = [
@@ -150,7 +166,7 @@ export function OpsSidebar({ navBadges, mobile = false }: OpsSidebarProps) {
                         label: 'Incidentes',
                         can: 'incidents',
                         icon: Inbox,
-                        href: `/${teamSlug}/incidents`,
+                        href: incidentRoutes.index.url(teamSlug),
                         badge: 'inbox',
                         pulseWhenInactive: true,
                     },
@@ -158,12 +174,12 @@ export function OpsSidebar({ navBadges, mobile = false }: OpsSidebarProps) {
                         label: 'Eventos',
                         can: 'events',
                         icon: History,
-                        href: `/${teamSlug}/events`,
+                        href: eventRoutes.index.url(teamSlug),
                     },
                     {
                         label: 'Mapa en vivo',
                         icon: MapPin,
-                        href: `/${teamSlug}/assets/map`,
+                        href: assetRoutes.map.url(teamSlug),
                     },
                 ],
             },
@@ -173,13 +189,13 @@ export function OpsSidebar({ navBadges, mobile = false }: OpsSidebarProps) {
                     {
                         label: 'Flota',
                         icon: Truck,
-                        href: `/${teamSlug}/assets`,
+                        href: assetRoutes.index.url(teamSlug),
                     },
                     {
                         label: 'Conductores',
                         can: 'drivers',
                         icon: Users,
-                        href: `/${teamSlug}/drivers`,
+                        href: driverRoutes.index.url(teamSlug),
                     },
                 ],
             },
@@ -193,7 +209,7 @@ export function OpsSidebar({ navBadges, mobile = false }: OpsSidebarProps) {
                               {
                                   label: 'SAM Copilot',
                                   icon: Sparkles,
-                                  href: `/${teamSlug}/copilot`,
+                                  href: copilotRoutes.index.url(teamSlug),
                               },
                           ]
                         : []),
@@ -201,19 +217,19 @@ export function OpsSidebar({ navBadges, mobile = false }: OpsSidebarProps) {
                         label: 'Reglas',
                         can: 'rules',
                         icon: Workflow,
-                        href: `/${teamSlug}/rules`,
+                        href: rulesRoutes.show.url(teamSlug),
                     },
                     {
                         label: 'Automatizaciones',
                         can: 'automation',
                         icon: Radar,
-                        href: `/${teamSlug}/automation`,
+                        href: automationRoutes.show.url(teamSlug),
                     },
                     {
                         label: 'Analítica',
                         can: 'analytics',
                         icon: BarChart3,
-                        href: `/${teamSlug}/analytics`,
+                        href: analyticsRoutes.show.url(teamSlug),
                     },
                 ],
             },
@@ -224,25 +240,25 @@ export function OpsSidebar({ navBadges, mobile = false }: OpsSidebarProps) {
                         label: 'Integraciones',
                         can: 'integrations',
                         icon: Plug,
-                        href: `/${teamSlug}/integrations`,
+                        href: integrationRoutes.index.url(teamSlug),
                     },
                     {
                         label: 'Bandeja de notificaciones',
                         can: 'notifications',
                         icon: Bell,
-                        href: `/${teamSlug}/notifications`,
+                        href: notificationRoutes.index.url(teamSlug),
                     },
                     {
                         label: 'Auditoría',
                         can: 'audit',
                         icon: FileClock,
-                        href: `/${teamSlug}/audit`,
+                        href: auditRoutes.show.url(teamSlug),
                     },
                     {
                         label: 'Facturación',
                         can: 'billing',
                         icon: Receipt,
-                        href: `/${teamSlug}/billing`,
+                        href: billingRoutes.show.url(teamSlug),
                     },
                     {
                         // C2: una sola entrada de Ajustes con sub-secciones
@@ -253,8 +269,8 @@ export function OpsSidebar({ navBadges, mobile = false }: OpsSidebarProps) {
                         // Sin permiso de configuración del tenant, Ajustes abre
                         // la cuenta personal (siempre accesible).
                         href: nav?.tenantConfig
-                            ? `/${teamSlug}/settings/tenant-config`
-                            : '/settings/profile',
+                            ? tenantConfigRoutes.show.url(teamSlug)
+                            : editProfile.url(),
                     },
                 ],
             },

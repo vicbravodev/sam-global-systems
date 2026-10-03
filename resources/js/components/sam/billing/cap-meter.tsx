@@ -4,6 +4,7 @@ import { Meter } from '@/components/sam/meter';
 import { Panel } from '@/components/sam/panel';
 import { formatNumber } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import assetRoutes from '@/routes/assets';
 import { money } from './panel';
 import type { BillingTerms, FleetCounts, PeriodEstimate } from './types';
 
@@ -118,7 +119,9 @@ export function CapMeter({
                     value={fleet.pending}
                     href={
                         teamSlug && fleet.pending > 0
-                            ? `/${teamSlug}/assets?monitoring=pending`
+                            ? assetRoutes.index.url(teamSlug, {
+                                  query: { monitoring: 'pending' },
+                              })
                             : null
                     }
                     highlight={fleet.pending > 0}
@@ -128,7 +131,9 @@ export function CapMeter({
                     value={fleet.excluded}
                     href={
                         teamSlug && fleet.excluded > 0
-                            ? `/${teamSlug}/assets?monitoring=excluded`
+                            ? assetRoutes.index.url(teamSlug, {
+                                  query: { monitoring: 'excluded' },
+                              })
                             : null
                     }
                 />

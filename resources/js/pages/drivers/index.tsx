@@ -1,3 +1,4 @@
+import type { SharedPageProps } from '@inertiajs/core';
 import { Head, router, usePage } from '@inertiajs/react';
 import {
     Clock,
@@ -20,6 +21,7 @@ import { ListEmptyState, ListPage } from '@/components/sam/list-page';
 import { PulseStat, PulseStrip } from '@/components/sam/pulse-strip';
 import { SegmentedFilter } from '@/components/sam/segmented-filter';
 import { useServerList } from '@/hooks/use-server-list';
+import driverRoutes from '@/routes/drivers';
 import type {
     DriverFilterOptions,
     DriverFilters,
@@ -173,9 +175,8 @@ const EMPTY_FILTERS: DriverFilters = { q: null, status: null };
 
 const EMPTY_OPTIONS: DriverFilterOptions = { statuses: [] };
 
-export default function DriversIndex() {
+export default function DriversIndex(pageProps: DriversIndexProps) {
     const page = usePage();
-    const pageProps = page.props as unknown as DriversIndexProps;
     const teamSlug = page.props.currentTeam?.slug ?? null;
     const drivers = pageProps.drivers ?? [];
     const pagination = pageProps.pagination ?? EMPTY_PAGINATION;
@@ -191,7 +192,7 @@ export default function DriversIndex() {
 
     const handleSelect = (id: number) => {
         if (teamSlug !== null) {
-            router.visit(`/${teamSlug}/drivers/${id}`);
+            router.visit(driverRoutes.show([teamSlug, id]));
         }
     };
 
@@ -265,13 +266,13 @@ export default function DriversIndex() {
     );
 }
 
-DriversIndex.layout = (props: { currentTeam?: { slug: string } | null }) => ({
+DriversIndex.layout = (props: SharedPageProps) => ({
     breadcrumbs: [
         {
             title: 'Conductores',
             href: props.currentTeam
-                ? `/${props.currentTeam.slug}/drivers`
-                : '/drivers',
+                ? driverRoutes.index.url(props.currentTeam.slug)
+                : '#',
         },
     ],
 });

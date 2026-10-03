@@ -1,3 +1,4 @@
+import { usePage } from '@inertiajs/react';
 import { useState } from 'react';
 import { Field, FormCard } from '@/components/sam/field';
 import { RadioCard, RadioCardGroup } from '@/components/sam/radio-card-group';
@@ -8,8 +9,10 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { putJson } from '@/lib/sam-fetch';
+import { submit } from '@/lib/submit';
 import { cn } from '@/lib/utils';
-import { submit, useTeamBase } from './shared';
+import tenantConfigRoutes from '@/routes/tenant-config';
+import { CONFIG_SUBMIT } from './shared';
 import type { AiProfile, Option } from './types';
 
 /** Qué significa cada nivel para quien opera (clave = AutomationLevel). */
@@ -35,7 +38,7 @@ export function AiSection({
     levels: Option[];
     canManage: boolean;
 }) {
-    const base = useTeamBase();
+    const teamSlug = usePage().props.currentTeam?.slug ?? null;
     // risk_tolerance / false_positive_tolerance / media_strategy no tienen
     // control aquí y no se mandan: UpdateTenantAIProfileRequest los acepta
     // como `sometimes` y el controlador conserva el valor persistido.
@@ -51,17 +54,18 @@ export function AiSection({
         setForm((prev) => ({ ...prev, [key]: value }));
 
     const save = async () => {
-        if (base === null) {
+        if (teamSlug === null) {
             return;
         }
 
         setSaving(true);
         await submit(
-            putJson(`${base}/ai-profile`, {
+            putJson(tenantConfigRoutes.aiProfile.update.url(teamSlug), {
                 ...form,
                 description: form.description === '' ? null : form.description,
             }),
             'Respuesta de la IA guardada.',
+            CONFIG_SUBMIT,
         );
         setSaving(false);
     };

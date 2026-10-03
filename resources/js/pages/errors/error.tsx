@@ -1,6 +1,7 @@
 import { Head, Link } from '@inertiajs/react';
 import AppLogo from '@/components/app-logo';
 import { Button } from '@/components/ui/button';
+import { home } from '@/routes';
 
 interface ErrorPageProps {
     status: number;
@@ -50,7 +51,7 @@ export default function ErrorPage({ status }: ErrorPageProps) {
                         Volver atrás
                     </Button>
                     <Button asChild>
-                        <Link href="/">Ir al inicio</Link>
+                        <Link href={home()}>Ir al inicio</Link>
                     </Button>
                 </div>
             </div>

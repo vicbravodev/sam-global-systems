@@ -3,11 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { TEAM_BROADCAST_EVENT_NAME } from '@/hooks/use-team-broadcasts';
 import type { TeamBroadcastDetail } from '@/hooks/use-team-broadcasts';
 import type { AssetShowProps, LocationTrailPoint } from '@/types/assets';
-import type {
-    FleetPosition,
-    FleetPositionsUpdatedPayload,
-    FleetTelemetryUpdatedPayload,
-} from '@/types/realtime';
+import type { FleetPosition } from '@/types/realtime';
 
 const RELOAD_DEBOUNCE_MS = 2000;
 
@@ -122,8 +118,7 @@ export function useLiveAsset(
 
             switch (detail?.event) {
                 case 'fleet.positions_updated': {
-                    const { positions } =
-                        detail.payload as unknown as FleetPositionsUpdatedPayload;
+                    const { positions } = detail.payload;
                     const mine = positions.find((p) => p.asset_id === asset.id);
 
                     if (mine === undefined) {
@@ -157,8 +152,7 @@ export function useLiveAsset(
                     return;
                 }
                 case 'fleet.telemetry_updated': {
-                    const { assets } =
-                        detail.payload as unknown as FleetTelemetryUpdatedPayload;
+                    const { assets } = detail.payload;
 
                     if (assets.some((entry) => entry.asset_id === asset.id)) {
                         schedule('telemetry');

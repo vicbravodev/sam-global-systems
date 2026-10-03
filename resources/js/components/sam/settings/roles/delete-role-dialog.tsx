@@ -2,6 +2,7 @@ import { router } from '@inertiajs/react';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/sam/confirm-dialog';
 import { deleteJson, readErrorMessage } from '@/lib/sam-fetch';
+import roleRoutes from '@/routes/access/roles';
 import type { RoleRow } from '@/types/sam';
 
 interface DeleteRoleDialogProps {
@@ -21,7 +22,7 @@ export function DeleteRoleDialog({
         }
 
         const response = await deleteJson(
-            `/${teamSlug}/settings/roles/${role.id}`,
+            roleRoutes.destroy.url([teamSlug, role.id]),
         );
 
         if (response.ok || response.redirected) {

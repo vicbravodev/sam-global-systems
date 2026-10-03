@@ -1,3 +1,4 @@
+import { usePage } from '@inertiajs/react';
 import { useState } from 'react';
 import { Field, FormCard } from '@/components/sam/field';
 import {
@@ -15,6 +16,8 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { putJson } from '@/lib/sam-fetch';
+import { submit } from '@/lib/submit';
+import tenantConfigRoutes from '@/routes/tenant-config';
 import { RecommendedConfigCard } from './recommended-config';
 import {
     LIVE_LOCATION_DEFAULT_SECONDS,
@@ -23,7 +26,7 @@ import {
     PANIC_AUTO_CLOSE_KEY,
     secondsToMinutesInput,
 } from './settings-catalog';
-import { submit, useTeamBase } from './shared';
+import { CONFIG_SUBMIT } from './shared';
 import type { SettingRow } from './types';
 
 export function EmergenciesSection({
@@ -33,7 +36,7 @@ export function EmergenciesSection({
     settings: SettingRow[];
     canManage: boolean;
 }) {
-    const base = useTeamBase();
+    const teamSlug = usePage().props.currentTeam?.slug ?? null;
     const byKey = (key: string) => settings.find((s) => s.key === key);
 
     const [autoRequest, setAutoRequest] = useState(
@@ -56,7 +59,7 @@ export function EmergenciesSection({
     const [saving, setSaving] = useState(false);
 
     const save = async () => {
-        if (base === null || saving) {
+        if (teamSlug === null || saving) {
             return;
         }
 
@@ -78,7 +81,7 @@ export function EmergenciesSection({
         setSaving(true);
 
         const result = await submit(
-            putJson(`${base}/settings`, {
+            putJson(tenantConfigRoutes.settings.update.url(teamSlug), {
                 settings: [
                     {
                         setting_key: MEDIA_AUTO_REQUEST_KEY,
@@ -101,6 +104,7 @@ export function EmergenciesSection({
                 ],
             }),
             'Ajustes de emergencias guardados.',
+            CONFIG_SUBMIT,
         );
 
         if (!result.ok) {

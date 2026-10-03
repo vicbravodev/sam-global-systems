@@ -1,3 +1,4 @@
+import { usePage } from '@inertiajs/react';
 import { Info, Plus } from 'lucide-react';
 import { useState } from 'react';
 import InputError from '@/components/input-error';
@@ -18,8 +19,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { codeFromName } from '@/lib/labels';
 import { postJson, putJson } from '@/lib/sam-fetch';
-import { codeFromName, submit, useAutomationBase } from './api';
+import { submit } from '@/lib/submit';
+import automationRoutes from '@/routes/automation';
 import { HIDDEN_CONDITION_FIELDS, TRIGGER_ORDER, TRIGGERS } from './copy';
 import {
     newStepDraft,
@@ -111,7 +114,7 @@ function EditorBody({
     teamTargets,
     onOpenChange,
 }: WorkflowEditorDialogProps) {
-    const base = useAutomationBase();
+    const teamSlug = usePage().props.currentTeam?.slug ?? null;
     const [state, setState] = useState<EditorState>(() =>
         initialState(workflow),
     );
@@ -146,7 +149,7 @@ function EditorBody({
         }));
 
     const save = async () => {
-        if (base === null || saving || jsonError !== null) {
+        if (teamSlug === null || saving || jsonError !== null) {
             return;
         }
 
@@ -191,13 +194,24 @@ function EditorBody({
 
         const result = await submit(
             isNew
-                ? postJson(`${base}/workflows`, {
+                ? postJson(automationRoutes.workflows.store.url(teamSlug), {
                       ...common,
-                      code: codeFromName(state.name),
+                      code: codeFromName(
+                          state.name,
+                          'automatizacion',
+                          Date.now().toString(36),
+                          40,
+                      ),
                       status: state.enabled ? 'active' : 'inactive',
                       is_active: state.enabled,
                   })
-                : putJson(`${base}/workflows/${workflow.id}`, common),
+                : putJson(
+                      automationRoutes.workflows.update.url([
+                          teamSlug,
+                          workflow.id,
+                      ]),
+                      common,
+                  ),
             isNew ? 'Automatización creada.' : 'Automatización guardada.',
         );
 

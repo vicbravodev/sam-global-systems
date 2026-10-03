@@ -11,6 +11,8 @@ import { Button } from '@/components/ui/button';
 import { formatDateTime } from '@/lib/format';
 import { isFresh, minutesSince } from '@/lib/time';
 import { cn } from '@/lib/utils';
+import assetRoutes from '@/routes/assets';
+import driverRoutes from '@/routes/drivers';
 import type { DriverDetail } from '@/types/drivers';
 
 export function DriverHero({
@@ -35,7 +37,7 @@ export function DriverHero({
 
     return (
         <DetailHeader
-            backHref={teamSlug ? `/${teamSlug}/drivers` : '#'}
+            backHref={teamSlug ? driverRoutes.index.url(teamSlug) : '#'}
             backLabel="Volver a conductores"
             media={<EntityAvatar name={driver.fullName} size={52} />}
             title={driver.fullName}
@@ -57,7 +59,10 @@ export function DriverHero({
                         <Link
                             href={
                                 teamSlug
-                                    ? `/${teamSlug}/assets/${driver.currentAsset.id}`
+                                    ? assetRoutes.show([
+                                          teamSlug,
+                                          driver.currentAsset.id,
+                                      ])
                                     : '#'
                             }
                             className="inline-flex items-center gap-1 text-fg-2 hover:text-primary hover:underline"
@@ -118,7 +123,10 @@ export function DriverHero({
                     {driver.currentAsset && teamSlug && (
                         <Button variant="outline" size="sm" asChild>
                             <Link
-                                href={`/${teamSlug}/assets/${driver.currentAsset.id}`}
+                                href={assetRoutes.show([
+                                    teamSlug,
+                                    driver.currentAsset.id,
+                                ])}
                             >
                                 <Truck size={13} />
                                 Ver unidad
