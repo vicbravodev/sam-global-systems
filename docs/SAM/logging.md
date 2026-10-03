@@ -162,6 +162,8 @@ Quién puede qué dentro de un tenant, y los cambios de quién entra. Sólo ids,
 | Código | Outcome | Reason posibles | Campos clave |
 |---|---|---|---|
 | `audit.domain_event.record_failed` | degraded | `classifier_failed`, `dispatch_failed` | `event_name`, `error` |
+| `audit.entity_change.skipped` | skipped | `platform_row` (plantilla sin `team_id`: no es historia de ningún tenant) | `entity_type`, `entity_id`, `team_id`, `changed_fields` |
+| `audit.entity_change.record_failed` | degraded | `write_failed` (falló el `change_histories`; la escritura de negocio sigue) | `entity_type`, `entity_id`, `team_id`, `changed_fields`, `error` |
 
 ### Ingestión (`ingestion`)
 
