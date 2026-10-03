@@ -21,7 +21,6 @@ use App\Domains\Assets\Models\AssetType;
 use App\Domains\Audit\Models\AuditLog;
 use App\Domains\Audit\Models\ChangeHistory;
 use App\Domains\Audit\Models\DomainEventLog;
-use App\Domains\Audit\Models\SystemTrace;
 use App\Domains\Automation\Models\ActionExecutionLog;
 use App\Domains\Automation\Models\ActionTemplate;
 use App\Domains\Automation\Models\AutomationWorkflow;
@@ -120,7 +119,6 @@ class TenantScopeConventionTest extends TestCase
         AuditLog::class => 'Filas de sistema (team_id null) no deben aparecer en la auditoría de un tenant.',
         ChangeHistory::class => 'Ídem AuditLog.',
         DomainEventLog::class => 'Ídem AuditLog.',
-        SystemTrace::class => 'Ídem AuditLog.',
         EventSource::class => 'Una fuente sin team es de plataforma y no debe verse desde un tenant.',
         PipelineFailureAlert::class => 'Alerta sin tenant resoluble (evento borrado) es sólo de plataforma y no debe verse desde un tenant.',
         UserNotification::class => 'Aviso in-app de plataforma (team_id null) no debe verse desde un tenant; con tenant activo sólo los de ese tenant.',

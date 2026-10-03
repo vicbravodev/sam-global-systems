@@ -1200,6 +1200,9 @@ class SamsaraAdapter implements MediaRetrievalAdapter, ProviderAdapter
             'name' => Arr::get($driver, 'name'),
             'username' => Arr::get($driver, 'username'),
             'phone' => Arr::get($driver, 'phone'),
+            // Static driver↔vehicle assignment: the driver sync turns it into
+            // `driver_assignments` rows. Always present (null = unassigned).
+            'static_vehicle_external_id' => $this->scalarString(Arr::get($driver, 'staticAssignedVehicle.id')),
             // Profile facts the Samsara driver record carries and the driver
             // detail page surfaces (license, username, timezone, tags...).
             // The driver sync persists `metadata` as-is into `metadata_json`.

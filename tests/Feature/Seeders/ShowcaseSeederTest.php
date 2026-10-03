@@ -104,7 +104,7 @@ class ShowcaseSeederTest extends TestCase
             "{$base}/assets/map" => ['assets/map', fn (AssertableInertia $p) => $p->where('assets', $nonEmpty)],
             "{$base}/assets/{$asset->id}" => ['assets/show', fn (AssertableInertia $p) => $p->where('telemetry', fn ($t) => count($t) === 7)->where('locationHistory', $nonEmpty)],
             "{$base}/drivers" => ['drivers/index', fn (AssertableInertia $p) => $p->where('drivers', $nonEmpty)],
-            "{$base}/drivers/{$driver->id}" => ['drivers/show', fn (AssertableInertia $p) => $p->where('driver.contacts', $nonEmpty)->where('driver.documents', $nonEmpty)->where('statusLog', $nonEmpty)->whereNot('driver.riskProfile', null)],
+            "{$base}/drivers/{$driver->id}" => ['drivers/show', fn (AssertableInertia $p) => $p->where('driver.contacts', $nonEmpty)->where('driver.documents', $nonEmpty)->missing('statusLog')->whereNot('driver.riskProfile', null)],
             "{$base}/integrations" => ['integrations/index', fn (AssertableInertia $p) => $p->where('integrations', fn ($i) => count($i) >= 3)],
             "{$base}/notifications" => ['notifications/index', fn (AssertableInertia $p) => $p->where('notifications', $nonEmpty)],
             "{$base}/notifications/{$notification->id}" => ['notifications/show', fn (AssertableInertia $p) => $p->has('notification')->where('deliveries', $nonEmpty)->where('deliveries', fn ($d) => collect($d)->contains(fn ($row) => ($row['events'] ?? []) !== []))],

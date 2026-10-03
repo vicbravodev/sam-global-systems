@@ -8,8 +8,14 @@ use App\Domains\Assets\Events\AssetLocationUpdated;
 use App\Domains\Assets\Events\AssetLocationUpdatedBroadcast;
 use App\Domains\Assets\Events\AssetStatusChanged;
 use App\Domains\Assets\Events\AssetStatusChangedBroadcast;
+use App\Domains\Assets\Models\Asset;
 use App\Domains\Audit\Enums\AuditCategory;
+use App\Domains\Audit\Enums\ChangeType;
+use App\Domains\Automation\Models\AutomationWorkflow;
 use App\Domains\Context\Events\EventContextBuilt;
+use App\Domains\Decisions\Models\DecisionRule;
+use App\Domains\Drivers\Models\Driver;
+use App\Domains\Incidents\Models\Incident;
 use App\Domains\Normalization\Events\EventNormalized;
 use App\Domains\Normalization\Events\EventUnmapped;
 use App\Domains\Tenancy\Events\TenantCreated;
@@ -172,6 +178,39 @@ return [
         // SPEC-16-DEFERRED: append tenant-config FQCNs to allowlist when domain merged.
         // \App\Domains\TenantConfig\Events\TenantSettingUpdated::class => [...]
         // \App\Domains\TenantConfig\Events\TenantAIProfileChanged::class => [...]
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Historial de cambios (Spec 14 §4.4, `change_histories`)
+    |--------------------------------------------------------------------------
+    |
+    | Modelos observados por `RecordTrackedChanges` y, por cada uno, los
+    | campos que cuentan como cambio significativo => el `ChangeType` que se
+    | guarda. Sólo esos campos: una escritura que no toque ninguno (telemetría,
+    | `last_seen_at`, contadores de escalada…) no deja fila. Si cambian varios
+    | a la vez se guarda UNA fila con todos y el tipo del primero de la lista.
+    |
+    */
+    'tracked_changes' => [
+        Incident::class => [
+            'incident_status_id' => ChangeType::StatusChanged->value,
+            'claimed_by_user_id' => ChangeType::Reassigned->value,
+            'incident_priority_id' => ChangeType::Reclassified->value,
+        ],
+        Asset::class => [
+            'monitoring_state' => ChangeType::StatusChanged->value,
+            'status' => ChangeType::StatusChanged->value,
+        ],
+        Driver::class => [
+            'status' => ChangeType::StatusChanged->value,
+        ],
+        DecisionRule::class => [
+            'is_active' => ChangeType::ConfigChanged->value,
+        ],
+        AutomationWorkflow::class => [
+            'is_active' => ChangeType::ConfigChanged->value,
+        ],
     ],
 
 ];

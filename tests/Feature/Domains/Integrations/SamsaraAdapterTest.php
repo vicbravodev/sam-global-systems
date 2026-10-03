@@ -560,5 +560,12 @@ class SamsaraAdapterTest extends TestCase
 
         // A bare driver record yields empty metadata, never a bag of nulls.
         $this->assertSame([], $result['drivers'][1]['metadata']);
+
+        // The static driver↔vehicle assignment travels as the vehicle's
+        // external id; a driver without one reports null (key present, so
+        // the sync knows to close any open assignment).
+        $this->assertSame('100', $result['drivers'][0]['static_vehicle_external_id']);
+        $this->assertArrayHasKey('static_vehicle_external_id', $result['drivers'][1]);
+        $this->assertNull($result['drivers'][1]['static_vehicle_external_id']);
     }
 }

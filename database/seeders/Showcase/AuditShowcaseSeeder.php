@@ -15,14 +15,13 @@ use Illuminate\Support\Facades\DB;
  * Auditoría: bitácora de todas las categorías (dominio, seguridad,
  * facturación, sistema, IA, integración) y todos los tipos de actor, la
  * cadena de eventos de dominio de cada incidente unida por
- * `correlation_id`, historial de cambios de estado y trazas distribuidas
- * del pipeline (spans por módulo).
+ * `correlation_id` e historial de cambios de estado.
  *
  * Tablas append-only: sólo inserciones. Idempotencia:
  *  - audit_logs: `signature = showcase:{team}:…` determinista +
  *    `insertOrIgnore` sobre el único (team_id, signature).
- *  - domain_event_logs / system_traces: `correlation_id` / `trace_id`
- *    deterministas por incidente; si ya existen se salta.
+ *  - domain_event_logs: `correlation_id` determinista por incidente; si
+ *    ya existe se salta.
  *  - change_histories: sólo incidentes del showcase sin historial.
  */
 class AuditShowcaseSeeder extends ShowcaseStep
@@ -53,13 +52,11 @@ class AuditShowcaseSeeder extends ShowcaseStep
         $logs = [];
         $domainEvents = [];
         $changes = [];
-        $traces = [];
         $existingCorrelations = array_flip(DB::table('domain_event_logs')->where('team_id', $this->ctx->team->id)->whereNotNull('correlation_id')->distinct()->pluck('correlation_id')->map(fn ($id) => (string) $id)->all());
         $withHistory = array_flip(DB::table('change_histories')->where('team_id', $this->ctx->team->id)->where('entity_type', 'Incident')->distinct()->pluck('entity_id')->all());
 
         foreach ($incidents as $incident) {
             $opened = CarbonImmutable::parse($incident->opened_at);
-            $random = ShowcaseRandom::forKey('audit:'.$incident->id);
             $sig = fn (string $what) => $this->ctx->key('audit', 'incident', (string) $incident->id, $what);
             $event = $incident->related_event_id !== null ? NormalizedEvent::query()->find($incident->related_event_id) : null;
 
@@ -108,8 +105,6 @@ class AuditShowcaseSeeder extends ShowcaseStep
                     ];
                     $previous = $causation;
                 }
-
-                $this->traceFor($incident, $opened, $random, $traces);
             }
 
             if (! isset($withHistory[$incident->id])) {
@@ -128,7 +123,6 @@ class AuditShowcaseSeeder extends ShowcaseStep
         $this->insertIgnore('audit_logs', $logs);
         $this->bulkInsert('domain_event_logs', $domainEvents, timestamps: false);
         $this->bulkInsert('change_histories', $changes, timestamps: false);
-        $this->bulkInsert('system_traces', $traces, timestamps: false);
     }
 
     /**
@@ -251,49 +245,6 @@ class AuditShowcaseSeeder extends ShowcaseStep
             'reason' => null,
             'occurred_at' => $at,
             'created_at' => $at,
-        ];
-    }
-
-    /**
-     * @param  array<int, array<string, mixed>>  $traces
-     */
-    private function traceFor(Incident $incident, CarbonImmutable $opened, ShowcaseRandom $random, array &$traces): void
-    {
-        $traceId = $this->uuid('trace', $incident->id);
-        $root = $this->uuid('span-root', $incident->id);
-        $cursor = $opened->subSeconds(8);
-        $failedModule = $random->chance(0.03) ? 'context' : null;
-
-        $traces[] = $this->span($traceId, $root, null, 'ingestion', 'receive_webhook', $cursor, $random->int(40, 180), null);
-
-        foreach (['normalization' => 'normalize_event', 'context' => 'build_context', 'ai' => 'evaluate_event', 'decisions' => 'decide', 'incidents' => 'create_incident'] as $module => $operation) {
-            $duration = $module === 'ai' ? $random->int(900, 6_000) : $random->int(15, 400);
-            $cursor = $cursor->addMilliseconds($random->int(20, 300));
-            $traces[] = $this->span($traceId, $this->uuid("span-{$module}", $incident->id), $root, $module, $operation, $cursor, $duration, $failedModule === $module ? 'Timeout consultando la ubicación en vivo; se usó la última conocida.' : null);
-        }
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function span(string $traceId, string $spanId, ?string $parent, string $module, string $operation, CarbonImmutable $start, int $durationMs, ?string $error): array
-    {
-        return [
-            'trace_id' => $traceId,
-            'span_id' => $spanId,
-            'parent_span_id' => $parent,
-            'team_id' => $this->ctx->team->id,
-            'module_name' => $module,
-            'operation_name' => $operation,
-            'status' => $error !== null && $error !== '' ? 'failed' : 'completed',
-            'started_at' => $start,
-            'finished_at' => $start->addMilliseconds($durationMs),
-            'duration_ms' => $durationMs,
-            'input_reference_json' => null,
-            'output_reference_json' => null,
-            'error_message' => $error,
-            'metadata_json' => ['showcase' => true],
-            'created_at' => $start,
         ];
     }
 

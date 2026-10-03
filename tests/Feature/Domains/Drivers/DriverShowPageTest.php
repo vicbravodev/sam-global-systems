@@ -183,8 +183,9 @@ class DriverShowPageTest extends TestCase
                 ->where('assignments.0.isCurrent', true)
                 ->where('assignments.1.id', $past->id)
                 ->where('assignments.1.isCurrent', false)
-                ->has('statusLog', 1)
-                ->where('statusLog.0.statusCode', 'active'),
+                // Sin escritor real del historial de estados: la tarjeta se
+                // retiró y la página ya no expone la prop.
+                ->missing('statusLog'),
         );
     }
 
@@ -218,7 +219,7 @@ class DriverShowPageTest extends TestCase
                 ->where('driver.riskProfile', null)
                 ->has('driver.contacts', 0)
                 ->has('assignments', 0)
-                ->has('statusLog', 0),
+                ->missing('statusLog'),
         );
     }
 
@@ -245,7 +246,7 @@ class DriverShowPageTest extends TestCase
                 ->component('drivers/show')
                 ->has('driver.contacts', 0)
                 ->has('assignments', 0)
-                ->has('statusLog', 0),
+                ->missing('statusLog'),
         );
     }
 

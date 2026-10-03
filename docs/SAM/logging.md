@@ -162,6 +162,8 @@ Quién puede qué dentro de un tenant, y los cambios de quién entra. Sólo ids,
 | Código | Outcome | Reason posibles | Campos clave |
 |---|---|---|---|
 | `audit.domain_event.record_failed` | degraded | `classifier_failed`, `dispatch_failed` | `event_name`, `error` |
+| `audit.entity_change.skipped` | skipped | `platform_row` (plantilla sin `team_id`: no es historia de ningún tenant) | `entity_type`, `entity_id`, `team_id`, `changed_fields` |
+| `audit.entity_change.record_failed` | degraded | `write_failed` (falló el `change_histories`; la escritura de negocio sigue) | `entity_type`, `entity_id`, `team_id`, `changed_fields`, `error` |
 
 ### Ingestión (`ingestion`)
 
@@ -715,6 +717,8 @@ Branches de `assets.after_hours.evaluated` (el resultado de `execute()` es `eval
 | Código | Outcome | Reason posibles | Campos clave |
 |---|---|---|---|
 | `drivers.sync.external_id_conflict` | skipped | `owned_by_other_tenant` | `team_id`, `provider_id`, `external_id` |
+| `drivers.assignment.synced` | ok / skipped | ok: result `outcome` `assigned` (abrió primaria de integración; `assignment_id`, `asset_id`, `previous_asset_id`) o `ended` (el proveedor ya no reporta vehículo; `assignment_id`, `asset_id`). skipped: `asset_not_found` (vehículo sin sincronizar o id externo de otro tenant), `unchanged` y `unassigned` (en **debug**: el sync se repite y no hay nada que escribir) | `team_id`, `driver_id`, `integration_id`, `vehicle_external_id`; calc `asset_id` en `unchanged` |
+| `drivers.assignment.sync_failed` | degraded | `write_failed` (falló la asignación; el sync del conductor sigue) | `team_id`, `driver_id`, `integration_id`, `vehicle_external_id`, `error` |
 | `drivers.sync.completed` | ok | — | `team_id`, `integration_id`, `duration_ms`; result `received`, `synced`, `external_id_conflicts` |
 | `drivers.risk_profile.recalculated` | ok | — | `team_id`, `driver_id`; calc `window_days` (30), `harsh_events`, `fatigue_events`, `severe_events`, `other_events`, `incidents`, `weights` (harsh 4, fatigue 8, severe 15, other 2, incident 10), `cap` (100), `level_thresholds` (low ≤ 25, medium ≤ 50, high ≤ 75, si no critical), `previous_score`; result `risk_score` = `min(cap, Σ término × peso)` redondeado a 2, `risk_level`, `previous_level`, `trend` (`baseline`/`deteriorating`/`improving`/`stable`), `alert_raised` (cruzó a high/critical: `driver.risk_deteriorated`). En **debug** cuando el nivel no cambia |
 | `drivers.risk_sweep.completed` | ok | — | barrido diario de plataforma, sin ids: calc `window_days`; result `tenants` (grupos por lote de 200), `drivers_scanned`, `skipped_no_activity` (sin eventos, incidentes ni perfil previo), `recalculated`, `alerts_raised`; `duration_ms` |
