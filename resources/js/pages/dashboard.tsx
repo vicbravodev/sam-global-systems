@@ -51,6 +51,11 @@ const RELOAD_DEBOUNCE_MS = 2000;
 // The KPI strip is a two-week aggregate: a live event barely moves it.
 const KPI_MIN_INTERVAL_MS = 30000;
 
+// The stream shows the last 8 events: during an ingestion burst every
+// decision and evaluation would reload it each debounce window (~30/min).
+// One refresh every few seconds still reads as live (~8/min at most).
+const STREAM_MIN_INTERVAL_MS = 8000;
+
 // Every prop of the page. "Refrescar" names them all: a reload without `only`
 // would drop the deferred ones (kpis, integrations, usage) back to their
 // skeletons until the follow-up deferred request lands.
@@ -75,7 +80,10 @@ export default function Dashboard({
 
     useBroadcastReload(RELOAD_KEYS_BY_EVENT, {
         debounceMs: RELOAD_DEBOUNCE_MS,
-        minIntervalMs: { kpis: KPI_MIN_INTERVAL_MS },
+        minIntervalMs: {
+            kpis: KPI_MIN_INTERVAL_MS,
+            stream: STREAM_MIN_INTERVAL_MS,
+        },
     });
 
     return (

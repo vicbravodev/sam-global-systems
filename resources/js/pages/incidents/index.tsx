@@ -25,8 +25,10 @@ import {
     TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { hasActiveFilters, useServerList } from '@/hooks/use-server-list';
-import { TEAM_BROADCAST_EVENT_NAME } from '@/hooks/use-team-broadcasts';
-import type { TeamBroadcastDetail } from '@/hooks/use-team-broadcasts';
+import {
+    useBroadcastReload,
+    useTeamBroadcast,
+} from '@/hooks/use-team-broadcasts';
 import { getJson, postJson, readErrorMessage } from '@/lib/sam-fetch';
 import { cn } from '@/lib/utils';
 import incidentRoutes from '@/routes/incidents';
@@ -515,6 +517,31 @@ const EMPTY_OPTIONS: InboxFilterOptions = {
 
 // Coalescing window for live inbox reloads.
 const INBOX_RELOAD_DEBOUNCE_MS = 1500;
+
+// How long after acting on an incident its broadcast echo is treated as our
+// own (the explicit post-action reload already fetched that state). Echoes go
+// through the realtime queue, normally well under a second.
+const OWN_ECHO_WINDOW_MS = 5000;
+
+/**
+ * Whether an `incidents.updated` echo belongs to an action this tab took in
+ * the last OWN_ECHO_WINDOW_MS. Expired entries are pruned on the way.
+ */
+function isOwnEcho(actedUntil: Map<number, number>, incidentId: number) {
+    const until = actedUntil.get(incidentId);
+
+    if (until === undefined) {
+        return false;
+    }
+
+    if (until < Date.now()) {
+        actedUntil.delete(incidentId);
+
+        return false;
+    }
+
+    return true;
+}
 export default function IncidentsIndex(pageProps: IncidentsIndexProps) {
     const page = usePage();
     const incidents = useMemo(
@@ -646,10 +673,71 @@ export default function IncidentsIndex(pageProps: IncidentsIndexProps) {
         return () => controller.abort();
     }, [selectedId, selectedRow, teamSlug, detailCache, failedIds]);
 
+    // Live updates: a freshly created or updated incident (status change,
+    // claim, media assessed) refreshes the inbox through the shared reload
+    // buffer: bursts coalesce into one 200-row reload, a hidden tab waits
+    // until it is visible again, a socket drop resyncs.
+    //
+    // The operator's own actions reload the list right away (instant
+    // feedback), so the broadcast echo of that same action would be a second
+    // identical 200-row reload: echoes of incidents this tab just acted on
+    // are skipped for OWN_ECHO_WINDOW_MS. Actions without an echo (assign,
+    // reclassify) are unaffected — their explicit reload is the only one.
+    const actedUntil = useRef<Map<number, number>>(new Map());
+
+    const markActed = (incidentIds: readonly number[]) => {
+        const until = Date.now() + OWN_ECHO_WINDOW_MS;
+        incidentIds.forEach((id) => actedUntil.current.set(id, until));
+    };
+
+    const reload = useBroadcastReload(
+        {
+            'incidents.created': ['incidents'],
+            'incidents.updated': (payload) =>
+                isOwnEcho(actedUntil.current, payload.incident_id)
+                    ? null
+                    : ['incidents'],
+        },
+        { debounceMs: INBOX_RELOAD_DEBOUNCE_MS },
+    );
+
+    /**
+     * The one list reload after the operator's own action: immediate, and it
+     * supersedes any reload already queued (an echo that beat the response).
+     */
+    const reloadAfterAction = (incidentIds: readonly number[]) => {
+        markActed(incidentIds);
+        reload.reloadNow(['incidents']);
+    };
+
+    // An update to an incident whose detail is cached drops that cache entry
+    // so the open panel is not left stale (own echoes included: the panel
+    // refetches on its own after a mutation anyway).
+    useTeamBroadcast(['incidents.updated'], (detail) => {
+        const rowId = incidents.find(
+            (row) => row.incidentId === detail.payload.incident_id,
+        )?.id;
+
+        if (rowId === undefined) {
+            return;
+        }
+
+        setDetailCache((prev) => {
+            if (!(rowId in prev)) {
+                return prev;
+            }
+
+            const next = { ...prev };
+            delete next[rowId];
+
+            return next;
+        });
+    });
+
     // Invalidate the cached detail for the open incident and refresh the list
     // after a panel action mutates server state.
     const handlePanelMutated = () => {
-        router.reload({ only: ['incidents'] });
+        reloadAfterAction(selectedRow ? [selectedRow.incidentId] : []);
 
         if (selectedId !== null) {
             setDetailCache((prev) => {
@@ -667,101 +755,6 @@ export default function IncidentsIndex(pageProps: IncidentsIndexProps) {
         }
     };
 
-    // Live updates: a freshly created or updated incident (status change,
-    // assignment, media assessed) refreshes the inbox list. Bursts (a
-    // reevaluation, an escalation wave, the operator's own action echoing
-    // back) coalesce into one 200-row reload, and a hidden tab waits until it
-    // is visible again. An update to an incident whose detail is cached drops
-    // that cache entry so the open panel is not left stale.
-    const incidentsRef = useRef(incidents);
-    const reloadTimer = useRef<number | null>(null);
-    const reloadPending = useRef(false);
-
-    useEffect(() => {
-        incidentsRef.current = incidents;
-    }, [incidents]);
-
-    useEffect(() => {
-        const hidden = () => document.visibilityState === 'hidden';
-
-        const flush = () => {
-            reloadTimer.current = null;
-
-            if (hidden() || !reloadPending.current) {
-                return;
-            }
-
-            reloadPending.current = false;
-            router.reload({ only: ['incidents'] });
-        };
-
-        const schedule = () => {
-            if (reloadTimer.current === null) {
-                reloadTimer.current = window.setTimeout(
-                    flush,
-                    INBOX_RELOAD_DEBOUNCE_MS,
-                );
-            }
-        };
-
-        const handler = (event: Event) => {
-            const detail = (event as CustomEvent<TeamBroadcastDetail>).detail;
-
-            if (
-                detail?.event !== 'incidents.created' &&
-                detail?.event !== 'incidents.updated'
-            ) {
-                return;
-            }
-
-            if (detail.event === 'incidents.updated') {
-                const incidentId = (
-                    detail as TeamBroadcastDetail<'incidents.updated'>
-                ).payload?.incident_id;
-                const rowId = incidentsRef.current.find(
-                    (row) => row.incidentId === incidentId,
-                )?.id;
-
-                if (rowId !== undefined) {
-                    setDetailCache((prev) => {
-                        if (!(rowId in prev)) {
-                            return prev;
-                        }
-
-                        const next = { ...prev };
-                        delete next[rowId];
-
-                        return next;
-                    });
-                }
-            }
-
-            reloadPending.current = true;
-            schedule();
-        };
-
-        const onVisibilityChange = () => {
-            if (!hidden() && reloadPending.current) {
-                schedule();
-            }
-        };
-
-        window.addEventListener(TEAM_BROADCAST_EVENT_NAME, handler);
-        document.addEventListener('visibilitychange', onVisibilityChange);
-
-        return () => {
-            window.removeEventListener(TEAM_BROADCAST_EVENT_NAME, handler);
-            document.removeEventListener(
-                'visibilitychange',
-                onVisibilityChange,
-            );
-
-            if (reloadTimer.current !== null) {
-                window.clearTimeout(reloadTimer.current);
-            }
-        };
-    }, []);
-
     const assignIncidentToMe = async (incident: MockIncident) => {
         if (teamSlug === null || currentUserId === null) {
             return;
@@ -776,7 +769,7 @@ export default function IncidentsIndex(pageProps: IncidentsIndexProps) {
             toast.error(NETWORK_ERROR);
         } else if (result.ok) {
             toast.success(`Te asignaste ${incident.id}.`);
-            router.reload({ only: ['incidents'] });
+            reloadAfterAction([incident.incidentId]);
         } else {
             toast.error(result.message ?? 'No se pudo asignar el incidente.');
         }
@@ -810,12 +803,13 @@ export default function IncidentsIndex(pageProps: IncidentsIndexProps) {
             toast.success(
                 mine ? `Soltaste ${incident.id}.` : `Tomaste ${incident.id}.`,
             );
-            router.reload({ only: ['incidents'] });
+            reloadAfterAction([incident.incidentId]);
         } else {
             toast.error(result.message ?? 'No se pudo completar la acción.');
 
+            // Lost race: show who won. Not our echo, so nothing is marked.
             if (result.status === 409) {
-                router.reload({ only: ['incidents'] });
+                reload.reloadNow(['incidents']);
             }
         }
 
@@ -877,9 +871,12 @@ export default function IncidentsIndex(pageProps: IncidentsIndexProps) {
             ),
         );
 
-        const ok = results.filter(
-            (r) => r.status === 'fulfilled' && r.value.ok,
-        ).length;
+        const succeeded = targets.filter((_, index) => {
+            const result = results[index];
+
+            return result.status === 'fulfilled' && result.value.ok;
+        });
+        const ok = succeeded.length;
         const failed = targets.length - ok;
 
         setBulkPending(null);
@@ -893,7 +890,9 @@ export default function IncidentsIndex(pageProps: IncidentsIndexProps) {
             toast.error(`${failed} no se pudieron procesar.`);
         }
 
-        router.reload({ only: ['incidents'] });
+        // One reload for the whole batch; the echoes of the incidents that
+        // changed are covered by it.
+        reloadAfterAction(succeeded.map((incident) => incident.incidentId));
     };
 
     const bulkAssign = () => {
@@ -968,7 +967,7 @@ export default function IncidentsIndex(pageProps: IncidentsIndexProps) {
             toast.error(NETWORK_ERROR);
         } else if (result.ok) {
             toast.success(`Te asignaste ${oldest.id}.`);
-            router.reload({ only: ['incidents'] });
+            reloadAfterAction([oldest.incidentId]);
         } else if (result.status === 403) {
             toast.error('No tienes permisos para asignar.');
         } else {
