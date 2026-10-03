@@ -3,6 +3,7 @@ import type { TabKey } from '@/components/sam/admin/tenant/tabs';
 import type { Setup } from '@/components/sam/admin/tenant/types';
 import { Panel } from '@/components/sam/panel';
 import { timezoneLabel } from '@/lib/timezones';
+import { TONE_DOT, TONE_TEXT } from '@/lib/tone';
 import { cn } from '@/lib/utils';
 
 export function SetupChecklist({
@@ -33,7 +34,7 @@ export function SetupChecklist({
                         <span
                             className={cn(
                                 'block h-full rounded-full',
-                                ready ? 'bg-health-ok' : 'bg-primary',
+                                TONE_DOT[ready ? 'ok' : 'primary'],
                             )}
                             style={{
                                 width: `${(setup.completed / Math.max(1, setup.total)) * 100}%`,
@@ -49,7 +50,10 @@ export function SetupChecklist({
                     <li key={step.key} className="flex gap-2.5">
                         {step.done ? (
                             <CheckCircle2
-                                className="mt-0.5 size-4 shrink-0 text-health-ok"
+                                className={cn(
+                                    'mt-0.5 size-4 shrink-0',
+                                    TONE_TEXT.ok,
+                                )}
                                 aria-label="Hecho"
                             />
                         ) : (
