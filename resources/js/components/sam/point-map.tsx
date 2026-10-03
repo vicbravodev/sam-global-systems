@@ -22,11 +22,9 @@ import type { Tone } from '@/lib/tone';
 import { cn } from '@/lib/utils';
 import type { AssetStatusValue } from '@/types/assets';
 
-export type PointTone = Tone;
-
 // Status a tone stands for when the point is a unit, so the detail map draws
 // the same marker as the fleet map.
-const TONE_STATUS: Record<PointTone, AssetStatusValue> = {
+const TONE_STATUS: Record<Tone, AssetStatusValue> = {
     ok: 'active',
     warn: 'maintenance',
     high: 'alert',
@@ -49,7 +47,7 @@ interface Props {
     /** km/h; with a heading, draws the unit as moving. */
     speed?: number | null;
     label?: string;
-    tone?: PointTone;
+    tone?: Tone;
     /**
      * `unit`: the fleet map's vehicle marker (status + heading).
      * `pin`: a place where something happened (event, incident).
