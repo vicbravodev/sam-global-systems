@@ -1,17 +1,7 @@
 import type { SharedPageProps } from '@inertiajs/core';
 import { Head, router, usePage } from '@inertiajs/react';
-import {
-    Activity,
-    AlertTriangle,
-    CheckCircle2,
-    CircleDashed,
-    Plug,
-    Plus,
-    Truck,
-    Users,
-} from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
-import { toast } from 'sonner';
+import { Plug, Plus } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { ConfirmDialog } from '@/components/sam/confirm-dialog';
 import { ConnectDialog } from '@/components/sam/integrations/connect-dialog';
 import { EditDialog } from '@/components/sam/integrations/edit-dialog';
@@ -25,13 +15,17 @@ import {
     summaryStatus,
 } from '@/components/sam/integrations/integration-state';
 import { IntegrationsEmpty } from '@/components/sam/integrations/integrations-empty';
+import { IntegrationsPulse } from '@/components/sam/integrations/integrations-pulse';
+import {
+    FILTER_EMPTY,
+    INTEGRATIONS_RELOAD_PROPS as RELOAD_PROPS,
+    summarizeIntegrations,
+} from '@/components/sam/integrations/lib';
+import { useIntegrationActions } from '@/components/sam/integrations/use-integration-actions';
 import { ListPage } from '@/components/sam/list-page';
-import { PulseStat, PulseStrip } from '@/components/sam/pulse-strip';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { useBroadcastReload } from '@/hooks/use-team-broadcasts';
-import { formatNumber } from '@/lib/format';
-import { deleteJson, postJson, readErrorMessage } from '@/lib/sam-fetch';
 import integrationRoutes from '@/routes/integrations';
 import type {
     AuthTypeOption,
@@ -48,32 +42,6 @@ interface IntegrationsIndexProps {
     authTypes: AuthTypeOption[];
 }
 
-const RELOAD_PROPS = ['integrations', 'summary'];
-
-function summarize(integrations: IntegrationRow[]): IntegrationsSummary {
-    const count = (status: TenantIntegrationStatus) =>
-        integrations.filter((i) => summaryStatus(i) === status).length;
-
-    return {
-        total: integrations.length,
-        working: count('active'),
-        attention: count('error'),
-        pending: count('pending'),
-        inactive: count('inactive'),
-        events24h: integrations.reduce((n, i) => n + (i.events24h ?? 0), 0),
-        assets: 0,
-        monitored: 0,
-        drivers: 0,
-    };
-}
-
-const FILTER_EMPTY: Record<TenantIntegrationStatus, string> = {
-    active: 'Ninguna conexión está funcionando ahora mismo.',
-    error: 'Ninguna conexión requiere atención. Todo en orden.',
-    pending: 'No hay conexiones pendientes de configurar.',
-    inactive: 'No hay conexiones desactivadas.',
-};
-
 export default function IntegrationsIndex(pageProps: IntegrationsIndexProps) {
     // Status flips from the feed (circuit opened) or another operator.
     useBroadcastReload(
@@ -85,7 +53,7 @@ export default function IntegrationsIndex(pageProps: IntegrationsIndexProps) {
         () => pageProps.integrations ?? [],
         [pageProps.integrations],
     );
-    const summary = pageProps.summary ?? summarize(integrations);
+    const summary = pageProps.summary ?? summarizeIntegrations(integrations);
     const providers = pageProps.providers ?? [];
     const authTypes = pageProps.authTypes ?? [];
     const teamSlug = page.props.currentTeam?.slug ?? null;
@@ -95,10 +63,7 @@ export default function IntegrationsIndex(pageProps: IntegrationsIndexProps) {
     const [filter, setFilter] = useState<TenantIntegrationStatus | null>(null);
     const [connectOpen, setConnectOpen] = useState(false);
     const [editing, setEditing] = useState<EditTarget | null>(null);
-    const [disconnecting, setDisconnecting] = useState<IntegrationRow | null>(
-        null,
-    );
-    const [testingId, setTestingId] = useState<number | null>(null);
+    const actions = useIntegrationActions(teamSlug);
 
     const visible = useMemo(
         () =>
@@ -112,91 +77,8 @@ export default function IntegrationsIndex(pageProps: IntegrationsIndexProps) {
         [integrations, filter],
     );
 
-    const toggle = (status: TenantIntegrationStatus) => () =>
-        setFilter((current) => (current === status ? null : status));
-
     const openEdit = (integration: IntegrationRow, mode: EditMode) =>
         setEditing({ integration, mode });
-
-    const runTest = useCallback(
-        async (integration: IntegrationRow) => {
-            if (teamSlug === null) {
-                toast.error('No hay equipo activo.');
-
-                return;
-            }
-
-            setTestingId(integration.id);
-
-            const response = await postJson(
-                integrationRoutes.test.url([teamSlug, integration.id]),
-            );
-
-            setTestingId(null);
-
-            if (response.status === 403) {
-                toast.error('No tienes permisos para probar conexiones.');
-
-                return;
-            }
-
-            if (!response.ok) {
-                toast.error(
-                    (await readErrorMessage(response)) ??
-                        'No se pudo probar la conexión.',
-                );
-                router.reload({ only: RELOAD_PROPS });
-
-                return;
-            }
-
-            const payload = (await response.json()) as {
-                data?: { success?: boolean; message?: string };
-            };
-
-            if (payload.data?.success) {
-                toast.success(
-                    `Conexión correcta: SAM puede leer los datos de ${integration.provider}.`,
-                );
-            } else {
-                toast.error(
-                    'La prueba falló. En la tarjeta te decimos qué pasó y cómo resolverlo.',
-                );
-            }
-
-            router.reload({ only: RELOAD_PROPS });
-        },
-        [teamSlug],
-    );
-
-    const disconnect = useCallback(async () => {
-        if (disconnecting === null || teamSlug === null) {
-            return;
-        }
-
-        const response = await deleteJson(
-            integrationRoutes.destroy.url([teamSlug, disconnecting.id]),
-        );
-
-        if (response.ok) {
-            toast.success('Conexión eliminada.');
-            setDisconnecting(null);
-            router.reload({ only: RELOAD_PROPS });
-
-            return;
-        }
-
-        if (response.status === 403) {
-            toast.error('No tienes permisos para desconectar proveedores.');
-
-            return;
-        }
-
-        toast.error(
-            (await readErrorMessage(response)) ??
-                'No se pudo desconectar el proveedor.',
-        );
-    }, [disconnecting, teamSlug]);
 
     const hasAny = integrations.length > 0;
 
@@ -237,67 +119,11 @@ export default function IntegrationsIndex(pageProps: IntegrationsIndexProps) {
             <Head title="Integraciones" />
 
             {hasAny ? (
-                <PulseStrip>
-                    <PulseStat
-                        label="Conexiones"
-                        value={summary.total}
-                        icon={Plug}
-                        hint="con tus proveedores"
-                        onClick={() => setFilter(null)}
-                        active={filter === null}
-                    />
-                    <PulseStat
-                        label="Funcionando"
-                        value={summary.working}
-                        icon={CheckCircle2}
-                        tone={summary.working > 0 ? 'ok' : 'neutral'}
-                        hint="reciben datos"
-                        onClick={toggle('active')}
-                        active={filter === 'active'}
-                    />
-                    <PulseStat
-                        label="Atención"
-                        value={summary.attention}
-                        icon={AlertTriangle}
-                        tone={summary.attention > 0 ? 'critical' : 'neutral'}
-                        hint={
-                            summary.attention > 0
-                                ? 'sin datos hasta resolverlo'
-                                : 'todo en orden'
-                        }
-                        onClick={toggle('error')}
-                        active={filter === 'error'}
-                    />
-                    <PulseStat
-                        label="Pendientes"
-                        value={summary.pending}
-                        icon={CircleDashed}
-                        tone={summary.pending > 0 ? 'warn' : 'neutral'}
-                        hint="falta terminar de configurar"
-                        onClick={toggle('pending')}
-                        active={filter === 'pending'}
-                    />
-                    <PulseStat
-                        label="Eventos 24 h"
-                        value={formatNumber(summary.events24h)}
-                        icon={Activity}
-                        tone="info"
-                        live={summary.events24h > 0}
-                        hint="recibidos de tus proveedores"
-                    />
-                    <PulseStat
-                        label="Unidades"
-                        value={formatNumber(summary.assets)}
-                        icon={Truck}
-                        hint={`${formatNumber(summary.monitored)} monitoreadas`}
-                    />
-                    <PulseStat
-                        label="Conductores"
-                        value={formatNumber(summary.drivers)}
-                        icon={Users}
-                        hint="traídos del proveedor"
-                    />
-                </PulseStrip>
+                <IntegrationsPulse
+                    summary={summary}
+                    filter={filter}
+                    setFilter={setFilter}
+                />
             ) : null}
 
             <div className="min-h-0 flex-1 overflow-y-auto">
@@ -329,14 +155,14 @@ export default function IntegrationsIndex(pageProps: IntegrationsIndexProps) {
                                 integration={integration}
                                 canManage={canManage}
                                 teamSlug={teamSlug}
-                                testing={testingId === integration.id}
-                                onTest={() => void runTest(integration)}
+                                testing={actions.testingId === integration.id}
+                                onTest={() => void actions.runTest(integration)}
                                 onEdit={() => openEdit(integration, 'edit')}
                                 onUpdateKey={() =>
                                     openEdit(integration, 'credentials')
                                 }
                                 onDisconnect={() =>
-                                    setDisconnecting(integration)
+                                    actions.setDisconnecting(integration)
                                 }
                                 onWebhookSecretSaved={() =>
                                     router.reload({ only: RELOAD_PROPS })
@@ -360,18 +186,18 @@ export default function IntegrationsIndex(pageProps: IntegrationsIndexProps) {
                 teamSlug={teamSlug}
             />
             <ConfirmDialog
-                open={disconnecting !== null}
+                open={actions.disconnecting !== null}
                 title="Desconectar proveedor"
                 description={
-                    disconnecting
-                        ? `SAM dejará de recibir ubicaciones, eventos y alertas de «${disconnecting.name}». Tus unidades, conductores e historial se conservan. Para volver a conectarla tendrás que pegar la clave de acceso otra vez.`
+                    actions.disconnecting
+                        ? `SAM dejará de recibir ubicaciones, eventos y alertas de «${actions.disconnecting.name}». Tus unidades, conductores e historial se conservan. Para volver a conectarla tendrás que pegar la clave de acceso otra vez.`
                         : ''
                 }
                 confirmLabel="Desconectar"
-                onConfirm={disconnect}
+                onConfirm={actions.disconnect}
                 onOpenChange={(open) => {
                     if (!open) {
-                        setDisconnecting(null);
+                        actions.setDisconnecting(null);
                     }
                 }}
             />

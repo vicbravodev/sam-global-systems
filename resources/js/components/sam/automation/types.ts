@@ -100,3 +100,12 @@ export interface AutomationPageProps {
     teamTargets: TeamTargets;
     canManage: boolean;
 }
+
+export type AutomationTab = 'workflows' | 'executions';
+
+export type WorkflowFilter = 'active' | 'inactive';
+
+export interface ExecutionFilters {
+    status: ExecutionStatusFilter | null;
+    workflow: number | null;
+}

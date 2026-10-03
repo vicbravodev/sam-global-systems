@@ -1,34 +1,21 @@
-import { Form, Head, Link, router, usePage } from '@inertiajs/react';
-import { ChevronDown, Mail, UserPlus, X } from 'lucide-react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
+import { UserPlus } from 'lucide-react';
 import { useState } from 'react';
 import CancelInvitationModal from '@/components/cancel-invitation-modal';
 import DeleteTeamModal from '@/components/delete-team-modal';
-import InputError from '@/components/input-error';
 import InviteMemberModal from '@/components/invite-member-modal';
 import RemoveMemberModal from '@/components/remove-member-modal';
-import { Field, FormCard } from '@/components/sam/field';
 import {
-    FormActions,
     SettingsPage,
     SettingsSection,
 } from '@/components/sam/settings/settings-page';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { InvitationRow } from '@/components/sam/teams/invitation-row';
+import { MemberRow } from '@/components/sam/teams/member-row';
+import { TeamClosureSections } from '@/components/sam/teams/team-closure-sections';
+import { TeamDetailsSection } from '@/components/sam/teams/team-details-section';
 import { Button } from '@/components/ui/button';
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { Input } from '@/components/ui/input';
-import {
-    Tooltip,
-    TooltipContent,
-    TooltipTrigger,
-} from '@/components/ui/tooltip';
-import { getInitials } from '@/lib/initials';
 import roleRoutes from '@/routes/access/roles';
-import { edit, index, update } from '@/routes/teams';
+import { edit, index } from '@/routes/teams';
 import { update as updateMember } from '@/routes/teams/members';
 import type {
     RoleOption,
@@ -120,40 +107,7 @@ export default function TeamEdit({
                 }
             >
                 {permissions.canUpdateTeam ? (
-                    <SettingsSection
-                        title="Datos del equipo"
-                        description="El nombre se muestra en el selector de equipos y en los correos de invitación."
-                    >
-                        <Form {...update.form(team.slug)}>
-                            {({ errors, processing }) => (
-                                <FormCard>
-                                    <Field
-                                        label="Nombre del equipo"
-                                        htmlFor="name"
-                                    >
-                                        <Input
-                                            id="name"
-                                            name="name"
-                                            data-test="team-name-input"
-                                            defaultValue={team.name}
-                                            required
-                                        />
-                                        <InputError message={errors.name} />
-                                    </Field>
-                                    <FormActions>
-                                        <Button
-                                            type="submit"
-                                            size="sm"
-                                            data-test="team-save-button"
-                                            disabled={processing}
-                                        >
-                                            Guardar cambios
-                                        </Button>
-                                    </FormActions>
-                                </FormCard>
-                            )}
-                        </Form>
-                    </SettingsSection>
+                    <TeamDetailsSection team={team} />
                 ) : null}
 
                 <SettingsSection
@@ -181,92 +135,14 @@ export default function TeamEdit({
                     </p>
                     <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface-1">
                         {members.map((member) => (
-                            <li
+                            <MemberRow
                                 key={member.id}
-                                data-test="member-row"
-                                className="flex flex-wrap items-center gap-3 px-5 py-3"
-                            >
-                                <Avatar className="size-9">
-                                    {member.avatar ? (
-                                        <AvatarImage
-                                            src={member.avatar}
-                                            alt={member.name}
-                                        />
-                                    ) : null}
-                                    <AvatarFallback>
-                                        {getInitials(member.name)}
-                                    </AvatarFallback>
-                                </Avatar>
-                                <div className="min-w-0 flex-1">
-                                    <div className="truncate text-sm font-medium text-fg-1">
-                                        {member.name}
-                                    </div>
-                                    <div className="truncate text-xs text-fg-3">
-                                        {member.email}
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-1">
-                                    {member.role !== 'owner' &&
-                                    permissions.canUpdateMember ? (
-                                        <DropdownMenu>
-                                            <DropdownMenuTrigger asChild>
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    data-test="member-role-trigger"
-                                                >
-                                                    {member.role_label}
-                                                    <ChevronDown className="size-4 opacity-50" />
-                                                </Button>
-                                            </DropdownMenuTrigger>
-                                            <DropdownMenuContent align="end">
-                                                {availableRoles.map((role) => (
-                                                    <DropdownMenuItem
-                                                        key={role.value}
-                                                        data-test="member-role-option"
-                                                        onSelect={() =>
-                                                            updateMemberRole(
-                                                                member,
-                                                                role.value,
-                                                            )
-                                                        }
-                                                    >
-                                                        {role.label}
-                                                    </DropdownMenuItem>
-                                                ))}
-                                            </DropdownMenuContent>
-                                        </DropdownMenu>
-                                    ) : (
-                                        <span className="rounded-sm bg-surface-3 px-2 py-1 text-xs text-fg-2">
-                                            {member.role_label}
-                                        </span>
-                                    )}
-                                    {member.role !== 'owner' &&
-                                    permissions.canRemoveMember ? (
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="size-8 text-fg-3 hover:text-severity-critical"
-                                                    aria-label={`Quitar a ${member.name}`}
-                                                    data-test="member-remove-button"
-                                                    onClick={() =>
-                                                        confirmRemoveMember(
-                                                            member,
-                                                        )
-                                                    }
-                                                >
-                                                    <X className="size-4" />
-                                                </Button>
-                                            </TooltipTrigger>
-                                            <TooltipContent>
-                                                <p>Quitar del equipo</p>
-                                            </TooltipContent>
-                                        </Tooltip>
-                                    ) : null}
-                                </div>
-                            </li>
+                                member={member}
+                                permissions={permissions}
+                                availableRoles={availableRoles}
+                                onChangeRole={updateMemberRole}
+                                onRemove={confirmRemoveMember}
+                            />
                         ))}
                     </ul>
                 </SettingsSection>
@@ -278,89 +154,22 @@ export default function TeamEdit({
                     >
                         <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface-1">
                             {invitations.map((invitation) => (
-                                <li
+                                <InvitationRow
                                     key={invitation.id}
-                                    data-test="invitation-row"
-                                    className="flex items-center gap-3 px-5 py-3"
-                                >
-                                    <div className="grid size-9 shrink-0 place-items-center rounded-full bg-surface-3">
-                                        <Mail className="size-4 text-fg-3" />
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                        <div className="truncate text-sm font-medium text-fg-1">
-                                            {invitation.email}
-                                        </div>
-                                        <div className="text-xs text-fg-3">
-                                            {invitation.role_label}
-                                        </div>
-                                    </div>
-                                    {permissions.canCancelInvitation ? (
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="size-8 text-fg-3 hover:text-severity-critical"
-                                                    aria-label={`Cancelar la invitación de ${invitation.email}`}
-                                                    data-test="invitation-cancel-button"
-                                                    onClick={() =>
-                                                        confirmCancelInvitation(
-                                                            invitation,
-                                                        )
-                                                    }
-                                                >
-                                                    <X className="size-4" />
-                                                </Button>
-                                            </TooltipTrigger>
-                                            <TooltipContent>
-                                                <p>Cancelar invitación</p>
-                                            </TooltipContent>
-                                        </Tooltip>
-                                    ) : null}
-                                </li>
+                                    invitation={invitation}
+                                    canCancel={permissions.canCancelInvitation}
+                                    onCancel={confirmCancelInvitation}
+                                />
                             ))}
                         </ul>
                     </SettingsSection>
                 ) : null}
 
-                {permissions.canDeleteTeam && !team.isPersonal ? (
-                    <SettingsSection
-                        title="Eliminar equipo"
-                        description="Borra el equipo para siempre. No se puede deshacer."
-                        tone="danger"
-                    >
-                        <div className="flex max-w-3xl flex-wrap items-center justify-between gap-3 rounded-lg border border-severity-critical/30 bg-severity-critical/5 p-4">
-                            <p className="text-sm text-fg-2">
-                                Se pierden sus personas, invitaciones y
-                                configuración.
-                            </p>
-                            <Button
-                                variant="destructive"
-                                size="sm"
-                                data-test="delete-team-button"
-                                onClick={() => setDeleteDialogOpen(true)}
-                            >
-                                Eliminar equipo
-                            </Button>
-                        </div>
-                    </SettingsSection>
-                ) : null}
-
-                {!permissions.canDeleteTeam &&
-                !team.isPersonal &&
-                team.role === 'owner' ? (
-                    <SettingsSection
-                        title="Dar de baja la cuenta"
-                        description="Este equipo es una cuenta activa de SAM."
-                    >
-                        <p className="max-w-3xl text-sm text-fg-3">
-                            Dar de baja la cuenta elimina la operación completa
-                            (incidentes, integraciones e historial de
-                            facturación), así que no se hace desde aquí.
-                            Contacta al equipo de SAM para cancelar el servicio.
-                        </p>
-                    </SettingsSection>
-                ) : null}
+                <TeamClosureSections
+                    team={team}
+                    permissions={permissions}
+                    onDelete={() => setDeleteDialogOpen(true)}
+                />
             </SettingsPage>
 
             {permissions.canCreateInvitation ? (
