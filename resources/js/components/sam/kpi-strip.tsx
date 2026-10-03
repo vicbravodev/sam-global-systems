@@ -1,6 +1,7 @@
 import { ArrowDownRight, ArrowUpRight } from 'lucide-react';
 import type { ReactNode } from 'react';
 
+import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
 export interface DeltaProps {
@@ -128,5 +129,38 @@ export function KpiStrip({ children, cols = 4, className }: KpiStripProps) {
         >
             {children}
         </div>
+    );
+}
+
+export interface KpiStripSkeletonProps {
+    /** Labels of the KPIs that will load, so the strip keeps its layout. */
+    labels: readonly string[];
+    cols?: KpiStripProps['cols'];
+    className?: string;
+}
+
+/**
+ * Placeholder for a deferred KPI strip: same tiles, labels and minimum height
+ * as the loaded strip, with pulsing bars where the value and the secondary
+ * line go.
+ */
+export function KpiStripSkeleton({
+    labels,
+    cols,
+    className,
+}: KpiStripSkeletonProps) {
+    return (
+        <KpiStrip cols={cols} className={className}>
+            {labels.map((label) => (
+                <Kpi
+                    key={label}
+                    label={label}
+                    value={
+                        <Skeleton className="inline-block h-6 w-14 align-middle" />
+                    }
+                    sub={<Skeleton className="h-3 w-24" />}
+                />
+            ))}
+        </KpiStrip>
     );
 }

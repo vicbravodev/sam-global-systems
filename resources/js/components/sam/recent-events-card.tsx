@@ -90,6 +90,7 @@ export function RecentEventsCard({
                                     />
                                     <div className="flex min-w-0 flex-1 flex-col">
                                         <Link
+                                            prefetch={teamSlug !== null}
                                             href={
                                                 teamSlug
                                                     ? eventRoutes.show([

@@ -67,10 +67,10 @@ class DashboardOpsCorrectnessTest extends TestCase
         $this->actingAs($monitor)
             ->get(route('dashboard', ['current_team' => $team->slug]))
             ->assertOk()
-            ->assertInertia(fn (Assert $page) => $page
+            ->assertInertia(fn (Assert $page) => $page->loadDeferredProps('panels', fn (Assert $reload) => $reload
                 ->has('usage', 1)
                 ->where('usage.0.amount', null)
-                ->where('usage.0.unit', fn ($unit) => $unit !== CostPlusPricing::MICRO_UNIT));
+                ->where('usage.0.unit', fn ($unit) => $unit !== CostPlusPricing::MICRO_UNIT)));
     }
 
     public function test_billing_roles_see_the_charged_amount_not_the_provider_cost(): void
@@ -86,9 +86,9 @@ class DashboardOpsCorrectnessTest extends TestCase
 
         $this->actingAs($owner)
             ->get(route('dashboard', ['current_team' => $team->slug]))
-            ->assertInertia(fn (Assert $page) => $page
+            ->assertInertia(fn (Assert $page) => $page->loadDeferredProps('panels', fn (Assert $reload) => $reload
                 ->has('usage', 1)
-                ->where('usage.0.amount', $expected));
+                ->where('usage.0.amount', $expected)));
     }
 
     public function test_ai_precision_ignores_placeholder_null_agent_decisions(): void
@@ -119,7 +119,7 @@ class DashboardOpsCorrectnessTest extends TestCase
 
         $this->actingAs($user)
             ->get(route('dashboard', ['current_team' => $team->slug]))
-            ->assertInertia(fn (Assert $page) => $page->where('kpis.aiPrecision.value', 50));
+            ->assertInertia(fn (Assert $page) => $page->loadDeferredProps('kpis', fn (Assert $reload) => $reload->where('kpis.aiPrecision.value', 50)));
     }
 
     public function test_ai_precision_is_empty_when_only_placeholder_verdicts_exist(): void
@@ -138,7 +138,7 @@ class DashboardOpsCorrectnessTest extends TestCase
 
         $this->actingAs($user)
             ->get(route('dashboard', ['current_team' => $team->slug]))
-            ->assertInertia(fn (Assert $page) => $page->where('kpis.aiPrecision.value', null));
+            ->assertInertia(fn (Assert $page) => $page->loadDeferredProps('kpis', fn (Assert $reload) => $reload->where('kpis.aiPrecision.value', null)));
     }
 
     private function eventFor(TenantIntegration $integration): NormalizedEvent
@@ -186,13 +186,13 @@ class DashboardOpsCorrectnessTest extends TestCase
 
         $this->actingAs($user)
             ->get(route('dashboard', ['current_team' => $team->slug]))
-            ->assertInertia(fn (Assert $page) => $page
+            ->assertInertia(fn (Assert $page) => $page->loadDeferredProps('panels', fn (Assert $reload) => $reload
                 ->has('integrations', 2)
                 ->where('integrations.0.name', 'Flota Sur')
                 ->where('integrations.0.provider', 'Samsara')
                 ->where('integrations.0.events24h', 1)
                 ->where('integrations.1.name', 'Flota Norte')
-                ->where('integrations.1.events24h', 2));
+                ->where('integrations.1.events24h', 2)));
     }
 
     public function test_per_integration_counts_never_read_another_tenant(): void

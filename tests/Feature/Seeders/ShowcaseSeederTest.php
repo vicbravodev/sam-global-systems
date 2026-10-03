@@ -95,7 +95,7 @@ class ShowcaseSeederTest extends TestCase
             ->firstOrFail();
 
         $pages = [
-            "{$base}/dashboard" => ['dashboard', fn (AssertableInertia $p) => $p->where('incidents', $nonEmpty)->where('stream', $nonEmpty)->where('integrations', $nonEmpty)->where('usage', $nonEmpty)],
+            "{$base}/dashboard" => ['dashboard', fn (AssertableInertia $p) => $p->where('incidents', $nonEmpty)->where('stream', $nonEmpty)->loadDeferredProps('panels', fn (AssertableInertia $r) => $r->where('integrations', $nonEmpty)->where('usage', $nonEmpty))],
             "{$base}/events" => ['events/index', fn (AssertableInertia $p) => $p->where('events', $nonEmpty)],
             "{$base}/events/{$event->id}" => ['events/show', fn (AssertableInertia $p) => $p->whereNot('evaluation', null)->whereNot('decision', null)],
             "{$base}/incidents" => ['incidents/index', fn (AssertableInertia $p) => $p->where('incidents', $nonEmpty)],

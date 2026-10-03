@@ -1,10 +1,11 @@
 import type { SharedPageProps } from '@inertiajs/core';
-import { Head, Link, router, usePage } from '@inertiajs/react';
+import { Deferred, Head, Link, router, usePage } from '@inertiajs/react';
 import { ChevronRight, Gauge, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
 import {
     Kpi,
     KpiStrip,
+    KpiStripSkeleton,
     MetaChip,
     ProviderTag,
     RealtimeStatus,
@@ -17,6 +18,7 @@ import { StatusBadge } from '@/components/sam/status-badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useRealtimeConnection } from '@/hooks/use-realtime-connection';
 import { useBroadcastReload } from '@/hooks/use-team-broadcasts';
 import { formatCurrency, formatNumber, formatPercent } from '@/lib/format';
@@ -26,6 +28,7 @@ import { dashboard, home } from '@/routes';
 import incidentRoutes from '@/routes/incidents';
 import type {
     DashboardIntegration,
+    DashboardKpis,
     DashboardProps,
     DashboardStreamEvent,
     IncidentRow,
@@ -48,6 +51,23 @@ const RELOAD_DEBOUNCE_MS = 2000;
 // The KPI strip is a two-week aggregate: a live event barely moves it.
 const KPI_MIN_INTERVAL_MS = 30000;
 
+// The stream shows the last 8 events: during an ingestion burst every
+// decision and evaluation would reload it each debounce window (~30/min).
+// One refresh every few seconds still reads as live (~8/min at most).
+const STREAM_MIN_INTERVAL_MS = 8000;
+
+// Every prop of the page. "Refrescar" names them all: a reload without `only`
+// would drop the deferred ones (kpis, integrations, usage) back to their
+// skeletons until the follow-up deferred request lands.
+const ALL_KEYS = ['kpis', 'incidents', 'stream', 'integrations', 'usage'];
+
+const KPI_LABELS = [
+    'Incidentes abiertos',
+    'Críticos ahora',
+    'SLA cumplido · 7 d',
+    'Precisión IA · 7 d',
+] as const;
+
 export default function Dashboard({
     kpis,
     incidents,
@@ -60,7 +80,10 @@ export default function Dashboard({
 
     useBroadcastReload(RELOAD_KEYS_BY_EVENT, {
         debounceMs: RELOAD_DEBOUNCE_MS,
-        minIntervalMs: { kpis: KPI_MIN_INTERVAL_MS },
+        minIntervalMs: {
+            kpis: KPI_MIN_INTERVAL_MS,
+            stream: STREAM_MIN_INTERVAL_MS,
+        },
     });
 
     return (
@@ -68,69 +91,20 @@ export default function Dashboard({
             <Head title="Panel operativo" />
             <div className="flex h-full min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 md:p-6">
                 <PageHead
-                    criticalCount={kpis.criticalOpen.value}
-                    openCount={kpis.openIncidents.value}
+                    criticalCount={kpis?.criticalOpen.value ?? null}
+                    openCount={kpis?.openIncidents.value ?? null}
                 />
-                <KpiStrip className="shrink-0">
-                    <Kpi
-                        label="Incidentes abiertos"
-                        value={String(kpis.openIncidents.value)}
-                        delta={
-                            kpis.openIncidents.deltaPct !== null
-                                ? {
-                                      value: kpis.openIncidents.deltaPct,
-                                      invert: true,
-                                  }
-                                : undefined
-                        }
-                        sub={
-                            kpis.openIncidents.deltaPct === null
-                                ? 'sin datos de ayer'
-                                : undefined
-                        }
-                        sparkline={<Spark series={kpis.openIncidents.series} />}
-                    />
-                    <Kpi
-                        label="Críticos ahora"
-                        value={String(kpis.criticalOpen.value)}
-                        sub={`SLA promedio: ${formatSlaClock(kpis.criticalOpen.avgSlaRemainingSeconds)}`}
-                        sparkline={<Spark series={kpis.criticalOpen.series} />}
-                    />
-                    <Kpi
-                        label="SLA cumplido · 7 d"
-                        value={percentLabel(kpis.slaCompliance.value)}
-                        delta={
-                            kpis.slaCompliance.deltaPp !== null
-                                ? {
-                                      value: kpis.slaCompliance.deltaPp,
-                                      unit: 'pp',
-                                  }
-                                : undefined
-                        }
-                        sub={
-                            kpis.slaCompliance.deltaPp === null
-                                ? 'sin comparativa previa'
-                                : undefined
-                        }
-                    />
-                    <Kpi
-                        label="Precisión IA · 7 d"
-                        value={percentLabel(kpis.aiPrecision.value)}
-                        delta={
-                            kpis.aiPrecision.deltaPp !== null
-                                ? {
-                                      value: kpis.aiPrecision.deltaPp,
-                                      unit: 'pp',
-                                  }
-                                : undefined
-                        }
-                        sub={
-                            kpis.aiPrecision.deltaPp === null
-                                ? 'sin comparativa previa'
-                                : undefined
-                        }
-                    />
-                </KpiStrip>
+                <Deferred
+                    data="kpis"
+                    fallback={
+                        <KpiStripSkeleton
+                            labels={KPI_LABELS}
+                            className="shrink-0"
+                        />
+                    }
+                >
+                    {kpis && <KpiCards kpis={kpis} />}
+                </Deferred>
                 {/* Jerarquía cockpit (F3.1): incidentes abiertos es el panel
                     dominante; el stream vive como columna lateral persistente.
                     En móvil (una columna) la columna izquierda se disuelve
@@ -145,10 +119,34 @@ export default function Dashboard({
                             />
                         </div>
                         <div className="min-w-0 max-lg:order-3">
-                            <IntegrationsPanel integrations={integrations} />
+                            <Deferred
+                                data="integrations"
+                                fallback={
+                                    <PanelSkeleton
+                                        title="Integraciones"
+                                        tiles={4}
+                                    />
+                                }
+                            >
+                                {integrations && (
+                                    <IntegrationsPanel
+                                        integrations={integrations}
+                                    />
+                                )}
+                            </Deferred>
                         </div>
                         <div className="min-w-0 max-lg:order-4">
-                            <UsagePanel usage={usage} />
+                            <Deferred
+                                data="usage"
+                                fallback={
+                                    <PanelSkeleton
+                                        title="Uso del plan"
+                                        tiles={4}
+                                    />
+                                }
+                            >
+                                {usage && <UsagePanel usage={usage} />}
+                            </Deferred>
                         </div>
                     </div>
                     <div className="min-w-0 max-lg:order-2">
@@ -157,6 +155,92 @@ export default function Dashboard({
                 </div>
             </div>
         </>
+    );
+}
+
+function KpiCards({ kpis }: { kpis: DashboardKpis }) {
+    return (
+        <KpiStrip className="shrink-0">
+            <Kpi
+                label="Incidentes abiertos"
+                value={String(kpis.openIncidents.value)}
+                delta={
+                    kpis.openIncidents.deltaPct !== null
+                        ? {
+                              value: kpis.openIncidents.deltaPct,
+                              invert: true,
+                          }
+                        : undefined
+                }
+                sub={
+                    kpis.openIncidents.deltaPct === null
+                        ? 'sin datos de ayer'
+                        : undefined
+                }
+                sparkline={<Spark series={kpis.openIncidents.series} />}
+            />
+            <Kpi
+                label="Críticos ahora"
+                value={String(kpis.criticalOpen.value)}
+                sub={`SLA promedio: ${formatSlaClock(kpis.criticalOpen.avgSlaRemainingSeconds)}`}
+                sparkline={<Spark series={kpis.criticalOpen.series} />}
+            />
+            <Kpi
+                label="SLA cumplido · 7 d"
+                value={percentLabel(kpis.slaCompliance.value)}
+                delta={
+                    kpis.slaCompliance.deltaPp !== null
+                        ? {
+                              value: kpis.slaCompliance.deltaPp,
+                              unit: 'pp',
+                          }
+                        : undefined
+                }
+                sub={
+                    kpis.slaCompliance.deltaPp === null
+                        ? 'sin comparativa previa'
+                        : undefined
+                }
+            />
+            <Kpi
+                label="Precisión IA · 7 d"
+                value={percentLabel(kpis.aiPrecision.value)}
+                delta={
+                    kpis.aiPrecision.deltaPp !== null
+                        ? {
+                              value: kpis.aiPrecision.deltaPp,
+                              unit: 'pp',
+                          }
+                        : undefined
+                }
+                sub={
+                    kpis.aiPrecision.deltaPp === null
+                        ? 'sin comparativa previa'
+                        : undefined
+                }
+            />
+        </KpiStrip>
+    );
+}
+
+/**
+ * Placeholder for a deferred dashboard panel: same card, header and tile grid
+ * as `IntegrationsPanel` / `UsagePanel`, so the column does not jump when the
+ * data lands.
+ */
+function PanelSkeleton({ title, tiles }: { title: string; tiles: number }) {
+    return (
+        <Card className="gap-0 overflow-hidden py-0" aria-busy="true">
+            <CardHeader className="flex flex-row items-center justify-between border-b border-border px-4 py-3">
+                <CardTitle className="sam-h3 m-0">{title}</CardTitle>
+                <Skeleton className="h-3 w-28" />
+            </CardHeader>
+            <CardContent className="grid gap-3 p-3 sm:grid-cols-2 xl:grid-cols-4">
+                {Array.from({ length: tiles }, (_, index) => (
+                    <Skeleton key={index} className="h-28 rounded-md" />
+                ))}
+            </CardContent>
+        </Card>
     );
 }
 
@@ -178,14 +262,16 @@ function PageHead({
     criticalCount,
     openCount,
 }: {
-    criticalCount: number;
-    openCount: number;
+    /** `null` while the deferred KPIs are still loading. */
+    criticalCount: number | null;
+    openCount: number | null;
 }) {
     const [refreshing, setRefreshing] = useState(false);
 
     const refresh = () => {
         setRefreshing(true);
         router.reload({
+            only: ALL_KEYS,
             onFinish: () => setRefreshing(false),
         });
     };
@@ -196,10 +282,19 @@ function PageHead({
                 <h1 className="sam-h1">Panel operativo</h1>
                 <p className="sam-meta mt-1">
                     {shiftLabel(new Date())} ·{' '}
-                    <span className="text-fg-2">{openCount} abiertos</span> ·{' '}
-                    <span className="text-severity-critical">
-                        {criticalCount} críticos
-                    </span>
+                    {openCount === null || criticalCount === null ? (
+                        <Skeleton className="inline-block h-3 w-36 align-middle" />
+                    ) : (
+                        <>
+                            <span className="text-fg-2">
+                                {openCount} abiertos
+                            </span>{' '}
+                            ·{' '}
+                            <span className="text-severity-critical">
+                                {criticalCount} críticos
+                            </span>
+                        </>
+                    )}
                 </p>
             </div>
             <Button
@@ -311,6 +406,7 @@ function OpenIncidentsPanel({
                         {incidents.map((incident) => (
                             <li key={incident.id}>
                                 <Link
+                                    prefetch={teamSlug !== null}
                                     href={
                                         teamSlug
                                             ? incidentRoutes.show([

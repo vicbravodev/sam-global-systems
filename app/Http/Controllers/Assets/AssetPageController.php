@@ -23,6 +23,7 @@ use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -131,8 +132,44 @@ class AssetPageController extends Controller
         // AssetMonitoringController behind `assets.manage`.
         $filters = $this->filters($request);
 
+        // The page of assets is built at most once and only when a prop that
+        // needs it is resolved: a partial reload of `summary`/`monitoring`
+        // (the pulse refresh) never runs the paginated query.
+        $paginator = null;
+        $page = function () use (&$paginator, $current_team, $filters): LengthAwarePaginator {
+            return $paginator ??= $this->assetPage($current_team, $filters);
+        };
+
+        return Inertia::render('assets/index', [
+            'assets' => fn () => collect($page()->items())
+                ->map(fn (Asset $asset) => $this->toRow($asset))
+                ->all(),
+            'pagination' => fn () => [
+                'page' => $page()->currentPage(),
+                'perPage' => $page()->perPage(),
+                'total' => $page()->total(),
+                'lastPage' => $page()->lastPage(),
+            ],
+            'filters' => $filters,
+            'filterOptions' => fn () => $this->filterOptions(),
+            // Fleet pulse + monitoring quota: several EXISTS over the snapshot
+            // tables, not needed to paint the list. Deferred in one group;
+            // partial reloads that name them still resolve them.
+            'summary' => Inertia::defer(fn () => $this->summary($current_team), 'pulse'),
+            'monitoring' => Inertia::defer(fn () => $this->monitoring($current_team, $resolveAssetLimit), 'pulse'),
+        ]);
+    }
+
+    /**
+     * One page of the fleet list with its relations and latest telemetry.
+     *
+     * @param  array{q: string|null, status: string|null, type: string|null, monitoring: string|null}  $filters
+     * @return LengthAwarePaginator<int, Asset>
+     */
+    private function assetPage(Team $team, array $filters): LengthAwarePaginator
+    {
         $query = Asset::query()
-            ->where('team_id', $current_team->id)
+            ->where('team_id', $team->id)
             ->with([
                 'assetType',
                 'currentDriverAssignment.driver',
@@ -158,21 +195,7 @@ class AssetPageController extends Controller
         // full-history scan (see LatestAssetTelemetry).
         app(LatestAssetTelemetry::class)->loadInto($paginator->items());
 
-        return Inertia::render('assets/index', [
-            'assets' => collect($paginator->items())
-                ->map(fn (Asset $asset) => $this->toRow($asset))
-                ->all(),
-            'pagination' => [
-                'page' => $paginator->currentPage(),
-                'perPage' => $paginator->perPage(),
-                'total' => $paginator->total(),
-                'lastPage' => $paginator->lastPage(),
-            ],
-            'filters' => $filters,
-            'filterOptions' => fn () => $this->filterOptions(),
-            'summary' => fn () => $this->summary($current_team),
-            'monitoring' => fn () => $this->monitoring($current_team, $resolveAssetLimit),
-        ]);
+        return $paginator;
     }
 
     /**
@@ -204,22 +227,26 @@ class AssetPageController extends Controller
 
     public function map(Team $current_team): Response
     {
-        // One row per unit: the live position lives on the asset itself.
-        $assets = Asset::query()
-            ->where('team_id', $current_team->id)
-            ->with(['assetType', 'currentDriverAssignment.driver'])
-            ->get();
-
-        $positioned = $assets->filter(
+        // One row per unit: the live position lives on the asset itself. The
+        // fleet is loaded at most once, and only when `assets` or
+        // `unpositionedCount` is resolved (not on a reload of anything else).
+        $fleet = null;
+        $assets = function () use (&$fleet, $current_team): EloquentCollection {
+            return $fleet ??= Asset::query()
+                ->where('team_id', $current_team->id)
+                ->with(['assetType', 'currentDriverAssignment.driver'])
+                ->get();
+        };
+        $positioned = fn (): EloquentCollection => $assets()->filter(
             fn (Asset $asset) => $this->hasLivePosition($asset),
         );
 
         return Inertia::render('assets/map', [
-            'assets' => $positioned
+            'assets' => fn () => $positioned()
                 ->map(fn (Asset $asset) => $this->toMarker($asset))
                 ->values()
                 ->all(),
-            'unpositionedCount' => $assets->count() - $positioned->count(),
+            'unpositionedCount' => fn () => $assets()->count() - $positioned()->count(),
             'statusLabels' => self::STATUS_LABELS,
         ]);
     }

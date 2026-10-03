@@ -323,8 +323,8 @@ class IncidentInboxTest extends TestCase
         $index = $this->actingAs($user)->get(
             route('incidents.index', ['current_team' => $team->slug]),
         );
-        $index->assertInertia(function (Assert $page) {
-            $statuses = collect($page->toArray()['props']['filterOptions']['statuses']);
+        $index->assertInertia(fn (Assert $page) => $page->loadDeferredProps('meta', function (Assert $reload) {
+            $statuses = collect($reload->toArray()['props']['filterOptions']['statuses']);
 
             $this->assertTrue(
                 $statuses->contains(fn (array $option) => $option['value'] === 'escalated'
@@ -336,7 +336,7 @@ class IncidentInboxTest extends TestCase
                     && $option['label'] === 'Nuevo'),
                 'El filtro de estado debe incluir "Nuevo" (valor canónico open)',
             );
-        });
+        }));
 
         // Filtrar por el código canónico devuelve exactamente esas filas.
         $filtered = $this->actingAs($user)->get(

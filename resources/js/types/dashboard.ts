@@ -65,9 +65,12 @@ export interface UsageCounterRow {
 }
 
 export interface DashboardProps {
-    kpis: DashboardKpis;
+    /** Deferred (`Inertia::defer`): undefined until its request lands. */
+    kpis?: DashboardKpis;
     incidents: IncidentRow[];
     stream: DashboardStreamEvent[];
-    integrations: DashboardIntegration[];
-    usage: UsageCounterRow[];
+    /** Deferred. */
+    integrations?: DashboardIntegration[];
+    /** Deferred. */
+    usage?: UsageCounterRow[];
 }

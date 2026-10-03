@@ -1,5 +1,5 @@
 import { router, usePage } from '@inertiajs/react';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useEcho } from '@/echo';
 import type {
     TeamBroadcastEvent,
@@ -200,6 +200,178 @@ export function useTeamBroadcast<E extends AnyBroadcastEvent>(
     }, [key]);
 }
 
+export interface ReloadBufferOptions {
+    /** Coalescing window: one reload this long after the first key. */
+    debounceMs?: number;
+    /** Per-key floor between reloads (expensive aggregates). */
+    minIntervalMs?: Readonly<Record<string, number>>;
+}
+
+export interface ReloadBuffer {
+    /**
+     * Queue prop keys for one coalesced `router.reload({ only })`. `delayMs`
+     * (default: the buffer's debounce) only ever brings the pending flush
+     * forward, never pushes it back.
+     */
+    schedule: (keys: readonly string[], delayMs?: number) => void;
+    /**
+     * Reload these keys right now (e.g. after the user's own action) and
+     * drop them from the pending set: whatever was queued for them is
+     * covered by this fresher reload.
+     */
+    reloadNow: (keys: readonly string[]) => void;
+}
+
+/**
+ * The coalescing core behind {@link useReloadBuffer}, outside React so the
+ * timer, the pending keys and the per-key clocks live in plain closures.
+ */
+function createReloadBuffer() {
+    let debounceMs = 1500;
+    let minIntervalMs: Readonly<Record<string, number>> = {};
+    let active = false;
+    let mountedAt = Date.now();
+    let timer: number | null = null;
+    let dueAt = 0;
+    const pending = new Set<string>();
+    // Props arrive fresh with the page, so each key's interval starts at mount.
+    const lastReload = new Map<string, number>();
+
+    const waitFor = (key: string, now: number): number =>
+        Math.max(
+            0,
+            (lastReload.get(key) ?? mountedAt) +
+                (minIntervalMs[key] ?? 0) -
+                now,
+        );
+
+    const arm = (delayMs: number) => {
+        const due = Date.now() + delayMs;
+
+        if (timer !== null) {
+            if (dueAt <= due) {
+                return;
+            }
+
+            window.clearTimeout(timer);
+        }
+
+        dueAt = due;
+        timer = window.setTimeout(flush, delayMs);
+    };
+
+    function flush() {
+        timer = null;
+
+        // A hidden tab keeps its keys; `onVisible` flushes them.
+        if (!active || document.hidden || pending.size === 0) {
+            return;
+        }
+
+        const now = Date.now();
+        const only = [...pending].filter((key) => waitFor(key, now) === 0);
+
+        only.forEach((key) => {
+            pending.delete(key);
+            lastReload.set(key, now);
+        });
+
+        if (only.length > 0) {
+            router.reload({ only });
+        }
+
+        if (pending.size > 0) {
+            const next = Math.min(
+                ...[...pending].map((key) => waitFor(key, now)),
+            );
+            arm(Math.max(next, debounceMs));
+        }
+    }
+
+    const onVisible = () => {
+        if (!document.hidden && pending.size > 0) {
+            flush();
+        }
+    };
+
+    return {
+        configure(options: Required<ReloadBufferOptions>) {
+            debounceMs = options.debounceMs;
+            minIntervalMs = options.minIntervalMs;
+        },
+        schedule(keys: readonly string[], delayMs?: number) {
+            if (!active || keys.length === 0) {
+                return;
+            }
+
+            keys.forEach((key) => pending.add(key));
+            arm(delayMs ?? debounceMs);
+        },
+        reloadNow(keys: readonly string[]) {
+            if (keys.length === 0) {
+                return;
+            }
+
+            const now = Date.now();
+
+            keys.forEach((key) => {
+                pending.delete(key);
+                lastReload.set(key, now);
+            });
+
+            if (pending.size === 0 && timer !== null) {
+                window.clearTimeout(timer);
+                timer = null;
+            }
+
+            router.reload({ only: [...keys] });
+        },
+        start(): () => void {
+            active = true;
+            mountedAt = Date.now();
+            document.addEventListener('visibilitychange', onVisible);
+
+            return () => {
+                active = false;
+                document.removeEventListener('visibilitychange', onVisible);
+                pending.clear();
+                lastReload.clear();
+
+                if (timer !== null) {
+                    window.clearTimeout(timer);
+                    timer = null;
+                }
+            };
+        },
+    };
+}
+
+/**
+ * Coalesced partial reloads for a page: keys accumulate and one
+ * `router.reload({ only })` goes out per window. A hidden tab does not
+ * reload; it flushes once when it becomes visible again. `minIntervalMs`
+ * caps how often an expensive key reloads: within its interval the key stays
+ * pending and goes out with the first flush after it expires.
+ *
+ * {@link useBroadcastReload} is this plus the broadcast wiring; use the
+ * buffer directly to feed it from a custom handler (per-event delays) or to
+ * fold the page's own post-action reload into the same window.
+ */
+export function useReloadBuffer({
+    debounceMs = 1500,
+    minIntervalMs = {},
+}: ReloadBufferOptions = {}): ReloadBuffer {
+    const [buffer] = useState(createReloadBuffer);
+
+    useEffect(() => {
+        buffer.configure({ debounceMs, minIntervalMs });
+    });
+
+    useEffect(() => buffer.start(), [buffer]);
+
+    return buffer;
+}
+
 type ReloadRules<E extends AnyBroadcastEvent> = Partial<
     Record<
         E,
@@ -212,14 +384,10 @@ type ReloadRules<E extends AnyBroadcastEvent> = Partial<
  * Partial Inertia reloads driven by broadcasts.
  *
  * Each event maps to the prop keys it invalidates (or a function returning
- * them, `null` to ignore that payload). Bursts are coalesced: keys accumulate
- * and one `router.reload({ only })` goes out after `debounceMs`. A hidden tab
- * does not reload; it flushes once when it becomes visible again. After a
- * socket drop every static key (plus `resync`) reloads once.
- *
- * `minIntervalMs` caps how often an expensive key reloads (e.g. aggregates
- * that a single live event barely moves): within its interval the key stays
- * pending and goes out with the first flush after it expires.
+ * them, `null` to ignore that payload); the keys go through a
+ * {@link useReloadBuffer} (debounce, hidden tab, `minIntervalMs`). After a
+ * socket drop every static key (plus `resync`) reloads once. Returns the
+ * buffer, so the page can queue its own reloads in the same window.
  */
 export function useBroadcastReload<E extends AnyBroadcastEvent>(
     rules: ReloadRules<E>,
@@ -227,78 +395,18 @@ export function useBroadcastReload<E extends AnyBroadcastEvent>(
         debounceMs = 1500,
         resync = [],
         minIntervalMs = {},
-    }: {
-        debounceMs?: number;
-        resync?: readonly string[];
-        minIntervalMs?: Readonly<Record<string, number>>;
-    } = {},
-): void {
+    }: ReloadBufferOptions & { resync?: readonly string[] } = {},
+): ReloadBuffer {
+    const buffer = useReloadBuffer({ debounceMs, minIntervalMs });
     const rulesRef = useRef(rules);
     const resyncRef = useRef(resync);
-    const minIntervalRef = useRef(minIntervalMs);
-    const pending = useRef<Set<string>>(new Set());
-    const timer = useRef<number | null>(null);
-    // Props arrive fresh with the page, so each key's interval starts at mount.
-    const lastReload = useRef<Map<string, number>>(new Map());
 
     useEffect(() => {
         rulesRef.current = rules;
         resyncRef.current = resync;
-        minIntervalRef.current = minIntervalMs;
     });
 
     useEffect(() => {
-        const mountedAt = Date.now();
-
-        const waitFor = (key: string, now: number): number => {
-            const interval = minIntervalRef.current[key] ?? 0;
-
-            return Math.max(
-                0,
-                (lastReload.current.get(key) ?? mountedAt) + interval - now,
-            );
-        };
-
-        const flush = () => {
-            timer.current = null;
-
-            if (document.hidden || pending.current.size === 0) {
-                return;
-            }
-
-            const now = Date.now();
-            const only = [...pending.current].filter(
-                (key) => waitFor(key, now) === 0,
-            );
-
-            only.forEach((key) => {
-                pending.current.delete(key);
-                lastReload.current.set(key, now);
-            });
-
-            if (only.length > 0) {
-                router.reload({ only });
-            }
-
-            if (pending.current.size > 0) {
-                const next = Math.min(
-                    ...[...pending.current].map((key) => waitFor(key, now)),
-                );
-                timer.current = window.setTimeout(
-                    flush,
-                    Math.max(next, debounceMs),
-                );
-            }
-        };
-
-        const schedule = (keys: readonly string[]) => {
-            keys.forEach((key) => pending.current.add(key));
-
-            if (timer.current === null) {
-                timer.current = window.setTimeout(flush, debounceMs);
-            }
-        };
-
         const onBroadcast = (event: Event) => {
             const detail = (event as CustomEvent<TeamBroadcastDetail>).detail;
             const rule = detail
@@ -318,8 +426,8 @@ export function useBroadcastReload<E extends AnyBroadcastEvent>(
                       )(detail.payload as AnyBroadcastMap[E])
                     : (rule as readonly string[]);
 
-            if (keys && keys.length > 0) {
-                schedule(keys);
+            if (keys) {
+                buffer.schedule(keys);
             }
         };
 
@@ -328,28 +436,17 @@ export function useBroadcastReload<E extends AnyBroadcastEvent>(
                 typeof rule === 'function' ? [] : (rule as readonly string[]),
             );
 
-            schedule([...all, ...resyncRef.current]);
-        };
-
-        const onVisible = () => {
-            if (!document.hidden && pending.current.size > 0) {
-                flush();
-            }
+            buffer.schedule([...all, ...resyncRef.current]);
         };
 
         window.addEventListener(TEAM_BROADCAST_EVENT_NAME, onBroadcast);
         window.addEventListener(REALTIME_RESYNC_EVENT_NAME, onResync);
-        document.addEventListener('visibilitychange', onVisible);
 
         return () => {
             window.removeEventListener(TEAM_BROADCAST_EVENT_NAME, onBroadcast);
             window.removeEventListener(REALTIME_RESYNC_EVENT_NAME, onResync);
-            document.removeEventListener('visibilitychange', onVisible);
-
-            if (timer.current !== null) {
-                window.clearTimeout(timer.current);
-                timer.current = null;
-            }
         };
-    }, [debounceMs]);
+    }, [buffer]);
+
+    return buffer;
 }

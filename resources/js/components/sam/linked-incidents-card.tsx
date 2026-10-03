@@ -79,6 +79,7 @@ export function LinkedIncidentsCard({
                         {incidents.map((incident) => (
                             <li key={incident.id}>
                                 <Link
+                                    prefetch={teamSlug !== null}
                                     href={
                                         teamSlug
                                             ? incidentRoutes.show([

@@ -1,15 +1,7 @@
 import type { SharedPageProps } from '@inertiajs/core';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { ArrowUpRight, RefreshCw, Search, User, X } from 'lucide-react';
-import {
-    lazy,
-    Suspense,
-    useCallback,
-    useEffect,
-    useMemo,
-    useRef,
-    useState,
-} from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { DataFreshness } from '@/components/sam/assets/data-freshness';
 import { MapLoading } from '@/components/sam/map/map-controls';
 import {
@@ -22,7 +14,7 @@ import { RealtimeStatus } from '@/components/sam/realtime-status';
 import type { RealtimeState } from '@/components/sam/realtime-status';
 import { Button } from '@/components/ui/button';
 import { useRealtimeConnection } from '@/hooks/use-realtime-connection';
-import { useTeamBroadcast } from '@/hooks/use-team-broadcasts';
+import { useReloadBuffer, useTeamBroadcast } from '@/hooks/use-team-broadcasts';
 import { formatDateTime } from '@/lib/format';
 import { relativeLabel } from '@/lib/time';
 import { cn } from '@/lib/utils';
@@ -32,6 +24,7 @@ import type {
     AssetsMapProps,
     AssetStatusValue,
 } from '@/types/assets';
+import type { FleetPosition } from '@/types/realtime';
 
 // maplibre-gl loads in its own chunk: the header and the roster paint first,
 // the map area shows its loading frame meanwhile.
@@ -89,6 +82,43 @@ function StatusDot({
     );
 }
 
+/**
+ * Lays a feed batch over the markers: a marker moves only to a position at
+ * least as new as its own. Returns `prev` itself when nothing moved, so the
+ * map and the roster skip the re-render.
+ */
+function applyPositions(
+    prev: AssetMarker[],
+    byId: ReadonlyMap<number, FleetPosition>,
+): AssetMarker[] {
+    let changed = false;
+
+    const next = prev.map((m) => {
+        const p = byId.get(m.id);
+
+        if (
+            p === undefined ||
+            Date.parse(p.recorded_at) < Date.parse(m.recordedAt)
+        ) {
+            return m;
+        }
+
+        changed = true;
+
+        return {
+            ...m,
+            latitude: p.latitude,
+            longitude: p.longitude,
+            speed: p.speed_kph,
+            heading: p.heading,
+            moving: p.moving,
+            recordedAt: p.recorded_at,
+        };
+    });
+
+    return changed ? next : prev;
+}
+
 /** Most urgent first, then moving before parked, then by code. */
 function compareUnits(a: AssetMarker, b: AssetMarker): number {
     return (
@@ -97,6 +127,68 @@ function compareUnits(a: AssetMarker, b: AssetMarker): number {
         (a.code ?? a.name).localeCompare(b.code ?? b.name, 'es', {
             numeric: true,
         })
+    );
+}
+
+/**
+ * One unit in the roster. Its own component so the React Compiler memoizes
+ * it per row: a feed tick re-renders only the units that moved. The "last
+ * seen" label comes from the parent (recomputed on every tick), so a parked
+ * unit still re-renders when its minute-level label changes.
+ */
+function RosterRow({
+    asset,
+    selected,
+    statusLabel,
+    seenLabel,
+    onPick,
+}: {
+    asset: AssetMarker;
+    selected: boolean;
+    statusLabel: string;
+    seenLabel: string;
+    onPick: (id: number) => void;
+}) {
+    const moving = isMoving(asset);
+
+    return (
+        <li>
+            <button
+                type="button"
+                onClick={() => onPick(asset.id)}
+                aria-current={selected ? 'true' : undefined}
+                className={cn(
+                    'flex h-(--row-relaxed) w-full cursor-pointer items-center gap-2.5 px-3 text-left transition-colors duration-(--motion-fast) outline-none focus-visible:bg-surface-2',
+                    selected ? 'bg-surface-2' : 'hover:bg-surface-2/70',
+                )}
+            >
+                <StatusDot status={asset.status} />
+                <span className="min-w-0 flex-1">
+                    <span className="block truncate text-xs font-medium text-fg-1">
+                        {asset.code ? `${asset.code} · ` : ''}
+                        {asset.name}
+                    </span>
+                    <span className="block truncate text-2xs text-fg-3">
+                        {asset.driver ?? statusLabel}
+                    </span>
+                </span>
+                <span className="flex shrink-0 flex-col items-end gap-0.5">
+                    <span
+                        className={cn(
+                            'text-2xs tabular-nums',
+                            moving ? 'font-medium text-fg-1' : 'text-fg-3',
+                        )}
+                    >
+                        {moving && asset.speed !== null
+                            ? `${Math.round(asset.speed)} km/h`
+                            : moving
+                              ? 'En ruta'
+                              : 'Detenido'}
+                    </span>
+                    <span className="text-3xs text-fg-3">{seenLabel}</span>
+                </span>
+            </button>
+        </li>
     );
 }
 
@@ -169,7 +261,10 @@ function UnitCallout({
                 </span>
                 {teamSlug && (
                     <Button size="sm" asChild>
-                        <Link href={assetRoutes.show([teamSlug, asset.id])}>
+                        <Link
+                            href={assetRoutes.show([teamSlug, asset.id])}
+                            prefetch
+                        >
                             Ver unidad
                             <ArrowUpRight className="size-3.5" />
                         </Link>
@@ -275,30 +370,12 @@ export default function AssetsMap(pageProps: AssetsMapProps) {
     };
 
     // Live updates move markers IN MEMORY (no server roundtrip). A debounced
-    // partial reload only fires when an unknown unit shows up (it just got
-    // its first position).
-    const reloadTimer = useRef<number | null>(null);
+    // partial reload (shared buffer: coalesced, paused while hidden) only
+    // fires when an unknown unit shows up (it just got its first position).
+    // The decision is taken here, against the markers on screen, and the
+    // state updaters below stay pure (StrictMode runs them twice).
+    const reload = useReloadBuffer({ debounceMs: RELOAD_DEBOUNCE_MS });
     const reloadRequestedFor = useRef<Set<number>>(new Set());
-
-    const scheduleReload = useCallback(() => {
-        if (reloadTimer.current !== null) {
-            return;
-        }
-
-        reloadTimer.current = window.setTimeout(() => {
-            reloadTimer.current = null;
-            router.reload({ only: ['assets', 'unpositionedCount'] });
-        }, RELOAD_DEBOUNCE_MS);
-    }, []);
-
-    useEffect(
-        () => () => {
-            if (reloadTimer.current !== null) {
-                window.clearTimeout(reloadTimer.current);
-            }
-        },
-        [],
-    );
 
     useTeamBroadcast(
         [
@@ -310,86 +387,41 @@ export default function AssetsMap(pageProps: AssetsMapProps) {
             if (detail.event === 'fleet.positions_updated') {
                 // One batch per feed cycle (~5 s) for the whole fleet.
                 const byId = new Map(
-                    (
-                        detail.payload as {
-                            positions: {
-                                asset_id: number;
-                                latitude: number;
-                                longitude: number;
-                                speed_kph: number | null;
-                                heading: number | null;
-                                recorded_at: string;
-                                moving: boolean | null;
-                            }[];
-                        }
-                    ).positions.map((p) => [p.asset_id, p]),
+                    detail.payload.positions.map((p) => [p.asset_id, p]),
+                );
+                const onMap = new Set(markers.map((m) => m.id));
+
+                // An asset reporting its first position is not on the map
+                // yet: reload once for it, not on every feed tick (an asset
+                // the map never lists would otherwise reload it forever).
+                const firstSeen = [...byId.keys()].filter(
+                    (id) =>
+                        !onMap.has(id) && !reloadRequestedFor.current.has(id),
                 );
 
-                setMarkers((prev) => {
-                    const onMap = new Set<number>();
-
-                    const next = prev.map((m) => {
-                        const p = byId.get(m.id);
-
-                        if (p === undefined) {
-                            return m;
-                        }
-
-                        onMap.add(m.id);
-
-                        return Date.parse(p.recorded_at) >=
-                            Date.parse(m.recordedAt)
-                            ? {
-                                  ...m,
-                                  latitude: p.latitude,
-                                  longitude: p.longitude,
-                                  speed: p.speed_kph,
-                                  heading: p.heading,
-                                  moving: p.moving,
-                                  recordedAt: p.recorded_at,
-                              }
-                            : m;
-                    });
-
-                    // An asset reporting its first position is not on the map
-                    // yet: reload once for it, not on every feed tick (an
-                    // asset the map never lists would otherwise reload it
-                    // forever).
-                    const firstSeen = [...byId.keys()].filter(
-                        (id) =>
-                            !onMap.has(id) &&
-                            !reloadRequestedFor.current.has(id),
+                if (firstSeen.length > 0) {
+                    firstSeen.forEach((id) =>
+                        reloadRequestedFor.current.add(id),
                     );
+                    reload.schedule(['assets', 'unpositionedCount']);
+                }
 
-                    if (firstSeen.length > 0) {
-                        firstSeen.forEach((id) =>
-                            reloadRequestedFor.current.add(id),
-                        );
-                        scheduleReload();
-                    }
-
-                    return next;
-                });
+                setMarkers((prev) => applyPositions(prev, byId));
 
                 return;
             }
 
             if (detail.event === 'asset.location_updated') {
-                const payload = detail.payload as {
-                    asset_id: number;
-                    latitude: number;
-                    longitude: number;
-                    recorded_at: string;
-                };
+                const payload = detail.payload;
 
-                setMarkers((prev) => {
-                    if (!prev.some((m) => m.id === payload.asset_id)) {
-                        scheduleReload();
+                if (!markers.some((m) => m.id === payload.asset_id)) {
+                    reload.schedule(['assets', 'unpositionedCount']);
 
-                        return prev;
-                    }
+                    return;
+                }
 
-                    return prev.map((m) =>
+                setMarkers((prev) =>
+                    prev.map((m) =>
                         m.id === payload.asset_id &&
                         Date.parse(payload.recorded_at) >=
                             Date.parse(m.recordedAt)
@@ -400,8 +432,8 @@ export default function AssetsMap(pageProps: AssetsMapProps) {
                                   recordedAt: payload.recorded_at,
                               }
                             : m,
-                    );
-                });
+                    ),
+                );
 
                 return;
             }
@@ -546,68 +578,19 @@ export default function AssetsMap(pageProps: AssetsMapProps) {
                             className="min-h-0 flex-1 overflow-y-auto py-1"
                             aria-label="Unidades en el mapa"
                         >
-                            {listed.map((asset) => {
-                                const isSelected = asset.id === selectedId;
-
-                                return (
-                                    <li key={asset.id}>
-                                        <button
-                                            type="button"
-                                            onClick={() =>
-                                                pickFromList(asset.id)
-                                            }
-                                            aria-current={
-                                                isSelected ? 'true' : undefined
-                                            }
-                                            className={cn(
-                                                'flex h-(--row-relaxed) w-full cursor-pointer items-center gap-2.5 px-3 text-left transition-colors duration-(--motion-fast) outline-none focus-visible:bg-surface-2',
-                                                isSelected
-                                                    ? 'bg-surface-2'
-                                                    : 'hover:bg-surface-2/70',
-                                            )}
-                                        >
-                                            <StatusDot status={asset.status} />
-                                            <span className="min-w-0 flex-1">
-                                                <span className="block truncate text-xs font-medium text-fg-1">
-                                                    {asset.code
-                                                        ? `${asset.code} · `
-                                                        : ''}
-                                                    {asset.name}
-                                                </span>
-                                                <span className="block truncate text-2xs text-fg-3">
-                                                    {asset.driver ??
-                                                        (statusLabels[
-                                                            asset.status
-                                                        ] ||
-                                                            asset.status)}
-                                                </span>
-                                            </span>
-                                            <span className="flex shrink-0 flex-col items-end gap-0.5">
-                                                <span
-                                                    className={cn(
-                                                        'text-2xs tabular-nums',
-                                                        isMoving(asset)
-                                                            ? 'font-medium text-fg-1'
-                                                            : 'text-fg-3',
-                                                    )}
-                                                >
-                                                    {isMoving(asset) &&
-                                                    asset.speed !== null
-                                                        ? `${Math.round(asset.speed)} km/h`
-                                                        : isMoving(asset)
-                                                          ? 'En ruta'
-                                                          : 'Detenido'}
-                                                </span>
-                                                <span className="text-3xs text-fg-3">
-                                                    {relativeLabel(
-                                                        asset.recordedAt,
-                                                    )}
-                                                </span>
-                                            </span>
-                                        </button>
-                                    </li>
-                                );
-                            })}
+                            {listed.map((asset) => (
+                                <RosterRow
+                                    key={asset.id}
+                                    asset={asset}
+                                    selected={asset.id === selectedId}
+                                    statusLabel={
+                                        statusLabels[asset.status] ||
+                                        asset.status
+                                    }
+                                    seenLabel={relativeLabel(asset.recordedAt)}
+                                    onPick={pickFromList}
+                                />
+                            ))}
                         </ul>
 
                         {listed.length === 0 && markers.length > 0 && (

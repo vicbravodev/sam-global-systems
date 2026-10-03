@@ -1,5 +1,5 @@
 import type { SharedPageProps } from '@inertiajs/core';
-import { Head, Link, router, usePage } from '@inertiajs/react';
+import { Deferred, Head, Link, router, usePage } from '@inertiajs/react';
 import {
     Camera,
     Eye,
@@ -12,7 +12,7 @@ import {
     Truck,
     Wrench,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { AssetsTable } from '@/components/sam/assets/assets-table';
 import {
@@ -23,12 +23,18 @@ import {
     SearchInput,
 } from '@/components/sam/list';
 import { ListEmptyState, ListPage } from '@/components/sam/list-page';
-import { PulseStat, PulseStrip } from '@/components/sam/pulse-strip';
+import {
+    PulseStat,
+    PulseStrip,
+    PulseStripSkeleton,
+} from '@/components/sam/pulse-strip';
 import { SegmentedFilter } from '@/components/sam/segmented-filter';
 import { Button } from '@/components/ui/button';
 import { useServerList } from '@/hooks/use-server-list';
-import { TEAM_BROADCAST_EVENT_NAME } from '@/hooks/use-team-broadcasts';
-import type { TeamBroadcastDetail } from '@/hooks/use-team-broadcasts';
+import {
+    useBroadcastReload,
+    useTeamBroadcast,
+} from '@/hooks/use-team-broadcasts';
 import { ASSET_STATUS } from '@/lib/labels';
 import { toneDotFor } from '@/lib/tone';
 import assetRoutes from '@/routes/assets';
@@ -42,13 +48,12 @@ import type {
 } from '@/types/assets';
 import type { FleetPosition } from '@/types/realtime';
 
-// Props each broadcast refreshes (debounced below). Feed positions
-// (`fleet.positions_updated`) are applied to the rows in memory instead. A
-// single position event only changes the rows: the
-// fleet pulse (`summary`, several EXISTS over the snapshot tables) and the
-// monitoring counts only move on status / monitoring changes.
-const RELOAD_KEYS_BY_EVENT: Record<string, string[]> = {
-    'asset.location_updated': ['assets'],
+// Props each status / monitoring broadcast refreshes (debounced below). Feed
+// positions (`fleet.positions_updated`) are applied to the rows in memory
+// instead, and a location event only reloads the rows: the fleet pulse
+// (`summary`, several EXISTS over the snapshot tables) and the monitoring
+// counts only move on status / monitoring changes.
+const RELOAD_KEYS_BY_EVENT = {
     'asset.status_changed': ['assets', 'pagination', 'summary', 'monitoring'],
     'asset.monitoring_changed': [
         'assets',
@@ -56,7 +61,7 @@ const RELOAD_KEYS_BY_EVENT: Record<string, string[]> = {
         'summary',
         'monitoring',
     ],
-};
+} as const;
 
 // Location events arrive in bursts (one per asset): coalesce them over a
 // wider window than the rarer status / monitoring transitions.
@@ -111,6 +116,45 @@ function withLivePosition(
                   },
         lastSignalAt: signal,
     };
+}
+
+/**
+ * Live positions for the rows on the current page: entries for units no
+ * longer on the page are dropped, a position is replaced only by a newer
+ * one, and `prev` itself is returned when nothing changed so React skips
+ * the re-render.
+ */
+function mergeLivePositions(
+    prev: Map<number, FleetPosition>,
+    visible: readonly FleetPosition[],
+    onPage: ReadonlySet<number>,
+): Map<number, FleetPosition> {
+    let changed = false;
+    const next = new Map<number, FleetPosition>();
+
+    prev.forEach((position, id) => {
+        if (onPage.has(id)) {
+            next.set(id, position);
+        } else {
+            changed = true;
+        }
+    });
+
+    visible.forEach((position) => {
+        const current = next.get(position.asset_id);
+
+        if (
+            current !== undefined &&
+            Date.parse(position.recorded_at) <= Date.parse(current.recorded_at)
+        ) {
+            return;
+        }
+
+        next.set(position.asset_id, position);
+        changed = true;
+    });
+
+    return changed ? next : prev;
 }
 
 // ---- Pending banner ----
@@ -170,6 +214,19 @@ function PendingBanner({
 }
 
 // ---- Pulse strip ----
+
+// Tiles of `FleetPulse`, for its skeleton while the deferred figures load.
+const PULSE_LABELS = [
+    'Flota',
+    'Vigiladas',
+    'Sin vigilar',
+    'Reportando',
+    'En ruta',
+    'Sin señal',
+    'Alerta o crítico',
+    'Mantenimiento',
+    'Con cámara',
+] as const;
 
 function FleetPulse({
     summary,
@@ -456,104 +513,43 @@ export default function AssetsIndex(pageProps: AssetsIndexProps) {
         });
     };
 
-    // Live updates: location polls and status transitions refresh the list
-    // and the pulse strip. Bursts are coalesced into a single partial reload
-    // with the union of the affected props; a hidden tab waits until it is
-    // visible again.
-    const timer = useRef<number | null>(null);
-    const timerDueAt = useRef(0);
-    const pendingKeys = useRef<Set<string>>(new Set());
+    // Live updates: status / monitoring transitions refresh the list and the
+    // pulse strip through the shared reload buffer (coalesced, paused while
+    // the tab is hidden, full resync after a socket drop). Location events
+    // feed the same buffer over a wider window; feed positions move the rows
+    // in memory and refresh the pulse at most every SUMMARY_REFRESH_MS.
+    const reload = useBroadcastReload(RELOAD_KEYS_BY_EVENT, {
+        debounceMs: RELOAD_DEBOUNCE_MS,
+    });
     const lastSummaryRefresh = useRef(0);
 
-    useEffect(() => {
-        const hidden = () => document.visibilityState === 'hidden';
-
-        const flush = () => {
-            timer.current = null;
-
-            if (hidden() || pendingKeys.current.size === 0) {
-                return;
-            }
-
-            const only = [...pendingKeys.current];
-            pendingKeys.current.clear();
-            router.reload({ only });
-        };
-
-        const schedule = (delay: number) => {
-            const dueAt = Date.now() + delay;
-
-            if (timer.current !== null) {
-                if (timerDueAt.current <= dueAt) {
-                    return;
-                }
-
-                window.clearTimeout(timer.current);
-            }
-
-            timerDueAt.current = dueAt;
-            timer.current = window.setTimeout(flush, delay);
-        };
-
-        const handler = (event: Event) => {
-            const detail = (event as CustomEvent<TeamBroadcastDetail>).detail;
-
-            if (detail?.event === 'fleet.positions_updated') {
-                const { positions } = detail.payload;
-
-                setLivePositions((prev) => {
-                    const next = new Map(prev);
-                    positions.forEach((p) => next.set(p.asset_id, p));
-
-                    return next;
-                });
-
-                if (
-                    !hidden() &&
-                    Date.now() - lastSummaryRefresh.current > SUMMARY_REFRESH_MS
-                ) {
-                    lastSummaryRefresh.current = Date.now();
-                    router.reload({ only: ['summary', 'monitoring'] });
-                }
+    useTeamBroadcast(
+        ['fleet.positions_updated', 'asset.location_updated'],
+        (detail) => {
+            if (detail.event === 'asset.location_updated') {
+                reload.schedule(['assets'], LOCATION_RELOAD_DEBOUNCE_MS);
 
                 return;
             }
 
-            const keys = RELOAD_KEYS_BY_EVENT[detail?.event ?? ''];
-
-            if (!keys) {
-                return;
-            }
-
-            keys.forEach((key) => pendingKeys.current.add(key));
-            schedule(
-                detail?.event === 'asset.location_updated'
-                    ? LOCATION_RELOAD_DEBOUNCE_MS
-                    : RELOAD_DEBOUNCE_MS,
-            );
-        };
-
-        const onVisibilityChange = () => {
-            if (!hidden() && pendingKeys.current.size > 0) {
-                schedule(RELOAD_DEBOUNCE_MS);
-            }
-        };
-
-        window.addEventListener(TEAM_BROADCAST_EVENT_NAME, handler);
-        document.addEventListener('visibilitychange', onVisibilityChange);
-
-        return () => {
-            window.removeEventListener(TEAM_BROADCAST_EVENT_NAME, handler);
-            document.removeEventListener(
-                'visibilitychange',
-                onVisibilityChange,
+            // Only the rows on this page use live positions: a fleet-wide
+            // batch for units on other pages must neither grow the map nor
+            // re-render the table.
+            const onPage = new Set((pageProps.assets ?? []).map((a) => a.id));
+            const visible = detail.payload.positions.filter((p) =>
+                onPage.has(p.asset_id),
             );
 
-            if (timer.current !== null) {
-                window.clearTimeout(timer.current);
+            setLivePositions((prev) =>
+                mergeLivePositions(prev, visible, onPage),
+            );
+
+            if (Date.now() - lastSummaryRefresh.current > SUMMARY_REFRESH_MS) {
+                lastSummaryRefresh.current = Date.now();
+                reload.schedule(['summary', 'monitoring']);
             }
-        };
-    }, []);
+        },
+    );
 
     const handleSelect = (id: number) => {
         if (teamSlug !== null) {
@@ -607,20 +603,27 @@ export default function AssetsIndex(pageProps: AssetsIndexProps) {
                                 onMonitorAll={monitorAllPending}
                             />
                         )}
-                        {summary && (
-                            <FleetPulse
-                                summary={summary}
-                                monitoring={monitoring}
-                                status={list.filters.status}
-                                monitoringFilter={list.filters.monitoring}
-                                onStatus={(status) =>
-                                    list.setFilter('status', status)
-                                }
-                                onMonitoring={(value) =>
-                                    list.setFilter('monitoring', value)
-                                }
-                            />
-                        )}
+                        <Deferred
+                            data={['summary', 'monitoring']}
+                            fallback={
+                                <PulseStripSkeleton labels={PULSE_LABELS} />
+                            }
+                        >
+                            {summary && (
+                                <FleetPulse
+                                    summary={summary}
+                                    monitoring={monitoring}
+                                    status={list.filters.status}
+                                    monitoringFilter={list.filters.monitoring}
+                                    onStatus={(status) =>
+                                        list.setFilter('status', status)
+                                    }
+                                    onMonitoring={(value) =>
+                                        list.setFilter('monitoring', value)
+                                    }
+                                />
+                            )}
+                        </Deferred>
                     </>
                 }
                 filters={
