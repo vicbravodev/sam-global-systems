@@ -1,5 +1,6 @@
 import type { LinkedIncidentEntry } from '@/components/sam/linked-incidents-card';
 import type { RecentEventEntry } from '@/components/sam/recent-events-card';
+import type { ListPagination } from '@/types/pagination';
 
 export type DriverStatusValue =
     | 'active'
@@ -58,13 +59,6 @@ export interface DriverColumnPresence {
     lastSeen: boolean;
 }
 
-export interface DriversPagination {
-    page: number;
-    perPage: number;
-    total: number;
-    lastPage: number;
-}
-
 /** Pulso del roster completo del tenant (ignora filtros). */
 export interface DriversSummary {
     total: number;
@@ -76,7 +70,7 @@ export interface DriversSummary {
 
 export interface DriversIndexProps {
     drivers: DriverRow[];
-    pagination: DriversPagination;
+    pagination: ListPagination;
     filters: DriverFilters;
     filterOptions: DriverFilterOptions;
     columns?: DriverColumnPresence;

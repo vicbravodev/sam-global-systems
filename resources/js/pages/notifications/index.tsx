@@ -3,80 +3,28 @@ import {
     Bell,
     BellOff,
     CircleSlash,
-    RefreshCw,
     Send,
     Siren,
     TriangleAlert,
 } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
 import {
     ClearFiltersButton,
+    EMPTY_PAGINATION,
     FilterDropdown,
     ListFooter,
 } from '@/components/sam/list';
+import { ListEmptyState, ListPage } from '@/components/sam/list-page';
 import { NotificationsTable } from '@/components/sam/notifications/notifications-table';
 import { PulseStat, PulseStrip } from '@/components/sam/pulse-strip';
-import { Button } from '@/components/ui/button';
-import { EmptyState } from '@/components/ui/empty-state';
-import { PageHeader } from '@/components/ui/page-header';
+import { useServerList } from '@/hooks/use-server-list';
 import { useBroadcastReload } from '@/hooks/use-team-broadcasts';
 import { cn } from '@/lib/utils';
 import type {
     NotificationFilterOptions,
     NotificationFilters,
     NotificationsIndexProps,
-    NotificationsPagination,
     NotificationsSummary,
 } from '@/types/notifications';
-
-// ---- PageHead ----
-
-function PageHead({
-    total,
-    unread,
-    onRefresh,
-    refreshing,
-}: {
-    total: number;
-    unread: number | null;
-    onRefresh: () => void;
-    refreshing: boolean;
-}) {
-    return (
-        <PageHeader
-            title="Notificaciones"
-            meta={
-                <span className="text-xs text-fg-3">
-                    <span className="font-medium text-fg-1">{total}</span>{' '}
-                    {total === 1 ? 'notificación' : 'notificaciones'}
-                    {unread !== null && unread > 0 && (
-                        <>
-                            {' · '}
-                            <span className="text-primary">
-                                {unread} sin leer
-                            </span>
-                        </>
-                    )}
-                </span>
-            }
-            actions={
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={onRefresh}
-                    disabled={refreshing}
-                >
-                    <RefreshCw
-                        size={13}
-                        className={cn(refreshing && 'animate-spin')}
-                    />
-                    Refrescar
-                </Button>
-            }
-            className="shrink-0 border-b border-border bg-surface-1 px-5 py-3"
-        />
-    );
-}
 
 // ---- Pulse strip ----
 
@@ -216,35 +164,11 @@ function FilterBar({ filters, options, onApply }: FilterBarProps) {
     );
 }
 
-// ---- Empty state ----
-
-function CenterEmptyState({ filtered }: { filtered: boolean }) {
-    return (
-        <EmptyState
-            className="min-h-0 flex-1"
-            icon={Bell}
-            title={filtered ? 'Sin resultados' : 'Sin notificaciones'}
-            description={
-                filtered
-                    ? 'Ninguna notificación coincide con los filtros aplicados.'
-                    : 'Cuando el sistema genere notificaciones para tu equipo aparecerán aquí: incidentes, escalaciones, alertas de riesgo y automatizaciones.'
-            }
-        />
-    );
-}
-
 // ---- Main page ----
 
 const EMPTY_OPTIONS: NotificationFilterOptions = {
     statuses: [],
     priorities: [],
-};
-
-const EMPTY_PAGINATION: NotificationsPagination = {
-    page: 1,
-    perPage: 50,
-    total: 0,
-    lastPage: 1,
 };
 
 export default function NotificationsIndex() {
@@ -257,121 +181,98 @@ export default function NotificationsIndex() {
     const teamSlug = page.props.currentTeam?.slug ?? null;
     const notifications = pageProps.notifications ?? [];
     const pagination = pageProps.pagination ?? EMPTY_PAGINATION;
-    const serverFilters = pageProps.filters ?? EMPTY_FILTERS;
     const filterOptions = pageProps.filterOptions ?? EMPTY_OPTIONS;
     const summary = pageProps.summary ?? null;
 
-    const [refreshing, setRefreshing] = useState(false);
-    const [filters, setFilters] = useState<NotificationFilters>(serverFilters);
+    const list = useServerList({
+        only: ['notifications', 'pagination'],
+        refreshOnly: ['notifications', 'pagination', 'summary'],
+        filters: pageProps.filters ?? EMPTY_FILTERS,
+        emptyFilters: EMPTY_FILTERS,
+    });
 
-    // Re-sync local filter state if the server echoes a different set
-    // (e.g. after a browser back/forward navigation).
-    useEffect(() => {
-        setFilters(serverFilters);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [
-        serverFilters.status,
-        serverFilters.priority,
-        serverFilters.unread,
-        serverFilters.failures,
-    ]);
-
-    const refresh = () => {
-        setRefreshing(true);
-        router.reload({
-            only: ['notifications', 'pagination', 'summary'],
-            onFinish: () => setRefreshing(false),
-        });
+    const markRead = (id: number) => {
+        if (teamSlug !== null) {
+            router.post(
+                `/${teamSlug}/notifications/${id}/read`,
+                {},
+                {
+                    preserveScroll: true,
+                    only: ['notifications', 'pagination', 'summary'],
+                },
+            );
+        }
     };
 
-    const applyFilters = useCallback((next: NotificationFilters) => {
-        setFilters(next);
-        router.reload({
-            only: ['notifications', 'pagination', 'filters'],
-            data: {
-                status: next.status ?? undefined,
-                priority: next.priority ?? undefined,
-                unread: next.unread ? 1 : undefined,
-                failures: next.failures ? 1 : undefined,
-                // Changing filters always restarts at the first page.
-                page: undefined,
-            },
-        });
-    }, []);
-
-    const goToPage = useCallback((target: number) => {
-        router.reload({
-            only: ['notifications', 'pagination'],
-            data: { page: target },
-        });
-    }, []);
-
-    const markRead = useCallback(
-        (id: number) => {
-            if (teamSlug !== null) {
-                router.post(
-                    `/${teamSlug}/notifications/${id}/read`,
-                    {},
-                    {
-                        preserveScroll: true,
-                        only: ['notifications', 'pagination', 'summary'],
-                    },
-                );
-            }
-        },
-        [teamSlug],
-    );
-
-    const openUrl = useCallback((url: string) => {
+    const openUrl = (url: string) => {
         router.visit(url);
-    }, []);
+    };
 
-    const hasActiveFilters =
-        serverFilters.status !== null ||
-        serverFilters.priority !== null ||
-        serverFilters.unread ||
-        serverFilters.failures;
+    const total = pagination.total;
+    const unread = summary?.unread ?? 0;
 
     return (
         <>
             <Head title="Notificaciones" />
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                <PageHead
-                    total={pagination.total}
-                    unread={summary?.unread ?? null}
-                    onRefresh={refresh}
-                    refreshing={refreshing}
-                />
-
-                {summary && (
-                    <CenterPulse
-                        summary={summary}
-                        filters={filters}
-                        onApply={applyFilters}
+            <ListPage
+                title="Notificaciones"
+                meta={
+                    <span className="text-xs text-fg-3">
+                        <span className="font-medium text-fg-1">{total}</span>{' '}
+                        {total === 1 ? 'notificación' : 'notificaciones'}
+                        {unread > 0 && (
+                            <>
+                                {' · '}
+                                <span className="text-primary">
+                                    {unread} sin leer
+                                </span>
+                            </>
+                        )}
+                    </span>
+                }
+                onRefresh={list.refresh}
+                refreshing={list.refreshing}
+                pulse={
+                    summary && (
+                        <CenterPulse
+                            summary={summary}
+                            filters={list.filters}
+                            onApply={list.apply}
+                        />
+                    )
+                }
+                filters={
+                    <FilterBar
+                        filters={list.filters}
+                        options={filterOptions}
+                        onApply={list.apply}
                     />
-                )}
-
-                <FilterBar
-                    filters={filters}
-                    options={filterOptions}
-                    onApply={applyFilters}
-                />
-
+                }
+                footer={
+                    <ListFooter
+                        pagination={pagination}
+                        shown={notifications.length}
+                        onPage={list.goToPage}
+                        noun={['notificación', 'notificaciones']}
+                    />
+                }
+            >
                 <NotificationsTable
                     rows={notifications}
                     onMarkRead={markRead}
                     onOpenSource={openUrl}
                     onOpenDetail={openUrl}
-                    empty={<CenterEmptyState filtered={hasActiveFilters} />}
+                    empty={
+                        <ListEmptyState
+                            icon={Bell}
+                            filtered={list.hasActiveFilters}
+                            title="Sin notificaciones"
+                            description="Cuando el sistema genere notificaciones para tu equipo aparecerán aquí: incidentes, escalaciones, alertas de riesgo y automatizaciones."
+                            filteredDescription="Ninguna notificación coincide con los filtros aplicados."
+                        />
+                    }
                 />
-
-                <ListFooter
-                    pagination={pagination}
-                    shown={notifications.length}
-                    onPage={goToPage}
-                    noun={['notificación', 'notificaciones']}
-                />
-            </div>
+            </ListPage>
         </>
     );
 }

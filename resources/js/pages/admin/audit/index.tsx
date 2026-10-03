@@ -11,12 +11,11 @@ import {
     ListFooter,
     SearchInput,
 } from '@/components/sam/list';
-import type { ListPagination } from '@/components/sam/list';
-import { EmptyState } from '@/components/ui/empty-state';
-import { PageHeader } from '@/components/ui/page-header';
+import { ListEmptyState, ListPage } from '@/components/sam/list-page';
 import { Switch } from '@/components/ui/switch';
 import { formatDateTime } from '@/lib/format';
 import { index as auditIndex } from '@/routes/admin/audit';
+import type { ListPagination } from '@/types/pagination';
 
 interface AuditEntry {
     id: number;
@@ -142,21 +141,18 @@ export default function AdminAuditIndex({
     return (
         <>
             <Head title="Auditoría" />
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                <PageHeader
-                    title="Auditoría"
-                    description="Seguridad y cobro de todos los clientes: entradas a consolas, altas, miembros, planes, facturas y operadores."
-                    meta={
-                        <span className="text-xs text-fg-3 tabular-nums">
-                            <span className="font-medium text-fg-1">
-                                {pagination.total}
-                            </span>{' '}
-                            {pagination.total === 1 ? 'evento' : 'eventos'}
-                        </span>
-                    }
-                    className="shrink-0 border-b border-border bg-surface-1 px-5 py-3"
-                />
-
+            <ListPage
+                title="Auditoría"
+                description="Seguridad y cobro de todos los clientes: entradas a consolas, altas, miembros, planes, facturas y operadores."
+                meta={
+                    <span className="text-xs text-fg-3 tabular-nums">
+                        <span className="font-medium text-fg-1">
+                            {pagination.total}
+                        </span>{' '}
+                        {pagination.total === 1 ? 'evento' : 'eventos'}
+                    </span>
+                }
+            >
                 <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-background px-5 py-2">
                     <SearchInput
                         value={filters.q}
@@ -207,18 +203,12 @@ export default function AdminAuditIndex({
                     rowKey={(row) => row.id}
                     loading={loading}
                     empty={
-                        <EmptyState
+                        <ListEmptyState
                             icon={ScrollText}
-                            title={
-                                filtered
-                                    ? 'Sin resultados'
-                                    : 'Sin eventos de auditoría'
-                            }
-                            description={
-                                filtered
-                                    ? 'Ningún evento coincide con los filtros.'
-                                    : 'Aquí aparecerá cada alta, entrada a la consola de un cliente y cambio de cobro.'
-                            }
+                            filtered={filtered}
+                            title="Sin eventos de auditoría"
+                            description="Aquí aparecerá cada alta, entrada a la consola de un cliente y cambio de cobro."
+                            filteredDescription="Ningún evento coincide con los filtros."
                         />
                     }
                 />
@@ -229,7 +219,7 @@ export default function AdminAuditIndex({
                     onPage={(page) => apply({}, page)}
                     noun={['evento', 'eventos']}
                 />
-            </div>
+            </ListPage>
         </>
     );
 }

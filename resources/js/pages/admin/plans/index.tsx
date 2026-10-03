@@ -5,11 +5,11 @@ import type { FormEvent } from 'react';
 import { toast } from 'sonner';
 import { BillingPill } from '@/components/sam/billing/panel';
 import { ConfirmDialog } from '@/components/sam/confirm-dialog';
+import { ListPage } from '@/components/sam/list-page';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { PageHeader } from '@/components/ui/page-header';
 import { Spinner } from '@/components/ui/spinner';
 import { meterLabel } from '@/lib/labels';
 import { cn } from '@/lib/utils';
@@ -204,21 +204,18 @@ export default function AdminPlansIndex({
     return (
         <>
             <Head title="Planes" />
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                <PageHeader
-                    title="Planes"
-                    description="Plantillas de topes incluidos por medidor. El cobro es por tracto-día con los términos de cada cliente."
-                    meta={
-                        <span className="text-xs text-fg-3">
-                            <span className="font-medium text-fg-1">
-                                {plans.length}
-                            </span>{' '}
-                            {plans.length === 1 ? 'plan' : 'planes'}
-                        </span>
-                    }
-                    className="shrink-0 border-b border-border bg-surface-1 px-5 py-3"
-                />
-
+            <ListPage
+                title="Planes"
+                description="Plantillas de topes incluidos por medidor. El cobro es por tracto-día con los términos de cada cliente."
+                meta={
+                    <span className="text-xs text-fg-3">
+                        <span className="font-medium text-fg-1">
+                            {plans.length}
+                        </span>{' '}
+                        {plans.length === 1 ? 'plan' : 'planes'}
+                    </span>
+                }
+            >
                 <div className="min-h-0 flex-1 overflow-y-auto p-5">
                     {plans.length === 0 ? (
                         <EmptyState
@@ -238,7 +235,7 @@ export default function AdminPlansIndex({
                         </div>
                     )}
                 </div>
-            </div>
+            </ListPage>
         </>
     );
 }

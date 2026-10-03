@@ -1,5 +1,5 @@
 import { Search, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useEffectEvent, useState } from 'react';
 
 import { cn } from '@/lib/utils';
 
@@ -26,26 +26,27 @@ export function SearchInput({
     className,
 }: Props) {
     const [draft, setDraft] = useState(value ?? '');
+    const [applied, setApplied] = useState(value);
 
-    useEffect(() => {
+    // El filtro aplicado cambió desde fuera: el borrador lo sigue.
+    if (applied !== value) {
+        setApplied(value);
         setDraft(value ?? '');
-    }, [value]);
+    }
+
+    const flush = useEffectEvent((text: string) => {
+        const next = text.trim();
+
+        if (next !== (value ?? '')) {
+            onApply(next === '' ? null : next);
+        }
+    });
 
     useEffect(() => {
-        const current = value ?? '';
-        const next = draft.trim();
-
-        if (next === current) {
-            return;
-        }
-
-        const timer = setTimeout(() => {
-            onApply(next === '' ? null : next);
-        }, delay);
+        const timer = setTimeout(() => flush(draft), delay);
 
         return () => clearTimeout(timer);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [draft]);
+    }, [draft, delay]);
 
     return (
         <label
