@@ -92,6 +92,11 @@ Schema::create('domain_event_logs', function (Blueprint $table) {
 
 ### 4.3 System Traces (`system_traces`)
 
+> **Retirada (2026-10).** La tabla nunca tuvo escritor en producción y se eliminó
+> (`2026_10_07_100000_drop_system_traces_table`). La traza de un evento vive en
+> `App\Support\PipelineTrace`: `trace_id` en cada línea de SystemLog y persistido
+> en `raw_events` / `normalized_events`. Lo de abajo queda como referencia histórica.
+
 Distributed-tracing-style spans for tracking operations across modules.
 
 ```php

@@ -8,6 +8,8 @@ import {
 } from '@/components/sam/settings/settings-page';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { TONE_TEXT } from '@/lib/tone';
+import { cn } from '@/lib/utils';
 
 export interface PhoneVerificationProps {
     phone: string;
@@ -60,7 +62,12 @@ export function PhoneVerification({
                             </div>
                             <InputError message={errors.phone} />
                             {codeSent && (
-                                <p className="text-xs font-medium text-health-ok">
+                                <p
+                                    className={cn(
+                                        'text-xs font-medium',
+                                        TONE_TEXT.ok,
+                                    )}
+                                >
                                     Código enviado. Revisa tus SMS.
                                 </p>
                             )}

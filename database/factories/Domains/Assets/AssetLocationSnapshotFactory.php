@@ -5,6 +5,7 @@ namespace Database\Factories\Domains\Assets;
 use App\Domains\Assets\Enums\LocationSource;
 use App\Domains\Assets\Models\Asset;
 use App\Domains\Assets\Models\AssetLocationSnapshot;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -13,11 +14,16 @@ use Illuminate\Database\Eloquent\Factories\Factory;
 class AssetLocationSnapshotFactory extends Factory
 {
     /**
-     * Each row lands one second further back: points are unique per asset and
-     * instant (the feed's idempotency index), so several rows for the same
-     * asset cannot share `now()`. Stays within the last hour, i.e. "fresh".
+     * Último `recorded_at` entregado por unidad. Los puntos son únicos por
+     * unidad e instante (índice de idempotencia del feed): cada fila nueva de
+     * la misma unidad cae estrictamente antes que la anterior, avance o no el
+     * reloj entre creaciones (con `now() - n` dos filas creadas a un segundo
+     * de distancia coincidían). Una cadena de hace más de 10 minutos es de un
+     * test anterior (base de datos ya limpia) y reinicia en `now()`.
+     *
+     * @var array<int|string, CarbonImmutable>
      */
-    private static int $sequence = 0;
+    private static array $lastByAsset = [];
 
     protected $model = AssetLocationSnapshot::class;
 
@@ -29,9 +35,24 @@ class AssetLocationSnapshotFactory extends Factory
             'longitude' => fake()->longitude(),
             'speed' => fake()->randomFloat(2, 0, 120),
             'heading' => fake()->numberBetween(0, 359),
-            'recorded_at' => now()->subSeconds(self::$sequence++ % 3600),
+            'recorded_at' => fn (array $attributes): CarbonImmutable => self::nextRecordedAt($attributes['asset_id']),
             'source' => LocationSource::Provider,
         ];
+    }
+
+    private static function nextRecordedAt(int|string $assetId): CarbonImmutable
+    {
+        $now = CarbonImmutable::now()->startOfSecond();
+        $last = self::$lastByAsset[$assetId] ?? null;
+
+        $next = match (true) {
+            $last === null, $last->lessThan($now->subMinutes(10)) => $now,
+            // El reloj retrocedió (travel/freeze): todo lo entregado es posterior.
+            $now->lessThan($last) => $now,
+            default => $last->subSecond(),
+        };
+
+        return self::$lastByAsset[$assetId] = $next;
     }
 
     public function fromGps(): static

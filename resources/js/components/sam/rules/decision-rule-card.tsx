@@ -16,6 +16,7 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Switch } from '@/components/ui/switch';
+import { TONE_DOT, TONE_TEXT } from '@/lib/tone';
 import { cn } from '@/lib/utils';
 import { ordinal } from './lib';
 import { RuleSentence } from './rule-sentence';
@@ -151,13 +152,13 @@ export function DecisionRuleCard({
                     <span
                         className={cn(
                             'inline-flex items-center gap-1.5 text-xs',
-                            rule.isActive ? 'text-health-ok' : 'text-fg-3',
+                            TONE_TEXT[rule.isActive ? 'ok' : 'neutral'],
                         )}
                     >
                         <span
                             className={cn(
                                 'size-1.5 rounded-full',
-                                rule.isActive ? 'bg-health-ok' : 'bg-fg-3',
+                                TONE_DOT[rule.isActive ? 'ok' : 'neutral'],
                             )}
                             aria-hidden="true"
                         />

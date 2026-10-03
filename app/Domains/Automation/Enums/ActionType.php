@@ -17,6 +17,38 @@ enum ActionType: string implements HasLabel
     case RequestHumanReview = 'request_human_review';
     case CallWebhook = 'call_webhook';
 
+    /** Error de validación al pedir una acción diferida (ver isDeferred()). */
+    public const string DEFERRED_MESSAGE = '«Crear ticket» y «Actualizar estado del activo» todavía no están disponibles: elige otra acción.';
+
+    /**
+     * Acciones sin implementación real: ExecuteAction las cierra como stub
+     * `deferred_v2`. Siguen en el enum porque puede haber filas que las
+     * referencien, pero no se ofrecen ni se aceptan en workflows o plantillas.
+     */
+    public function isDeferred(): bool
+    {
+        return $this === self::CreateTicket || $this === self::UpdateAssetState;
+    }
+
+    /**
+     * @return list<self>
+     */
+    public static function configurable(): array
+    {
+        return array_values(array_filter(self::cases(), fn (self $type): bool => ! $type->isDeferred()));
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function deferredValues(): array
+    {
+        return array_values(array_map(
+            fn (self $type): string => $type->value,
+            array_filter(self::cases(), fn (self $type): bool => $type->isDeferred()),
+        ));
+    }
+
     public function label(): string
     {
         return match ($this) {

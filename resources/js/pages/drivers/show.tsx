@@ -6,7 +6,6 @@ import { DocumentsCard } from '@/components/sam/drivers/detail/documents-card';
 import { DriverHero } from '@/components/sam/drivers/detail/driver-hero';
 import { ProfileCard } from '@/components/sam/drivers/detail/profile-card';
 import { RiskCard } from '@/components/sam/drivers/detail/risk-card';
-import { StatusLogCard } from '@/components/sam/drivers/detail/status-log-card';
 import { LinkedIncidentsCard } from '@/components/sam/linked-incidents-card';
 import { RecentEventsCard } from '@/components/sam/recent-events-card';
 import driverRoutes from '@/routes/drivers';
@@ -15,7 +14,6 @@ import type { DriverShowProps } from '@/types/drivers';
 export default function DriverShow({
     driver,
     assignments,
-    statusLog,
     recentEvents,
     incidents,
     activity,
@@ -31,7 +29,7 @@ export default function DriverShow({
 
                 {/* Operación a la izquierda (riesgo, actividad, incidentes,
                     unidades); ficha a la derecha (perfil, contactos,
-                    documentos, estado). */}
+                    documentos). */}
                 <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
                     <div className="flex min-w-0 flex-col gap-4">
                         <RiskCard
@@ -57,7 +55,6 @@ export default function DriverShow({
                         <ProfileCard driver={driver} />
                         <ContactsCard contacts={driver.contacts} />
                         <DocumentsCard documents={driver.documents} />
-                        <StatusLogCard entries={statusLog} />
                     </div>
                 </div>
             </div>

@@ -2,6 +2,7 @@ import { ArrowDownRight, ArrowUpRight } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { Skeleton } from '@/components/ui/skeleton';
+import { TONE_TEXT } from '@/lib/tone';
 import { cn } from '@/lib/utils';
 
 export interface DeltaProps {
@@ -42,7 +43,7 @@ export function Delta({
         <span
             className={cn(
                 'inline-flex items-center gap-0.5 font-mono text-2xs tabular-nums',
-                good ? 'text-health-ok' : 'text-severity-high',
+                TONE_TEXT[good ? 'ok' : 'high'],
                 className,
             )}
         >

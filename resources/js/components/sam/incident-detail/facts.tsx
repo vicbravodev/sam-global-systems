@@ -15,6 +15,7 @@ import { Meter } from '@/components/sam/meter';
 import { formatDateTime } from '@/lib/format';
 import { eventTypeLabel } from '@/lib/labels';
 import { formatClock } from '@/lib/time';
+import { TONE_SURFACE, TONE_TEXT } from '@/lib/tone';
 import { cn } from '@/lib/utils';
 import type { IncidentDetail } from '@/types/sam';
 
@@ -207,8 +208,13 @@ export function ResolutionCard({ incident }: { incident: IncidentDetail }) {
     return (
         <section>
             <SectionTitle>Resolución</SectionTitle>
-            <div className="rounded-md border border-health-ok/30 bg-health-ok/5 p-3">
-                <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-health-ok">
+            <div className={cn('rounded-md border p-3', TONE_SURFACE.ok)}>
+                <div
+                    className={cn(
+                        'mb-1 flex items-center gap-1.5 text-xs font-semibold',
+                        TONE_TEXT.ok,
+                    )}
+                >
                     <CheckCircle2 size={13} strokeWidth={1.75} />
                     {resolution.code
                         ? (RESOLUTION_LABELS[resolution.code] ??

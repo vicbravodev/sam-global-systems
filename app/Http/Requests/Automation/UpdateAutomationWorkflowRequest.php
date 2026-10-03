@@ -31,7 +31,7 @@ class UpdateAutomationWorkflowRequest extends FormRequest
             'status' => ['sometimes', Rule::enum(WorkflowStatus::class)],
             'version' => ['sometimes', 'integer', 'min:1'],
             'steps_json' => ['sometimes', 'array', 'min:1'],
-            'steps_json.*.action_type' => ['required_with:steps_json', 'string'],
+            'steps_json.*.action_type' => ['required_with:steps_json', 'string', ...$this->stepActionTypeRules()],
             'steps_json.*.execution_mode' => ['nullable', 'string'],
             'steps_json.*.delay_seconds' => ['nullable', 'integer', 'min:0'],
             'steps_json.*.order' => ['nullable', 'integer', 'min:1'],
@@ -39,5 +39,13 @@ class UpdateAutomationWorkflowRequest extends FormRequest
             'steps_json.*.target_reference' => ['nullable', 'string', 'max:255', $this->stepTargetRule()],
             'is_active' => ['sometimes', 'boolean'],
         ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return $this->stepActionTypeMessages();
     }
 }

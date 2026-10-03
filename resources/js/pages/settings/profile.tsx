@@ -13,6 +13,8 @@ import {
 } from '@/components/sam/settings/settings-page';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { TONE_TEXT } from '@/lib/tone';
+import { cn } from '@/lib/utils';
 import { edit } from '@/routes/profile';
 import { send } from '@/routes/verification';
 
@@ -112,7 +114,12 @@ export default function Profile({
                                         </p>
                                     ) : null}
                                     {status === 'verification-link-sent' ? (
-                                        <p className="text-xs font-medium text-health-ok">
+                                        <p
+                                            className={cn(
+                                                'text-xs font-medium',
+                                                TONE_TEXT.ok,
+                                            )}
+                                        >
                                             Te enviamos un nuevo enlace de
                                             verificación.
                                         </p>

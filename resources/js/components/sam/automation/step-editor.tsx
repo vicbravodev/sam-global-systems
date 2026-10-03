@@ -223,15 +223,15 @@ export function StepEditor({
                                         key={value}
                                         value={value}
                                         disabled={
-                                            item?.comingSoon &&
+                                            item?.unavailable &&
                                             value !== draft.action_type
                                         }
                                     >
                                         {Icon && <Icon className="size-3.5" />}
                                         {actionTitle(value, actionOptions)}
-                                        {item?.comingSoon && (
+                                        {item?.unavailable && (
                                             <span className="text-2xs text-fg-3">
-                                                (próximamente)
+                                                (no disponible)
                                             </span>
                                         )}
                                     </SelectItem>

@@ -2,9 +2,11 @@
 
 namespace App\Http\Requests\Concerns;
 
+use App\Domains\Automation\Enums\ActionType;
 use App\Support\Http\OutboundUrlGuard;
 use App\Support\TeamMembers;
 use Closure;
+use Illuminate\Validation\Rule;
 
 /**
  * Un paso de workflow que apunta a un usuario (target_type=user, o la acción
@@ -51,5 +53,29 @@ trait ValidatesWorkflowStepTargets
                 $fail('El usuario seleccionado no pertenece a este equipo.');
             }
         };
+    }
+
+    /**
+     * Un tipo de acción real y ejecutable: las diferidas (ActionType::isDeferred)
+     * se rechazan con un mensaje propio antes de la validación del enum.
+     *
+     * @return list<mixed>
+     */
+    protected function stepActionTypeRules(): array
+    {
+        return [
+            Rule::notIn(ActionType::deferredValues()),
+            Rule::enum(ActionType::class),
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    protected function stepActionTypeMessages(): array
+    {
+        return [
+            'steps_json.*.action_type.not_in' => ActionType::DEFERRED_MESSAGE,
+        ];
     }
 }

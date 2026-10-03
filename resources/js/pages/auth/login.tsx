@@ -7,6 +7,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
+import { TONE_TEXT } from '@/lib/tone';
+import { cn } from '@/lib/utils';
 import { store } from '@/routes/login';
 import { request } from '@/routes/password';
 
@@ -92,7 +94,12 @@ export default function Login({ status, canResetPassword }: Props) {
             </Form>
 
             {status && (
-                <div className="mb-4 text-center text-sm font-medium text-health-ok">
+                <div
+                    className={cn(
+                        'mb-4 text-center text-sm font-medium',
+                        TONE_TEXT.ok,
+                    )}
+                >
                     {status}
                 </div>
             )}

@@ -3,6 +3,7 @@ import type { ConditionFieldDef } from '@/components/sam/condition-builder';
 import { SegmentedFilter } from '@/components/sam/segmented-filter';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
+import { TONE_DOT } from '@/lib/tone';
 import type {
     AutomationOptions,
     AutomationSummary,
@@ -68,13 +69,13 @@ export function WorkflowsPanel({
                                 value: 'active',
                                 label: 'Encendidas',
                                 count: summary.workflows.active,
-                                dot: 'bg-severity-low',
+                                dot: TONE_DOT.ok,
                             },
                             {
                                 value: 'inactive',
                                 label: 'Apagadas',
                                 count: summary.workflows.inactive,
-                                dot: 'bg-fg-3',
+                                dot: TONE_DOT.neutral,
                             },
                         ]}
                     />

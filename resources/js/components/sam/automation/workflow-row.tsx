@@ -21,6 +21,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { formatDateTime, formatNumber } from '@/lib/format';
 import { minutesSince } from '@/lib/time';
+import { TONE_TEXT } from '@/lib/tone';
 import { cn } from '@/lib/utils';
 import { conditionPhrases } from './api';
 import {
@@ -109,7 +110,9 @@ export function WorkflowListRow({
                         {workflow.name}
                     </span>
                     {running ? (
-                        <span className="text-2xs font-medium text-severity-low">
+                        <span
+                            className={cn('text-2xs font-medium', TONE_TEXT.ok)}
+                        >
                             Encendida
                         </span>
                     ) : workflow.status === 'draft' ? (

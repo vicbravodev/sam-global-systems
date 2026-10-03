@@ -2,6 +2,7 @@ import { router } from '@inertiajs/react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Switch } from '@/components/ui/switch';
+import { TONE_TEXT } from '@/lib/tone';
 import { cn } from '@/lib/utils';
 import assetRoutes from '@/routes/assets';
 import type { AssetMonitoringState } from '@/types/assets';
@@ -84,11 +85,9 @@ export function MonitoringSwitch({
                 <span
                     className={cn(
                         'text-xs',
-                        on
-                            ? 'text-health-ok'
-                            : state === 'pending'
-                              ? 'text-severity-medium'
-                              : 'text-fg-3',
+                        TONE_TEXT[
+                            on ? 'ok' : state === 'pending' ? 'warn' : 'neutral'
+                        ],
                     )}
                 >
                     {MONITORING_LABEL[state]}

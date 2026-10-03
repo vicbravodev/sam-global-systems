@@ -11,7 +11,6 @@ use App\Http\Controllers\Assets\AssetController;
 use App\Http\Controllers\Audit\AuditLogController;
 use App\Http\Controllers\Audit\ChangeHistoryController;
 use App\Http\Controllers\Audit\DomainEventLogController;
-use App\Http\Controllers\Audit\SystemTraceController;
 use App\Http\Controllers\Automation\ActionExecutionController;
 use App\Http\Controllers\Automation\ActionTemplateController;
 use App\Http\Controllers\Automation\AutomationWorkflowController;
@@ -185,7 +184,6 @@ Route::prefix('{current_team}')
         Route::get('audit/logs/{auditLog}', [AuditLogController::class, 'show'])->name('api.audit.logs.show');
         Route::get('audit/events', [DomainEventLogController::class, 'index'])->name('api.audit.events.index');
         Route::get('audit/changes', [ChangeHistoryController::class, 'index'])->name('api.audit.changes.index');
-        Route::get('audit/traces/{traceId}', [SystemTraceController::class, 'show'])->name('api.audit.traces.show');
 
         Route::get('analytics/dashboard', [AnalyticsDashboardController::class, 'index'])->name('api.analytics.dashboard');
         Route::get('analytics/kpis', [KpiController::class, 'index'])->name('api.analytics.kpis.index');

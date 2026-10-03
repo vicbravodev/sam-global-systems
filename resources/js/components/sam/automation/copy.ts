@@ -160,8 +160,11 @@ export interface ActionCopy {
     /** Destinos admitidos; vacío = la acción no necesita destino. */
     targets: TargetKind[];
     help: string;
-    /** Aún no hace nada real (se registra como simulada). */
-    comingSoon?: boolean;
+    /**
+     * No hace nada real: el backend ya no la ofrece ni la acepta al guardar.
+     * Sólo se muestra en pasos antiguos que la tengan, para cambiarla.
+     */
+    unavailable?: boolean;
 }
 
 export const ACTIONS: Record<string, ActionCopy> = {
@@ -233,19 +236,21 @@ export const ACTIONS: Record<string, ActionCopy> = {
         connector: 'para',
         icon: Ticket,
         targets: ['role', 'user'],
-        help: 'Todavía no está conectado a un sistema de tickets.',
-        comingSoon: true,
+        help: 'No disponible: cambia este paso por otra acción para poder guardar.',
+        unavailable: true,
     },
     update_asset_state: {
         title: 'Cambiar el estado del activo',
         short: 'Cambiar estado del activo',
         icon: Truck,
         targets: [],
-        help: 'Todavía no está disponible.',
-        comingSoon: true,
+        help: 'No disponible: cambia este paso por otra acción para poder guardar.',
+        unavailable: true,
     },
 };
 
+// create_ticket y update_asset_state siguen al final sólo para pintar pasos
+// antiguos: el editor filtra por las opciones del backend, que ya no las trae.
 export const ACTION_ORDER = [
     'send_whatsapp',
     'send_sms',
