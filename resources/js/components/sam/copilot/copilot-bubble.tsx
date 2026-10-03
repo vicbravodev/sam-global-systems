@@ -1,6 +1,12 @@
 import { usePage } from '@inertiajs/react';
 import { Maximize2, MessageSquarePlus, Sparkles, X } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+    useCallback,
+    useEffect,
+    useEffectEvent,
+    useRef,
+    useState,
+} from 'react';
 import {
     Tooltip,
     TooltipContent,
@@ -86,13 +92,18 @@ export default function CopilotBubble({
     const needsCatalog =
         catalog.status === 'idle' || catalog.status === 'failed';
 
-    useEffect(() => {
-        if (open && needsCatalog) {
+    // Only an opening triggers the load, not a failure while open (that one
+    // offers "Reintentar"): the catalog state is read, not reacted to.
+    const loadCatalogIfNeeded = useEffectEvent(() => {
+        if (needsCatalog) {
             loadCatalog();
         }
-        // Only an opening triggers the load, not a failure while open (that
-        // one offers "Reintentar").
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+    });
+
+    useEffect(() => {
+        if (open) {
+            loadCatalogIfNeeded();
+        }
     }, [open]);
 
     if (!open) {
