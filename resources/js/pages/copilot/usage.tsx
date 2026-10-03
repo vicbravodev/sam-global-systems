@@ -7,20 +7,16 @@ import {
     formatUsd,
     timeAgo,
 } from '@/components/sam/copilot/copilot-format';
+import { COPILOT_CHANNEL_LABELS } from '@/components/sam/copilot/copy';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
-import { formatNumber } from '@/lib/format';
+import { formatNumber, formatShortDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import copilotRoutes from '@/routes/copilot';
 import type { CopilotUsageReport } from '@/types/copilot';
 
 const RANGES = [7, 30, 90] as const;
-
-const CHANNEL_LABELS: Record<string, string> = {
-    page: 'Vista completa',
-    bubble: 'Burbuja',
-};
 
 export default function CopilotUsage({ usage }: { usage: CopilotUsageReport }) {
     const page = usePage();
@@ -36,10 +32,7 @@ export default function CopilotUsage({ usage }: { usage: CopilotUsageReport }) {
 
     const labels = usage.series.map((point, index) =>
         index % Math.ceil(usage.series.length / 10) === 0
-            ? new Date(`${point.date}T00:00:00`).toLocaleDateString('es', {
-                  day: 'numeric',
-                  month: 'short',
-              })
+            ? formatShortDate(point.date)
             : '',
     );
 
@@ -194,8 +187,9 @@ export default function CopilotUsage({ usage }: { usage: CopilotUsageReport }) {
                                         <ShareRow
                                             key={channel}
                                             label={
-                                                CHANNEL_LABELS[channel] ??
-                                                channel
+                                                COPILOT_CHANNEL_LABELS[
+                                                    channel
+                                                ] ?? channel
                                             }
                                             value={count}
                                             max={totalChannel}
@@ -326,7 +320,7 @@ export default function CopilotUsage({ usage }: { usage: CopilotUsageReport }) {
                                                 {row.channel && (
                                                     <span>
                                                         ·{' '}
-                                                        {CHANNEL_LABELS[
+                                                        {COPILOT_CHANNEL_LABELS[
                                                             row.channel
                                                         ] ?? row.channel}
                                                     </span>

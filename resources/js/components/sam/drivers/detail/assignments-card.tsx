@@ -1,17 +1,12 @@
 import { Link } from '@inertiajs/react';
 import { Truck } from 'lucide-react';
+import { ASSIGNMENT_TYPE_LABELS } from '@/components/sam/drivers/copy';
+import { StatusBadge } from '@/components/sam/status-badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import assetRoutes from '@/routes/assets';
 import type { DriverAssignmentEntry } from '@/types/drivers';
-
-const ASSIGNMENT_TYPE_LABELS: Record<string, string> = {
-    primary_driver: 'Conductor principal',
-    secondary_driver: 'Conductor secundario',
-    temporary_operator: 'Operador temporal',
-    responsible_party: 'Responsable',
-};
 
 export function AssignmentsCard({
     assignments,
@@ -103,9 +98,11 @@ export function AssignmentsCard({
                                         </td>
                                         <td className="px-2.5 py-2 text-2xs">
                                             {assignment.isCurrent ? (
-                                                <span className="rounded-sm border border-severity-low/40 bg-severity-low/10 px-1.5 py-0.5 text-3xs font-semibold text-severity-low">
-                                                    Vigente
-                                                </span>
+                                                <StatusBadge
+                                                    size="sm"
+                                                    tone="ok"
+                                                    label="Vigente"
+                                                />
                                             ) : (
                                                 <span className="text-fg-2">
                                                     {formatDate(

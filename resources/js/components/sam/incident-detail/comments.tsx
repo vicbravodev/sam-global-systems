@@ -1,5 +1,6 @@
 import { usePage } from '@inertiajs/react';
 import { useState } from 'react';
+import { StatusBadge } from '@/components/sam/status-badge';
 import { UserAvatar } from '@/components/sam/user-avatar';
 import { Button } from '@/components/ui/button';
 import {
@@ -11,39 +12,26 @@ import {
 } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { getInitials } from '@/lib/initials';
-import { cn } from '@/lib/utils';
+import type { ToneLabel } from '@/lib/tone';
 import type { IncidentDetail } from '@/types/sam';
 import { useIncidentActions } from './incident-actions-context';
 import type { CommentVisibilityUi } from './incident-actions-context';
 
 // ---- VisibilityChip ----
 
-function VisibilityChip({ v }: { v: 'internal' | 'tenant' | 'audit' }) {
-    const map = {
-        internal: {
-            label: 'Interno',
-            cls: 'bg-surface-3 text-fg-3 border-border',
-        },
-        tenant: {
-            label: 'Tenant',
-            cls: 'bg-primary/10 text-primary border-primary/30',
-        },
-        audit: {
-            label: 'Auditoría',
-            cls: 'bg-severity-high/10 text-severity-high border-severity-high/30',
-        },
-    };
-    const { label, cls } = map[v];
+const VISIBILITY: Record<'internal' | 'tenant' | 'audit', ToneLabel> = {
+    internal: { label: 'Interno', tone: 'neutral' },
+    tenant: { label: 'Tenant', tone: 'primary' },
+    audit: { label: 'Auditoría', tone: 'high' },
+};
 
+function VisibilityChip({ v }: { v: 'internal' | 'tenant' | 'audit' }) {
     return (
-        <span
-            className={cn(
-                'inline-flex rounded-sm border px-1.5 py-0.5 text-3xs font-semibold tracking-caps uppercase',
-                cls,
-            )}
-        >
-            {label}
-        </span>
+        <StatusBadge
+            size="sm"
+            {...VISIBILITY[v]}
+            className="tracking-caps uppercase"
+        />
     );
 }
 

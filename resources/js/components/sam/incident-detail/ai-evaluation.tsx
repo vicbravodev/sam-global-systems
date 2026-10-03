@@ -7,6 +7,11 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { ConfidenceBar } from '@/components/sam';
+import {
+    AI_DECISION_LABELS,
+    OPERATOR_VERDICT_LABELS,
+} from '@/components/sam/incident-detail/copy';
+import { StatusBadge } from '@/components/sam/status-badge';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -24,29 +29,14 @@ import {
 } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { formatDateTime } from '@/lib/format';
+import { evaluationModeLabel } from '@/lib/labels';
 import { cn } from '@/lib/utils';
-import type {
-    AiDecision,
-    IncidentDetail,
-    IncidentMediaSummary,
-} from '@/types/sam';
+import type { IncidentDetail, IncidentMediaSummary } from '@/types/sam';
 import { useIncidentActions } from './incident-actions-context';
 import { MediaVerdictChips } from './media-verdict';
 
 // Sentinel para "sin selección" en <Select>: Radix no permite value="".
 const NONE_OPTION = '__none__';
-
-const DECISION_LABEL: Record<AiDecision, string> = {
-    incident: 'Incidente confirmado',
-    escalate: 'Escalamiento recomendado',
-    info: 'Evento informativo',
-    discard: 'Descartado',
-};
-
-const OPERATOR_VERDICT_LABEL: Record<'confirmed' | 'false_positive', string> = {
-    confirmed: 'Confirmado por operador',
-    false_positive: 'Falso positivo (operador)',
-};
 
 function OperatorVerdictBadge({ incident }: { incident: IncidentDetail }) {
     const verdict = incident.aiOperatorVerdict ?? null;
@@ -59,33 +49,22 @@ function OperatorVerdictBadge({ incident }: { incident: IncidentDetail }) {
     const Icon = confirmed ? UserCheck : UserX;
 
     return (
-        <span
-            data-testid="ai-operator-verdict"
-            className={cn(
-                'mb-2 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-3xs font-semibold',
-                confirmed
-                    ? 'border-health-ok/40 bg-health-ok/10 text-health-ok'
-                    : 'border-status-discarded/40 bg-status-discarded/10 text-status-discarded',
-            )}
-            title={
-                incident.aiOperatorVerdictAt
-                    ? `Registrado el ${formatDateTime(incident.aiOperatorVerdictAt)}`
-                    : undefined
-            }
-        >
-            <Icon size={11} strokeWidth={1.75} />
-            {OPERATOR_VERDICT_LABEL[verdict]}
+        <span data-testid="ai-operator-verdict" className="mb-2 inline-flex">
+            <StatusBadge
+                size="sm"
+                tone={confirmed ? 'ok' : 'neutral'}
+                icon={Icon}
+                label={OPERATOR_VERDICT_LABELS[verdict]}
+                className="rounded-full px-2"
+                title={
+                    incident.aiOperatorVerdictAt
+                        ? `Registrado el ${formatDateTime(incident.aiOperatorVerdictAt)}`
+                        : undefined
+                }
+            />
         </span>
     );
 }
-
-const MODE_LABEL: Record<string, string> = {
-    rules_only: 'solo reglas',
-    ai_text: 'texto',
-    multimodal: 'multimodal',
-    hybrid: 'híbrida',
-    deferred_pending_media: 'esperando media',
-};
 
 // ---- ReclassifyDialog ----
 
@@ -297,7 +276,7 @@ export function AiEvaluationCard({
 
     const summary = mediaSummary ?? incident.mediaSummary ?? null;
     const modeLabel = incident.aiMode
-        ? (MODE_LABEL[incident.aiMode] ?? incident.aiMode)
+        ? evaluationModeLabel(incident.aiMode)
         : null;
     const steps = incident.aiReasoningSteps ?? [];
 
@@ -361,7 +340,7 @@ export function AiEvaluationCard({
                     compact ? 'text-sm' : 'text-base',
                 )}
             >
-                {DECISION_LABEL[incident.aiDecision]}
+                {AI_DECISION_LABELS[incident.aiDecision]}
             </div>
 
             <OperatorVerdictBadge incident={incident} />

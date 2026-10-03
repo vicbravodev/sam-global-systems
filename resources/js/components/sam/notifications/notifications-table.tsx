@@ -21,13 +21,17 @@ import * as React from 'react';
 import { CellEmpty, DataTable } from '@/components/sam/data-table';
 import type { DataTableColumn } from '@/components/sam/data-table';
 import { RelativeTime } from '@/components/sam/relative-time';
+import { StatusBadge } from '@/components/sam/status-badge';
 import {
     Tooltip,
     TooltipContent,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { formatDateTime } from '@/lib/format';
+import { channelLabel } from '@/lib/labels';
 import { dayLabel, formatClock, minutesSince } from '@/lib/time';
+import { TONE_DOT, TONE_PILL, TONE_TEXT } from '@/lib/tone';
+import type { ToneLabel } from '@/lib/tone';
 import { cn } from '@/lib/utils';
 import type {
     NotificationChannelSummary,
@@ -36,45 +40,18 @@ import type {
     NotificationRow,
     NotificationStatusTone,
 } from '@/types/notifications';
-
-const PRIORITY_STYLES: Record<NotificationPriorityValue, string> = {
-    low: 'border-border bg-surface-3 text-fg-3',
-    normal: 'border-border bg-surface-3 text-fg-2',
-    high: 'border-severity-medium/40 bg-severity-medium/15 text-severity-medium',
-    critical:
-        'border-severity-critical/40 bg-severity-critical/15 text-severity-critical',
-};
-
-const PRIORITY_LABELS: Record<NotificationPriorityValue, string> = {
-    low: 'Baja',
-    normal: 'Normal',
-    high: 'Alta',
-    critical: 'Crítica',
-};
+import {
+    CHANNEL_DELIVERY,
+    NOTIFICATION_STATUS_TONE,
+    UNATTEMPTED_DELIVERY,
+    notificationPriority,
+} from './copy';
 
 const PRIORITY_RANK: Record<NotificationPriorityValue, number> = {
     low: 0,
     normal: 1,
     high: 2,
     critical: 3,
-};
-
-const TONE_DOT: Record<NotificationStatusTone, string> = {
-    ok: 'bg-severity-low',
-    warning: 'bg-severity-medium',
-    critical: 'bg-severity-critical',
-    info: 'bg-severity-info motion-safe:animate-pulse',
-    muted: 'bg-fg-disabled',
-    neutral: 'bg-fg-3',
-};
-
-const TONE_TEXT: Record<NotificationStatusTone, string> = {
-    ok: 'text-fg-2',
-    warning: 'text-severity-medium',
-    critical: 'font-medium text-severity-critical',
-    info: 'text-fg-2',
-    muted: 'text-fg-3',
-    neutral: 'text-fg-2',
 };
 
 const CHANNEL_ICONS: Record<string, LucideIcon> = {
@@ -86,41 +63,6 @@ const CHANNEL_ICONS: Record<string, LucideIcon> = {
     slack: MessageSquare,
     webhook: Webhook,
     voice: Phone,
-};
-
-const CHANNEL_LABELS: Record<string, string> = {
-    email: 'Email',
-    sms: 'SMS',
-    whatsapp: 'WhatsApp',
-    push: 'Push',
-    web: 'Web',
-    slack: 'Slack',
-    webhook: 'Webhook',
-    voice: 'Llamada',
-};
-
-const DELIVERY_LABELS: Record<string, string> = {
-    pending: 'pendiente',
-    queued: 'en cola',
-    sending: 'enviando',
-    sent: 'enviado al operador',
-    delivered: 'entregado',
-    failed: 'falló',
-    bounced: 'rebotó',
-    retrying: 'reintentando',
-    cancelled: 'cancelado',
-    skipped: 'omitido (sin contacto)',
-};
-
-const DELIVERY_STYLES: Record<string, string> = {
-    delivered: 'border-severity-low/40 bg-severity-low/10 text-severity-low',
-    failed: 'border-severity-critical/40 bg-severity-critical/10 text-severity-critical',
-    bounced:
-        'border-severity-critical/40 bg-severity-critical/10 text-severity-critical',
-    retrying:
-        'border-severity-medium/40 bg-severity-medium/10 text-severity-medium',
-    skipped: 'border-dashed border-border bg-transparent text-fg-3',
-    cancelled: 'border-dashed border-border bg-transparent text-fg-3',
 };
 
 /** Glyph by notification family (incident.*, driver.*, action.*, system.*). */
@@ -163,9 +105,10 @@ function ChannelChips({
         <span className="flex flex-wrap items-center gap-1">
             {channels.map((channel) => {
                 const Icon = CHANNEL_ICONS[channel.type] ?? Bell;
-                const label = CHANNEL_LABELS[channel.type] ?? channel.type;
-                const status =
-                    DELIVERY_LABELS[channel.status] ?? channel.status;
+                const label = channelLabel(channel.type);
+                const delivery: ToneLabel | undefined =
+                    CHANNEL_DELIVERY[channel.status];
+                const status = delivery?.label ?? channel.status;
 
                 return (
                     <Tooltip key={channel.type}>
@@ -173,8 +116,9 @@ function ChannelChips({
                             <span
                                 className={cn(
                                     'inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 text-3xs font-semibold',
-                                    DELIVERY_STYLES[channel.status] ??
-                                        'border-border bg-surface-3 text-fg-2',
+                                    TONE_PILL[delivery?.tone ?? 'neutral'],
+                                    UNATTEMPTED_DELIVERY.has(channel.status) &&
+                                        'border-dashed bg-transparent',
                                 )}
                             >
                                 <Icon
@@ -209,16 +153,28 @@ function StatusCell({
     tone: NotificationStatusTone;
     reason: string | null;
 }) {
+    const color = NOTIFICATION_STATUS_TONE[tone];
+
     return (
         <span className="flex min-w-0 flex-col">
             <span
                 className={cn(
                     'inline-flex items-center gap-1.5 text-2xs',
-                    TONE_TEXT[tone],
+                    // Sólo los problemas tiñen el texto; lo demás se lee normal.
+                    color === 'warn' || color === 'critical'
+                        ? TONE_TEXT[color]
+                        : tone === 'muted'
+                          ? 'text-fg-3'
+                          : 'text-fg-2',
+                    color === 'critical' && 'font-medium',
                 )}
             >
                 <span
-                    className={cn('size-1.5 rounded-full', TONE_DOT[tone])}
+                    className={cn(
+                        'size-1.5 rounded-full',
+                        TONE_DOT[color],
+                        tone === 'info' && 'motion-safe:animate-pulse',
+                    )}
                     aria-hidden="true"
                 />
                 {label}
@@ -258,9 +214,11 @@ function DeliveryCell({
                 {summary.delivered}/{summary.attempted} entregadas
             </span>
             {summary.failed > 0 && (
-                <span className="inline-flex items-center rounded-sm border border-severity-critical/40 bg-severity-critical/10 px-1.5 py-0.5 text-3xs font-semibold text-severity-critical">
-                    {summary.failed} {summary.failed === 1 ? 'falla' : 'fallas'}
-                </span>
+                <StatusBadge
+                    size="sm"
+                    tone="critical"
+                    label={`${summary.failed} ${summary.failed === 1 ? 'falla' : 'fallas'}`}
+                />
             )}
         </button>
     );
@@ -345,14 +303,11 @@ export function NotificationsTable({
                 sortValue: (notification) =>
                     PRIORITY_RANK[notification.priority],
                 cell: (notification) => (
-                    <span
-                        className={cn(
-                            'inline-flex items-center rounded-sm border px-1.5 py-0.5 text-3xs font-semibold tracking-label',
-                            PRIORITY_STYLES[notification.priority],
-                        )}
-                    >
-                        {PRIORITY_LABELS[notification.priority]}
-                    </span>
+                    <StatusBadge
+                        size="sm"
+                        {...notificationPriority(notification.priority)}
+                        className="tracking-label"
+                    />
                 ),
             },
             {

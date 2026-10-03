@@ -17,27 +17,19 @@ import {
 } from '@/components/sam/map/markers';
 import { useSamMap } from '@/components/sam/map/use-sam-map';
 import { useAppearance } from '@/hooks/use-appearance';
+import { TONE_VAR } from '@/lib/tone';
+import type { Tone } from '@/lib/tone';
 import { cn } from '@/lib/utils';
 import type { AssetStatusValue } from '@/types/assets';
 
-const TONE_COLORS = {
-    ok: 'var(--severity-low)',
-    warn: 'var(--severity-medium)',
-    high: 'var(--severity-high)',
-    critical: 'var(--severity-critical)',
-    neutral: 'var(--fg-3)',
-    primary: 'var(--primary)',
-} as const;
-
-export type PointTone = keyof typeof TONE_COLORS;
-
 // Status a tone stands for when the point is a unit, so the detail map draws
 // the same marker as the fleet map.
-const TONE_STATUS: Record<PointTone, AssetStatusValue> = {
+const TONE_STATUS: Record<Tone, AssetStatusValue> = {
     ok: 'active',
     warn: 'maintenance',
     high: 'alert',
     critical: 'critical',
+    info: 'active',
     neutral: 'offline',
     primary: 'active',
 };
@@ -55,7 +47,7 @@ interface Props {
     /** km/h; with a heading, draws the unit as moving. */
     speed?: number | null;
     label?: string;
-    tone?: PointTone;
+    tone?: Tone;
     /**
      * `unit`: the fleet map's vehicle marker (status + heading).
      * `pin`: a place where something happened (event, incident).
@@ -126,11 +118,11 @@ export function PointMap({
 
         const element =
             variant === 'pin'
-                ? createPinMarker(TONE_COLORS[tone], label)
+                ? createPinMarker(TONE_VAR[tone], label)
                 : createUnitMarker(unitState, false);
 
         if (variant === 'unit') {
-            element.style.setProperty('--unit', TONE_COLORS[tone]);
+            element.style.setProperty('--unit', TONE_VAR[tone]);
         }
 
         markerRef.current = new maplibregl.Marker({ element })
@@ -157,9 +149,9 @@ export function PointMap({
 
         if (variant === 'unit') {
             updateUnitMarker(el, unitState);
-            el.style.setProperty('--unit', TONE_COLORS[tone]);
+            el.style.setProperty('--unit', TONE_VAR[tone]);
         } else {
-            el.style.setProperty('--unit', TONE_COLORS[tone]);
+            el.style.setProperty('--unit', TONE_VAR[tone]);
         }
 
         if (!map.getBounds().contains([longitude, latitude])) {

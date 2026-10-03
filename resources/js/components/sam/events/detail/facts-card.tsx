@@ -4,18 +4,11 @@ import {
     DescriptionList,
 } from '@/components/sam/description-list';
 import { toSeverity } from '@/components/sam/event-severity';
+import { EVENT_STATE_LABELS } from '@/components/sam/events/copy';
 import { PointMap } from '@/components/sam/lazy-point-map';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatDateTime } from '@/lib/format';
 import type { EventDetail } from '@/types/events';
-
-const EVENT_STATE_LABELS: Record<string, string> = {
-    needsReview: 'Pendiente de revisión en el proveedor',
-    reviewed: 'Revisado en el proveedor',
-    dismissed: 'Descartado en el proveedor',
-    needsCoaching: 'Requiere coaching',
-    coached: 'Coaching realizado',
-};
 
 export function FactsCard({ event }: { event: EventDetail }) {
     const facts = event.facts;

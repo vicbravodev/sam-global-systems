@@ -15,6 +15,8 @@ import {
     X,
 } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { ASSET_STATUS } from '@/lib/labels';
+import { toneDotFor } from '@/lib/tone';
 import { cn } from '@/lib/utils';
 import type {
     CopilotAssetOption,
@@ -42,12 +44,7 @@ const TEMPLATE_ICONS: Record<string, React.ElementType> = {
  */
 const STOP_ARM_MS = 400;
 
-const STATUS_DOT: Record<string, string> = {
-    active: 'bg-health-ok',
-    alert: 'bg-severity-high',
-    critical: 'bg-severity-critical',
-    maintenance: 'bg-severity-medium',
-};
+const QUIET_STATUSES = new Set(['inactive', 'offline']);
 
 export function assetDisplay(asset: CopilotAssetOption): string {
     return asset.code ?? asset.name;
@@ -460,15 +457,20 @@ export function CopilotComposer({
 
 function AssetIcon({ asset }: { asset: CopilotAssetOption }) {
     const Icon = asset.category === 'trailer' ? Container : Truck;
+    // Sólo estados con color: inactiva o sin conexión no llevan punto.
+    const dot =
+        asset.status && !QUIET_STATUSES.has(asset.status)
+            ? toneDotFor(ASSET_STATUS, asset.status)
+            : undefined;
 
     return (
         <span className="relative inline-flex shrink-0">
             <Icon className="size-3" />
-            {asset.status && STATUS_DOT[asset.status] && (
+            {dot && (
                 <span
                     className={cn(
                         'absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full ring-1 ring-surface-1',
-                        STATUS_DOT[asset.status],
+                        dot,
                     )}
                 />
             )}

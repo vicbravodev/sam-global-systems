@@ -1,5 +1,6 @@
 import { SeverityBadge, TERMINAL_STATUSES } from '@/components/sam';
 import type { Severity } from '@/components/sam';
+import { SEVERITY_BORDER } from '@/components/sam/event-severity';
 import { cn } from '@/lib/utils';
 import type { InboxDensity, MockIncident } from '@/types/sam';
 import { IncidentRow } from './incident-row';
@@ -41,14 +42,6 @@ const SEVERITY_ORDER: Severity[] = [
     'low',
     'info',
 ];
-
-const SEVERITY_BORDER: Record<Severity, string> = {
-    critical: 'border-l-severity-critical',
-    high: 'border-l-severity-high',
-    medium: 'border-l-severity-medium',
-    low: 'border-l-severity-low',
-    info: 'border-l-severity-info',
-};
 
 interface InboxGroupedProps {
     rows: MockIncident[];

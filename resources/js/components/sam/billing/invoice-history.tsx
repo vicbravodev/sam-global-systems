@@ -1,16 +1,17 @@
 import { ChevronDown, FileText, Upload } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { Panel } from '@/components/sam/panel';
+import { StatusBadge } from '@/components/sam/status-badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
-import { APP_LOCALE, formatDate, formatNumber, toDate } from '@/lib/format';
+import { formatDate, formatMonthYear, formatNumber } from '@/lib/format';
 import { meterLabel } from '@/lib/labels';
 import { postFormData } from '@/lib/sam-fetch';
 import { submit } from '@/lib/submit';
+import type { Tone } from '@/lib/tone';
 import { cn } from '@/lib/utils';
 import billingRoutes from '@/routes/billing';
-import type { BillingTone } from './panel';
-import { BillingPill, money } from './panel';
+import { money } from './panel';
 import type { InvoiceLine, InvoiceRow } from './types';
 
 const VISIBLE_INVOICES = 4;
@@ -22,17 +23,12 @@ function periodLabel(invoice: InvoiceRow): string {
         return 'Periodo sin fecha';
     }
 
-    const label = toDate(invoice.periodStart).toLocaleDateString(APP_LOCALE, {
-        month: 'long',
-        year: 'numeric',
-    });
-
-    return label.charAt(0).toUpperCase() + label.slice(1);
+    return formatMonthYear(invoice.periodStart);
 }
 
 /** Estado de pago en palabras del cliente. */
 function paymentState(invoice: InvoiceRow): {
-    tone: BillingTone;
+    tone: Tone;
     label: string;
 } {
     if (invoice.status === 'paid') {
@@ -239,7 +235,11 @@ function InvoiceItem({
                     )}
                 </button>
                 <div className="flex items-center justify-between gap-3 pl-6.5 sm:justify-end sm:pl-0">
-                    <BillingPill tone={state.tone}>{state.label}</BillingPill>
+                    <StatusBadge
+                        size="sm"
+                        tone={state.tone}
+                        label={state.label}
+                    />
                     <span className="text-right text-sm font-semibold whitespace-nowrap text-fg-1 tabular-nums sm:w-32">
                         {money(invoice.total, invoice.currency)}
                     </span>

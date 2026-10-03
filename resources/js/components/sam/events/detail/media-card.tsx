@@ -1,5 +1,6 @@
 import { Film, Image as ImageIcon, Mic } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { MEDIA_TYPE_LABELS } from '@/components/sam/events/copy';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatDateTime } from '@/lib/format';
 import { mediaRoleLabel } from '@/lib/labels';
@@ -11,14 +12,6 @@ const MEDIA_ICONS: Record<string, LucideIcon> = {
     video: Film,
     clip: Film,
     audio: Mic,
-};
-
-const MEDIA_LABELS: Record<string, string> = {
-    image: 'Imagen',
-    snapshot: 'Captura',
-    video: 'Video',
-    clip: 'Clip',
-    audio: 'Audio',
 };
 
 export function MediaCard({ media }: { media: EventMediaItem[] }) {
@@ -47,7 +40,7 @@ export function MediaCard({ media }: { media: EventMediaItem[] }) {
                                 Film;
                             const label =
                                 (item.mediaType &&
-                                    MEDIA_LABELS[item.mediaType]) ||
+                                    MEDIA_TYPE_LABELS[item.mediaType]) ||
                                 'Media';
 
                             return (

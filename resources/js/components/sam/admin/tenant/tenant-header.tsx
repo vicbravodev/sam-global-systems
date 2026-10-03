@@ -8,8 +8,8 @@ import type {
     AdminTenantShowProps,
 } from '@/components/sam/admin/tenant/types';
 import { SubscriptionPill } from '@/components/sam/admin-tenant-status';
-import { BillingPill } from '@/components/sam/billing/panel';
 import { EntityAvatar } from '@/components/sam/entity-avatar';
+import { StatusBadge } from '@/components/sam/status-badge';
 import { TabBar } from '@/components/sam/tab-bar';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
@@ -60,11 +60,22 @@ export function TenantHeader({
                                 status={subscription?.status ?? null}
                             />
                             {setup.completed === setup.total ? (
-                                <BillingPill tone="ok">Operando</BillingPill>
+                                <StatusBadge
+                                    size="sm"
+                                    tone="ok"
+                                    label="Operando"
+                                />
                             ) : (
-                                <BillingPill tone="warn">
-                                    En alta · {setup.completed}/{setup.total}
-                                </BillingPill>
+                                <StatusBadge
+                                    size="sm"
+                                    tone="warn"
+                                    label={
+                                        <>
+                                            En alta · {setup.completed}/
+                                            {setup.total}
+                                        </>
+                                    }
+                                />
                             )}
                         </div>
                         <p className="mt-0.5 truncate text-xs text-fg-3">

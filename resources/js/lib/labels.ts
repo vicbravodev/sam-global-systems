@@ -6,6 +6,10 @@
  * sembrados en inglés.
  */
 
+import type { ToneLabel } from '@/lib/tone';
+import type { AssetStatusValue } from '@/types/assets';
+import type { DriverStatusValue } from '@/types/drivers';
+
 /** "panic_button" → "Panic button" como último recurso para códigos desconocidos. */
 export function humanizeCode(code: string | null | undefined): string {
     if (!code) {
@@ -119,6 +123,19 @@ export function eventTypeLabel(
 
 // ── Acciones automáticas / protocolos ────────────────────────────────────
 
+/** Modo con que se evaluó un evento (`ai_evaluations.mode`). */
+const EVALUATION_MODE_LABELS: Record<string, string> = {
+    rules_only: 'Solo reglas',
+    ai_text: 'IA (texto)',
+    multimodal: 'IA multimodal',
+    hybrid: 'Híbrido',
+    deferred_pending_media: 'Diferido, esperando media',
+};
+
+export function evaluationModeLabel(code: string | null | undefined): string {
+    return lookup(EVALUATION_MODE_LABELS, code, code);
+}
+
 export const ACTION_LABELS: Record<string, string> = {
     send_email: 'Enviar correo',
     send_whatsapp: 'Enviar WhatsApp',
@@ -191,6 +208,25 @@ export function assetTypeLabel(
 
     return lookup(ASSET_TYPE_LABELS, key, fallback);
 }
+
+/** Estado operativo de una unidad: etiqueta y tono (badge, punto, mapa). */
+export const ASSET_STATUS: Record<AssetStatusValue, ToneLabel> = {
+    active: { label: 'Activo', tone: 'ok' },
+    inactive: { label: 'Inactivo', tone: 'neutral' },
+    offline: { label: 'Sin conexión', tone: 'neutral' },
+    alert: { label: 'Alerta', tone: 'high' },
+    critical: { label: 'Crítico', tone: 'critical' },
+    maintenance: { label: 'Mantenimiento', tone: 'warn' },
+};
+
+/** Estado de un conductor: etiqueta y tono. */
+export const DRIVER_STATUS: Record<DriverStatusValue, ToneLabel> = {
+    active: { label: 'Activo', tone: 'ok' },
+    off_duty: { label: 'Fuera de turno', tone: 'neutral' },
+    unavailable: { label: 'No disponible', tone: 'neutral' },
+    suspended: { label: 'Suspendido', tone: 'critical' },
+    under_review: { label: 'En revisión', tone: 'warn' },
+};
 
 export const CONNECTIVITY_LABELS: Record<string, string> = {
     online: 'En línea',

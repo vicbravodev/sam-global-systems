@@ -1,24 +1,11 @@
 import { MapPin } from 'lucide-react';
 import { PointMap } from '@/components/sam/lazy-point-map';
-import type { PointTone } from '@/components/sam/point-map';
 import { RelativeTime } from '@/components/sam/relative-time';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatDateTime } from '@/lib/format';
+import { ASSET_STATUS } from '@/lib/labels';
 import { minutesSince } from '@/lib/time';
-import type {
-    AssetShowProps,
-    AssetStatusValue,
-    LocationTrailPoint,
-} from '@/types/assets';
-
-const STATUS_TONE: Record<AssetStatusValue, PointTone> = {
-    active: 'ok',
-    inactive: 'neutral',
-    offline: 'neutral',
-    alert: 'high',
-    critical: 'critical',
-    maintenance: 'warn',
-};
+import type { AssetShowProps, LocationTrailPoint } from '@/types/assets';
 
 export function LocationCard({
     asset,
@@ -68,7 +55,7 @@ export function LocationCard({
                                         : 0
                                 }
                                 label={asset.name}
-                                tone={STATUS_TONE[asset.status]}
+                                tone={ASSET_STATUS[asset.status].tone}
                                 trail={trail}
                             />
                         </div>

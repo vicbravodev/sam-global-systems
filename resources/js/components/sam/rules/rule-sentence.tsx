@@ -1,6 +1,7 @@
 import { ArrowRight } from 'lucide-react';
 import { Fragment } from 'react';
 import type { ConditionFieldDef } from '@/components/sam/condition-builder';
+import { StatusBadge } from '@/components/sam/status-badge';
 import { decisionOutcomeEffectLabel } from '@/lib/labels';
 import { cn } from '@/lib/utils';
 import { conditionsToSentence, OUTCOME_TONE, outcomeGroup } from './lib';
@@ -14,22 +15,14 @@ export function OutcomePill({
     code: string | null;
     className?: string;
 }) {
-    const tone = OUTCOME_TONE[outcomeGroup(code)];
-
     return (
-        <span
-            className={cn(
-                'inline-flex items-center gap-1.5 rounded-sm border px-1.5 py-0.5 text-xs font-medium whitespace-nowrap',
-                tone.pill,
-                className,
-            )}
-        >
-            <span
-                className={cn('size-1.5 shrink-0 rounded-full', tone.dot)}
-                aria-hidden="true"
-            />
-            {decisionOutcomeEffectLabel(code)}
-        </span>
+        <StatusBadge
+            size="sm"
+            dot
+            tone={OUTCOME_TONE[outcomeGroup(code)]}
+            label={decisionOutcomeEffectLabel(code)}
+            className={cn('gap-1.5 text-xs font-medium', className)}
+        />
     );
 }
 

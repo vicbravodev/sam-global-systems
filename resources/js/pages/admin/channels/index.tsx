@@ -3,10 +3,11 @@ import { Plus, Radio, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import InputError from '@/components/input-error';
-import { BillingPill } from '@/components/sam/billing/panel';
+import { NOTIFICATION_PROVIDER_LABELS } from '@/components/sam/admin/copy';
 import { ConfirmDialog } from '@/components/sam/confirm-dialog';
 import { ListPage } from '@/components/sam/list-page';
 import { MetaChip } from '@/components/sam/meta-chip';
+import { StatusBadge } from '@/components/sam/status-badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
@@ -110,14 +111,6 @@ const CONFIG_FIELDS: Record<string, ConfigField[]> = {
     ],
     email: [],
     web: [],
-};
-
-const PROVIDER_LABELS: Record<string, string> = {
-    twilio: 'Twilio',
-    firebase: 'Firebase',
-    slack: 'Slack',
-    webhook: 'Webhook',
-    mail: 'Correo SAM',
 };
 
 const providerFor = (type: string): string =>
@@ -233,7 +226,7 @@ function CreateChannelSheet({
                             </Select>
                             <p className="text-xs text-fg-3">
                                 Proveedor:{' '}
-                                {PROVIDER_LABELS[
+                                {NOTIFICATION_PROVIDER_LABELS[
                                     providerFor(form.channelType)
                                 ] ?? providerFor(form.channelType)}
                             </p>
@@ -434,7 +427,7 @@ export default function AdminChannelsIndex({
                                                     )}
                                                 </MetaChip>
                                                 <MetaChip>
-                                                    {PROVIDER_LABELS[
+                                                    {NOTIFICATION_PROVIDER_LABELS[
                                                         channel.provider
                                                     ] ?? channel.provider}
                                                 </MetaChip>
@@ -454,17 +447,19 @@ export default function AdminChannelsIndex({
                                                 )}
                                             </div>
                                         </div>
-                                        <BillingPill
+                                        <StatusBadge
+                                            size="sm"
                                             tone={
                                                 channel.isActive
                                                     ? 'ok'
                                                     : 'neutral'
                                             }
-                                        >
-                                            {channel.isActive
-                                                ? 'Activo'
-                                                : 'Apagado'}
-                                        </BillingPill>
+                                            label={
+                                                channel.isActive
+                                                    ? 'Activo'
+                                                    : 'Apagado'
+                                            }
+                                        />
                                         <Switch
                                             checked={channel.isActive}
                                             aria-label={`${channel.isActive ? 'Apagar' : 'Encender'} ${channel.name}`}

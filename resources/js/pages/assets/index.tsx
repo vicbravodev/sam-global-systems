@@ -29,6 +29,8 @@ import { Button } from '@/components/ui/button';
 import { useServerList } from '@/hooks/use-server-list';
 import { TEAM_BROADCAST_EVENT_NAME } from '@/hooks/use-team-broadcasts';
 import type { TeamBroadcastDetail } from '@/hooks/use-team-broadcasts';
+import { ASSET_STATUS } from '@/lib/labels';
+import { toneDotFor } from '@/lib/tone';
 import assetRoutes from '@/routes/assets';
 import type {
     AssetFilterOptions,
@@ -110,15 +112,6 @@ function withLivePosition(
         lastSignalAt: signal,
     };
 }
-
-const STATUS_DOT: Record<string, string> = {
-    active: 'bg-severity-low',
-    inactive: 'bg-fg-3',
-    offline: 'bg-fg-3',
-    alert: 'bg-severity-high',
-    critical: 'bg-severity-critical',
-    maintenance: 'bg-severity-medium',
-};
 
 // ---- Pending banner ----
 
@@ -332,7 +325,7 @@ function FilterBar({ filters, options, summary, onApply }: FilterBarProps) {
                             count: summary.statuses[
                                 o.value as keyof AssetsSummary['statuses']
                             ],
-                            dot: STATUS_DOT[o.value],
+                            dot: toneDotFor(ASSET_STATUS, o.value),
                         }))}
                 />
             ) : (

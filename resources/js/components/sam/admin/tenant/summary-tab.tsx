@@ -5,9 +5,9 @@ import type {
     Setup,
     AdminTenantShowProps,
 } from '@/components/sam/admin/tenant/types';
-import { BillingPill } from '@/components/sam/billing/panel';
 import { EntityAvatar } from '@/components/sam/entity-avatar';
 import { Panel } from '@/components/sam/panel';
+import { StatusBadge } from '@/components/sam/status-badge';
 import { Button } from '@/components/ui/button';
 
 export function SummaryTab({
@@ -38,9 +38,12 @@ export function SummaryTab({
                                 </p>
                             </div>
                             {owner.pendingAccess ? (
-                                <BillingPill tone="warn" className="ml-auto">
-                                    Acceso pendiente
-                                </BillingPill>
+                                <StatusBadge
+                                    size="sm"
+                                    tone="warn"
+                                    className="ml-auto"
+                                    label="Acceso pendiente"
+                                />
                             ) : null}
                         </div>
                     ) : (

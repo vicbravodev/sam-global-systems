@@ -1,4 +1,5 @@
 import { Gauge } from 'lucide-react';
+import { FEATURE_SOURCE_LABELS } from '@/components/sam/admin/copy';
 import type {
     Tenant,
     Feature,
@@ -10,13 +11,6 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Switch } from '@/components/ui/switch';
 import { humanizeCode, meterLabel } from '@/lib/labels';
 import { update as updateFeature } from '@/routes/admin/tenants/features';
-
-const SOURCE_LABELS: Record<string, string> = {
-    default_plan: 'Del plan',
-    manual_override: 'Manual',
-    promo: 'Promoción',
-    beta_access: 'Beta',
-};
 
 export function FeaturesTab({
     tenant,
@@ -60,7 +54,7 @@ export function FeaturesTab({
                             <div className="min-w-0 flex-1">
                                 <p className="text-sm font-medium">{label}</p>
                                 <p className="text-xs text-fg-3">
-                                    {SOURCE_LABELS[feature.source] ??
+                                    {FEATURE_SOURCE_LABELS[feature.source] ??
                                         humanizeCode(feature.source)}
                                     {typeof included === 'number'
                                         ? ` · ${included} incluidos`

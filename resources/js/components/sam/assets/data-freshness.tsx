@@ -1,22 +1,12 @@
 import { useEffect, useState } from 'react';
+import { formatDateTime } from '@/lib/format';
+import { durationLabel } from '@/lib/time';
 import { cn } from '@/lib/utils';
 
 // Past these ages the fleet data stops reading as "live": the telematics feed
 // normally lands a batch every ~5 s.
 const FRESH_SECONDS = 30;
 const STALE_SECONDS = 120;
-
-function ageLabel(seconds: number): string {
-    if (seconds < 60) {
-        return `${seconds} s`;
-    }
-
-    if (seconds < 3600) {
-        return `${Math.floor(seconds / 60)} min`;
-    }
-
-    return `${Math.floor(seconds / 3600)} h`;
-}
 
 interface Props {
     /** ISO time of the newest position received, or null before any. */
@@ -58,7 +48,7 @@ export function DataFreshness({ newestAt, className }: Props) {
                 'inline-flex items-center gap-2 rounded-full border border-border bg-surface-2 py-1 pr-2.5 pl-2 text-xs font-medium',
                 className,
             )}
-            title={`Posición más reciente: ${new Date(newestAt).toLocaleString('es-MX')}`}
+            title={`Posición más reciente: ${formatDateTime(newestAt)}`}
         >
             <span
                 className={cn('size-2 rounded-full', dotClass)}
@@ -67,7 +57,7 @@ export function DataFreshness({ newestAt, className }: Props) {
             <span className="text-fg-3">
                 Datos de hace{' '}
                 <span className="text-fg-1 tabular-nums">
-                    {ageLabel(seconds)}
+                    {durationLabel(seconds)}
                 </span>
             </span>
         </span>

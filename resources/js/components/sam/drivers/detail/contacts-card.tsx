@@ -1,14 +1,9 @@
 import { Phone } from 'lucide-react';
+import { CONTACT_TYPE_LABELS } from '@/components/sam/drivers/copy';
 import { digits, isPhoneContact } from '@/components/sam/drivers/detail/phone';
+import { StatusBadge } from '@/components/sam/status-badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { DriverContactEntry } from '@/types/drivers';
-
-const CONTACT_TYPE_LABELS: Record<string, string> = {
-    mobile_phone: 'Teléfono móvil',
-    email: 'Correo',
-    emergency_contact: 'Contacto de emergencia',
-    supervisor_contact: 'Supervisor',
-};
 
 export function ContactsCard({ contacts }: { contacts: DriverContactEntry[] }) {
     return (
@@ -64,14 +59,18 @@ export function ContactsCard({ contacts }: { contacts: DriverContactEntry[] }) {
                                     )}
                                 </span>
                                 {contact.isPrimary && (
-                                    <span className="rounded-sm border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-3xs font-semibold text-primary">
-                                        Primario
-                                    </span>
+                                    <StatusBadge
+                                        size="sm"
+                                        tone="primary"
+                                        label="Primario"
+                                    />
                                 )}
                                 {contact.isEmergency && (
-                                    <span className="rounded-sm border border-severity-critical/40 bg-severity-critical/10 px-1.5 py-0.5 text-3xs font-semibold text-severity-critical">
-                                        Emergencia
-                                    </span>
+                                    <StatusBadge
+                                        size="sm"
+                                        tone="critical"
+                                        label="Emergencia"
+                                    />
                                 )}
                             </li>
                         ))}

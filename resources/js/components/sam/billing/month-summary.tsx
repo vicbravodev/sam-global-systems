@@ -1,25 +1,22 @@
 import { Info } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Meter } from '@/components/sam/meter';
-import { APP_LOCALE, formatDate, formatNumber, toDate } from '@/lib/format';
+import {
+    formatDate,
+    formatMonthYear,
+    formatNumber,
+    formatShortDate,
+} from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { money } from './panel';
 import type { DailyClose, PeriodEstimate } from './types';
 
 function monthName(iso: string): string {
-    const label = toDate(iso).toLocaleDateString(APP_LOCALE, {
-        month: 'long',
-        year: 'numeric',
-    });
-
-    return label.charAt(0).toUpperCase() + label.slice(1);
+    return formatMonthYear(iso);
 }
 
 function shortDay(iso: string): string {
-    return toDate(iso).toLocaleDateString(APP_LOCALE, {
-        day: 'numeric',
-        month: 'short',
-    });
+    return formatShortDate(iso);
 }
 
 interface Line {

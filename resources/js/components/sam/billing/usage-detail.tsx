@@ -2,6 +2,7 @@ import { ChevronDown } from 'lucide-react';
 import { useState } from 'react';
 import { formatNumber } from '@/lib/format';
 import { featureLabel, meterLabel } from '@/lib/labels';
+import { TONE_PILL } from '@/lib/tone';
 import { cn } from '@/lib/utils';
 import type { FeatureRow, UsageRow } from './types';
 
@@ -172,9 +173,11 @@ export function UsageDetail({
                                         key={feature.key}
                                         className={cn(
                                             'rounded-sm border px-1.5 py-0.5 text-2xs',
-                                            feature.enabled
-                                                ? 'border-severity-low/40 bg-severity-low/10 text-severity-low'
-                                                : 'border-border bg-surface-3 text-fg-3',
+                                            TONE_PILL[
+                                                feature.enabled
+                                                    ? 'ok'
+                                                    : 'neutral'
+                                            ],
                                         )}
                                     >
                                         {featureLabel(feature.key)}

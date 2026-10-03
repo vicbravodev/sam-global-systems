@@ -1,40 +1,21 @@
 import type { LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 
+import { TONE_DOT, TONE_TEXT } from '@/lib/tone';
+import type { Tone } from '@/lib/tone';
 import { cn } from '@/lib/utils';
 
-export type PulseTone =
-    | 'neutral'
-    | 'ok'
-    | 'warn'
-    | 'critical'
-    | 'info'
-    | 'primary';
-
-const VALUE_TONE: Record<PulseTone, string> = {
-    neutral: 'text-fg-1',
-    ok: 'text-severity-low',
-    warn: 'text-severity-medium',
-    critical: 'text-severity-critical',
-    info: 'text-severity-info',
-    primary: 'text-primary',
-};
-
-const DOT_TONE: Record<PulseTone, string> = {
-    neutral: 'bg-fg-3',
-    ok: 'bg-severity-low',
-    warn: 'bg-severity-medium',
-    critical: 'bg-severity-critical',
-    info: 'bg-severity-info',
-    primary: 'bg-primary',
-};
+/** The value of a neutral tile reads as body text, not as muted. */
+function valueTone(tone: Tone): string {
+    return tone === 'neutral' ? 'text-fg-1' : TONE_TEXT[tone];
+}
 
 export interface PulseStatProps {
     label: string;
     value: number | string;
     /** Secondary line under the value (e.g. "de 42"). */
     hint?: ReactNode;
-    tone?: PulseTone;
+    tone?: Tone;
     icon?: LucideIcon;
     /** Makes the tile a toggle that applies/clears a list filter. */
     onClick?: () => void;
@@ -90,13 +71,13 @@ export function PulseStat({
                         <span
                             className={cn(
                                 'absolute inline-flex size-full rounded-full opacity-60 motion-safe:animate-ping',
-                                DOT_TONE[tone],
+                                TONE_DOT[tone],
                             )}
                         />
                         <span
                             className={cn(
                                 'relative inline-flex size-1.5 rounded-full',
-                                DOT_TONE[tone],
+                                TONE_DOT[tone],
                             )}
                         />
                     </span>
@@ -105,7 +86,7 @@ export function PulseStat({
             <span
                 className={cn(
                     'font-sans text-xl leading-tight font-semibold tracking-tight',
-                    VALUE_TONE[tone],
+                    valueTone(tone),
                 )}
             >
                 {value}

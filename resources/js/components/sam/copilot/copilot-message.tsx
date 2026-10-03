@@ -10,6 +10,7 @@ import {
     Truck,
 } from 'lucide-react';
 import { Fragment, memo, useMemo, useState } from 'react';
+import { COPILOT_SOURCE_LABELS } from '@/components/sam/copilot/copy';
 import {
     Tooltip,
     TooltipContent,
@@ -356,7 +357,7 @@ function AssistantMessage({
                                 className="flex items-center gap-2 rounded-sm border border-border bg-surface-2 px-2.5 py-1.5 text-xs hover:bg-surface-3"
                             >
                                 <span className="font-mono text-3xs text-fg-3 uppercase">
-                                    {SOURCE_LABELS[source.kind]}
+                                    {COPILOT_SOURCE_LABELS[source.kind]}
                                 </span>
                                 <span className="min-w-0 flex-1 truncate text-fg-1">
                                     {source.label}
@@ -504,13 +505,6 @@ function ActivityContent({
         </div>
     );
 }
-
-const SOURCE_LABELS: Record<string, string> = {
-    asset: 'Unidad',
-    incident: 'Incidente',
-    event: 'Evento',
-    driver: 'Conductor',
-};
 
 function FootButton({
     children,

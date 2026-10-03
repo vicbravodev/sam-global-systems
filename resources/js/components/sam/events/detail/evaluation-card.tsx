@@ -4,19 +4,13 @@ import {
     DescriptionItem,
     DescriptionList,
 } from '@/components/sam/description-list';
+import { StatusBadge } from '@/components/sam/status-badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatDateTime } from '@/lib/format';
-import { actionLabel, priorityLabel } from '@/lib/labels';
+import { actionLabel, priorityLabel, evaluationModeLabel } from '@/lib/labels';
+import { TONE_PILL } from '@/lib/tone';
 import { cn } from '@/lib/utils';
 import type { EventEvaluation } from '@/types/events';
-
-const MODE_LABELS: Record<string, string> = {
-    rules_only: 'Solo reglas',
-    ai_text: 'IA (texto)',
-    multimodal: 'IA multimodal',
-    hybrid: 'Híbrido',
-    deferred_pending_media: 'Diferido, esperando media',
-};
 
 export function EvaluationCard({
     evaluation,
@@ -34,7 +28,7 @@ export function EvaluationCard({
                     <span className="sam-meta">
                         v{evaluation.version}
                         {evaluation.mode &&
-                            ` · ${MODE_LABELS[evaluation.mode] ?? evaluation.mode}`}
+                            ` · ${evaluationModeLabel(evaluation.mode)}`}
                     </span>
                 )}
             </CardHeader>
@@ -62,9 +56,9 @@ export function EvaluationCard({
                                 className={cn(
                                     'rounded-sm border px-2 py-1 text-xs font-semibold',
                                     evaluation.isRealEvent === true
-                                        ? 'border-severity-critical/40 bg-severity-critical/10 text-severity-critical'
+                                        ? TONE_PILL.critical
                                         : evaluation.isRealEvent === false
-                                          ? 'border-severity-low/40 bg-severity-low/10 text-severity-low'
+                                          ? TONE_PILL.ok
                                           : 'border-ai-accent/40 bg-ai-accent-bg text-ai-accent',
                                 )}
                             >
@@ -83,9 +77,11 @@ export function EvaluationCard({
                                 </span>
                             )}
                             {evaluation.requiresAction && (
-                                <span className="rounded-sm border border-severity-high/40 bg-severity-high/10 px-1.5 py-0.5 text-3xs font-semibold text-severity-high">
-                                    Requiere acción
-                                </span>
+                                <StatusBadge
+                                    size="sm"
+                                    tone="high"
+                                    label="Requiere acción"
+                                />
                             )}
                         </div>
                         <DescriptionList className="gap-3">

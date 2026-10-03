@@ -1,4 +1,5 @@
 import { Check, ChevronRight } from 'lucide-react';
+import { TONE_PILL } from '@/lib/tone';
 import { cn } from '@/lib/utils';
 import type {
     EventDecision,
@@ -119,12 +120,13 @@ export function PipelineStepper({
                         <span
                             className={cn(
                                 'grid size-6 shrink-0 place-items-center rounded-full border text-3xs font-semibold',
-                                step.state === 'done' &&
-                                    'border-severity-low/40 bg-severity-low/15 text-severity-low',
+                                step.state === 'done' && TONE_PILL.ok,
                                 step.state === 'active' &&
-                                    'border-severity-medium/40 bg-severity-medium/15 text-severity-medium motion-safe:animate-pulse',
-                                step.state === 'failed' &&
-                                    'border-severity-critical/40 bg-severity-critical/15 text-severity-critical',
+                                    cn(
+                                        TONE_PILL.warn,
+                                        'motion-safe:animate-pulse',
+                                    ),
+                                step.state === 'failed' && TONE_PILL.critical,
                                 step.state === 'pending' &&
                                     'border-border bg-surface-2 text-fg-3',
                                 step.state === 'skipped' &&

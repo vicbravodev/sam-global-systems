@@ -33,16 +33,11 @@ import {
 import { Spinner } from '@/components/ui/spinner';
 import { formatDate, formatDateTime, formatNumber } from '@/lib/format';
 import { relativeLabel } from '@/lib/time';
+import { TONE_DOT, TONE_SURFACE, TONE_TEXT } from '@/lib/tone';
 import { cn } from '@/lib/utils';
 import type { IntegrationRow } from '@/types/sam';
 import { CopyField } from './copy-field';
-import {
-    capabilityLabel,
-    integrationState,
-    TONE_DOT,
-    TONE_SURFACE,
-    TONE_TEXT,
-} from './integration-state';
+import { capabilityLabel, integrationState } from './integration-state';
 import type { IntegrationTone } from './integration-state';
 import { ProviderTile } from './provider-tile';
 import { WebhookSecretPanel } from './webhook-secret-panel';

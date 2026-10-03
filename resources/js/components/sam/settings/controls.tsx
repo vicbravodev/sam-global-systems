@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { StatusBadge } from '@/components/sam/status-badge';
 import { cn } from '@/lib/utils';
 
 /** Botón-píldora con estado (canales, días de la semana). */
@@ -50,22 +51,11 @@ export function StatePill({
     offLabel?: string;
 }) {
     return (
-        <span
-            className={cn(
-                'inline-flex items-center gap-1.5 rounded-sm border px-1.5 py-0.5 text-2xs font-medium whitespace-nowrap',
-                on
-                    ? 'border-severity-low/40 bg-severity-low/10 text-severity-low'
-                    : 'border-border bg-surface-3 text-fg-3',
-            )}
-        >
-            <span
-                className={cn(
-                    'size-1.5 rounded-full',
-                    on ? 'bg-severity-low' : 'bg-fg-3',
-                )}
-                aria-hidden
-            />
-            {on ? onLabel : offLabel}
-        </span>
+        <StatusBadge
+            size="sm"
+            dot
+            tone={on ? 'ok' : 'neutral'}
+            label={on ? onLabel : offLabel}
+        />
     );
 }
