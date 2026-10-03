@@ -63,6 +63,8 @@ export function DetailResizer({
 
     const [width, setWidth] = useState(readWidth);
     const widthRef = useRef(width);
+    /** Ends the drag in progress (listeners + body styles), if any. */
+    const stopDragRef = useRef<(() => void) | null>(null);
 
     const setCurrentWidth = (w: number) => {
         widthRef.current = w;
@@ -91,6 +93,9 @@ export function DetailResizer({
         };
     }, []);
 
+    // Unmounting mid-drag must not leave the page stuck in "resizing" mode.
+    useEffect(() => () => stopDragRef.current?.(), []);
+
     const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
         e.preventDefault();
 
@@ -104,6 +109,8 @@ export function DetailResizer({
         const startX = e.clientX;
         const startW = aside.getBoundingClientRect().width;
 
+        // A drag that never got its pointerup (lost capture) ends here.
+        stopDragRef.current?.();
         document.body.style.cursor = 'col-resize';
         document.body.style.userSelect = 'none';
         ref.current?.classList.add('dragging');
@@ -117,19 +124,25 @@ export function DetailResizer({
             root.style.gridTemplateColumns = `minmax(0,1fr) ${w}px`;
         };
 
-        const up = () => {
-            const w = Math.round(aside.getBoundingClientRect().width);
-
-            setCurrentWidth(w);
-            localStorage.setItem(storageKey, String(w));
+        const stop = () => {
             document.removeEventListener('pointermove', move);
             document.removeEventListener('pointerup', up);
             document.removeEventListener('pointercancel', up);
             document.body.style.cursor = '';
             document.body.style.userSelect = '';
             ref.current?.classList.remove('dragging');
+            stopDragRef.current = null;
         };
 
+        const up = () => {
+            const w = Math.round(aside.getBoundingClientRect().width);
+
+            setCurrentWidth(w);
+            localStorage.setItem(storageKey, String(w));
+            stop();
+        };
+
+        stopDragRef.current = stop;
         document.addEventListener('pointermove', move);
         document.addEventListener('pointerup', up);
         document.addEventListener('pointercancel', up);
