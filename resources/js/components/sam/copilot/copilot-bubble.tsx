@@ -7,6 +7,7 @@ import {
     TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { getJson } from '@/lib/sam-fetch';
+import copilotRoutes from '@/routes/copilot';
 import type { CopilotCatalog, CopilotQuota } from '@/types/copilot';
 import {
     CopilotBubbleConnecting,
@@ -68,7 +69,7 @@ export default function CopilotBubble({
 
         catalogInFlight.current = true;
         setCatalog({ status: 'loading' });
-        getJson(`/${teamSlug}/copilot/catalog`)
+        getJson(copilotRoutes.catalog.url(teamSlug))
             .then((response) =>
                 response.ok ? response.json() : Promise.reject(),
             )

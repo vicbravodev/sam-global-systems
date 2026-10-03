@@ -13,6 +13,7 @@ import {
     TooltipContent,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
+import copilotRoutes from '@/routes/copilot';
 import {
     CopilotBubbleConnecting,
     CopilotBubbleFrame,
@@ -36,7 +37,8 @@ export function CopilotLauncher() {
     const page = usePage();
     const team = page.props.currentTeam;
     const teamSlug = team?.slug ?? '';
-    const onCopilotPage = page.url.split(/[?#]/)[0] === `/${teamSlug}/copilot`;
+    const onCopilotPage =
+        page.url.split(/[?#]/)[0] === copilotRoutes.index.url(teamSlug);
     const enabled =
         Boolean(page.props.copilot?.enabled) &&
         !onCopilotPage &&
@@ -111,9 +113,12 @@ function LauncherForTeam({ teamSlug }: { teamSlug: string }) {
     const openFull = useCallback(
         (conversationId: number | null) => {
             returnFocusRef.current = null;
-            const suffix = conversationId ? `?c=${conversationId}` : '';
             setOpen(false);
-            router.visit(`/${teamSlug}/copilot${suffix}`);
+            router.visit(
+                copilotRoutes.index(teamSlug, {
+                    query: conversationId ? { c: conversationId } : undefined,
+                }),
+            );
         },
         [teamSlug],
     );

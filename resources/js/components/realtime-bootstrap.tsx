@@ -5,6 +5,9 @@ import {
     useTeamBroadcast,
     useTeamBroadcastsSubscription,
 } from '@/hooks/use-team-broadcasts';
+import analyticsRoutes from '@/routes/analytics';
+import integrationRoutes from '@/routes/integrations';
+import notificationRoutes from '@/routes/notifications';
 
 const PROVIDER_LABELS: Record<string, string> = {
     samsara: 'Samsara',
@@ -40,7 +43,10 @@ export function RealtimeBootstrap() {
             return;
         }
 
-        const href = `/${teamSlug}/notifications/${payload.notification_id}`;
+        const href = notificationRoutes.show.url([
+            teamSlug,
+            payload.notification_id,
+        ]);
         const show =
             payload.priority === 'critical' || payload.priority === 'high'
                 ? toast.warning
@@ -57,7 +63,10 @@ export function RealtimeBootstrap() {
             return;
         }
 
-        const href = `/${teamSlug}/analytics/executions/${payload.report_execution_id}/download`;
+        const href = analyticsRoutes.executions.download.url([
+            teamSlug,
+            payload.report_execution_id,
+        ]);
 
         toast.success(`${payload.report_name} está listo`, {
             description: `Formato ${payload.output_format.toUpperCase()}`,
@@ -85,7 +94,8 @@ export function RealtimeBootstrap() {
             action: teamSlug
                 ? {
                       label: 'Abrir',
-                      onClick: () => router.visit(`/${teamSlug}/integrations`),
+                      onClick: () =>
+                          router.visit(integrationRoutes.index(teamSlug)),
                   }
                 : undefined,
         });

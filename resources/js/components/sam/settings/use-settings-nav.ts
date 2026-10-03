@@ -17,11 +17,13 @@ import {
     UsersRound,
 } from 'lucide-react';
 import { toUrl } from '@/lib/utils';
+import roleRoutes from '@/routes/access/roles';
 import { edit as editAppearance } from '@/routes/appearance';
 import { edit as editNotifications } from '@/routes/notification-preferences';
 import { edit as editProfile } from '@/routes/profile';
 import { edit as editSecurity } from '@/routes/security';
 import { index as teamsIndex } from '@/routes/teams';
+import tenantConfigRoutes from '@/routes/tenant-config';
 
 /**
  * Secciones de la página de configuración de la empresa. Todas viven en la
@@ -125,12 +127,7 @@ function pathOf(url: string): string {
 export function useSettingsNav(): SettingsNavGroup[] {
     const page = usePage();
     const currentPath = pathOf(page.url);
-    const teamSlug =
-        (
-            page.props as unknown as {
-                currentTeam?: { slug?: string | null } | null;
-            }
-        ).currentTeam?.slug ?? null;
+    const teamSlug = page.props.currentTeam?.slug ?? null;
     const nav = page.props.nav;
 
     const matches = (href: string, nested = false) => {
@@ -184,8 +181,9 @@ export function useSettingsNav(): SettingsNavGroup[] {
     // Las secciones de la empresa requieren el permiso correspondiente (sin
     // él la página responde 403), así que sólo se listan si se pueden abrir.
     const company: SettingsNavItem[] = [];
-    const configBase = `/${teamSlug}/settings/tenant-config`;
-    const onConfigPage = currentPath === configBase;
+    const configHref = tenantConfigRoutes.show.url(teamSlug);
+    const slasHref = tenantConfigRoutes.slas.index.url(teamSlug);
+    const onConfigPage = currentPath === configHref;
     const activeSection = companySectionFromUrl(page.url);
 
     if (nav?.tenantConfig) {
@@ -199,8 +197,10 @@ export function useSettingsNav(): SettingsNavGroup[] {
                 title: section.title,
                 href:
                     section.key === DEFAULT_COMPANY_SECTION
-                        ? configBase
-                        : `${configBase}?seccion=${section.key}`,
+                        ? configHref
+                        : tenantConfigRoutes.show.url(teamSlug, {
+                              query: { seccion: section.key },
+                          }),
                 icon: section.icon,
                 active: onConfigPage && activeSection === section.key,
             });
@@ -211,16 +211,16 @@ export function useSettingsNav(): SettingsNavGroup[] {
                 company.push({
                     key: 'tiempos',
                     title: 'Tiempos de respuesta',
-                    href: `${configBase}/slas`,
+                    href: slasHref,
                     icon: Timer,
-                    active: matches(`${configBase}/slas`),
+                    active: matches(slasHref),
                 });
             }
         }
     }
 
     if (nav?.roles) {
-        const rolesHref = `/${teamSlug}/settings/roles`;
+        const rolesHref = roleRoutes.index.url(teamSlug);
 
         company.push({
             key: 'roles',
@@ -235,7 +235,9 @@ export function useSettingsNav(): SettingsNavGroup[] {
         company.push({
             key: 'avanzado',
             title: 'Avanzado',
-            href: `${configBase}?seccion=avanzado`,
+            href: tenantConfigRoutes.show.url(teamSlug, {
+                query: { seccion: 'avanzado' },
+            }),
             icon: SlidersHorizontal,
             active: onConfigPage && activeSection === 'avanzado',
         });
