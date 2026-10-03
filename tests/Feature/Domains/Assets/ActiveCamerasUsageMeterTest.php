@@ -84,6 +84,21 @@ class ActiveCamerasUsageMeterTest extends TestCase
         $this->assertNoSensitiveDataLogged();
     }
 
+    public function test_stand_alone_cameras_of_another_tenant_are_never_counted(): void
+    {
+        $teamA = Team::factory()->create();
+        $teamB = Team::factory()->create();
+        $cameraType = AssetType::factory()->camera()->create();
+
+        Asset::factory()->active()->create(['team_id' => $teamA->id, 'asset_type_id' => $cameraType->id]);
+        Asset::factory()->active()->count(2)->create(['team_id' => $teamB->id, 'asset_type_id' => $cameraType->id]);
+
+        $this->artisan('assets:record-usage-meters')->assertSuccessful();
+
+        $this->assertSame(1, $this->recordedCameras($teamA));
+        $this->assertSame(2, $this->recordedCameras($teamB));
+    }
+
     public function test_cameras_of_another_tenant_are_never_counted(): void
     {
         $teamA = Team::factory()->create();

@@ -18,7 +18,10 @@ class AssetTypeFactory extends Factory
         return [
             'code' => fake()->unique()->slug(2),
             'name' => fake()->words(2, true),
-            'category' => fake()->randomElement(AssetCategory::cases()),
+            // Determinista: una categoría al azar cambiaba el cobro (una
+            // "cámara" suma el medidor active_cameras) y volvía intermitentes
+            // los tests de facturación. Otras categorías, con su estado.
+            'category' => AssetCategory::Vehicle,
             'capabilities_json' => null,
         ];
     }
