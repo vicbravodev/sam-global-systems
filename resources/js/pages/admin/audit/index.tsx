@@ -1,8 +1,6 @@
 import { Head, router } from '@inertiajs/react';
 import { ScrollText } from 'lucide-react';
 import { useState } from 'react';
-import { BillingPill } from '@/components/sam/billing/panel';
-import type { BillingTone } from '@/components/sam/billing/panel';
 import { DataTable } from '@/components/sam/data-table/data-table';
 import type { DataTableColumn } from '@/components/sam/data-table/data-table';
 import {
@@ -12,8 +10,10 @@ import {
     SearchInput,
 } from '@/components/sam/list';
 import { ListEmptyState, ListPage } from '@/components/sam/list-page';
+import { StatusBadge } from '@/components/sam/status-badge';
 import { Switch } from '@/components/ui/switch';
 import { formatDateTime } from '@/lib/format';
+import type { Tone } from '@/lib/tone';
 import { index as auditIndex } from '@/routes/admin/audit';
 import type { ListPagination } from '@/types/pagination';
 
@@ -43,7 +43,7 @@ interface AdminAuditIndexProps {
     tenants?: { value: string; label: string }[];
 }
 
-const CATEGORY_TONE: Record<string, BillingTone> = {
+const CATEGORY_TONE: Record<string, Tone> = {
     security: 'info',
     billing: 'warn',
 };
@@ -104,11 +104,11 @@ export default function AdminAuditIndex({
                         {row.actionLabel}
                     </span>
                     {row.categoryLabel ? (
-                        <BillingPill
+                        <StatusBadge
+                            size="sm"
                             tone={CATEGORY_TONE[row.category] ?? 'neutral'}
-                        >
-                            {row.categoryLabel}
-                        </BillingPill>
+                            label={row.categoryLabel}
+                        />
                     ) : null}
                 </span>
             ),

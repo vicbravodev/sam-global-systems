@@ -5,10 +5,9 @@ import { CapMeter } from '@/components/sam/billing/cap-meter';
 import { HowToPay } from '@/components/sam/billing/how-to-pay';
 import { InvoiceHistory } from '@/components/sam/billing/invoice-history';
 import { MonthSummary } from '@/components/sam/billing/month-summary';
-import type { BillingTone } from '@/components/sam/billing/panel';
-import { BillingPill } from '@/components/sam/billing/panel';
 import type { BillingPageProps } from '@/components/sam/billing/types';
 import { UsageDetail } from '@/components/sam/billing/usage-detail';
+import { StatusBadge } from '@/components/sam/status-badge';
 import { Button } from '@/components/ui/button';
 import {
     DropdownMenu,
@@ -17,13 +16,14 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { PageHeader } from '@/components/ui/page-header';
+import type { Tone } from '@/lib/tone';
 import assetRoutes from '@/routes/assets';
 import billingRoutes from '@/routes/billing';
 import { edit as editTeam } from '@/routes/teams';
 
 /** Estado del servicio en palabras del cliente (el plan no se muestra:
  *  los planes sólo son plantillas de topes, el cobro es por tracto-día). */
-const SERVICE_STATE: Record<string, { tone: BillingTone; label: string }> = {
+const SERVICE_STATE: Record<string, { tone: Tone; label: string }> = {
     active: { tone: 'ok', label: 'Servicio activo' },
     past_due: { tone: 'warn', label: 'Pago vencido' },
     suspended: { tone: 'critical', label: 'Servicio suspendido' },
@@ -72,9 +72,11 @@ export default function BillingIndex({
                     description="Pagas por cada día que una unidad está vigilada."
                     meta={
                         service && (
-                            <BillingPill tone={service.tone}>
-                                {service.label}
-                            </BillingPill>
+                            <StatusBadge
+                                size="sm"
+                                tone={service.tone}
+                                label={service.label}
+                            />
                         )
                     }
                     actions={

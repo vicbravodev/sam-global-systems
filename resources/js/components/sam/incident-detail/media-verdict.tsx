@@ -1,3 +1,4 @@
+import { TONE_PILL } from '@/lib/tone';
 import { cn } from '@/lib/utils';
 import type { IncidentMediaSummary } from '@/types/sam';
 
@@ -29,10 +30,8 @@ function Chip({
         <span
             className={cn(
                 'inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 text-2xs font-medium whitespace-nowrap tabular-nums',
-                tone === 'critical' &&
-                    'border-severity-high/35 bg-severity-high/10 text-severity-high',
-                tone === 'ok' &&
-                    'border-health-ok/35 bg-health-ok/10 text-health-ok',
+                tone === 'critical' && TONE_PILL.high,
+                tone === 'ok' && TONE_PILL.ok,
                 tone === 'neutral' && 'border-border bg-surface-2 text-fg-2',
                 tone === 'muted' && 'border-border bg-transparent text-fg-3',
             )}

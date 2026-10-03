@@ -3,11 +3,10 @@ import { FileText, Receipt } from 'lucide-react';
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { SubscriptionPill } from '@/components/sam/admin-tenant-status';
-import { BillingPill } from '@/components/sam/billing/panel';
-import type { BillingTone } from '@/components/sam/billing/panel';
 import { ConfirmDialog } from '@/components/sam/confirm-dialog';
 import { Meter } from '@/components/sam/meter';
 import { Panel } from '@/components/sam/panel';
+import { StatusBadge } from '@/components/sam/status-badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
@@ -21,6 +20,7 @@ import {
 } from '@/components/ui/select';
 import { formatCurrency, formatDate } from '@/lib/format';
 import { billingCycleLabel, invoiceStatusLabel } from '@/lib/labels';
+import type { Tone } from '@/lib/tone';
 import { cn } from '@/lib/utils';
 import { update as updateBillingTerms } from '@/routes/admin/tenants/billing-terms';
 import { update as updateFeature } from '@/routes/admin/tenants/features';
@@ -113,7 +113,7 @@ function visit(
 
 const OPERATIONAL = ['active', 'past_due'];
 
-const INVOICE_TONE: Record<string, BillingTone> = {
+const INVOICE_TONE: Record<string, Tone> = {
     draft: 'neutral',
     finalized: 'warn',
     invoiced: 'warn',
@@ -639,14 +639,16 @@ export function AdminTenantBilling({
                                             invoice.currency,
                                         )}
                                     </span>
-                                    <BillingPill
+                                    <StatusBadge
+                                        size="sm"
                                         tone={
                                             INVOICE_TONE[invoice.status] ??
                                             'neutral'
                                         }
-                                    >
-                                        {invoiceStatusLabel(invoice.status)}
-                                    </BillingPill>
+                                        label={invoiceStatusLabel(
+                                            invoice.status,
+                                        )}
+                                    />
                                     {invoice.hasReceipt ? (
                                         <span className="text-xs text-fg-3">
                                             Comprobante recibido

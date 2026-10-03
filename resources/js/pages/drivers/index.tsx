@@ -21,6 +21,8 @@ import { ListEmptyState, ListPage } from '@/components/sam/list-page';
 import { PulseStat, PulseStrip } from '@/components/sam/pulse-strip';
 import { SegmentedFilter } from '@/components/sam/segmented-filter';
 import { useServerList } from '@/hooks/use-server-list';
+import { DRIVER_STATUS } from '@/lib/labels';
+import { toneDotFor } from '@/lib/tone';
 import driverRoutes from '@/routes/drivers';
 import type {
     DriverFilterOptions,
@@ -28,14 +30,6 @@ import type {
     DriversIndexProps,
     DriversSummary,
 } from '@/types/drivers';
-
-const STATUS_DOT: Record<string, string> = {
-    active: 'bg-severity-low',
-    off_duty: 'bg-fg-3',
-    unavailable: 'bg-fg-3',
-    suspended: 'bg-severity-critical',
-    under_review: 'bg-severity-medium',
-};
 
 // ---- Pulse strip ----
 
@@ -148,7 +142,7 @@ function FilterBar({ filters, options, summary, onApply }: FilterBarProps) {
                         count: summary.statuses[
                             o.value as keyof DriversSummary['statuses']
                         ],
-                        dot: STATUS_DOT[o.value],
+                        dot: toneDotFor(DRIVER_STATUS, o.value),
                     }))}
                 />
             ) : (

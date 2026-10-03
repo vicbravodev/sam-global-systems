@@ -4,10 +4,10 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { toast } from 'sonner';
 import InputError from '@/components/input-error';
-import { BillingPill } from '@/components/sam/billing/panel';
 import { ConfirmDialog } from '@/components/sam/confirm-dialog';
 import { EntityAvatar } from '@/components/sam/entity-avatar';
 import { ListPage } from '@/components/sam/list-page';
+import { StatusBadge } from '@/components/sam/status-badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
@@ -117,9 +117,11 @@ export default function AdminOperatorsIndex({
                                                         {operator.name}
                                                     </span>
                                                     {operator.isYou ? (
-                                                        <BillingPill tone="info">
-                                                            Tú
-                                                        </BillingPill>
+                                                        <StatusBadge
+                                                            size="sm"
+                                                            tone="info"
+                                                            label="Tú"
+                                                        />
                                                     ) : null}
                                                 </p>
                                                 <p className="truncate text-xs text-fg-3">
@@ -130,14 +132,18 @@ export default function AdminOperatorsIndex({
                                                 </p>
                                             </div>
                                             {operator.twoFactor ? (
-                                                <BillingPill tone="ok">
-                                                    <ShieldCheck className="size-3" />
-                                                    2FA activa
-                                                </BillingPill>
+                                                <StatusBadge
+                                                    size="sm"
+                                                    tone="ok"
+                                                    icon={ShieldCheck}
+                                                    label="2FA activa"
+                                                />
                                             ) : (
-                                                <BillingPill tone="warn">
-                                                    Sin 2FA
-                                                </BillingPill>
+                                                <StatusBadge
+                                                    size="sm"
+                                                    tone="warn"
+                                                    label="Sin 2FA"
+                                                />
                                             )}
                                             {operator.isYou ? null : (
                                                 <Button

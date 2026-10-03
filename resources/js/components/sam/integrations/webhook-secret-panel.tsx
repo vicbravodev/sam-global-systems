@@ -17,11 +17,11 @@ import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { formatDateTime } from '@/lib/format';
 import { relativeLabel } from '@/lib/time';
+import { TONE_SURFACE, TONE_TEXT } from '@/lib/tone';
 import { cn } from '@/lib/utils';
 import { update as updateWebhookSecret } from '@/routes/integrations/webhook-secret';
 import type { IntegrationRow, IntegrationWebhook } from '@/types/sam';
 import { CopyField } from './copy-field';
-import { TONE_SURFACE, TONE_TEXT } from './integration-state';
 import type { IntegrationTone } from './integration-state';
 
 interface Props {

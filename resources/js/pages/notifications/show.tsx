@@ -15,15 +15,15 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { MetaChip } from '@/components/sam/meta-chip';
+import { DELIVERY_TONE } from '@/components/sam/notifications/copy';
+import { StatusBadge } from '@/components/sam/status-badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
 import { formatDateTime } from '@/lib/format';
-import { cn } from '@/lib/utils';
 import notificationRoutes from '@/routes/notifications';
 import type {
-    DeliveryTone,
     NotificationDeliveryRow,
     NotificationShowProps,
 } from '@/types/notifications';
@@ -39,24 +39,14 @@ const CHANNEL_ICONS: Record<string, LucideIcon> = {
     webhook: Webhook,
 };
 
-const TONE_STYLES: Record<DeliveryTone, string> = {
-    success: 'bg-severity-low/15 text-severity-low',
-    danger: 'bg-severity-critical/15 text-severity-critical',
-    muted: 'bg-surface-3 text-fg-3',
-    pending: 'bg-severity-medium/15 text-severity-medium',
-};
-
 function DeliveryStatus({ delivery }: { delivery: NotificationDeliveryRow }) {
     return (
         <div className="flex flex-col items-start gap-1">
-            <span
-                className={cn(
-                    'inline-flex items-center rounded-full px-2 py-0.5 text-3xs font-semibold',
-                    TONE_STYLES[delivery.tone],
-                )}
-            >
-                {delivery.statusLabel}
-            </span>
+            <StatusBadge
+                size="sm"
+                tone={DELIVERY_TONE[delivery.tone]}
+                label={delivery.statusLabel}
+            />
             {delivery.reason && (
                 <span className="text-2xs text-fg-3">{delivery.reason}</span>
             )}

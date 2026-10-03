@@ -23,6 +23,7 @@ import {
 import { lazy, memo, Suspense, useMemo, useState } from 'react';
 import { SparkArea } from '@/components/sam/charts';
 import { SeverityBadge } from '@/components/sam/severity-badge';
+import { TONE_DOT, TONE_TEXT, TONE_VAR } from '@/lib/tone';
 import { cn } from '@/lib/utils';
 import type {
     AssetBlock,
@@ -88,27 +89,28 @@ const MOTION_STYLES: Record<
     { dot: string; text: string; color: string }
 > = {
     moving: {
-        dot: 'bg-health-ok',
-        text: 'text-health-ok',
-        color: 'var(--health-ok)',
+        dot: TONE_DOT.ok,
+        text: TONE_TEXT.ok,
+        color: TONE_VAR.ok,
     },
     stopped: {
-        dot: 'bg-severity-medium',
-        text: 'text-severity-medium',
-        color: 'var(--severity-medium)',
+        dot: TONE_DOT.warn,
+        text: TONE_TEXT.warn,
+        color: TONE_VAR.warn,
     },
     no_signal: {
-        dot: 'bg-fg-3',
-        text: 'text-fg-3',
-        color: 'var(--fg-3)',
+        dot: TONE_DOT.neutral,
+        text: TONE_TEXT.neutral,
+        color: TONE_VAR.neutral,
     },
 };
 
+// Tarjeta con acento: el borde y la cifra (`data-value`) toman el tono.
 const TONE_CLASSES: Record<string, string> = {
     critical:
         'border-severity-critical/40 bg-severity-critical/8 [&_[data-value]]:text-severity-critical',
     high: 'border-severity-high/40 [&_[data-value]]:text-severity-high',
-    ok: 'border-health-ok/40 [&_[data-value]]:text-health-ok',
+    ok: 'border-severity-low/40 [&_[data-value]]:text-severity-low',
 };
 
 function toneClass(tone: Tone): string {

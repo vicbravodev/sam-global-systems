@@ -1,5 +1,6 @@
 import { ArrowDownRight, ArrowRight, ArrowUpRight } from 'lucide-react';
 import { formatNumber } from '@/lib/format';
+import { TONE_TEXT } from '@/lib/tone';
 import { cn } from '@/lib/utils';
 import type { Better } from './metric-catalog';
 import { isRatio } from './metric-catalog';
@@ -70,8 +71,8 @@ export function ChangeBadge({
         better === 'neutral'
             ? 'text-fg-2'
             : (better === 'up') === up
-              ? 'text-health-ok'
-              : 'text-severity-high';
+              ? TONE_TEXT.ok
+              : TONE_TEXT.high;
     const Arrow = up ? ArrowUpRight : ArrowDownRight;
 
     return (

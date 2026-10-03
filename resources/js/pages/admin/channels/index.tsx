@@ -3,10 +3,10 @@ import { Plus, Radio, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import InputError from '@/components/input-error';
-import { BillingPill } from '@/components/sam/billing/panel';
 import { ConfirmDialog } from '@/components/sam/confirm-dialog';
 import { ListPage } from '@/components/sam/list-page';
 import { MetaChip } from '@/components/sam/meta-chip';
+import { StatusBadge } from '@/components/sam/status-badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
@@ -454,17 +454,19 @@ export default function AdminChannelsIndex({
                                                 )}
                                             </div>
                                         </div>
-                                        <BillingPill
+                                        <StatusBadge
+                                            size="sm"
                                             tone={
                                                 channel.isActive
                                                     ? 'ok'
                                                     : 'neutral'
                                             }
-                                        >
-                                            {channel.isActive
-                                                ? 'Activo'
-                                                : 'Apagado'}
-                                        </BillingPill>
+                                            label={
+                                                channel.isActive
+                                                    ? 'Activo'
+                                                    : 'Apagado'
+                                            }
+                                        />
                                         <Switch
                                             checked={channel.isActive}
                                             aria-label={`${channel.isActive ? 'Apagar' : 'Encender'} ${channel.name}`}

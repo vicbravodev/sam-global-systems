@@ -15,7 +15,7 @@ import { MapLoading } from '@/components/sam/map/map-controls';
 import {
     isMoving,
     speedLine,
-    STATUS_COLOR,
+    statusColor,
     STATUS_URGENCY,
 } from '@/components/sam/map/markers';
 import { RealtimeStatus } from '@/components/sam/realtime-status';
@@ -82,8 +82,8 @@ function StatusDot({
             className={cn('size-2 shrink-0 rounded-full', className)}
             style={
                 muted
-                    ? { boxShadow: `inset 0 0 0 1.5px ${STATUS_COLOR[status]}` }
-                    : { backgroundColor: STATUS_COLOR[status] }
+                    ? { boxShadow: `inset 0 0 0 1.5px ${statusColor(status)}` }
+                    : { backgroundColor: statusColor(status) }
             }
         />
     );

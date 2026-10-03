@@ -31,6 +31,7 @@ import { decisionOutcomeEffectLabel } from '@/lib/labels';
 import { codeFromName } from '@/lib/labels';
 import { postJson, putJson } from '@/lib/sam-fetch';
 import { submit } from '@/lib/submit';
+import { TONE_DOT } from '@/lib/tone';
 import { cn } from '@/lib/utils';
 import rulesRoutes from '@/routes/rules';
 import {
@@ -545,7 +546,10 @@ function OutcomeChoice({
             label={
                 <>
                     <span
-                        className={cn('size-2 shrink-0 rounded-full', tone.dot)}
+                        className={cn(
+                            'size-2 shrink-0 rounded-full',
+                            TONE_DOT[tone],
+                        )}
                         aria-hidden="true"
                     />
                     {decisionOutcomeEffectLabel(code)}

@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/dialog';
 import { Spinner } from '@/components/ui/spinner';
 import { postJson, readErrorMessage } from '@/lib/sam-fetch';
+import { TONE_DOT } from '@/lib/tone';
 import { cn } from '@/lib/utils';
 import incidentRoutes from '@/routes/incidents';
 import type {
@@ -50,9 +51,9 @@ function VerdictBadge({ result }: { result: string | null }) {
 
     const tone =
         result === 'contradicts_event'
-            ? 'bg-severity-high text-white'
+            ? cn(TONE_DOT.high, 'text-white')
             : result === 'confirms_event'
-              ? 'bg-health-ok text-white'
+              ? cn(TONE_DOT.ok, 'text-white')
               : 'bg-black/70 text-white/90';
     const Icon =
         result === 'contradicts_event'

@@ -1,5 +1,5 @@
-import type { PulseTone } from '@/components/sam/pulse-strip';
 import { relativeLabel } from '@/lib/time';
+import type { Tone } from '@/lib/tone';
 import type {
     IntegrationProblemKind,
     IntegrationRow,
@@ -13,7 +13,7 @@ import type {
  * the classified error (`problem`) the controller sends.
  */
 export type IntegrationTone = Extract<
-    PulseTone,
+    Tone,
     'ok' | 'warn' | 'critical' | 'neutral'
 >;
 
@@ -39,27 +39,6 @@ const STATUS_BADGE: Record<TenantIntegrationStatus, string> = {
     error: 'Requiere atención',
     pending: 'Pendiente',
     inactive: 'Desactivada',
-};
-
-export const TONE_TEXT: Record<IntegrationTone, string> = {
-    ok: 'text-severity-low',
-    warn: 'text-severity-medium',
-    critical: 'text-severity-critical',
-    neutral: 'text-fg-3',
-};
-
-export const TONE_DOT: Record<IntegrationTone, string> = {
-    ok: 'bg-severity-low',
-    warn: 'bg-severity-medium',
-    critical: 'bg-severity-critical',
-    neutral: 'bg-fg-3',
-};
-
-export const TONE_SURFACE: Record<IntegrationTone, string> = {
-    ok: 'border-severity-low/30 bg-severity-low/10',
-    warn: 'border-severity-medium/30 bg-severity-medium/10',
-    critical: 'border-severity-critical/30 bg-severity-critical/10',
-    neutral: 'border-border bg-surface-2',
 };
 
 /** Order in the list: what needs a hand first. */

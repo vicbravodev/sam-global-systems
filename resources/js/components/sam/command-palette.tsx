@@ -1,6 +1,7 @@
 import { router, usePage } from '@inertiajs/react';
 import { Search, Truck, User } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { SEVERITY_TEXT, toSeverity } from '@/components/sam/event-severity';
 import { getJson } from '@/lib/sam-fetch';
 import { cn } from '@/lib/utils';
 import { dashboard } from '@/routes';
@@ -80,14 +81,6 @@ const ACTIONS: PaletteAction[] = [
         href: (slug) => assetRoutes.map.url(slug),
     },
 ];
-
-const SEVERITY_CLASS: Record<string, string> = {
-    critical: 'text-severity-critical',
-    high: 'text-severity-high',
-    medium: 'text-severity-medium',
-    low: 'text-severity-low',
-    info: 'text-severity-info',
-};
 
 const GROUP_TITLE = 'border-t border-border px-3.5 py-2.5 sam-caps';
 
@@ -306,9 +299,13 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
                                     <span
                                         className={cn(
                                             'shrink-0 font-mono text-2xs font-semibold',
-                                            SEVERITY_CLASS[
-                                                incident.severity ?? ''
-                                            ] ?? 'text-fg-3',
+                                            incident.severity
+                                                ? SEVERITY_TEXT[
+                                                      toSeverity(
+                                                          incident.severity,
+                                                      )
+                                                  ]
+                                                : 'text-fg-3',
                                         )}
                                     >
                                         {incident.reference}

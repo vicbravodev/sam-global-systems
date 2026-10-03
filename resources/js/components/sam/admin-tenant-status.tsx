@@ -1,6 +1,6 @@
-import { BillingPill } from '@/components/sam/billing/panel';
-import type { BillingTone } from '@/components/sam/billing/panel';
+import { StatusBadge } from '@/components/sam/status-badge';
 import { subscriptionStatusLabel } from '@/lib/labels';
+import type { Tone, ToneLabel } from '@/lib/tone';
 
 /**
  * Etapa del alta de un cliente (la calcula `TenantController::onboardingStage`):
@@ -12,7 +12,7 @@ export type OnboardingStage =
     | 'assets_pending'
     | 'operating';
 
-const STAGE: Record<OnboardingStage, { label: string; tone: BillingTone }> = {
+const STAGE: Record<OnboardingStage, ToneLabel> = {
     owner_pending: { label: 'Esperando al responsable', tone: 'warn' },
     integration_pending: { label: 'Sin proveedor conectado', tone: 'warn' },
     assets_pending: { label: 'Sin unidades vigiladas', tone: 'info' },
@@ -20,20 +20,10 @@ const STAGE: Record<OnboardingStage, { label: string; tone: BillingTone }> = {
 };
 
 export function StagePill({ stage }: { stage: OnboardingStage }) {
-    const { label, tone } = STAGE[stage];
-
-    return (
-        <BillingPill tone={tone}>
-            <span
-                aria-hidden="true"
-                className="size-1.5 rounded-full bg-current"
-            />
-            {label}
-        </BillingPill>
-    );
+    return <StatusBadge size="sm" dot {...STAGE[stage]} />;
 }
 
-const SUBSCRIPTION_TONE: Record<string, BillingTone> = {
+const SUBSCRIPTION_TONE: Record<string, Tone> = {
     active: 'ok',
     trialing: 'info',
     past_due: 'critical',
@@ -46,12 +36,14 @@ const SUBSCRIPTION_TONE: Record<string, BillingTone> = {
 
 export function SubscriptionPill({ status }: { status: string | null }) {
     if (!status) {
-        return <BillingPill tone="neutral">Sin suscripción</BillingPill>;
+        return <StatusBadge size="sm" tone="neutral" label="Sin suscripción" />;
     }
 
     return (
-        <BillingPill tone={SUBSCRIPTION_TONE[status] ?? 'neutral'}>
-            {subscriptionStatusLabel(status)}
-        </BillingPill>
+        <StatusBadge
+            size="sm"
+            tone={SUBSCRIPTION_TONE[status] ?? 'neutral'}
+            label={subscriptionStatusLabel(status)}
+        />
     );
 }

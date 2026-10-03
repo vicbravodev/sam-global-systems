@@ -1,5 +1,10 @@
 import type { Severity } from '@/components/sam/severity-badge';
 
+/*
+ * Clases por nivel de severidad para quien no pinta un `SeverityBadge`
+ * (puntos, bordes de fila, texto). Única copia: no redeclarar en features.
+ */
+
 /** Maps a catalog severity code (event_severities.code) to the badge level. */
 export function toSeverity(code: string | null | undefined): Severity {
     return code === 'critical' ||
@@ -9,6 +14,14 @@ export function toSeverity(code: string | null | undefined): Severity {
         ? code
         : 'info';
 }
+
+export const SEVERITY_TEXT: Record<Severity, string> = {
+    critical: 'text-severity-critical',
+    high: 'text-severity-high',
+    medium: 'text-severity-medium',
+    low: 'text-severity-low',
+    info: 'text-severity-info',
+};
 
 export const SEVERITY_DOT: Record<Severity, string> = {
     critical: 'bg-severity-critical',

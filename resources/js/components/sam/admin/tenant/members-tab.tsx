@@ -9,11 +9,11 @@ import type {
     Pending,
 } from '@/components/sam/admin/tenant/types';
 import { visit } from '@/components/sam/admin/tenant/visit';
-import { BillingPill } from '@/components/sam/billing/panel';
 import { EntityAvatar } from '@/components/sam/entity-avatar';
 import { FormField } from '@/components/sam/form-field';
 import { MetaChip } from '@/components/sam/meta-chip';
 import { Panel } from '@/components/sam/panel';
+import { StatusBadge } from '@/components/sam/status-badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
@@ -127,9 +127,11 @@ export function MembersTab({
                                                 {member.name}
                                             </span>
                                             {member.pendingAccess ? (
-                                                <BillingPill tone="warn">
-                                                    Acceso pendiente
-                                                </BillingPill>
+                                                <StatusBadge
+                                                    size="sm"
+                                                    tone="warn"
+                                                    label="Acceso pendiente"
+                                                />
                                             ) : null}
                                         </p>
                                         <p className="truncate text-xs text-fg-3">

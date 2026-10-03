@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { ConfidenceBar } from '@/components/sam';
+import { StatusBadge } from '@/components/sam/status-badge';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -59,22 +60,19 @@ function OperatorVerdictBadge({ incident }: { incident: IncidentDetail }) {
     const Icon = confirmed ? UserCheck : UserX;
 
     return (
-        <span
-            data-testid="ai-operator-verdict"
-            className={cn(
-                'mb-2 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-3xs font-semibold',
-                confirmed
-                    ? 'border-health-ok/40 bg-health-ok/10 text-health-ok'
-                    : 'border-status-discarded/40 bg-status-discarded/10 text-status-discarded',
-            )}
-            title={
-                incident.aiOperatorVerdictAt
-                    ? `Registrado el ${formatDateTime(incident.aiOperatorVerdictAt)}`
-                    : undefined
-            }
-        >
-            <Icon size={11} strokeWidth={1.75} />
-            {OPERATOR_VERDICT_LABEL[verdict]}
+        <span data-testid="ai-operator-verdict" className="mb-2 inline-flex">
+            <StatusBadge
+                size="sm"
+                tone={confirmed ? 'ok' : 'neutral'}
+                icon={Icon}
+                label={OPERATOR_VERDICT_LABEL[verdict]}
+                className="rounded-full px-2"
+                title={
+                    incident.aiOperatorVerdictAt
+                        ? `Registrado el ${formatDateTime(incident.aiOperatorVerdictAt)}`
+                        : undefined
+                }
+            />
         </span>
     );
 }

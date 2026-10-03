@@ -3,9 +3,9 @@ import { Layers } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { toast } from 'sonner';
-import { BillingPill } from '@/components/sam/billing/panel';
 import { ConfirmDialog } from '@/components/sam/confirm-dialog';
 import { ListPage } from '@/components/sam/list-page';
+import { StatusBadge } from '@/components/sam/status-badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
@@ -106,7 +106,11 @@ function PlanCard({ plan, meters }: { plan: PlanRow; meters: MeterOption[] }) {
                         {plan.code}
                     </span>
                     {plan.isActive ? null : (
-                        <BillingPill tone="neutral">Inactivo</BillingPill>
+                        <StatusBadge
+                            size="sm"
+                            tone="neutral"
+                            label="Inactivo"
+                        />
                     )}
                 </div>
                 <span className="text-xs text-fg-3">

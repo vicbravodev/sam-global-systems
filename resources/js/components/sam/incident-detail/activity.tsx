@@ -14,6 +14,7 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { formatDateTime } from '@/lib/format';
+import { TONE_PILL } from '@/lib/tone';
 import { cn } from '@/lib/utils';
 import type {
     IncidentDetail,
@@ -120,7 +121,7 @@ function EntryIcon({ entry }: { entry: IncidentTimelineEntry }) {
                     : isCritical
                       ? 'border-transparent bg-severity-critical text-white'
                       : entry.type === 'resolved'
-                        ? 'border-health-ok/40 bg-health-ok/10 text-health-ok'
+                        ? TONE_PILL.ok
                         : 'border-border bg-surface-2 text-fg-2',
             )}
         >

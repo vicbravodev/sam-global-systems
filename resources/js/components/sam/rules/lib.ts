@@ -1,6 +1,7 @@
 import type { ConditionFieldDef } from '@/components/sam/condition-builder';
 import { humanizeCode } from '@/lib/labels';
 import type { SubmitOptions } from '@/lib/submit';
+import type { Tone } from '@/lib/tone';
 import type { DecisionRuleRow, MappingRuleRow, OutcomeGroup } from './types';
 
 // ---- Envío ----
@@ -107,29 +108,13 @@ export function outcomeGroup(code: string | null): OutcomeGroup {
 }
 
 /** Clases de color semántico por resultado (siempre acompañadas de texto). */
-export const OUTCOME_TONE: Record<OutcomeGroup, { pill: string; dot: string }> =
-    {
-        incident: {
-            pill: 'border-severity-critical/40 bg-severity-critical/10 text-severity-critical',
-            dot: 'bg-severity-critical',
-        },
-        review: {
-            pill: 'border-severity-medium/40 bg-severity-medium/10 text-severity-medium',
-            dot: 'bg-severity-medium',
-        },
-        alert: {
-            pill: 'border-severity-info/40 bg-severity-info/10 text-severity-info',
-            dot: 'bg-severity-info',
-        },
-        quiet: {
-            pill: 'border-border bg-surface-2 text-fg-2',
-            dot: 'bg-fg-3',
-        },
-        ai: {
-            pill: 'border-primary/30 bg-primary/10 text-primary',
-            dot: 'bg-primary',
-        },
-    };
+export const OUTCOME_TONE: Record<OutcomeGroup, Tone> = {
+    incident: 'critical',
+    review: 'warn',
+    alert: 'info',
+    quiet: 'neutral',
+    ai: 'primary',
+};
 
 /** Qué significa cada resultado, para el editor. */
 export const OUTCOME_HELP: Record<string, string> = {

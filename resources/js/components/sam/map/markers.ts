@@ -1,3 +1,5 @@
+import { ASSET_STATUS } from '@/lib/labels';
+import { TONE_VAR } from '@/lib/tone';
 import type { AssetMarker, AssetStatusValue } from '@/types/assets';
 
 /**
@@ -6,14 +8,10 @@ import type { AssetMarker, AssetStatusValue } from '@/types/assets';
  * marker can be updated in place instead of being rebuilt.
  */
 
-export const STATUS_COLOR: Record<AssetStatusValue, string> = {
-    active: 'var(--severity-low)',
-    inactive: 'var(--fg-3)',
-    offline: 'var(--fg-3)',
-    alert: 'var(--severity-high)',
-    critical: 'var(--severity-critical)',
-    maintenance: 'var(--severity-medium)',
-};
+/** Marker color of a unit status (same tone as its badge). */
+export function statusColor(status: AssetStatusValue): string {
+    return TONE_VAR[ASSET_STATUS[status].tone];
+}
 
 /** Higher is more urgent: sorts lists and picks a cluster's headline status. */
 export const STATUS_URGENCY: Record<AssetStatusValue, number> = {
@@ -70,7 +68,7 @@ export function updateUnitMarker(
     el: HTMLElement,
     state: UnitMarkerState,
 ): void {
-    el.style.setProperty('--unit', STATUS_COLOR[state.status]);
+    el.style.setProperty('--unit', statusColor(state.status));
     setFlag(el, 'muted', MUTED.has(state.status));
     setFlag(el, 'alert', ALERTING.has(state.status));
     setFlag(el, 'selected', state.selected === true);
@@ -149,13 +147,13 @@ function statusMix(statuses: AssetStatusValue[]): string {
     );
 
     if (ordered.length === 1) {
-        return STATUS_COLOR[ordered[0][0]];
+        return statusColor(ordered[0][0]);
     }
 
     let start = 0;
     const stops = ordered.map(([status, count]) => {
         const end = start + (count / statuses.length) * 360;
-        const stop = `${STATUS_COLOR[status]} ${start}deg ${end}deg`;
+        const stop = `${statusColor(status)} ${start}deg ${end}deg`;
         start = end;
 
         return stop;
