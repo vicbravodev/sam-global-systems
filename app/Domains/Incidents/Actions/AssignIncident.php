@@ -66,11 +66,6 @@ class AssignIncident
     }
 
     /**
-     * Los ids de usuario y de team son globales: nunca asignar un incidente a
-     * alguien de otro tenant (le daría acceso a sus datos y notificaciones).
-     * Un super-admin sí puede figurar como asignado (soporte de SAM).
-     */
-    /**
      * "Asignado a Ana López", no "Assigned to user #12". El nombre sale de un
      * usuario ya validado como asignable en este team (guardAssignee).
      */
@@ -84,6 +79,11 @@ class AssignIncident
         };
     }
 
+    /**
+     * Los ids de usuario y de team son globales: nunca asignar un incidente a
+     * alguien de otro tenant (le daría acceso a sus datos y notificaciones).
+     * Un super-admin sí puede figurar como asignado (soporte de SAM).
+     */
     private function guardAssignee(Incident $incident, AssigneeType $assigneeType, int $assigneeId): void
     {
         $teamId = $incident->team_id;
