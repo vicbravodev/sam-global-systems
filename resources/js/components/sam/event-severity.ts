@@ -1,4 +1,5 @@
 import type { Severity } from '@/components/sam/severity-badge';
+import type { Tone } from '@/lib/tone';
 
 /*
  * Clases por nivel de severidad para quien no pinta un `SeverityBadge`
@@ -37,4 +38,13 @@ export const SEVERITY_BORDER: Record<Severity, string> = {
     medium: 'border-l-severity-medium',
     low: 'border-l-severity-low',
     info: 'border-l-severity-info',
+};
+
+/** Tono equivalente a cada severidad, para pintar con `StatusBadge`. */
+export const SEVERITY_TONE: Record<Severity, Tone> = {
+    critical: 'critical',
+    high: 'high',
+    medium: 'warn',
+    low: 'ok',
+    info: 'info',
 };

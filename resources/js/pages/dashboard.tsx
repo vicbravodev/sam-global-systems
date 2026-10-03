@@ -11,7 +11,9 @@ import {
     SeverityBadge,
     SlaCountdown,
 } from '@/components/sam';
+import { SEVERITY_TONE, toSeverity } from '@/components/sam/event-severity';
 import type { RealtimeState } from '@/components/sam/realtime-status';
+import { StatusBadge } from '@/components/sam/status-badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -410,15 +412,6 @@ function DecisionChip({
     severity: DashboardStreamEvent['severity'];
 }) {
     const isAlert = decision === 'incident' || decision === 'escalate';
-    const sev = severity ?? 'high';
-    const sevTextClass: Record<string, string> = {
-        critical:
-            'text-severity-critical border-severity-critical/40 bg-severity-critical/15',
-        high: 'text-severity-high border-severity-high/40 bg-severity-high/15',
-        medium: 'text-severity-medium border-severity-medium/40 bg-severity-medium/15',
-        low: 'text-severity-low border-severity-low/40 bg-severity-low/15',
-        info: 'text-severity-info border-severity-info/40 bg-severity-info/15',
-    };
     const labels: Record<DashboardStreamEvent['decision'], string> = {
         incident: 'Incidente',
         escalate: 'Escalado',
@@ -431,14 +424,10 @@ function DecisionChip({
     }
 
     return (
-        <span
-            className={cn(
-                'inline-flex items-center rounded-sm border px-1.5 py-1 text-3xs font-semibold tracking-label whitespace-nowrap',
-                sevTextClass[sev],
-            )}
-        >
-            {labels[decision]}
-        </span>
+        <StatusBadge
+            tone={SEVERITY_TONE[toSeverity(severity ?? 'high')]}
+            label={labels[decision]}
+        />
     );
 }
 

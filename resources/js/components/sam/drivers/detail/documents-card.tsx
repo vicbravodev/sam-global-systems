@@ -1,5 +1,6 @@
 import { FileText } from 'lucide-react';
 import { DOCUMENT_TYPE_LABELS } from '@/components/sam/drivers/copy';
+import { StatusBadge } from '@/components/sam/status-badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -7,27 +8,21 @@ import type { DriverDocumentEntry } from '@/types/drivers';
 
 function ExpiryChip({ document }: { document: DriverDocumentEntry }) {
     if (document.isExpired || document.status === 'expired') {
-        return (
-            <span className="rounded-sm border border-severity-critical/40 bg-severity-critical/10 px-1.5 py-0.5 text-3xs font-semibold text-severity-critical">
-                Vencido
-            </span>
-        );
+        return <StatusBadge size="sm" tone="critical" label="Vencido" />;
     }
 
     if (document.daysToExpiry !== null && document.daysToExpiry <= 30) {
         return (
-            <span className="rounded-sm border border-severity-medium/40 bg-severity-medium/10 px-1.5 py-0.5 text-3xs font-semibold text-severity-medium">
-                Vence en {document.daysToExpiry} d
-            </span>
+            <StatusBadge
+                size="sm"
+                tone="warn"
+                label={`Vence en ${document.daysToExpiry} d`}
+            />
         );
     }
 
     if (document.status === 'pending_renewal') {
-        return (
-            <span className="rounded-sm border border-severity-medium/40 bg-severity-medium/10 px-1.5 py-0.5 text-3xs font-semibold text-severity-medium">
-                Por renovar
-            </span>
-        );
+        return <StatusBadge size="sm" tone="warn" label="Por renovar" />;
     }
 
     return (
